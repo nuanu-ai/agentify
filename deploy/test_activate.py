@@ -38,13 +38,13 @@ import unittest
 HERE = Path(__file__).parent
 IMAGE = "python:3.12-slim-bookworm"
 NEW, OLD, OTHER = "a" * 40, "b" * 40, "c" * 40
-APPLICATIONS = ("dashboard", "gateway", "scanner", "scanner-worker")
+APPLICATIONS = ("app", "scanner", "scanner-worker")
 INIT = {"01-test-databases.sql": "CREATE DATABASE agentify_test;\n"}
 ORIGINAL = {"agentify": "agentify: the old release's data"}
 MIGRATED = {"agentify": ORIGINAL["agentify"] + "\na scanner migration\nthe gateway's migration\nthe dashboard's migration"}
 ORDER = "an order written while the new release ran"
 FAILED_MIGRATION = "run --rm --no-deps -T migrate"
-FAILED_START = "up -d --wait --no-deps gateway dashboard web"
+FAILED_START = "up -d --wait --no-deps app web"
 
 STACK = r"""#!/usr/bin/env bash
 # Fake stack.sh: the channel's Compose command line, acting on /h/world.
@@ -79,8 +79,8 @@ case "$args" in
   "config --no-interpolate") echo "name: agentify" ;;
   "--profile jobs config --format json") echo '{"services": {"scanner": {"environment": {"A": "1"}}}, "volumes": {"agentify-postgres": {"name": "agentify-postgres"}}}' ;;
   "config --images postgres") echo "postgres@sha256:pinned" ;;
-  "stop --timeout 60 gateway dashboard scanner scanner-worker")
-    for c in gateway dashboard scanner scanner-worker; do [[ ! -f $W/containers/$c ]] || sed -i 's/running/exited/' $W/containers/$c; done ;;
+  "stop --timeout 60 app scanner scanner-worker")
+    for c in app scanner scanner-worker; do [[ ! -f $W/containers/$c ]] || sed -i 's/running/exited/' $W/containers/$c; done ;;
   "exec -T postgres pg_dump -U agentify -Fc "*)
     [[ -f $W/record-at-dump ]] || cat $record > $W/record-at-dump 2>/dev/null
     cat "$W/db/${args##* }" ;;
@@ -114,10 +114,10 @@ case "$args" in
   "up -d --wait --no-deps postgres")
     init=/var/lib/agentify/test/postgres-init
     mkdir -p $init; ls $init > $W/postgres-init-at-start ;;
-  "up -d --wait --no-deps scanner scanner-worker"|"up -d --wait --no-deps gateway dashboard web")
+  "up -d --wait --no-deps scanner scanner-worker"|"up -d --wait --no-deps app web")
     [[ -f $W/record-at-start || ! -f $record ]] || cat $record > $W/record-at-start
     for c in ${args#up -d --wait --no-deps }; do echo "new running" > $W/containers/$c; done
-    if [[ -n ${CARDS_AFTER+set} && $args == *gateway* ]]; then printf '%s' "$CARDS_AFTER" > $W/cards; fi ;;
+    if [[ -n ${CARDS_AFTER+set} && $args == *" app web" ]]; then printf '%s' "$CARDS_AFTER" > $W/cards; fi ;;
   "ps -aq "*) for c in ${args#ps -aq }; do [[ ! -f $W/containers/$c ]] || echo $c; done ;;
   "ps --status running --format {{.Service}} "*)
     for c in ${args##*\}\} }; do ! grep -qs running $W/containers/$c || echo $c; done ;;
@@ -208,7 +208,7 @@ class Activation(unittest.TestCase):
         (self.root / "etc/release.json").write_text(json.dumps({"channel": "test", "repository": "unused"}))
         for database, content in ORIGINAL.items():
             (self.world / "db" / database).write_text(content + "\n")
-        for container in ("gateway", "dashboard", "scanner", "scanner-worker", "web", "postgres"):
+        for container in ("app", "scanner", "scanner-worker", "web", "postgres"):
             (self.world / "containers" / container).write_text("old running\n")
         (self.world / "cards").write_text("card_one card_two")
         (self.world / "network").write_text("eip155:84532")
@@ -297,7 +297,7 @@ class Activation(unittest.TestCase):
     def test_a_release_takes_a_restore_point_then_migrates_and_starts_the_new_release(self):
         said = self.run_script("activate")
         self.assertIn("exit 0", said)
-        self.assertEqual(self.containers()["gateway"], "new running")
+        self.assertEqual(self.containers()["app"], "new running")
         self.assertEqual(self.databases(), MIGRATED)
         [point] = self.restore_points()
         self.assertTrue(point.endswith(f"-{OLD}-before-{NEW}"), point)
@@ -313,11 +313,11 @@ class Activation(unittest.TestCase):
 
     def test_a_channel_that_already_runs_the_revision_is_checked_without_stopping_anything(self):
         (self.root / "state/test/current").write_text(NEW + "\n")
-        for container in ("gateway", "dashboard", "scanner", "scanner-worker", "web"):
+        for container in ("app", "scanner", "scanner-worker", "web"):
             (self.world / "containers" / container).write_text("new running\n")
         said = self.run_script("activate")
         self.assertIn("exit 0", said)
-        self.assertNotIn("stack stop --timeout 60 gateway dashboard scanner scanner-worker", self.calls())
+        self.assertNotIn("stack stop --timeout 60 app scanner scanner-worker", self.calls())
         self.assertEqual((self.restore_points(), self.databases(), self.record()), ([], ORIGINAL, None))
 
     def test_messages_and_the_record_name_the_tags_of_each_revision(self):
@@ -382,7 +382,7 @@ class Activation(unittest.TestCase):
             (self.world / "containers" / container).unlink()
         said = self.run_script("activate", FAIL_AT="exec -T postgres pg_dump -U agentify -Fc agentify")
         self.assertIn("exit 1", said)
-        self.assertIn("running now: dashboard gateway", said)
+        self.assertIn("running now: app", said)
 
     # A rerun of the same revision.
 
@@ -402,7 +402,7 @@ class Activation(unittest.TestCase):
         said = self.run_script("activate")
         self.assertIn("exit 0", said)
         self.assertIn(ORDER, self.databases()["agentify"])
-        self.assertNotIn("stack stop --timeout 60 gateway dashboard scanner scanner-worker", self.calls()[stopped:])
+        self.assertNotIn("stack stop --timeout 60 app scanner scanner-worker", self.calls()[stopped:])
         self.assertIsNone(self.record())
 
     def test_a_rerun_holds_the_release_to_the_cards_on_sale_before_its_first_run(self):
@@ -417,7 +417,7 @@ class Activation(unittest.TestCase):
         said = self.run_script("activate", FAIL_AT=FAILED_MIGRATION)
         said = self.run_script("activate", SCANNER_HEALTH="503")
         self.assertIn("exit 1", said)
-        self.assertIn("none of gateway, dashboard, scanner and scanner-worker runs, so the channel is down", said)
+        self.assertIn("none of app, scanner and scanner-worker runs, so the channel is down", said)
 
     def test_a_rerun_that_takes_its_first_dump_checks_the_room_for_it(self):
         # Killed before its restore point was taken: the rerun takes it, and
@@ -500,7 +500,7 @@ class Activation(unittest.TestCase):
         self.assert_the_started_release_keeps_its_record(FAIL_AT="exec -T postgres pg_dump -U agentify -Fc agentify")
 
     def test_a_fix_forward_stopped_by_systemctl_stop_gives_the_started_release_its_record_back(self):
-        self.assert_the_started_release_keeps_its_record(TERM_AT="stop --timeout 60 gateway dashboard scanner scanner-worker")
+        self.assert_the_started_release_keeps_its_record(TERM_AT="stop --timeout 60 app scanner scanner-worker")
 
     def test_a_fix_forward_stopped_by_a_reboot_gives_the_started_release_its_record_back(self):
         self.assert_the_started_release_keeps_its_record(TERM_AT="up -d --wait --no-deps postgres")

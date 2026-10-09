@@ -38,11 +38,11 @@ const runCli = (channel: string, input: string) =>
 /** Values a public preflight diagnostic must never repeat from a fixture. */
 const expectNoFixtureSecrets = (stderr: string, resolved: ResolvedCompose): void => {
   const values = [
-    resolved.services.gateway.environment?.REGISTRATION_INVITATION,
-    resolved.services.gateway.environment?.CDP_API_KEY_ID,
-    resolved.services.gateway.environment?.CDP_API_KEY_SECRET,
-    resolved.services.dashboard.environment?.AUTH_SECRET,
-    resolved.services.dashboard.environment?.GATEWAY_DASHBOARD_SECRET,
+    resolved.services.app.environment?.REGISTRATION_INVITATION,
+    resolved.services.app.environment?.CDP_API_KEY_ID,
+    resolved.services.app.environment?.CDP_API_KEY_SECRET,
+    resolved.services.app.environment?.AUTH_SECRET,
+    resolved.services.app.environment?.GATEWAY_DASHBOARD_SECRET,
   ];
   for (const value of values) {
     if (value !== undefined && value !== "") {
@@ -153,7 +153,7 @@ describe("a channel that is what it claims to be", () => {
     expect(
       problemsWith(
         "test",
-        withEnv(TEST_CHANNEL, "dashboard", "PUBLIC_BASE_URL", "https://wrong.example"),
+        withEnv(TEST_CHANNEL, "app", "PUBLIC_BASE_URL", "https://wrong.example"),
       ).join("\n"),
     ).toMatch(/PUBLIC_BASE_URL/);
   });
@@ -168,7 +168,7 @@ describe("a channel that is what it claims to be", () => {
           "REPLACE_WITH_NEW_HEX_PASSWORD_AT_LEAST_24_CHARACTERS";
       },
       (wrong: ResolvedCompose) => {
-        envFor(wrong, "dashboard").DATABASE_URL =
+        envFor(wrong, "app").DATABASE_URL =
           "postgres://agentify:other-secret@postgres:5432/agentify";
       },
       (wrong: ResolvedCompose) => {
@@ -194,7 +194,7 @@ describe("a channel that is what it claims to be", () => {
   it("refuses unresolved production environment placeholders", () => {
     const wrong = withEnv(
       PRODUCTION_CHANNEL,
-      "dashboard",
+      "app",
       "AUTH_SECRET",
       "REPLACE_FROM_EXISTING_LIVE_CONFIG",
     );
@@ -209,7 +209,7 @@ describe("a channel that is what it claims to be", () => {
       ["MAIL_FROM", "Agentify <no-reply@localhost>"],
       ["MAIL_FROM", "no-reply@127.0.0.1"],
     ] as const) {
-      const wrong = withEnv(PRODUCTION_CHANNEL, "dashboard", name, value);
+      const wrong = withEnv(PRODUCTION_CHANNEL, "app", name, value);
       const problems = problemsWith("production", wrong).join("\n");
       expect(problems).toMatch(new RegExp(name));
       expect(problems).not.toContain(value);
@@ -219,7 +219,7 @@ describe("a channel that is what it claims to be", () => {
   it("refuses an absent or empty live mail provider, key or sender", () => {
     for (const name of ["MAIL_URL", "MAIL_API_KEY", "MAIL_FROM"]) {
       for (const value of [null, "", " "]) {
-        const wrong = withEnv(PRODUCTION_CHANNEL, "dashboard", name, value);
+        const wrong = withEnv(PRODUCTION_CHANNEL, "app", name, value);
         expect(problemsWith("production", wrong)).toContainEqual(expect.stringMatching(name));
       }
     }
@@ -236,14 +236,14 @@ describe("a channel that is what it claims to be", () => {
 describe("the chain and the facilitator together", () => {
   // Prevents a public channel claiming settlement while its chain/facilitator pair cannot settle.
   it("refuses the test channel on the scripted facilitator", () => {
-    const wrong = withEnv(TEST_CHANNEL, "gateway", "FACILITATOR_URL", "sandbox:scripted");
+    const wrong = withEnv(TEST_CHANNEL, "app", "FACILITATOR_URL", "sandbox:scripted");
     expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/FACILITATOR_URL/));
   });
 
   it("refuses the live channel on the public facilitator", () => {
     const wrong = withEnv(
       PRODUCTION_CHANNEL,
-      "gateway",
+      "app",
       "FACILITATOR_URL",
       "https://x402.org/facilitator",
     );
@@ -254,20 +254,20 @@ describe("the chain and the facilitator together", () => {
 
   it("refuses the live channel with either credential missing", () => {
     for (const name of ["CDP_API_KEY_ID", "CDP_API_KEY_SECRET"]) {
-      const wrong = withEnv(PRODUCTION_CHANNEL, "gateway", name, null);
+      const wrong = withEnv(PRODUCTION_CHANNEL, "app", name, null);
       expect(problemsWith("production", wrong)).toContainEqual(expect.stringMatching(name));
     }
   });
 
   it("refuses the test channel with either live credential set", () => {
     for (const name of ["CDP_API_KEY_ID", "CDP_API_KEY_SECRET"]) {
-      const wrong = withEnv(TEST_CHANNEL, "gateway", name, `synthetic-${name.toLowerCase()}`);
+      const wrong = withEnv(TEST_CHANNEL, "app", name, `synthetic-${name.toLowerCase()}`);
       expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(name));
     }
   });
 
   it("refuses a chain neither channel declared", () => {
-    const wrong = withEnv(TEST_CHANNEL, "gateway", "PAYMENT_NETWORK", "eip155:11155111");
+    const wrong = withEnv(TEST_CHANNEL, "app", "PAYMENT_NETWORK", "eip155:11155111");
     expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/PAYMENT_NETWORK/));
   });
 });
@@ -286,25 +286,6 @@ describe("the surface mode agrees with the channel", () => {
     expect(problemsWith("production", wrong)).toContainEqual(
       expect.stringMatching(/AGENTIFY_SURFACE_MODE/),
     );
-  });
-});
-
-describe("the dashboard was handed the gateway's pair", () => {
-  // Prevents a dashboard describing another settlement path than the gateway executes.
-  it("refuses a dashboard on a different facilitator from its gateway", () => {
-    const wrong = withEnv(TEST_CHANNEL, "dashboard", "FACILITATOR_URL", "sandbox:scripted");
-    expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/dashboard/));
-  });
-
-  it("refuses a dashboard on a different chain from its gateway", () => {
-    const wrong = withEnv(TEST_CHANNEL, "dashboard", "PAYMENT_NETWORK", "eip155:8453");
-    expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/dashboard/));
-  });
-
-  it("refuses a dashboard whose public origin does not name the gateway's door", () => {
-    // Prevents a merchant who signed into the dashboard being sent to a different public site.
-    const wrong = withEnv(TEST_CHANNEL, "dashboard", "PUBLIC_BASE_URL", "http://localhost:8080");
-    expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/PUBLIC_BASE_URL/));
   });
 });
 
@@ -330,7 +311,7 @@ describe("a deployed channel seeds no merchant", () => {
   it.each(CHANNELS)("accepts %s with nothing to seed", (channel, config) => {
     for (const nothing of [null, ""]) {
       expect(
-        problemsWith(channel, withEnv(config, "gateway", "SANDBOX_MERCHANT_KEY", nothing)),
+        problemsWith(channel, withEnv(config, "app", "SANDBOX_MERCHANT_KEY", nothing)),
       ).toEqual([]);
     }
   });
@@ -341,11 +322,8 @@ describe("a deployed channel seeds no merchant", () => {
       // The channel's own prefix and the laptop's key alike: the reason is the
       // second way in, not whose key it is.
       for (const key of [`${prefix}${"x".repeat(44)}`, "csk_test_local-sandbox-merchant-key"]) {
-        const problems = problemsWith(
-          channel,
-          withEnv(config, "gateway", "SANDBOX_MERCHANT_KEY", key),
-        );
-        expect(problems).toContainEqual(expect.stringMatching(/^gateway: SANDBOX_MERCHANT_KEY/));
+        const problems = problemsWith(channel, withEnv(config, "app", "SANDBOX_MERCHANT_KEY", key));
+        expect(problems).toContainEqual(expect.stringMatching(/^app: SANDBOX_MERCHANT_KEY/));
         const said = problems.join("\n");
         expect(said).toMatch(/link mailed/);
         // Where the empty seed comes from, since a host's file cannot change
@@ -370,7 +348,7 @@ describe("no laptop default survived", () => {
   it("refuses the dashboard's signing secret written in this repository", () => {
     const wrong = withEnv(
       TEST_CHANNEL,
-      "dashboard",
+      "app",
       "AUTH_SECRET",
       "a-sandbox-secret-nobody-should-reuse-anywhere",
     );
@@ -380,7 +358,7 @@ describe("no laptop default survived", () => {
   it("refuses the registration invitation written in this repository", () => {
     const wrong = withEnv(
       TEST_CHANNEL,
-      "gateway",
+      "app",
       "REGISTRATION_INVITATION",
       "register-on-this-laptop",
     );
@@ -423,7 +401,7 @@ describe("no laptop default survived", () => {
     ).toEqual([]);
   });
 
-  it.each(["dashboard", "scanner"] as const)(
+  it.each(["app", "scanner"] as const)(
     "refuses the private identity credential written in this repository, on %s",
     (service) => {
       // Both halves of that route are compared, because a channel that
@@ -442,12 +420,12 @@ describe("no laptop default survived", () => {
   );
 
   it("takes an invitation set to nothing, which is a stack that takes no registrations", () => {
-    const closed = withEnv(PRODUCTION_CHANNEL, "gateway", "REGISTRATION_INVITATION", "");
+    const closed = withEnv(PRODUCTION_CHANNEL, "app", "REGISTRATION_INVITATION", "");
     expect(problemsWith("production", closed)).toEqual([]);
   });
 
   it("refuses a cookie that is not marked Secure", () => {
-    const wrong = withEnv(TEST_CHANNEL, "dashboard", "COOKIE_SECURE", "false");
+    const wrong = withEnv(TEST_CHANNEL, "app", "COOKIE_SECURE", "false");
     expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/COOKIE_SECURE/));
   });
 
@@ -455,7 +433,7 @@ describe("no laptop default survived", () => {
     expect(
       problemsWith(
         "test",
-        withEnv(TEST_CHANNEL, "gateway", "PUBLIC_BASE_URL", "http://localhost:8080"),
+        withEnv(TEST_CHANNEL, "app", "PUBLIC_BASE_URL", "http://localhost:8080"),
       ),
     ).toContainEqual(expect.stringMatching(/PUBLIC_BASE_URL/));
 
@@ -497,18 +475,20 @@ describe("no laptop default survived", () => {
   });
 });
 
-describe("the private identity route belongs to the dashboard and the scanner alone", () => {
+describe("the private identity route belongs to the application and the scanner alone", () => {
   // Every service of a channel shares one network and one database account,
   // so what keeps a person's identity with the dashboard is that only the
-  // scanner holds the credential its private route asks for (ADR-0026).
+  // scanner holds the credential its private route asks for (ADR-0026). The
+  // dashboard's half of it lives in the application, the process the
+  // dashboard runs in (ADR-0030).
   const CHANNELS = [
     ["test", TEST_CHANNEL],
     ["production", PRODUCTION_CHANNEL],
   ] as const;
   const secretOf = (resolved: ResolvedCompose): string => {
-    const secret = envFor(resolved, "dashboard").REPORT_IDENTITY_SECRET;
+    const secret = envFor(resolved, "app").REPORT_IDENTITY_SECRET;
     if (secret === undefined) {
-      throw new Error("the fixture's dashboard holds no identity credential");
+      throw new Error("the fixture's application holds no identity credential");
     }
     return secret;
   };
@@ -517,7 +497,7 @@ describe("the private identity route belongs to the dashboard and the scanner al
     "refuses the credential or the route on any other service in %s",
     (channel, config) => {
       const secret = secretOf(config);
-      for (const service of ["gateway", "migrate", "web", "scanner-worker", "scanner-privacy"]) {
+      for (const service of ["migrate", "web", "scanner-worker", "scanner-privacy"]) {
         const credential = problemsWith(
           channel,
           withEnv(config, service, "REPORT_IDENTITY_SECRET", secret),
@@ -526,10 +506,11 @@ describe("the private identity route belongs to the dashboard and the scanner al
           expect.stringMatching(`${service}: REPORT_IDENTITY_SECRET`),
         );
         expect(credential.join("\n")).not.toContain(secret);
-
+      }
+      for (const service of ["app", "migrate", "web", "scanner-worker", "scanner-privacy"]) {
         const route = problemsWith(
           channel,
-          withEnv(config, service, "DASHBOARD_IDENTITY_URL", "http://dashboard:3002"),
+          withEnv(config, service, "DASHBOARD_IDENTITY_URL", "http://app:3002"),
         );
         expect(route).toContainEqual(expect.stringMatching(`${service}: DASHBOARD_IDENTITY_URL`));
       }
@@ -550,16 +531,16 @@ describe("the private identity route belongs to the dashboard and the scanner al
     },
   );
 
-  it("refuses a dashboard with no credential, or one too short to be a secret", () => {
+  it("refuses an application with no credential, or one too short to be a secret", () => {
     for (const value of [null, "", "x".repeat(31)]) {
       const withBoth = withEnv(
-        withEnv(TEST_CHANNEL, "dashboard", "REPORT_IDENTITY_SECRET", value),
+        withEnv(TEST_CHANNEL, "app", "REPORT_IDENTITY_SECRET", value),
         "scanner",
         "REPORT_IDENTITY_SECRET",
         value,
       );
       expect(problemsWith("test", withBoth)).toContainEqual(
-        expect.stringMatching(/dashboard: REPORT_IDENTITY_SECRET/),
+        expect.stringMatching(/app: REPORT_IDENTITY_SECRET/),
       );
     }
   });
@@ -567,8 +548,8 @@ describe("the private identity route belongs to the dashboard and the scanner al
   it("refuses the credential reused as a secret that opens another door", () => {
     const secret = secretOf(PRODUCTION_CHANNEL);
     for (const [service, name] of [
-      ["dashboard", "AUTH_SECRET"],
-      ["dashboard", "REGISTRATION_INVITATION"],
+      ["app", "AUTH_SECRET"],
+      ["app", "REGISTRATION_INVITATION"],
       ["scanner", "TOKEN_HMAC_SECRET"],
     ] as const) {
       const problems = problemsWith(
@@ -580,8 +561,15 @@ describe("the private identity route belongs to the dashboard and the scanner al
     }
   });
 
-  it("refuses a scanner that asks anybody but the dashboard on its own network", () => {
-    for (const url of [null, "https://agentify.ad/dashboard", "http://dashboard:3001"]) {
+  it("refuses a scanner that asks anybody but the application on its own network", () => {
+    // The service the route lived on before the two processes became one is
+    // among them: a scanner still asking it asks a name nothing answers.
+    for (const url of [
+      null,
+      "https://agentify.ad/dashboard",
+      "http://app:3001",
+      "http://dashboard:3002",
+    ]) {
       expect(
         problemsWith(
           "production",
@@ -591,37 +579,38 @@ describe("the private identity route belongs to the dashboard and the scanner al
     }
   });
 
-  it("refuses a dashboard that publishes a port on the host", () => {
+  it("refuses an application that publishes a port on the host", () => {
     const exposed = structuredClone(PRODUCTION_CHANNEL);
-    exposed.services.dashboard.ports = [
+    exposed.services.app.ports = [
       { mode: "ingress", host_ip: "127.0.0.1", target: 3002, published: "3002", protocol: "tcp" },
     ];
     expect(problemsWith("production", exposed)).toContainEqual(
-      expect.stringMatching(/dashboard: .*port/),
+      expect.stringMatching(/app: .*port/),
     );
   });
 });
 
-describe("the gateway's route belongs to the gateway and the dashboard alone", () => {
+describe("the gateway's route belongs to the application alone", () => {
   // Every service of a channel shares one network. What keeps anybody else
   // from asking the dashboard to mail a merchant about their money is that only
-  // the gateway holds the secret its route asks for (ADR-0019,
-  // ADR-0024), that the secret opens no other door, and that the gateway asks
-  // nothing but the dashboard's own listener.
+  // the application, where the gateway and the dashboard both run, holds the
+  // secret its route asks for (ADR-0019, ADR-0024, ADR-0030), that the secret
+  // opens no other door, and that the gateway asks nothing but the dashboard's
+  // own listener inside that process.
   const CHANNELS = [
     ["test", TEST_CHANNEL],
     ["production", PRODUCTION_CHANNEL],
   ] as const;
   const secretOf = (resolved: ResolvedCompose): string => {
-    const secret = envFor(resolved, "dashboard").GATEWAY_DASHBOARD_SECRET;
+    const secret = envFor(resolved, "app").GATEWAY_DASHBOARD_SECRET;
     if (secret === undefined) {
-      throw new Error("the fixture's dashboard holds no gateway secret");
+      throw new Error("the fixture's application holds no gateway secret");
     }
     return secret;
   };
 
   it.each(CHANNELS)(
-    "refuses the secret or the route on any service but its two in %s",
+    "refuses the secret or the route on any service but the application in %s",
     (channel, config) => {
       const secret = secretOf(config);
       for (const service of ["scanner", "web", "migrate", "scanner-worker", "scanner-privacy"]) {
@@ -633,67 +622,47 @@ describe("the gateway's route belongs to the gateway and the dashboard alone", (
           expect.stringMatching(`${service}: GATEWAY_DASHBOARD_SECRET`),
         );
         expect(credential.join("\n")).not.toContain(secret);
-      }
-      for (const service of ["dashboard", "scanner", "web"]) {
+
         const route = problemsWith(
           channel,
-          withEnv(config, service, "DASHBOARD_INTERNAL_URL", "http://dashboard:3003"),
+          withEnv(config, service, "DASHBOARD_INTERNAL_URL", "http://127.0.0.1:3003"),
         );
         expect(route).toContainEqual(expect.stringMatching(`${service}: DASHBOARD_INTERNAL_URL`));
       }
     },
   );
 
-  it.each(CHANNELS)("refuses two halves that hold different secrets in %s", (channel, config) => {
-    const other = "another-gateway-dashboard-secret-of-enough-characters";
-    const problems = problemsWith(
-      channel,
-      withEnv(config, "gateway", "GATEWAY_DASHBOARD_SECRET", other),
-    );
-    expect(problems).toContainEqual(expect.stringMatching(/gateway: GATEWAY_DASHBOARD_SECRET/));
-    expect(problems.join("\n")).not.toContain(other);
-    expect(problems.join("\n")).not.toContain(secretOf(config));
-  });
-
-  it("refuses a dashboard with no secret, or one too short to be a secret", () => {
+  it("refuses an application with no secret, or one too short to be a secret", () => {
     for (const value of [null, "", "x".repeat(31)]) {
-      const withBoth = withEnv(
-        withEnv(TEST_CHANNEL, "dashboard", "GATEWAY_DASHBOARD_SECRET", value),
-        "gateway",
-        "GATEWAY_DASHBOARD_SECRET",
-        value,
-      );
-      expect(problemsWith("test", withBoth)).toContainEqual(
-        expect.stringMatching(/dashboard: GATEWAY_DASHBOARD_SECRET/),
-      );
+      expect(
+        problemsWith("test", withEnv(TEST_CHANNEL, "app", "GATEWAY_DASHBOARD_SECRET", value)),
+      ).toContainEqual(expect.stringMatching(/app: GATEWAY_DASHBOARD_SECRET/));
     }
   });
 
-  it.each(["gateway", "dashboard"] as const)(
-    "refuses the secret written in this repository, on %s",
-    (service) => {
-      const wrong = withEnv(
-        TEST_CHANNEL,
-        service,
-        "GATEWAY_DASHBOARD_SECRET",
-        "a-sandbox-gateway-dashboard-secret-nobody-should-reuse",
-      );
-      expect(problemsWith("test", wrong)).toContainEqual(
-        expect.stringMatching(new RegExp(`${service}: GATEWAY_DASHBOARD_SECRET`)),
-      );
-    },
-  );
+  it("refuses the secret written in this repository", () => {
+    const wrong = withEnv(
+      TEST_CHANNEL,
+      "app",
+      "GATEWAY_DASHBOARD_SECRET",
+      "a-sandbox-gateway-dashboard-secret-nobody-should-reuse",
+    );
+    expect(problemsWith("test", wrong)).toContainEqual(
+      expect.stringMatching(/app: GATEWAY_DASHBOARD_SECRET/),
+    );
+  });
 
   it("refuses the scanner's secret as the gateway's secret, or the secret of any other door", () => {
     // The scanner's credential opens the route that names sessions and removes
     // people. Presented on this route as well, whoever holds either holds both.
     const secret = secretOf(PRODUCTION_CHANNEL);
     for (const [service, name] of [
-      ["dashboard", "REPORT_IDENTITY_SECRET"],
+      ["app", "REPORT_IDENTITY_SECRET"],
       ["scanner", "REPORT_IDENTITY_SECRET"],
-      ["dashboard", "AUTH_SECRET"],
-      ["dashboard", "REGISTRATION_INVITATION"],
-      ["gateway", "CDP_API_KEY_SECRET"],
+      ["app", "AUTH_SECRET"],
+      ["app", "REGISTRATION_INVITATION"],
+      ["app", "MAIL_API_KEY"],
+      ["app", "CDP_API_KEY_SECRET"],
       ["scanner", "TOKEN_HMAC_SECRET"],
     ] as const) {
       const problems = problemsWith(
@@ -707,26 +676,32 @@ describe("the gateway's route belongs to the gateway and the dashboard alone", (
     }
   });
 
-  it("refuses a gateway that asks anybody but the dashboard's own listener", () => {
-    for (const url of [null, "https://agentify.ad/dashboard", "http://dashboard:3002"]) {
+  it("refuses a gateway that asks anybody but the dashboard's own listener in its process", () => {
+    // The service the route lived on before the two processes became one is
+    // among them, and so is the scanner's route in this same process.
+    for (const url of [
+      null,
+      "https://agentify.ad/dashboard",
+      "http://127.0.0.1:3002",
+      "http://dashboard:3003",
+    ]) {
       expect(
         problemsWith(
           "production",
-          withEnv(PRODUCTION_CHANNEL, "gateway", "DASHBOARD_INTERNAL_URL", url),
+          withEnv(PRODUCTION_CHANNEL, "app", "DASHBOARD_INTERNAL_URL", url),
         ),
-      ).toContainEqual(expect.stringMatching(/gateway: DASHBOARD_INTERNAL_URL/));
+      ).toContainEqual(expect.stringMatching(/app: DASHBOARD_INTERNAL_URL/));
     }
   });
 
   it("refuses a production secret still holding the template's placeholder", () => {
     const placeholder = "REPLACE_WITH_A_NEW_GATEWAY_DASHBOARD_SECRET";
-    const both = withEnv(
-      withEnv(PRODUCTION_CHANNEL, "dashboard", "GATEWAY_DASHBOARD_SECRET", placeholder),
-      "gateway",
-      "GATEWAY_DASHBOARD_SECRET",
-      placeholder,
-    );
-    expect(problemsWith("production", both)).toContainEqual(
+    expect(
+      problemsWith(
+        "production",
+        withEnv(PRODUCTION_CHANNEL, "app", "GATEWAY_DASHBOARD_SECRET", placeholder),
+      ),
+    ).toContainEqual(
       expect.stringMatching(/GATEWAY_DASHBOARD_SECRET still contains a template placeholder/),
     );
   });
@@ -741,14 +716,14 @@ describe("the release entry point", () => {
     expect(result.stderr).toContain("preview is not a release channel");
   });
 
-  it("refuses a dashboard public origin that diverges from the gateway", () => {
-    // Deleting the dashboard origin check would send a signed-in merchant to the wrong public door.
-    const wrong = withEnv(TEST_CHANNEL, "dashboard", "PUBLIC_BASE_URL", "http://localhost:8080");
+  it("refuses a public origin that is not the channel's", () => {
+    // Deleting the origin check would send an agent's payment and a signed-in merchant to the wrong public door.
+    const wrong = withEnv(TEST_CHANNEL, "app", "PUBLIC_BASE_URL", "http://localhost:8080");
     const result = runCli("test", JSON.stringify(wrong));
     const stderr = result.stderr ?? "";
     expect(result.status).toBe(65);
     expect(result.stdout ?? "").toBe("");
-    expect(stderr).toContain("dashboard: PUBLIC_BASE_URL");
+    expect(stderr).toContain("app: PUBLIC_BASE_URL");
     expectNoFixtureSecrets(stderr, TEST_CHANNEL);
   });
 
@@ -768,10 +743,10 @@ describe("the release entry point", () => {
   });
 
   it("reports every test-channel live credential without printing either value", () => {
-    const withId = withEnv(TEST_CHANNEL, "gateway", "CDP_API_KEY_ID", "synthetic-live-key-id");
+    const withId = withEnv(TEST_CHANNEL, "app", "CDP_API_KEY_ID", "synthetic-live-key-id");
     const wrong = withEnv(
-      withEnv(withId, "gateway", "CDP_API_KEY_SECRET", "synthetic-live-key-secret"),
-      "dashboard",
+      withEnv(withId, "app", "CDP_API_KEY_SECRET", "synthetic-live-key-secret"),
+      "app",
       "COOKIE_SECURE",
       "false",
     );
@@ -792,11 +767,11 @@ describe("the release entry point", () => {
     const key = `csk_test_${"x".repeat(44)}`;
     const result = runCli(
       "test",
-      JSON.stringify(withEnv(TEST_CHANNEL, "gateway", "SANDBOX_MERCHANT_KEY", key)),
+      JSON.stringify(withEnv(TEST_CHANNEL, "app", "SANDBOX_MERCHANT_KEY", key)),
     );
     expect(result.status).toBe(65);
     expect(result.stdout ?? "").toBe("");
-    expect(result.stderr).toContain("gateway: SANDBOX_MERCHANT_KEY");
+    expect(result.stderr).toContain("app: SANDBOX_MERCHANT_KEY");
     expect(result.stderr).not.toContain(key);
   });
 
