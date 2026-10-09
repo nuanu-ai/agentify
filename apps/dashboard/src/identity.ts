@@ -111,7 +111,7 @@ export interface Identity extends DashboardIdentity {
 export const emailAs = (raw: string): string => raw.trim().toLowerCase();
 
 /**
- * How long a session lasts from the last visit (ADR-0009 §6).
+ * How long a session lasts from the last visit (ADR-0026 §2).
  *
  * Thirty days, and sliding: a person who keeps coming back does not meet the
  * sign-in form again. A short session is not what protects the money; the wait
@@ -236,7 +236,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         cookiePrefix: "agentify",
         // The prefix is chosen here and not by the component. Left to itself it
         // puts `__Secure-` in front of every name on an https base, and what
-        // ADR-0009 §6 asks for is `__Host-`: the one a browser refuses unless
+        // ADR-0026 §2 asks for is `__Host-`: the one a browser refuses unless
         // the cookie is Secure, for the whole origin and names no Domain, which
         // is what keeps a sibling host from planting or replacing a session.
         useSecureCookies: false,

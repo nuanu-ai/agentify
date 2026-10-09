@@ -128,8 +128,8 @@ application's log (`docker compose logs app`) like every other one here, and it 
 one session the whole site has, the report and the dashboard alike, for thirty
 days from the last visit; the scanner keeps no session of its own and asks the
 dashboard whose a cookie is. A person becomes a merchant only by pressing the one
-control the dashboard offers for it. ADR-0026 draws that boundary and ADR-0024
-says what the scanner keeps of its own.
+control the dashboard offers for it. ADR-0026 draws that boundary and says what
+the scanner keeps of its own.
 
 The scanner's tables live in the same database as the gateway's and the
 dashboard's, `agentify`. A machine whose volume still holds them in a second

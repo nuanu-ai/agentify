@@ -38,7 +38,7 @@ const reportRequestSchema = z.uuid();
 const reportDestinationSchema = z.object({ report: z.uuid() }).strict();
 
 /**
- * The name the site's one session cookie travels under (ADR-0009 §6).
+ * The name the site's one session cookie travels under (ADR-0026 §2).
  *
  * With the `__Host-` prefix wherever the site is served over https and without
  * it on the plain-http local origin, because the prefix requires `Secure` and

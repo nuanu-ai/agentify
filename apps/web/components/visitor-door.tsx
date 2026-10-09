@@ -7,8 +7,8 @@ import styles from "./site-chrome.module.css";
  * Who this browser is signed in as, and the way to stop being them.
  *
  * Drawn in the browser from the site's one session, so the page it sits on
- * stays the same page for everybody and may be cached as one. A browser that
- * runs no script sees the doors beside it and no address (ADR-0026 §3). The
+ * stays the same page for everybody and may be cached as one (ADR-0026 §3). A
+ * browser that runs no script sees the doors beside it and no address. The
  * sign-out is the dashboard's own same-origin form, which ends this browser's
  * session everywhere on the site and opens the sign-in with an empty field.
  * An operator also finds the dashboard here: the flag arrives on the same

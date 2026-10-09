@@ -75,7 +75,7 @@ export async function beginScannerIdentityDeletion(leadId: string) {
     });
     // The lead is what gives an address its reports, so marking it closes them
     // at once for every session of that address, whether or not the dashboard
-    // has answered the deletion yet (ADR-0024).
+    // has answered the deletion yet (ADR-0026 §2).
     await tx.update(leads).set({ deletionRequestedAt: now }).where(eq(leads.id, leadId));
     await tx
       .delete(registrationIntents)

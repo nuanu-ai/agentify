@@ -23,7 +23,7 @@ expensive to change once merchants hold links, keys and code against them.
    included, comes up locally from `docker compose up`.
 
    The origin is the boundary between the surfaces. One session cookie reaches
-   all of them (ADR-0009 §6) and a script injected into any page acts with it,
+   all of them (ADR-0026 §2) and a script injected into any page acts with it,
    so whatever the scanner renders from somebody else's site is escaped. The
    door also decides what the origin does not carry: the calls only the
    dashboard makes are left out of the gateway's paths (ADR-0014, ADR-0019).
@@ -41,19 +41,20 @@ expensive to change once merchants hold links, keys and code against them.
    something, the API is missing it, and the gap is closed by a contract
    addition, never by a private route. No query in the dashboard reaches the
    gateway's tables. Its own tables hold the people who sign in and their
-   sessions (ADR-0009) and the WooCommerce connector's bookkeeping (ADR-0023),
+   sessions (ADR-0026 §2) and the WooCommerce connector's bookkeeping (ADR-0023),
    never a card, an order or a receipt. One call goes the other way, inside the
    shared process: the gateway has the dashboard tell a merchant of a change
    to their payout wallet or keys (ADR-0019).
 
 4. **Server-rendered HTML, no client-side framework, no client build.** Pages
-   are tested over HTTP against the real gateway. Interactivity is form posts
-   and small inline scripts that only take a control away and give it back
-   (ADR-0009 §3); a screen that needs more argues for a framework on its own
-   merits, as a recorded decision.
+   are tested over HTTP against the real gateway. Interactivity is form posts,
+   and an inline script only where a control has a wait to draw, which takes
+   the control away and gives it back while the HTML stays the working page; a
+   screen that needs more argues for a framework on its own merits, as a
+   recorded decision.
 
 5. **The front page is the scanner's**, everywhere. The scanner is a Next.js
-   application (ADR-0024) and not the dashboard, so §4 does not bind it.
+   application and not the dashboard, so §4 does not bind it.
 
 ## Consequences
 

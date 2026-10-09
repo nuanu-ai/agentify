@@ -49,7 +49,7 @@ sees a restart it can retry.
 
 The cabinet starts in `apps/dashboard/src/main.ts`. It reads its own
 configuration (`apps/dashboard/src/config.ts`), opens its own pool, builds the
-identity component (Better Auth, ADR-0009), and opens up to three listeners.
+identity component (Better Auth, ADR-0026 §2), and opens up to three listeners.
 It also starts the WooCommerce worker (`apps/dashboard/src/woo-worker.ts`), a
 loop that fills the orders of merchants who connected a shop by drawing their
 stream from the gateway, the way a merchant's own worker would.
@@ -228,7 +228,7 @@ holds for a key over HTTP.
 ### Shared resources
 
 Both processes reach one database, `agentify`, with one account, the
-instance's bootstrap superuser (ADR-0003 §2, ADR-0024), and on production the
+instance's bootstrap superuser (ADR-0003 §2), and on production the
 preflight requires every service's `DATABASE_URL` to be the same one (line
 180). Either process can therefore read and write every table, the merchant's
 payout wallet included, which is the part of the boundary that no longer
@@ -580,8 +580,8 @@ and might describe a registration that change does not leave.
   by construction" narrows to the application and the contract's documents;
   the rejected "the cabinet talking to Postgres directly" becomes "the cabinet
   querying the gateway's tables".
-- ADR-0009 §2: "that merchant's key, the gateway client built per request from
-  it" becomes the calls made as that merchant.
+- ADR-0014 §2: the gateway client built per request from the account's key
+  becomes the calls made as that merchant.
 - ADR-0010, the rejected "scoping in the cabinet only": the cabinet is a caller
   of the application, and scoping still lives in the gateway's store.
 - ADR-0014 §1: registration is a call inside the process, and a gateway that

@@ -8,7 +8,7 @@
  * screen. The process itself, its signals and the order things start and stop
  * in belong to `apps/app`, which starts the gateway beside this. The tables are the people who sign in, their sessions,
  * the one-time links they are sent, and a merchant's connected WooCommerce
- * shop (ADR-0009 §1, ADR-0023): every card, order and receipt on every screen
+ * shop (ADR-0026 §2, ADR-0023): every card, order and receipt on every screen
  * still comes from the gateway's public API, which is the promise ADR-0005 §3
  * is actually about.
  *

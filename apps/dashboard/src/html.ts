@@ -174,7 +174,7 @@ const sections = (chrome: Chrome): string =>
 /**
  * The menu behind the burger on a phone and a tablet, where there is no room
  * for the sidebar. A details element, so it opens and closes on its button
- * with no script at all (ADR-0009 §3), and every link in it leads to another
+ * with no script at all (ADR-0005 §4), and every link in it leads to another
  * page, which closes it. Its button says "Menu" in both states, because a
  * details element already tells a screen reader whether it is open.
  *

@@ -27,7 +27,7 @@ import { ordersScreen, receiptsScreen, type Viewer } from "./screens.js";
 import { signInScreen } from "./sign-in.js";
 import { readable } from "./testing/html.js";
 
-/** A page is drawn for somebody now, and every screen says who (ADR-0009). */
+/** A page is drawn for somebody now, and every screen says who (ADR-0026 §3). */
 const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: "owner@example.com", confirmed: true };
 
 describe("what a page says about the stack it belongs to", () => {

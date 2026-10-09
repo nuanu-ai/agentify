@@ -217,7 +217,7 @@ services:
   # They keep separate histories although the two now run in one process,
   # because the migrator compares with the newest entry of the history it is
   # given and would take the other set's entry for its own (ADR-0003 §2,
-  # ADR-0009 §1); they are one service because they are one image and one
+  # ADR-0026 §2); they are one service because they are one image and one
   # thing to wait for.
   migrate:
     <<: *app

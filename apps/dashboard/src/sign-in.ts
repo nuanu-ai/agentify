@@ -105,7 +105,7 @@ const waitInWords = (seconds: number): string =>
 /**
  * The dashboard's one script: the resend button waiting its wait out.
  *
- * ADR-0009 §3 — the page works without it. The button is served pressable and
+ * ADR-0005 §4 — the page works without it. The button is served pressable and
  * this takes it away; a browser that runs nothing is left with exactly the
  * button that was there before, the press reaches the door, and the door
  * refuses it in words. It cannot be the other way round: nothing on a page

@@ -7,7 +7,7 @@
  * ADR-0005 §4. Every page is one GET and every change is one form post
  * followed by a redirect, so the browser's back button, its reload and its
  * find-in-page all work without anything being written to make them. Signing in
- * is a component's job now (ADR-0009) and that did not change: our handlers
+ * is a component's job now (ADR-0026 §2) and that did not change: our handlers
  * call its server-side API with a body built out of a form we parsed, and pass
  * on the cookie it produces, so nothing on any of these pages needs JavaScript.
  *
@@ -17,7 +17,7 @@
  * §3). A screen that cannot be drawn is API the merchant does not have either.
  *
  * Who is allowed in is one middleware and not a check per handler, and that is
- * ADR-0009 §2. The gate sits above every route below it, so a page added later
+ * ADR-0026 §7. The gate sits above every route below it, so a page added later
  * is guarded because it is a page rather than because somebody remembered — and
  * a visitor with no session is answered identically at every address, including
  * the ones that do not exist, so the dashboard's inventory of pages is not
@@ -423,7 +423,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    * leave the others in a browser for good. The clearing line carries the
    * attributes the session was set with, because a browser replaces a cookie
    * only with a line for the same path, and replaces a `__Host-` one only with
-   * a line that is Secure and for the whole origin (ADR-0009 §6).
+   * a line that is Secure and for the whole origin (ADR-0026 §2).
    */
   const forget = (response: Response): void => {
     for (const name of identity.cookieNames) {
@@ -577,7 +577,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    * the one signed in here — and behind the gate a connection that worked would
    * then end on a sign-in form, which a merchant reads as the connect having
    * failed. It did, twice, when this flow was walked by hand, back when the
-   * cookie was `Strict` and no return carried it (ADR-0009 §2). A browser that
+   * cookie was `Strict` and no return carried it (ADR-0026 §7). A browser that
    * does carry a session, which under `Lax` is the ordinary case, is sent on
    * into the dashboard.
    *
@@ -815,7 +815,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    * The gate. Everything below this line needs a session; everything above it
    * is the sign-in and the sign-out, the page a link lands on, the stylesheet,
    * the health probe, the shop's callback and the address a shop sends a
-   * browser back to — ADR-0009 §2's list, which a test holds.
+   * browser back to — ADR-0026 §7's list, which a test holds.
    *
    * A visitor without one is answered the same way at every address, which is
    * why this is a middleware and not a check inside each handler: a page added
@@ -2052,8 +2052,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
  * because signing somebody into an account of the attacker's choosing is a way
  * of getting them to do their work in a session somebody else can read.
  * SameSite=Lax on the cookie is the first answer and the main one: a cross-site
- * POST carries no Lax cookie, exactly as it carried no Strict one (ADR-0009
- * §6). This is the second, and it exists because SameSite is scoped to the
+ * POST carries no Lax cookie, exactly as it carried no Strict one (ADR-0026
+ * §2). This is the second, and it exists because SameSite is scoped to the
  * registrable domain rather than to the origin — `test.agentify.ad` beside
  * `agentify.ad` is "same site", and a page there could otherwise forge every
  * switch here.
@@ -2088,7 +2088,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
  * Dropping it costs the distinction between a page served over http and one
  * served over https on the same host, and that distinction is already made
  * where it can be made without trusting anybody: the session cookie is
- * `Secure` wherever the dashboard is served over https (ADR-0009 §6), so a page
+ * `Secure` wherever the dashboard is served over https (ADR-0026 §2), so a page
  * on the http origin has no session to forge a post with. A guard cannot be
  * the reason a merchant is locked out.
  */

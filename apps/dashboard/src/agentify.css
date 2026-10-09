@@ -884,8 +884,8 @@ p.problem {
 
 /* Who is signed in, at the end of the header bar, as the scanner's header
    carries it (site-chrome.module.css `.doors`): behind a rule, in the muted
-   weight of a label, so the address does not read as a tab. Until ADR-0009
-   there was nobody to name: the dashboard held a merchant key and the screen
+   weight of a label, so the address does not read as a tab. Before people
+   signed in (ADR-0026) there was nobody to name: the dashboard held a merchant key and the screen
    could not say whose hand was on the control that stops all selling. */
 .account {
   display: flex;

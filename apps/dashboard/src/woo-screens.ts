@@ -119,7 +119,7 @@ export interface WooView {
    * That is the whole of what it means. The return route sets it for any
    * browser with a session, whatever query it carried or none, so a merchant
    * who typed the address in sets it as surely as a shop that sent them — and
-   * a real return sets it only where the cookie travels (ADR-0009). It changes
+   * a real return sets it only where the cookie travels (ADR-0026 §2). It changes
    * what the page says and nothing about what it claims: the state above is
    * read off our own rows either way.
    */
@@ -249,7 +249,7 @@ const KEYS_ARRIVED = `  <div class="callout done">
 /**
  * What the return address answers a browser that arrives carrying no session.
  *
- * The session cookie is `SameSite=Lax` (ADR-0009 §6), so the navigation back
+ * The session cookie is `SameSite=Lax` (ADR-0026 §2), so the navigation back
  * from the merchant's own shop carries it, and a signed-in browser is sent on
  * into the dashboard before this is drawn. What arrives here is a browser that
  * came back without one: the session ended while the merchant was in their
