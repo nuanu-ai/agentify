@@ -27,7 +27,8 @@ export interface Person {
  *
  * One list, read wherever a section travels: the gate that names the one a
  * signed-out person was going to, the sign-in form that carries it, the link's
- * stored claim that keeps it, and the redirect that follows it. Anything else
+ * stored claim that keeps it, and the redirect that follows it. The
+ * navigation's tabs are typed from it. Anything else
  * is the start, so a value a browser sends can lead nowhere this list does not
  * name.
  */
