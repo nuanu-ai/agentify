@@ -43,7 +43,8 @@ origin, product, amount/currency, download id/name, protected source address and
 supported settings. The paid order must carry that price id and the fresh
 authoritative product must match. The protected address is never stored.
 
-**Dashboard fills the order as the merchant's worker.** After Agentify settles,
+**Dashboard fills the order as the merchant's worker,** calling the gateway's
+application inside the process the two share (ADR-0030). After Agentify settles,
 Dashboard rechecks the product and settings, claims the Agentify order, creates
 one paid Woo order and durably records the permission ingredients before
 answering. Redelivery returns the stored result and never creates a second Woo

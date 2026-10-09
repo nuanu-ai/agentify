@@ -102,12 +102,13 @@ none.
 
 **4. The merchant is made on the dashboard's explicit request.** A person may own
 reports and no merchant. The dashboard offers a signed-in person without one a
-screen with one control, and only that same-origin POST asks the gateway for the
-merchant and the key the dashboard calls with. Opening a link never makes one,
-"Open your dashboard" on a report included, because under `Lax` a link from
-another site arrives signed in. A gateway that does not answer leaves the person
-signed in to press again, and a dashboard that fails after the gateway answered
-leaves a merchant nobody names, litter as ADR-0014 §1 says. This press is the
+screen with one control, and only that same-origin POST asks the gateway's
+application, inside the process the two share (ADR-0030), for the merchant.
+Opening a link never makes one, "Open your dashboard" on a report included,
+because under `Lax` a link from another site arrives signed in. A database that
+does not answer leaves the person signed in to press again, and a dashboard
+that fails after the gateway made the merchant leaves a merchant nobody names,
+litter as ADR-0014 §1 says. This press is the
 only way a merchant comes into being, as the link is the only way an account
 does: no command at a server's terminal makes either, and no deployed channel
 seeds a merchant (ADR-0014).

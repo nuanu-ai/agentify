@@ -66,17 +66,20 @@ page for a person, so the shape of that is a decision rather than a detail.
    people stay a package of their own; what sharing a process costs, and why
    it is accepted, is ADR-0030's.
 
-3. **The dashboard reaches the gateway through the public API with a merchant
-   key** — the same door a merchant's own tooling uses. It holds no database
-   connection of its own. This is deliberate dogfooding: if the dashboard cannot
-   show something, the API is missing it, and the merchant would have hit the
-   same wall.
+3. **The dashboard calls the gateway's application, as the merchant on the
+   signed-in account's row** (ADR-0030): the `Gateway` operations the `/v0`
+   handlers call, inside the process the two share, with requests and answers
+   held to the contract's schemas. Everything on every screen comes from
+   those calls, and no query in the dashboard reaches the gateway's tables. So
+   the dashboard proves that the application and the contract's documents are
+   enough to draw every screen. That the HTTP API is enough is proven by what a
+   merchant's engineer uses: the SDK's tests, the purchase through the real
+   gateway in `packages/slice`, the portal's examples run as fixtures, and the
+   gateway's HTTP test of every `/v0` route. A screen that needs what a
+   merchant's code could need gets a contract route, not a private call.
 
-   Narrowed by ADR-0009: the dashboard owns two tables of its own, accounts and
-   sessions, which are the people who sign into it and hold nothing about a
-   merchant's data. Everything on every screen still comes from the public API,
-   and no query in the dashboard can reach the gateway's tables — that is the
-   part of this section the dogfooding argument is about, and it is unchanged.
+   Narrowed by ADR-0009: the dashboard owns tables of its own, the people who
+   sign into it and their sessions, which hold nothing about a merchant's data.
    One call goes the other way: the gateway has the dashboard announce a
    payout wallet change before recording it, and a cancelled change or a new
    merchant key once it is done (ADR-0019), by a call inside the process the
@@ -128,8 +131,9 @@ page for a person, so the shape of that is a decision rather than a detail.
 ## Consequences
 
 - Gained: a chain a person can click through end to end; the dashboard proves
-  the API is usable by construction; no build step to keep green; the local
-  arrangement is the deployment rehearsal.
+  by construction that the application and the contract's documents can draw
+  every screen; no build step to keep green; the local arrangement is the
+  deployment rehearsal.
 - Paid: server-rendered pages make rich interactivity awkward, and the day a
   screen genuinely needs it, that screen argues for a client framework on its
   own merits — a named trigger, not a slide.
@@ -142,8 +146,10 @@ page for a person, so the shape of that is a decision rather than a detail.
 - **A single-page application (React or similar)** — a build pipeline and a
   dependency tree bought before any screen needs them. The trigger to revisit
   is named above.
-- **The dashboard talking to Postgres directly** — faster to write, and it would
-  have hidden exactly the API gaps this dashboard exists to expose.
+- **The dashboard querying the gateway's tables** — faster to write, and it
+  would put a second reader of the money path's data beside the application,
+  hiding exactly the gaps in the contract's documents this dashboard exists to
+  expose.
 - **A dark theme across the origin** — three of the four surfaces had one and
   the scanner did not, so a merchant whose machine is dark crossed from a paper
   front page into a dark dashboard. Closing that by giving the scanner a dark set

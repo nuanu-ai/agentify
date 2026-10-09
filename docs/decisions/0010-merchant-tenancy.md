@@ -96,7 +96,7 @@ deployment, nobody can revoke one key of several, and self-service dies at the
 first step: a merchant cannot make a key for themselves by editing our
 environment.
 
-**Scoping in the dashboard only.** The dashboard is one caller of a public API;
-scoping there leaves the API itself answering everything to anybody with any
-key. The gateway is the boundary both sides trust, so the gateway is where the
-scope lives.
+**Scoping in the dashboard only.** The dashboard is one caller of the gateway's
+application, and the public API is another; scoping in the dashboard leaves the
+API answering everything to anybody with any key. The gateway's store is the
+boundary every caller goes through, so that is where the scope lives.
