@@ -304,3 +304,19 @@ describe("a parcel's order", () => {
     });
   });
 });
+
+describe("a parcel's order the shop holds", () => {
+  it("is not recovered, and the merchant is not told to hold it back", async () => {
+    // A placed parcel is a sale taken on, followed in the shop until it is
+    // completed. Recovery has nothing to do with it, and must not read as a
+    // reason not to ship it.
+    const shops = memoryWooShops();
+    await shops.claimOrder("acc_1", "ord_1", { ...FACTS, kind: "parcel" }, NOW);
+    await shops.recordOrder("ord_1", { id: "30", number: "30", permission: null }, NOW);
+
+    const outcome = await recoverWooOrder({ orderId: "ord_1" }, parts(shops).value);
+
+    expect(outcome).toMatchObject({ ok: false, state: "refused" });
+    expect(outcome.ok === false && outcome.why).not.toContain("do not ship");
+  });
+});

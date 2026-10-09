@@ -1603,6 +1603,18 @@ describe("following a parcel to the carrier", () => {
     expect(gateway.delivered).toStrictEqual([]);
   });
 
+  it("still reads a parcel past its seven days, whose late shipment closes the refund owed", async () => {
+    // A shipment recorded after the time to ship still reaches the agent and
+    // closes the debt until a refund is recorded (ADR-0028), so the shop is
+    // read for it well past the seven days.
+    const shops = await withAParcel();
+    const gateway = aGateway();
+
+    await following(shops, gateway.client, async () => SHIPPED, "2026-10-13T12:00:00.000Z");
+
+    expect(gateway.delivered).toStrictEqual([{ orderId: "ord_1", shipment: SHIPPED.shipment }]);
+  });
+
   it("lets go of a parcel not completed within thirty days of being placed", async () => {
     // Thirty days is the longest any card may give to ship (ADR-0033), and
     // this connector's seven are long past by then: the order is a refund
