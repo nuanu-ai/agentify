@@ -323,9 +323,6 @@ function mount(
       case "POST":
         app.post(route.path, serve);
         break;
-      case "DELETE":
-        app.delete(route.path, serve);
-        break;
       default: {
         const unmounted: never = method;
         throw new Error(`this gateway mounts no route on ${String(unmounted)}`);

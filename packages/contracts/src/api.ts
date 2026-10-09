@@ -615,15 +615,8 @@ export const cardsOf = (
     return mode.success ? [{ ...read.data, fulfillment: mode.data }] : [];
   });
 
-/**
- * The methods this surface uses.
- *
- * `DELETE` is here for the one call that removes rows rather than marking them,
- * and it earns the third verb rather than being folded into a POST: what it
- * does to a key is not what disabling one does, and a surface that spelled both
- * as a POST would be inviting a reader to think it was.
- */
-export const HTTP_METHODS = Object.freeze(["GET", "POST", "DELETE"] as const);
+/** The methods this surface uses. */
+export const HTTP_METHODS = Object.freeze(["GET", "POST"] as const);
 
 export type HttpMethod = (typeof HTTP_METHODS)[number];
 
@@ -1004,7 +997,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/payout-wallet",
     auth: "merchant_key",
     description:
-      "The address the sales of the merchant this call's own key belongs to are paid into now, and any change of it that is waiting. Payments here are not held by anybody on the way: a buyer's agent pays this address directly and no balance of the merchant's is ever held on our side, which is why the address has to be theirs and why this call exists. Any key of the merchant's reads it; none sets it. A person signed in to the merchant's dashboard sets it on its Settings screen, and on the live deployment every account of the merchant is told first and the change waits. Null is the ordinary answer for a merchant who has set none, and it is an answer rather than a refusal — a merchant with no wallet exists and has a settings screen to draw. The address comes back in the mixed-case spelling a wallet shows, whichever of the two accepted spellings was sent to set it, so a screen showing it shows what the merchant copied out of their wallet character for character. On the live deployment a replacement for an address already set takes effect forty-eight hours after it was announced to the merchant, and until then this answers with the address still paid and names the waiting one, with the moment it takes effect, under pending. Null there means nothing is waiting, which is always the answer on the test channel and in a sandbox.",
+      "The address the sales of the merchant this call's own key belongs to are paid into now, and any change of it that is waiting. Payments here are not held by anybody on the way: a buyer's agent pays this address directly and no balance of the merchant's is ever held on our side, which is why the address has to be theirs and why this call exists. Any key of the merchant's reads it; none sets it. A person signed in to the merchant's dashboard sets it on its Settings screen. On the live deployment a first address applies at once and is announced afterwards, and a replacement is told to every account of the merchant first and waits. Null is the ordinary answer for a merchant who has set none, and it is an answer rather than a refusal — a merchant with no wallet exists and has a settings screen to draw. The address comes back in the mixed-case spelling a wallet shows, whichever of the two accepted spellings was sent to set it, so a screen showing it shows what the merchant copied out of their wallet character for character. On the live deployment a replacement for an address already set takes effect forty-eight hours after it was announced to the merchant, and until then this answers with the address still paid and names the waiting one, with the moment it takes effect, under pending. Null there means nothing is waiting, which is always the answer on the test channel and in a sandbox.",
     response: { document: PayoutWalletSchema },
   },
 
@@ -1022,7 +1015,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/keys",
     auth: "merchant_key",
     description:
-      "Issues another key for the merchant's own code, to the merchant this call's own key belongs to. The key is generated here and never taken from the caller, and it comes back exactly once — what is kept afterwards is a digest, so nothing can show it again. A merchant with several keys can hand one to each worker and revoke one without touching the others, which is the whole reason a key is a row. Every key is made here, and every one is a key the merchant sees, names and revokes.",
+      "Issues another key for the merchant's own code, to the merchant this call's own key belongs to. The key is generated here and never taken from the caller, and it comes back exactly once — what is kept afterwards is a digest, so nothing can show it again. A merchant with several keys can hand one to each worker and revoke one without touching the others, which is the whole reason a key is a row. The merchant's dashboard issues keys the same way, and every key a merchant has is one they see, name and revoke.",
     request: IssueKeyRequestSchema,
     response: { document: IssuedKeySchema },
   },

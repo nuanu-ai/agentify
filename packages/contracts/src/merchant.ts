@@ -1,19 +1,16 @@
 /**
- * How a merchant comes to exist, the name their products are sold under, the
- * wallet their sales are paid into, and the keys they open the door with.
+ * What a merchant says about themselves: the name their products are sold
+ * under, the wallet their sales are paid into, and the keys they open the door
+ * with.
  *
- * The first two belong together because registering is the act that produces
- * both: one call makes the merchant and the key its dashboard will call as them
- * with, and what comes back carries that key once. Split across two files, a
- * reader working out what registering leaves a merchant holding would have to
- * read both to find that it is a key of a kind no list here carries. The name is here for the same reason read the other way round — it is a
- * fact about the merchant and about none of their cards, and the one question a
- * reader arrives with is which of the two names a merchant has is which.
+ * The name is here rather than beside the card because it is a fact about the
+ * merchant and about none of their cards, and the one question a reader
+ * arrives with is which of the two names a merchant has is which.
  *
  * Two rules run through the file and are worth saying once.
  *
- * The secret appears in exactly three documents, and every one of them is the
- * answer to a call that has just made a key. Nothing that is ever drawn again —
+ * The secret appears in one document, the answer to the call that has just
+ * made a key. Nothing that is ever drawn again —
  * the list a merchant reads, the row that comes back from disabling one — can
  * carry it, and the shapes below refuse it rather than merely omit it. What is
  * kept on our side is a digest, so there is nothing to put in those documents
@@ -343,10 +340,10 @@ export const SellerNameRequestSchema = z
  *
  * It exists because a replacement does not apply at once where the money is
  * real (ADR-0019). The address a merchant is paid at is the one setting whose
- * change redirects money, and any key of theirs reaches it — the dashboard's, or
- * one sitting in their own server's environment — so on the live deployment a
- * replacement is told to every account of the merchant first and takes effect
- * forty-eight hours after that. What this document says is the two facts a
+ * change redirects money, and a session in the merchant's dashboard is the one
+ * thing that changes it — one left signed in somewhere, or taken — so on the
+ * live deployment a replacement is told to every account of the merchant first
+ * and takes effect forty-eight hours after that. What this document says is the two facts a
  * merchant needs in that window: what replaces the address, and from when.
  *
  * Both are required. An address with no moment says nothing about when the
