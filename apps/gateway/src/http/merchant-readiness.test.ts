@@ -16,7 +16,7 @@ import { type Card, MERCHANT_FINDINGS, type MerchantFinding } from "@nuanu-ai/ag
 import { afterEach, describe, expect, it } from "vitest";
 import { grantLiveApproval } from "../app/merchants.js";
 import { SANDBOX_FACILITATOR } from "../config.js";
-import { ANNOUNCING, type Harness, harness, type Served, serve } from "../testing/harness.js";
+import { type Harness, harness, type Served, serve } from "../testing/harness.js";
 
 const INVITATION = "the-code-from-the-invitation";
 const WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
@@ -30,7 +30,6 @@ const SURFACES = {
     FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
     CDP_API_KEY_ID: "key-id",
     CDP_API_KEY_SECRET: "key-secret",
-    ...ANNOUNCING,
   },
 } as const;
 type Surface = keyof typeof SURFACES;

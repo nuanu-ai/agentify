@@ -16,7 +16,6 @@
  * ones.
  */
 
-import { DashboardAnnouncer } from "./adapters/dashboard/announcer.js";
 import { ScriptedFacilitator } from "./adapters/memory/facilitator.js";
 import { queueOn } from "./adapters/pgboss/queue.js";
 import { connect, PostgresStore } from "./adapters/postgres/store.js";
@@ -28,7 +27,7 @@ import type { Runtime } from "./app/runtime.js";
 import { type GatewayConfig, isSandboxFacilitator } from "./config.js";
 import { buildApp } from "./http/server.js";
 import { PaymentEdge } from "./http/x402.js";
-import { nobodyAnnounces } from "./ports/announcer.js";
+import type { Announcer } from "./ports/announcer.js";
 import { randomIds, systemClock } from "./ports/clock.js";
 import type { Facilitator } from "./ports/facilitator.js";
 
@@ -211,8 +210,15 @@ export interface RunningGateway {
   stop(): Promise<void>;
 }
 
-/** Starts the order machine and the surface, or throws saying why it could not. */
-export async function startGateway(config: GatewayConfig): Promise<RunningGateway> {
+/**
+ * Starts the order machine and the surface, or throws saying why it could not.
+ * `announcer` is how a merchant is told of a change to their wallet or their
+ * keys: the dashboard's way of telling, which the process hands over (ADR-0030).
+ */
+export async function startGateway(
+  config: GatewayConfig,
+  announcer: Announcer,
+): Promise<RunningGateway> {
   const { db, pool } = connect(config.databaseUrl);
   const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.payment.timeoutSeconds);
   const queue = queueOn(config.databaseUrl, {
@@ -236,13 +242,10 @@ export async function startGateway(config: GatewayConfig): Promise<RunningGatewa
     facilitator: await paymentLayer(config, edge),
     clock: systemClock,
     ids: randomIds,
-    // The gateway's route into the dashboard on the live deployment, and nothing at
-    // all anywhere else: the configuration is null exactly where a change
-    // applies at once and nobody is told (ADR-0019).
-    announcer:
-      config.dashboardRoute === null
-        ? nobodyAnnounces
-        : new DashboardAnnouncer(config.dashboardRoute),
+    // The dashboard's telling. The gateway itself decides to announce only on
+    // the live deployment; elsewhere a change applies at once and nobody is
+    // told (ADR-0019).
+    announcer,
   };
 
   const gateway = new Gateway(runtime);

@@ -176,23 +176,6 @@ const environmentSchema = z.object({
   ),
 
   /**
-   * What the gateway presents on the dashboard's listener for the gateway, the
-   * route it asks the dashboard over to tell a merchant of a change to their
-   * payout wallet or their keys (ADR-0019). Held by the gateway and this
-   * process alone, and apart from every other secret either holds: the
-   * scanner's route is a different door with a different holder, and the
-   * money path must not be able to reach it. Absent, no listener opens.
-   */
-  GATEWAY_DASHBOARD_SECRET: emptyIsAbsent(
-    z
-      .string()
-      .refine(
-        (value) => value.length >= SHORTEST_SECRET,
-        `must be at least ${SHORTEST_SECRET} characters; make one with: openssl rand -base64 32`,
-      ),
-  ),
-
-  /**
    * The address a merchant reaches this dashboard at, from their own machine.
    *
    * It is what the one-time links in mail are built on, and that is its only
@@ -283,8 +266,6 @@ export interface DashboardConfig {
   readonly authSecret: string;
   /** Dedicated bearer for the optional private report identity listener. */
   readonly reportIdentitySecret: string | null;
-  /** Dedicated bearer for the gateway's listener, or none. */
-  readonly gatewayDashboardSecret: string | null;
   /** What the dashboard's one-time links are built on. */
   readonly publicBaseUrl: string;
   readonly mailUrl: string;
@@ -374,21 +355,6 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     );
   }
 
-  if (
-    values.GATEWAY_DASHBOARD_SECRET !== undefined &&
-    [
-      values.AUTH_SECRET,
-      values.REGISTRATION_INVITATION,
-      values.MAIL_API_KEY,
-      values.REPORT_IDENTITY_SECRET,
-    ].includes(values.GATEWAY_DASHBOARD_SECRET)
-  ) {
-    throw new Error(
-      "The dashboard cannot start, GATEWAY_DASHBOARD_SECRET must be dedicated to the gateway's" +
-        " listener",
-    );
-  }
-
   if (problems.length > 0) {
     throw new Error(`The dashboard cannot start, the mail is not set up — ${problems.join("; ")}`);
   }
@@ -405,7 +371,6 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     databaseUrl: values.DATABASE_URL,
     authSecret: values.AUTH_SECRET,
     reportIdentitySecret: values.REPORT_IDENTITY_SECRET ?? null,
-    gatewayDashboardSecret: values.GATEWAY_DASHBOARD_SECRET ?? null,
     publicBaseUrl: values.PUBLIC_BASE_URL,
     mailUrl: values.MAIL_URL,
     mailApiKey: values.MAIL_API_KEY ?? null,

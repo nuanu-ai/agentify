@@ -103,16 +103,6 @@ export function sliceEnv(overrides: Record<string, string> = {}): Record<string,
     // QUOTE_RESPONSE_MS close to a second would make that test price from the
     // snapshot intermittently and fail.
     WORKER_POLL_WAIT_MS: "500",
-    // A live gateway does not start without a dashboard to announce a wallet
-    // change through (ADR-0019), and the slice has none: its one merchant is
-    // paid at the address this environment names, written straight into the
-    // store below, and no wallet change is ever asked for over the route. So
-    // the gateway this boots is handed an address nothing answers on and a
-    // secret nothing checks, and announces through nothing — a change asked
-    // for on a live slice would fail loudly rather than go untold. Off a live
-    // chain the gateway reads neither.
-    DASHBOARD_INTERNAL_URL: "http://127.0.0.1:9",
-    GATEWAY_DASHBOARD_SECRET: "the-slice-has-no-dashboard-to-announce-through",
     ...overrides,
   };
 

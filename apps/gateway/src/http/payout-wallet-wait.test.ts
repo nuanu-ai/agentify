@@ -23,14 +23,7 @@
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  ANNOUNCING,
-  buyOverHttp,
-  type Harness,
-  harness,
-  type Served,
-  serve,
-} from "../testing/harness.js";
+import { buyOverHttp, type Harness, harness, type Served, serve } from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
 
 const HOURS = 60 * 60 * 1_000;
@@ -44,7 +37,6 @@ const LIVE = {
   FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
   CDP_API_KEY_ID: "key-id",
   CDP_API_KEY_SECRET: "key-secret",
-  ...ANNOUNCING,
 };
 
 /** Two addresses with letters in them, written the way a wallet shows them. */

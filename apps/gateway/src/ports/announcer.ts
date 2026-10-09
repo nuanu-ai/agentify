@@ -2,29 +2,18 @@
  * Telling a merchant of a change to their payout wallet or their keys
  * (ADR-0019).
  *
- * Five outcomes rather than the dashboard's three, and the last two are the
- * ones that matter. `refused_by_dashboard` is a listener that turned the request
- * away before reading it — the wrong secret, a body it would not take, an
- * address it does not answer on — so nobody was told. `unconfirmed` is a
- * dashboard that did not answer — gone, slow past the deadline, failing, or
- * answering something the wire does not recognise — and then a message may
- * have gone out although nothing here knows it did. The two are different
- * facts about somebody's inbox, and the refusal built on each says its own:
- * a merchant who got the message and was told nothing happened would be told
- * something untrue about their money, and so would one told a message may
- * have reached them when none could have.
- *
- * Nothing here throws on a silence. The adapter turns every way the call can
- * fail into `unconfirmed`, so the flow above has four answers to write and no
- * exception to guess about.
+ * The dashboard holds the addresses and sends the messages, and it runs in the
+ * gateway's own process (ADR-0030), so this is a call rather than a request:
+ * the process hands the gateway the dashboard's way of telling, and its three
+ * answers are the outcomes here. A throw from it is our own code failing —
+ * reading the addresses, or a defect before one message or between two — and
+ * the gateway reads it as `not_handed_over`, since a message may have gone out
+ * to some of them already.
  */
 
 import type { Announcement, AnnouncementAnswer } from "../announcements.js";
 
-export type AnnouncementOutcome =
-  | AnnouncementAnswer["outcome"]
-  | "refused_by_dashboard"
-  | "unconfirmed";
+export type AnnouncementOutcome = AnnouncementAnswer["outcome"];
 
 export interface Announcer {
   announce(announcement: Announcement): Promise<AnnouncementOutcome>;

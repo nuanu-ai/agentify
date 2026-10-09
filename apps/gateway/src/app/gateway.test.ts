@@ -9,7 +9,6 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { asTimestamp } from "../ports/clock.js";
 import {
-  ANNOUNCING,
   authorisation,
   drawEverything,
   type Harness,
@@ -2514,7 +2513,6 @@ describe("the test mark on an order and its receipt", () => {
       FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
       CDP_API_KEY_ID: "key-id",
       CDP_API_KEY_SECRET: "secret",
-      ...ANNOUNCING,
     });
 
     expect(sold.order.test).toBe(false);

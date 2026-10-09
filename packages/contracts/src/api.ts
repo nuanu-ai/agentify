@@ -807,7 +807,6 @@ export const ERROR_CODES = Object.freeze([
   "wallet_change_not_announced",
   "wallet_change_nobody_to_tell",
   "wallet_change_raced",
-  "wallet_change_unconfirmed",
 ] as const);
 
 /** One of the codes this gateway is known to refuse a call with. */

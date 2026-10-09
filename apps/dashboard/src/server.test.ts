@@ -26,7 +26,6 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import {
-  ANNOUNCING,
   buyOverHttp,
   type Harness,
   harness,
@@ -2223,7 +2222,6 @@ describe("a card held off sale by what its merchant lacks", () => {
   const LIVE_GATEWAY_ONLY = {
     CDP_API_KEY_ID: "key-id",
     CDP_API_KEY_SECRET: "key-secret",
-    ...ANNOUNCING,
   };
   const A_WALLET = "0x0123456789abcdef0123456789abcdef01234567";
 
@@ -4374,7 +4372,6 @@ describe("a wallet change waiting on the live deployment", () => {
     ...LIVE_DASHBOARD,
     CDP_API_KEY_ID: "key-id",
     CDP_API_KEY_SECRET: "key-secret",
-    ...ANNOUNCING,
   };
   const WAITING = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
   /** A third address, for a change that lands in between. */

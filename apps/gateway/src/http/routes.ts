@@ -203,24 +203,6 @@ function walletChangeRefused(
           "the message about this change could not be handed to the mail provider for every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the dashboard's wallet screen shows it, which it does not",
         ),
       );
-    case "refused_by_dashboard":
-      return written(
-        response,
-        UNAVAILABLE,
-        refusal(
-          "wallet_change_not_announced",
-          "the dashboard that sends the message about this change turned the request away before telling anybody, so nothing was sent and nothing was recorded; sales are paid where they were",
-        ),
-      );
-    case "unconfirmed":
-      return written(
-        response,
-        UNAVAILABLE,
-        refusal(
-          "wallet_change_unconfirmed",
-          "the dashboard that sends the message about this change did not answer, so a message may have gone out although nothing was recorded; sales are paid where they were, and a message that did go out says the change takes effect only if the dashboard's wallet screen shows it, which it does not",
-        ),
-      );
     case "raced":
       return written(
         response,

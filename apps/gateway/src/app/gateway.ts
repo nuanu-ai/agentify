@@ -125,18 +125,14 @@ export const WALLET_CHANGE_WAITS_MS = 48 * 60 * 60 * 1_000;
  * Why a wallet change was refused, and in every case nothing was written.
  *
  * `nobody_to_tell`: no account names the merchant. `not_announced`: a message
- * could not be handed to the mail provider — though others may have been.
- * `refused_by_dashboard`: the dashboard turned the request away before telling
- * anybody. `unconfirmed`: the dashboard did not answer, so a message may have
- * gone out. `raced`: another write landed between reading the wallet and
+ * could not be handed to the mail provider, or telling failed part of the
+ * way — though others may have been. `raced`: another write landed between reading the wallet and
  * writing it, on a change nothing had announced; `raced_after_announcing`:
  * the same, after this change's own message went out.
  */
 export type WalletChangeRefusal =
   | "nobody_to_tell"
   | "not_announced"
-  | "refused_by_dashboard"
-  | "unconfirmed"
   | "raced"
   | "raced_after_announcing";
 
@@ -815,7 +811,7 @@ export class Gateway {
    * now with nothing waiting is nothing at all.
    *
    * Changes for one merchant are serialized without a lock held across the
-   * announcement, which is a call to another process and to a mail provider:
+   * announcement, which is a call to a mail provider:
    * the write is conditional on the row still holding what was read before the
    * announcement went out, and a change recorded in between turns this one
    * away as `raced` rather than being overwritten by it. So the address waiting
@@ -953,15 +949,16 @@ export class Gateway {
   }
 
   /**
-   * Asks the dashboard to tell the merchant, and reads a dashboard that threw the
-   * way the adapter reads one that did not answer: a message may have gone out.
+   * Asks the dashboard to tell the merchant, and reads a telling that threw as
+   * one that did not hand every message over: it fails in our own code, before
+   * one message or between two, so some may have gone out (ADR-0030).
    */
   async #announce(announcement: Announcement): Promise<AnnouncementOutcome> {
     try {
       return await this.runtime.announcer.announce(announcement);
     } catch (thrown) {
       console.error(`[gateway] an announcement (${announcement.kind}) failed`, thrown);
-      return "unconfirmed";
+      return "not_handed_over";
     }
   }
 
