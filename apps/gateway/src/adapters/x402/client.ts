@@ -5,7 +5,7 @@
  * to Coinbase's facilitator signs every call with the credentials it was given;
  * a gateway told to talk to anything else — the x402.org testnet facilitator,
  * something self-hosted — sends nothing at all. The sandbox never reaches here:
- * it settles against nothing and is chosen a level up, in `start.ts` (ADR-0008).
+ * it settles against nothing and is chosen a level up, in `start.ts` (ADR-0020).
  *
  * The fork is on the address and deliberately not on whether credentials happen
  * to be set, and the difference is a security boundary rather than tidiness. A

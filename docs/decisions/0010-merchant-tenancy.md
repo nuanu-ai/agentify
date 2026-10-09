@@ -1,102 +1,61 @@
 # 0010. Every merchant is a row, and a key names its merchant
 
 Date: 2026-08-27
-Status: accepted (the product owner's word of 2026-08-27: the product is
-self-service)
+Status: accepted (the product owner, 2026-08-27: the product is self-service)
 
 ## Context
 
-Stage one narrowed the gateway to one merchant on purpose. The narrowing is
-written in three places: the merchant is a constant in the store
-(`THE_MERCHANT`), the key is one environment variable compared against every
-request, and the routes that say "this merchant's cards" and "this merchant's
-receipts" return the whole store — their own descriptions admit it. For a pilot
-with one merchant that was the honest minimum.
-
-The product owner has now settled the product's shape: self-service. A
-merchant registers with an email address, comes to the dashboard, creates a
-key, integrates against the SDK themselves and starts selling. "We write
-the cards" means a generator writes them from the merchant's own site, not
-that a person does.
-
-Registration is the last step of that road, not the first. Registration
-without tenancy means the second merchant to register sees the first one's
-cards, orders and receipts — the money of a stranger, on the first screen. So
-the order is fixed by the danger: tenancy, then keys a merchant can make and
-disable, then registration with mail, then the generator.
+The product is self-service: a merchant signs up with an email address, makes a
+key in the dashboard, integrates against the SDK on their own and starts selling
+(ADR-0014). Registration without tenancy would show the second merchant to
+register the first one's cards, orders and receipts, a stranger's money on the
+first screen, so tenancy comes before registration.
 
 ## Decision
 
-**A merchant is a row with an identity.** Every card, every order and every
-receipt carries its merchant, not null, from the day of this change. The
-selling switch is already per merchant; it stops being per installation by the
-constant becoming a real identifier.
+A merchant is a row with an identity, and its selling switch is its own. Every
+card, order, receipt and key carries its merchant, not null, so no such row
+exists without an owner. The one table without a merchant records which order
+claimed a payment, because an agent's single signature must not be spendable
+once at each merchant.
 
-**A key is a row that names its merchant.** The secret is generated, shown
-once, and stored as a SHA-256 digest; a request is resolved by looking its
-digest up, which is constant-time by construction. A key carries a label, a
-creation time, a disabled flag and the last call recorded against it — that
-one thinned to minutes, and blank both for a key nothing has called and for
-one older than the recording, which nothing tells apart. Disabling one key is
-instant and touches no other key and no session — which is the whole reason
-keys are rows: the single environment variable could never be created, named,
-or revoked one at a time, and self-service needs all three.
+A key is a row that names its merchant. Its secret is generated, shown once and
+stored as a SHA-256 digest, and a request is resolved by looking the digest up,
+which is constant-time by construction. A key carries a label, what it was made
+for (ADR-0014 §5), when it was created and disabled, and its last use, written
+at most once every few minutes. Disabling a key is instant and touches no other
+key and no session.
 
-**Every merchant-key route scopes to the resolved merchant.** The card list,
-the receipts, the orders, the pause switches, the worker poll and both answer
-routes act on the caller's merchant and nothing else. A worker draws only its
-own merchant's envelopes — the queue carries the merchant with each envelope,
-and the poll filters. The wording the routes already use ("this merchant's")
-becomes true instead of aspirational.
+Every route a merchant's key reaches acts on that key's merchant alone: the card
+list, the orders, the receipts, the pause switches, the worker poll and the
+answer routes. A worker draws from a queue its merchant has to themselves, since
+the queue hands out work by name and a filter on a shared queue would draw a
+stranger's envelope to read it, after which it is offered to nobody again.
 
-**The public buying surface does not change.** One catalog across all
-merchants — that is the product. A purchase routes to the owning merchant's
-worker by the card it was made against. No public schema gains a field — a
-buyer has no more reason to see the merchant's identity than before, and giving
-them one is a separate decision about merchant-facing branding that nobody has
-taken. The first SDK release moves `CONTRACT_VERSION` to `"1"` for the release
-boundary itself (ADR-0006), not because tenancy changed this surface.
+The buying surface is one catalog across every merchant, which is the product,
+and a purchase reaches the merchant whose card it was made against. The
+merchant's identifier never reaches a buyer; what an agent learns about who
+sells is the name and site of ADR-0034. A dashboard account names at most one
+merchant, and every screen is scoped to it.
 
-**The sandbox still comes up selling from one command.** `docker compose up`
-seeds one merchant and one key deterministically, the merchant process gets
-that key from the compose file, and no manual step appears. The seeded values
-are sandbox values in a file, like the database password beside them, and for
-the same reason. The seed is the laptop's alone: a deployed channel seeds
-nothing, because a merchant there comes into being only by the one way in
-(ADR-0014).
-
-**The dashboard's accounts belong to a merchant.** Sign-in scopes every screen
-to the account's merchant. The screens for making and disabling keys follow in
-their own step — the model here is what makes them buildable.
+`docker compose up` brings the sandbox up selling with no manual step: every
+database is created with one merchant, the laptop's gateway seeds a key for it
+from the compose file, and the compose file hands the same key to the merchant
+process, a sandbox value in a file like the database password beside it. A
+deployed channel seeds nothing, because a merchant there comes into being only
+by the one way in (ADR-0014).
 
 ## Consequences
 
-- Registration becomes buildable without handing anyone a stranger's money.
-  Mail — confirmation, password reset, the Resend account and the DNS records —
-  is the next decision, not part of this one.
-- The migration assigns everything already in a database to the seeded
-  merchant, which is correct: everything in any database today is that one
-  merchant's.
-- The gateway's auth stops being a comparison and becomes a lookup, and the
-  test that pins constant-time comparison of the single key retires with the
-  variable it certified.
-- Two of today's honest disclaimers die: the route descriptions that say
-  "during the pilot there is one merchant", and the comment in the store that
-  names the constant. Killing them is part of the change, not an afterthought.
+Registration hands nobody a stranger's money. Every query of a merchant's data
+carries the merchant, and one that forgets it is caught only by the store's
+tests, which therefore seed two merchants and assert about both.
 
-## Alternatives rejected
-
-**A database per merchant.** Real isolation, and nothing at this scale earns
-its operational cost: migrations per tenant, connection pools per tenant, a
-provisioning step where a row would do. The failure it prevents — a query that
-forgets its filter — is the failure the store's tests exist to catch.
-
-**Keys stay in the environment, one per merchant.** Every key change becomes a
-deployment, nobody can revoke one key of several, and self-service dies at the
-first step: a merchant cannot make a key for themselves by editing our
-environment.
-
-**Scoping in the dashboard only.** The dashboard is one caller of the gateway's
-application, and the public API is another; scoping in the dashboard leaves the
-API answering everything to anybody with any key. The gateway's store is the
-boundary every caller goes through, so that is where the scope lives.
+Rejected: a database per merchant, real isolation whose migrations, connection
+pools and provisioning per tenant nothing at this scale earns, against a failure
+the store's tests exist to catch; keys in the environment, one per merchant,
+where every key change is a deployment, nobody can revoke one key of several and
+no merchant can make a key for themselves; scoping in the dashboard alone, which
+leaves the public API, the application's other caller, answering everything to
+anybody with any key, when the gateway's store is what every caller goes
+through.

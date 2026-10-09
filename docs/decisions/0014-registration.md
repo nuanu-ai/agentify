@@ -28,7 +28,7 @@ sandbox merchant, so that one command brings it up selling (ADR-0010).
 
 **1. The account is written at sign-in, the merchant and its key on the
 dashboard's explicit request.** The account appears when a one-time link is
-consumed for an address that has none (ADR-0009 §5), and no form asks for a
+consumed for an address that has none (ADR-0026 §1), and no form asks for a
 password or an invitation. The merchant, and a key made for a dashboard beside
 it, are made later, when the signed-in person presses the one control the
 dashboard offers (ADR-0026 §4). The press calls the gateway inside the process
@@ -63,7 +63,7 @@ takes no key — nobody registering has one. A wrong code and a closed
 registration answer identically, in constant time against a decoy (the two
 answers that must be indistinguishable are the two refusals), so the form does
 not say whether registration is open, only whether this code is the one. The
-door retires when a confirmed address replaces it (ADR-0009).
+door retires when a confirmed address replaces it (ADR-0026 §1).
 
 **4. The name buyers see is asked for after registering, never on the form.**
 It is a public answer demanded at the moment a merchant knows least, so it

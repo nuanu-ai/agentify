@@ -7,7 +7,7 @@
  * exchange is simulated on this side.
  *
  * What is not real is the other end. This is meant for the local stack, where
- * the gateway settles against nothing (ADR-0008), so no money moves and the key
+ * the gateway settles against nothing (ADR-0020), so no money moves and the key
  * below needs to hold nothing. Pointed at a gateway with a real facilitator
  * behind it, this would sign a real transfer — which is why the command says
  * which gateway it is talking to before it does anything, and why the smoke

@@ -12,7 +12,7 @@
 # for it in deploy/images.env when it activated that revision.
 #
 # Both channels are the project agentify, each on its own host, so a container
-# is agentify-<service>-1 wherever it runs (ADR-0025).
+# is agentify-<service>-1 wherever it runs.
 set -euo pipefail
 
 channel="${1:-}"

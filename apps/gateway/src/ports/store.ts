@@ -134,7 +134,7 @@ export interface StoredOrder {
    *
    * Null until a payment has been verified for this order, and null on a
    * deployment that asks for no address at all — the sandbox, which settles
-   * against nothing (ADR-0008).
+   * against nothing (ADR-0020).
    */
   readonly payTo: string | null;
   /**

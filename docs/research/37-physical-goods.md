@@ -39,7 +39,7 @@ polling `status_url`, where holding the order identifier is the proof
 
 The confirmation mode, where the money moves only after the merchant's yes, is
 complete inside the machine and closed at the card door and in the gateway's
-executor (ADR-0007). Its agent side — how the agent is told it may now pay — is
+executor (`docs/research/40-confirmation-mode-seam.md`). Its agent side — how the agent is told it may now pay — is
 not designed.
 
 ## Where a parcel does not fit
@@ -356,7 +356,7 @@ optional (see the decisions below). The phone number became required and
 `state` was named a subdivision code. The per-country table of required fields
 was dropped rather than sourced: the door checks the shape, and the merchant's
 price check judges the geography before money moves. The decisions that the new
-ones amend — ADR-0002 §3, ADR-0006 §5, ADR-0007 §5, ADR-0011 and ADR-0028 —
+ones amend — ADR-0002 §3, ADR-0006 §5, research note 40 ("When to open it"), ADR-0011 and ADR-0028 —
 were edited in the same change.
 
 A second round read the revisions against the code. It confirmed most of

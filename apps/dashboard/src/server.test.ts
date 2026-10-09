@@ -12,7 +12,7 @@
  * merchant's own code would have done — publishing a card, buying one — it does
  * so over the gateway's real HTTP surface, as that code would.
  *
- * Signing in is not stubbed either. The component ADR-0009 hands identity to is
+ * Signing in is not stubbed either. The component ADR-0026 §2 hands identity to is
  * the real one, doing the real deriving and the real signing; what is swapped
  * for the tests is only where it keeps its rows, which is the component's own
  * memory store rather than Postgres, because `pnpm test` works without a
@@ -86,7 +86,7 @@ const COOKIE = "agentify.session_token";
  * The prefix is a promise the browser keeps rather than one this dashboard makes:
  * a cookie carrying it is refused unless it is Secure, set for the whole origin
  * and names no Domain, so another host under the same registrable domain can
- * neither plant a session here nor overwrite one (ADR-0009 §6).
+ * neither plant a session here nor overwrite one (ADR-0026 §2).
  */
 const SECURE_COOKIE = "__Host-agentify.session_token";
 /** Thirty days, the lifetime a session is given from the last visit. */
@@ -1120,7 +1120,7 @@ describe("the passwordless dashboard door", () => {
 describe("one session for the whole site", () => {
   it("sets one cookie for the whole origin over https: prefixed, Secure, HttpOnly and Lax", async () => {
     // A report and the dashboard are two applications on one origin, and one
-    // session serves both (ADR-0009 §6, ADR-0026 §2). A cookie scoped to the
+    // session serves both (ADR-0026 §2). A cookie scoped to the
     // dashboard's path would leave a person a stranger at the report, and the
     // prefix is what stops a sibling host from planting or replacing it.
     const running = await started({ base: "/dashboard", dashboard: { COOKIE_SECURE: "true" } });
@@ -1173,7 +1173,7 @@ describe("one session for the whole site", () => {
 
   it("keeps a returning person signed in: a visit a day on moves the end to thirty days from it", async () => {
     // A person who keeps coming back does not meet the sign-in form again
-    // (ADR-0009 §6). The row decides, so the row is moved, and the browser is
+    // (ADR-0026 §2). The row decides, so the row is moved, and the browser is
     // handed the renewed cookie, because a cookie left at its first lifetime
     // drops out of the browser thirty days after sign-in however often its
     // person came back.
@@ -1298,7 +1298,7 @@ describe("the operator flag", () => {
 });
 
 describe("the gate", () => {
-  it("lets a visitor with no session reach exactly the routes ADR-0009 §2 lists above it", async () => {
+  it("lets a visitor with no session reach exactly the routes ADR-0026 §7 lists above it", async () => {
     // The list is written in the decision rather than discovered by reading
     // the routing, and this is where it is held: every route on it answers a
     // stranger without the sign-in redirect, and a route that is not on it —
@@ -3071,7 +3071,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
   it("says there is no such page inside the dashboard, with its menu and a way back", async () => {
     // Only to somebody who is signed in. A stranger is told nothing about which
-    // addresses exist here (ADR-0009 §2), which is the test above this one.
+    // addresses exist here (ADR-0026 §7), which is the test above this one.
     const { browser } = await started();
     await browser.signIn();
 
@@ -3386,7 +3386,7 @@ describe("when the gateway will not answer", () => {
 
 describe("a session that is ended while somebody is looking at a page", () => {
   it("stops the open tab from doing anything, and does not do what it asked", async () => {
-    // The reason a session is a row at all (ADR-0009 §6). Before this, ending
+    // The reason a session is a row at all (ADR-0026 §2). Before this, ending
     // one meant rotating the merchant's key — which also stops the merchant's
     // own code, in the same instant.
     const { browser, gateway, identity } = await started();
@@ -3554,7 +3554,7 @@ describe("a page left open while another address signs in", () => {
     await running.browser.post("/sign-out");
     await running.browser.signIn(OTHER);
 
-    // ADR-0009 §2's list: these answer without a session, and the sign-out
+    // ADR-0026 §7's list: these answer without a session, and the sign-out
     // signs this browser out whichever page it was pressed on.
     const above = new Set(["/sign-in", "/sign-in/open", "/sign-out", "/woocommerce/callback"]);
     const behind = routesOf(running).filter(

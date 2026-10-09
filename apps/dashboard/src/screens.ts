@@ -54,8 +54,8 @@ import {
  * Who is looking at a page, and where the dashboard is mounted.
  *
  * The person is here rather than at the edge because every page says who is
- * signed in. That is not decoration: until ADR-0009 there was no person in the
- * system at all — there was a merchant key — and a screen that cannot name who
+ * signed in. That is not decoration: before people signed in (ADR-0026) there
+ * was no person in the system at all — there was a merchant key — and a screen that cannot name who
  * is looking at it is a screen nobody can be held to.
  */
 export interface Viewer {

@@ -576,8 +576,7 @@ const reportToConsole: ProblemReporter = (problem: WorkerProblem): void => {
  * side means changing both in the same commit.
  *
  * A key matching neither prefix says nothing at all, which is the third case
- * ADR-0020 names: a key issued before the prefix existed, or one that is not
- * ours. There is nothing to fall back to. Guessing is wrong in both directions
+ * ADR-0020 names: a key naming no environment, or one that is not ours. There is nothing to fall back to. Guessing is wrong in both directions
  * — telling a merchant their money is play when it is real, or the other way
  * round — and no line at all is better than a wrong claim about whose money is
  * at stake.

@@ -716,7 +716,7 @@ describe("the payment challenge", () => {
     // bare challenge a crawler gets, and could not tell its payment being
     // ignored from its payment having failed. One did, on 2026-09-10, and
     // stopped. The error line is where a challenge says why this call did not
-    // return the resource (ADR-0021), so it says it here — and only here: the
+    // return the resource (research note 25), so it says it here — and only here: the
     // bare probe keeps the words every other shelf uses.
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
@@ -789,7 +789,7 @@ describe("the payment challenge", () => {
     // with no word about the payment has no way to tell that its own encoding
     // is what went wrong, and every retry it makes fails the same way. The
     // error line is where a challenge says why this call did not return the
-    // resource (ADR-0021), so it says it here.
+    // resource (research note 25), so it says it here.
     const { served } = await started();
     const itemId = await publish(served, syncCard);
 

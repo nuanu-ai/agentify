@@ -52,7 +52,7 @@ describe("what the dashboard will not start without", () => {
   });
 
   it("refuses to start with no database to keep its accounts and sessions in", async () => {
-    // ADR-0009 puts the people who sign in, and their sessions, in rows. With
+    // ADR-0026 §2 puts the people who sign in, and their sessions, in rows. With
     // no database there is nowhere to look one up, so every visitor would be a
     // stranger — a dashboard that renders a sign-in form and can never accept one.
     const { DATABASE_URL: _absent, ...withoutDatabase } = given();

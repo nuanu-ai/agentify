@@ -20,7 +20,7 @@ because it is public.
 On each host a channel is one Compose project, `agentify`, so a container is
 `agentify-<service>-1` on either host, and its data is one PostgreSQL database,
 `agentify`, in the volume `agentify-postgres` beside Caddy's `agentify-caddy`
-(ADR-0003, ADR-0025). The files a release uses on a host are these, with
+(ADR-0003). The files a release uses on a host are these, with
 `<channel>` standing for `test` or `production`:
 
 ```text
@@ -210,13 +210,14 @@ From this release the dashboard calls the gateway's application inside the
 process it shares with it (ADR-0030), makes a merchant with no invitation, and
 reads no key off an account's row. Nothing has to be done on either host
 before it. On PRODUCTION, release it together with the one that deletes the
-keys made for a dashboard (ADR-0030, step 4), not before: from this release
-on, the key on each account row is neither renewed nor forgotten, so a copy of
-the database taken in between, a backup included, holds keys that open the
-API. Afterwards `AGENTIFY_INVITATION` in the host's file is read by
-nothing. Take its line out once going back to an earlier revision is no longer
-wanted, since an earlier revision's preflight refuses a file without it. The
-last line prints `0`, and the file keeps its owner and mode, `root 600`:
+keys made for a dashboard (step 4 in `docs/research/35-one-process.md`), not
+before: from this release on, the key on each account row is neither renewed
+nor forgotten, so a copy of the database taken in between, a backup included,
+holds keys that open the API. Afterwards `AGENTIFY_INVITATION` in the host's
+file is read by nothing. Take its line out once going back to an earlier
+revision is no longer wanted, since an earlier revision's preflight refuses a
+file without it. The last line prints `0`, and the file keeps its owner and
+mode, `root 600`:
 
 ```sh
 ssh agentify-test "sudo sed -i '/^AGENTIFY_INVITATION=/d' /etc/agentify/test.env"

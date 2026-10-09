@@ -1,152 +1,75 @@
 # 0004. Worker transport: HTTP long polling
 
 Date: 2026-08-26
-Status: accepted (autonomous mandate of 2026-08-26; revisited on the product
-owner's word)
+Status: accepted
 
 ## Context
 
-ADR-0002 fixed the model: orders live in our queue, and the default way a
-merchant receives them is a worker subscription through the SDK — but it left
-the concrete protocol open. Stage 1 of the pilot plan builds the gateway and
-the SDK worker, so the protocol has to be chosen now. Whatever carries orders
-must also carry price questions (the price handler is the default price-check
-transport, ADR-0002 §2) and order events, because the portal promises all
-three on one subscription.
+By default a merchant receives orders from our queue through an SDK worker
+subscription (ADR-0002), and the portal promises that the same subscription
+carries price questions (ADR-0002 §2) and order events.
 
 ## Decision
 
-1. The worker channel is HTTP long polling against the gateway. The SDK worker
-   calls a poll endpoint with a wait window (~25 s); the gateway holds the
-   request until something arrives or the window closes, then answers with one
-   envelope or with none, whatever number the worker asks for. The wait for a
-   handler's answer starts when an order is handed over, and a worker works
-   what it is handed one at a time, so in a batch the orders at the back would
-   be taken for silences while the calls ahead of them ran, and every repeat
-   sent for that spends one of the order's deliveries; one envelope a poll
-   makes the wait measure the handler. A poll draws past an envelope it may
-   not hand out, such as an order that closed while queued, rather than
-   answering empty, because an empty answer sends a worker to rest; it stops
-   at the end of its window or after a fixed number of them, and a worker
-   answered empty before its window is over rests as it would on a quiet
-   stream, so a long run of them costs about a second per fixed number, as a
-   full batch of them once did. The cost is a round trip per envelope: one
-   instance gets through fewer of them a second, and a price question, whose
-   clock runs from the moment it is asked, waits for what is ahead of it. More
-   instances are the remedy, and a throughput need they cannot meet is the
-   revisit trigger named below. Auth is the merchant API key (stage 1 minimum
-   per the pilot plan).
-2. One envelope stream carries three kinds — order, quote question, order
-   event — each carrying its kind marker. Quote questions answered over the
-   same HTTP surface (a reply call referencing `price_id`); orders are acked
-   by their outcome calls (`deliver` / `refuse` / accept); events need no ack.
-3. Delivery is at-least-once with redelivery by visibility timeout in the
-   queue; the handler-side idempotency the portal already demands is what
-   makes that safe.
-4. A worker that is connected and waiting receives a message with no polling
-   lag — the long poll is parked server-side, so the latency-critical case
-   (the quote question of a synchronous purchase, where the agent is waiting)
-   is bounded by the network, not by a poll interval.
-5. The SDK hides the transport entirely: a merchant registers what their
-   process answers with `on(kind, handler)` — one call per kind the stream
-   carries — and opens the channel with `start()`, which is the loop over the
-   poll call. Switching transport later must not change merchant code.
+1. The worker channel is HTTP long polling against the gateway, authenticated
+   by the merchant's API key. The SDK's worker asks for a wait window of about
+   25 seconds; the gateway holds the poll for the smaller of that and its own
+   window, until something arrives or the window closes, and answers with one
+   envelope or none, whatever number is asked for. The wait for a handler's
+   answer starts at the hand-over and a worker works one envelope at a time, so
+   orders at the back of a batch would be taken for silences and resent, each
+   resend spending a delivery. A poll draws past an envelope it may not hand
+   out, such as an order that closed while queued, instead of answering empty
+   and sending the worker to rest, until its window ends or a fixed number
+   have been passed. The price is a round trip per envelope, with a price
+   question waiting behind whatever is ahead of it; more instances are the
+   remedy.
+2. One envelope stream carries three kinds, each under its kind marker: an
+   order, a price question and an order event. A price question is answered on
+   its own route against its `price_id`, and an event by nothing. The SDK posts
+   what an order's handler returns to the order's answer route in every mode;
+   in the synchronous mode that is the only answer, and the asynchronous mode's
+   explicit `deliver` and `refuse` calls are refused there as
+   `not_applicable_in_mode`. Goods are held to the card before lateness is
+   read, so a late synchronous answer is refused as
+   `delivery_does_not_match_card` if they do not fit and is otherwise a success
+   carrying `purchase_already_closed`. A repeat answer to an order already
+   carrying goods is `already_delivered` with no second check, so a retry is
+   safe.
+3. An order is delivered at least once and an event at most once. The queue
+   finishes every envelope as it hands it over and never offers it again.
+   Whether an unanswered order goes out again is the order machine's decision,
+   against the order's own attempts and deadline, and the resend is a fresh
+   envelope around the same order, so a handler has to survive seeing an order
+   twice and recognise it by the order's identifier. An event lost in a poll
+   response that never reached its worker is gone, and no event is the only
+   record of anything: its order stays in `orders.list({ open: true })` until
+   whatever it owes, a refund included, is settled.
+4. A connected, waiting worker receives a message with no polling lag: its poll
+   is parked at the gateway and woken on publish, so an agent waiting on the
+   price question of a synchronous purchase waits on the network alone.
+5. The SDK hides the transport: a merchant registers handlers with
+   `on(kind, handler)`, one per kind, and opens the channel with `start()`, the
+   loop over the poll call, so changing the transport changes no merchant code.
 
-## Rejected alternatives
+## Consequences
 
-- **WebSocket** — a persistent-connection stack (upgrade handling, heartbeat,
-  proxy behavior) bought for nothing the pilot needs; the hand-rolling rule
-  (ADR-0003 §9) counts a custom framing protocol on top of it as exactly the
-  infrastructure we do not build. Named trigger to revisit: a measured
-  latency or throughput need long polling cannot meet, or fan-out to many
-  concurrent workers per merchant.
-- **A batch a poll, with each order's answer wait started later by its place
-  in the batch** — it guesses at how long handlers take and delays noticing a
-  worker that died. **A call by which a worker says when it starts each
-  order** — a new call on the wire for what one envelope a poll already gives.
-- **Server-Sent Events** — one-directional, so quote answers and acks need a
-  second surface anyway; at that point it is long polling with an extra moving
-  part.
-- **Webhooks as the default** — rejected in ADR-0002 already: the merchant
-  would have to expose a public endpoint, which the integration model exists
-  to avoid. Webhook remains a listed alternative transport, out of the pilot.
+A merchant who treats events as a complete notification channel misses some,
+silently on both sides; the portal tells them to walk their open orders on a
+schedule, and whether a stronger promise is owed is open. The SDK reports only
+refused answers, so it drops `purchase_already_closed`; `apps/docs/orders.md`
+lists that gap as open.
 
-Precedents for queue-drain over merchant-exposed endpoints: Telegram
-getUpdates, SQS receive-message, Temporal task queues
-(`docs/research/12-big-players-merchant-integration.md`).
-
-## Addendum (2026-08-26): the handler's answer has its own route
-
-§2 said orders are acked "by their outcome calls (deliver / refuse /
-accept)", which left the synchronous handler with no address: the state
-machine distinguishes the handler's returned answer (delivered / refused /
-accepted, arriving as the return value of the merchant's handler) from the
-merchant's later explicit calls (`deliver` / `refuse`), and in the
-synchronous mode the returned answer is the only thing there is — the
-explicit calls answer `not_applicable_in_mode` there by design.
-
-So the surface carries a dedicated answer route: the SDK posts the
-handler's return value to it, referencing the order, in every mode; the
-explicit `deliver` and `refuse` calls remain the asynchronous mode's
-closure verbs. A late synchronous answer receives the typed
-"purchase already closed" acknowledgment rather than an error — provided
-the goods in it are the ones the card declares. The gateway holds a
-delivery to the selling card's `result` before the order machine sees it
-wherever that delivery could still be written down, so an answer whose
-goods do not fit is refused as `delivery_does_not_match_card` and the
-lateness is never reached. That is the deliberate order: the fault in the
-handler is what the merchant is told about first, and the state of his
-order arrives afterwards.
-
-Two limits on that, both measured against the code rather than reasoned
-from this text. The check is skipped on an order that already carries
-goods (`deliverOrder` in `apps/gateway/src/app/gateway.ts`): a repeat is
-answered `already_delivered`, and what it carried is neither weighed
-against the card nor kept, which is what makes a merchant's retry safe
-rather than a failure branch. And "arrives afterwards" holds only on the
-explicit `deliver` and `refuse` calls, where the merchant reads the
-returned answer himself. On the answer route it does not: the fixed
-synchronous answer comes back as a success carrying the word
-`purchase_already_closed`, and the SDK reports only the answers we refuse,
-so the word is dropped and nothing reaches his code. The gap is listed as
-open on `apps/docs/orders.md`.
-
-Carrying answers inside the next poll request was rejected: it would couple
-the latency-critical synchronous answer — the agent is waiting on it — to
-polling cadence and batch size, which §4 exists to keep out of that path.
-
-## Addendum (2026-08-28): §3 was never how this works, and two rules replace it
-
-Point 3 above says delivery is at-least-once with redelivery by visibility
-timeout in the queue. It is not, and it never was. The queue's own retries are
-switched off — the pg-boss adapter publishes with `retryLimit: 0` and finishes a
-job as it hands the envelope over — and redelivery is decided by the order
-machine instead, which arms it against the order's own state. There is a test
-against a live Postgres that pins the failing half: an envelope drawn into a
-poll response that never reached its worker goes to `failed` rather than back
-onto the stream (`apps/gateway/src/adapters/pgboss/queue.db-test.ts`).
-
-This is corrected here rather than in place because contract schemas and the
-order machine exist, which is the trigger this repository named in advance for
-decisions becoming append-only. The sentence stays above so that anybody who
-read it, or built on it, can see what they read.
-
-**Two rules, and they are opposites.** An order is delivered at least once: a
-merchant who does not answer gets it again, so their handler has to survive
-seeing the same order twice. An event is delivered at most once: it is handed
-over and finished in the same pass, it is never re-offered, and one lost in a
-poll response that did not arrive is simply gone — the port says so in its own
-header (`apps/gateway/src/ports/queue.ts`). Guarding against a repeat is the
-right move for one and pointless for the other; expecting one to arrive is safe
-for the order and not for the event.
-
-What makes the lost event survivable is that no event is the only record of
-anything. The order it is about stays in `orders.list({ open: true })` until
-whatever it owes is settled, an order owing a refund among them. That was
-always true and was never connected to the loss; `apps/docs/orders.md` now
-connects them.
-
-The consequence worth naming: a merchant who treats events as a complete
-notification channel will miss things, and the failure is silent on both sides.
-Whether we owe them a stronger promise than "read your open orders" is a real
-question and not one this addendum answers.
+WebSocket is rejected as a persistent-connection stack bought for nothing we
+need, plus custom framing the hand-rolling rule (ADR-0003 §9) forbids; it is
+revisited on a measured latency or throughput need long polling cannot meet, or
+on fan-out to many workers per merchant. Server-Sent Events go one way, so
+answers would need a second surface anyway. Webhooks as the default fall to
+ADR-0002: the merchant would have to expose a public endpoint. A batch a poll,
+each order's wait started by its place in the batch, guesses at handler times
+and notices a dead worker late; a call by which a worker reports starting each
+order adds to the wire what one envelope a poll gives. Answers carried in the
+next poll would tie the synchronous answer to polling cadence, which §4 keeps
+out of its path. Redelivery by the queue's visibility timeout would be a second
+opinion over the order machine's (§3). Draining a queue has precedents in
+`docs/research/12-big-players-merchant-integration.md`.

@@ -72,7 +72,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const email = parsed.data.email;
   // An address typed beside a session is not quietly swapped for the session's:
   // the person is told which address a report they ask for is filed under,
-  // and how to ask with another (ADR-0026 §1).
+  // and how to ask with another (ADR-0026 §2).
   if (
     visitor.kind === "person" &&
     email !== undefined &&

@@ -42,9 +42,7 @@
  * later by a merchant who took an order on and now has the goods or has run
  * out of them. The order machine keeps the same two apart, and in the
  * synchronous mode it is the returned answer that exists and the explicit
- * calls that do not. The addendum of 2026-08-26 to ADR-0004 settles this; §2
- * of that decision, read alone, leaves the synchronous handler with no address
- * at all.
+ * calls that do not. ADR-0004 §2 settles this.
  */
 
 import { z } from "zod";
@@ -520,7 +518,7 @@ export const AgentOrderStatusSchema = z
      *
      * The receipt a merchant reads carries this word already, and the buyer's
      * own view of the same purchase is the one place it matters more: a
-     * sandbox settles against nothing (ADR-0008) and every other field here
+     * sandbox settles against nothing (ADR-0020) and every other field here
      * reads exactly as it would after a real charge. Without it, this document
      * is indistinguishable from proof of a purchase that moved money, which is
      * the one thing it must never be mistaken for.
@@ -1198,7 +1196,7 @@ export const API_ROUTES = Object.freeze({
     path: "/x402/orders/:order_id/status",
     auth: "order_id",
     description:
-      "What became of a purchase, for the agent that made it: where the order stands, what it sold for, and the goods once they are the buyer's. It is the route an agent that bought a product whose goods come later collects them on, and without it half a catalogue takes money and hands back an order nobody can act on. Every answer that carries the order document names this address in status_url, whole and ready to call, the purchase's own answer included. An order whose goods come later is owed them by the delivery deadline its card carried when the order was opened, counted from its payment: fulfill_deadline_seconds where the card names one, and a day where it names none. An order still without goods at that deadline becomes refund_due, and a paid order the merchant refuses or leaves behind becomes it sooner: the merchant owes the buyer the goods or the money back. That is not an ending, and it carries no further deadline. Goods the merchant delivers after it still appear here and settle the debt, and the order becomes delivered. Nor does refund_due say whether the money has come back: the merchant returns it from their own wallet, the gateway has no way yet to record that they did, and until it has one no order moves on to refunded — a buyer already paid back still reads refund_due here. So an agent holding refund_due can still collect goods here, nothing here tells it when to stop asking, and its own wallet is where a refund shows. Knowing the order's identifier is the proof (ADR-0011), so this call takes no key: an agent has no account and no registration, and the identifier is handed to exactly one party. Two things follow for whoever mounts it. Which door a call is behind is read off auth and never off the address, whatever the prefixes happen to agree on today. And an identifier that names no order must be answered exactly as any other unknown one is, or the refusal becomes a way of counting the orders behind it.",
+      "What became of a purchase, for the agent that made it: where the order stands, what it sold for, and the goods once they are the buyer's. It is the route an agent that bought a product whose goods come later collects them on, and without it half a catalogue takes money and hands back an order nobody can act on. Every answer that carries the order document names this address in status_url, whole and ready to call, the purchase's own answer included. An order whose goods come later is owed them by the delivery deadline its card carried when the order was opened, counted from its payment: fulfill_deadline_seconds where the card names one, and a day where it names none. An order still without goods at that deadline becomes refund_due, and a paid order the merchant refuses or leaves behind becomes it sooner: the merchant owes the buyer the goods or the money back. That is not an ending, and it carries no further deadline. Goods the merchant delivers after it still appear here and settle the debt, and the order becomes delivered. Nor does refund_due say whether the money has come back: the merchant returns it from their own wallet, the gateway has no way yet to record that they did, and until it has one no order moves on to refunded — a buyer already paid back still reads refund_due here. So an agent holding refund_due can still collect goods here, nothing here tells it when to stop asking, and its own wallet is where a refund shows. Knowing the order's identifier is the proof (ADR-0011), so this call takes no key: an agent has no account and no registration, and the identifier is handed only to the parties to the sale — the agent that bought, its merchant and Agentify — and appears in no catalog or listing. Two things follow for whoever mounts it. Which door a call is behind is read off auth and never off the address, whatever the prefixes happen to agree on today. And an identifier that names no order must be answered exactly as any other unknown one is, or the refusal becomes a way of counting the orders behind it.",
     response: { document: AgentOrderStatusSchema },
   },
 }) satisfies Readonly<Record<string, RouteDefinition>>;

@@ -1,208 +1,91 @@
 # 0026. One way in: an address, a one-time link and one session for the site
 
 Date: 2026-09-24
-Status: accepted (the product owner, 2026-09-17, on the link in a message as
-the one means of authentication; 2026-09-24, on one link signing a person in
-once to both the reports and the seller dashboard, with the operator's dashboard a privilege of the
-account; 2026-09-25, on §5, with one rule for every path and the refusal at
-publish being enough, with no way to ask in advance)
+Status: accepted (the product owner, 2026-08-28 to 2026-09-25); merges what were
+ADR-0009 and ADR-0024
 
 ## Context
 
-Agentify is one origin (ADR-0005 §1) on which a person reads the reports the
-scanner writes about their site and sells from the dashboard, and on which whoever
-runs the deployment reads the operator's dashboard at `/admin`. Whoever can read
-mail at an address is the person of that address, and a link in a message is how
-they show it. What had to be settled is how far one link reaches, and the
-product owner's answer is all of it: a person signs in once and is not asked
-again, and the operator's dashboard is a privilege an account carries rather than a door
-with a password of its own.
+One origin (ADR-0005 §1) serves the scanner's reports, the seller dashboard and
+the operator's `/admin`. Whoever reads an address's mail is its person.
 
 ## Decision
 
-**1. One means of authentication and one kind of message.** There is no password
-and no invitation code. An address typed in the scanner's full-report form or in
-the one field of the sign-in page brings the same message with one button. Where
-it leads, the full report of a named scan or a named dashboard screen, is recorded
-with the token when the link is asked for, and nothing in the link is ever read
-as a destination. Every link lands on the dashboard's page with one control, and
-only that same-origin submission consumes the token, so a mail preview cannot
-spend it; the dashboard then opens the session, sets the cookie and sends the
-browser to the recorded destination. The token is hashed at rest, single-use and
-short-lived. A used, expired or unknown link is refused the same way, and no
-answer says whether the address has an account or a report. A link with no
-destination of its own starts a person who owns a merchant in the dashboard, a
-person who owns reports and no merchant at their latest report, never at a
-screen offering to make a merchant, and anybody else in the dashboard; that is the
-person's start. A used, expired or unknown link opened in a browser with a live
-session goes to the start of that session's person instead of an empty form,
-which reveals nothing about the link's address, because the session's own
-address decides it. Signing in and recovering access are one act. Against a
-sign-in link for somebody else's address sent to a victim, the page with the one
-control names the address being signed in, the signed-in full-report ask names
-the address the report will be filed under, and the header always shows it.
+**1. One means of authentication.** No password or invitation code is typed. An
+address typed at the scanner or dashboard is mailed a link to the dashboard page
+naming it, and only a same-origin press of its button spends the token, which a
+mail preview cannot; the press writes any missing account and opens the session.
+The token, hashed and single-use, lives an hour; a spent, expired or unknown one
+is refused alike, and no answer says whether an address has an account or a
+report. Where a link leads is kept with its token, not in the link; one with no
+destination, or a dead one while signed in, goes to the person's start: their
+latest report if they have one and no merchant, else the dashboard.
 
-**2. One identity and one session, held by the dashboard.** The person of an
-address is one row in the dashboard's Better Auth, and the session a link opens
-serves the whole site, reports, the seller dashboard and, for an operator, the operator's dashboard,
-with the cookie and lifetime of ADR-0009 §6. The scanner never handles a token
-and mints no session. Over the internal route, reachable only on the compose
-network and authenticated by a secret the two processes share, it asks the
-dashboard to send a link for this address with this destination, to say whose
-session this cookie is, and, for a privacy deletion, to remove this person if
-they own no merchant. When the second answer renews the session, the scanner
-passes on the renewed cookie that answer carries, so a visit to a report counts
-toward the thirty days. It asks for renewal only where its answer can pass a
-cookie on, the header's own request, since a page drawn on the server cannot
-set one; every scanner page carries the header. A public scanner page that cannot reach the dashboard says
-it cannot tell who is visiting right now, because not knowing who somebody is
-must not look like knowing they are nobody.
+**2. One identity and one session, held by the dashboard.** Identity is Better
+Auth, a library in the dashboard's process on our PostgreSQL with telemetry off,
+used only through its server API from our handlers. A session is a row, so it
+can be ended alone, and it serves the whole site. Its cookie is `HttpOnly`,
+`SameSite=Lax` and `Path=/`, since inside one origin a path is no boundary, and
+over https `Secure` with the `__Host-` prefix, so another host under the domain,
+such as `test.agentify.ad`, cannot plant or replace it. `Lax` lets a link from
+mail arrive signed in, so every change is a POST, and as `SameSite` spans the
+registrable domain, a post whose `Origin` names another host is refused. A
+session lasts thirty days from the last visit, renewed at most daily.
 
-A report opens for a session whose address owns it, meaning the lead with that
-address is linked to the scan. A request made in the full-report form waits for
-its own link: the dashboard records, with the session that link opens, which
-request the link was asked for, the answer to whose session a cookie is names
-that request, and the scanner finishes it at the session's first visit,
-wherever the navigation began. A signed-in person's own ask, a same-origin POST
-carrying their own form choices, makes and finishes their request at once with
-no message. It never finishes a waiting request somebody else made with that
-person's address, which is left to expire, because a waiting request carries
-what its form said, a marketing choice included. The lead holds what the
-scanner learned about a person, their role, volume and unsubscription, and is
-not a way in.
+The scanner signs nobody in and never sees a token. Over an internal route with
+no public port, behind a secret only the two hold, it asks the dashboard to send
+a link, to say whose session a cookie is and, for a deletion, to remove a person
+who owns no merchant; only its header asks to renew a session. A page that
+cannot reach the dashboard says it cannot tell who is visiting: not knowing who
+somebody is must not look like knowing they are nobody. The two share a database
+(ADR-0003 §2) but not tables. A report opens for a session whose address's lead
+is linked to its scan. A full-report request finishes at the first visit of the
+session its link opens; a signed-in ask names the address it files under and
+finishes at once, never somebody else's request. Deleting an address closes its
+reports at once and removes its lead and, if it owns no merchant, its account.
 
-**3. The header and signing out.** When a person is signed in, the header of the
-scanner's and the dashboard's pages carries their address and a sign-out control;
-`/docs` keeps only its plain link to the dashboard (the product owner,
-2026-09-24). A response carrying a person's address is never stored by a shared
-cache, however the code draws the header. The dashboard draws it on the server; a
-scanner page asks for it with a small same-origin request of its own, so the
-page stays what a shared cache may keep, and a browser that runs no script sees
-the header's doors without the address. The sign-out is a same-origin POST that
-ends this session's row, clears the cookie and opens the sign-in page with an
-empty field, since people mostly sign out to come back as another address. It
-signs this browser out of everything and leaves other devices alone. The
-dashboard's Settings screen carries the other half (the product owner,
-2026-09-25): "Sign out every other device", a same-origin POST behind the gate
-that ends every other session of this account, keeps this one and says how many
-it ended. It reaches this account only, never another account naming the same
-merchant, and touches no key; ending every account's sessions is the wallet
-cancel's (ADR-0019). Because people sign out to come back as another address, a
-tab drawn for the first can still be open when the second signs in, and the
-browser sends the second one's cookie with the first one's form. So every form
-behind the gate carries the address its page was drawn for, and the gate
-refuses, doing nothing the form asked, a form that names another address or none:
-a form the marking missed fails where it can be seen instead of working for
-whoever is signed in. It is held at the gate rather than route by route, and
-the sign-out is not held to it: it signs this browser out from any page. The
-scanner's own account requests (data access, deletion, unsubscribe) send the
-address their page showed as well; the scanner has no gate, so each of their
-two routes checks it itself and refuses a press that names another address or
-none.
+**3. The header and signing out.** Scanner and dashboard headers show a
+signed-in address and a sign-out, and no shared cache keeps an answer carrying
+an address. Signing out ends this browser's session, and settings can end every
+other one. People mostly sign out to return as another address, so every form
+behind the dashboard's gate and every scanner account form carries the address
+its page was drawn for, and one naming another or none is refused unacted.
 
-**4. The merchant is made on the dashboard's explicit request.** A person may own
-reports and no merchant. The dashboard offers a signed-in person without one a
-screen with one control, and only that same-origin POST asks the gateway's
-application, inside the process the two share (ADR-0030), for the merchant.
-Opening a link never makes one, "Open your dashboard" on a report included,
-because under `Lax` a link from another site arrives signed in. A database that
-does not answer leaves the person signed in to press again, and a dashboard
-that fails after the gateway made the merchant leaves a merchant nobody names,
-litter as ADR-0014 §1 says. This press is the
-only way a merchant comes into being, as the link is the only way an account
-does: no command at a server's terminal makes either, and no deployed channel
-seeds a merchant (ADR-0014).
+**4. The merchant is made on the dashboard's explicit request.** A signed-in
+person without one is offered one control, and only its same-origin POST asks
+the gateway's application, inside the shared process (ADR-0030), for the
+merchant; under `Lax` a link from another site arrives signed in, so opening one
+makes nothing. That press is the only way to a merchant, as the link is to an
+account (ADR-0014).
 
-**5. The door to the shared catalogue is live publication.** Anyone who reads
-their mail holds a dashboard, integrates against the SDK and sells on the test
-channel. What a merchant must have before a card of theirs is published or sold
-is one rule, `readinessOf` in `packages/core`, and every path that publishes,
-sells or tells a merchant whether they can asks it rather than restating it:
-the publish door and the check at every later sale in the gateway, the
-dashboard's screens and its WooCommerce import, and any shop connector after them.
-A seller name is asked for on every surface, the sandbox included, because a
-payment request names its seller there as anywhere; a payout wallet wherever a
-payment settles, which is the test channel and live and not the sandbox
-(ADR-0008); and the operator's approval on live alone, given once with
-`pnpm approve`. An integrator learns what their merchant lacks at the publish
-and nowhere earlier: the refusal carries `no_seller_name`, `no_payout_wallet`
-or `no_operator_approval` among its findings, which the contracts export as
-`MERCHANT_FINDINGS`, and its message names the missing settings in words. The
-named trigger for the switch becoming a paid subscription is the day the
-operator cannot keep up.
+**5. The door to the shared catalogue is live publication**, not an invitation,
+which stops nobody. One rule, `readinessOf` in `packages/core`, asked by every
+path that publishes, sells or says whether a merchant can, wants a seller name
+everywhere, a payout wallet where payments settle (ADR-0020) and, on live, the
+operator's approval, until the day the operator cannot keep up and it becomes a
+paid subscription. Integrators learn what is missing only by publishing.
 
-**6. The operator enters through the same door.** The operator's dashboard is entered with
-the same session as everything else, and the account needs the operator
-privilege. Being an operator is a flag on the account's row in
-`dashboard_accounts`, closed to input from the browser like `merchantId`, and only
-`pnpm account operator` at the server's terminal writes it, `--off` clearing it.
-An operator signs in once like anybody, writing the row, and is flagged
-afterwards; an address with no row is refused. `/admin` opens for a session
-whose account carries the flag, and everybody else, signed in or not, gets one
-answer: a 404 with the site's missing-page page. When the flag cannot be
-confirmed because the seller dashboard does not answer, the answer is the same: the
-operator's dashboard fails closed. The scanner learns the flag on the question it already
-asks, whose session a cookie is, and asks it on every request, so moving the
-flag ends no session and holds from the next page; the header shows an operator
-the way in. The refusal is the page's own and not byte for byte a path no route
-has, since a route that exists refuses with its own bytes; the repository is
-public, so that the route exists is no secret. The operator's dashboard stays read-only.
+**6. The operator enters through the same door.** `/admin` opens for a session
+whose account carries the operator flag, set only by `pnpm account operator`,
+never by a configured list, and read with the session on every request, so a
+change holds from the next page; the header shows an operator the way in.
+Anybody else, and everybody while the dashboard cannot answer, gets the site's
+404 page, and nothing at the edge guards or marks the path. It is read-only.
 
-## Cases the scanner's and the dashboard's suites answer for
-
-| Where the person is | What they hold | What happens | Ends at |
-|---|---|---|---|
-| a sign-in link with no destination | reports and no merchant | the link leads to their latest report, never to the screen that makes a merchant | the latest report |
-| a link to a report or the dashboard from another site | a session | the cookie rides the navigation; nothing is made, and no request but the session's own is finished | that page |
-| the dashboard, the first time | a session, no merchant | one control; its press makes the merchant and key | the seller-name screen |
-| `/admin` | anything but a session whose flag the dashboard confirms | a 404 with the site's missing-page page | nowhere |
-| a public scanner page, the dashboard unreachable | anything | the page says it cannot tell who is visiting | that page |
-| a link pressed twice, expired or unknown | no session | refused the same way | the sign-in page |
-| the same link | a live session | nothing is said about the link's address | that person's start |
+**7. The dashboard's gate.** One middleware turns away a visitor without a
+session at every dashboard address but sign-in, sign-out, a link's landing page,
+the stylesheet, the health probe and a shop's key callback and return; a route
+joins those only if, without a session, it reads nothing and answers all alike.
 
 ## Consequences
 
-Out: the scanner's report sessions, their cookie and its landing page for links;
-the handoff from a report into the dashboard and the receipt the two processes
-passed between them; and the whole `/admin` block of the edge configuration,
-basic auth and headers alike, with its `ADMIN_BASIC_AUTH_*` values. The
-operator's dashboard has no protection of its own, so the refusal lives in the application:
-a routing test on the scanner's build proves that `/admin` and a path under it
-answer a visitor without the flag, and everybody while the dashboard cannot say,
-with a 404 and the site's missing-page page, and the edge's routing test proves
-that no header marks the path. A request whose link was consumed but whose
-person never arrived waits, and asking again while signed in finishes it. A
-deletion request at the scanner removes the lead, and with it the address's
-reports, and for a person who owns no merchant their row and sessions; a
-merchant's owner is removed by rules not yet built (ADR-0014).
+The mailbox is the whole key, to sign in and to recover access, and delivery is
+the way in's single point of failure. A session left open moves no money, since
+a payout wallet change waits (ADR-0019), so a short session would protect
+nothing. A dashboard that is down stops sign-in and, sharing the gateway's
+process (ADR-0030), sales. A second factor outside the mailbox is a later stage.
 
-What it costs. The mailbox is the whole key: losing it loses the dashboard, and
-whoever reads a merchant's mail is that merchant. A refused request says when
-the next link may be asked for, which reveals the timing of an address's last
-link, never whether it has an account or a report. Delivery is the single point
-of failure of the way in, measured, with the resend on the same screen, and the
-seller dashboard's absence stops every sign-in, every full report and the
-operator's dashboard, and, since it shares a process with the gateway
-(ADR-0030), sales as well. A session left open on a shared computer opens everything its person may see until
-somebody signs out, though it moves no money by itself, because a wallet change
-waits and is announced (ADR-0019). A second factor outside the mailbox, optional
-and not a condition of live publication, is the second stage agreed in
-principle by the product owner on 2026-09-17, and until it lands none of it is
-assumed to exist.
-
-Rejected: **a session per application with a handoff between them** — a person
-signed in at one surface is a stranger at the next, and the cookie path between
-them is no boundary inside one origin (ADR-0009 §6). **A mailed login and
-password** — a plain-text secret in mailboxes and logs, doing what the link
-does. **Two identity stores** — everything about a person written twice, and two
-places for a deletion to miss. **The password as a second factor** — recovered
-through the same mailbox, it is not a second one; passkeys belong to the second
-stage. **The invitation as a hidden door** — it stops nobody; the door belongs
-at publication, where a stranger's words reach a buyer. **Operator addresses in
-configuration** — a privilege kept apart from its account, granted before the
-address is proved and changed by editing a server's file. **Basic auth in front
-of `/admin`** — a shared password that names nobody and cannot be taken from one
-operator alone. **A way to ask about readiness in advance**, a route or an SDK
-method answering what a merchant lacks before they publish — a second answer to
-the question the refusal already answers, one more surface a stranger's
-engineer has to learn, and one more place for the two answers to disagree.
+Rejected: identity written by hand, as tokens, expiry and resend limits are the
+hard half; a hosted or separate identity service, one more system to be up
+before a merchant reaches their dashboard; a second identity store, another
+place for a deletion to miss; and a password, which the mailbox recovers.

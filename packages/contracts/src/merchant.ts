@@ -406,10 +406,9 @@ export const SellerNameRequestSchema = z
  *
  * It exists because a replacement does not apply at once where the money is
  * real (ADR-0019). The address a merchant is paid at is the one setting whose
- * change redirects money, and any key of theirs reaches it — the dashboard's, or
- * one sitting in their own server's environment — so on the live deployment a
- * replacement is told to every account of the merchant first and takes effect
- * forty-eight hours after that. What this document says is the two facts a
+ * change redirects money, and a dashboard session that is not the owner's could
+ * ask for one, so on the live deployment a replacement is told to every account
+ * of the merchant first and takes effect forty-eight hours after that. What this document says is the two facts a
  * merchant needs in that window: what replaces the address, and from when.
  *
  * Both are required. An address with no moment says nothing about when the

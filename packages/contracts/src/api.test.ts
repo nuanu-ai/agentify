@@ -865,10 +865,10 @@ describe("the catalog an agent reads", () => {
 
 describe("the answer a handler returned, on its way back", () => {
   // The promise: whatever a merchant's handler returns has an address, in
-  // every mode. Before the addendum of 2026-08-26 to ADR-0004 it did not — the
-  // explicit deliver and refuse calls do not apply in the synchronous mode by
-  // the machine's own design, and there the returned answer is the only thing
-  // there is, so a synchronous refusal had nowhere to go.
+  // every mode (ADR-0004 §2). The explicit deliver and refuse calls do not
+  // apply in the synchronous mode by the machine's own design, and there the
+  // returned answer is the only thing there is, so without this route a
+  // synchronous refusal would have nowhere to go.
 
   const answerRoute: RouteDefinition = API_ROUTES.answer_order;
 
@@ -931,7 +931,7 @@ describe("the answer a handler returned, on its way back", () => {
   });
 
   it("tells a late synchronous handler that the work was not wasted", () => {
-    // The case the addendum names. The merchant started before the deadline
+    // The case ADR-0004 §2 names. The merchant started before the deadline
     // and finished after it: nothing went wrong on their side, the goods
     // exist, and a repeat purchase collects them. Told this was an error, they
     // would go looking for a fault that is not there — and the word is a

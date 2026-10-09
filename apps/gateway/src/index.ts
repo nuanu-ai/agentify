@@ -7,7 +7,7 @@
  * here loads an order, hands it one event, writes down what comes back and
  * carries out the effects. The HTTP surface is mounted from the table in
  * `@nuanu-ai/agentify-contracts` rather than transcribed, so the addresses both sides use
- * cannot come apart (ADR-0003 §7).
+ * cannot come apart.
  *
  * Three ports hold all the IO. Behind them in a deployment sit one Postgres,
  * pg-boss and the official x402 facilitator client (ADR-0003 §6 and §9);
