@@ -26,7 +26,7 @@ const readOrder = (keys: Parameters<typeof readTheOrderInTheShop>[0], orderId: s
 const ratesFor = (url: string, productId: string, place: ShipToLocality) =>
   shippingRatesInTheShop(url, productId, place, fetch);
 const shipmentOf = (keys: Parameters<typeof shipmentInTheShop>[0], wooOrderId: string) =>
-  shipmentInTheShop(keys, wooOrderId, fetch);
+  shipmentInTheShop(keys, wooOrderId, "ord_9", fetch);
 const createParcel = (
   keys: Parameters<typeof createTheParcelInTheShop>[0],
   sold: Parameters<typeof createTheParcelInTheShop>[1],
@@ -532,6 +532,25 @@ describe("the protected product check", () => {
       await stand.close();
       stand = null;
     }
+  });
+
+  it("still sells a download from a shop that will not show its shipping settings", async () => {
+    // The split runs both ways: shipping settings are a parcel's, and a shop
+    // that keeps them from us still sells its files.
+    stand = await shopAnswering((asked) => {
+      if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+      if (asked.url.includes("woocommerce_ship_to")) {
+        return { status: 401, body: { code: "woocommerce_rest_cannot_view" } };
+      }
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: { value: settingFor(asked.url) } };
+      }
+      return { status: 200, body: productDocument() };
+    });
+
+    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
+
+    expect(read).toMatchObject({ ok: true, product: { kind: "download" } });
   });
 
   it("refuses a parcel whose shipping settings the shop will not show", async () => {
@@ -1321,6 +1340,7 @@ describe("reading whether a parcel has shipped", () => {
   const order = (status: string, lines: unknown[] = [{ method_title: "Bali courier" }]) => ({
     id: 30,
     status,
+    transaction_id: "ord_9",
     shipping_lines: lines,
   });
   const fulfilment = (overrides: Record<string, unknown> = {}, meta: unknown[] = []) => ({
@@ -1462,6 +1482,21 @@ describe("reading whether a parcel has shipped", () => {
       body: order("completed", [{ method_title: "Bali courier" }, { method_title: "Express" }]),
     });
     expect(await shipmentOf(connectionTo(stand.url), "30")).toMatchObject({ kind: "unknown" });
+  });
+
+  it("does not take another sale's order for this one", async () => {
+    // The order id is the shop's, and the shop can change under it: a merchant
+    // who connects another shop, or a shop rebuilt and numbering its orders
+    // from the start again. Only an order carrying this sale's identifier is
+    // this sale's, and anything else says nothing about whether it shipped.
+    stand = await shopShowing({
+      status: 200,
+      body: { ...order("completed"), transaction_id: "ord_somebody_else" },
+    });
+
+    expect(await shipmentOf(connectionTo(stand.url), "30")).toMatchObject({ kind: "unknown" });
+    const fields = new URL(stand.asked[0]?.url ?? "", stand.url).searchParams.get("_fields");
+    expect(fields?.split(",")).toContain("transaction_id");
   });
 
   it("waits for an order not completed, and lets go of one the shop ended", async () => {

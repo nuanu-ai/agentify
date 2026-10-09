@@ -449,9 +449,11 @@ export const wooShopsContract = (
         await shops.claimOrder(accounts.other, "ord_3", parcel, NOW);
         await shops.recordOrder("ord_3", { id: "w_ord_3", number: "31", permission: null }, NOW);
 
+        // With where it was sold and when, which is what decides whether it
+        // is still read: in the shop connected now, and not for ever.
         expect(await shops.parcelsToFollow(accounts.one)).toEqual([
-          { orderId: "ord_1", wooOrderId: "w_ord_1" },
-          { orderId: "ord_2", wooOrderId: "w_ord_2" },
+          { orderId: "ord_1", wooOrderId: "w_ord_1", shopOrigin: FACTS.shopOrigin, placedAt: NOW },
+          { orderId: "ord_2", wooOrderId: "w_ord_2", shopOrigin: FACTS.shopOrigin, placedAt: NOW },
         ]);
         expect(await shops.endParcel("ord_1", "shipped", LATER)).toBe(true);
         expect(await shops.endParcel("ord_2", "closed", LATER)).toBe(true);
@@ -464,8 +466,8 @@ export const wooShopsContract = (
           id: "w_ord_1",
           number: "30",
         });
-        expect(await shops.parcelsToFollow(accounts.other)).toEqual([
-          { orderId: "ord_3", wooOrderId: "w_ord_3" },
+        expect((await shops.parcelsToFollow(accounts.other)).map((one) => one.orderId)).toEqual([
+          "ord_3",
         ]);
       });
     });

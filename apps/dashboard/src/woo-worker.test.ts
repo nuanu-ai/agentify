@@ -1455,12 +1455,12 @@ describe("following a parcel to the carrier", () => {
   };
 
   /** A ledger holding one parcel the shop has, on a connected shop. */
-  const withAParcel = async (): Promise<WooShops> => {
+  const withAParcel = async (soldFrom = "https://shop.example.com"): Promise<WooShops> => {
     const shops = memoryWooShops();
     await shops.connect(connection());
     const facts = {
       kind: "parcel" as const,
-      shopOrigin: "https://shop.example.com",
+      shopOrigin: soldFrom,
       connectionRevision: "grant_1",
       merchantItemId: merchantItemIdFor("https://shop.example.com", "28"),
       priceId: "prc_parcel",
@@ -1492,7 +1492,12 @@ describe("following a parcel to the carrier", () => {
     };
   };
 
-  const following = (shops: WooShops, gateway: unknown, read: () => Promise<ShipmentRead>) =>
+  const following = (
+    shops: WooShops,
+    gateway: unknown,
+    read: () => Promise<ShipmentRead>,
+    now = "2026-09-15T12:00:00.000Z",
+  ) =>
     followShipments({
       shops,
       identity: {
@@ -1504,9 +1509,11 @@ describe("following a parcel to the carrier", () => {
         }),
       },
       clientFor: () => gateway as never,
-      now: () => new Date("2026-09-15T12:00:00.000Z"),
-      readShipment: async (_keys, wooOrderId) => {
-        if (wooOrderId !== "30") throw new Error(`asked about ${wooOrderId}`);
+      now: () => new Date(now),
+      readShipment: async (_keys, wooOrderId, orderId) => {
+        if (wooOrderId !== "30" || orderId !== "ord_1") {
+          throw new Error(`asked about ${wooOrderId} for ${orderId}`);
+        }
         return await read();
       },
     });
@@ -1533,9 +1540,7 @@ describe("following a parcel to the carrier", () => {
       await following(shops, gateway.client, async () => read);
 
       expect(gateway.delivered).toStrictEqual([]);
-      expect(await shops.parcelsToFollow("acc_1")).toStrictEqual([
-        { orderId: "ord_1", wooOrderId: "30" },
-      ]);
+      expect(await shops.parcelsToFollow("acc_1")).toHaveLength(1);
     }
   });
 
@@ -1560,6 +1565,16 @@ describe("following a parcel to the carrier", () => {
     );
     expect(await silent.parcelsToFollow("acc_1")).toHaveLength(1);
 
+    // Settling the payment is a moment the gateway asks to be called again after.
+    const settling = await withAParcel();
+    await following(
+      settling,
+      aGateway(() => ({ ok: false, status: 409, why: "settling", code: "settle_in_flight" }))
+        .client,
+      async () => SHIPPED,
+    );
+    expect(await settling.parcelsToFollow("acc_1")).toHaveLength(1);
+
     for (const code of ["order_already_closed", "shipment_already_recorded"]) {
       const refused = await withAParcel();
       const gateway = aGateway(() => ({ ok: false, status: 409, why: "refused", code }));
@@ -1570,6 +1585,45 @@ describe("following a parcel to the carrier", () => {
       expect(gateway.delivered, code).toHaveLength(1);
       expect(await refused.parcelsToFollow("acc_1")).toStrictEqual([]);
     }
+  });
+
+  it("does not read a parcel sold from a shop the account no longer connects", async () => {
+    // The order's number belongs to the shop it was placed in. Read in the
+    // shop connected now, it would be somebody else's order.
+    const shops = await withAParcel("https://old-shop.example.com");
+    const gateway = aGateway();
+    let read = 0;
+
+    await following(shops, gateway.client, async () => {
+      read += 1;
+      return SHIPPED;
+    });
+
+    expect(read).toBe(0);
+    expect(gateway.delivered).toStrictEqual([]);
+  });
+
+  it("lets go of a parcel not completed within thirty days of being placed", async () => {
+    // Thirty days is the longest any card may give to ship (ADR-0033), and
+    // this connector's seven are long past by then: the order is a refund
+    // owed, and the shop is not read for it again.
+    const shops = await withAParcel();
+    const gateway = aGateway();
+    let read = 0;
+
+    await following(
+      shops,
+      gateway.client,
+      async () => {
+        read += 1;
+        return { kind: "waiting" };
+      },
+      "2026-10-14T12:00:01.000Z",
+    );
+
+    expect(read).toBe(0);
+    expect(gateway.delivered).toStrictEqual([]);
+    expect(await shops.parcelsToFollow("acc_1")).toStrictEqual([]);
   });
 
   it("follows nothing of a download, whose order is already delivered", async () => {
@@ -1844,6 +1898,62 @@ describe("the worker that keeps every connected shop served", () => {
     await new Promise((resolve) => setTimeout(resolve, 60));
     await worker.stop();
     expect(gateway.polls()).toBe(0);
+  });
+
+  it("stops at once when it is stopped while parcels are being read", async () => {
+    // A dashboard being shut down waits for this, and the next pass is
+    // minutes away: a stop that waited for it would be killed instead.
+    const shops = memoryWooShops();
+    await shops.connect(connection());
+    await shops.claimOrder(
+      "acc_1",
+      "ord_1",
+      {
+        kind: "parcel",
+        shopOrigin: "https://shop.example.com",
+        connectionRevision: "grant_1",
+        merchantItemId: merchantItemIdFor("https://shop.example.com", "28"),
+        priceId: "prc_parcel",
+        productId: "28",
+        productFingerprint: "accepted-parcel-fingerprint",
+        amount: "25.00",
+        currency: "USD",
+      },
+      new Date(),
+    );
+    await shops.recordOrder("ord_1", { id: "30", number: "30", permission: null }, new Date());
+    let reading = false;
+    const worker = startWooWorker({
+      shops,
+      now: () => new Date(),
+      identity: {
+        byId: async () => ({
+          id: "acc_1",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1" },
+        }),
+      },
+      clientFor: () => countingGateway().client as never,
+      waitSeconds: 0,
+      betweenTurnsMs: 5,
+      shipmentsEveryMs: 60_000,
+      readShipment: async () => {
+        reading = true;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return { kind: "waiting" };
+      },
+    });
+    const until = Date.now() + 2_000;
+    while (!reading && Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(reading).toBe(true);
+
+    const started = Date.now();
+    await worker.stop();
+
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 });
 
