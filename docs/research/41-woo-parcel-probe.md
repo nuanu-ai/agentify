@@ -146,14 +146,14 @@ answered the same.
 The second is that WooCommerce does not write every state the way ADR-0032
 does. ADR-0032 takes a subdivision code without the country in front, one to
 three capitals or digits: `BA`, `CA`, `BE`. WooCommerce 11.1.0 keeps states
-for 69 countries. For 32 of them its codes are of that shape (915 codes,
-Indonesia and the United States among them). For 23 its codes carry the
-country and a hyphen in front, `DE-BE` for Berlin, and Germany, Thailand,
-Bulgaria, Colombia and Bangladesh are among them. For 14 they have other
-shapes: the country and the number run together (`JP13`, `TR34`, `KE01`,
-`UA05`), numbers of WooCommerce's own for China (`CN2`), lower case for
-Morocco, and district names for Hong Kong. Sent `BE`, the German shop refused
-it, as it refused `CA`; sent `DE-BE`, it answered 200.
+for 69 countries. For 32 of them every code is of that shape, Indonesia and
+the United States among them. For 23 every code carries the country and a
+hyphen in front, `DE-BE` for Berlin, and Germany, Thailand, Bulgaria, Colombia
+and Bangladesh are among them. For the other 14 some or all of the codes have
+other shapes: the country and the number run together (`JP13`, `TR34`,
+`KE01`, `UA05`), numbers of WooCommerce's own for China (`CN10`), lower case
+for Morocco, and district names for Hong Kong. Sent `BE` for a German address,
+the shop refused it, as it had refused `CA`; sent `DE-BE`, it answered 200.
 
 What P3 was there to settle does hold: a locality the shop does not ship to is
 a 2xx answer with an empty rate list (New York; Berlin, France and Singapore
