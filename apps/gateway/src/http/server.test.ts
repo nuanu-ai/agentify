@@ -968,6 +968,29 @@ describe("what an agent is told when the money is not settled", () => {
       error: { code: "order_closed_before_it_was_priced", status: "rejected" },
     });
   });
+
+  it("leaves an order closed before it was priced out of the list, and still answers the list", async () => {
+    // Every row of the list is written in a document that carries a sale
+    // price. An order that never had one is not a row with the card's number
+    // standing in for it, and it is not a list that fails for everyone because
+    // of it: it is left out, and read one at a time by its identifier.
+    const { served, harnessed } = await started({ QUOTE_RESPONSE_MS: "10" });
+    const itemId = await publish(served, {
+      ...syncCard,
+      merchant_item_id: "gone",
+      fulfillment: "async",
+      price_check: "handler",
+    });
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "settled") throw new Error("the silent async card sold anyway");
+
+    const listed = await served.call("GET", "/v0/orders", { headers: asMerchant });
+
+    expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+    expect(
+      (listed.body as { orders: { id: string }[] }).orders.map((order) => order.id),
+    ).not.toContain(offered.order.order.id);
+  });
 });
 
 describe("whose purchase it is", () => {
