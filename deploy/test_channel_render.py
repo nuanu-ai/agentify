@@ -34,7 +34,6 @@ IMAGES = "".join(
 COMMON = {
     "AGENTIFY_COOKIE_SECURE": "true",
     "AGENTIFY_AUTH_SECRET": "a" * 32,
-    "AGENTIFY_INVITATION": "b" * 32,
     "TOKEN_HMAC_SECRET": "c" * 32,
     "EMAIL_ENCRYPTION_KEY": "d" * 32,
     "REPORT_IDENTITY_SECRET": "e" * 32,

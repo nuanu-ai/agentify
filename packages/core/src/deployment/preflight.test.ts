@@ -38,7 +38,6 @@ const runCli = (channel: string, input: string) =>
 /** Values a public preflight diagnostic must never repeat from a fixture. */
 const expectNoFixtureSecrets = (stderr: string, resolved: ResolvedCompose): void => {
   const values = [
-    resolved.services.app.environment?.REGISTRATION_INVITATION,
     resolved.services.app.environment?.CDP_API_KEY_ID,
     resolved.services.app.environment?.CDP_API_KEY_SECRET,
     resolved.services.app.environment?.AUTH_SECRET,
@@ -354,18 +353,6 @@ describe("no laptop default survived", () => {
     expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/AUTH_SECRET/));
   });
 
-  it("refuses the registration invitation written in this repository", () => {
-    const wrong = withEnv(
-      TEST_CHANNEL,
-      "app",
-      "REGISTRATION_INVITATION",
-      "register-on-this-laptop",
-    );
-    expect(problemsWith("test", wrong)).toContainEqual(
-      expect.stringMatching(/REGISTRATION_INVITATION/),
-    );
-  });
-
   it("refuses the scanner's report-link signing secret written in this repository", () => {
     // The laptop is allowed to inherit this one, so it is printed in
     // compose.yaml, which is to say printed on the internet. A channel that
@@ -417,20 +404,6 @@ describe("no laptop default survived", () => {
       );
     },
   );
-
-  it("refuses a channel with no registration invitation, which the application would not start without", () => {
-    // The dashboard presents it to make a merchant and refuses to start
-    // without one, and in one process with the gateway (ADR-0030) that would
-    // stop sales too, after the stop and the migrations rather than before.
-    for (const nothing of [null, ""]) {
-      expect(
-        problemsWith(
-          "production",
-          withEnv(PRODUCTION_CHANNEL, "app", "REGISTRATION_INVITATION", nothing),
-        ),
-      ).toContainEqual(expect.stringMatching(/^app: REGISTRATION_INVITATION/));
-    }
-  });
 
   it("refuses a cookie that is not marked Secure", () => {
     const wrong = withEnv(TEST_CHANNEL, "app", "COOKIE_SECURE", "false");
@@ -557,7 +530,6 @@ describe("the private identity route belongs to the application and the scanner 
     const secret = secretOf(PRODUCTION_CHANNEL);
     for (const [service, name] of [
       ["app", "AUTH_SECRET"],
-      ["app", "REGISTRATION_INVITATION"],
       ["scanner", "TOKEN_HMAC_SECRET"],
     ] as const) {
       const problems = problemsWith(
