@@ -18,8 +18,10 @@ import {
   CardSchema,
   type Order,
   type QuoteRequest,
+  type QuoteResponse,
   type ShipTo,
 } from "@nuanu-ai/agentify-contracts";
+import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buyOverHttp,
@@ -31,6 +33,7 @@ import {
   theMerchantKey,
   workUntilStopped,
 } from "../testing/harness.js";
+import { PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
 
 const parcelCard: Card = CardSchema.parse({
   merchant_item_id: "beans-1kg",
@@ -56,7 +59,11 @@ const address: ShipTo = {
 const locality = { country: "ID", state: "BA", city: "Tabanan", postal_code: "82121" };
 
 /** The merchant's price, shipping to the buyer's place included. */
-const priced = { available: true as const, price: { amount: "21.00", currency: "USD" } };
+const priced: QuoteResponse = {
+  available: true,
+  price: { amount: "21.00", currency: "USD" },
+  as_of: "2026-08-26T10:15:00Z",
+};
 
 let open: { harnessed: Harness; served: Served } | null = null;
 
@@ -79,6 +86,39 @@ const started = async () => {
 };
 
 const asMerchant = { authorization: `Bearer ${theMerchantKey("test")}` };
+
+let signed = 0;
+
+/**
+ * Priced with the merchant's worker answering, then paid with it stopped, so
+ * the order the payment hands over is still on the stream to be read rather
+ * than drawn by a worker with nothing to do with it.
+ */
+async function pricedThenPaid(
+  harnessed: Harness,
+  served: Served,
+  itemId: string,
+  body: { readonly priced: unknown; readonly paid: unknown },
+) {
+  const worker = workUntilStopped(harnessed, { onQuote: () => priced });
+  const challenge = await served.call("POST", `/x402/${itemId}/purchase`, { body: body.priced });
+  await worker.stop();
+  const requirements = decodePaymentRequiredHeader(
+    challenge.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+  ).accepts[0];
+  if (requirements === undefined) throw new Error("no payment was offered");
+  signed += 1;
+  return served.call("POST", `/x402/${itemId}/purchase`, {
+    body: body.paid,
+    headers: {
+      [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader({
+        x402Version: 2,
+        accepted: requirements,
+        payload: { signature: `0xparcel${signed}` },
+      }),
+    },
+  });
+}
 
 interface Refused {
   readonly error: { readonly code: string; readonly message: string };
@@ -153,13 +193,10 @@ describe("buying a parcel", () => {
   it("shows the merchant the place before payment, and the whole address once paid", async () => {
     const { harnessed, served, itemId } = await started();
 
-    const paid = await buyOverHttp(
-      harnessed,
-      served,
-      itemId,
-      { onQuote: () => priced },
-      { priced: { params: {}, ship_to: address }, paid: { params: {}, ship_to: address } },
-    );
+    const paid = await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
     expect(paid.status).toBeLessThan(300);
 
     const handedOver = (await drawEverything(harnessed)).flatMap((envelope) =>
@@ -210,13 +247,10 @@ describe("buying a parcel", () => {
   it("pays for the address it was priced for when the payment carries none", async () => {
     const { harnessed, served, itemId } = await started();
 
-    const paid = await buyOverHttp(
-      harnessed,
-      served,
-      itemId,
-      { onQuote: () => priced },
-      { priced: { params: {}, ship_to: address }, paid: { params: {} } },
-    );
+    const paid = await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {} },
+    });
 
     expect(paid.status).toBeLessThan(300);
     const [handedOver] = (await drawEverything(harnessed)).flatMap((envelope) =>

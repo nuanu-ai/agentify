@@ -80,6 +80,7 @@ import { QuoteResponseSchema } from "./quote.js";
 import { ReceiptSchema } from "./receipt.js";
 import { CallErrorSchema, OrderCallResultSchema, PublishResultSchema } from "./results.js";
 import { SellingStateSchema } from "./selling.js";
+import { ShipToSchema } from "./ship-to.js";
 
 /**
  * An order together with the word for where it stands.
@@ -345,10 +346,19 @@ export const PurchaseRequestSchema = z
     // The same dropped key as everywhere this contract parses free-form names;
     // see `PROTOTYPE_KEY_IS_DROPPED` in `param-spec.ts`.
     params: z.record(ParamNameSchema, z.unknown()),
+
+    /**
+     * Where a parcel goes (ADR-0032). Required on the purchase of a card whose
+     * fulfillment is "ship", and refused on any other: only a parcel needs an
+     * address, and one sent with anything else would be a buyer's details
+     * handed over for nothing. Sent again with the payment it must be the one
+     * that was priced, or be left out.
+     */
+    ship_to: ShipToSchema.optional(),
   })
   .meta({
     description:
-      "What an agent supplies to buy: the purchase parameters, empty for a product that needs none. The names are held to the shape a card could have declared and no further — that these values fit this card is checked against that card at the moment of purchase.",
+      "What an agent supplies to buy: the purchase parameters, empty for a product that needs none, and for a parcel the address it goes to. The names are held to the shape a card could have declared and no further — that these values fit this card is checked against that card at the moment of purchase. ship_to is required when the card's fulfillment is \"ship\" and refused on any other card. The merchant's price question receives only its locality; the merchant receives the whole address once the order is paid. Sent again with the payment it must be the same address, or be left out, in which case the payment is for the address that was priced; a different one is refused before the payment is checked, and is a new purchase.",
   });
 
 /**
@@ -804,6 +814,8 @@ export const ERROR_CODES = Object.freeze([
   "payment_already_spent",
   "payment_not_taken",
   "payment_not_verified",
+  "ship_to_changed",
+  "ship_to_does_not_fit",
   "wallet_change_not_announced",
   "wallet_change_nobody_to_tell",
   "wallet_change_raced",

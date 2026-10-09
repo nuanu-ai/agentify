@@ -873,6 +873,21 @@ async function purchase(
   if (presented !== null && presented !== "unreadable" && presented.orderId !== null) {
     const named = await gateway.orderById(presented.orderId);
     if (named !== null) {
+      // The body of a paid request is read for one thing: an address sent
+      // again, which has to be the one the order was priced for (ADR-0032).
+      // One that is not even an address is refused rather than passed over,
+      // or a payment would go through for a place the agent did not mean.
+      if (!held.ok && carriesAnAddress(body)) {
+        return written(
+          response,
+          BAD_REQUEST,
+          refusal(
+            "malformed_body",
+            "this call's body is not the document this call takes, and the problems say which fields and why",
+            { problems: held.problems },
+          ),
+        );
+      }
       // Who sold it, read before the payment is: the answer to a paid purchase
       // carries it, and a read that failed after the money moved would leave a
       // paid agent with an error and no address to come back to.
@@ -885,6 +900,7 @@ async function purchase(
           presented.orderId,
           presented.raw,
           paymentFingerprint(presented.payload, edge.token()),
+          held.ok ? (held.value as PurchaseRequest).ship_to : undefined,
         ),
         seller,
       );
@@ -903,7 +919,11 @@ async function purchase(
     );
   }
 
-  const attempt = await gateway.beginPurchase(itemId, (held.value as PurchaseRequest).params);
+  const attempt = await gateway.beginPurchase(
+    itemId,
+    (held.value as PurchaseRequest).params,
+    (held.value as PurchaseRequest).ship_to,
+  );
   return answerPurchase(
     gateway,
     edge,
@@ -930,6 +950,11 @@ async function purchase(
   );
 }
 
+/** Whether a body that did not read as a purchase was trying to send an address. */
+function carriesAnAddress(body: unknown): boolean {
+  return typeof body === "object" && body !== null && "ship_to" in body;
+}
+
 async function answerPurchase(
   gateway: Gateway,
   edge: PaymentEdge,
@@ -954,6 +979,21 @@ async function answerPurchase(
           "params_do_not_fit",
           "these purchase parameters are not what this product's card asks for, and the problems say which of them and why",
           { problems: attempt.problems },
+        ),
+      );
+
+    case "ship_to_rejected":
+      return written(response, UNPROCESSABLE, refusal("ship_to_does_not_fit", attempt.message));
+
+    case "ship_to_changed":
+      // Settled before the payment was checked, so nothing was taken and the
+      // payment is still the agent's to spend on the purchase it means.
+      return written(
+        response,
+        CONFLICT,
+        refusal(
+          "ship_to_changed",
+          "this payment carries an address other than the one this purchase was priced for: start a new purchase for that address, which is priced for it",
         ),
       );
 

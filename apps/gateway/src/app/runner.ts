@@ -62,6 +62,7 @@ import {
   API_ROUTES,
   type Delivery,
   expandPath,
+  localityOf,
   type Order as OrderDocument,
   type Receipt,
   type SalePrice,
@@ -1251,8 +1252,28 @@ export function orderDocumentOf(record: StoredOrder): OrderDocument {
     params: { ...record.params },
     price,
     ...(record.priceId === null ? {} : { price_id: record.priceId }),
+    ...shipToAsTheMerchantReadsIt(record),
     test: record.order.test,
   };
+}
+
+/**
+ * A parcel's address on the merchant's order, as far as the order has got
+ * (ADR-0032): the place the price was asked for until the order is paid, the
+ * whole address once it is, and only when it was erased once the merchant has
+ * it. Nothing at all on an order that is not a parcel's.
+ */
+function shipToAsTheMerchantReadsIt(record: StoredOrder): {
+  readonly ship_to?: OrderDocument["ship_to"];
+} {
+  const held = record.shipTo;
+  if (held === undefined) {
+    return {};
+  }
+  if ("erasedAt" in held) {
+    return { ship_to: { erased_at: asTimestamp(held.erasedAt) } };
+  }
+  return { ship_to: record.order.timestamps.paidAt === null ? localityOf(held) : held };
 }
 
 /**

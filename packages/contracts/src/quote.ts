@@ -26,6 +26,7 @@
 import { z } from "zod";
 import { ParamNameSchema } from "./param-spec.js";
 import { IdentifierSchema, MoneySchema, TimestampSchema } from "./primitives.js";
+import { ShipToLocalitySchema } from "./ship-to.js";
 
 /**
  * Why we are asking.
@@ -48,6 +49,16 @@ export const QuoteRequestSchema = z.strictObject({
   // Same dropped key as everywhere this contract parses free-form names; see
   // `PROTOTYPE_KEY_IS_DROPPED` in `param-spec.ts`.
   params: z.record(ParamNameSchema, z.unknown()).optional(),
+
+  /**
+   * Where a parcel goes, as its price is asked (ADR-0032): the country, the
+   * state, the city and the postal code, and nothing about who receives it. A
+   * price question reaches a merchant for purchases never made, and a shipping
+   * rate needs the place alone. Present on a parcel's question only; the
+   * answer is the whole price, shipping to this place included, or not
+   * available where the merchant does not ship there.
+   */
+  ship_to: ShipToLocalitySchema.optional(),
 
   /**
    * The identifier of this question, which comes back attached to the order.

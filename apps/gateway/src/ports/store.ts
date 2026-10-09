@@ -45,7 +45,7 @@
  */
 
 import type { MerchantSelling, Order } from "@agentify/core";
-import type { Card, Delivery, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
+import type { Card, Delivery, Receipt, ShipTo, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 
 /** A card as its merchant published it, under the catalog identifier we issued. */
 export interface StoredCard {
@@ -96,6 +96,13 @@ export interface StoredOrder {
   /** The merchant's own identifier for it, so they need no mapping table. */
   readonly merchantItemId: string;
   readonly params: Readonly<Record<string, unknown>>;
+  /**
+   * Where a parcel goes, on a parcel's order and on no other (ADR-0032): the
+   * buyer's whole address while the order holds it, and only the instant it
+   * was erased once the merchant has it. Absent on every other order, and on
+   * every order stored before parcels existed, which is the same fact.
+   */
+  readonly shipTo?: ShipTo | { readonly erasedAt: number };
   /** The price question this order was priced by, where one was asked. */
   readonly priceId: string | null;
   /** What the merchant handed over, once they have. */

@@ -677,6 +677,8 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   malformed_body: false,
   malformed_query: false,
   params_do_not_fit: false,
+  ship_to_changed: false,
+  ship_to_does_not_fit: false,
   call_refused: false,
 
   // Who the caller is, and what they hold. A key is granted or an invitation

@@ -33,6 +33,7 @@ import {
   type ForgottenDashboardKey,
   type HandlerAnswer,
   type IssuedKey,
+  localityOf,
   MERCHANT_FINDINGS,
   type MerchantCard,
   type MerchantCardList,
@@ -56,6 +57,7 @@ import {
   type Seller,
   type SellerName,
   type SellerNameRequest,
+  type ShipTo,
   type WorkerEnvelope,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
@@ -203,6 +205,10 @@ export type PurchaseAttempt =
   | { readonly step: "under_way"; readonly order: StoredOrder }
   | { readonly step: "no_such_item" }
   | { readonly step: "params_rejected"; readonly problems: readonly Problem[] }
+  /** A parcel's purchase without an address, or another purchase with one. */
+  | { readonly step: "ship_to_rejected"; readonly message: string }
+  /** A payment carrying an address other than the one its order was priced for. */
+  | { readonly step: "ship_to_changed" }
   | { readonly step: "not_selling"; readonly message: string }
   /** This payment has already been presented for a different order. */
   | {
@@ -1181,6 +1187,7 @@ export class Gateway {
   async beginPurchase(
     itemId: string,
     params: Readonly<Record<string, unknown>>,
+    shipTo?: ShipTo,
   ): Promise<PurchaseAttempt> {
     const stored = await this.runtime.store.cardById(itemId);
     if (stored === null) {
@@ -1193,6 +1200,24 @@ export class Gateway {
     const fit = purchaseCheckFor(stored.card).safeParse(params);
     if (!fit.success) {
       return { step: "params_rejected", problems: findingsOf(fit.error.issues) };
+    }
+
+    // A parcel goes somewhere, and nothing else needs to (ADR-0032): an address
+    // sent with anything else would be a buyer's details handed over for
+    // nothing, so it is refused rather than dropped.
+    const parcel = stored.card.fulfillment === "ship";
+    if (parcel && shipTo === undefined) {
+      return {
+        step: "ship_to_rejected",
+        message:
+          "this product is a parcel, and its purchase carries ship_to, the address it goes to",
+      };
+    }
+    if (!parcel && shipTo !== undefined) {
+      return {
+        step: "ship_to_rejected",
+        message: "this product is not shipped, so its purchase takes no ship_to",
+      };
     }
 
     const at = this.runtime.clock();
@@ -1237,6 +1262,7 @@ export class Gateway {
       itemId: stored.id,
       merchantItemId: stored.card.merchant_item_id,
       params: { ...params },
+      ...(shipTo === undefined ? {} : { shipTo }),
       priceId: null,
       delivery: null,
       payment: null,
@@ -1270,10 +1296,30 @@ export class Gateway {
     orderId: string,
     payment: string,
     fingerprint: string,
+    shipTo?: ShipTo,
   ): Promise<PurchaseAttempt> {
     const before = await this.runtime.store.orderById(orderId);
     if (before === null) {
       return { step: "no_such_item" };
+    }
+
+    // The address a payment is for is the one its order was priced for
+    // (ADR-0032), and it is settled here, before anything is verified: a
+    // payment that names another is a different purchase, and the agent starts
+    // that one again. A payment that names none pays for the one priced. Once
+    // the merchant has the address and Agentify's copy is erased, the purchase
+    // is under way and there is nothing left here to compare with.
+    if (shipTo !== undefined) {
+      const held = before.shipTo;
+      if (held === undefined) {
+        return {
+          step: "ship_to_rejected",
+          message: "this product is not shipped, so a payment for it carries no ship_to",
+        };
+      }
+      if (!("erasedAt" in held) && !sameAddress(held, shipTo)) {
+        return { step: "ship_to_changed" };
+      }
     }
 
     const price = before.order.price;
@@ -2005,6 +2051,12 @@ export class Gateway {
       payload: {
         merchant_item_id: stored.card.merchant_item_id,
         params: { ...record.params },
+        // Where a parcel goes, as a place and nothing about who (ADR-0032): a
+        // question like this one reaches the merchant for purchases that are
+        // never made, and a shipping rate needs the place alone.
+        ...(record.shipTo === undefined || "erasedAt" in record.shipTo
+          ? {}
+          : { ship_to: localityOf(record.shipTo) }),
         price_id: priceId,
         purpose: "purchase",
         // Until when the price the merchant names will be honoured, which is
@@ -2404,6 +2456,16 @@ function misfitsIn(findings: readonly Problem[]): string {
  * buyer's money with no way for its merchant to finish them, so it is refused
  * with words that say why, until it can be.
  */
+/**
+ * Whether two addresses are the same address: the same fields with the same
+ * words, whatever order they were written in.
+ */
+function sameAddress(one: ShipTo, other: ShipTo): boolean {
+  const written = (address: ShipTo) =>
+    JSON.stringify(Object.entries(address).sort(([a], [b]) => a.localeCompare(b)));
+  return written(one) === written(other);
+}
+
 function notYetSold(card: Card): Problem[] {
   return card.fulfillment === "ship"
     ? [

@@ -37,6 +37,7 @@
 import { z } from "zod";
 import { ParamNameSchema } from "./param-spec.js";
 import { IdentifierSchema, SalePriceSchema } from "./primitives.js";
+import { ErasedShipToSchema, ShipToLocalitySchema, ShipToSchema } from "./ship-to.js";
 
 export const OrderSchema = z.strictObject({
   /**
@@ -73,6 +74,18 @@ export const OrderSchema = z.strictObject({
    * identifier can release it here.
    */
   price_id: IdentifierSchema.optional(),
+
+  /**
+   * Where a parcel goes (ADR-0032), present on a parcel's order and never on
+   * any other, in one of three shapes as the order goes along. Before it is
+   * paid, the locality the price was asked for — the place and nothing about
+   * who. Once paid, the whole address, which the merchant stores before taking
+   * the order on. Once the merchant has it — the order taken on, its shipment
+   * recorded, or the order ended — only when Agentify erased its copy: the
+   * address itself is the merchant's from then on, and the order is not handed
+   * to a handler again.
+   */
+  ship_to: z.union([ShipToSchema, ShipToLocalitySchema, ErasedShipToSchema]).optional(),
 
   /**
    * Whether this is a test order.
