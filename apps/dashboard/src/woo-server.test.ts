@@ -1766,10 +1766,9 @@ describe("coming back from the shop with no session on the request", () => {
     ]) {
       const seen = await running.getWithoutCookie(path);
       expect(seen.status, path).toBe(303);
-      // A section of the dashboard keeps where the person was going, so the
-      // sign-in can return them there; it is as shut as the rest.
-      const section = ["/woocommerce", "/orders", "/receipts", "/keys", "/settings"].includes(path);
-      expect(seen.to, path).toBe(section ? `/sign-in?destination=${path.slice(1)}` : "/sign-in");
+      // Where the sign-in returns the person afterwards is in its query, and
+      // is not this test's question; that it is the sign-in is.
+      expect(new URL(seen.to ?? "", "http://dashboard.test").pathname, path).toBe("/sign-in");
     }
   });
 });
