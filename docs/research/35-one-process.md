@@ -526,10 +526,14 @@ change of behaviour and the ones that change behaviour touch no deployment.
    for a cabinet, leftovers included, and the `purpose` column, and one in the
    cabinet's history drops `merchant_key` and the check beside it; the account
    directory `pnpm approve` reads treats an account as bound when it names a
-   merchant (`apps/dashboard/src/approval-directory.ts`); the three routes, their
-   schemas and their three codes leave the contract, with the gateway's
-   `REGISTRATION_INVITATION`, and `this_call` is always one of the listed keys.
-   The contracts package is released.
+   merchant (`apps/dashboard/src/approval-directory.ts`); four routes leave the
+   contract with their schemas and the codes only they returned — registration,
+   the two at `/v0/keys/dashboard`, and the wallet write at
+   `/v0/payout-wallet`, which only the cabinet's key reached — with the
+   gateway's `REGISTRATION_INVITATION`; the wallet refusals are worded in the
+   cabinet and carry no code; Caddy stops fencing those paths off, since the
+   gateway no longer has them; and `this_call` is always one of the listed
+   keys. The contracts package is released.
 
 The contract version does not move in steps 2 and 4: no SDK worker calls
 these routes or reads these codes, and moving it would stop every installed
@@ -618,6 +622,8 @@ and might describe a registration that change does not leave.
   the rejected "putting shop credentials in Gateway" stays true of the
   gateway's tables.
 - ADR-0026 §4 and its table: the press makes the merchant with no key.
+- ADR-0030: the move is complete, and the wallet write is among what went.
+- `deploy/README.md`: a release section for the two one-way migrations.
 
 ## What was not verified
 

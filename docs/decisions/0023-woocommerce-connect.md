@@ -14,7 +14,7 @@ goods to the buying agent. An order number is not a product.
 ## Decision
 
 **Dashboard keeps the shop key and secret as Woo issued them.** They live on the
-merchant account under the same host boundary as the dashboard key. Woo can
+merchant account, behind the host boundary everything on it is behind. Woo can
 revoke them. The database is a boundary against the network, not the host.
 
 **The callback spends one random grant row and writes the connection atomically.** It is bound to the account and

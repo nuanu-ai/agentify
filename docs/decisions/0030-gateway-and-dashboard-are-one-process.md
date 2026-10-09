@@ -3,7 +3,8 @@
 Date: 2026-09-25
 Status: accepted (the product owner, 2026-09-25, on the direction, with the
 merger as the next step; 2026-09-25, on the name, the wallet message, the
-WooCommerce worker and the contract version, with the recommendations agreed)
+WooCommerce worker and the contract version, with the recommendations agreed;
+the move complete 2026-10-09)
 
 ## Context
 
@@ -43,25 +44,26 @@ the real gateway in `packages/slice`, the portal's examples run as fixtures,
 and the gateway's HTTP test of every `/v0` route. A screen that needs what a
 merchant's code could need still gets a contract route.
 
-**What goes.** The dashboard key, with its renewal, its leftovers, the
-`merchant_key` column, the routes at `/v0/keys/dashboard` and their two
-refusals, so that every key left is one the merchant issued; the route on port
-3003 with `GATEWAY_DASHBOARD_SECRET` and `DASHBOARD_INTERNAL_URL`;
-`wallet_change_unconfirmed`; the dashboard's HTTP client with `GATEWAY_URL`; and
-the public registration route with its invitation, if the registration change
-in flight leaves them. Besides the race, two wallet refusals remain, because
-the mail provider is still outside: nobody to tell, and a message the provider
-did not take while others may have gone out.
+**No key between them.** Every key is one the merchant issued. Nothing is
+made for the dashboard, so there is no renewal, no `merchant_key` column, no
+routes at `/v0/keys/dashboard` and no refusals of their own; no registration
+route and no invitation, since the press is a call inside the process; and no
+wallet write on `/v0`, which only the dashboard's key reached. The route on port
+3003 with `GATEWAY_DASHBOARD_SECRET` and `DASHBOARD_INTERNAL_URL`,
+`wallet_change_unconfirmed`, and the dashboard's HTTP client with `GATEWAY_URL`
+are gone with the network between them. Besides the race, two wallet refusals
+remain, because the mail provider is still outside: nobody to tell, and a
+message the provider did not take while others may have gone out. The
+dashboard words them, and they carry no published code.
 
-**The move** is four pull requests, each leaving `main` releasable: one
+**The move** was four pull requests, each leaving `main` releasable: one
 process with both calls still made over loopback, the only step that touches
 deployment; the gateway telling the dashboard in-process; the dashboard calling the
 application in-process; the key deleted from the contract, the gateway and the
-data. Each of them edits, in the same change, the paragraphs of other
-decisions it makes true, and none earlier; the research note lists them by
-step. The contract version stays, since no SDK worker calls these routes or
-reads these codes: the reasoning of ADR-0006 §2, whose exception this widens
-beyond the payout wallet route.
+data, by two migrations that cannot be undone but by a restore point. The
+research note lists the steps. The contract version stays, since no SDK worker
+calls these routes or reads these codes: the reasoning of ADR-0006 §2, whose
+exception this widens beyond the payout wallet's fields.
 
 ## Consequences
 

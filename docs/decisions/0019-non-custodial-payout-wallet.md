@@ -5,7 +5,8 @@ Status: accepted (the product owner, 2026-09-24, on the wait before a change,
 as the way the money is protected; on the message, which is required and
 announces every change whichever way it is made, since to the gateway every
 change is the same API call; on where the wait holds, on production only;
-2026-09-25, on the dashboard alone setting it)
+2026-09-25, on the dashboard alone setting it; 2026-10-09, the write leaves
+`/v0` with the dashboard's key, ADR-0030)
 
 ## Context
 
@@ -41,16 +42,13 @@ which a merchant's money is ours.
 
 The keys a merchant issues operate the shop; where its money goes is a
 person's act, done on the dashboard's Settings screen. Any key of the
-merchant's reads the address, and a person signed in to the dashboard sets it,
-by a call inside the process the dashboard shares with the gateway (ADR-0030).
-The public door does not route a write to `/v0/payout-wallet`, so a copy of a
-key made for a dashboard, which the dashboard's database holds as issued, sets
-nothing from outside; and the gateway refuses a key made for the
-merchant's own code under `not_a_dashboard_key`, the first address too. The
-dashboard's key ends with ADR-0030, and with it this route's place on `/v0`.
+merchant's reads the address at `GET /v0/payout-wallet`, and only a person
+signed in to the dashboard sets it, by a call inside the process the dashboard
+shares with the gateway (ADR-0030). No route sets it, so no key can, the first
+address included.
 
-The address is a nullable column on the merchant, set and read through
-`/v0/payout-wallet`, held to `EvmAddressSchema` in the contracts: `0x`
+The address is a nullable column on the merchant, held to `EvmAddressSchema`
+in the contracts: `0x`
 and forty hexadecimal characters, accepted in lower case or in the exact
 EIP-55 spelling a wallet shows, refused in between. A mistyped address is
 not a malformed one — it is another perfectly good address belonging to
@@ -88,14 +86,14 @@ the forty-eight hours again, and asking for the address that applies now
 cancels the pending one. Setting and reading the wallet answer with the
 pending address and the moment it takes effect, always present and null
 when nothing is pending, so a caller that reads the old address back does
-not take it for a failed write. These fields, and the refusals this route
-answers with, are added and removed without moving `CONTRACT_VERSION`
-(ADR-0006 §2), as the product owner agreed: no SDK worker reads this
-route's answers or refusals, and moving the version would stop every
-installed worker for words no worker sees. The price is that a merchant's
-own code validating this answer with the strict `PayoutWalletSchema` of an
-already-published contracts package refuses it until that package is
-upgraded.
+not take it for a failed write. These fields are added without moving
+`CONTRACT_VERSION` (ADR-0006 §2), as the product owner agreed: no SDK worker
+reads the wallet, and moving the version would stop every installed worker
+for words no worker sees. The price is that a merchant's own code validating
+this answer with the strict `PayoutWalletSchema` of an already-published
+contracts package refuses it until that package is upgraded. A change the
+gateway would not record is refused in the dashboard's words, on the one
+screen that asks, and carries no published code.
 
 No replacement of an address already set applies unless the merchant has
 been told of it, and every address set is told to them; the first is told
@@ -156,8 +154,7 @@ message cannot be handed over, the key is issued all the same. A key moves
 no money and cannot set the wallet, and a merchant must not be kept from a
 key, their first above all,
 because mail is down. A new key's message names who asked: the account a
-dashboard session was signed in as, or the key a call was made with. A key made for a
-dashboard is announced to nobody. No command at a server's terminal issues a key
+dashboard session was signed in as, or the key a call was made with. No command at a server's terminal issues a key
 (ADR-0014), so every key made for a merchant's own code is issued through the
 gateway's keys route and announced as above, the laptop sandbox's seed aside.
 The pause stays immediate, because it is the act for "stop selling now".
@@ -203,7 +200,7 @@ when mail works, or from the wallet screen, and replacing it waits like any
 other change, so they stop selling until it does. A merchant no account names
 has nobody to tell, so every replacement of its wallet is refused. A merchant is
 made only by a signed-in person's press (ADR-0014), so that is the litter of a
-press whose dashboard failed after the gateway answered, whose key nobody holds,
+press whose dashboard failed after the gateway answered, which no account names,
 or the merchant every database is created with (ADR-0010), for which no
 deployed channel seeds a key and nobody can ask for live approval. A test
 deployment never shows a pending change, so an integrator meets that shape

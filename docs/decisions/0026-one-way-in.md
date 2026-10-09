@@ -154,7 +154,7 @@ public, so that the route exists is no secret. The operator's dashboard stays re
 |---|---|---|---|
 | a sign-in link with no destination | reports and no merchant | the link leads to their latest report, never to the screen that makes a merchant | the latest report |
 | a link to a report or the dashboard from another site | a session | the cookie rides the navigation; nothing is made, and no request but the session's own is finished | that page |
-| the dashboard, the first time | a session, no merchant | one control; its press makes the merchant and key | the seller-name screen |
+| the dashboard, the first time | a session, no merchant | one control; its press makes the merchant | the seller-name screen |
 | `/admin` | anything but a session whose flag the dashboard confirms | a 404 with the site's missing-page page | nowhere |
 | a public scanner page, the dashboard unreachable | anything | the page says it cannot tell who is visiting | that page |
 | a link pressed twice, expired or unknown | no session | refused the same way | the sign-in page |

@@ -227,6 +227,28 @@ ssh agentify-test sudo grep -c '^AGENTIFY_INVITATION=' /etc/agentify/test.env
 On PRODUCTION the same commands run over `ssh agentify`, with
 `production.env` in place of `test.env`.
 
+## The release that deletes the keys made for a dashboard
+
+From this release no key is made for a dashboard and none is kept
+(ADR-0030). Its two migrations are one way. The gateway's deletes every key
+made for a dashboard, the one written at registration and any a renewal left
+behind, and then the column that told the two kinds of key apart. The
+dashboard's drops the key each account row held beside its merchant; every
+account keeps the merchant it names. A merchant's own keys, the ones their
+code calls with, are not touched.
+
+Nothing has to be done on either host before it. The release takes its
+restore point before it migrates, as every release does, and that restore
+point is the way back: an earlier revision expects the columns these
+migrations drop, so going back means restoring the databases to it, not
+releasing the earlier revision onto the migrated ones. A key read off an
+account row in a copy of the database taken before this release, a backup
+included, opens nothing once the release has run, because its row in the
+gateway is gone.
+
+On PRODUCTION this release goes out together with the previous one, which
+leaves those keys on the rows unrenewed. On TEST it can go alone.
+
 ## Releasing to production
 
 A production release starts from `main`. Every change a merchant can see in

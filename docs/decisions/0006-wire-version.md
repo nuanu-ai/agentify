@@ -5,7 +5,8 @@ Status: accepted (autonomous mandate of 2026-08-26; revisited on the product
 owner's word; §5's open vocabularies and documents added 2026-09-28 with
 ADR-0033 and ADR-0034, and opened inside a document's parts on the product
 owner's word, 2026-10-07; §2 held until the first merchant we do not control,
-on the product owner's word, 2026-10-09)
+on the product owner's word, 2026-10-09; §2's exception widened to the routes
+only the dashboard called, with ADR-0030, 2026-10-09)
 
 ## Context
 
@@ -40,10 +41,12 @@ the merchant's routes and is not derived from it.
    successes. Until that day the version stays where it is: a move would stop
    only workers of our own, which are upgraded with the gateway, and each move
    is history every later reader has to learn. Which merchant is the first is
-   the product owner's word, and the change that serves them says so here. The one known exception is the payout-wallet route (ADR-0019),
-   whose answers and refusals no SDK worker reads: its pending fields and any
-   refusal code only it returns leave the version alone, and an older contracts
-   package validating them refuses them until upgraded.
+   the product owner's word, and the change that serves them says so here. The
+   one known exception is what no worker of the SDK reads: the payout wallet's
+   pending fields (ADR-0019), and the routes and refusal codes only the
+   dashboard called, which left the contract with the dashboard's key
+   (ADR-0030). Such a change leaves the version alone, and an older contracts
+   package validating it refuses it until upgraded.
 
 3. **The published SDK remains strict.** A result word riding alongside
    `ok: true` informs rather than directs, but it is still part of the generated
