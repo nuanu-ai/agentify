@@ -77,12 +77,12 @@ failed() {
   else
     transition clear
   fi
-  echo "restore: $step failed before the restored databases were swapped in, so the databases are as they were. gateway, cabinet, scanner and scanner-worker are stopped, and the channel is down. If the cause has passed, run this again; if the dump itself is bad, restore another restore point, or release again the revision the databases hold." >&2
+  echo "restore: $step failed before the restored databases were swapped in, so the databases are as they were. gateway, dashboard, scanner and scanner-worker are stopped, and the channel is down. If the cause has passed, run this again; if the dump itself is bad, restore another restore point, or release again the revision the databases hold." >&2
 }
 trap failed ERR
 transition set restore="$dir" restoring=true
 step="stopping the applications"
-stack stop --timeout 60 gateway cabinet scanner scanner-worker
+stack stop --timeout 60 gateway dashboard scanner scanner-worker
 for database in "${databases[@]}"; do
   step="restoring $database into ${database}_restoring"
   echo "restore: $step, from $dir" >&2
@@ -104,4 +104,4 @@ transition finish "$previous"
 rm -f "$state/cards-before"
 now="no revision"
 [[ -z $previous ]] || now="$(named "$previous")"
-echo "restore: $dir is restored into $restored, and $now is current. What the restore replaced stays as $kept until a release is verified. gateway, cabinet, scanner and scanner-worker are stopped, and the channel is down until a release starts them." >&2
+echo "restore: $dir is restored into $restored, and $now is current. What the restore replaced stays as $kept until a release is verified. gateway, dashboard, scanner and scanner-worker are stopped, and the channel is down until a release starts them." >&2

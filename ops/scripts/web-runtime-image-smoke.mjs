@@ -101,7 +101,7 @@ function webEnvironment(channel, databaseUrl) {
     TOKEN_HMAC_SECRET: "runtime-smoke-hmac-secret-32-bytes-minimum",
     EMAIL_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
     REGISTRATION_ENABLED: isTest ? "false" : "true",
-    CABINET_IDENTITY_URL: "http://identity-not-used-by-runtime-smoke.invalid:3002",
+    DASHBOARD_IDENTITY_URL: "http://identity-not-used-by-runtime-smoke.invalid:3002",
     REPORT_IDENTITY_SECRET: "runtime-smoke-report-identity-secret-32-bytes",
     PRIVACY_EMAIL: `privacy-${label}@example.com`,
     ABUSE_EMAIL: `abuse-${label}@example.com`,

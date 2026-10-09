@@ -156,7 +156,7 @@ export async function createScannerRegistrationIntent(
           request: intent.id,
         });
   } catch {
-    throw new Error("cabinet_identity_unavailable");
+    throw new Error("dashboard_identity_unavailable");
   }
   // The dashboard's walls are the ones that know when they fall; `retry_at` is
   // that moment, and it reaches the caller instead of being thrown away. No
@@ -171,7 +171,7 @@ export async function createScannerRegistrationIntent(
       wall: "unspecified" as const,
     };
   }
-  if (handover.status !== "accepted") throw new Error("cabinet_identity_unavailable");
+  if (handover.status !== "accepted") throw new Error("dashboard_identity_unavailable");
   await db.transaction(async (tx) => {
     await lockScannerEmail(tx, emailLookupHash);
     if (!(await currentRegistrationScan(tx, scan)))
@@ -446,7 +446,6 @@ async function finishIntentInTransaction(
     landingVariant: registrationSession?.firstLandingVariant ?? "unknown",
     properties: {
       role: intent.role,
-      auth_provider: "cabinet_report_identity",
     },
   });
   const previousCategories =

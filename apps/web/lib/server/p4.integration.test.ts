@@ -69,7 +69,7 @@ process.env.PUBLIC_SHARE_ENABLED = "true";
 process.env.REGISTRATION_ENABLED = "false";
 process.env.PARTNER_POSTBACK_ENABLED = "true";
 process.env.REPORT_IDENTITY_SECRET = "r".repeat(32);
-process.env.CABINET_IDENTITY_URL = "http://127.0.0.1:1";
+process.env.DASHBOARD_IDENTITY_URL = "http://127.0.0.1:1";
 
 const migrationsFolder = fileURLToPath(
   new URL("../../../../packages/scanner-database/migrations", import.meta.url),
@@ -361,7 +361,7 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => dashboardServer.listen(0, "127.0.0.1", resolve));
   const address = dashboardServer.address();
   if (!address || typeof address === "string") throw new Error("server_address");
-  process.env.CABINET_IDENTITY_URL = `http://127.0.0.1:${address.port}`;
+  process.env.DASHBOARD_IDENTITY_URL = `http://127.0.0.1:${address.port}`;
 }, 30_000);
 
 afterAll(async () => {
@@ -1206,7 +1206,7 @@ describe("P4 dashboard-owned scanner identity", () => {
         partnerClickId,
         sendReportLink: async () => ({ status: "unavailable" }) as const,
       }),
-    ).rejects.toThrow("cabinet_identity_unavailable");
+    ).rejects.toThrow("dashboard_identity_unavailable");
     expect(
       (
         await db
@@ -2185,7 +2185,7 @@ describe("P4 dashboard-owned scanner identity", () => {
       createScannerRegistrationIntent(scan, registrationBody(email), {
         sendReportLink: async () => ({ status: "unavailable" }) as const,
       }),
-    ).rejects.toThrow("cabinet_identity_unavailable");
+    ).rejects.toThrow("dashboard_identity_unavailable");
 
     // Refused and timed out look the same from here, and a timed-out message
     // may well have been delivered: nothing is given back on a guess.

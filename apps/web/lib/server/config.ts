@@ -26,7 +26,7 @@ const schema = z.object({
   TURNSTILE_ENFORCED: booleanEnv,
   TURNSTILE_SECRET_KEY: optionalNonEmpty(z.string().min(1)),
   TURNSTILE_SITE_KEY: optionalNonEmpty(z.string().min(1)),
-  CABINET_IDENTITY_URL: optionalNonEmpty(z.url({ protocol: /^https?$/ })),
+  DASHBOARD_IDENTITY_URL: optionalNonEmpty(z.url({ protocol: /^https?$/ })),
   REPORT_IDENTITY_SECRET: optionalNonEmpty(z.string().min(32)),
   BENCHMARK_ENABLED: booleanEnv,
   PUBLIC_SHARE_ENABLED: booleanEnv,
@@ -46,15 +46,15 @@ export function getServerConfig() {
   if (parsed.TURNSTILE_ENFORCED && (!parsed.TURNSTILE_SECRET_KEY || !parsed.TURNSTILE_SITE_KEY)) {
     throw new Error("turnstile_enforcement_requires_both_keys");
   }
-  if (Boolean(parsed.CABINET_IDENTITY_URL) !== Boolean(parsed.REPORT_IDENTITY_SECRET)) {
-    throw new Error("cabinet_identity_url_and_secret_required_together");
+  if (Boolean(parsed.DASHBOARD_IDENTITY_URL) !== Boolean(parsed.REPORT_IDENTITY_SECRET)) {
+    throw new Error("dashboard_identity_url_and_secret_required_together");
   }
   if (
     production &&
     parsed.REGISTRATION_ENABLED &&
-    (!parsed.CABINET_IDENTITY_URL || !parsed.REPORT_IDENTITY_SECRET)
+    (!parsed.DASHBOARD_IDENTITY_URL || !parsed.REPORT_IDENTITY_SECRET)
   ) {
-    throw new Error("cabinet_identity_configuration_missing");
+    throw new Error("dashboard_identity_configuration_missing");
   }
   if (production && !parsed.TOKEN_HMAC_SECRET) {
     throw new Error("token_hmac_secret_missing");

@@ -1,6 +1,6 @@
 import { printable } from "./printable.js";
 
-/** The cabinet-owned identity seam used by the private production operator. */
+/** The dashboard-owned identity seam used by the private production operator. */
 export type ApprovalDirectoryEntry =
   | { readonly email: string; readonly binding: "unbound" | "partial" }
   | { readonly email: string; readonly binding: "bound"; readonly merchantId: string };

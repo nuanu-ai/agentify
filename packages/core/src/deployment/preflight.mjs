@@ -49,13 +49,17 @@ const CHANNELS = {
  * variable and supplied the published value.
  */
 const WRITTEN_IN_THIS_REPOSITORY = [
-  ["cabinet", "AUTH_SECRET", "a-sandbox-secret-nobody-should-reuse-anywhere"],
+  ["dashboard", "AUTH_SECRET", "a-sandbox-secret-nobody-should-reuse-anywhere"],
   ["gateway", "REGISTRATION_INVITATION", "register-on-this-laptop"],
   ["scanner", "TOKEN_HMAC_SECRET", "a-sandbox-token-hmac-secret-nobody-should-reuse"],
-  ["cabinet", "REPORT_IDENTITY_SECRET", "a-sandbox-report-identity-secret-nobody-should-reuse"],
+  ["dashboard", "REPORT_IDENTITY_SECRET", "a-sandbox-report-identity-secret-nobody-should-reuse"],
   ["scanner", "REPORT_IDENTITY_SECRET", "a-sandbox-report-identity-secret-nobody-should-reuse"],
-  ["gateway", "GATEWAY_CABINET_SECRET", "a-sandbox-gateway-cabinet-secret-nobody-should-reuse"],
-  ["cabinet", "GATEWAY_CABINET_SECRET", "a-sandbox-gateway-cabinet-secret-nobody-should-reuse"],
+  ["gateway", "GATEWAY_DASHBOARD_SECRET", "a-sandbox-gateway-dashboard-secret-nobody-should-reuse"],
+  [
+    "dashboard",
+    "GATEWAY_DASHBOARD_SECRET",
+    "a-sandbox-gateway-dashboard-secret-nobody-should-reuse",
+  ],
 ];
 
 const envOf = (resolved, service) => resolved.services?.[service]?.environment ?? {};
@@ -83,7 +87,7 @@ export function problemsWith(channel, resolved) {
 
   const problems = [];
   const gateway = envOf(resolved, "gateway");
-  const cabinet = envOf(resolved, "cabinet");
+  const dashboard = envOf(resolved, "dashboard");
   const web = envOf(resolved, "web");
   const scanner = envOf(resolved, "scanner");
 
@@ -126,20 +130,20 @@ export function problemsWith(channel, resolved) {
   equal("web", "AGENTIFY_SURFACE_MODE", web.AGENTIFY_SURFACE_MODE, wanted.surfaceMode);
   equal("web", "AGENTIFY_FRONT_PAGE", web.AGENTIFY_FRONT_PAGE, "scanner_front_page");
 
-  // The cabinet was handed the gateway's pair, compared value for value. A
-  // cabinet on the scripted facilitator beside a gateway on the public one
+  // The dashboard was handed the gateway's pair, compared value for value. A
+  // dashboard on the scripted facilitator beside a gateway on the public one
   // renders a page saying nothing settles here, which is false about a stack
   // that settles on Sepolia — and a probe that asked only whether a banner was
   // present would find one and pass.
-  if (cabinet.PAYMENT_NETWORK !== gateway.PAYMENT_NETWORK) {
+  if (dashboard.PAYMENT_NETWORK !== gateway.PAYMENT_NETWORK) {
     problems.push(
-      `cabinet: PAYMENT_NETWORK is ${JSON.stringify(cabinet.PAYMENT_NETWORK ?? null)} and its ` +
+      `dashboard: PAYMENT_NETWORK is ${JSON.stringify(dashboard.PAYMENT_NETWORK ?? null)} and its ` +
         `gateway's is ${JSON.stringify(gateway.PAYMENT_NETWORK ?? null)}`,
     );
   }
-  if (cabinet.FACILITATOR_URL !== gateway.FACILITATOR_URL) {
+  if (dashboard.FACILITATOR_URL !== gateway.FACILITATOR_URL) {
     problems.push(
-      `cabinet: FACILITATOR_URL is ${JSON.stringify(cabinet.FACILITATOR_URL ?? null)} and its ` +
+      `dashboard: FACILITATOR_URL is ${JSON.stringify(dashboard.FACILITATOR_URL ?? null)} and its ` +
         `gateway's is ${JSON.stringify(gateway.FACILITATOR_URL ?? null)}`,
     );
   }
@@ -182,7 +186,7 @@ export function problemsWith(channel, resolved) {
       for (const service of [
         "migrate",
         "gateway",
-        "cabinet",
+        "dashboard",
         "scanner-migrate",
         "scanner",
         "scanner-worker",
@@ -202,12 +206,12 @@ export function problemsWith(channel, resolved) {
           "CDP_API_KEY_ID",
           "CDP_API_KEY_SECRET",
           "REGISTRATION_INVITATION",
-          "GATEWAY_CABINET_SECRET",
+          "GATEWAY_DASHBOARD_SECRET",
         ],
       ],
       [
-        "cabinet",
-        ["AUTH_SECRET", "MAIL_URL", "MAIL_API_KEY", "MAIL_FROM", "GATEWAY_CABINET_SECRET"],
+        "dashboard",
+        ["AUTH_SECRET", "MAIL_URL", "MAIL_API_KEY", "MAIL_FROM", "GATEWAY_DASHBOARD_SECRET"],
       ],
     ]) {
       for (const name of names) {
@@ -216,26 +220,28 @@ export function problemsWith(channel, resolved) {
         }
       }
     }
-    const mailUrl = cabinet.MAIL_URL;
-    const mailFrom = cabinet.MAIL_FROM;
-    const mailApiKey = cabinet.MAIL_API_KEY;
+    const mailUrl = dashboard.MAIL_URL;
+    const mailFrom = dashboard.MAIL_FROM;
+    const mailApiKey = dashboard.MAIL_API_KEY;
     if (typeof mailUrl !== "string" || mailUrl.trim() === "" || mailUrl === "sandbox:log") {
-      problems.push("cabinet: MAIL_URL needs a live provider to send confirmation and reset links");
+      problems.push(
+        "dashboard: MAIL_URL needs a live provider to send confirmation and reset links",
+      );
     }
     if (typeof mailApiKey !== "string" || mailApiKey.trim() === "") {
-      problems.push("cabinet: MAIL_API_KEY is required for the live mail provider");
+      problems.push("dashboard: MAIL_API_KEY is required for the live mail provider");
     }
     if (
       typeof mailFrom !== "string" ||
       mailFrom.trim() === "" ||
       /@(?:localhost|127\.0\.0\.1)(?:\b|$)/i.test(mailFrom)
     ) {
-      problems.push("cabinet: MAIL_FROM needs a non-local sender for live merchant mail");
+      problems.push("dashboard: MAIL_FROM needs a non-local sender for live merchant mail");
     }
   }
 
   // A merchant comes into being one way: a person opens the link mailed to
-  // their address and presses the one control the cabinet offers (ADR-0014,
+  // their address and presses the one control the dashboard offers (ADR-0014,
   // ADR-0026 §4). A key the gateway seeds at start-up is a second way, kept in
   // a file and written back into the database at every start, so a deployed
   // channel seeds nothing; the laptop's stack is the one that does.
@@ -246,7 +252,7 @@ export function problemsWith(channel, resolved) {
     problems.push(
       "gateway: SANDBOX_MERCHANT_KEY is set, and a deployed channel seeds no merchant: a " +
         "merchant comes into being only when a person opens the link mailed to their address " +
-        "and presses the cabinet's one control. deploy/compose.public.yaml gives it nothing, so " +
+        "and presses the dashboard's one control. deploy/compose.public.yaml gives it nothing, so " +
         "a compose file rendered after it has put a key back",
     );
   }
@@ -261,29 +267,29 @@ export function problemsWith(channel, resolved) {
 
   // The scanner's private identity route (ADR-0026). Every service of a
   // channel shares one network and one database account, so what keeps a
-  // person's identity with the cabinet is the credential that route asks for:
+  // person's identity with the dashboard is the credential that route asks for:
   // the scanner holds it and nothing else does, and it opens no other door.
-  const identity = cabinet.REPORT_IDENTITY_SECRET ?? "";
+  const identity = dashboard.REPORT_IDENTITY_SECRET ?? "";
   if (identity.length < 32) {
     problems.push(
-      "cabinet: REPORT_IDENTITY_SECRET is missing or shorter than 32 characters, so the " +
+      "dashboard: REPORT_IDENTITY_SECRET is missing or shorter than 32 characters, so the " +
         "identity route has no secret to ask for",
     );
   }
-  if (scanner.REPORT_IDENTITY_SECRET !== cabinet.REPORT_IDENTITY_SECRET) {
+  if (scanner.REPORT_IDENTITY_SECRET !== dashboard.REPORT_IDENTITY_SECRET) {
     problems.push(
-      "scanner: REPORT_IDENTITY_SECRET is not the cabinet's, so the cabinet turns the scanner away",
+      "scanner: REPORT_IDENTITY_SECRET is not the dashboard's, so the dashboard turns the scanner away",
     );
   }
-  if (scanner.CABINET_IDENTITY_URL !== "http://cabinet:3002") {
+  if (scanner.DASHBOARD_IDENTITY_URL !== "http://dashboard:3002") {
     problems.push(
-      `scanner: CABINET_IDENTITY_URL is ${JSON.stringify(scanner.CABINET_IDENTITY_URL ?? null)} ` +
-        "and the route is http://cabinet:3002, on this stack's own network",
+      `scanner: DASHBOARD_IDENTITY_URL is ${JSON.stringify(scanner.DASHBOARD_IDENTITY_URL ?? null)} ` +
+        "and the route is http://dashboard:3002, on this stack's own network",
     );
   }
   for (const [service, name] of [
-    ["cabinet", "AUTH_SECRET"],
-    ["cabinet", "REGISTRATION_INVITATION"],
+    ["dashboard", "AUTH_SECRET"],
+    ["dashboard", "REGISTRATION_INVITATION"],
     ["scanner", "TOKEN_HMAC_SECRET"],
   ]) {
     if (identity !== "" && envOf(resolved, service)[name] === identity) {
@@ -294,74 +300,82 @@ export function problemsWith(channel, resolved) {
   }
   for (const [service, definition] of Object.entries(resolved.services ?? {})) {
     const environment = definition?.environment ?? {};
-    if (service !== "cabinet" && service !== "scanner" && "REPORT_IDENTITY_SECRET" in environment) {
+    if (
+      service !== "dashboard" &&
+      service !== "scanner" &&
+      "REPORT_IDENTITY_SECRET" in environment
+    ) {
       problems.push(
-        `${service}: REPORT_IDENTITY_SECRET is handed to a service that is neither the cabinet nor the scanner`,
+        `${service}: REPORT_IDENTITY_SECRET is handed to a service that is neither the dashboard nor the scanner`,
       );
     }
-    if (service !== "scanner" && "CABINET_IDENTITY_URL" in environment) {
+    if (service !== "scanner" && "DASHBOARD_IDENTITY_URL" in environment) {
       problems.push(
-        `${service}: CABINET_IDENTITY_URL is handed to a service that is not the scanner`,
+        `${service}: DASHBOARD_IDENTITY_URL is handed to a service that is not the scanner`,
       );
     }
   }
   // The gateway's internal route (ADR-0019), held to the same proof: the
-  // gateway and the cabinet hold its secret and nothing else does, the secret
+  // gateway and the dashboard hold its secret and nothing else does, the secret
   // opens no other door — the scanner's route above all, which can name
-  // sessions and remove people — and the gateway asks the cabinet's own
+  // sessions and remove people — and the gateway asks the dashboard's own
   // listener on this stack's network and nothing else.
-  const gatewaySecret = cabinet.GATEWAY_CABINET_SECRET ?? "";
+  const gatewaySecret = dashboard.GATEWAY_DASHBOARD_SECRET ?? "";
   if (gatewaySecret.length < 32) {
     problems.push(
-      "cabinet: GATEWAY_CABINET_SECRET is missing or shorter than 32 characters, so the " +
+      "dashboard: GATEWAY_DASHBOARD_SECRET is missing or shorter than 32 characters, so the " +
         "gateway's route has no secret to ask for",
     );
   }
-  if (gateway.GATEWAY_CABINET_SECRET !== cabinet.GATEWAY_CABINET_SECRET) {
+  if (gateway.GATEWAY_DASHBOARD_SECRET !== dashboard.GATEWAY_DASHBOARD_SECRET) {
     problems.push(
-      "gateway: GATEWAY_CABINET_SECRET is not the cabinet's, so the cabinet turns every announcement " +
+      "gateway: GATEWAY_DASHBOARD_SECRET is not the dashboard's, so the dashboard turns every announcement " +
         "away and every wallet change on the live site is refused",
     );
   }
-  if (gateway.CABINET_INTERNAL_URL !== "http://cabinet:3003") {
+  if (gateway.DASHBOARD_INTERNAL_URL !== "http://dashboard:3003") {
     problems.push(
-      `gateway: CABINET_INTERNAL_URL is ${JSON.stringify(gateway.CABINET_INTERNAL_URL ?? null)} ` +
-        "and the route is http://cabinet:3003, on this stack's own network",
+      `gateway: DASHBOARD_INTERNAL_URL is ${JSON.stringify(gateway.DASHBOARD_INTERNAL_URL ?? null)} ` +
+        "and the route is http://dashboard:3003, on this stack's own network",
     );
   }
   for (const [service, name] of [
-    ["cabinet", "REPORT_IDENTITY_SECRET"],
+    ["dashboard", "REPORT_IDENTITY_SECRET"],
     ["scanner", "REPORT_IDENTITY_SECRET"],
-    ["cabinet", "AUTH_SECRET"],
-    ["cabinet", "REGISTRATION_INVITATION"],
-    ["cabinet", "MAIL_API_KEY"],
+    ["dashboard", "AUTH_SECRET"],
+    ["dashboard", "REGISTRATION_INVITATION"],
+    ["dashboard", "MAIL_API_KEY"],
     ["gateway", "REGISTRATION_INVITATION"],
     ["gateway", "CDP_API_KEY_SECRET"],
     ["scanner", "TOKEN_HMAC_SECRET"],
   ]) {
     if (gatewaySecret !== "" && envOf(resolved, service)[name] === gatewaySecret) {
       problems.push(
-        `${service}: GATEWAY_CABINET_SECRET is also its ${name}, and one credential opens one door`,
+        `${service}: GATEWAY_DASHBOARD_SECRET is also its ${name}, and one credential opens one door`,
       );
     }
   }
   for (const [service, definition] of Object.entries(resolved.services ?? {})) {
     const environment = definition?.environment ?? {};
-    if (service !== "gateway" && service !== "cabinet" && "GATEWAY_CABINET_SECRET" in environment) {
+    if (
+      service !== "gateway" &&
+      service !== "dashboard" &&
+      "GATEWAY_DASHBOARD_SECRET" in environment
+    ) {
       problems.push(
-        `${service}: GATEWAY_CABINET_SECRET is handed to a service that is neither the gateway nor the cabinet`,
+        `${service}: GATEWAY_DASHBOARD_SECRET is handed to a service that is neither the gateway nor the dashboard`,
       );
     }
-    if (service !== "gateway" && "CABINET_INTERNAL_URL" in environment) {
+    if (service !== "gateway" && "DASHBOARD_INTERNAL_URL" in environment) {
       problems.push(
-        `${service}: CABINET_INTERNAL_URL is handed to a service that is not the gateway`,
+        `${service}: DASHBOARD_INTERNAL_URL is handed to a service that is not the gateway`,
       );
     }
   }
 
-  if ((resolved.services?.cabinet?.ports ?? []).length > 0) {
+  if ((resolved.services?.dashboard?.ports ?? []).length > 0) {
     problems.push(
-      "cabinet: it publishes a port on the host, and its identity listener answers only inside the stack",
+      "dashboard: it publishes a port on the host, and its identity listener answers only inside the stack",
     );
   }
 
@@ -373,15 +387,15 @@ export function problemsWith(channel, resolved) {
     );
   }
 
-  if (cabinet.COOKIE_SECURE !== "true") {
+  if (dashboard.COOKIE_SECURE !== "true") {
     problems.push(
-      `cabinet: COOKIE_SECURE is ${JSON.stringify(cabinet.COOKIE_SECURE ?? null)} and this stack ` +
+      `dashboard: COOKIE_SECURE is ${JSON.stringify(dashboard.COOKIE_SECURE ?? null)} and this stack ` +
         "is reached over https, so a session cookie without it goes to anybody on the path",
     );
   }
 
   equal("gateway", "PUBLIC_BASE_URL", gateway.PUBLIC_BASE_URL, wanted.origin);
-  equal("cabinet", "PUBLIC_BASE_URL", cabinet.PUBLIC_BASE_URL, wanted.origin);
+  equal("dashboard", "PUBLIC_BASE_URL", dashboard.PUBLIC_BASE_URL, wanted.origin);
   equal("web", "AGENTIFY_SITE_ADDRESS", web.AGENTIFY_SITE_ADDRESS, wanted.siteAddress);
   if (wanted.trustedEdgeCidr !== undefined) {
     equal(

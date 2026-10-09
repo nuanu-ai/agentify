@@ -45,28 +45,30 @@ describe("what the dashboard will not start without", () => {
     // The gateway presents this secret to ask the dashboard to mail a merchant
     // about their money (ADR-0019). Shared with any other door, the holder of
     // that door could send such mail, or the gateway could reach that door.
-    const dedicated = "a-dedicated-gateway-cabinet-secret-nobody-else-holds";
+    const dedicated = "a-dedicated-gateway-dashboard-secret-nobody-else-holds";
     const report = "a-dedicated-private-secret-at-least-32-characters";
 
     expect(loadConfig(given()).gatewayDashboardSecret).toBeNull();
-    expect(loadConfig(given({ GATEWAY_CABINET_SECRET: "" })).gatewayDashboardSecret).toBeNull();
-    expect(loadConfig(given({ GATEWAY_CABINET_SECRET: dedicated })).gatewayDashboardSecret).toBe(
+    expect(loadConfig(given({ GATEWAY_DASHBOARD_SECRET: "" })).gatewayDashboardSecret).toBeNull();
+    expect(loadConfig(given({ GATEWAY_DASHBOARD_SECRET: dedicated })).gatewayDashboardSecret).toBe(
       dedicated,
     );
-    expect(() => loadConfig(given({ GATEWAY_CABINET_SECRET: "x".repeat(31) }))).toThrow(
-      /GATEWAY_CABINET_SECRET/,
+    expect(() => loadConfig(given({ GATEWAY_DASHBOARD_SECRET: "x".repeat(31) }))).toThrow(
+      /GATEWAY_DASHBOARD_SECRET/,
     );
     // Reused as the session secret, the registration invitation or the
     // scanner's report identity secret.
-    expect(() => loadConfig(given({ GATEWAY_CABINET_SECRET: REQUIRED.AUTH_SECRET }))).toThrow(
-      /GATEWAY_CABINET_SECRET/,
+    expect(() => loadConfig(given({ GATEWAY_DASHBOARD_SECRET: REQUIRED.AUTH_SECRET }))).toThrow(
+      /GATEWAY_DASHBOARD_SECRET/,
     );
     expect(() =>
-      loadConfig(given({ GATEWAY_CABINET_SECRET: dedicated, REGISTRATION_INVITATION: dedicated })),
-    ).toThrow(/GATEWAY_CABINET_SECRET/);
+      loadConfig(
+        given({ GATEWAY_DASHBOARD_SECRET: dedicated, REGISTRATION_INVITATION: dedicated }),
+      ),
+    ).toThrow(/GATEWAY_DASHBOARD_SECRET/);
     expect(() =>
-      loadConfig(given({ GATEWAY_CABINET_SECRET: report, REPORT_IDENTITY_SECRET: report })),
-    ).toThrow(/GATEWAY_CABINET_SECRET/);
+      loadConfig(given({ GATEWAY_DASHBOARD_SECRET: report, REPORT_IDENTITY_SECRET: report })),
+    ).toThrow(/GATEWAY_DASHBOARD_SECRET/);
   });
 
   it("requires the existing gateway invitation as a process secret", () => {
@@ -184,7 +186,7 @@ describe("where the dashboard thinks it is mounted", () => {
     for (const bad of ["//evil.com", "//evil.com/dashboard", "/\\evil.com", "/\\\\evil.com"]) {
       expect(() => loadConfig(given({ BASE_PATH: bad })), bad).toThrow(/BASE_PATH/);
     }
-    expect(new URL("/\\evil.com", "https://cabinet.example/").host).toBe("evil.com");
+    expect(new URL("/\\evil.com", "https://dashboard.example/").host).toBe("evil.com");
   });
 
   it("refuses a mount point that is not one", () => {

@@ -39,7 +39,7 @@ COMMON = {
     "TOKEN_HMAC_SECRET": "c" * 32,
     "EMAIL_ENCRYPTION_KEY": "d" * 32,
     "REPORT_IDENTITY_SECRET": "e" * 32,
-    "GATEWAY_CABINET_SECRET": "f" * 32,
+    "GATEWAY_DASHBOARD_SECRET": "f" * 32,
 }
 CHANNELS = {
     "test": {
@@ -85,8 +85,8 @@ class ChannelRender(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def render(self, channel, extra=None):
-        values = {**CHANNELS[channel], **(extra or {})}
+    def render(self, channel, extra=None, without=()):
+        values = {key: value for key, value in {**CHANNELS[channel], **(extra or {})}.items() if key not in without}
         environment = self.dir / f"{channel}.env"
         environment.write_text("".join(f"{key}={value}\n" for key, value in values.items()))
         rendered = subprocess.run(
@@ -140,6 +140,17 @@ class ChannelRender(unittest.TestCase):
                 self.assertEqual(checked.returncode, 65)
                 self.assertIn("gateway: SANDBOX_MERCHANT_KEY", checked.stderr)
                 self.assertNotIn(SEED[channel], checked.stderr + checked.stdout)
+
+    def test_a_channel_whose_file_lacks_the_dashboard_secret_is_refused_by_the_preflight(self):
+        # What a release meets on a host whose file has not named the secret
+        # yet: the render falls back to the value written in this repository,
+        # and the preflight, which runs before anything stops, refuses it.
+        for channel in CHANNELS:
+            with self.subTest(channel=channel):
+                document = self.render(channel, without=("GATEWAY_DASHBOARD_SECRET",))
+                checked = self.preflight(channel, document)
+                self.assertEqual(checked.returncode, 65)
+                self.assertIn("GATEWAY_DASHBOARD_SECRET", checked.stderr)
 
 
 if __name__ == "__main__":

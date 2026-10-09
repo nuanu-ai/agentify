@@ -46,7 +46,7 @@ merchant's code could need still gets a contract route.
 **What goes.** The dashboard key, with its renewal, its leftovers, the
 `merchant_key` column, the routes at `/v0/keys/dashboard` and their two
 refusals, so that every key left is one the merchant issued; the route on port
-3003 with `GATEWAY_CABINET_SECRET` and `CABINET_INTERNAL_URL`;
+3003 with `GATEWAY_DASHBOARD_SECRET` and `DASHBOARD_INTERNAL_URL`;
 `wallet_change_unconfirmed`; the dashboard's HTTP client with `GATEWAY_URL`; and
 the public registration route with its invitation, if the registration change
 in flight leaves them. Besides the race, two wallet refusals remain, because

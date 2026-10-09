@@ -18,7 +18,7 @@ services:
   gateway:
     build: !reset null
     image: "${AGENTIFY_APP_IMAGE:?deploy/images.env names the app image}"
-  cabinet:
+  dashboard:
     build: !reset null
     image: "${AGENTIFY_APP_IMAGE:?deploy/images.env names the app image}"
   web:
