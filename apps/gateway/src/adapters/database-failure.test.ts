@@ -62,6 +62,42 @@ describe("a database failure leaving the store or the queue", () => {
     expect(message).toContain("the store's addOrder");
     expect(message).toContain("23514");
     expect(message).toContain("orders_record_check");
+    expect(message).toContain("table orders");
+  });
+
+  it("keeps the database's code where a caller can branch on it", () => {
+    // The commands that start against a database tell an operator to run the
+    // migrations when a table is missing, and they read the code to know.
+    const missing = new DatabaseError('relation "orders" does not exist', 90, "error");
+    missing.severity = "ERROR";
+    missing.code = "42P01";
+
+    const told = withoutValues(
+      new DrizzleQueryError("select …", [BUYER], missing),
+      "the store's orderById",
+    );
+
+    expect((told as { code?: unknown }).code).toBe("42P01");
+  });
+
+  it("strips a failure pg-boss reports from a worker, which is not an Error at all", () => {
+    // pg-boss spreads the driver's refusal into a plain object before emitting
+    // it, detail and all, so a check for the class would let it through.
+    const reported = { ...refusedRow(), message: "a worker failed", queue: "agentify_reminders" };
+
+    expect(printed(withoutValues(reported, "the queue's own upkeep"))).not.toContain(BUYER);
+  });
+
+  it("strips drizzle's wrapper by its shape, whichever copy of drizzle raised it", () => {
+    // Two copies of the library are installed in this repository; a wrapper
+    // from the other one is not an instance of this one's class.
+    const wrapper = Object.assign(new Error(`Failed query: insert …\nparams: ${BUYER}`), {
+      query: "insert …",
+      params: [BUYER],
+      cause: refusedRow(),
+    });
+
+    expect(printed(withoutValues(wrapper, "the store's addOrder"))).not.toContain(BUYER);
   });
 
   it("leaves out the database's own sentence, which can quote a value too", () => {
