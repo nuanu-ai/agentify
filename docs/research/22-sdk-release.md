@@ -46,7 +46,7 @@ require new versions and a new tag. The package-name move does not change the wi
 `CONTRACT_VERSION` remains `"2"`. Schema identities use
 `urn:agentify:contract:2:*`; schema bodies and payload validation are unchanged.
 Consumers keyed to the previous schema identities must switch directly; no
-alias schemas are published. See [ADR-0025](../decisions/0025-agentify-namespace.md).
+alias schemas are published (ADR-0006 §4).
 
 Commit and push the prepared version, then wait for the `CI` workflow to pass
 on that exact commit. Before making the tag, run the publish workflow manually

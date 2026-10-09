@@ -42,9 +42,7 @@
  * later by a merchant who took an order on and now has the goods or has run
  * out of them. The order machine keeps the same two apart, and in the
  * synchronous mode it is the returned answer that exists and the explicit
- * calls that do not. The addendum of 2026-08-26 to ADR-0004 settles this; §2
- * of that decision, read alone, leaves the synchronous handler with no address
- * at all.
+ * calls that do not. ADR-0004 §2 settles this.
  */
 
 import { z } from "zod";

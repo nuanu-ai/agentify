@@ -257,7 +257,7 @@
       уносит дамп базы PRODUCTION, роли и `production.env` в Hetzner Object
       Storage (пункт выше про ночной бэкап).
 - [x] Одна база → `agentify`, одна учётная запись `agentify`, один проект
-      Compose `agentify` на обоих хостах (ADR-0003, ADR-0024, ADR-0025,
+      Compose `agentify` на обоих хостах (ADR-0003, ADR-0024,
       `docs/research/34-one-database.md`).
 - [x] Переезд хостов на одну базу выполнен 2026-09-25 одноразовым скриптом,
       который потом удалён вместе с разделом ранбука. TEST в 05:54 UTC:

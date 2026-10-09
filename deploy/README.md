@@ -20,7 +20,7 @@ because it is public.
 On each host a channel is one Compose project, `agentify`, so a container is
 `agentify-<service>-1` on either host, and its data is one PostgreSQL database,
 `agentify`, in the volume `agentify-postgres` beside Caddy's `agentify-caddy`
-(ADR-0003, ADR-0025). The files a release uses on a host are these, with
+(ADR-0003). The files a release uses on a host are these, with
 `<channel>` standing for `test` or `production`:
 
 ```text
