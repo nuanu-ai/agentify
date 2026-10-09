@@ -16,7 +16,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { Money, ShipToLocality } from "@nuanu-ai/agentify-contracts";
+import type { Money, ShipTo, ShipToLocality } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
 import {
   decimalOfMinorUnits,
@@ -832,48 +832,9 @@ export const createTheOrderInTheShop = async (
     ],
   };
 
-  let answered: Response;
-  try {
-    answered = await request(`${keys.shopUrl}/wp-json/wc/v3/orders`, {
-      method: "POST",
-      headers: {
-        authorization: basicFor(keys),
-        "content-type": "application/json",
-        accept: "application/json",
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
-    });
-  } catch {
-    // Nothing was decided. It is also the one case where the order may have
-    // reached the shop and the answer may have been lost, which is why the
-    // caller keeps a record of having tried before it tries.
-    return { ok: false, why: "The shop did not answer the order call.", again: true };
-  }
-
-  const said = await answered.text();
-
-  if (!answered.ok) {
-    return {
-      ok: false,
-      why: `The shop refused the order call (HTTP ${answered.status}).`,
-      again: worthAskingAgain(answered.status),
-    };
-  }
-
-  let document: unknown;
-  try {
-    document = JSON.parse(said);
-  } catch {
-    // A successful HTTP status means Woo may already have committed the order.
-    // Without its body we cannot bind that order, and treating this as a final
-    // refusal would release the local claim and let redelivery POST a duplicate.
-    return {
-      ok: false,
-      why: "The shop answered the order call with something that is not JSON.",
-      again: true,
-    };
-  }
+  const posted = await postTheOrder(keys, body, null, request);
+  if (!posted.ok) return posted;
+  const document = posted.document;
 
   const made = document as {
     id?: unknown;
@@ -954,6 +915,257 @@ export const createTheOrderInTheShop = async (
   }
   return { ok: true, id, number, orderKey: made.order_key, downloadId: sold.download.id };
 };
+
+/**
+ * Posts one paid order to the shop and reads its answer as a document.
+ *
+ * Every way of not getting a document back says whether asking again could
+ * land, and only a shop that answered and refused says it could not. A shop
+ * that said yes and sent something unreadable may already hold the order, so
+ * it is not a refusal: it is the case the caller's claim exists for.
+ */
+const postTheOrder = async (
+  keys: ShopKeys,
+  body: Readonly<Record<string, unknown>>,
+  fields: readonly string[] | null,
+  request: WooRequest,
+): Promise<
+  | { readonly ok: true; readonly document: unknown }
+  | { readonly ok: false; readonly why: string; readonly again: boolean }
+> => {
+  const address = new URL(`${keys.shopUrl}/wp-json/wc/v3/orders`);
+  if (fields !== null) address.searchParams.set("_fields", fields.join(","));
+  let answered: Response;
+  let said: string;
+  try {
+    answered = await request(address.toString(), {
+      method: "POST",
+      headers: {
+        authorization: basicFor(keys),
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
+    });
+    said = await answered.text();
+  } catch {
+    // Nothing was decided. It is also the one case where the order may have
+    // reached the shop and the answer may have been lost, which is why the
+    // caller keeps a record of having tried before it tries.
+    return { ok: false, why: "The shop did not answer the order call.", again: true };
+  }
+
+  if (!answered.ok) {
+    return {
+      ok: false,
+      why: `The shop refused the order call (HTTP ${answered.status}).`,
+      again: worthAskingAgain(answered.status),
+    };
+  }
+
+  try {
+    return { ok: true, document: JSON.parse(said) };
+  } catch {
+    // A successful HTTP status means Woo may already have committed the order.
+    // Without its body we cannot bind that order, and treating this as a final
+    // refusal would release the local claim and let redelivery POST a duplicate.
+    return {
+      ok: false,
+      why: "The shop answered the order call with something that is not JSON.",
+      again: true,
+    };
+  }
+};
+
+/** One parcel sold, as the shop has to be told about it. */
+export interface ParcelSold {
+  /** Our own order identifier, which goes onto the shop's order as a thread. */
+  readonly orderId: string;
+  readonly productId: string;
+  /** The merchant's own address, for the reason the download's order carries it. */
+  readonly email: string;
+  /** What the buyer paid: the goods and the shipping together. */
+  readonly paid: Money;
+  /** The goods alone, which is the order's product line. */
+  readonly goods: string;
+  /** The rate the price was paid at, which is the order's shipping line. */
+  readonly rate: ShippingRate;
+  /** Where it goes. Read into the order and not kept anywhere of ours. */
+  readonly address: ShipTo;
+}
+
+export type ParcelMade =
+  | { readonly ok: true; readonly id: string; readonly number: string }
+  | { readonly ok: false; readonly why: string; readonly again: boolean };
+
+/**
+ * A buyer's address as a WooCommerce order's shipping block.
+ *
+ * One name goes whole into the first name, because a name cannot be split
+ * into first and last without guessing (ADR-0032), and a part the address
+ * does not have is written empty, which is how WooCommerce keeps it.
+ */
+const shippingOf = (address: ShipTo): Readonly<Record<string, string>> => ({
+  first_name: address.name,
+  address_1: address.line_one,
+  address_2: address.line_two ?? "",
+  city: address.city,
+  state: address.state ?? "",
+  postcode: address.postal_code ?? "",
+  country: address.country,
+  phone: address.phone_number,
+});
+
+/** The fields of a parcel's order this reads back, and nothing else the shop would echo. */
+const PARCEL_ORDER_FIELDS = [
+  "id",
+  "number",
+  "status",
+  "currency",
+  "total",
+  "total_tax",
+  "payment_method",
+  "transaction_id",
+  "billing",
+  "shipping",
+  "meta_data",
+  "line_items",
+  "shipping_lines",
+] as const;
+
+/**
+ * Creates one paid parcel's order in the merchant's shop: the product at the
+ * goods' price, the buyer's address as its shipping, and the rate the price
+ * was paid at as its shipping line, with the totals adding up to what was paid.
+ *
+ * Paying moves it to `processing`, which is the shop's own word for paid and
+ * waiting to be sent. The billing address is the merchant's own, as on a
+ * download's order, so none of the shop's customer mail reaches the buyer.
+ *
+ * The answer is read back with the address in it and held to what was sent,
+ * because taking the order on erases Agentify's copy (ADR-0032): an order is
+ * not called placed until the shop is seen holding where it goes. The address
+ * is compared where it lies and goes no further — no answer here carries any
+ * of it, and neither does any sentence the shop wrote, which may name it.
+ */
+export const createTheParcelInTheShop = async (
+  keys: ShopKeys,
+  sold: ParcelSold,
+  request: WooRequest = wooRequest,
+): Promise<ParcelMade> => {
+  const productId = Number(sold.productId);
+  if (!Number.isSafeInteger(productId) || productId <= 0) {
+    return {
+      ok: false,
+      why: "This card names no product in a WooCommerce shop, so there is nothing to order.",
+      again: false,
+    };
+  }
+  const shipping = shippingOf(sold.address);
+  const body = {
+    payment_method: "agentify",
+    payment_method_title: "Agentify",
+    transaction_id: sold.orderId,
+    set_paid: true,
+    currency: sold.paid.currency,
+    billing: { email: sold.email },
+    shipping,
+    meta_data: [{ key: "agentify_order_id", value: sold.orderId }],
+    line_items: [{ product_id: productId, quantity: 1, subtotal: sold.goods, total: sold.goods }],
+    shipping_lines: [
+      {
+        method_id: sold.rate.methodId,
+        instance_id: sold.rate.instanceId,
+        method_title: sold.rate.title,
+        total: sold.rate.cost,
+      },
+    ],
+  };
+  const posted = await postTheOrder(keys, body, PARCEL_ORDER_FIELDS, request);
+  if (!posted.ok) return posted;
+
+  const read = ParcelOrderSchema.safeParse(posted.document);
+  if (!read.success) {
+    return {
+      ok: false,
+      why: "The shop accepted the order and its answer is not a whole WooCommerce order.",
+      again: true,
+    };
+  }
+  const made = read.data;
+  const [line, ...moreLines] = made.line_items;
+  const [carriage, ...moreCarriage] = made.shipping_lines;
+  const orderIds = made.meta_data
+    .filter((one) => one.key === "agentify_order_id")
+    .map((one) => one.value);
+  const heldWhereItGoes =
+    made.shipping !== undefined &&
+    Object.entries(shipping).every(([field, value]) => made.shipping?.[field] === value);
+  if (
+    !["processing", "completed"].includes(made.status) ||
+    made.currency !== sold.paid.currency ||
+    made.total !== sold.paid.amount ||
+    made.total_tax !== "0.00" ||
+    line === undefined ||
+    moreLines.length > 0 ||
+    line.product_id !== productId ||
+    line.quantity !== 1 ||
+    line.subtotal !== sold.goods ||
+    line.total !== sold.goods ||
+    line.total_tax !== "0.00" ||
+    carriage === undefined ||
+    moreCarriage.length > 0 ||
+    carriage.method_id !== sold.rate.methodId ||
+    String(carriage.instance_id) !== sold.rate.instanceId ||
+    carriage.total !== sold.rate.cost ||
+    made.payment_method !== "agentify" ||
+    made.transaction_id !== sold.orderId ||
+    made.billing.email !== sold.email ||
+    orderIds.length !== 1 ||
+    orderIds[0] !== sold.orderId ||
+    !heldWhereItGoes
+  ) {
+    return {
+      ok: false,
+      why:
+        "The shop created an order whose paid amount, product, shipping or Agentify correlation" +
+        " does not match the sale.",
+      again: true,
+    };
+  }
+  return { ok: true, id: String(made.id), number: String(made.number) };
+};
+
+const ParcelOrderSchema = z.looseObject({
+  id: z.number().int().positive(),
+  number: z.union([z.string().min(1), z.number().int().positive()]),
+  status: z.string(),
+  currency: z.string(),
+  total: z.string(),
+  total_tax: z.string(),
+  payment_method: z.string(),
+  transaction_id: z.string(),
+  billing: z.looseObject({ email: z.string() }),
+  shipping: z.record(z.string(), z.unknown()).optional(),
+  meta_data: z.array(z.looseObject({ key: z.string(), value: z.unknown() })),
+  line_items: z.array(
+    z.looseObject({
+      product_id: z.number().int().positive(),
+      quantity: z.number().int().positive(),
+      subtotal: z.string(),
+      total: z.string(),
+      total_tax: z.string(),
+    }),
+  ),
+  shipping_lines: z.array(
+    z.looseObject({
+      method_id: z.string(),
+      instance_id: z.union([z.string(), z.number().int()]),
+      total: z.string(),
+    }),
+  ),
+});
 
 /** Reads one operator-named order; it never scans or infers that no order exists. */
 export const readTheOrderInTheShop = async (

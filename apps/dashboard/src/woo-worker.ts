@@ -31,20 +31,25 @@
  */
 
 import { createHash } from "node:crypto";
-import type {
-  HandlerAnswer,
-  Order,
-  QuoteRequest,
-  QuoteResponse,
-  ShipToLocality,
+import {
+  type HandlerAnswer,
+  localityOf,
+  type Order,
+  type QuoteRequest,
+  type QuoteResponse,
+  type ShipToLocality,
+  ShipToSchema,
 } from "@nuanu-ai/agentify-contracts";
 import type { Acting, GatewayClient } from "./gateway.js";
 import type { Identity } from "./identity.js";
 import { amountOfCents, centsOf, productIdFromMerchantItem } from "./woo-catalog.js";
 import {
   createTheOrderInTheShop,
+  createTheParcelInTheShop,
   inspectProductInTheShop,
   type OrderMade,
+  type ParcelMade,
+  type ParcelSold,
   type ProductInspection,
   type RatesRead,
   type ShippingRate,
@@ -86,6 +91,11 @@ export interface Filling {
   ) => Promise<RatesRead>;
   /** How long a price question may take; a deployment passes nothing. */
   readonly quoteWithinMs?: number;
+  /**
+   * How a parcel's paid order is created in the shop, with the real call as
+   * the default. A deployment passes nothing.
+   */
+  readonly placeParcel?: (keys: ShopKeys, sold: ParcelSold) => Promise<ParcelMade>;
   /** Test seam for the durable quote binding; production reads WooShops. */
   readonly quotedProduct?: (
     connection: WooConnection,
@@ -109,10 +119,19 @@ export const fillFromTheShop = async (
   orderEmail: string,
   parts: Filling,
 ): Promise<HandlerAnswer | null> => {
+  // A parcel's order carries where it goes, and nothing else does (ADR-0032).
+  if (order.ship_to !== undefined) {
+    return await fillParcelFromTheShop(order, connection, orderEmail, parts);
+  }
   const place = parts.placeOrder ?? createTheOrderInTheShop;
   const known = await parts.shops.knownOrder(order.id);
   if (known?.kind === "placed") {
     return { delivered: deliveryFromWooPermission(known.permission) };
+  }
+  if (known?.kind === "placed_parcel") {
+    // A download's order bound as a parcel's cannot be written by anything
+    // here; whatever it is, it is not ordered a second time.
+    return unknownCreation(order.id, connection.shopUrl, parts.now());
   }
   if (known?.kind === "precreate_refused") {
     return {
@@ -244,6 +263,9 @@ export const fillFromTheShop = async (
   if (claim.kind === "unknown") {
     return unknownCreation(order.id, connection.shopUrl, claim.attemptedAt);
   }
+  if (claim.kind === "placed_parcel") {
+    return unknownCreation(order.id, connection.shopUrl, parts.now());
+  }
 
   const made = await place(connection, {
     orderId: order.id,
@@ -302,6 +324,186 @@ export const fillFromTheShop = async (
   // A response after POST is not proof that the remote side did not commit.
   // Keep the create_unknown obligation and require exact-id recovery rather
   // than turning a proxy/plugin-rewritten 4xx into a second POST.
+  console.error(`[dashboard] ${order.id} has no verifiable WooCommerce creation result`);
+  return unknownCreation(order.id, connection.shopUrl, parts.now());
+};
+
+/**
+ * What this merchant's handler answers for a paid parcel: the order taken on
+ * once the shop holds a paid order shipping to the buyer, a refusal where
+ * none can be made, or nothing at all while the shop does not answer.
+ *
+ * The product is held to the one the price was bound to, and the shipping to
+ * what was paid above the goods: the shop's cart is asked again for the place
+ * the order pays for, and the rate costing exactly that difference is the
+ * rate that was sold — the cheapest at the price question, and still there if
+ * the shop has added a cheaper one since. Where no rate costs it any more, the
+ * order is refused before anything reaches the shop, and is a refund owed.
+ *
+ * A shop that does not answer is not a refusal here. A parcel has days to
+ * ship, so the order comes round again on its next hand-over and nothing is
+ * written until the shop has said something. Once the shop's answer shows the
+ * order with the address on it, `accepted` lets Agentify erase its copy
+ * (ADR-0032); nothing of the address is written to the ledger or the log on
+ * any path.
+ */
+const fillParcelFromTheShop = async (
+  order: Order,
+  connection: WooConnection,
+  orderEmail: string,
+  parts: Filling,
+): Promise<HandlerAnswer | null> => {
+  const known = await parts.shops.knownOrder(order.id);
+  if (known?.kind === "placed_parcel") return { accepted: {} };
+  if (known?.kind === "precreate_refused") {
+    return {
+      refused: {
+        code: "cannot_fulfill",
+        message: "This paid order was already refused before WooCommerce order creation.",
+      },
+    };
+  }
+  if (known !== null) {
+    return unknownCreation(
+      order.id,
+      connection.shopUrl,
+      known.kind === "unknown" ? known.attemptedAt : parts.now(),
+    );
+  }
+  const address = ShipToSchema.safeParse(order.ship_to);
+  const productId = productIdFromMerchantItem(connection.shopUrl, order.merchant_item_id);
+  const quoted =
+    order.price_id === undefined
+      ? null
+      : parts.quotedProduct === undefined
+        ? await parts.shops.quotedProduct(
+            connection.accountId,
+            order.price_id,
+            order.merchant_item_id,
+          )
+        : await parts.quotedProduct(connection, order.price_id, order.merchant_item_id);
+  const facts: WooOrderFacts = {
+    kind: "parcel",
+    shopOrigin: new URL(connection.shopUrl).origin,
+    connectionRevision: connection.revision,
+    merchantItemId: order.merchant_item_id,
+    priceId: order.price_id ?? "unbound-price-id",
+    productId: productId ?? "",
+    productFingerprint: quoted ?? "unbound-price-id",
+    amount: order.price.amount,
+    currency: order.price.currency,
+  };
+  const refuse = async (message: string): Promise<HandlerAnswer> => {
+    await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
+    return { refused: { code: "cannot_fulfill", message } };
+  };
+  if (!address.success || productId === null) {
+    return await refuse(
+      "This paid parcel's order names no address or no product in this shop, so no WooCommerce order was created.",
+    );
+  }
+  const [inspected, rates] = await Promise.all([
+    productInTheShop(connection, order.merchant_item_id, parts),
+    (
+      parts.shippingRates ??
+      ((keys: WooConnection, id: string, where: ShipToLocality) =>
+        shippingRatesInTheShop(keys.shopUrl, id, where))
+    )(connection, productId, localityOf(address.data)),
+  ]);
+  if (!inspected.ok && inspected.again) {
+    console.error(`[dashboard] ${order.id} waits: ${inspected.why}`);
+    return null;
+  }
+  if (!inspected.ok || inspected.product.kind !== "parcel") {
+    return await refuse(
+      "This shop product is no longer a parcel this connector sells, so no WooCommerce order was created.",
+    );
+  }
+  const product = inspected.product;
+  if (quoted === null || quoted !== product.fingerprint) {
+    return await refuse(
+      "The shop's product changed after this purchase was quoted, so no WooCommerce order was created.",
+    );
+  }
+  if (!rates.ok && rates.again) {
+    console.error(`[dashboard] ${order.id} waits: ${rates.why}`);
+    return null;
+  }
+  const goods = centsOf(product.price.amount);
+  const paid = order.price.currency === product.price.currency ? centsOf(order.price.amount) : null;
+  const rate =
+    !rates.ok || goods === null || paid === null
+      ? undefined
+      : rates.rates.find((one) => centsOf(one.cost) === paid - goods);
+  if (rate === undefined) {
+    return await refuse(
+      "The shop's shipping to this place no longer costs what was paid for it, so no WooCommerce order was created.",
+    );
+  }
+  if (connection.permissions !== "read_write") {
+    console.error(
+      `[dashboard] the shop at ${connection.shopUrl} granted ${JSON.stringify(connection.permissions)}` +
+        " access, which cannot create an order, so every sale on it is refused",
+    );
+    return await refuse(
+      "The shop this product is sold from cannot take an order from us, so nothing was" +
+        " shipped and the sale did not go through.",
+    );
+  }
+
+  const claim = await parts.shops.claimOrder(connection.accountId, order.id, facts, parts.now());
+  if (claim.kind === "placed_parcel") return { accepted: {} };
+  if (claim.kind === "precreate_refused") {
+    return {
+      refused: {
+        code: "cannot_fulfill",
+        message: "This paid order was already refused before WooCommerce order creation.",
+      },
+    };
+  }
+  if (claim.kind !== "ours") {
+    return unknownCreation(
+      order.id,
+      connection.shopUrl,
+      claim.kind === "unknown" ? claim.attemptedAt : parts.now(),
+    );
+  }
+
+  const made = await (parts.placeParcel ?? createTheParcelInTheShop)(connection, {
+    orderId: order.id,
+    productId,
+    email: orderEmail,
+    paid: { amount: order.price.amount, currency: order.price.currency },
+    goods: product.price.amount,
+    rate,
+    address: address.data,
+  });
+  if (made.ok) {
+    const bound = await parts.shops.recordOrder(
+      order.id,
+      { id: made.id, number: made.number, permission: null },
+      parts.now(),
+    );
+    if (bound) return { accepted: {} };
+    const durable = await parts.shops.knownOrder(order.id);
+    if (
+      durable?.kind === "placed_parcel" &&
+      durable.id === made.id &&
+      durable.number === made.number
+    ) {
+      return { accepted: {} };
+    }
+    console.error(
+      `[dashboard] ${order.id} was created in WooCommerce but its order was not durably bound`,
+    );
+    return null;
+  }
+  if (made.again) {
+    // Not answered, and the claim stays: the order may be in the shop, so the
+    // next hand-over meets "we do not know" rather than a clean slate.
+    console.error(`[dashboard] ${order.id} has no usable WooCommerce creation result`);
+    return null;
+  }
   console.error(`[dashboard] ${order.id} has no verifiable WooCommerce creation result`);
   return unknownCreation(order.id, connection.shopUrl, parts.now());
 };

@@ -418,6 +418,23 @@ export const wooShopsContract = (
       });
     });
 
+    it("hands a repeat of a parcel's sale the shop's order, with nothing to deliver", async () => {
+      // A parcel's order in the shop is the whole result: there is no
+      // permission to keep, and the address is never kept. A repeat is the
+      // order taken on again, never a second order.
+      await using(async (shops, accounts) => {
+        const parcel = { ...FACTS, kind: "parcel" as const };
+        await shops.claimOrder(accounts.one, "ord_1", parcel, NOW);
+        expect(
+          await shops.recordOrder("ord_1", { id: "30", number: "30", permission: null }, NOW),
+        ).toBe(true);
+        const placed = { kind: "placed_parcel", id: "30", number: "30" };
+        expect(await shops.claimOrder(accounts.one, "ord_1", parcel, LATER)).toEqual(placed);
+        expect(await shops.knownOrder("ord_1")).toEqual(placed);
+        expect((await shops.recoveryOrder("ord_1"))?.facts.kind).toBe("parcel");
+      });
+    });
+
     it("says it does not know, for an attempt that never came back", async () => {
       await using(async (shops, accounts) => {
         await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);

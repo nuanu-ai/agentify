@@ -1248,9 +1248,11 @@ describe("a parcel's paid order", () => {
       id: "30",
       number: "30",
     });
-    // The ledger keeps the sale and the shop's order, and nothing of where it goes.
-    const kept = JSON.stringify(await shops.recoveryOrder("ord_1"));
-    for (const word of ADDRESS_WORDS) expect(kept).not.toContain(word);
+    // The ledger keeps the sale as a parcel's, which recovery will not try to
+    // make again, with the shop's order and nothing of where it goes.
+    const kept = await shops.recoveryOrder("ord_1");
+    expect(kept?.facts.kind).toBe("parcel");
+    for (const word of ADDRESS_WORDS) expect(JSON.stringify(kept)).not.toContain(word);
   });
 
   it("chooses the rate the price was paid at, not the cheapest of today", async () => {

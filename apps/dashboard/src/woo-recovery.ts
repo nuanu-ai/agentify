@@ -54,6 +54,14 @@ export const recoverWooOrder = async (
 ): Promise<WooRecoveryOutcome> => {
   const record = await parts.shops.recoveryOrder(request.orderId);
   if (record === null) return refused("No recoverable WooCommerce order has that id.");
+  if (record.facts.kind === "parcel") {
+    // Recovery makes or binds an order from what was kept, and nothing of
+    // where a parcel goes is kept (ADR-0032): its address was erased when the
+    // order became a refund owed, and only the buyer has it now.
+    return refused(
+      "A parcel's order is not recovered: its address was erased when it became a refund owed.",
+    );
+  }
   const person = await parts.identity.byId(record.accountId);
   if (person?.merchant === null || person === null) {
     return refused("The WooCommerce order no longer belongs to a merchant account.");
@@ -76,7 +84,9 @@ export const recoverWooOrder = async (
   }
 
   if (record.phase === "placed") {
-    if (record.placed === null) return unresolved("The saved WooCommerce delivery is incomplete.");
+    if (record.placed?.permission == null) {
+      return unresolved("The saved WooCommerce delivery is incomplete.");
+    }
     return deliverSaved(request.orderId, record.placed.id, record.placed.permission, gateway);
   }
 
