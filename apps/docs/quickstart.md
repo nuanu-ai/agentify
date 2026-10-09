@@ -1,6 +1,6 @@
 # The first test sale
 
-*The public contract is versioned; changes arrive in a new package and contract version.*
+*The public contract is versioned; changes arrive in a new package version.*
 
 You are the one writing code here: the business has an API, and you want to
 keep the delivery in your own hands. Below is the path from an empty project to

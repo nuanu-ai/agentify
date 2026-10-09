@@ -2,10 +2,9 @@
 
 Date: 2026-09-28
 Status: accepted (the product owner, 2026-09-28, after two rounds of
-adversarial review). Built so far: the card's shape and the rules the contract
-checks, and the order that records it is a parcel. A parcel's card is refused
-at publishing, with words, until a shipment can be recorded; the rule that its
-merchant has given their site comes with it.
+adversarial review; the contract version held and the listing's example
+output written as every other card's, 2026-10-09). Built on the test channel;
+not yet the refund of a lost parcel, which is ADR-0028's command.
 
 ## Context
 
@@ -54,11 +53,13 @@ word goes on past it. The agent's status document carries the shipment in a
 `shipment` field, while `delivered` stays `null`: nothing reached the agent. On
 a parcel, `rejected` names what an unavailable price answer can mean: out of
 stock, not shipped to that place, or an address missing what the merchant
-needs. The discovery listing shows `ship_to` in its input schema and a shipment
-in its example output, with Agentify's own office address and a carrier's
-published test number. `ship` and `shipped` join the storefront's open
-vocabularies (ADR-0006 §5), and the SDK's contract version moves once for the
-whole mode.
+needs. The discovery listing shows `ship_to` in its input schema, with
+Agentify's own office address as the example, and a recorded shipment in its
+example output, each field standing for what goes there as every card's
+example does: no carrier's published test number could be confirmed, and an
+invented one is not an example. `ship` and `shipped` join the storefront's open
+vocabularies (ADR-0006 §5). The contract version does not move for the mode:
+no merchant we do not control runs a published SDK yet (ADR-0006 §2).
 
 What becomes of the parcel afterwards is between buyer and merchant. When a
 merchant admits a parcel lost, ADR-0028's command records a refund on the
@@ -75,9 +76,7 @@ The agent is told what we know and no more, on money paths already tested. A
 lost parcel is invisible to us until the merchant says so. A shop's own
 courier, with no tracking, can sell through this mode, and `shipped` then rests
 on the merchant's word, as it would on a number nobody checks; a mistyped
-number stays on the order. An order is one parcel of one card. The contract
-version's move stops every worker on an older SDK at start-up, whether it sells
-parcels or not. Duties, restricted goods, returns, an address changed after
+number stays on the order. An order is one parcel of one card. Duties, restricted goods, returns, an address changed after
 payment or mistyped, and pickup points have no handling in this mode for now:
 nothing refuses them, and the price an agent pays does not cover duties the
 recipient may owe at the border, which the portal asks merchants to say in the

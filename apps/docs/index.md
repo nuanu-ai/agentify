@@ -1,6 +1,6 @@
 # Connecting to Agentify
 
-*The public contract is versioned; changes arrive in a new package and contract version.*
+*The public contract is versioned; changes arrive in a new package version.*
 
 You run an online business, and you are deciding whether it is worth putting
 your goods where programs do the buying. This page is what that decision is

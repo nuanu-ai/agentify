@@ -20,7 +20,5 @@ refusals: `ship_to_does_not_fit`, for an address on a product that is not
 shipped or none on one that is, and `ship_to_changed`, for a payment carrying an
 address other than the one the purchase was priced for.
 
-No gateway sells a parcel yet: publishing a parcel's card is refused until a
-shipment can be recorded. Nothing an installed SDK worker reads changes, so the
-contract version stays `"2"`; it moves once, with the shipment, for the whole
-mode.
+The contract version stays `"2"`: it moves only once a merchant we do not
+control runs a published SDK (ADR-0006 §2).

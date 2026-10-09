@@ -75,10 +75,11 @@ import { IdentifierSchema } from "./primitives.js";
  * it cannot parse rather than as a success it cannot name, and reports the
  * call as having gone wrong. So a word added here has to reach those clients
  * before the gateway starts sending it. The version handshake would be the
- * place to catch that. The published SDK keeps this schema strict, and every
- * new word moves `CONTRACT_VERSION` before the gateway sends it. An old worker
- * then stops at its version handshake rather than calling a successful answer
- * unreadable after the merchant has already acted on it (ADR-0006).
+ * place to catch that. The published SDK keeps this schema strict, and once a
+ * merchant we do not control runs it, every new word moves `CONTRACT_VERSION`
+ * before the gateway sends it. An old worker then stops at its version
+ * handshake rather than calling a successful answer unreadable after the
+ * merchant has already acted on it (ADR-0006 §2).
  *
  * `debt_closed_by_delivery` says the delivery deadline had already passed and
  * the goods went out anyway, closing a debt instead of completing a sale; the

@@ -1,6 +1,6 @@
 # The product card
 
-*The public contract is versioned; changes arrive in a new package and contract version.*
+*The public contract is versioned; changes arrive in a new package version.*
 
 Your SDK integration writes and publishes the cards, and remains their source
 when a product or price changes. The whole path, from an empty project to a
