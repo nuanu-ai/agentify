@@ -28,9 +28,9 @@ export interface Person {
  * One list, read wherever a section travels: the gate that names the one a
  * signed-out person was going to, the sign-in form that carries it, the link's
  * stored claim that keeps it, and the redirect that follows it. The
- * navigation's tabs are typed from it. Anything else
- * is the start, so a value a browser sends can lead nowhere this list does not
- * name.
+ * navigation's tabs are typed from it. Anything else a browser sends is the
+ * start, so it can lead nowhere this list does not name; a stored claim naming
+ * anything else opens nothing.
  */
 export const DASHBOARD_DESTINATIONS = [
   "default",
@@ -44,7 +44,7 @@ export const DASHBOARD_DESTINATIONS = [
 
 export type DashboardDestination = (typeof DASHBOARD_DESTINATIONS)[number];
 
-/** A section named by a browser or a stored claim, or the start for anything else. */
+/** A section a browser named, or the start for anything else. */
 export const dashboardDestinationIn = (value: unknown): DashboardDestination =>
   DASHBOARD_DESTINATIONS.find((destination) => destination === value) ?? "default";
 
