@@ -16,7 +16,13 @@
  */
 
 import { createHash } from "node:crypto";
-import type { Money, ShipTo, ShipToLocality } from "@nuanu-ai/agentify-contracts";
+import {
+  type Money,
+  type Shipment,
+  ShipmentSchema,
+  type ShipTo,
+  type ShipToLocality,
+} from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
 import {
   decimalOfMinorUnits,
@@ -1166,6 +1172,146 @@ const ParcelOrderSchema = z.looseObject({
     }),
   ),
 });
+
+/** What the shop says about a parcel's order since it was placed. */
+export type ShipmentRead =
+  /** Not completed yet: paid and waiting to be sent, or held. */
+  | { readonly kind: "waiting" }
+  /** Completed, with the shipment the agent is told of. */
+  | { readonly kind: "shipped"; readonly shipment: Shipment }
+  /** The shop ended it without completing it, or has no such order any more. */
+  | { readonly kind: "ended"; readonly status: string }
+  /** Nothing to go on this time: the shop did not answer, or said something unclear. */
+  | { readonly kind: "unknown"; readonly why: string };
+
+/** The statuses in which a WooCommerce order has ended without being completed. */
+const ENDED_UNSHIPPED = new Set(["cancelled", "refunded", "failed", "trash"]);
+
+const FollowedOrderSchema = z.looseObject({
+  status: z.string(),
+  shipping_lines: z.array(z.looseObject({ method_title: z.string() })),
+});
+
+const FulfilmentsSchema = z.array(
+  z.looseObject({
+    status: z.string(),
+    meta_data: z.array(z.looseObject({ key: z.string(), value: z.unknown() })),
+  }),
+);
+
+/**
+ * Whether a parcel's order in the shop has shipped, and what the agent is
+ * told about the shipment.
+ *
+ * WooCommerce has no "shipped". Completed is the merchant's word that the
+ * order needs nothing more, and it is the one read here (ADR-0023): a parcel
+ * whose order the merchant completes is a parcel they say they sent. The
+ * tracking comes from WooCommerce's own fulfilments where the shop has them
+ * switched on and one is fulfilled; otherwise the carrier the agent is told
+ * of is the shipping method the parcel was paid to go by, and it has no
+ * tracking number, because none was given.
+ *
+ * The order is read with the fields this needs, which leave the address out.
+ * What the merchant wrote is held to the shipment's rules and never cleaned:
+ * a tracking address that is not one is left out, and a carrier or a number
+ * that is not plain text is no shipment to record, so the order waits.
+ */
+export const shipmentInTheShop = async (
+  keys: ShopKeys,
+  wooOrderId: string,
+  request: WooRequest = wooRequest,
+): Promise<ShipmentRead> => {
+  if (!/^\d+$/.test(wooOrderId)) {
+    return { kind: "unknown", why: "The shop's order number is not a WooCommerce order id." };
+  }
+  /** One read of the shop, as its status and its body, or nothing where it did not answer. */
+  const read = async (path: string): Promise<{ status: number; body: unknown } | null> => {
+    try {
+      const response = await request(`${keys.shopUrl}${path}`, {
+        headers: { authorization: basicFor(keys), accept: "application/json" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
+      });
+      const said = await response.text();
+      let body: unknown;
+      try {
+        body = JSON.parse(said);
+      } catch {
+        body = undefined;
+      }
+      return { status: response.status, body };
+    } catch {
+      return null;
+    }
+  };
+  const codeOf = (body: unknown): unknown =>
+    typeof body === "object" && body !== null && "code" in body ? body.code : undefined;
+
+  const order = await read(`/wp-json/wc/v3/orders/${wooOrderId}?_fields=id,status,shipping_lines`);
+  if (order === null) return { kind: "unknown", why: "The shop did not answer." };
+  if (order.status === 404 && codeOf(order.body) === "woocommerce_rest_shop_order_invalid_id") {
+    return { kind: "ended", status: "deleted" };
+  }
+  if (order.status !== 200) {
+    return { kind: "unknown", why: `The shop answered the order read with HTTP ${order.status}.` };
+  }
+  const followed = FollowedOrderSchema.safeParse(order.body);
+  if (!followed.success) {
+    return { kind: "unknown", why: "The shop's order is not one this can read." };
+  }
+  if (ENDED_UNSHIPPED.has(followed.data.status)) {
+    return { kind: "ended", status: followed.data.status };
+  }
+  if (followed.data.status !== "completed") return { kind: "waiting" };
+
+  const fulfilments = await read(`/wp-json/wc/v3/orders/${wooOrderId}/fulfillments`);
+  if (fulfilments === null) return { kind: "unknown", why: "The shop did not answer." };
+  let fulfilled: readonly { readonly key: string; readonly value: unknown }[][] = [];
+  if (fulfilments.status === 404 && codeOf(fulfilments.body) === "rest_no_route") {
+    // WooCommerce's own fulfilments are switched off, which is its default.
+  } else if (fulfilments.status !== 200) {
+    return {
+      kind: "unknown",
+      why: `The shop answered the fulfilments read with HTTP ${fulfilments.status}.`,
+    };
+  } else {
+    const listed = FulfilmentsSchema.safeParse(fulfilments.body);
+    if (!listed.success) {
+      return { kind: "unknown", why: "The shop's fulfilments are not ones this can read." };
+    }
+    fulfilled = listed.data.filter((one) => one.status === "fulfilled").map((one) => one.meta_data);
+  }
+  if (fulfilled.length > 1) {
+    return {
+      kind: "unknown",
+      why: "The order has several fulfilments, and one parcel ships once.",
+    };
+  }
+  const meta = (key: string): string | null => {
+    const value = fulfilled[0]?.find((one) => one.key === key)?.value;
+    return typeof value === "string" && value !== "" ? value : null;
+  };
+  const lines = followed.data.shipping_lines;
+  const carrier =
+    meta("_shipment_provider") ?? (lines.length === 1 ? lines[0]?.method_title : null);
+  if (carrier === null || carrier === undefined) {
+    return { kind: "unknown", why: "The order names no one carrier and no one shipping method." };
+  }
+  const said = ShipmentSchema.safeParse({ carrier, tracking_number: meta("_tracking_number") });
+  if (!said.success) {
+    return {
+      kind: "unknown",
+      why: "The order's carrier or tracking number is not plain text an agent can read.",
+    };
+  }
+  const address = meta("_tracking_url");
+  const followable =
+    address === null ? null : ShipmentSchema.safeParse({ ...said.data, tracking_url: address });
+  return {
+    kind: "shipped",
+    shipment: followable?.success === true ? followable.data : said.data,
+  };
+};
 
 /** Reads one operator-named order; it never scans or infers that no order exists. */
 export const readTheOrderInTheShop = async (

@@ -52,9 +52,11 @@ import {
   type ParcelSold,
   type ProductInspection,
   type RatesRead,
+  type ShipmentRead,
   type ShippingRate,
   type ShopKeys,
   type SoldItem,
+  shipmentInTheShop,
   shippingRatesInTheShop,
 } from "./woo-shop.js";
 import type { WooConnection, WooOrderFacts, WooPermission, WooShops } from "./woo-shops.js";
@@ -559,6 +561,11 @@ export interface WorkingParts extends Filling {
   readonly clientFor: (acting: Acting) => GatewayClient;
   /** How long one poll holds the stream open. */
   readonly waitSeconds?: number;
+  /**
+   * How the shop is asked whether a parcel's order shipped, with the real read
+   * as the default. A deployment passes nothing.
+   */
+  readonly readShipment?: (keys: ShopKeys, wooOrderId: string) => Promise<ShipmentRead>;
 }
 
 /**
@@ -681,7 +688,7 @@ const cheapestCents = (rates: readonly ShippingRate[]): bigint | null => {
  * first bound to, so a second answer naming a different download would be a
  * price for goods no order could be filled against.
  */
-const quoteFromTheShop = async (
+export const quoteFromTheShop = async (
   connection: WooConnection,
   question: QuoteRequest,
   at: Date,
@@ -752,6 +759,81 @@ const productInTheShop = (
 ): Promise<ProductInspection> =>
   (parts.inspectProduct ?? inspectProductInTheShop)(connection, merchantItemId);
 
+/**
+ * One pass over every placed parcel of every connected shop: whatever the
+ * shop now says about each, said onward.
+ *
+ * A parcel's order the merchant marked Completed is recorded with the gateway
+ * as shipped, which is the last thing the agent is told about it (ADR-0033),
+ * and is followed no further. One the shop ended without completing it is
+ * let go without a word to the gateway: it never shipped, and its time to ship
+ * running out makes it a refund owed. A gateway that did not answer is asked
+ * again on the next pass; one that refused the shipment has said all it will,
+ * and the refusal is in the merchant's log. Everything else waits.
+ *
+ * Shops are read one after another and a shop that throws is passed over for
+ * this pass, so one merchant's broken shop does not keep another's parcels
+ * from shipping.
+ */
+export const followShipments = async (
+  parts: Pick<WorkingParts, "shops" | "identity" | "clientFor" | "now" | "readShipment">,
+): Promise<void> => {
+  const read = parts.readShipment ?? shipmentInTheShop;
+  for (const connection of await parts.shops.connections()) {
+    try {
+      const parcels = await parts.shops.parcelsToFollow(connection.accountId);
+      if (parcels.length === 0) continue;
+      const person = await parts.identity.byId(connection.accountId);
+      if (person === null || person.merchant === null) continue;
+      const gateway = parts.clientFor({ merchantId: person.merchant.id, email: person.email });
+      for (const parcel of parcels) {
+        const said = await read(connection, parcel.wooOrderId);
+        if (said.kind === "waiting") continue;
+        if (said.kind === "unknown") {
+          console.error(`[dashboard] whether ${parcel.orderId} shipped is not known: ${said.why}`);
+          continue;
+        }
+        if (said.kind === "ended") {
+          await parts.shops.endParcel(parcel.orderId, "closed", parts.now());
+          console.error(
+            `[dashboard] the shop ended ${parcel.orderId} as ${said.status} without completing it;` +
+              " it is followed no further and becomes a refund owed when its time to ship runs out",
+          );
+          continue;
+        }
+        const recorded = await gateway.deliverOrder(parcel.orderId, said.shipment);
+        if (recorded.ok || recorded.code === "shipment_already_recorded") {
+          await parts.shops.endParcel(parcel.orderId, "shipped", parts.now());
+          continue;
+        }
+        if (recorded.status === 0) {
+          console.error(`[dashboard] the shipment of ${parcel.orderId} waits: ${recorded.why}`);
+          continue;
+        }
+        await parts.shops.endParcel(parcel.orderId, "closed", parts.now());
+        console.error(
+          `[dashboard] the gateway refused the shipment of ${parcel.orderId}` +
+            ` (${recorded.code ?? recorded.status}): ${recorded.why}`,
+        );
+      }
+    } catch (thrown) {
+      console.error(
+        `[dashboard] the parcels of ${connection.accountId} could not be followed this time`,
+        thrown,
+      );
+    }
+  }
+};
+
+/**
+ * How often every placed parcel is read again.
+ *
+ * A parcel ships in days, and the agent learns of it within minutes of the
+ * merchant marking it Completed. Every pass is one read per parcel waiting,
+ * against the merchant's own shop, so it is not made more often than that.
+ */
+const SHIPMENTS_EVERY_MS = 5 * 60_000;
+
 /** A worker turning, until it is stopped. */
 export interface WooWorker {
   stop(): Promise<void>;
@@ -777,7 +859,7 @@ const BETWEEN_TURNS_MS = 1_000;
  * back to work that is still waiting.
  */
 export const startWooWorker = (
-  parts: WorkingParts & { readonly betweenTurnsMs?: number },
+  parts: WorkingParts & { readonly betweenTurnsMs?: number; readonly shipmentsEveryMs?: number },
 ): WooWorker => {
   const turning = new Map<string, { stop: () => void; done: Promise<void> }>();
   let running = true;
@@ -857,12 +939,36 @@ export const startWooWorker = (
     }
   })();
 
+  // Its own loop, never a step of a shop's turn: a turn answers price
+  // questions inside seconds, and reading every waiting parcel of a slow shop
+  // would hold those up.
+  let wake: (() => void) | null = null;
+  const following = (async () => {
+    while (running) {
+      try {
+        await followShipments(parts);
+      } catch (thrown) {
+        console.error("[dashboard] the parcels could not be followed this time", thrown);
+      }
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, parts.shipmentsEveryMs ?? SHIPMENTS_EVERY_MS);
+        wake = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+      });
+      wake = null;
+    }
+  })();
+
   return {
     async stop() {
       running = false;
+      (wake as (() => void) | null)?.();
       for (const loop of turning.values()) {
         loop.stop();
       }
+      await following;
       await watching;
       await Promise.all([...turning.values()].map((loop) => loop.done));
       turning.clear();

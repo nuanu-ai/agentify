@@ -17,7 +17,11 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { buyOverHttp, type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
-import type { AgentOrderStatus, Order } from "@nuanu-ai/agentify-contracts";
+import {
+  type AgentOrderStatus,
+  type Order,
+  QuoteRequestSchema,
+} from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { gatewayFor } from "./gateway.js";
 import { cardsFromTheShop, merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
@@ -1688,8 +1692,14 @@ describe("a parcel the whole way through, against a real gateway", () => {
       served,
       itemId,
       {
+        // The harness hands the question over as the envelope carried it.
         onQuote: (question) =>
-          quoteFromTheShop(connected, question, new Date(harnessed.now()), parts),
+          quoteFromTheShop(
+            connected,
+            QuoteRequestSchema.parse(question),
+            new Date(harnessed.now()),
+            parts,
+          ),
         onOrder: async (order) =>
           (await fillFromTheShop(order, connected, MERCHANT_EMAIL, parts)) ??
           Promise.reject(new Error("the shop was not asked")),
