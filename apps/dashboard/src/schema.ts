@@ -35,38 +35,49 @@ const moment = (column: string) =>
  * fit inside that gap.
  *
  * There is no password here. `dashboard_credentials` remains only because it is
- * part of Better Auth's complete schema and is empty after cutover. The two
- * merchant columns are ours rather than the component's.
+ * part of Better Auth's complete schema and is empty after cutover. The
+ * merchant column is ours rather than the component's.
  */
-export const accounts = pgTable("dashboard_accounts", {
-  id: text("id").primaryKey(),
-  /** Lower case and trimmed, which is how it is written and how it is read. */
-  email: text("email").notNull().unique(),
-  /** True only after a one-time link for this address is consumed. */
-  emailVerified: boolean("email_verified").notNull().default(false),
-  /**
-   * The name this merchant's products are sold under.
-   *
-   * The component asks every person for a name and this is the name there is:
-   * an account is one merchant (ADR-0014), so the person and the shopfront are
-   * not two things here yet. It is empty on an account made by the command,
-   * which is handed a merchant that already exists and is never told what it
-   * calls itself.
-   */
-  name: text("name").notNull().default(""),
-  createdAt: moment("created_at"),
-  updatedAt: moment("updated_at"),
-  /** Null while an authenticated P1 waits to attach their first merchant. */
-  merchantId: text("merchant_id"),
-  /**
-   * Whether this person may read the operator's dashboard (ADR-0026 §6).
-   *
-   * Off on every row a sign-in writes. Only `pnpm account operator` moves it,
-   * at the server's terminal, and nothing a browser sends can: the component
-   * is told the field is closed to input, and no page writes it.
-   */
-  operator: boolean("operator").notNull().default(false),
-});
+export const accounts = pgTable(
+  "dashboard_accounts",
+  {
+    id: text("id").primaryKey(),
+    /** Lower case and trimmed, which is how it is written and how it is read. */
+    email: text("email").notNull().unique(),
+    /** True only after a one-time link for this address is consumed. */
+    emailVerified: boolean("email_verified").notNull().default(false),
+    /**
+     * The name this merchant's products are sold under.
+     *
+     * The component asks every person for a name and this is the name there is:
+     * an account is one merchant (ADR-0014), so the person and the shopfront are
+     * not two things here yet. It is empty on an account made by the command,
+     * which is handed a merchant that already exists and is never told what it
+     * calls itself.
+     */
+    name: text("name").notNull().default(""),
+    createdAt: moment("created_at"),
+    updatedAt: moment("updated_at"),
+    /** Null while an authenticated P1 waits to attach their first merchant. */
+    merchantId: text("merchant_id"),
+    /**
+     * Whether this person may read the operator's dashboard (ADR-0026 §6).
+     *
+     * Off on every row a sign-in writes. Only `pnpm account operator` moves it,
+     * at the server's terminal, and nothing a browser sends can: the component
+     * is told the field is closed to input, and no page writes it.
+     */
+    operator: boolean("operator").notNull().default(false),
+  },
+  // An account names a merchant or none; an empty identifier is neither, and the
+  // code reading a row refuses one rather than guessing.
+  (table) => [
+    check(
+      "dashboard_accounts_merchant_named",
+      sql`${table.merchantId} is null or ${table.merchantId} <> ''`,
+    ),
+  ],
+);
 
 /**
  * One person signed in on one device.

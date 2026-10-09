@@ -257,6 +257,10 @@ if (databaseUrl === null) {
          where table_schema = 'public' and table_name = 'dashboard_accounts'`,
       );
       expect(columns.rows.map((column) => column.column_name)).not.toContain("merchant_key");
+      // An empty identifier is neither a merchant nor none, and stays refused.
+      await expect(
+        pool.query(`update dashboard_accounts set merchant_id = '' where id = 'person_reader'`),
+      ).rejects.toMatchObject({ code: "23514", constraint: "dashboard_accounts_merchant_named" });
     });
 
     it("makes nobody an operator when the flag arrives on accounts already there", async () => {

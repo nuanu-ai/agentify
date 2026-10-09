@@ -1,5 +1,5 @@
 {
-  "id": "f35ae00e-8440-4a8c-8867-4db5a2172a26",
+  "id": "1a54dc9a-8ec3-48b0-b05b-118b87c0a495",
   "prevId": "dd732626-79db-4c72-b868-22b7632bc006",
   "version": "7",
   "dialect": "postgresql",
@@ -71,7 +71,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "dashboard_accounts_merchant_named": {
+          "name": "dashboard_accounts_merchant_named",
+          "value": "\"dashboard_accounts\".\"merchant_id\" is null or \"dashboard_accounts\".\"merchant_id\" <> ''"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.dashboard_credentials": {
