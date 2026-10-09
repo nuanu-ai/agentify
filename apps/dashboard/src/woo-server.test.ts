@@ -421,7 +421,7 @@ describe("the shop screens are behind the sign-in", () => {
     const running = await started();
     const seen = await running.get("/woocommerce");
     expect(seen.status).toBe(303);
-    expect(seen.to).toBe("/sign-in");
+    expect(seen.to).toBe("/sign-in?destination=woocommerce");
   });
 });
 
@@ -1766,12 +1766,10 @@ describe("coming back from the shop with no session on the request", () => {
     ]) {
       const seen = await running.getWithoutCookie(path);
       expect(seen.status, path).toBe(303);
-      // The wallet screen alone keeps where the person was going, because a
-      // message about a payout wallet change links there (ADR-0019); it is as
-      // shut as the rest.
-      expect(seen.to, path).toBe(
-        path === "/settings" ? "/sign-in?destination=settings" : "/sign-in",
-      );
+      // A section of the dashboard keeps where the person was going, so the
+      // sign-in can return them there; it is as shut as the rest.
+      const section = ["/woocommerce", "/orders", "/receipts", "/keys", "/settings"].includes(path);
+      expect(seen.to, path).toBe(section ? `/sign-in?destination=${path.slice(1)}` : "/sign-in");
     }
   });
 });
