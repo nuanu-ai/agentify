@@ -36,6 +36,7 @@
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { inspect } from "node:util";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
@@ -627,6 +628,77 @@ if (databaseUrl === null) {
       await queue.finish(A, first[0]?.handle ?? "");
 
       expect(await queue.draw(A, 10, 200)).toStrictEqual([]);
+    });
+
+    describe("a failure in the database", () => {
+      // ADR-0032: no error leaving the store or the queue carries a value bound
+      // to its statement. Each test makes the database refuse a write that has
+      // a buyer's parameter in it, the way a constraint, a full disk or a type
+      // error would, and reads everything a log line could print of what came
+      // back. The refusal quotes the failing row, and the library above it
+      // repeats every parameter, so the parameter is there to leak.
+      const BUYER = "buyer-ord-7c1e05@example.com";
+      const MARKER = "refused-by-this-test";
+      const printed = (thrown: unknown): string =>
+        inspect(thrown, { depth: Number.POSITIVE_INFINITY, showHidden: true });
+
+      async function refusedBy(table: string, column: string, work: () => Promise<unknown>) {
+        await pool.query(
+          `alter table ${table} add constraint refuse_the_marker check (${column}::text not like '%${MARKER}%')`,
+        );
+        try {
+          return await work().then(
+            () => {
+              throw new Error("the database took a write this test made it refuse");
+            },
+            (thrown: unknown) => thrown,
+          );
+        } finally {
+          await pool.query(`alter table ${table} drop constraint refuse_the_marker`);
+        }
+      }
+
+      it("leaves the store saying what failed, and without the buyer's parameters", async () => {
+        const published = await store.publishCard(
+          A,
+          { ...syncCard, merchant_item_id: "refused", params: { email: { type: "string" } } },
+          now,
+        );
+        const offered = await gateway.beginPurchase(published.id, { email: BUYER });
+        if (offered.step !== "pay") throw new Error("no price was offered");
+        const orderId = offered.order.order.id;
+
+        const thrown = await refusedBy("orders", "record", () =>
+          store.withOrder(orderId, (found) => ({
+            save: { ...found, params: { ...found.params, note: MARKER } },
+            result: null,
+          })),
+        );
+
+        expect(printed(thrown)).not.toContain(BUYER);
+        expect((thrown as Error).message).toContain("refuse_the_marker");
+      });
+
+      it("leaves the queue saying what failed, and without the envelope's contents", async () => {
+        const thrown = await refusedBy(`${QUEUE_SCHEMA}.job`, "data", () =>
+          // The refusal quotes the row only so far into each value, so what is
+          // to leak goes where it is quoted: the envelope's identifier, the
+          // first key of its document.
+          queue.publish(A, {
+            kind: "order_event",
+            id: `env_${BUYER}_${MARKER}`,
+            sent_at: "2026-08-26T12:00:00.000Z",
+            payload: {
+              type: "order.unpaid_after_confirmation",
+              order_id: "ord_db_refused",
+              at: "2026-08-26T12:00:00.000Z",
+            },
+          }),
+        );
+
+        expect(printed(thrown)).not.toContain(BUYER);
+        expect((thrown as Error).message).toContain("refuse_the_marker");
+      });
     });
 
     it("walks a whole synchronous sale through the database and the queue", async () => {
