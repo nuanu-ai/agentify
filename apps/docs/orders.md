@@ -1,6 +1,6 @@
 # Orders and fulfillment modes
 
-*The public contract is versioned; changes arrive in a new package and contract version.*
+*The public contract is versioned; changes arrive in a new package version.*
 
 You are writing the handler that takes paid orders and gives out the goods for
 them. Everything it rests on is collected here: what the fulfillment modes are,
@@ -11,15 +11,19 @@ on [What can go wrong](/failures).
 
 ::: warning The public surface is versioned
 Use this page with the package version you installed. Function or field changes
-arrive in a new package and contract version before the gateway speaks them.
+arrive in a new package version, and the test channel can speak them before it
+is released. During the pilot the contract version does not move with each of
+them, so keep the package current: a release older than the gateway can read a
+word it does not know as a failure.
 :::
 
-## Three fulfillment modes
+## Fulfillment modes
 
 | Mode | `fulfillment` | The goods reach the agent | When the buyer is charged | If you refused or stayed silent |
 | --- | --- | --- | --- | --- |
 | Synchronous | `'sync'` | in the answer to the purchase | after your delivery, as the last step | the purchase did not happen and the buyer spent nothing |
 | Asynchronous | `'async'` | later, by a separate call | at the moment of purchase, before your delivery | the money is with you and the buyer has no goods: the order is marked as needing a refund |
+| A parcel | `'ship'` | with a carrier, once you record the shipment by a separate call or your handler's answer | at the moment of purchase, before your shipment | as in the asynchronous mode |
 | With confirmation | `'confirm'` | later, by a separate call | right after your confirmation | before the confirmation nothing is charged; after it, as in the asynchronous mode |
 
 The mode is declared in the card, and the agent knows it before it pays. The
@@ -27,9 +31,9 @@ product decides which mode it is. The SDK handler supports synchronous and
 asynchronous delivery; delivery by a message is not available. What the moment
 of charging means for the owner of the business is on [Money](/money).
 
-The third mode is not open during the pilot. A card cannot be published with
-`fulfillment: 'confirm'`, because the request that asks you to confirm has no
-shape on the wire yet and your handler could not tell one from a paid order.
+The confirmation mode is not open during the pilot. A card cannot be published
+with `fulfillment: 'confirm'`, because the request that asks you to confirm has
+no shape on the wire yet and your handler could not tell one from a paid order.
 The rest of this page describes the mode as it is designed.
 
 From the agent's side the asynchronous mode and the confirmation mode look
@@ -37,10 +41,10 @@ almost the same: the order and the way of watching where it stands are
 identical. What differs is the moment of charging, and one consequence of
 confirming — a confirmed order acquires a deadline for the agent to pay it in.
 
-The three sequences below are the same three rows of the table, in the order
-the steps actually happen. The payment network is left off them: what reaches
-you is the order, and where the charge falls relative to your delivery is what
-the modes differ by.
+The sequences below are the rows of the table, in the order the steps actually
+happen; a parcel's is the asynchronous one with a shipment at its end. The
+payment network is left off them: what reaches you is the order, and where the
+charge falls relative to your delivery is what the modes differ by.
 
 ### Synchronous
 
@@ -78,6 +82,39 @@ sequenceDiagram
     A->>C: asks where the order stands
     C-->>A: the goods
 ```
+
+### A parcel
+
+A parcel's order is the asynchronous one with an address in it and a shipment
+at its end; what its card asks of you is on [Cards](/cards).
+
+Your price handler is asked the price for the place the parcel goes: its
+`ship_to` holds the country and the city, the state and the postal code where
+the buyer gave them, and nothing about who receives it. Once the order is
+paid, it reaches your handler with the whole address in `ship_to`: a name, the
+first line, the city, the country and a phone number, and the second line, the
+state and the postal code where the buyer gave them. Store the address before you
+take the order on: the moment you answer `accepted`, or the order ends without
+you, Agentify erases its copy, the order reads only `ship_to: { erased_at }`
+from then on, and it is never handed to your handler again.
+
+When a carrier has the parcel, record the shipment with the same `deliver` call
+that delivers goods elsewhere, or answer your handler with it as `delivered`. Its body is the shipment: `carrier`, the carrier's
+name or your own courier; `tracking_number`, or `null` where the parcel has
+none; and, where you have them, `tracking_url`, an https page on the carrier's
+domain, and `estimated_delivery` with its `earliest` and `latest` instants.
+Agentify records the instant the call arrived. The same shipment sent again
+succeeds, and a different one is refused with `shipment_already_recorded`: a
+recorded shipment cannot be changed. The agent then reads the order as
+`shipped`, with your shipment beside it, and that is the last word Agentify has
+about the parcel — whether it arrives is between you and the buyer, who is
+pointed at your shop's site.
+
+A parcel not shipped by its deadline leaves you owing a refund, as goods not
+delivered in time do, and a shipment recorded late still closes that debt. A
+parcel you admit lost cannot be refunded through Agentify yet: the operator's
+command that records such a refund is not built. That is why a parcel sells on
+the test channel only, where the money is not real.
 
 ### With confirmation
 
@@ -275,9 +312,9 @@ by then, the call returns an error — there is nothing left to deliver against.
 `deliver`, `refuse` and `accept` hand their failures back rather than throwing
 them, in the envelope every call on this surface answers in: `ok` is false, and
 one `error` beside it carries a code to branch on, a sentence a person can read,
-and `retryable`. Seven codes are promised to mean one thing each — four sent by
+and `retryable`. Eight codes are promised to mean one thing each — five sent by
 us, and three the tools produce when no answer they could read came back. The
-set is open beyond those seven, so a case nobody anticipated reaches you in its
+set is open beyond those eight, so a case nobody anticipated reaches you in its
 own words instead of being flattened into the nearest of these.
 
 | Code | When it arrives | Repeating could change it |
@@ -286,6 +323,7 @@ own words instead of being flattened into the nearest of these.
 | `order_already_closed` | the order reached an ending that no call reopens | no |
 | `not_applicable_in_mode` | the call or the answer does not exist for this card's mode: in the synchronous one the handler's own answer is the delivery or the refusal, so there is no delivering or refusing separately and no taking the order on | no |
 | `delivery_does_not_match_card` | the goods are not the ones the card declares, so nothing was written down | while the order still stands, yes — with different goods; once it has ended, no |
+| `shipment_already_recorded` | a parcel's shipment is already recorded on this order, and a recorded shipment cannot be changed; the same shipment sent again succeeds | no |
 | `call_did_not_reach_us` | the call never got to us, so it did nothing | yes |
 | `answer_not_understood` | it reached us and came back in words these tools cannot read, so it may well have done its work | yes |
 | `outcome_unknown` | it went out into silence — the connection broke, the process was stopped mid-call — and nothing on your side knows whether it landed | yes |
@@ -300,7 +338,7 @@ means a third thing by the flag: that call arrived and was understood, so the
 same goods sent again get the same refusal, and the retry that helps is the one
 carrying what the card declares.
 
-A code outside those seven is the ordinary case rather than the exception, and
+A code outside those eight is the ordinary case rather than the exception, and
 the commonest one is us refusing the call at the door: a key we will not take,
 an order identifier that names nothing, a body we could not read. Those come
 back under our own word for the refusal — `not_authorised`, `no_such_order` —
@@ -540,6 +578,7 @@ becomes a refund you owe.
 | Situation | Where the money is | What the agent sees |
 | --- | --- | --- |
 | You delivered the goods | with you | the goods, the price they were charged and whether the money behind it was real |
+| You recorded a parcel's shipment | with you | that the parcel shipped, with your carrier, your tracking number and when you recorded it — and nothing after: whether it arrives is between you and the buyer |
 | There is none, the parameters did not fit, the payment failed its check — or you refused in the synchronous mode | never moved | a refusal, and that the purchase did not happen; where the refusal was yours, your code and your message arrive with it |
 | You answered "I will not deliver" to a request to confirm | never moved | a refusal with your code and your message, and that nothing was charged |
 | Time ran out: no confirmation, no payment or no synchronous delivery arrived | never moved | the order was closed on its deadline |

@@ -26,9 +26,10 @@
  */
 
 import { z } from "zod";
-import { SellerSchema, SellerSiteSchema, ServiceNameSchema } from "./card.js";
+import { SellerSchema, ServiceNameSchema } from "./card.js";
 import { EvmAddressSchema } from "./evm-address.js";
 import { IdentifierSchema, TimestampSchema } from "./primitives.js";
+import { SellerSiteSchema } from "./seller-site.js";
 
 /**
  * What a merchant calls one of their keys, so one of several can be told from
@@ -458,9 +459,10 @@ export const PendingPayoutWalletSchema = z
  * without this they would ask again, or conclude the change was lost.
  *
  * It is carried without moving `CONTRACT_VERSION`, which is the one known
- * exception to the rule that a new required field moves it (ADR-0006 §2): no
- * worker of the SDK reads this route, so the version would stop every
- * installed worker for a field none of them sees. What that costs is that a
+ * exception to the rule that a new required field moves it once a merchant we
+ * do not control runs the SDK (ADR-0006 §2): no worker of the SDK reads this
+ * route, so the version would stop every installed worker for a field none of
+ * them sees. What that costs is that a
  * merchant's own code holding this schema from an older release of this
  * package refuses the answer until the package is upgraded.
  */

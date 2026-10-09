@@ -2526,7 +2526,7 @@ describe("the receipts screen", () => {
     const row = text.slice(text.indexOf("rcp_"));
     expect(row.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/g)).toHaveLength(3);
     // And the summary above the table, which counts what it can stand behind.
-    expect(text).toContain("Delivered 1 of 1 receipt");
+    expect(text).toContain("Delivered or shipped 1 of 1 receipt");
   });
 
   it("marks money that was never real as what it is", async () => {

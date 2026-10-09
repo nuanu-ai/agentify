@@ -36,7 +36,10 @@ import {
 import { notPlainTextIn, type TextLines } from "./plain-text.js";
 import type { Money } from "./primitives.js";
 import { IdentifierSchema, MoneySchema, OpenWordSchema, TimestampSchema } from "./primitives.js";
+import { SellerSiteSchema } from "./seller-site.js";
 import { SellingStateSchema } from "./selling.js";
+import { type ShipTo, ShipToSchema } from "./ship-to.js";
+import { ShipmentSchema } from "./shipment.js";
 
 /**
  * When the product reaches the agent, and therefore when the money moves.
@@ -172,48 +175,6 @@ export const ServiceNameSchema = listedText("service name")
  * the next time the merchant sets their name.
  */
 const StoredServiceNameSchema = listedText("service name");
-
-/** What a seller's site is held to, said once for the refusal and the description. */
-const SITE_FORM =
-  "a seller's site is https:// and the domain name of their shop, with nothing after it — https://shop.example: in lower case, a domain name rather than an IP address or a single word, with no path, query, fragment, port, credentials or trailing slash";
-
-/**
- * The address of a seller's own shop on the web, where an agent takes what an
- * order cannot answer (ADR-0034).
- *
- * Only an https origin, because anything after the host — a path, a query, a
- * fragment — would be text of the merchant's own reaching every agent that
- * reads the card, which is the free text the decision refuses. The host is the
- * one part the merchant writes, so it is held to a domain name too: labels of
- * letters, digits and hyphens, at most 253 characters, ending in a zone of
- * letters or a punycode one. Anything a URL parser keeps as written would
- * otherwise pass — a sentence of instructions, a quote, a host of any length —
- * and so would a single word or an IP address, which point other people's
- * agents into somebody's own network. What the pattern cannot do is tell a
- * public name from a private one: a name in a zone kept for local networks,
- * or a public one whose address leads into one, passes, and so does a
- * hyphenated sentence of up to 253 characters that is a valid name. That is
- * why an agent is told, beside every site, that nobody checked it.
- *
- * The pattern says all that in a form the JSON Schema export keeps, and it
- * stops the check where it fails, so an address copied with a slash at the end
- * is told once. Asking the URL parser for the origin catches what the pattern
- * leaves, such as a punycode label the parser would write differently.
- */
-export const SellerSiteSchema = z
-  .string()
-  .regex(
-    /^https:\/\/(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{1,59})$/,
-    { message: SITE_FORM, abort: true },
-  )
-  .refine((site) => {
-    try {
-      return new URL(site).origin === site;
-    } catch {
-      return false;
-    }
-  }, SITE_FORM)
-  .meta({ description: `The https origin of a seller's own shop: ${SITE_FORM}.` });
 
 /**
  * Who sells, as an agent reads it beside a product and on an order: the name
@@ -868,13 +829,12 @@ export const purchaseCheckFor = (card: Card): z.ZodType =>
   paramSpecToValidator(card.params ?? {}, "purchase");
 
 /**
- * The check this card's delivery is held to. A parcel is not delivered with
- * goods at all: its shipment is recorded instead, so nothing passes this.
+ * The check this card's delivery is held to: the goods its `result` declared,
+ * or for a parcel, which is not delivered with goods at all, its shipment
+ * (ADR-0033).
  */
 export const deliveryCheckFor = (card: Card): z.ZodType =>
-  card.result === undefined
-    ? z.never({ error: "a parcel is not delivered with goods: its shipment is recorded instead" })
-    : paramSpecToValidator(card.result, "delivery");
+  card.result === undefined ? ShipmentSchema : paramSpecToValidator(card.result, "delivery");
 
 /**
  * The fields of a card as an agent reads it in a catalog.
@@ -1135,7 +1095,10 @@ export interface BazaarDeclaration {
   readonly input: Record<string, unknown>;
   /** The JSON Schema that body is held to, derived from the card's `params`. */
   readonly inputSchema: Record<string, unknown>;
-  /** An example of what arrives on delivery, derived from the card's `result`. */
+  /**
+   * An example of what arrives on delivery, derived from the card's `result`,
+   * or for a parcel the record of its shipment.
+   */
   readonly output: { readonly example: Record<string, unknown> };
 }
 
@@ -1174,8 +1137,43 @@ const exampleOf = (spec: ParamSpec): Record<string, unknown> =>
  * inside another schema, so that one line is dropped here.
  */
 const purchaseBodySchemaOf = (card: Card): Record<string, unknown> => {
-  const { $schema, ...body } = z.toJSONSchema(z.strictObject({ params: purchaseCheckFor(card) }));
+  const { $schema, ...body } = z.toJSONSchema(
+    z.strictObject({
+      params: purchaseCheckFor(card),
+      // A parcel's purchase carries the address it goes to beside its
+      // parameters, and is refused without one (ADR-0032).
+      ...(card.fulfillment === "ship" ? { ship_to: ShipToSchema } : {}),
+    }),
+  );
   return body as Record<string, unknown>;
+};
+
+/**
+ * Where a parcel goes, in a listing's example purchase: Agentify's own office
+ * (ADR-0033), with the number taken out of it, so that the example is a real
+ * place and nobody's home.
+ */
+const LISTED_SHIP_TO: ShipTo = {
+  name: "Agentify",
+  line_one: "Jl. Raya Kediri, Beraban",
+  line_two: "Nuanu Creative City",
+  city: "Tabanan",
+  state: "BA",
+  postal_code: "82121",
+  country: "ID",
+  phone_number: "+62 000 0000 0000",
+};
+
+/**
+ * A recorded shipment, in a listing's example output, written as every other
+ * example here is: each field standing for what goes there, and the instant
+ * at the start of the clock rather than a date that looks like one somebody
+ * shipped on.
+ */
+const LISTED_SHIPMENT = {
+  carrier: "string",
+  tracking_number: "string",
+  shipped_at: "1970-01-01T00:00:00Z",
 };
 
 /**
@@ -1200,11 +1198,14 @@ export const bazaarDeclarationOf = (
     ...(listed.serviceName === null ? {} : { serviceName: listed.serviceName }),
     ...(card.tags === undefined ? {} : { tags: card.tags }),
   },
-  input: { params: exampleOf(card.params ?? {}) },
+  input: {
+    params: exampleOf(card.params ?? {}),
+    ...(card.fulfillment === "ship" ? { ship_to: LISTED_SHIP_TO } : {}),
+  },
   inputSchema: purchaseBodySchemaOf(card),
-  // A parcel's output is the record of its shipment, which is not built yet;
-  // until it is, no parcel's card can be published, so no listing reaches here.
-  output: { example: exampleOf(card.result ?? {}) },
+  // What the agent is finally handed: the goods the card declared, or for a
+  // parcel the record of its shipment.
+  output: { example: card.result === undefined ? LISTED_SHIPMENT : exampleOf(card.result) },
 });
 
 /**

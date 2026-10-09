@@ -39,9 +39,21 @@ export const ORDER_STATUSES = Object.freeze([
   /** Success: the product is with the agent and the money with the merchant. */
   "delivered",
   /**
+   * A parcel is with the carrier and the money with the merchant (ADR-0033):
+   * the merchant recorded its shipment, and the order carries it. This is the
+   * last word Agentify has about the parcel. Every protocol that uses the word
+   * goes on past it to arrival; this one does not, because nothing reports an
+   * arrival here, and whether the parcel arrives is between the buyer and the
+   * merchant — the seller's site is where to ask.
+   */
+  "shipped",
+  /**
    * Closed and the buyer's money is known not to have moved — the product was
    * gone, the parameters did not fit, the payment failed its check, the charge
-   * came back failed, or a synchronous handler refused.
+   * came back failed, or a synchronous handler refused. On a parcel, the
+   * product being gone is the merchant's price answer saying "not available",
+   * which there can also mean the merchant does not ship to that place or the
+   * address lacks what their carrier needs.
    *
    * The machine keeps a finer distinction behind this word: a purchase that
    * never reached the merchant and one the merchant refused are separate

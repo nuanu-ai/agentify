@@ -57,6 +57,7 @@ import {
   type Seller,
   type SellerName,
   type SellerNameRequest,
+  ShipmentSchema,
   type ShipTo,
   type WorkerEnvelope,
   type WorkerPollResponse,
@@ -455,14 +456,31 @@ export class Gateway {
     // missing.
     const missing = missingFrom(merchant, this.runtime.config);
 
+    // A parcel's card asks one more thing of its merchant, which no other card
+    // does: the site of their shop, where a buyer takes a parcel that did not
+    // arrive (ADR-0033). It is asked here, with the card in hand, rather than
+    // by the rule every card meets — and of the card as it was sent, so that a
+    // card refused for something else still names it, rather than leave the
+    // merchant to learn it on the next round trip.
+    const parcelWithoutSite =
+      typeof body === "object" &&
+      body !== null &&
+      (body as { readonly fulfillment?: unknown }).fulfillment === "ship" &&
+      merchant.sellerSite === null
+        ? [MERCHANT_FINDINGS.NO_SELLER_SITE]
+        : [];
     if (!parsed.success) {
-      return cardRejected(missing, findingsOf(parsed.error.issues));
+      return cardRejected([...missing, ...parcelWithoutSite], findingsOf(parsed.error.issues));
     }
     // Asked of the card as it was opened out, so a price written as one string
     // meets the same rule in the same words as one written as two fields.
-    const unsellable = [...priceProblemsOf(parsed.data.price), ...notYetSold(parsed.data)];
-    if (missing.length > 0 || unsellable.length > 0) {
-      return cardRejected(missing, unsellable);
+    const unsellable = [
+      ...priceProblemsOf(parsed.data.price),
+      ...notOnThisChannel(parsed.data, this.runtime.config.environment),
+    ];
+    const lacking = [...missing, ...parcelWithoutSite];
+    if (lacking.length > 0 || unsellable.length > 0) {
+      return cardRejected(lacking, unsellable);
     }
 
     const stored = await this.runtime.store.publishCard(
@@ -1955,6 +1973,8 @@ export class Gateway {
     // by design, so repeats are ordinary rather than a sign of trouble, and
     // making one of them fail would turn a merchant's safe retry into a
     // failure branch on a sale that went through.
+    //
+    const parcel = record.order.mode.parcel === true;
     const misfit =
       record.delivery === null ? await this.#goodsAgainstTheCard(record, delivery) : null;
     if (misfit !== null) {
@@ -1965,9 +1985,39 @@ export class Gateway {
     const applied = await this.runner.apply(
       orderId,
       from === "handler" ? { kind: "handler_delivered", at } : { kind: "deliver_called", at },
-      { delivery, openDeliveryId: null },
+      {
+        // A parcel's shipment is stamped with when it was recorded, which is
+        // this gateway's to say and never the merchant's.
+        delivery: parcel ? { ...delivery, shipped_at: asTimestamp(at) } : delivery,
+        openDeliveryId: null,
+      },
       { merchantId },
     );
+
+    // A parcel's shipment is the one exception to the repeat above (ADR-0033).
+    // The same shipment sent again is the ordinary repeat, but a different one
+    // is refused rather than answered as one: the merchant would read "already
+    // delivered" as a correction taken, and the corrected number would vanish
+    // without a word. A parcel cannot be sent twice safely, so a recorded
+    // shipment stays as it was recorded. The comparison is with the order as
+    // the hold read it, not as it was read above: two different shipments sent
+    // at once both find nothing recorded there, and only one of them lands.
+    if (
+      parcel &&
+      applied.outcome === "moved" &&
+      applied.order.delivery !== null &&
+      !sameShipment(applied.order.delivery, delivery)
+    ) {
+      return {
+        ok: false,
+        error: {
+          code: "shipment_already_recorded",
+          message:
+            "a shipment is already recorded on this order, and a recorded shipment cannot be changed: the agent reads the one recorded first, on the order's status",
+          retryable: false,
+        },
+      };
+    }
     return this.#answerFor(applied, "delivered");
   }
 
@@ -2199,12 +2249,35 @@ export class Gateway {
       );
     }
 
-    const fit = deliveryCheckFor(stored.card).safeParse(delivery);
+    // What the delivery is held to comes from the order, which recorded at
+    // purchase whether it is a parcel (ADR-0033), and not from the card as it
+    // stands: a card republished under the same key since the sale would
+    // otherwise hold a parcel's order to goods, or an order for goods to a
+    // shipment, and write down something its status could never be read
+    // from. A card that no longer declares the goods this order was sold
+    // with cannot hold them to anything, and says so.
+    const parcel = record.order.mode.parcel === true;
+    if (!parcel && stored.card.result === undefined) {
+      // Nothing sent again can clear this, so it is not marked as worth
+      // sending again: the card declares no goods any more, and only putting
+      // them back on it, or refusing the order, moves this sale.
+      const why =
+        "this order was sold for goods, and its card has since been republished as a parcel's, which declares no goods to hold these to";
+      return {
+        code: "delivery_does_not_match_card",
+        message: `${why}: nothing was written down, and no delivery can be taken for it until the card declares the goods again or the order is refused`,
+        retryable: false,
+        problems: [{ path: [], code: "card_declares_no_goods", message: why }],
+      };
+    }
+    const fit = (parcel ? ShipmentSchema : deliveryCheckFor(stored.card)).safeParse(delivery);
     if (fit.success) {
       return null;
     }
 
-    const goods = `these goods are not what the card "${cutShort(stored.card.merchant_item_id)}" declares it delivers, so nothing was written down`;
+    const goods = parcel
+      ? "this is not a parcel's shipment, so nothing was written down"
+      : `these goods are not what the card "${cutShort(stored.card.merchant_item_id)}" declares it delivers, so nothing was written down`;
     // The findings travel twice over, and on purpose. `problems` is the list a
     // handler can walk field by field and fix; the sentence is what a person
     // reads in a log, where nothing is going to walk anything. The sentence
@@ -2506,28 +2579,51 @@ function misfitsIn(findings: readonly Problem[]): string {
  * words, whatever order they were written in.
  */
 function sameAddress(one: ShipTo, other: ShipTo): boolean {
-  const written = (address: ShipTo) =>
-    JSON.stringify(Object.entries(address).sort(([a], [b]) => a.localeCompare(b)));
-  return written(one) === written(other);
+  return canonical(one) === canonical(other);
 }
 
 /**
- * A card in a mode this gateway cannot yet carry to its end, said as a finding
- * on the mode rather than discovered by the first buyer.
- *
- * A parcel's order ends when its shipment is recorded, and recording one is not
- * built yet (ADR-0033). A parcel card published now would take orders and the
- * buyer's money with no way for its merchant to finish them, so it is refused
- * with words that say why, until it can be.
+ * Whether a shipment sent now is the one already recorded: what the merchant
+ * said, field for field, whatever order it was written in, and setting aside
+ * the instant the gateway stamped on the recorded one.
  */
-function notYetSold(card: Card): Problem[] {
-  return card.fulfillment === "ship"
+function sameShipment(recorded: Delivery, sent: Delivery): boolean {
+  const { shipped_at: _stamped, ...said } = recorded;
+  const { shipped_at: _echoed, ...saying } = sent;
+  return canonical(said) === canonical(saying);
+}
+
+/** A document as one string, its keys sorted at every depth, so order says nothing. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, inner: unknown) =>
+    inner !== null && typeof inner === "object" && !Array.isArray(inner)
+      ? Object.fromEntries(
+          Object.entries(inner as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)),
+        )
+      : inner,
+  );
+}
+
+/**
+ * A card in a mode this channel does not sell yet, said as a finding on the
+ * mode rather than discovered by the first buyer.
+ *
+ * A parcel sells on the test channel and not on the live one (ADR-0033). What
+ * a lost parcel needs is not built anywhere yet: the operator's command that
+ * records its refund, the merchant's view of whom to pay back, and the rule
+ * about who may read a parcel's tracking. On the test channel the money is not
+ * real, so a parcel lost there costs nobody; on the live one it would take real
+ * money with none of that behind it, so it is refused with words that say why,
+ * until it can be.
+ */
+function notOnThisChannel(card: Card, environment: Environment): Problem[] {
+  return card.fulfillment === "ship" && environment === "live"
     ? [
         {
           path: ["fulfillment"],
           code: "not_sold_yet",
           message:
-            'a parcel\'s card, fulfillment "ship", cannot be published yet: its order ends when its shipment is recorded, and this gateway cannot record a shipment yet',
+            'a parcel\'s card, fulfillment "ship", is not sold on the live channel yet: the refund of a lost parcel cannot be recorded anywhere yet, so publish it on the test channel, where the money is not real',
         },
       ]
     : [];
@@ -2571,6 +2667,7 @@ const MERCHANT_WORDS: Readonly<Record<MerchantFinding, string>> = {
   no_seller_name: "no seller name",
   no_payout_wallet: "no payout wallet",
   no_operator_approval: "no operator approval for the live catalog",
+  no_seller_site: "no site for their shop, which a parcel's card needs",
 };
 
 /** The body of the line: the merchant's missing settings, then the card's findings. */
@@ -2657,6 +2754,15 @@ const MERCHANT_PROBLEMS: Readonly<Record<MerchantFinding, Problem>> = {
       "this merchant has not been approved by the operator for the live catalog; test" +
       " publication remains available, but live publication stays refused until the operator" +
       " admits this merchant",
+  },
+  no_seller_site: {
+    path: [],
+    code: MERCHANT_FINDINGS.NO_SELLER_SITE,
+    message:
+      "this merchant has not set the site of their shop, and a parcel's card is published only" +
+      " with one: a parcel that does not arrive is a question its buyer takes to the seller, and" +
+      " the site is where this system sends them; set it with POST /v0/seller-name and publish" +
+      " this card again",
   },
 };
 

@@ -111,6 +111,7 @@ function paidAsync(): Order {
 
 const ENDINGS = [
   "You delivered the goods",
+  "You recorded a parcel's shipment",
   "There is none, the parameters did not fit, the payment failed its check — or you refused in the synchronous mode",
   'You answered "I will not deliver" to a request to confirm',
   "Time ran out: no confirmation, no payment or no synchronous delivery arrived",
@@ -127,7 +128,33 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     expect(outcomeFor(order)).toBe("delivered");
   });
 
-  it(`${ENDINGS[1]}: nothing moved, and the agent sees a refusal`, () => {
+  it(`${ENDINGS[1]}: the money is the merchant's, and the agent is told the parcel shipped`, () => {
+    // Not "delivered": nothing reached the agent, and the shipment is the last
+    // thing anybody here knows about the parcel (ADR-0033).
+    const parcel = walk(
+      newOrder("async", {
+        mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
+        priceCheck: "merchant",
+      }),
+      [
+        {
+          kind: "quote_answered",
+          at: T0 + 1,
+          available: true,
+          price: { amount: "21.00", currency: "USD", asOf: T0 },
+        },
+        { kind: "payment_verified", at: T0 + 2 },
+        { kind: "payment_settled", at: T0 + 3 },
+        { kind: "order_dispatched", at: T0 + 4 },
+        { kind: "handler_accepted", at: T0 + 5 },
+      ],
+    );
+    const { order } = must(parcel, { kind: "deliver_called", at: T0 + 60 });
+
+    expect(outcomeFor(order)).toBe("shipped");
+  });
+
+  it(`${ENDINGS[2]}: nothing moved, and the agent sees a refusal`, () => {
     // Four different failures, and the row promises the agent one word for all
     // of them. The machine keeps them apart — the merchant's own metrics need
     // the difference — and this is where the four are held to the single word
@@ -163,11 +190,11 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     }
   });
 
-  it(`${ENDINGS[2]}: a refusal, and nothing was charged`, () => {
+  it(`${ENDINGS[3]}: a refusal, and nothing was charged`, () => {
     expect(outcomeFor(reach("declined"))).toBe("declined");
   });
 
-  it(`${ENDINGS[3]}: the order is closed on time and nothing moved`, () => {
+  it(`${ENDINGS[4]}: the order is closed on time and nothing moved`, () => {
     const noConfirmation = must(reach("awaiting_confirmation"), {
       kind: "deadline_expired",
       at: T0 + 999_999,
@@ -189,7 +216,7 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     }
   });
 
-  it(`${ENDINGS[4]}: what was not delivered comes back to the buyer`, () => {
+  it(`${ENDINGS[5]}: what was not delivered comes back to the buyer`, () => {
     const free = must(reach("dispatched"), { kind: "merchant_departed", at: T0 + 5 }).order;
     const charged = must(paidAsync(), { kind: "merchant_departed", at: T0 + 5 }).order;
 
@@ -200,11 +227,11 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     expect(outcomeFor(charged)).toBe("refund_due");
   });
 
-  it(`${ENDINGS[5]}: the money is the merchant's and the order waits for a refund`, () => {
+  it(`${ENDINGS[6]}: the money is the merchant's and the order waits for a refund`, () => {
     expect(outcomeFor(reach("refund_due"))).toBe("refund_due");
   });
 
-  it(`${ENDINGS[7]}: the agent is told the outcome is unknown, not that he was refused`, () => {
+  it(`${ENDINGS[8]}: the agent is told the outcome is unknown, not that he was refused`, () => {
     // The row's own promise to the agent: "the outcome of the payment is not
     // known", not "refused" — and a repeat under the same key is safe. The two
     // are different answers to an agent deciding whether to go and buy the same
@@ -228,7 +255,7 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     expect(repeated.effects).toStrictEqual([]);
   });
 
-  it(`${ENDINGS[6]}: the money never came, and a repeat drives the payment home`, () => {
+  it(`${ENDINGS[7]}: the money never came, and a repeat drives the payment home`, () => {
     const order = reach("delivered_unpaid");
 
     expect(outcomeFor(order)).toBe("delivered_unpaid");
@@ -242,7 +269,7 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     expect(outcomeFor(closed)).toBe("delivered");
   });
 
-  it(`${ENDINGS[6]}: where the charge went unanswered instead, the repeat waits`, () => {
+  it(`${ENDINGS[7]}: where the charge went unanswered instead, the repeat waits`, () => {
     // The other half of the portal's "You delivered and the payment did not
     // execute", and the half the page used to leave out. The same merchant
     // event carries both, so the page sends the merchant to the order's own

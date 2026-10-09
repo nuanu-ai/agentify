@@ -1,6 +1,6 @@
 # The first test sale
 
-*The public contract is versioned; changes arrive in a new package and contract version.*
+*The public contract is versioned; changes arrive in a new package version.*
 
 You are the one writing code here: the business has an API, and you want to
 keep the delivery in your own hands. Below is the path from an empty project to
@@ -37,8 +37,11 @@ owner of the business.
 
 ::: warning The public surface is versioned
 The package name is `@nuanu-ai/agentify`. Use the examples for the version you
-installed. Function or field changes arrive in a new package and contract
-version before the gateway speaks them.
+installed. Function or field changes arrive in a new package version, and the
+test channel can speak them before it is released. During the pilot the
+contract version does not move with each of them, so keep the package current:
+a release older than the gateway can read a word it does not know as a
+failure.
 :::
 
 ## 1. Make the merchant account ready
@@ -179,13 +182,14 @@ Not every finding is about the card. A name for buyers to read that you have
 not set, a wallet for your sales to be paid into, or, on the live channel, the
 operator's approval that has not been given yet: each arrives in the same list,
 so one answer names everything you have to fix instead of handing it to you a
-round trip at a time. These three have codes of their own for a program to
-branch on — `no_seller_name`, `no_payout_wallet` and `no_operator_approval`,
-each with an empty path, because no field of the card is at fault — and the
-package exports them as `MERCHANT_FINDINGS`. The first two you set yourself:
-the name with `POST /v0/seller-name` or in the dashboard's settings, and the
-wallet in the dashboard's settings alone, since no call your code can make sets
-it; the third is the operator's decision. The error's `message` names
+round trip at a time. A parcel's card asks one more: the site of your shop.
+These four have codes of their own for a program to branch on —
+`no_seller_name`, `no_payout_wallet`, `no_operator_approval` and
+`no_seller_site`, each with an empty path, because no field of the card is at
+fault — and the package exports them as `MERCHANT_FINDINGS`. The name and the
+site you set yourself, with `POST /v0/seller-name` or in the dashboard's
+settings; the wallet in the dashboard's settings alone, since no call your code
+can make sets it; and the approval is the operator's decision. The error's `message` names
 the missing settings in words as well. No call answers this in advance: the
 publish is where your code learns what your merchant still lacks. Sending the
 same card again gets the same refusal, and the error says as much: its
@@ -569,7 +573,7 @@ separate from that SDK path and carry no promise of automatic listing.
   authenticated when it connects.
 - The exact names of an order's fields, and of the two fields a handler's
   refusal carries. Their shapes are settled and described on these pages. A
-  change to the published spelling requires a new package and contract version.
+  change to the published spelling requires a new package version.
 - The names of the fields a card sets deadlines in.
 - The parameter that lets one subscription work on several orders at once: its
   name and its default.

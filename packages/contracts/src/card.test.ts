@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PurchaseRequestSchema } from "./api.js";
 import type { CardInput } from "./card.js";
 import {
   bazaarDeclarationOf,
@@ -11,10 +12,12 @@ import {
   publicCardOf,
   purchaseCheckFor,
   SellerSchema,
-  SellerSiteSchema,
   ServiceNameSchema,
 } from "./card.js";
 import { toJsonSchemas } from "./index.js";
+import { SellerSiteSchema } from "./seller-site.js";
+import { ShipToSchema } from "./ship-to.js";
+import { RecordedShipmentSchema } from "./shipment.js";
 import { errorOf, expectMissingFieldRejected } from "./testing/expect-schema.js";
 
 const syncCard = {
@@ -961,6 +964,47 @@ describe("a card as a discovery channel reads it", () => {
     // one product that disagreed about it would be two listings, or one that
     // flickers.
     expect(declared(syncCard, at)).toStrictEqual(declared(syncCard, at));
+  });
+});
+
+describe("a parcel's listing in a discovery catalog", () => {
+  const at = {
+    url: "https://agentify.example/x402/itm_4d21bb/purchase",
+    serviceName: "The pilot merchant",
+  };
+  const parcelCard = CardSchema.parse({
+    merchant_item_id: "beans-1kg",
+    title: "Coffee beans, one kilogram",
+    description: "Roasted in Bali this week and sent by courier.",
+    price: { amount: "18.00", currency: "USD" },
+    fulfillment: "ship",
+    ship_within_seconds: 172_800,
+    price_check: "handler",
+  });
+
+  it("asks for the address the parcel goes to, beside the parameters", () => {
+    // An agent that reads the listing and not the card has only this to build
+    // its purchase from, and a parcel's purchase without an address is refused.
+    const { inputSchema } = bazaarDeclarationOf(parcelCard, at);
+
+    expect(inputSchema.required).toStrictEqual(["params", "ship_to"]);
+    const properties = inputSchema.properties as Record<string, Record<string, unknown>>;
+    expect(properties.ship_to?.required).toStrictEqual(
+      expect.arrayContaining(["name", "line_one", "city", "country", "phone_number"]),
+    );
+  });
+
+  it("publishes a purchase example the gateway's own door would accept", () => {
+    const { input } = bazaarDeclarationOf(parcelCard, at);
+
+    expect(PurchaseRequestSchema.safeParse(input).success).toBe(true);
+    expect(ShipToSchema.safeParse((input as { ship_to?: unknown }).ship_to).success).toBe(true);
+  });
+
+  it("publishes as its output a shipment as the agent reads one", () => {
+    const { output } = bazaarDeclarationOf(parcelCard, at);
+
+    expect(RecordedShipmentSchema.safeParse(output.example).success).toBe(true);
   });
 });
 

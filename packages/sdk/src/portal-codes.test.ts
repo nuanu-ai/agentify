@@ -83,7 +83,7 @@ describe("the portal's table of codes a closing call fails under", () => {
     // deadlines: enough of the sentence is quoted for the pin to die when the
     // sentence is rewritten, and the numbers it must agree with are counted
     // from the lists rather than written down here a second time.
-    const words: Record<string, number> = { three: 3, four: 4, seven: 7 };
+    const words: Record<string, number> = { three: 3, four: 4, five: 5, seven: 7, eight: 8 };
     const said =
       /(\w+) codes are promised to mean one thing each — (\w+) sent by us, and (\w+) the tools produce/.exec(
         readFileSync(page, "utf8").replace(/\s+/g, " "),

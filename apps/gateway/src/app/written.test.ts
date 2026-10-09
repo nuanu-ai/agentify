@@ -133,6 +133,18 @@ const { refusal: _noRefusal, ...unrefused } = status;
 
 const collected = { ...unrefused, status: "delivered", delivered: { code: "BRUNCH-4F2A" } };
 
+/** A parcel the merchant shipped, as its agent reads it (ADR-0033). */
+const shipped = {
+  ...unrefused,
+  status: "shipped",
+  shipment: {
+    carrier: "JNE",
+    tracking_number: "0000000000000000",
+    shipped_at: "2026-10-08T10:00:00Z",
+  },
+  ship_by: "2026-10-09T09:01:00Z",
+};
+
 const confirmed = {
   ...shown,
   fulfillment: "confirm",
@@ -177,6 +189,16 @@ describe("what this gateway checks before it sends a document", () => {
     expect(sendable(CatalogPageSchema, { items: [confirmed] })).toBe(true);
     expect(sendable(AgentOrderStatusSchema, status)).toBe(true);
     expect(sendable(AgentOrderStatusSchema, collected)).toBe(true);
+    expect(sendable(AgentOrderStatusSchema, shipped)).toBe(true);
+  });
+
+  it("refuses to send a shipment on an order whose status says it has not shipped", () => {
+    // The parcel's counterpart of the rule below: its shipment is said where
+    // its status says it shipped, and anything in that field on another word
+    // would be whatever a mistake put there.
+    for (const word of ["in_progress", "refund_due", "delivered"]) {
+      expect(sendable(AgentOrderStatusSchema, { ...shipped, status: word }), word).toBe(false);
+    }
   });
 
   it("refuses to send goods on an order whose status says there are none", () => {
@@ -193,6 +215,7 @@ describe("what this gateway checks before it sends a document", () => {
       ["the catalog", CatalogPageSchema, page],
       ["an order's status", AgentOrderStatusSchema, status],
       ["an order's goods", AgentOrderStatusSchema, collected],
+      ["a parcel's shipment", AgentOrderStatusSchema, shipped],
     ] as const) {
       const places = objectsIn(written);
       expect(places.length, name).toBeGreaterThan(3);

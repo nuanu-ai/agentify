@@ -50,13 +50,14 @@ export interface Word {
  * Where an order stands, in the merchant's words.
  *
  * The endings that cost the merchant something are marked `warn` and the ones
- * that cost nobody anything are quiet. `delivered` is the only `ok`: it is the
- * only ending in which the goods are the buyer's and the money is the
- * merchant's.
+ * that cost nobody anything are quiet. `delivered` and `shipped` are the only
+ * `ok`: the endings in which the goods have gone to the buyer, in hand or with
+ * a carrier, and the money is the merchant's.
  */
 export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
   in_progress: { text: "in progress", tone: "busy" },
   delivered: { text: "delivered", tone: "ok" },
+  shipped: { text: "shipped", tone: "ok" },
   rejected: { text: "refused", tone: "quiet" },
   payment_unresolved: { text: "payment outcome unknown", tone: "warn" },
   declined: { text: "declined at confirmation", tone: "quiet" },
@@ -108,14 +109,16 @@ export const needsAttention = (status: OrderStatus): boolean => NEEDS_ATTENTION.
 /**
  * What the publish door can refuse every card of a merchant for and the
  * merchant sets in Settings: the door's own codes, less the operator's
- * approval, which nobody sets there. Which of them the door asks for on which
- * channel is its rule (`readinessOf` in the core), never a screen's.
+ * approval, which nobody sets there, and less the shop's site, which the door
+ * asks of a parcel's card alone rather than of every card (ADR-0033). Which of
+ * them the door asks for on which channel is its rule (`readinessOf` in the
+ * core), never a screen's.
  *
  * Total by its type rather than by a walk: the type is drawn from the
  * contract's codes, so a code added there does not compile here until it has
  * words or is said to be nobody's to set.
  */
-export type Unset = Exclude<MerchantFinding, "no_operator_approval">;
+export type Unset = Exclude<MerchantFinding, "no_operator_approval" | "no_seller_site">;
 
 /** Each of them as the settings screen names it, for every screen that names one. */
 export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({

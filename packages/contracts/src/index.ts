@@ -46,7 +46,6 @@ import {
   PriceCheckSchema,
   PublicCardSchema,
   SellerSchema,
-  SellerSiteSchema,
   ServiceNameSchema,
   TagsSchema,
 } from "./card.js";
@@ -101,8 +100,10 @@ import {
   ProblemSchema,
   PublishResultSchema,
 } from "./results.js";
+import { SellerSiteSchema } from "./seller-site.js";
 import { SellingStateSchema } from "./selling.js";
 import { ErasedShipToSchema, ShipToLocalitySchema, ShipToSchema } from "./ship-to.js";
+import { RecordedShipmentSchema, ShipmentSchema } from "./shipment.js";
 
 export type {
   AgentOrderStatus,
@@ -175,7 +176,6 @@ export {
   publicCardOf,
   purchaseCheckFor,
   SellerSchema,
-  SellerSiteSchema,
   ServiceNameSchema,
   TagsSchema,
 } from "./card.js";
@@ -292,6 +292,7 @@ export {
   ProblemSchema,
   PublishResultSchema,
 } from "./results.js";
+export { SellerSiteSchema } from "./seller-site.js";
 export type { SellingState } from "./selling.js";
 export { SELLING_STATES, SellingStateSchema } from "./selling.js";
 export type { ErasedShipTo, ShipTo, ShipToLocality } from "./ship-to.js";
@@ -301,6 +302,8 @@ export {
   ShipToLocalitySchema,
   ShipToSchema,
 } from "./ship-to.js";
+export type { RecordedShipment, Shipment } from "./shipment.js";
+export { RecordedShipmentSchema, ShipmentSchema } from "./shipment.js";
 
 /**
  * The version of the public contract. It grows when the meaning of the fields
@@ -390,6 +393,8 @@ export const schemas = Object.freeze({
   service_name: ServiceNameSchema,
   ship_to: ShipToSchema,
   ship_to_locality: ShipToLocalitySchema,
+  shipment: ShipmentSchema,
+  recorded_shipment: RecordedShipmentSchema,
   tags: TagsSchema,
   timestamp: TimestampSchema,
   worker_envelope: WorkerEnvelopeSchema,

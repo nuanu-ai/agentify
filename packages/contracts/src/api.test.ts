@@ -760,6 +760,34 @@ describe("the status an agent reads", () => {
           refusal: { code: "out_of_stock", message: "none left", retry_after: "P1D" },
         },
       ],
+      [
+        "shipment",
+        {
+          status: "shipped",
+          shipment: {
+            carrier: "JNE",
+            tracking_number: null,
+            shipped_at: "2026-10-08T10:00:00Z",
+            signed_for: false,
+          },
+        },
+      ],
+      [
+        "shipment.estimated_delivery",
+        {
+          status: "shipped",
+          shipment: {
+            carrier: "JNE",
+            tracking_number: null,
+            shipped_at: "2026-10-08T10:00:00Z",
+            estimated_delivery: {
+              earliest: "2026-10-10T00:00:00Z",
+              latest: "2026-10-12T00:00:00Z",
+              confidence: "high",
+            },
+          },
+        },
+      ],
     ] as const) {
       expect(AgentOrderStatusSchema.safeParse({ ...status, ...grown }).success, part).toBe(true);
     }

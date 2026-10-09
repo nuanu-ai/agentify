@@ -128,6 +128,22 @@ const receipt = (id: string, test: boolean) => ({
   test,
 });
 
+describe("the receipts of sales that went out", () => {
+  it("counts a parcel handed to a carrier beside goods handed over, and says which it is", () => {
+    // A shipped parcel is a sale: the money is the merchant's and the receipt
+    // is written (ADR-0033). It is counted with the delivered ones, under a
+    // label that does not call a parcel with a carrier delivered.
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [receipt("rcp_1", false), { ...receipt("rcp_2", false), outcome: "shipped" }],
+    });
+
+    const text = readable(receiptsScreen(SEEN_BY, cards, receipts));
+
+    expect(text).toContain("Delivered or shipped 2 of 2 receipts");
+    expect(text).toContain("shipped");
+  });
+});
+
 describe("a list where some of the money was real and some was not", () => {
   it("counts the test purchases rather than calling the whole page a test", () => {
     const orders: OrderList = OrderListSchema.parse({

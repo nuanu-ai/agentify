@@ -1,6 +1,6 @@
 # Common questions
 
-*The public contract is versioned; changes arrive in a new package and contract version.*
+*The public contract is versioned; changes arrive in a new package version.*
 
 Short answers, each with a link to where the question is worked through in
 full. The first half comes from what people ask while deciding whether to

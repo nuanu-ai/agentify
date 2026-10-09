@@ -76,7 +76,13 @@ describe("the wire vocabulary and the machine speak one language", () => {
       (code) => !asSet(MERCHANT_ANSWER_ERRORS).has(code),
     );
 
-    expect(machineless).toStrictEqual(["delivery_does_not_match_card"]);
+    // Both are the gateway's, for the same reason: each compares what the
+    // merchant sent with something the machine never sees — the goods with the
+    // card, and a parcel's shipment with the one already recorded (ADR-0033).
+    expect(machineless).toStrictEqual([
+      "delivery_does_not_match_card",
+      "shipment_already_recorded",
+    ]);
   });
 
   it("fulfillment modes match the card's enum, exactly", () => {

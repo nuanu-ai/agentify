@@ -4,7 +4,8 @@ Date: 2026-08-27
 Status: accepted (autonomous mandate of 2026-08-26; revisited on the product
 owner's word; §5's open vocabularies and documents added 2026-09-28 with
 ADR-0033 and ADR-0034, and opened inside a document's parts on the product
-owner's word, 2026-10-07)
+owner's word, 2026-10-07; §2 held until the first merchant we do not control,
+on the product owner's word, 2026-10-09)
 
 ## Context
 
@@ -29,24 +30,32 @@ the merchant's routes and is not derived from it.
    and move with it. A wire-visible change during this period does not move the
    version, and the reason is stated here rather than left as an omission.
 
-2. **The first published SDK speaks contract `"1"`.** From the moment a merchant
-   can install a version of this SDK that we do not control, a change a strict
-   reader cannot read — a new value in a response enum, a new required field, a
+2. **The version moves from the first merchant we do not control.** The first
+   published SDK spoke contract `"1"`, and the version moved to `"2"` a day
+   later, while no merchant outside this team ran either. From the day a
+   merchant we do not control runs a published SDK, a change a strict reader
+   cannot read — a new value in a response enum, a new required field, a
    renamed or removed one — requires the version to move. Moving it stops an old
    worker at startup with a clear message instead of letting it misreport its own
-   successes. The one known exception is the payout-wallet route (ADR-0019),
+   successes. Until that day the version stays where it is: a move would stop
+   only workers of our own, which are upgraded with the gateway, and each move
+   is history every later reader has to learn. Which merchant is the first is
+   the product owner's word, and the change that serves them says so here. The one known exception is the payout-wallet route (ADR-0019),
    whose answers and refusals no SDK worker reads: its pending fields and any
    refusal code only it returns leave the version alone, and an older contracts
    package validating them refuses them until upgraded.
 
 3. **The published SDK remains strict.** A result word riding alongside
    `ok: true` informs rather than directs, but it is still part of the generated
-   schema and the typed result a merchant records. Every new value moves the
-   contract version before the gateway sends it. The existing handshake then
-   refuses the whole newer vocabulary at worker startup, where no order is in
-   flight. Reading an unknown word as an open `string` was rejected: it would
-   make one part of an otherwise closed generated contract silently open and
-   move the compatibility rule from the version boundary into every consumer.
+   schema and the typed result a merchant records. From the first merchant we
+   do not control (§2), every new value moves the contract version before the
+   gateway sends it, and the existing handshake then refuses the whole newer
+   vocabulary at worker startup, where no order is in flight. Until then an SDK
+   older than the gateway can read a newer word as a failure, and the portal
+   tells a merchant to keep the package current. Reading an unknown word as an
+   open `string` was rejected: it would make one part of an otherwise closed
+   generated contract silently open and move the compatibility rule from the
+   version boundary into every consumer.
 
 4. **`/v0/` names the merchant's API and nothing else.** It is versioned for
    the reason a classic API is: an engineer writes a shop's code against those
@@ -104,13 +113,15 @@ the merchant's routes and is not derived from it.
 
 ## Consequences
 
-- Gained: an installed SDK either reads the whole vocabulary it was built for or
-  stops before polling an order; generated schemas and TypeScript tell the same
-  truth.
+- Gained, from the first merchant we do not control: an installed SDK either
+  reads the whole vocabulary it was built for or stops before polling an order;
+  generated schemas and TypeScript tell the same truth.
 - Gained: a product's listed address survives our protocol changes, so a listing
   is earned once rather than re-earned on our schedule.
 - Paid: even an additive informational result requires a contract-version move
-  and coordinated gateway delivery. That cost starts with contract `"1"`.
+  and coordinated gateway delivery. That cost starts with the first merchant we
+  do not control, and until then a published SDK older than the gateway can
+  read a document it was not built for as a failure.
 - Paid: an address that never moves is one we can never retire. A breaking
   change to the purchase has to be carried at that address or announced in
   band, and there is no path segment to fall back on.

@@ -13,8 +13,9 @@
  * gateway lets go of it: the order says only when, and nothing on the
  * merchant's stream carries any of it any more.
  *
- * Nothing can publish a parcel's card yet, so each test puts one in the store
- * directly, as a card already published would be.
+ * Each test puts the parcel's card in the store directly, as a card already
+ * published would be, so that what a test is about is the purchase and not the
+ * publishing door.
  */
 
 import {
@@ -109,6 +110,9 @@ async function pricedThenPaid(
   const worker = workUntilStopped(harnessed, { onQuote: () => priced });
   const challenge = await served.call("POST", `/x402/${itemId}/purchase`, { body: body.priced });
   await worker.stop();
+  // An agent takes a moment to sign, so the instant the order was paid is not
+  // the one it was priced at, and a test reading either can tell them apart.
+  harnessed.advance(5_000);
   const requirements = decodePaymentRequiredHeader(
     challenge.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
   ).accepts[0];
@@ -275,7 +279,7 @@ const whoAndWhere = [address.name, address.line_one, address.city, address.phone
 
 const theOrder = async (served: Served) => {
   const listed = await served.call("GET", "/v0/orders", { headers: asMerchant });
-  const [order] = (listed.body as { orders: Order[] }).orders;
+  const [order] = (listed.body as { orders: (Order & { status: string })[] }).orders;
   if (order === undefined) throw new Error("the merchant has no order");
   return order;
 };
@@ -571,5 +575,229 @@ describe("the address on a payment", () => {
     expect(paid.status).toBe(422);
     expect((paid.body as Refused).error.code).toBe("ship_to_does_not_fit");
     expect(harnessed.facilitator.verifies).toHaveLength(0);
+  });
+});
+
+describe("the shipment", () => {
+  /** A real carrier, and a number with its digits taken out. */
+  const shipment = { carrier: "JNE", tracking_number: "0000000000000000" };
+
+  /** A parcel paid for and taken on, as its merchant has it once they stored the address. */
+  const takenOn = async () => {
+    const { harnessed, served, itemId } = await started();
+    await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
+    const orderId = (await theOrder(served)).id;
+    await served.call("POST", `/v0/orders/${orderId}/accept`, { headers: asMerchant, body: {} });
+    return { harnessed, served, orderId };
+  };
+
+  const ship = (served: Served, orderId: string, body: unknown) =>
+    served.call("POST", `/v0/orders/${orderId}/deliver`, { headers: asMerchant, body });
+
+  const statusOf = async (served: Served, orderId: string) =>
+    (await served.call("GET", `/x402/orders/${orderId}/status`)).body as Record<string, unknown>;
+
+  it("is recorded by the deliver call, and the agent reads that the parcel shipped", async () => {
+    const { harnessed, served, orderId } = await takenOn();
+
+    const shipped = await ship(served, orderId, shipment);
+
+    expect(shipped.status).toBe(200);
+    const status = await statusOf(served, orderId);
+    expect(status.status).toBe("shipped");
+    // Nothing reached the agent: the goods field stays empty, and the shipment
+    // is where the parcel's record is, stamped with when it was recorded.
+    expect(status.delivered).toBeNull();
+    expect(status.shipment).toStrictEqual({
+      ...shipment,
+      shipped_at: new Date(harnessed.now()).toISOString(),
+    });
+    expect((await theOrder(served)).status).toBe("shipped");
+    expect((await harnessed.store.receiptForOrder(orderId))?.outcome).toBe("shipped");
+  });
+
+  it("tells the agent the time to ship by once the order is paid, and that nothing has shipped", async () => {
+    const { harnessed, served, itemId } = await started();
+    await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
+    const order = await harnessed.store.orderById((await theOrder(served)).id);
+    const paidAt = order?.order.timestamps.paidAt ?? 0;
+
+    const status = await statusOf(served, order?.order.id ?? "");
+
+    expect(status.status).toBe("in_progress");
+    expect(status.shipment).toBeNull();
+    expect(status.ship_by).toBe(new Date(paidAt + 172_800_000).toISOString());
+  });
+
+  it("answers the same shipment again as recorded, and refuses a different one", async () => {
+    // A parcel cannot be sent twice safely, so a repeat is ordinary and a
+    // second, different shipment is refused rather than taken in silence: a
+    // corrected number would otherwise vanish without a word.
+    const { served, orderId } = await takenOn();
+    const window = { earliest: "2026-10-12T00:00:00Z", latest: "2026-10-14T00:00:00Z" };
+    await ship(served, orderId, { ...shipment, estimated_delivery: window });
+
+    // The same shipment, written in another order at every depth, as a
+    // merchant's code that built it again would write it.
+    const again = await ship(served, orderId, {
+      estimated_delivery: { latest: window.latest, earliest: window.earliest },
+      tracking_number: shipment.tracking_number,
+      carrier: shipment.carrier,
+    });
+    const other = await ship(served, orderId, {
+      ...shipment,
+      estimated_delivery: window,
+      tracking_number: "1111111111111111",
+    });
+
+    // And sent back exactly as the agent's status shows it, with the instant
+    // Agentify stamped on it: still the same shipment.
+    const echoed = await ship(served, orderId, (await statusOf(served, orderId)).shipment);
+
+    expect(again.status).toBe(200);
+    expect(echoed.status).toBe(200);
+    expect(other.status).toBe(409);
+    const refused = other.body as { error: { code: string; retryable: boolean } };
+    expect(refused.error.code).toBe("shipment_already_recorded");
+    expect(refused.error.retryable).toBe(false);
+    expect(
+      ((await statusOf(served, orderId)).shipment as Record<string, unknown>).tracking_number,
+    ).toBe(shipment.tracking_number);
+  });
+
+  it("refuses goods in place of a shipment, and a shipment that says when it shipped", async () => {
+    const { served, orderId } = await takenOn();
+
+    const goods = await ship(served, orderId, { access_code: "SESAME" });
+    const dated = await ship(served, orderId, { ...shipment, shipped_at: "2026-08-20T00:00:00Z" });
+
+    for (const refused of [goods, dated]) {
+      expect(refused.status).toBe(409);
+      expect((refused.body as Refused).error.code).toBe("delivery_does_not_match_card");
+    }
+    expect((await statusOf(served, orderId)).status).toBe("in_progress");
+  });
+
+  it("is recorded from the handler's own answer as well", async () => {
+    const { harnessed, served, itemId } = await started();
+    await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
+
+    await workOnce(harnessed, { onOrder: () => ({ delivered: shipment }) });
+
+    const orderId = (await theOrder(served)).id;
+    expect((await statusOf(served, orderId)).status).toBe("shipped");
+  });
+});
+
+describe("a shipment against a card republished since the sale", () => {
+  // A merchant may republish under the same key while an order of theirs is
+  // in flight, and the catalog keeps one version per key. The order recorded
+  // at purchase whether it is a parcel (ADR-0033), so what its delivery is
+  // held to comes from the order and not from the card as it stands now.
+  const shipment = { carrier: "JNE", tracking_number: null };
+
+  it("still takes a parcel's shipment when its card has become one that delivers goods", async () => {
+    const { harnessed, served, itemId } = await started();
+    await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
+    const orderId = (await theOrder(served)).id;
+    await harnessed.store.publishCard(
+      harnessed.merchant.id,
+      CardSchema.parse({
+        merchant_item_id: parcelCard.merchant_item_id,
+        title: "Coffee beans, one kilogram",
+        description: "Now a voucher for a kilogram at the roastery.",
+        price: { amount: "18.00", currency: "USD" },
+        fulfillment: "async",
+        fulfill_deadline_seconds: 3_600,
+        result: { code: { type: "string" } },
+      }),
+      harnessed.now(),
+    );
+
+    const goods = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
+      code: "ABC",
+    });
+    const shipped = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, shipment);
+
+    expect(goods?.ok).toBe(false);
+    expect(shipped?.ok).toBe(true);
+    const status = await served.call("GET", `/x402/orders/${orderId}/status`);
+    expect(status.status).toBe(200);
+    expect((status.body as { status: string }).status).toBe("shipped");
+  });
+
+  it("refuses a shipment for goods whose card has become a parcel's, in words", async () => {
+    const { harnessed, served } = await started();
+    const ordinary = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+      merchant_item_id: "voucher-1kg",
+      title: "A voucher for a kilogram",
+      description: "Collected at the roastery.",
+      price: "18.00 USD",
+      fulfillment: "async",
+      fulfill_deadline_seconds: 3_600,
+      result: { code: "string" },
+    });
+    if (!ordinary.ok) throw new Error("the ordinary card would not publish");
+    const offered = await harnessed.gateway.beginPurchase(ordinary.id, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const orderId = offered.order.order.id;
+    await harnessed.gateway.payPurchase(orderId, "PAYMENT-VOUCHER", "PAYMENT-VOUCHER");
+    await harnessed.store.publishCard(
+      harnessed.merchant.id,
+      { ...parcelCard, merchant_item_id: "voucher-1kg" },
+      harnessed.now(),
+    );
+
+    const refused = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, shipment);
+
+    if (refused === null || refused.ok) throw new Error("the shipment was taken as goods");
+    expect(refused.error.code).toBe("delivery_does_not_match_card");
+    // No body sent again can clear it: the card declares no goods any more, and
+    // only republishing it with them, or refusing the order, moves this sale.
+    expect(refused.error.retryable).toBe(false);
+    const status = await served.call("GET", `/x402/orders/${orderId}/status`);
+    expect(status.status).toBe(200);
+    expect((status.body as { status: string }).status).toBe("in_progress");
+  });
+});
+
+describe("two shipments at once", () => {
+  it("records one and refuses the other, rather than answering both as success", async () => {
+    // The comparison with a recorded shipment has to be made under the hold on
+    // the order: read before it, two different shipments both find nothing
+    // recorded, and the second is answered as a repeat while its number
+    // vanishes.
+    const { harnessed, served, itemId } = await started();
+    await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
+    const orderId = (await theOrder(served)).id;
+
+    const answers = await Promise.all(
+      ["0000000000000001", "0000000000000002"].map((tracking_number) =>
+        harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
+          carrier: "JNE",
+          tracking_number,
+        }),
+      ),
+    );
+
+    const codes = answers.map((answer) =>
+      answer === null ? "none" : answer.ok ? "ok" : answer.error.code,
+    );
+    expect(codes.sort()).toStrictEqual(["ok", "shipment_already_recorded"]);
   });
 });

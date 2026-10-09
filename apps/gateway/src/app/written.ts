@@ -36,9 +36,11 @@ import {
   ParamNameSchema,
   ParamSpecSchema,
   PublicCardSchema,
+  RecordedShipmentSchema,
   RefusalSchema,
   SalePriceSchema,
   SellerSchema,
+  TimestampSchema,
 } from "@nuanu-ai/agentify-contracts";
 import { type ZodType, z } from "zod";
 
@@ -105,6 +107,8 @@ const WrittenOrderStatusSchema = AgentOrderStatusSchema.extend({
   status: OrderStatusSchema,
   price: SalePriceSchema.nullable(),
   delivered: WrittenDeliverySchema.nullable(),
+  shipment: RecordedShipmentSchema.nullable().optional(),
+  ship_by: TimestampSchema.nullable().optional(),
   refusal: RefusalSchema.optional(),
   seller: SellerSchema,
 })
@@ -115,6 +119,19 @@ const WrittenOrderStatusSchema = AgentOrderStatusSchema.extend({
         code: "custom",
         path: ["delivered"],
         message: `an order whose status is "${written.status}" hands over no goods`,
+      });
+    }
+    // The same rule for a parcel: its shipment is said where its status says
+    // it shipped, and nowhere else (ADR-0033).
+    if (
+      written.shipment !== undefined &&
+      written.shipment !== null &&
+      written.status !== "shipped"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["shipment"],
+        message: `an order whose status is "${written.status}" carries no shipment`,
       });
     }
   });

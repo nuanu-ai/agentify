@@ -209,7 +209,11 @@ describe("the one line a refusal is read by", () => {
         .body as { error: Refusal }
     ).error;
 
-    expect(aboutTheMerchant(refusal)).toStrictEqual(Object.values(MERCHANT_FINDINGS));
+    // Every finding about the merchant but the shop's site, which is asked of
+    // a parcel's card alone (ADR-0033).
+    expect(aboutTheMerchant(refusal)).toStrictEqual(
+      Object.values(MERCHANT_FINDINGS).filter((finding) => finding !== "no_seller_site"),
+    );
     expect(refusal.problems.some((finding) => finding.path.includes("price"))).toBe(true);
     expect(refusal.message).toMatch(/seller name/i);
     expect(refusal.message).toMatch(/payout wallet/i);
