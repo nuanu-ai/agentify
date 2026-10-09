@@ -762,10 +762,11 @@ describe("a shipment against a card republished since the sale", () => {
 
     const refused = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, shipment);
 
-    expect(refused?.ok).toBe(false);
-    expect(refused !== null && !refused.ok ? refused.error.code : "").toBe(
-      "delivery_does_not_match_card",
-    );
+    if (refused === null || refused.ok) throw new Error("the shipment was taken as goods");
+    expect(refused.error.code).toBe("delivery_does_not_match_card");
+    // No body sent again can clear it: the card declares no goods any more, and
+    // only republishing it with them, or refusing the order, moves this sale.
+    expect(refused.error.retryable).toBe(false);
     const status = await served.call("GET", `/x402/orders/${orderId}/status`);
     expect(status.status).toBe(200);
     expect((status.body as { status: string }).status).toBe("in_progress");
