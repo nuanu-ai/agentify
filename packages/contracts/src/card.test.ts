@@ -12,10 +12,10 @@ import {
   publicCardOf,
   purchaseCheckFor,
   SellerSchema,
-  SellerSiteSchema,
   ServiceNameSchema,
 } from "./card.js";
 import { toJsonSchemas } from "./index.js";
+import { SellerSiteSchema } from "./seller-site.js";
 import { ShipToSchema } from "./ship-to.js";
 import { RecordedShipmentSchema } from "./shipment.js";
 import { errorOf, expectMissingFieldRejected } from "./testing/expect-schema.js";

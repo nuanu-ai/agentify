@@ -46,7 +46,6 @@ import {
   PriceCheckSchema,
   PublicCardSchema,
   SellerSchema,
-  SellerSiteSchema,
   ServiceNameSchema,
   TagsSchema,
 } from "./card.js";
@@ -101,6 +100,7 @@ import {
   ProblemSchema,
   PublishResultSchema,
 } from "./results.js";
+import { SellerSiteSchema } from "./seller-site.js";
 import { SellingStateSchema } from "./selling.js";
 import { ErasedShipToSchema, ShipToLocalitySchema, ShipToSchema } from "./ship-to.js";
 import { RecordedShipmentSchema, ShipmentSchema } from "./shipment.js";
@@ -176,7 +176,6 @@ export {
   publicCardOf,
   purchaseCheckFor,
   SellerSchema,
-  SellerSiteSchema,
   ServiceNameSchema,
   TagsSchema,
 } from "./card.js";
@@ -293,6 +292,7 @@ export {
   ProblemSchema,
   PublishResultSchema,
 } from "./results.js";
+export { SellerSiteSchema } from "./seller-site.js";
 export type { SellingState } from "./selling.js";
 export { SELLING_STATES, SellingStateSchema } from "./selling.js";
 export type { ErasedShipTo, ShipTo, ShipToLocality } from "./ship-to.js";

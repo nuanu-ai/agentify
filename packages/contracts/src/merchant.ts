@@ -26,9 +26,10 @@
  */
 
 import { z } from "zod";
-import { SellerSchema, SellerSiteSchema, ServiceNameSchema } from "./card.js";
+import { SellerSchema, ServiceNameSchema } from "./card.js";
 import { EvmAddressSchema } from "./evm-address.js";
 import { IdentifierSchema, TimestampSchema } from "./primitives.js";
+import { SellerSiteSchema } from "./seller-site.js";
 
 /**
  * What a merchant calls one of their keys, so one of several can be told from

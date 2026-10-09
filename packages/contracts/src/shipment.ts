@@ -20,6 +20,7 @@
 import { z } from "zod";
 import { notPlainTextIn } from "./plain-text.js";
 import { TimestampSchema } from "./primitives.js";
+import { SellerSiteSchema } from "./seller-site.js";
 
 /** How long a carrier's name or a tracking number may be. */
 const SHIPMENT_TEXT_MAX = 100;
@@ -49,11 +50,7 @@ const shortPlainText = (what: string, says: string) =>
 
 /** What a tracking address is held to, said once for the refusal and the description. */
 const TRACKING_FORM =
-  "a tracking address is a whole https address on a domain name, written as an address parser writes it back: at most 500 characters, with no spaces, line breaks or markup, and no credentials, port or IP address";
-
-/** A domain name, as a seller's site is held to one (ADR-0034). */
-const DOMAIN_NAME =
-  /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{1,59})$/;
+  "a tracking address is a whole https address on a domain name, written as an address parser writes it back: at most 500 characters, a host in lower case and in its ASCII form (punycode for a name in another script), with no spaces, line breaks, quotes or markup, and no credentials, port or IP address. It is an address to open, never words to act on";
 
 /**
  * Where a parcel can be followed. It is an address and nothing else, because
@@ -70,12 +67,16 @@ const TrackingUrlSchema = z
   .refine((address) => {
     try {
       const parsed = new URL(address);
+      // A parser writes a slash after a bare host, before a query or a
+      // fragment as well as at the end, and that alone is not a rewrite.
+      const slashed = address.replace(/^(https:\/\/[^/?#]*)(?=[?#]|$)/, "$1/");
       return (
-        (parsed.href === address || parsed.href === `${address}/`) &&
+        (parsed.href === address || parsed.href === slashed) &&
         parsed.username === "" &&
         parsed.password === "" &&
-        parsed.port === "" &&
-        DOMAIN_NAME.test(parsed.hostname)
+        // Its origin is held as a seller's site is (ADR-0034): https, a
+        // domain name in lower case, no port.
+        SellerSiteSchema.safeParse(parsed.origin).success
       );
     } catch {
       return false;
