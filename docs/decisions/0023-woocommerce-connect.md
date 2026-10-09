@@ -81,8 +81,8 @@ payment, and a change after the quote becomes a refund owed, as does a
 parcel's rate changed in between. A parcel's price question leaves a two-day
 guest session with the locality in the shop, a state WooCommerce writes its own
 way (`DE-BE`) is no price, and Completed tells the buyer it shipped, for good.
-A parcel's order the shop made but did not confirm is refused while the shop
-holds it paid, and the merchant is told not to ship it.
+A parcel's order the shop may have made without confirming it is refused while
+the shop may hold it paid, and the merchant is told not to ship it.
 Rejected: a plugin of ours, which stock WooCommerce makes unnecessary; a buyer's
 email, which buyers do not give; the raw file URL; the order number alone; a
 scan inferring an unknown order is absent, which risks a second order in

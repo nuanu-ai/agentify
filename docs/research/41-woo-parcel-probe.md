@@ -263,8 +263,8 @@ order. Recovery handles downloads only.
 
 A placed parcel is followed every five minutes, in a loop of its own beside
 the shops' turns, for thirty days from being placed, the longest time to ship a
-card may name; a shipment recorded late still closes a refund owed while the
-refund is unpaid (ADR-0028). It is read only in the shop it was sold from, and
+card may name; a shipment recorded late still closes a refund owed until a
+refund is recorded (ADR-0028). It is read only in the shop it was sold from, and
 its order is this sale's only if it carries the sale's identifier as its
 transaction id, because a shop connected in its place, or the same shop
 rebuilt, numbers its orders afresh. The order is read without the address.
