@@ -1,16 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  DashboardKeySchema,
   DisabledKeySchema,
-  ForgottenDashboardKeySchema,
   IssuedKeySchema,
   IssueKeyRequestSchema,
   MerchantKeyListSchema,
   MerchantKeySchema,
-  PayoutWalletRequestSchema,
   PayoutWalletSchema,
-  RegisteredMerchantSchema,
-  RegistrationRequestSchema,
   SellerNameRequestSchema,
   SellerNameSchema,
 } from "./merchant.js";
@@ -137,10 +132,7 @@ describe("the keys a merchant holds", () => {
     // The one fact the list cannot be assembled without. A merchant cannot
     // disable the key their own call was made with, so a client that did not
     // know which key that was would offer a button the route refuses. It names
-    // the key on the call and not whichever key some dashboard happens to hold,
-    // which the gateway has no way of knowing — and a caller signed into a
-    // dashboard is named a key that is on none of the rows beside it, because the
-    // kind a dashboard holds is in no merchant's list.
+    // the key on the call, which is always one of the rows beside it.
     // Its absence is covered by the loop below, with every other required
     // field; what is here is that it survives a parse and that a blank one is
     // refused, because an empty identifier names no key and a client reading it
@@ -265,157 +257,6 @@ describe("a key that has been disabled", () => {
     // beside the key — how many keys still work, say — a bare document would
     // have to change shape under every reader.
     expect(DisabledKeySchema.safeParse(revoked).success).toBe(false);
-  });
-});
-
-describe("the key a dashboard holds", () => {
-  const held = { secret };
-
-  it("is the secret and nothing else", () => {
-    // A dashboard takes this key and puts it on the row of whoever signed in.
-    // There is no row document beside it, unlike every other answer that makes
-    // a key, and the absence is the decision: a key made for a dashboard is in no
-    // merchant's list, so an identifier here would name a row nobody can find,
-    // list or revoke, and the first screen built on it would offer all three.
-    expect(DashboardKeySchema.parse(held)).toStrictEqual(held);
-  });
-
-  it("refuses an answer with no secret in it and names it", () => {
-    expectMissingFieldRejected(DashboardKeySchema, held, "secret");
-  });
-
-  it("refuses a secret that could not travel as a key", () => {
-    expect(DashboardKeySchema.safeParse({ secret: "" }).success).toBe(false);
-    expect(DashboardKeySchema.safeParse({ secret: "csk_ two halves" }).success).toBe(false);
-  });
-
-  it("carries no row for a key that is in no list", () => {
-    expect(errorOf(DashboardKeySchema, { ...held, key: working })).toContain("key");
-  });
-});
-
-describe("the dashboard key that was forgotten", () => {
-  const gone = { forgotten: true };
-
-  it("says the key on the call is gone", () => {
-    expect(ForgottenDashboardKeySchema.parse(gone)).toStrictEqual(gone);
-  });
-
-  it("says it in a field rather than leaving the caller to read a status", () => {
-    // The call has one outcome and the document is a constant, which is the
-    // point rather than an oversight: a client holding a parsed answer knows
-    // the key it called with is gone, instead of inferring it from a number
-    // that would have to be about keys it never named. The field is required,
-    // so a client that dropped it is not read as a call that did nothing.
-    expectMissingFieldRejected(ForgottenDashboardKeySchema, gone, "forgotten");
-    expect(ForgottenDashboardKeySchema.safeParse({ forgotten: false }).success).toBe(false);
-  });
-
-  it("counts nothing, because there is nothing here to count", () => {
-    // What this used to answer was how many of a merchant's other dashboard keys
-    // it had removed — an answer only a call that reaches other people's keys
-    // can give. This one removes the key in the caller's hand and no other, so
-    // a count would be a claim about rows this call cannot touch.
-    expect(errorOf(ForgottenDashboardKeySchema, { ...gone, removed: 1 })).toContain("removed");
-  });
-
-  it("names no key, because the caller is holding the only one it names", () => {
-    expect(errorOf(ForgottenDashboardKeySchema, { ...gone, key: working.id })).toContain("key");
-  });
-});
-
-describe("registering a merchant", () => {
-  const asked = { invitation: "the-code-from-the-invitation" };
-
-  it("takes the code they were given and nothing else", () => {
-    expect(RegistrationRequestSchema.parse(asked)).toStrictEqual(asked);
-  });
-
-  it("refuses a registration without invitation and names it", () => {
-    expectMissingFieldRejected(RegistrationRequestSchema, asked, "invitation");
-  });
-
-  it("does not ask for the name buyers will read", () => {
-    // The name is asked for on the screen after this one, where there is room
-    // to say what it is for and where it can be changed afterwards. Asked here,
-    // it was answered by somebody with no products, no catalogue seen and no
-    // idea what the name was for, and what they typed was then printed beside
-    // their products. Refusing the field is what stops a client sending one and
-    // believing it was written down.
-    expect(errorOf(RegistrationRequestSchema, { ...asked, name: "Someone's shop" })).toContain(
-      "name",
-    );
-  });
-
-  it("refuses a form submitted with nothing in the invitation", () => {
-    expect(RegistrationRequestSchema.safeParse({ ...asked, invitation: "" }).success).toBe(false);
-    expect(RegistrationRequestSchema.safeParse({ ...asked, invitation: "  " }).success).toBe(false);
-  });
-
-  it("carries nothing that belongs to the account rather than the merchant", () => {
-    // The address and the password are the dashboard's, and they stay there. A
-    // gateway that took either would be holding a person's credentials on the
-    // money path, which is the thing this route's whole shape avoids.
-    expect(
-      errorOf(RegistrationRequestSchema, { ...asked, email: "someone@example.com" }),
-    ).toContain("email");
-    expect(errorOf(RegistrationRequestSchema, { ...asked, password: "hunter2" })).toContain(
-      "password",
-    );
-  });
-});
-
-describe("what registering answers with", () => {
-  const registered = {
-    merchant_id: "mch_4d21bb",
-    secret,
-  };
-
-  it("carries the merchant and the secret once, and nothing else", () => {
-    // Both are needed by the one caller: it writes the merchant and the secret
-    // onto the account it is creating. Nothing else is, and this answer used to
-    // carry a third thing — the key's own row.
-    expect(RegisteredMerchantSchema.parse(registered)).toStrictEqual(registered);
-  });
-
-  for (const field of ["merchant_id", "secret"]) {
-    it(`refuses a registration answer without ${field} and names it`, () => {
-      expectMissingFieldRejected(RegisteredMerchantSchema, registered, field);
-    });
-  }
-
-  it("carries no row for the key it just handed over", () => {
-    // The key made here is a dashboard's: the merchant has no screen it sits on,
-    // and the call that revokes a key refuses its kind by name. An identifier
-    // for it is therefore a value with nothing to do, so this answer does not
-    // carry one, and a client that put one back is refused rather than quietly
-    // trimmed.
-    expect(errorOf(RegisteredMerchantSchema, { ...registered, key: working })).toContain("key");
-  });
-
-  it("names no seller, because registering chooses none", () => {
-    // A merchant who has just registered is listed under nothing at all, so
-    // there is no name here to read back. A field carrying one would be a name
-    // this call had written down, and the screen after it would show the
-    // merchant something nobody chose.
-    expect(errorOf(RegisteredMerchantSchema, { ...registered, name: "Someone's shop" })).toContain(
-      "name",
-    );
-  });
-
-  it("names the merchant the account will be tied to", () => {
-    // Without it the dashboard has a key and nothing to say whose it is, and an
-    // account that names no merchant is the single-tenant dashboard again.
-    expect(RegisteredMerchantSchema.parse(registered).merchant_id).toBe("mch_4d21bb");
-    expect(RegisteredMerchantSchema.safeParse({ ...registered, merchant_id: "" }).success).toBe(
-      false,
-    );
-  });
-
-  it("refuses a field it does not know", () => {
-    expect(errorOf(RegisteredMerchantSchema, { ...registered, session: "sess_1" })).toContain(
-      "session",
-    );
   });
 });
 
@@ -665,59 +506,6 @@ describe("the wallet a merchant's sales are paid into", () => {
   it("refuses a field it does not know", () => {
     expect(errorOf(PayoutWalletSchema, { ...paid, private_key: "0xdead" })).toContain(
       "private_key",
-    );
-  });
-});
-
-describe("what a merchant sends to change that wallet", () => {
-  const asked = { payout_wallet: "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed" };
-
-  it("takes the wallet, held to the same rule the answer is", () => {
-    expect(PayoutWalletRequestSchema.parse(asked)).toStrictEqual(asked);
-    expect(PayoutWalletRequestSchema.safeParse({ payout_wallet: "0x1234" }).success).toBe(false);
-    expect(
-      PayoutWalletRequestSchema.safeParse({
-        payout_wallet: "0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
-      }).success,
-    ).toBe(false);
-  });
-
-  it("refuses null, because a wallet cannot be taken away", () => {
-    // The difference between this document and the answer, and the whole of
-    // it. Having no wallet is a state a merchant starts in and cannot go back
-    // to: their published cards would stay on sale with nowhere for the money
-    // to go, and every agent asking one of them what it costs would be met by
-    // a gateway that cannot answer. What somebody reaching for null wants is
-    // either a different wallet, which is this same call, or an end to
-    // selling, which is the pause.
-    expect(PayoutWalletRequestSchema.safeParse({ payout_wallet: null }).success).toBe(false);
-  });
-
-  it("says what to do instead, rather than that a string was expected", () => {
-    const complaint = errorOf(PayoutWalletRequestSchema, { payout_wallet: null });
-
-    expect(complaint).toContain("pause");
-    expect(complaint).not.toContain("expected string");
-  });
-
-  it("refuses a document without payout_wallet and names it", () => {
-    expectMissingFieldRejected(PayoutWalletRequestSchema, asked, "payout_wallet");
-  });
-
-  it("complains about a missing field in its own words, not the ones about null", () => {
-    expect(errorOf(PayoutWalletRequestSchema, {})).not.toContain("pause");
-  });
-
-  it("has nowhere to put a key, and refuses one put there anyway", () => {
-    // The line this whole feature is on the right side of: an address is what
-    // somebody is paid at, and a key is what spends it. Nothing in this
-    // contract takes one, and a field carrying one is refused rather than
-    // ignored — ignored, it would sit in a log of the request that carried it.
-    expect(errorOf(PayoutWalletRequestSchema, { ...asked, private_key: "0xdead" })).toContain(
-      "private_key",
-    );
-    expect(errorOf(PayoutWalletRequestSchema, { ...asked, mnemonic: "a b c" })).toContain(
-      "mnemonic",
     );
   });
 });

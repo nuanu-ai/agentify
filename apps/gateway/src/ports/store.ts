@@ -20,7 +20,7 @@
  * what is still owed across every merchant, because an effect that went missing
  * is not one merchant's problem to notice. The rest are the merchants and their
  * keys, whose caller is somebody at a terminal, the door itself, or the one
- * route that makes a merchant and so has none to be scoped to. `withOrder` is
+ * call that makes a merchant and so has none to be scoped to. `withOrder` is
  * in none of the four: it takes the merchant when there is one to take and says
  * in its own place what leaving it out means.
  *
@@ -28,11 +28,6 @@
  * matters. `disableKeyOf` takes the merchant and serves the button a merchant
  * presses in their dashboard; `disableKey` names a key alone and serves the
  * command somebody types, where one identifier is the whole of what they have.
- *
- * Reading a merchant's keys comes in two forms for a related reason. `keysOf`
- * is every key they have and answers a person at a terminal, who is owed the
- * truth about what still opens the door; `codeKeysOf` is the keys they made for
- * their own code and answers the merchant, whose list is a place they act.
  *
  * One method is not an accessor and is the reason this is an interface rather
  * than three maps. `withOrder` holds an order still while a decision is made
@@ -421,22 +416,6 @@ export interface StoredMerchant {
 }
 
 /**
- * What a key was made for, which decides whose it is to look after.
- *
- * `merchant_code` is a key the merchant asked for and holds: it goes into their
- * own worker, it is on the one screen they revoke keys from, and everything
- * about it is theirs. `dashboard` is the credential a dashboard calls the gateway
- * with on their behalf — made when somebody signs in, never shown to anybody,
- * and in no list the merchant reads.
- *
- * The two are told apart by a value on the row rather than by the words in the
- * label, because what hangs off the difference is which list a key appears in
- * and which calls can reach it. A list assembled by reading text a person can
- * type is a list a person can type their way into.
- */
-export type KeyPurpose = "merchant_code" | "dashboard";
-
-/**
  * One key a merchant opens the door with.
  *
  * The secret itself is not here and never comes back out of the store: what is
@@ -451,16 +430,8 @@ export type KeyPurpose = "merchant_code" | "dashboard";
 export interface StoredKey {
   readonly id: string;
   readonly merchantId: string;
-  /**
-   * What it is called, so one of several can be told from the others.
-   *
-   * Its owner chose it where the key is one of the merchant's own. A key made
-   * for a dashboard is labelled by whoever made it, because nobody typed
-   * anything: the merchant never sees it, and what reads the text is a person
-   * at a terminal looking at every key a merchant has.
-   */
+  /** What it is called, so one of several can be told from the others. */
   readonly label: string;
-  readonly purpose: KeyPurpose;
   readonly createdAt: number;
   /** When it was revoked, or null while it still opens the door. */
   readonly disabledAt: number | null;
@@ -533,46 +504,20 @@ export interface Store {
    * Writes down a merchant that is not there yet, or answers null where that
    * identifier is taken.
    *
-   * Null rather than a thrown error because the one caller is the sandbox's
-   * seed, which runs at every start and finds the row there from the second
-   * start on.
+   * Null rather than a thrown error because one caller is the sandbox's seed,
+   * which runs at every start and finds the row there from the second start
+   * on. The other is registration, whose identifier is generated, so a null
+   * there is a generator that collided and nothing was written over.
+   *
+   * No listing name goes down, and no address to be paid at, because making a
+   * merchant asks for neither: both are chosen afterwards, and a merchant
+   * listed under nothing or paid nowhere is a state the rest of the system is
+   * already honest about — a card cannot be published while it holds.
    */
   addMerchant(
     merchant: { readonly id: string; readonly name: string },
     at: number,
   ): Promise<StoredMerchant | null>;
-
-  /**
-   * Writes down a merchant and their dashboard's key, together or not at all. Null
-   * where that identifier is taken, and then nothing was written.
-   *
-   * The two in one write is ADR-0014 §1, and what it buys is worth stating
-   * because the failure it prevents looks harmless. A merchant written without
-   * a key is a merchant nobody can reach; the identifier was generated, so
-   * nobody outside this call ever held it, and nothing afterwards would point at
-   * it. That is litter rather than damage, and it is litter with a foreign key
-   * on it — cards, orders and receipts all reference merchants, so the row
-   * cannot simply be swept.
-   *
-   * The key is made for a dashboard, and that is fixed here rather than asked of
-   * the caller. Whoever registers is a dashboard — the route takes no key, and
-   * what it walks away with is the credential it will call as this merchant
-   * with — so a caller who could ask for the other kind could only ever be
-   * asking by mistake, and the mistake is a row in the merchant's own list of
-   * keys on their first visit: one they never asked for, cannot recognise, and
-   * cannot revoke, since revoking it is their dashboard going dark.
-   *
-   * No listing name goes down with them, because registering does not ask for
-   * one: the name buyers read is chosen afterwards, through `setServiceName`.
-   * What that leaves is a merchant who is listed under nothing, which is a state
-   * the rest of the system already knows how to be honest about — a card cannot
-   * be published while it holds.
-   */
-  registerMerchant(
-    merchant: { readonly id: string; readonly name: string },
-    key: { readonly id: string; readonly label: string; readonly digest: string },
-    at: number,
-  ): Promise<{ readonly merchant: StoredMerchant; readonly key: StoredKey } | null>;
 
   merchantById(id: string): Promise<StoredMerchant | null>;
 
@@ -654,11 +599,6 @@ export interface Store {
   /**
    * Writes down one key of one merchant. The digest is what is kept, not the
    * key.
-   *
-   * What the key is for is said rather than defaulted. A default would be a
-   * caller who forgot, and what forgetting produces is a key made for a dashboard
-   * standing in a merchant's own list — the one row on that screen they cannot
-   * be allowed to press the button beside.
    */
   addKey(
     key: {
@@ -666,7 +606,6 @@ export interface Store {
       readonly merchantId: string;
       readonly label: string;
       readonly digest: string;
-      readonly purpose: KeyPurpose;
     },
     at: number,
   ): Promise<StoredKey>;
@@ -692,8 +631,7 @@ export interface Store {
    * gateway processes write it from two clocks and the door does not serialise
    * them, so an older instant can arrive after a newer one — taken as written,
    * a key in constant use would read as one nobody has touched since morning.
-   * A key that is not there is not an error: it is a key revoked or forgotten
-   * between the door reading it and this being written.
+   * A key that is not there is not an error, and nothing is written for it.
    */
   noteKeyUse(id: string, at: number): Promise<void>;
 
@@ -729,8 +667,7 @@ export interface Store {
   keyByDigest(digest: string): Promise<StoredKey | null>;
 
   /**
-   * Every key of one merchant, whatever it was made for, disabled ones
-   * included, never their secrets.
+   * Every key of one merchant, disabled ones included, never their secrets.
    *
    * Oldest first, with the identifier settling a tie. The order is part of what
    * this promises rather than whatever each adapter's storage happens to give,
@@ -738,28 +675,8 @@ export interface Store {
    * database, two keys made in the same millisecond would swap places between
    * two visits with nothing having changed, and a test about the list would
    * mean one thing in memory and another against Postgres.
-   *
-   * This is the wide read and its caller is the terminal, where the person
-   * looking is the operator and hiding a working key from them would make the
-   * count beside a merchant a lie — "no working key left" while a dashboard's own
-   * still opens the door. What a merchant reads is {@link codeKeysOf}.
    */
   keysOf(merchantId: string): Promise<readonly StoredKey[]>;
-
-  /**
-   * The keys one merchant made for their own code, disabled ones included.
-   *
-   * The same promise about order, and one thing left out: the keys a dashboard
-   * calls with. This is the read behind the list a merchant is shown, and a
-   * list is a place somebody acts — so a row they did not make, cannot
-   * recognise and cannot revoke has no business on it.
-   *
-   * The narrowing is here rather than in whoever calls, because a filter every
-   * caller has to remember is a filter one of them will not. What that costs
-   * the day it is forgotten is not a wrong number on a screen: it is a merchant
-   * pressing the button beside a row and taking their own dashboard down.
-   */
-  codeKeysOf(merchantId: string): Promise<readonly StoredKey[]>;
 
   /**
    * Stops one key working and hands back where it now stands. Null where there
@@ -779,70 +696,22 @@ export interface Store {
 
   /**
    * Stops one of this merchant's keys working and hands back where it now
-   * stands. Three answers, and the two that are not a key are two different
-   * facts.
+   * stands. Null where this merchant has no such key.
    *
-   * Null is this merchant having no such key — which is the same answer as no
-   * such key anywhere, on purpose. The sameness is the point rather than a
-   * simplification. Told apart, this call would count somebody else's keys: a
-   * merchant walking identifiers would learn which of them are real, and the
-   * identifiers of a merchant's keys are not secrets.
+   * Which is the same answer as no such key anywhere, on purpose. The sameness
+   * is the point rather than a simplification. Told apart, this call would
+   * count somebody else's keys: a merchant walking identifiers would learn
+   * which of them are real, and the identifiers of a merchant's keys are not
+   * secrets.
    *
-   * `"made_for_a_dashboard"` is a key of this merchant's that they did not issue.
-   * A merchant switches off what they made; the credential their dashboard calls
-   * with is not that, and revoking it signs somebody out of the dashboard they
-   * are standing in. It is told apart from the null because it is a fact about
-   * the caller's own row rather than about a stranger's, so saying it counts
-   * nothing that was hidden — and because the caller is owed the reason, which
-   * "there is no such key" would not be.
-   *
-   * The rule holds however the identifier was come by. Nothing on the surface
-   * hands one out, and that is deliberately not what this rests on: an
-   * invariant that depends on nobody ever printing a value is an invariant that
-   * ends the first time somebody does.
-   *
-   * Both the merchant and the kind are in the predicate rather than checked
-   * after the read, so a key this call may not touch is never selected and
-   * there is no window between finding out what it is and writing to it. What a
-   * kind that is not the merchant's own costs is a second read on the refusal
-   * path alone, after nothing has been written; a key's kind never changes, so
-   * the two cannot disagree.
+   * The merchant is in the predicate rather than checked after the read, so a
+   * key this call may not touch is never selected and there is no window
+   * between finding out whose it is and writing to it.
    *
    * Disabling a key that is already disabled keeps the instant it was first
    * revoked at, exactly as {@link disableKey} does.
    */
-  disableKeyOf(
-    merchantId: string,
-    id: string,
-    at: number,
-  ): Promise<StoredKey | "made_for_a_dashboard" | null>;
-
-  /**
-   * Removes one key made for a dashboard, and answers whether a row went.
-   *
-   * The only place in this port where something is deleted rather than marked,
-   * and the reason is who would read it. A revoked key stays because a merchant
-   * asks when it stopped; nobody ever asks that about a key they did not issue,
-   * never saw, and could not have found in any list while it existed. Kept, it
-   * would be history for nobody, growing by a row per sign-in.
-   *
-   * One key by name and no rule about which others to keep. Any such rule is
-   * decided when the call is made and can be stale by the time it lands: "every
-   * dashboard key but this one" removes a key written in between by a caller that
-   * had never heard of it, and two sign-ins overlapping then leave an account
-   * naming a key that is gone. What is above this passes the identifier of the
-   * key its own call was made with, so the only key anybody can remove is one
-   * they are holding.
-   *
-   * A key the merchant made for their own code is not removed and answers
-   * false, whoever names it: those are revoked, at an instant their owner reads
-   * back on the one screen they appear on, and taking the row away would take
-   * that history with it. False is also a key that is not there — already
-   * removed, or never written — because by then the two are the same fact and
-   * a caller retrying after a dropped connection needs neither of them to be a
-   * failure.
-   */
-  forgetDashboardKey(keyId: string): Promise<boolean>;
+  disableKeyOf(merchantId: string, id: string, at: number): Promise<StoredKey | null>;
 
   // --- the catalog ----------------------------------------------------------
 

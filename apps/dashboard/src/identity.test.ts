@@ -242,7 +242,7 @@ describe("dashboard magic links", () => {
     expect(rows.dashboard_accounts).toHaveLength(0);
   });
 
-  it("refuses an empty merchant pair instead of hiding corrupt data as P1", async () => {
+  it("refuses an empty merchant instead of hiding corrupt data as P1", async () => {
     const { store, rows } = memoryIdentity();
     rows.dashboard_accounts?.push({
       id: "person_corrupt",
@@ -252,11 +252,10 @@ describe("dashboard magic links", () => {
       createdAt: new Date(),
       updatedAt: new Date(),
       merchantId: "",
-      merchantKey: "",
     });
 
     await expect(store.byEmail("person@example.com")).rejects.toThrow(
-      "dashboard_account_partial_merchant_binding",
+      "dashboard_account_unreadable_merchant",
     );
   });
 });

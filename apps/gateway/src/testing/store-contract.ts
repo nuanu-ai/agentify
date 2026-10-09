@@ -444,8 +444,9 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
     describe("a merchant", () => {
       it("is written down once, and is not written over by a second attempt", async () => {
-        // The one caller is a command somebody typed, and running it twice is a
-        // thing people do. It must not replace the merchant that is there.
+        // Its callers are the sandbox's seed, which runs at every start, and a
+        // command somebody typed, which people run twice. Neither may replace
+        // the merchant that is there.
         const store = await fresh();
 
         expect(await store.addMerchant({ id: A, name: "Merchant A" }, 1_000)).toMatchObject({
@@ -635,123 +636,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.setPayoutWallet(A, restarted, now, 6_000)).toBe("moved");
         expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(first);
       });
-
-      it("is registered with a first key, both in one write", async () => {
-        // ADR-0014 §1. The two go down together because a merchant missing the
-        // key is unreachable rather than incomplete: nobody can call as them,
-        // and the identifier was generated inside this call, so nobody outside
-        // it ever held it and nothing afterwards points at it.
-        const store = await fresh();
-
-        const made = await store.registerMerchant(
-          { id: A, name: "Merchant A" },
-          { id: "mk_a", label: "the first key", digest: "digest-a" },
-          1_000,
-        );
-
-        expect(made?.merchant).toMatchObject({ id: A, name: "Merchant A", selling: "open" });
-        expect(made?.key).toMatchObject({ id: "mk_a", merchantId: A, disabledAt: null });
-        // And the key that came back is the one the door answers with.
-        expect((await store.workingKey("digest-a"))?.id).toBe("mk_a");
-      });
-
-      it("is registered with a key made for a dashboard and none of their own", async () => {
-        // Registering is a dashboard's act: the caller is the dashboard, and what
-        // it walks away with is the credential it will call as this merchant
-        // with. So the key it writes is one of those, and the merchant's own
-        // list starts empty — which is the state a screen has to draw, and the
-        // reason it is here rather than left to whoever calls this.
-        //
-        // A key of the merchant's own written here instead would be a row in
-        // that list on the first visit: one they never asked for, cannot
-        // recognise, and cannot revoke, since revoking it is the dashboard going
-        // dark.
-        const store = await fresh();
-
-        const made = await store.registerMerchant(
-          { id: A, name: "Merchant A" },
-          { id: "mk_a", label: "the key the dashboard calls with", digest: "digest-a" },
-          1_000,
-        );
-
-        expect(made?.key.purpose).toBe("dashboard");
-        expect(await store.codeKeysOf(A)).toStrictEqual([]);
-        // It is a key all the same: it is theirs, it opens the door, and the
-        // whole-list read a terminal makes has it.
-        expect((await store.keysOf(A)).map((key) => key.id)).toStrictEqual(["mk_a"]);
-        expect((await store.workingKey("digest-a"))?.id).toBe("mk_a");
-      });
-
-      it("is listed under nothing until somebody names them", async () => {
-        // Registering writes no listing name, because nobody has chosen one:
-        // the name buyers read is asked for afterwards, on a screen with room
-        // to say what it is for. Standing the row's own name in for it would
-        // list a seller under a word they never picked.
-        const store = await fresh();
-
-        const made = await store.registerMerchant(
-          { id: A, name: "Merchant A" },
-          { id: "mk_a", label: "the first key", digest: "digest-a" },
-          1_000,
-        );
-
-        expect(made?.merchant.serviceName).toBeNull();
-        expect((await store.merchantById(A))?.serviceName).toBeNull();
-        // And paid nowhere, for the same reason: registering asks for neither.
-        expect(made?.merchant.payoutWallet).toStrictEqual(NO_WALLET);
-        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(NO_WALLET);
-      });
-
-      it("is not written at all where the key beside them cannot be", async () => {
-        // The half that makes the sentence above true rather than merely
-        // intended. A digest already taken is how this fails with nothing else
-        // wrong, and the merchant must not survive it: left behind, it is a row
-        // with a generated identifier nobody holds, no way in, and foreign keys
-        // on it that stop anything sweeping it away.
-        //
-        // What the refusal says is the store's own sentence and not the
-        // driver's, for the reason the key cases give: the database's own
-        // refusal carries the digest, and this is a path a stranger reaches by
-        // registering.
-        const store = await fresh();
-        await store.registerMerchant(
-          { id: A, name: "Merchant A" },
-          { id: "mk_a", label: "the first key", digest: "digest-a" },
-          1_000,
-        );
-
-        const refused = await refusalOf(
-          store.registerMerchant(
-            { id: B, name: "Merchant B" },
-            { id: "mk_b", label: "the first key", digest: "digest-a" },
-            2_000,
-          ),
-        );
-
-        expect(String(refused)).toMatch(/a key with that digest is already written down/);
-        expect(asLogged(refused)).not.toContain("digest-a");
-        expect(await store.merchantById(B)).toBeNull();
-        expect((await store.merchants()).map((merchant) => merchant.id)).toStrictEqual([A]);
-      });
-
-      it("is not written over by a second registration under the same identifier", async () => {
-        // Answered rather than thrown, the way writing a merchant on its own
-        // answers it, and the merchant that is there keeps its name and gains no
-        // key from the attempt.
-        const store = await fresh();
-        await store.addMerchant({ id: A, name: "Merchant A" }, 1_000);
-
-        const again = await store.registerMerchant(
-          { id: A, name: "Somebody else" },
-          { id: "mk_a", label: "the first key", digest: "digest-a" },
-          2_000,
-        );
-
-        expect(again).toBeNull();
-        expect((await store.merchantById(A))?.name).toBe("Merchant A");
-        expect(await store.keysOf(A)).toStrictEqual([]);
-        expect(await store.workingKey("digest-a")).toBeNull();
-      });
     });
 
     describe("a key", () => {
@@ -763,14 +647,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // merchant, the route would have to hash the header a second time and
         // look it up again to find out.
         const store = await twoMerchants();
-        await store.addKey(
-          { id: "mk_a", merchantId: A, label: "A's", digest: "digest-a", purpose: "merchant_code" },
-          1_000,
-        );
-        await store.addKey(
-          { id: "mk_b", merchantId: B, label: "B's", digest: "digest-b", purpose: "merchant_code" },
-          2_000,
-        );
+        await store.addKey({ id: "mk_a", merchantId: A, label: "A's", digest: "digest-a" }, 1_000);
+        await store.addKey({ id: "mk_b", merchantId: B, label: "B's", digest: "digest-b" }, 2_000);
 
         expect(await store.workingKey("digest-a")).toMatchObject({
           id: "mk_a",
@@ -786,10 +664,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // "this was never a key" would confirm which guesses had once been real
         // keys, which is the thing revoking a key has to stop.
         const store = await twoMerchants();
-        await store.addKey(
-          { id: "mk_a", merchantId: A, label: "A's", digest: "digest-a", purpose: "merchant_code" },
-          1_000,
-        );
+        await store.addKey({ id: "mk_a", merchantId: A, label: "A's", digest: "digest-a" }, 1_000);
 
         await store.disableKey("mk_a", 2_000);
 
@@ -800,14 +675,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       it("leaves its merchant's other keys working when it is disabled", async () => {
         // The whole reason a key is a row rather than a variable.
         const store = await twoMerchants();
-        await store.addKey(
-          { id: "mk_1", merchantId: A, label: "one", digest: "digest-1", purpose: "merchant_code" },
-          1_000,
-        );
-        await store.addKey(
-          { id: "mk_2", merchantId: A, label: "two", digest: "digest-2", purpose: "merchant_code" },
-          2_000,
-        );
+        await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
+        await store.addKey({ id: "mk_2", merchantId: A, label: "two", digest: "digest-2" }, 2_000);
 
         await store.disableKey("mk_1", 3_000);
 
@@ -819,10 +688,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // A retry after a dropped connection must not rewrite the one fact
         // somebody reconstructing an incident is working from.
         const store = await twoMerchants();
-        await store.addKey(
-          { id: "mk_1", merchantId: A, label: "one", digest: "digest-1", purpose: "merchant_code" },
-          1_000,
-        );
+        await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
 
         expect((await store.disableKey("mk_1", 2_000))?.disabledAt).toBe(2_000);
         expect((await store.disableKey("mk_1", 9_000))?.disabledAt).toBe(2_000);
@@ -830,82 +696,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
       it("is said not to be there rather than disabled quietly", async () => {
         expect(await (await twoMerchants()).disableKey("mk_nope", 1_000)).toBeNull();
-      });
-
-      it("says what it was made for, and only one kind is the merchant's own", async () => {
-        // The two kinds are told apart in the row rather than by the label on
-        // it, because what hangs off the difference is which list a key appears
-        // in — and a list assembled by reading words a person can type would be
-        // one a person can type their way into.
-        const store = await twoMerchants();
-        await store.addKey(
-          {
-            id: "mk_code",
-            merchantId: A,
-            label: "a worker",
-            digest: "d1",
-            purpose: "merchant_code",
-          },
-          1_000,
-        );
-        await store.addKey(
-          {
-            id: "mk_cab",
-            merchantId: A,
-            label: "a dashboard's",
-            digest: "d2",
-            purpose: "dashboard",
-          },
-          2_000,
-        );
-
-        expect((await store.keysOf(A)).map((key) => [key.id, key.purpose])).toStrictEqual([
-          ["mk_code", "merchant_code"],
-          ["mk_cab", "dashboard"],
-        ]);
-        // And the merchant's own list has the one they made. This is the read
-        // behind the screen they revoke keys on, so the filtering is the
-        // store's rather than something every caller has to remember.
-        expect((await store.codeKeysOf(A)).map((key) => key.id)).toStrictEqual(["mk_code"]);
-        // Both open the door: a dashboard's key is a key, and hiding it from a
-        // list is not the same as it being less of one.
-        expect((await store.workingKey("d2"))?.id).toBe("mk_cab");
-      });
-
-      it("is kept in its own merchant's list of their own, revoked and in order", async () => {
-        // The narrower list keeps both promises the wide one makes: revoked
-        // keys stay on it, because "which key did I turn off, and when" is
-        // asked on exactly this screen, and it is ordered rather than left to
-        // storage. A dashboard's key between two of the merchant's own is what
-        // would break an implementation that sliced rather than filtered.
-        const store = await twoMerchants();
-        await store.addKey(
-          { id: "mk_1", merchantId: A, label: "one", digest: "d1", purpose: "merchant_code" },
-          1_000,
-        );
-        await store.addKey(
-          {
-            id: "mk_cab",
-            merchantId: A,
-            label: "a dashboard's",
-            digest: "d2",
-            purpose: "dashboard",
-          },
-          2_000,
-        );
-        await store.addKey(
-          { id: "mk_2", merchantId: A, label: "two", digest: "d3", purpose: "merchant_code" },
-          3_000,
-        );
-        await store.addKey(
-          { id: "mk_b", merchantId: B, label: "theirs", digest: "d4", purpose: "merchant_code" },
-          4_000,
-        );
-        await store.disableKey("mk_2", 5_000);
-
-        expect((await store.codeKeysOf(A)).map((key) => key.id)).toStrictEqual(["mk_1", "mk_2"]);
-        expect((await store.codeKeysOf(A))[1]?.disabledAt).toBe(5_000);
-        expect((await store.codeKeysOf(B)).map((key) => key.id)).toStrictEqual(["mk_b"]);
       });
 
       it("is in its own merchant's list, revoked or not, and in nobody else's", async () => {
@@ -916,7 +706,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             merchantId: A,
             label: "one",
             digest: "digest-1",
-            purpose: "merchant_code",
           },
           1_000,
         );
@@ -926,7 +715,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             merchantId: A,
             label: "two",
             digest: "digest-2",
-            purpose: "merchant_code",
           },
           2_000,
         );
@@ -936,7 +724,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             merchantId: B,
             label: "theirs",
             digest: "digest-3",
-            purpose: "merchant_code",
           },
           3_000,
         );
@@ -968,7 +755,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             merchantId: A,
             label: "written first",
             digest: "d1",
-            purpose: "merchant_code",
           },
           1_000,
         );
@@ -978,7 +764,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             merchantId: A,
             label: "written second",
             digest: "d2",
-            purpose: "merchant_code",
           },
           1_000,
         );
@@ -988,7 +773,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             merchantId: A,
             label: "made earlier",
             digest: "d3",
-            purpose: "merchant_code",
           },
           500,
         );
@@ -1007,14 +791,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // a refusal would count somebody else's keys, and a merchant walking
         // identifiers would learn which of them are real.
         const store = await twoMerchants();
-        await store.addKey(
-          { id: "mk_a", merchantId: A, label: "A's", digest: "digest-a", purpose: "merchant_code" },
-          1_000,
-        );
-        await store.addKey(
-          { id: "mk_b", merchantId: B, label: "B's", digest: "digest-b", purpose: "merchant_code" },
-          1_000,
-        );
+        await store.addKey({ id: "mk_a", merchantId: A, label: "A's", digest: "digest-a" }, 1_000);
+        await store.addKey({ id: "mk_b", merchantId: B, label: "B's", digest: "digest-b" }, 1_000);
 
         expect(await store.disableKeyOf(A, "mk_a", 2_000)).toMatchObject({ disabledAt: 2_000 });
         expect(await store.disableKeyOf(A, "mk_b", 2_000)).toBeNull();
@@ -1029,244 +807,12 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.disableKeyOf(A, "mk_a", 9_000)).toMatchObject({ disabledAt: 2_000 });
       });
 
-      it("is not disabled by the merchant when it was made for their dashboard", async () => {
-        // A merchant switches off what they issued. The key their dashboard calls
-        // with is not that, and this is the call behind the button on their own
-        // screen — so it refuses, and says which of the two silences this is
-        // rather than folding it into "no such key".
-        //
-        // Told apart from "not there" on purpose, and it costs nothing: this
-        // names a key of the caller's own merchant, so the answer is about
-        // their own row and not a way of counting anybody else's. What it
-        // replaces is not a silence at all — before this rule the key was
-        // simply revoked, and whoever was signed into that dashboard was out.
-        const store = await twoMerchants();
-        await store.addKey(
-          {
-            id: "mk_cab",
-            merchantId: A,
-            label: "a dashboard's",
-            digest: "digest-cab",
-            purpose: "dashboard",
-          },
-          1_000,
-        );
-        await store.addKey(
-          {
-            id: "mk_theirs",
-            merchantId: B,
-            label: "B's dashboard's",
-            digest: "digest-b",
-            purpose: "dashboard",
-          },
-          1_000,
-        );
-
-        expect(await store.disableKeyOf(A, "mk_cab", 2_000)).toBe("made_for_a_dashboard");
-        // Nothing was written, which is the half that matters: a refusal that
-        // had already revoked the key would be worse than no rule at all.
-        expect((await store.workingKey("digest-cab"))?.id).toBe("mk_cab");
-        expect((await store.keysOf(A))[0]?.disabledAt).toBeNull();
-
-        // Another merchant's dashboard key is still "not there" — the kind of a
-        // stranger's key is not a thing this call tells anybody.
-        expect(await store.disableKeyOf(A, "mk_theirs", 2_000)).toBeNull();
-        expect((await store.workingKey("digest-b"))?.id).toBe("mk_theirs");
-      });
-
-      it("is forgotten one key at a time, and reaches nothing else", async () => {
-        // What a dashboard does once it has moved an account row onto a fresh
-        // key: it forgets the key it has just stopped using, and that one key
-        // only. Removed rather than revoked, because a merchant never issued
-        // one, never saw one and will never read one back — a row kept for the
-        // history would be history for nobody.
-        //
-        // One row and no rule about which others to keep, because any such rule
-        // is decided when the call is made and can be wrong by the time it
-        // lands: a key written in between would be removed by a caller that had
-        // never heard of it. Here the caller must be holding what it removes.
-        const store = await twoMerchants();
-        await store.addKey(
-          {
-            id: "mk_old",
-            merchantId: A,
-            label: "an older sign-in",
-            digest: "d1",
-            purpose: "dashboard",
-          },
-          1_000,
-        );
-        await store.addKey(
-          {
-            id: "mk_now",
-            merchantId: A,
-            label: "this sign-in",
-            digest: "d2",
-            purpose: "dashboard",
-          },
-          2_000,
-        );
-        await store.addKey(
-          {
-            id: "mk_code",
-            merchantId: A,
-            label: "a worker",
-            digest: "d3",
-            purpose: "merchant_code",
-          },
-          3_000,
-        );
-        await store.addKey(
-          {
-            id: "mk_b",
-            merchantId: B,
-            label: "their dashboard's",
-            digest: "d4",
-            purpose: "dashboard",
-          },
-          4_000,
-        );
-
-        expect(await store.forgetDashboardKey("mk_old")).toBe(true);
-
-        // The named one is gone rather than off: nothing answers for its digest
-        // in either of the two reads, which is what tells a removal from a
-        // revocation.
-        expect(await store.keyByDigest("d1")).toBeNull();
-        expect((await store.keysOf(A)).map((key) => key.id)).toStrictEqual(["mk_now", "mk_code"]);
-        // Every other key is where it was, including the merchant's own and the
-        // one another merchant's dashboard is signed in on.
-        expect((await store.workingKey("d2"))?.id).toBe("mk_now");
-        expect((await store.workingKey("d3"))?.id).toBe("mk_code");
-        expect((await store.workingKey("d4"))?.id).toBe("mk_b");
-      });
-
-      it("will not forget a key the merchant made for their own code", async () => {
-        // The two kinds are kept apart down here as well as at the door. A
-        // merchant's own key is revoked, at an instant they can read back on
-        // the one screen those keys appear on; removing the row would take that
-        // history away, and nothing in this port should be able to do it by
-        // being handed the wrong identifier.
-        const store = await twoMerchants();
-        await store.addKey(
-          {
-            id: "mk_code",
-            merchantId: A,
-            label: "a worker",
-            digest: "d1",
-            purpose: "merchant_code",
-          },
-          1_000,
-        );
-
-        expect(await store.forgetDashboardKey("mk_code")).toBe(false);
-        expect((await store.workingKey("d1"))?.id).toBe("mk_code");
-      });
-
-      it("is forgotten a second time as a key that is not there", async () => {
-        // A retry after a dropped connection is safe: the row is already gone,
-        // nothing else is touched, and false says which of the two happened
-        // rather than reading as a failure. An identifier naming nothing at all
-        // is answered the same way, because by then the two are the same fact.
-        const store = await twoMerchants();
-        await store.addKey(
-          {
-            id: "mk_now",
-            merchantId: A,
-            label: "this sign-in",
-            digest: "d1",
-            purpose: "dashboard",
-          },
-          1_000,
-        );
-
-        expect(await store.forgetDashboardKey("mk_now")).toBe(true);
-        expect(await store.forgetDashboardKey("mk_now")).toBe(false);
-        expect(await store.forgetDashboardKey("mk_never_existed")).toBe(false);
-        expect(await store.keyByDigest("d1")).toBeNull();
-      });
-
-      it("leaves its digest free once it is gone, which revoking one does not", async () => {
-        // What tells a removal from a revocation on the one side a caller can
-        // see: a revoked key holds its digest for good — writing that secret
-        // again is refused, which is what keeps the sandbox's seed from issuing
-        // a second key for a key somebody turned off — and a key that was swept
-        // away holds nothing. Without this the two stores could disagree about
-        // it and both would look right: the door answers nothing for a digest
-        // either way, and only a write finds out.
-        const store = await twoMerchants();
-        await store.addKey(
-          {
-            id: "mk_gone",
-            merchantId: A,
-            label: "an older sign-in",
-            digest: "d1",
-            purpose: "dashboard",
-          },
-          1_000,
-        );
-        await store.addKey(
-          {
-            id: "mk_off",
-            merchantId: A,
-            label: "a worker",
-            digest: "d2",
-            purpose: "merchant_code",
-          },
-          2_000,
-        );
-        await store.addKey(
-          {
-            id: "mk_now",
-            merchantId: A,
-            label: "this sign-in",
-            digest: "d3",
-            purpose: "dashboard",
-          },
-          3_000,
-        );
-        await store.disableKey("mk_off", 4_000);
-
-        await store.forgetDashboardKey("mk_gone");
-
-        // The swept key's digest is nobody's, so the same secret can be written
-        // again and it opens the door as the new key it now is.
-        await store.addKey(
-          {
-            id: "mk_again",
-            merchantId: A,
-            label: "a worker",
-            digest: "d1",
-            purpose: "merchant_code",
-          },
-          5_000,
-        );
-        expect((await store.workingKey("d1"))?.id).toBe("mk_again");
-
-        // The revoked key's is still its own, and writing it again is refused.
-        await expect(
-          store.addKey(
-            {
-              id: "mk_twice",
-              merchantId: A,
-              label: "a worker",
-              digest: "d2",
-              purpose: "merchant_code",
-            },
-            6_000,
-          ),
-        ).rejects.toThrow(/a key with that digest is already written down/);
-      });
-
       it("is found by its digest whatever state it is in, which the door is not", async () => {
         // The one caller is the seed, which would otherwise issue a second key
         // with a digest already taken every time it ran against a key somebody
         // disabled.
         const store = await twoMerchants();
-        await store.addKey(
-          { id: "mk_1", merchantId: A, label: "one", digest: "digest-1", purpose: "merchant_code" },
-          1_000,
-        );
+        await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
         await store.disableKey("mk_1", 2_000);
 
         expect((await store.keyByDigest("digest-1"))?.id).toBe("mk_1");
@@ -1293,7 +839,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
               merchantId: "mch_nobody",
               label: "one",
               digest: "d",
-              purpose: "merchant_code",
             },
             1_000,
           ),
@@ -1308,10 +853,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // first still in somebody's configuration and no longer opening
         // anything, and nobody told.
         const store = await twoMerchants();
-        await store.addKey(
-          { id: "mk_1", merchantId: A, label: "one", digest: "digest-1", purpose: "merchant_code" },
-          1_000,
-        );
+        await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
 
         await expect(
           store.addKey(
@@ -1320,7 +862,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
               merchantId: B,
               label: "theirs",
               digest: "digest-2",
-              purpose: "merchant_code",
             },
             2_000,
           ),
@@ -1341,10 +882,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // two issues race, and it is the database's own rule rather than a
         // check somebody remembered.
         const store = await twoMerchants();
-        await store.addKey(
-          { id: "mk_1", merchantId: A, label: "one", digest: "digest-1", purpose: "merchant_code" },
-          1_000,
-        );
+        await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
 
         await expect(
           store.addKey(
@@ -1353,7 +891,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
               merchantId: B,
               label: "theirs",
               digest: "digest-1",
-              purpose: "merchant_code",
             },
             2_000,
           ),
@@ -1376,10 +913,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // Both routes to a refusal are read, because the parameters of the
         // insert carry the digest whichever of the two rules turned it away.
         const store = await twoMerchants();
-        await store.addKey(
-          { id: "mk_1", merchantId: A, label: "one", digest: "digest-1", purpose: "merchant_code" },
-          1_000,
-        );
+        await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
 
         const forTheIdentifier = await refusalOf(
           store.addKey(
@@ -1388,7 +922,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
               merchantId: B,
               label: "theirs",
               digest: "digest-2",
-              purpose: "merchant_code",
             },
             2_000,
           ),
@@ -1400,7 +933,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
               merchantId: B,
               label: "theirs",
               digest: "digest-1",
-              purpose: "merchant_code",
             },
             3_000,
           ),
@@ -1418,7 +950,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         const store = await twoMerchants();
 
         const made = await store.addKey(
-          { id: "mk_1", merchantId: A, label: "one", digest: "digest-1", purpose: "merchant_code" },
+          { id: "mk_1", merchantId: A, label: "one", digest: "digest-1" },
           1_000,
         );
 
@@ -1432,14 +964,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // dangerous direction — a key that is in somebody's worker looking
         // busy, or an idle one looking used.
         const store = await twoMerchants();
-        await store.addKey(
-          { id: "mk_1", merchantId: A, label: "one", digest: "digest-1", purpose: "merchant_code" },
-          1_000,
-        );
-        await store.addKey(
-          { id: "mk_2", merchantId: A, label: "two", digest: "digest-2", purpose: "merchant_code" },
-          2_000,
-        );
+        await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
+        await store.addKey({ id: "mk_2", merchantId: A, label: "two", digest: "digest-2" }, 2_000);
 
         await store.noteKeyUse("mk_1", 5_000);
 
@@ -1454,10 +980,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // would jump backwards and a key in constant use would read as one
         // nobody has touched since this morning.
         const store = await twoMerchants();
-        await store.addKey(
-          { id: "mk_1", merchantId: A, label: "one", digest: "digest-1", purpose: "merchant_code" },
-          1_000,
-        );
+        await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
 
         await store.noteKeyUse("mk_1", 9_000);
         await store.noteKeyUse("mk_1", 5_000);
@@ -1471,10 +994,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // evidence for the very thing it had just been used to decide, on the
         // screen where "which key did I turn off, and why" is asked next week.
         const store = await twoMerchants();
-        await store.addKey(
-          { id: "mk_1", merchantId: A, label: "one", digest: "digest-1", purpose: "merchant_code" },
-          1_000,
-        );
+        await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
         await store.noteKeyUse("mk_1", 5_000);
 
         expect((await store.disableKey("mk_1", 7_000))?.lastUsedAt).toBe(5_000);

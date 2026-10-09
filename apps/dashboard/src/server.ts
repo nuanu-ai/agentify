@@ -672,13 +672,13 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       .send(linkRequestedScreen(base, config.surfaceMode, email, destination, answer));
   });
 
-  const registerMerchant = async (): Promise<{ id: string; key: string } | null> => {
+  const registerMerchant = async (): Promise<string | null> => {
     const made = await registrar.register();
     if (!made.ok) {
       console.error(`[dashboard] no merchant was made: ${made.why}`);
       return null;
     }
-    return { id: made.document.merchant_id, key: made.document.secret };
+    return made.document;
   };
 
   const attachMerchant = async (person: Person) =>

@@ -59,16 +59,11 @@ import {
 import { WorkerEnvelopeSchema } from "./envelope.js";
 import { AcceptanceSchema, DeliverySchema, HandlerAnswerSchema, RefusalSchema } from "./handler.js";
 import {
-  DashboardKeySchema,
   DisabledKeySchema,
-  ForgottenDashboardKeySchema,
   IssuedKeySchema,
   IssueKeyRequestSchema,
   MerchantKeyListSchema,
-  PayoutWalletRequestSchema,
   PayoutWalletSchema,
-  RegisteredMerchantSchema,
-  RegistrationRequestSchema,
   SellerNameRequestSchema,
   SellerNameSchema,
 } from "./merchant.js";
@@ -833,7 +828,6 @@ export const ERROR_CODES = Object.freeze([
   "charset_unsupported",
   "encoding_unsupported",
   "gateway_failed",
-  "key_made_for_a_dashboard",
   "key_opened_this_call",
   "malformed_body",
   "malformed_query",
@@ -842,9 +836,7 @@ export const ERROR_CODES = Object.freeze([
   "no_such_key",
   "no_such_order",
   "no_such_route",
-  "not_a_dashboard_key",
   "not_authorised",
-  "not_invited",
   "not_selling",
   "not_this_purchase",
   "order_closed_before_it_was_priced",
@@ -855,9 +847,6 @@ export const ERROR_CODES = Object.freeze([
   "payment_not_verified",
   "ship_to_changed",
   "ship_to_does_not_fit",
-  "wallet_change_not_announced",
-  "wallet_change_nobody_to_tell",
-  "wallet_change_raced",
 ] as const);
 
 /** One of the codes this gateway is known to refuse a call with. */
@@ -991,16 +980,6 @@ export const API_ROUTES = Object.freeze({
     response: { document: MerchantCardListSchema },
   },
 
-  register_merchant: {
-    method: "POST",
-    path: "/v0/merchants",
-    auth: "none",
-    description:
-      "Makes a merchant and the key whoever registered them will call as them with — both of those or neither. This call is not on the public origin, and from outside the path answers as one the site does not have; nothing calls it either, since the dashboard makes a merchant, when a signed-in person presses its one control, by a call inside the process it shares with the gateway. It takes no key because nobody registering has one yet; what stands in the door instead is an invitation code out of the gateway's own configuration, and a gateway with no code configured refuses every registration in the same words a wrong code gets, so this call is not a way of finding out whether registration is open. The key comes back once and is readable nowhere afterwards, and it is a key made for a dashboard: it is in no list of the merchant's keys and is not disabled through them, so no row for it comes back here — only the key itself. What the new merchant does not have is a name: they are listed under nothing until somebody sets one at POST /v0/seller-name, and until then publishing a card is refused, so a dashboard that registers a person and takes them straight to a publish screen has built a dead end. Nothing about an account, an address or a password reaches this call either: those belong to whatever signs a person in, on the other side of it. Unlike every other call on this surface that writes something, a repeat of this one is not safe and there is nothing here that could make it so: two calls make two merchants, and the caller holds a key to only the second. A caller whose connection drops before the answer arrives cannot find out from here whether the first landed — it has no key with which to ask — and the merchant it may have made cannot be swept away afterwards, because a merchant is what every card, order and receipt is owned by.",
-    request: RegistrationRequestSchema,
-    response: { document: RegisteredMerchantSchema },
-  },
-
   get_seller_name: {
     method: "GET",
     path: "/v0/seller-name",
@@ -1025,17 +1004,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/payout-wallet",
     auth: "merchant_key",
     description:
-      "The address the sales of the merchant this call's own key belongs to are paid into now, and any change of it that is waiting. Payments here are not held by anybody on the way: a buyer's agent pays this address directly and no balance of the merchant's is ever held on our side, which is why the address has to be theirs and why this call exists. Any key of the merchant's reads it, the keys made for their own code included; only the merchant's dashboard sets it. Null is the ordinary answer for a merchant who has set none, and it is an answer rather than a refusal — a merchant with no wallet exists and has a settings screen to draw. The address comes back in the mixed-case spelling a wallet shows, whichever of the two accepted spellings was sent to set it, so a screen showing it shows what the merchant copied out of their wallet character for character. On the live deployment a replacement for an address already set takes effect forty-eight hours after it was announced to the merchant, and until then this answers with the address still paid and names the waiting one, with the moment it takes effect, under pending. Null there means nothing is waiting, which is always the answer on the test channel and in a sandbox.",
-    response: { document: PayoutWalletSchema },
-  },
-
-  set_payout_wallet: {
-    method: "POST",
-    path: "/v0/payout-wallet",
-    auth: "merchant_key",
-    description:
-      "Sets the address the sales of the merchant this call's own key belongs to are paid into. A person sets the wallet on the dashboard's Settings screen, which calls the gateway inside the process it shares with it rather than this route: keys operate the shop, and where the shop's money goes is set through the dashboard. Of the keys, only one made for a dashboard is let through here, and nothing calls with one. The public origin does not route this call at all, so from outside it is a path the site does not have; at the gateway a key made for the merchant's own code is refused under not_a_dashboard_key, for the first address as for any other, and nothing is written or announced. The first address a merchant sets applies at once; on the live deployment every dashboard account of the merchant is then told of it, and a message that cannot be sent refuses nothing. On the live deployment a different address after that does not: before anything is written, every account that names the merchant is sent a message saying what changes, when, and that it was asked for in the dashboard and from a session signed in as which account, and the change takes effect forty-eight hours after those messages were handed to the mail provider. Until then every payment request names the address that applies now, and the answer carries the waiting one under pending with the moment it takes effect. Asking again for the address already waiting changes nothing, sends no second message and restarts no clock, and answers with the same pending change, so a retry after a dropped connection is safe; a different address replaces the waiting one and starts the forty-eight hours again; asking for the address that applies now cancels the waiting change. On the test channel and in a sandbox every change applies at once and no message is sent. The answer is the wallet as it now stands, read back from what was written rather than echoed, in the mixed-case spelling a wallet shows. Setting the address that already applies, with nothing waiting, changes nothing and answers the same way. An address whose capital letters do not agree with the rest of it is refused and nothing is written, because those capitals are a checksum and letters that disagree mean a character is wrong — and an address that is wrong is another perfectly good address belonging to somebody else. What this call will not do is take an address away: null is refused, because without an address there is nowhere to send the money and every published card would quietly come off sale — ending the selling under the name of editing a setting; somebody reaching for that wants either a different address, which is this same call, or an end to selling, which is the pause. On a deployment that settles on a real chain, a merchant with no wallet set here cannot publish a card, and the refusal at the publish says so.",
-    request: PayoutWalletRequestSchema,
+      "The address the sales of the merchant this call's own key belongs to are paid into now, and any change of it that is waiting. Payments here are not held by anybody on the way: a buyer's agent pays this address directly and no balance of the merchant's is ever held on our side, which is why the address has to be theirs and why this call exists. Any key of the merchant's reads it; none sets it. A person signed in to the merchant's dashboard sets it on its Settings screen, and on the live deployment every account of the merchant is told first and the change waits. Null is the ordinary answer for a merchant who has set none, and it is an answer rather than a refusal — a merchant with no wallet exists and has a settings screen to draw. The address comes back in the mixed-case spelling a wallet shows, whichever of the two accepted spellings was sent to set it, so a screen showing it shows what the merchant copied out of their wallet character for character. On the live deployment a replacement for an address already set takes effect forty-eight hours after it was announced to the merchant, and until then this answers with the address still paid and names the waiting one, with the moment it takes effect, under pending. Null there means nothing is waiting, which is always the answer on the test channel and in a sandbox.",
     response: { document: PayoutWalletSchema },
   },
 
@@ -1044,7 +1013,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/keys",
     auth: "merchant_key",
     description:
-      "The keys the merchant this call's own key belongs to made for their own code, the revoked ones among them, and never the keys themselves. A merchant who has only ever signed into a dashboard has none of these, and an empty list is that answer rather than a fault: a key made for a dashboard is in no list here, because the merchant did not issue it and cannot disable it. Whether the list is all of the rest is not something this document claims either: paging is not designed, and the absence of a field about it is not a promise that there is no more. The answer also names the key the call was made with, as this_call, and that field is the reason this is not a bare list: a merchant cannot disable the key their own call was made with, so a screen drawn without knowing which key that is would offer a button the gateway refuses. That identifier is not among the keys listed when the call is made with a key made for a dashboard, and a client that looked it up among the rows has to be built for finding none. Every row also says when a call was last seen on that key, which is the field a screen offering to revoke one is worth drawing at all — and it is a recorded answer rather than an exact one, lagging by minutes, and blank both for a key nothing has called and for one made before this gateway began recording, which nothing here tells apart. This call is itself one of those calls, so the key it was made with reads as used at about this moment, whether or not it appears in the list.",
+      "The keys the merchant this call's own key belongs to made for their own code, the revoked ones among them, and never the keys themselves. A merchant who has only ever signed into a dashboard has none of these, and an empty list is that answer rather than a fault: the dashboard calls with no key. Whether the list is all of the rest is not something this document claims either: paging is not designed, and the absence of a field about it is not a promise that there is no more. The answer also names the key the call was made with, as this_call, and that field is the reason this is not a bare list: a merchant cannot disable the key their own call was made with, so a screen drawn without knowing which key that is would offer a button the gateway refuses. It is always one of the keys listed, since every key is one the merchant issued. Every row also says when a call was last seen on that key, which is the field a screen offering to revoke one is worth drawing at all — and it is a recorded answer rather than an exact one, lagging by minutes, and blank both for a key nothing has called and for one made before this gateway began recording, which nothing here tells apart. This call is itself one of those calls, so the key it was made with reads as used at about this moment.",
     response: { document: MerchantKeyListSchema },
   },
 
@@ -1053,7 +1022,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/keys",
     auth: "merchant_key",
     description:
-      "Issues another key for the merchant's own code, to the merchant this call's own key belongs to. The key is generated here and never taken from the caller, and it comes back exactly once — what is kept afterwards is a digest, so nothing can show it again. A merchant with several keys can hand one to each worker and revoke one without touching the others, which is the whole reason a key is a row. This call cannot make the other kind of key: what a dashboard calls with is asked for at POST /v0/keys/dashboard, and a key made here is one the merchant sees, names and revokes.",
+      "Issues another key for the merchant's own code, to the merchant this call's own key belongs to. The key is generated here and never taken from the caller, and it comes back exactly once — what is kept afterwards is a digest, so nothing can show it again. A merchant with several keys can hand one to each worker and revoke one without touching the others, which is the whole reason a key is a row. Every key is made here, and every one is a key the merchant sees, names and revokes.",
     request: IssueKeyRequestSchema,
     response: { document: IssuedKeySchema },
   },
@@ -1063,26 +1032,8 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/keys/:key_id/disable",
     auth: "merchant_key",
     description:
-      "Stops one of this merchant's keys working, from that instant, and touches no other key. Disabling a key that is already disabled changes nothing and answers the same way, keeping the instant it was first revoked at, so a retry after a dropped connection is safe. Three refusals are worth knowing before a screen is built on this. A key belonging to another merchant is answered exactly as a key that does not exist, so this call is not a way of counting somebody else's keys. A key made for a dashboard is refused under key_made_for_a_dashboard, whoever asks and however they came by its identifier: this call reaches the keys a merchant issued for their own code and nothing else, and replacing the one a dashboard holds is POST /v0/keys/dashboard and the forgetting beside it. And the key this call was made with cannot be disabled by it — that one click and no more: the refusal is about the key in front of it, so a merchant holding two keys of their own can still disable either with the other, and two such calls at one moment can leave them with none of their own. That is not refused here or anywhere, and what it costs is their own code going quiet rather than the way back in, which is a key of the other kind.",
+      "Stops one of this merchant's keys working, from that instant, and touches no other key. Disabling a key that is already disabled changes nothing and answers the same way, keeping the instant it was first revoked at, so a retry after a dropped connection is safe. Two refusals are worth knowing before a screen is built on this. A key belonging to another merchant is answered exactly as a key that does not exist, so this call is not a way of counting somebody else's keys. And the key this call was made with cannot be disabled by it — that one click and no more: the refusal is about the key in front of it, so a merchant holding two keys of their own can still disable either with the other, and two such calls at one moment can leave them with none of their own. That is not refused here or anywhere, and what it costs is their own code going quiet rather than the way back in, which is signing in to the dashboard with the link mailed to them.",
     response: { document: DisabledKeySchema },
-  },
-
-  issue_dashboard_key: {
-    method: "POST",
-    path: "/v0/keys/dashboard",
-    auth: "merchant_key",
-    description:
-      "Makes a key for a dashboard to call as this merchant with, and hands it back once. This call and the forgetting beside it are not on the public origin, and from outside the path answers as one the site does not have; nothing calls them either, since the dashboard calls the gateway inside the process it shares with it. It is a key of a different kind from the ones at /v0/keys: the merchant did not ask for it, never sees it, and it appears in no list of theirs — so nothing comes back but the key itself. It was how a dashboard replaced its own credential at every sign-in; nothing replaces such keys any more, so a copy of a dashboard's database holds keys of this kind that still work. The call is refused to a key made for the merchant's own code, under not_a_dashboard_key: these two calls are the dashboard's own, and a merchant asking for one would be asking for a credential to a dashboard they are not standing in.",
-    response: { document: DashboardKeySchema },
-  },
-
-  forget_dashboard_key: {
-    method: "DELETE",
-    path: "/v0/keys/dashboard",
-    auth: "merchant_key",
-    description:
-      "Removes the key this call was made with, and no other. Like the call that makes such a key, it is not on the public origin, and nothing calls it. It is removed rather than revoked: a merchant never issued one, never sees one and would never read a revoked one back, so a row kept for the history would be history for nobody. There are no parameters, and that is not a convenience — a key belonging to anybody else, this merchant included, is unreachable here by construction, because the only way to name a key is to be holding it. What a caller does with this is put a key of its own beyond use once it has stopped signing in with it: ask for a fresh key, write it down where the account is kept, then forget the one that was there. A caller that forgets first can be left naming a key that no longer exists, which is the one order that locks somebody out. Made a second time with the same key it is refused as a key that does not exist, which is safe and is the confirmation the first one landed: either way that key is gone and nothing else has moved. It is refused to a key made for the merchant's own code, under not_a_dashboard_key: those are revoked from the list they appear on, at an instant their owner can read back, and removing the row outright would take that history away.",
-    response: { document: ForgottenDashboardKeySchema },
   },
 
   get_order: {

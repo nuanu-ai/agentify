@@ -6,7 +6,8 @@
  * application. What is held here is what a page relies on and no screen test
  * can pin down by itself: that what goes in is held to the contract's request
  * schema before anything is done; that a refusal reaches a page in the words
- * and under the status the route at the door gives the same refusal; that a
+ * and under the status the route at the door gives the same refusal, and a
+ * wallet change's, which has no door, in words that are true about a mailbox; that a
  * call that does not finish is given up on at its deadline and said to be
  * possibly done, while a failure of ours is not dressed up as an answer; and
  * that the account a session is signed in as is the one a message names.
@@ -132,19 +133,15 @@ describe("what goes in", () => {
 
 describe("a refusal", () => {
   it("reaches the page in the words and under the status the route at the door gives it", async () => {
-    // One fact, two readers: a merchant on the wallet screen and their
-    // engineer reading the API are told the same thing. On the live
-    // deployment no account names this merchant, so there is nobody to tell.
-    const harnessed = await started(LIVE);
-    harnessed.announcer.answer = "nobody_to_tell";
+    // One fact, two readers: a merchant on the keys screen and their engineer
+    // reading the API are told the same thing about a key that is not there.
+    const harnessed = await started();
     const served = await serve(harnessed);
     if (open !== null) open.served = served;
-    const dashboardKey = await harnessed.addDashboardKey(harnessed.merchant.id);
 
-    const onThePage = await asTheOwner(harnessed).setPayoutWallet(A_WALLET);
-    const atTheDoor = await served.call("POST", "/v0/payout-wallet", {
-      body: { payout_wallet: A_WALLET },
-      headers: { authorization: `Bearer ${dashboardKey}` },
+    const onThePage = await asTheOwner(harnessed).disableKey("mk_nobody_was_issued");
+    const atTheDoor = await served.call("POST", "/v0/keys/mk_nobody_was_issued/disable", {
+      headers: { authorization: `Bearer ${harnessed.merchant.key}` },
     });
 
     const refused = (atTheDoor.body as { error: { code: string; message: string } }).error;
@@ -154,7 +151,7 @@ describe("a refusal", () => {
       code: refused.code,
       why: refused.message,
     });
-    expect(refused.code).toBe("wallet_change_nobody_to_tell");
+    expect(refused.code).toBe("no_such_key");
   });
 
   it("answers an order of another merchant's as one that is not there", async () => {
@@ -177,6 +174,80 @@ describe("a refusal", () => {
       email: "other@example.com",
     });
     expect((await asTheirs.getOrder(theirs)).ok).toBe(true);
+  });
+});
+
+describe("a wallet change the gateway would not record", () => {
+  // No route at the door makes one, so its words are the dashboard's own, and
+  // in every case nothing was written. What they claim about a mailbox is the
+  // part that has to be true: a merchant who has read a message about a change
+  // must not be told nothing was sent, and one who has none must not be sent
+  // looking for it.
+  const ANOTHER_WALLET = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+
+  it("says there is nobody to tell where no account names the merchant", async () => {
+    const harnessed = await started(LIVE);
+    harnessed.announcer.answer = "nobody_to_tell";
+
+    const refused = await asTheOwner(harnessed).setPayoutWallet(A_WALLET);
+
+    expect(refused).toMatchObject({ ok: false, status: 409 });
+    expect(refused.ok ? "" : refused.why).toMatch(/nobody to tell/);
+    expect((await harnessed.store.merchantById(harnessed.merchant.id))?.payoutWallet.address).toBe(
+      harnessed.merchant.wallet,
+    );
+  });
+
+  it("says a message may still have arrived when telling did not finish", async () => {
+    const harnessed = await started(LIVE);
+    harnessed.announcer.answer = "not_handed_over";
+
+    const refused = await asTheOwner(harnessed).setPayoutWallet(A_WALLET);
+
+    expect(refused).toMatchObject({ ok: false, status: 503 });
+    expect(refused.ok ? "" : refused.why).toMatch(/may still have received it/);
+  });
+
+  it("says its message went out when another change overtook it while it was told", async () => {
+    const harnessed = await started(LIVE);
+    let nested = false;
+    harnessed.announcer.answer = async () => {
+      if (!nested) {
+        nested = true;
+        await harnessed.gateway.setPayoutWallet(harnessed.merchant.id, ANOTHER_WALLET, {
+          kind: "signed_in",
+          email: "partner@example.com",
+        });
+      }
+      return "handed_over";
+    };
+
+    const refused = await asTheOwner(harnessed).setPayoutWallet(A_WALLET);
+
+    expect(refused).toMatchObject({ ok: false, status: 409 });
+    expect(refused.ok ? "" : refused.why).toMatch(/its message went out/);
+  });
+
+  it("claims no message when a first address was overtaken before anything was told", async () => {
+    const harnessed = await started(LIVE);
+    const fresh = await harnessed.gateway.registerMerchant();
+    const writing = harnessed.store.setPayoutWallet.bind(harnessed.store);
+    let overtaken = false;
+    harnessed.store.setPayoutWallet = async (id, expected, next, when) => {
+      if (!overtaken) {
+        overtaken = true;
+        await writing(id, expected, { address: ANOTHER_WALLET, pending: null }, when);
+      }
+      return await writing(id, expected, next, when);
+    };
+
+    const refused = await gatewayFor(harnessed.gateway, {
+      merchantId: fresh,
+      email: OWNER,
+    }).setPayoutWallet(A_WALLET);
+
+    expect(refused).toMatchObject({ ok: false, status: 409 });
+    expect(refused.ok ? "" : refused.why).not.toMatch(/message/i);
   });
 });
 

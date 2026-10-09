@@ -1,10 +1,11 @@
 /**
- * Making a merchant, naming what their products are sold under, and issuing the
- * two kinds of key to one.
+ * Making a merchant, naming what their products are sold under, and issuing
+ * keys to one.
  *
  * It is one small module rather than a copy per caller because there are three
- * and they must not drift: the seed the sandbox comes up with, the routes a
- * merchant reaches from their dashboard, and the test harness. A second way of
+ * and they must not drift: the seed the sandbox comes up with, the gateway's
+ * application that a merchant's code and their dashboard both call, and the
+ * test harness. A second way of
  * turning a secret into a digest would be a key that works in one of them and
  * not the others, and the failure would look like a wrong key rather than like
  * two hashes.
@@ -25,7 +26,7 @@
  * the old, which is exactly what keys being rows is for.
  */
 
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { assertNever, type Environment, keyPrefixFor, type SurfaceMode } from "@agentify/core";
 import {
   checksummedAddressOf,
@@ -220,13 +221,6 @@ export async function grantLiveApproval(
  * violation. This does not check again: two commands racing over a merchant
  * somebody is deleting is not a case worth a round trip, and the database
  * refuses it either way.
- *
- * It makes one kind of key and takes no word for which. The other kind is
- * {@link issueDashboardKey}, and the two are two functions rather than one with a
- * parameter because they are two acts: this one answers a merchant asking for
- * something to put in their worker, and that one is a dashboard taking a
- * credential of its own. A parameter would make them look like one act done
- * twice, and the wrong value would put a row in a list its owner cannot touch.
  */
 export async function issueKey(
   store: Store,
@@ -238,110 +232,10 @@ export async function issueKey(
 ): Promise<IssuedKey> {
   const secret = newKeySecret(environment);
   const key = await store.addKey(
-    { id: ids("mk"), merchantId, label, digest: keyDigest(secret), purpose: "merchant_code" },
+    { id: ids("mk"), merchantId, label, digest: keyDigest(secret) },
     at,
   );
   return { key, secret };
-}
-
-/**
- * Issues one key for a dashboard to call as this merchant with, once.
- *
- * There is no label to pass, because there is nobody to type one: a dashboard
- * asks for this every time somebody signs in, and the merchant never sees the
- * key or hears that it exists.
- */
-export async function issueDashboardKey(
-  store: Store,
-  ids: Ids,
-  merchantId: string,
-  at: number,
-  environment: Environment,
-): Promise<IssuedKey> {
-  const secret = newKeySecret(environment);
-  const key = await store.addKey(
-    {
-      id: ids("mk"),
-      merchantId,
-      label: DASHBOARD_KEY_LABEL,
-      digest: keyDigest(secret),
-      purpose: "dashboard",
-    },
-    at,
-  );
-  return { key, secret };
-}
-
-/**
- * What a key made for a dashboard from here on is called.
- *
- * One sentence for all of them, and no attempt to tell one sign-in from
- * another: the row already carries the instant it was made, and a label that
- * repeated it would be the same fact written twice in two formats.
- *
- * It is not chosen by anybody and is shown to nobody — the merchant's own list
- * leaves these keys out entirely. The one reader is a person at a terminal
- * looking at every key one merchant has, and what this gives them is a sentence
- * that says what the row is without their knowing how a dashboard works.
- *
- * What it is not is how anything tells the two kinds apart. The keys that
- * existed before a key said what it was for keep the label they were given —
- * registration's old one, which no code writes any more — so what the terminal
- * prints beside a key is the column, and this is a hint for a person reading.
- */
-export const DASHBOARD_KEY_LABEL = "the key a dashboard signs this merchant in with";
-
-/**
- * A value nothing presented can ever equal, used where registration is closed.
- *
- * It exists so that a gateway with no invitation configured still does the same
- * work per attempt as one that has an invitation and was given the wrong code.
- * Thirty-two bytes of randomness, fresh in every process, so it is not a code
- * anybody could hold.
- */
-const NO_INVITATION = randomBytes(32).toString("hex");
-
-/**
- * Whether the code presented is the one this gateway is configured with.
- *
- * Two things are going on here and both are the reason it is a function rather
- * than an `===` at the call site.
- *
- * The comparison is over digests rather than over the codes themselves. That is
- * what makes it constant-time at all: `timingSafeEqual` refuses two buffers of
- * different lengths outright, so comparing the codes would throw on exactly the
- * guesses that are the wrong length and answer those differently from the ones
- * that are not — which is a way of learning the length one attempt at a time.
- * Two digests are always the same size.
- *
- * And a gateway with no code configured still does the whole comparison, against
- * a decoy, before answering no. Registration being closed is a fact about this
- * deployment and not about the caller, and a door that answered it faster would
- * be telling every passer-by which deployment takes registrations. The route
- * above it keeps the other half of that promise by answering closed and wrong
- * in the same words.
- */
-export function invitationAccepted(expected: string | null, presented: string): boolean {
-  const same = timingSafeEqual(
-    createHash("sha256")
-      .update(expected ?? NO_INVITATION, "utf8")
-      .digest(),
-    createHash("sha256").update(presented, "utf8").digest(),
-  );
-  // The digest of the decoy cannot be guessed, so this second test changes no
-  // answer. It is here because "there is no code" must not depend on that.
-  return same && expected !== null;
-}
-
-/**
- * A merchant that has just been registered, with the key their dashboard will
- * call as them with, once.
- */
-export interface Registration {
-  readonly merchant: StoredMerchant;
-  readonly key: StoredKey;
-  /** The only time this is ever readable. Nothing keeps it. */
-  readonly secret: string;
 }
 
 /**
@@ -359,18 +253,16 @@ export interface Registration {
  * again, and the row carries it twice. Anything that reads like a name is a
  * name somebody will go looking for the owner of, and there is none.
  */
-export const REGISTERED_MERCHANT_NAME = "registered with an invitation";
+export const REGISTERED_MERCHANT_NAME = "made in the dashboard";
 
 /**
- * Makes a merchant and the key a dashboard calls as them with — both or neither
- * (ADR-0014 §1). Null where the identifier is taken, which a generated one
- * never is.
+ * Makes a merchant under a generated identifier. Null where that identifier is
+ * taken, which a generated one never is.
  *
- * The key is not the first of the merchant's own, and that is the whole of what
- * registering hands over: whoever made this call is a dashboard, and what it
- * needs is a credential to act as this merchant with. A merchant made this way
- * has no keys of their own at all until they ask for one, and their own list of
- * keys is empty on the first visit — which is the truth about a merchant who
+ * Nothing else is made with them. The dashboard that asked writes the merchant
+ * onto the account of the person who pressed for it, and that account is the
+ * way in; a merchant has no keys at all until they ask for one, and their list
+ * of keys is empty on the first visit — which is the truth about a merchant who
  * has written no code yet.
  *
  * No name for buyers is written, because registering does not ask for one. It
@@ -383,16 +275,8 @@ export async function registerMerchant(
   store: Store,
   ids: Ids,
   at: number,
-  environment: Environment,
-): Promise<Registration | null> {
-  const secret = newKeySecret(environment);
-  const written = await store.registerMerchant(
-    { id: ids("mch"), name: REGISTERED_MERCHANT_NAME },
-    { id: ids("mk"), label: DASHBOARD_KEY_LABEL, digest: keyDigest(secret) },
-    at,
-  );
-
-  return written === null ? null : { merchant: written.merchant, key: written.key, secret };
+): Promise<StoredMerchant | null> {
+  return store.addMerchant({ id: ids("mch"), name: REGISTERED_MERCHANT_NAME }, at);
 }
 
 /**
@@ -519,7 +403,6 @@ export async function seedSandboxKey(
         // One of the merchant's own: it is handed to a merchant process out of
         // a configuration file, which is exactly what a merchant does with a
         // key of theirs, and it is on the list they would revoke it from.
-        purpose: "merchant_code",
         digest,
       },
       at,

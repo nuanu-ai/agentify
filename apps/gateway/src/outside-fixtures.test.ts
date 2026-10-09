@@ -46,8 +46,8 @@ const PAY_TO = "0x00000000000000000000000000000000000000aa";
 /** The address the merchant of this walk is paid at, which is not that one. */
 const THE_WALKS_WALLET = "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed";
 
-/** The code the gateway below takes registrations behind. */
-const INVITATION = "the-code-this-walk-was-given";
+/** The session the dashboard calls as, for the calls only it makes. */
+const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
 
 /** A whole gateway and a socket to talk to it over, built from nothing. */
 async function aGatewayOnAPort() {
@@ -79,7 +79,6 @@ async function aGatewayOnAPort() {
       merchantId: "mch_the_walk",
       label: "the key this walk carries",
       digest: keyDigest(MERCHANT_KEY),
-      purpose: "merchant_code",
     },
     Date.now(),
   );
@@ -88,7 +87,6 @@ async function aGatewayOnAPort() {
     config: loadConfig({
       DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
       PAY_TO_ADDRESS: PAY_TO,
-      REGISTRATION_INVITATION: INVITATION,
     }),
     store,
     queue,
@@ -128,6 +126,7 @@ async function aGatewayOnAPort() {
 
   return {
     call,
+    application: gateway,
     facilitator,
     store,
     async close() {
@@ -451,12 +450,13 @@ describe("a purchase from the outside", () => {
   it("walks a merchant from registering to a sale, on a key nothing here chose", async () => {
     // The walk with the least borrowed of all. Every other test in this file
     // starts from a merchant and a key written into the store by hand; this one
-    // starts from nothing but the invitation code, and the key it sells with is
-    // the one the gateway generated and showed once. If registration wrote a
-    // digest of anything but the string it printed, or hung the key on a
-    // merchant other than the one it made, the sale below simply does not
-    // happen — and that failure looks like a wrong key rather than like the
-    // defect it is, which is why it is worth walking rather than asserting on.
+    // starts from nothing, the way the dashboard starts — a merchant made, a key
+    // issued — and the key it sells with is the one the gateway generated and
+    // showed once. If issuing wrote a digest of anything but the string it
+    // handed back, or hung the key on a merchant other than the one it was
+    // asked for, the sale below simply does not happen — and that failure looks
+    // like a wrong key rather than like the defect it is, which is why it is
+    // worth walking rather than asserting on.
     //
     // It is also the whole road a new merchant walks: register, choose the name
     // buyers will read, say where the money goes, publish, sell. Neither middle
@@ -464,14 +464,11 @@ describe("a purchase from the outside", () => {
     // card published before them is refused, and the sale below never happens.
     const gateway = await aGatewayOnAPort();
     try {
-      const registered = await gateway.call("POST", "/v0/merchants", {
-        body: { invitation: INVITATION },
-      });
-      expect(registered.status).toBe(200);
-      const made = registered.body as { merchant_id: string; secret: string };
-      expect(made.merchant_id).not.toBe("");
-
-      const theirKey = made.secret;
+      const merchantId = await gateway.application.registerMerchant();
+      expect(merchantId).not.toBe("");
+      const theirKey = (
+        await gateway.application.issueMerchantKey(merchantId, "their worker", SIGNED_IN)
+      ).secret;
       const card = {
         merchant_item_id: "desk-for-a-day",
         title: "A desk for a day",
@@ -512,12 +509,14 @@ describe("a purchase from the outside", () => {
       // digits would read back the same whichever the canon was and would pin
       // nothing, so this one has letters in it.
       const theirWallet = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
-      const paidAt = await gateway.call("POST", "/v0/payout-wallet", {
-        headers: { authorization: `Bearer ${theirKey}` },
-        body: { payout_wallet: theirWallet.toLowerCase() },
-      });
-      expect(paidAt.status, JSON.stringify(paidAt.body)).toBe(200);
-      expect(paidAt.body).toStrictEqual({ payout_wallet: theirWallet, pending: null });
+      //
+      // It is set the one way it can be, as a person signed in to the dashboard.
+      const paidAt = await gateway.application.setPayoutWallet(
+        merchantId,
+        theirWallet.toLowerCase(),
+        SIGNED_IN,
+      );
+      expect(paidAt).toStrictEqual({ payout_wallet: theirWallet, pending: null });
 
       const published = await gateway.call("POST", "/v0/catalog/publish", {
         headers: { authorization: `Bearer ${theirKey}` },
@@ -563,18 +562,13 @@ describe("a purchase from the outside", () => {
         door_code: "8812",
       });
 
-      // Their keys, as their own dashboard would read them: none at all. This
-      // merchant has written no code and asked for no key of their own, and
-      // the key registering handed over is the one their dashboard calls with,
-      // which this list does not carry. `this_call` names it all the same, and
-      // that identifier reaches this walk through no answer at all — it is
-      // simply what the field says.
+      // Their keys, as their own code reads them: the one they were issued,
+      // and it is the key this call was made with.
       const listed = await gateway.call("GET", "/v0/keys", {
         headers: { authorization: `Bearer ${theirKey}` },
       });
-      const theKeys = listed.body as { keys: unknown[]; this_call: string };
-      expect(theKeys.keys).toStrictEqual([]);
-      expect(theKeys.this_call).not.toBe("");
+      const theKeys = listed.body as { keys: { id: string }[]; this_call: string };
+      expect(theKeys.keys.map((key) => key.id)).toStrictEqual([theKeys.this_call]);
 
       // Two keys for two workers, and the second retires the first — which is
       // what a merchant does when a box is decommissioned, and the ordinary use
@@ -602,19 +596,6 @@ describe("a purchase from the outside", () => {
         { headers: { authorization: `Bearer ${other.secret}` } },
       );
       expect(itself.status).toBe(409);
-
-      // And the key their dashboard is signed in with is not this call's to
-      // touch, whichever key asks. The identifier comes from the field above,
-      // which is the only place on this surface it appears at all.
-      const theDashboards = await gateway.call(
-        "POST",
-        `/v0/keys/${encodeURIComponent(theKeys.this_call)}/disable`,
-        { headers: { authorization: `Bearer ${other.secret}` } },
-      );
-      expect(theDashboards.status).toBe(409);
-      expect((theDashboards.body as { error: { code: string } }).error.code).toBe(
-        "key_made_for_a_dashboard",
-      );
 
       const revoked = await gateway.call(
         "POST",

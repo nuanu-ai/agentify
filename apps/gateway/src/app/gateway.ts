@@ -26,11 +26,9 @@ import {
   type Card,
   CardSchema,
   CONTRACT_VERSION,
-  type DashboardKey,
   type Delivery,
   type DisabledKey,
   deliveryCheckFor,
-  type ForgottenDashboardKey,
   type HandlerAnswer,
   type IssuedKey,
   localityOf,
@@ -53,7 +51,6 @@ import {
   type QuoteResponse,
   type ReceiptList,
   type Refusal,
-  type RegisteredMerchant,
   type Seller,
   type SellerName,
   type SellerNameRequest,
@@ -71,16 +68,9 @@ import {
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
-import type {
-  KeyPurpose,
-  StoredCard,
-  StoredKey,
-  StoredOrder,
-  StoredPayoutWallet,
-} from "../ports/store.js";
+import type { StoredCard, StoredKey, StoredOrder, StoredPayoutWallet } from "../ports/store.js";
 import { orderCallResponseOf } from "./answers.js";
 import {
-  issueDashboardKey,
   issueKey,
   keyDigest,
   payoutWalletFrom,
@@ -169,7 +159,7 @@ export type WalletChangeRefusal =
  * session is the account it is signed in as, and that is what a message names.
  */
 export type Caller =
-  | { readonly kind: "key"; readonly keyId: string; readonly purpose: KeyPurpose }
+  | { readonly kind: "key"; readonly keyId: string }
   | { readonly kind: "signed_in"; readonly email: string };
 
 /** The queue's name for the daily sweep of claims on payments. */
@@ -678,21 +668,20 @@ export class Gateway {
   // --- merchants and their keys ---------------------------------------------
 
   /**
-   * Registers a merchant: the merchant and a key made for a dashboard, in one
-   * act. Whether the caller may is decided before this: the dashboard calls it
-   * inside the process for a signed-in person who pressed for one (ADR-0026
-   * §4), and the route at the door asks for its invitation first.
+   * Registers a merchant and answers with their identifier. Whether the caller
+   * may is decided before this: the dashboard calls it inside the process for
+   * a signed-in person who pressed for one (ADR-0026 §4), and writes the
+   * merchant onto that person's account. Nothing else reaches it.
    *
    * What comes back names no seller, because nobody has chosen one. The merchant
    * is listed under nothing until they set a name, and until then publishing is
    * refused — so the caller's next screen is the one that asks for it.
    */
-  async registerMerchant(): Promise<RegisteredMerchant> {
+  async registerMerchant(): Promise<string> {
     const registered = await registerMerchant(
       this.runtime.store,
       this.runtime.ids,
       this.runtime.clock(),
-      this.runtime.config.environment,
     );
 
     if (registered === null) {
@@ -703,13 +692,7 @@ export class Gateway {
         "registering made no merchant: the identifier it generated was already taken",
       );
     }
-
-    // The key's own row stays here. It is a dashboard's, which is in no list and
-    // is not disabled through the merchant's calls, so an identifier for it is
-    // a value with nothing to do — and the caller already holds the one thing
-    // it needs, which is the key.
-    const { merchant, secret } = registered;
-    return { merchant_id: merchant.id, secret };
+    return registered.id;
   }
 
   /**
@@ -809,13 +792,10 @@ export class Gateway {
    * wait — and answers with the wallet as it then stands, or with why it was
    * refused.
    *
-   * Only a session in the dashboard, which calls it inside the process, or a
-   * key made for a dashboard reaches it: keys operate the shop, and where its
-   * money goes is set through the dashboard; the public door does not route
-   * this call at all (ADR-0019). A key of the merchant's own code is refused
-   * here too, before anything is read or announced, the first address
-   * included, so a copy of one can neither move the money nor send a message
-   * about moving it.
+   * Only a session in the dashboard reaches it, inside the process: keys
+   * operate the shop, and where its money goes is set through the dashboard,
+   * so no route at the door calls this and no key can (ADR-0019). A copy of a
+   * key can neither move the money nor send a message about moving it.
    *
    * There is no taking one away, and no verb at a terminal writes one either:
    * every change reaches the gateway as this call, which is what lets it hold
@@ -862,17 +842,11 @@ export class Gateway {
   async setPayoutWallet(
     merchantId: string,
     wallet: string,
-    caller: Caller,
-  ): Promise<PayoutWallet | WalletChangeRefusal | "not_a_dashboard_key"> {
-    if (caller.kind === "key" && caller.purpose !== "dashboard") {
-      return "not_a_dashboard_key";
-    }
-    const askedWith: AskedInTheDashboard =
-      caller.kind === "signed_in"
-        ? { kind: "signed_in", email: caller.email }
-        : { kind: "dashboard" };
-    // The route holds the same rule on the way in, so a throw from here is a
-    // caller that skipped it.
+    askedBy: Extract<Caller, { readonly kind: "signed_in" }>,
+  ): Promise<PayoutWallet | WalletChangeRefusal> {
+    const askedWith: AskedInTheDashboard = { kind: "signed_in", email: askedBy.email };
+    // The dashboard holds the same rule on the way in, so a throw from here is
+    // a caller that skipped it.
     const address = payoutWalletFrom(wallet);
     const merchant = await this.runtime.store.merchantById(merchantId);
     if (merchant === null) {
@@ -1034,16 +1008,12 @@ export class Gateway {
 
   /**
    * Who a call came from, as a message names it: the account a dashboard
-   * session is signed in as, a key made for a dashboard, which is on no list,
-   * or a key of the merchant's own code, named the way their list of keys
-   * names it.
+   * session is signed in as, or a key of the merchant's own code, named the way
+   * their list of keys names it.
    */
   async #named(merchantId: string, askedBy: Caller): Promise<AskedWith> {
     if (askedBy.kind === "signed_in") {
       return { kind: "signed_in", email: askedBy.email };
-    }
-    if (askedBy.purpose === "dashboard") {
-      return { kind: "dashboard" };
     }
     const key = (await this.runtime.store.keysOf(merchantId)).find(
       (one) => one.id === askedBy.keyId,
@@ -1057,16 +1027,11 @@ export class Gateway {
   }
 
   /**
-   * The keys this merchant made for their own code.
-   *
-   * The keys made for a dashboard are not in the list, and the read that leaves
-   * them out is the store's rather than a filter here: a merchant's list is a
-   * place they act, and a row they did not make and cannot revoke does not
-   * belong on it. Which key opened a call over the API is the route's to add,
-   * since only such a call has one.
+   * This merchant's keys, revoked ones included. Which key opened a call over
+   * the API is the route's to add, since only such a call has one.
    */
   async merchantKeys(merchantId: string): Promise<MerchantKeyList["keys"]> {
-    return (await this.runtime.store.codeKeysOf(merchantId)).map(merchantKeyOf);
+    return (await this.runtime.store.keysOf(merchantId)).map(merchantKeyOf);
   }
 
   /**
@@ -1098,95 +1063,16 @@ export class Gateway {
   }
 
   /**
-   * Makes a key for a dashboard to go on calling as this merchant with, and hands
-   * it back once. Refused to anything but a dashboard's own key.
-   *
-   * The refusal is here rather than at the route because it is a judgement
-   * about who may make this call rather than a status code, and it is a word
-   * rather than a thrown error because the route has to answer it in the
-   * contract's own envelope.
-   *
-   * What it protects is not this call — a key one merchant made for their own
-   * code could ask for a dashboard key of their own merchant and gain nothing
-   * they did not already have. It is the pair: the sweep beside this one is
-   * reachable with whatever key reaches this one, and made with a key of the
-   * merchant's own it would take away the credential a dashboard is signed in on.
-   * One door for the two of them is a door somebody can reason about.
-   */
-  async issueDashboardKey(
-    merchantId: string,
-    madeWith: KeyPurpose,
-  ): Promise<DashboardKey | "not_a_dashboard_key"> {
-    if (madeWith !== "dashboard") {
-      return "not_a_dashboard_key";
-    }
-    const issued = await issueDashboardKey(
-      this.runtime.store,
-      this.runtime.ids,
-      merchantId,
-      this.runtime.clock(),
-      this.runtime.config.environment,
-    );
-    return { secret: issued.secret };
-  }
-
-  /**
-   * Removes every key this merchant has for a dashboard except the one this call
-   * was made with. Refused to anything but a dashboard's own key.
-   *
-   * The refusal is the reason the call is safe at all. Made with a key of the
-   * merchant's own code, "all but mine" would name no dashboard key at all — so
-   * every one of them would go, and whoever is signed into a dashboard would be
-   * holding a credential the gateway no longer knows.
-   *
-   * There is no parameter and there is nothing to choose: the key removed is
-   * the key the call was made with. That is not a convenience — it is what
-   * makes the call safe to run beside another of itself. A rule of the form
-   * "every dashboard key but this one" is decided when the call is sent and can
-   * be stale by the time it lands, so a key written in between is removed by a
-   * caller that never heard of it, and two overlapping sign-ins leave an
-   * account naming a key the gateway has forgotten. Reaching only the key in
-   * the caller's hand, there is nothing left to race for.
-   *
-   * No merchant is named. The key resolves to one, so a caller cannot ask about
-   * anybody else's — including their own other keys.
-   *
-   * What this leaves behind is a key nobody swept up: a caller that stopped
-   * between asking for a fresh key and forgetting the old one leaves the old
-   * one alive for good. That is a leak of one row per interrupted sign-in and
-   * it is accepted here, because the alternative is a call that can take away a
-   * key somebody is holding. Anything that wants to clear those later counts
-   * them from the side that knows which keys are still in use, which is not
-   * this one.
-   */
-  async forgetDashboardKey(
-    thisCall: string,
-    madeWith: KeyPurpose,
-  ): Promise<ForgottenDashboardKey | "not_a_dashboard_key"> {
-    if (madeWith !== "dashboard") {
-      return "not_a_dashboard_key";
-    }
-    await this.runtime.store.forgetDashboardKey(thisCall);
-    // Whether a row went is not carried out. The call authenticated as this
-    // key, so it was there a moment ago; false means another call of the same
-    // shape got to it first, and the answer to "is that key gone" is yes either
-    // way.
-    return { forgotten: true };
-  }
-
-  /**
    * Stops one of this merchant's keys working.
    *
-   * Four answers, and three of them are refusals with different shapes because
+   * Three answers, and two of them are refusals with different shapes because
    * they are different facts. `locked_out` is the key this very call was made
    * with: whoever holds it would be left calling with something the gateway no
    * longer takes (ADR-0014 §5), so it is refused before anything is read, which
    * also means it can never half-happen — and it is asked first for that reason
    * rather than for any other, since every answer below it costs a write or a
    * read. A session in the dashboard holds no key, so it meets this never, and
-   * every key on its list can be disabled from there. `made_for_a_dashboard` is a key of theirs they did not issue: a
-   * merchant switches off what they made, and this one is a dashboard's way in.
-   * `null` is every other key that is not this merchant's to disable — one that
+   * every key on its list can be disabled from there. `null` is every other key that is not this merchant's to disable — one that
    * does not exist and one belonging to somebody else, told apart nowhere, so a
    * refusal is not a way of counting another merchant's keys.
    *
@@ -1205,14 +1091,12 @@ export class Gateway {
     merchantId: string,
     keyId: string,
     caller: Caller,
-  ): Promise<DisabledKey | "locked_out" | "made_for_a_dashboard" | null> {
+  ): Promise<DisabledKey | "locked_out" | null> {
     if (caller.kind === "key" && keyId === caller.keyId) {
       return "locked_out";
     }
     const disabled = await this.runtime.store.disableKeyOf(merchantId, keyId, this.runtime.clock());
-    return typeof disabled === "string" || disabled === null
-      ? disabled
-      : { key: merchantKeyOf(disabled) };
+    return disabled === null ? null : { key: merchantKeyOf(disabled) };
   }
 
   // --- buying ---------------------------------------------------------------

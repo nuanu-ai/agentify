@@ -7,7 +7,7 @@ import { rewindLinkSends } from "./testing/link-sends.js";
 const EMAIL = "owner@example.com";
 const SCAN = "019b41a0-7c51-7d63-84bd-a5a20faef497";
 const REQUEST = "019b41a0-7c51-7d63-84bd-a5a20faef498";
-const MERCHANT = { id: "mer_owner", key: "the-owner-gateway-key" };
+const MERCHANT = "mer_owner";
 const OPERATION_ONE = "019b41a0-7c51-7d63-84bd-a5a20faef497";
 const OPERATION_TWO = "019b41a0-7c52-7d63-84bd-a5a20faef497";
 const COOKIE = "__Host-agentify.session_token";
@@ -221,7 +221,7 @@ describe("a privacy deletion asked for by the scanner", () => {
         email: EMAIL,
       }),
     ).resolves.toStrictEqual({ status: "retained" });
-    expect(await p2.identity.byEmail(EMAIL)).toMatchObject({ merchant: { id: MERCHANT.id } });
+    expect(await p2.identity.byEmail(EMAIL)).toMatchObject({ merchant: { id: MERCHANT } });
     // The report link still in the mailbox leads nowhere once the reports it
     // was for are being deleted.
     expect(await p2.identity.openLink(unconsumed.token)).toStrictEqual({ status: "refused" });
@@ -240,7 +240,7 @@ describe("a privacy deletion asked for by the scanner", () => {
     await expect(one.identity.deleteUnattachedPerson(request)).resolves.toStrictEqual({
       status: "already_absent",
     });
-    expect(await one.identity.byEmail(EMAIL)).toMatchObject({ merchant: { id: MERCHANT.id } });
+    expect(await one.identity.byEmail(EMAIL)).toMatchObject({ merchant: { id: MERCHANT } });
     expect(one.rows.dashboard_verifications).toHaveLength(1);
     await expect(
       one.identity.deleteUnattachedPerson({ ...request, email: "other@example.com" }),

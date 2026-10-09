@@ -30,8 +30,7 @@
  * decision rather than a gap (ADR-0019). A change of it waits and is announced
  * to the merchant before anything is written, and the gateway can hold to that
  * only if every change reaches it as the one call it announces — so the wallet
- * is set by a person in the dashboard, through `/v0/payout-wallet`, and nowhere
- * else, and a person at a terminal who could write it would be the one change
+ * is set by a person signed in to the dashboard, and nowhere else, and a person at a terminal who could write it would be the one change
  * nobody was told about.
  *
  * It is a tested module with the terminal handed to it rather than a script
@@ -218,7 +217,7 @@ async function listKeys(
   const widest = Math.max(...keys.map((key) => key.id.length));
   for (const key of keys) {
     say(
-      `${key.id.padEnd(widest)}  ${dayOf(key.createdAt)}  ${standingOf(key)}  ${madeFor(key)}  ${lastCallOf(key)}  ${key.label}`,
+      `${key.id.padEnd(widest)}  ${dayOf(key.createdAt)}  ${standingOf(key)}  ${lastCallOf(key)}  ${key.label}`,
     );
   }
   return 0;
@@ -259,30 +258,8 @@ function standingOf(key: StoredKey): string {
 }
 
 /**
- * Who a key was made for, in a word wide enough for both.
- *
- * This list is the only place either kind is printed, and it is a column rather
- * than something left to the label beside it. A label is a sentence somebody
- * can type, and the keys that were written before a key said what it was for
- * carry whatever sentence made them at the time — so the label is a hint and
- * this is the answer. What the operator does with it is tell the keys a
- * merchant put in their own code, which revoking stops a worker, from a key made
- * for a dashboard, which nothing calls with since the dashboard calls the
- * gateway inside the process (ADR-0030).
- */
-function madeFor(key: StoredKey): string {
-  return key.purpose === "dashboard" ? "dashboard" : "own code ";
-}
-
-/**
  * When anything last called with this key, in a phrase wide enough for both
  * answers.
- *
- * The operator asks this about the keys a merchant never sees as well as the
- * ones they do. A key made for a dashboard has not been called with since the
- * dashboard began calling the gateway inside the process (ADR-0030), so its last
- * call is the last day it was used that way, and not a sign of a dashboard that
- * stopped signing in.
  *
  * The blank says there is no record and not that there were no calls, because
  * those are not the same thing and only one of them was checked: a key older

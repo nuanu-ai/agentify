@@ -136,11 +136,6 @@ describe("the private production approval command", () => {
       entries: [{ email: EMAIL, binding: "unbound" }] as const,
       expected: /no merchant|not bound/i,
     },
-    {
-      case: "an account with only half of its merchant binding",
-      entries: [{ email: EMAIL, binding: "partial" }] as const,
-      expected: /partial|incomplete/i,
-    },
   ])("refuses $case before asking the gateway to write", async ({ entries, expected }) => {
     const found = directoryReturning(entries);
     const granted = gatewayReturning({
