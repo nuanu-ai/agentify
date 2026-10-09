@@ -58,6 +58,8 @@ export type {
   Refusal,
   RefusalCode,
   SalePrice,
+  Shipment,
+  ShipTo,
 } from "@nuanu-ai/agentify-contracts";
 export {
   CARD_REJECTED,
