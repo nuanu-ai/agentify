@@ -262,9 +262,10 @@ services:
       # nothing after it gets nothing rather than the sandbox's key back.
       SANDBOX_MERCHANT_KEY: "${AGENTIFY_SEED_KEY-csk_test_local-sandbox-merchant-key}"
       # What the dashboard presents to the gateway to make a merchant once a
-      # person has proved their address; people never type it. A deliberately
-      # empty value disables the gateway's registration route, and the
-      # dashboard refuses to start without a nonempty one.
+      # person has proved their address; people never type it. The dashboard
+      # refuses to start without a nonempty one, so set to nothing it stops this
+      # whole process, and the release's preflight refuses such a channel
+      # before anything stops.
       REGISTRATION_INVITATION: "${AGENTIFY_INVITATION-register-on-this-laptop}"
       # The address a merchant and an agent reach this stack at, which is the
       # door Caddy answers and not a port this process listens on. A payment
@@ -314,7 +315,9 @@ services:
       # sandbox ask nothing, since they apply a change at once and announce
       # nothing; a live gateway will not start without both, and the dashboard
       # opens 3003 only where the secret is set. It is held apart from every
-      # other secret here, and the dashboard refuses to start if it is not.
+      # other secret here: the dashboard refuses to start if it is the session
+      # secret, the invitation, the mail key or the scanner's secret, and the
+      # release's preflight refuses the rest.
       DASHBOARD_INTERNAL_URL: http://127.0.0.1:3003
       GATEWAY_DASHBOARD_SECRET: "${GATEWAY_DASHBOARD_SECRET:-a-sandbox-gateway-dashboard-secret-nobody-should-reuse}"
       # Where the dashboard reaches the gateway: the same public API a
@@ -401,9 +404,9 @@ services:
       #
       # The dash carries no colon for the reason SANDBOX_MERCHANT_KEY and
       # REGISTRATION_INVITATION give above, and the three part company on what
-      # an empty value then means. Seeding set to nothing writes no key, and an
-      # invitation set to nothing takes no registrations; this has no such mode.
-      # Named with nothing after it, the merchant refuses to start —
+      # an empty value then means: seeding set to nothing writes no key, an
+      # invitation set to nothing stops the application starting, and this one
+      # stops the merchant. Named with nothing after it, it refuses to start —
       # "MERCHANT_API_KEY is not set … there is no default for it" — which is
       # what a deployment that emptied the variable should get, rather than the
       # key printed in this file quietly selling on a server.

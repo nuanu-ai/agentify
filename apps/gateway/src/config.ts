@@ -370,11 +370,11 @@ const environmentSchema = z.object({
    * code gets, so the form is not a way of asking whether registration is open
    * here at all.
    *
-   * Set to nothing reads the same as never set, and that spelling is the one
-   * that matters to whoever closes registration: a deployment does it by
-   * handing the process `REGISTRATION_INVITATION=` in a file rather than by
-   * deleting a line, and there is no reading in which nothing is a code
-   * somebody could present.
+   * Set to nothing reads the same as never set, and there is no reading in
+   * which nothing is a code somebody could present. A gateway on its own, as
+   * the tests and the slice run it, then takes no registrations; the
+   * application does not start that way at all, because the dashboard beside
+   * the gateway refuses to start without the code it presents (ADR-0030).
    *
    * Blank and padded values are refused rather than trimmed. The code is
    * compared exactly as written, so a space at either end is a door nobody can
@@ -619,9 +619,10 @@ const environmentSchema = z.object({
    * to every account naming the merchant before anything is written, and a new
    * key and a cancelled change are announced once they are done. The dashboard
    * holds the addresses, so the gateway asks it, over an internal route of its
-   * own on the compose network and with a secret only the two processes hold —
-   * never the scanner's route or the scanner's secret, which would give the
-   * money path the power to look up sessions and remove people.
+   * own and with a secret held for that route alone — never the scanner's route
+   * or the scanner's secret, which would give the money path the power to look
+   * up sessions and remove people. The two run in one process (ADR-0030), so
+   * the route is the dashboard's listener on loopback.
    *
    * Required on a live deployment and read nowhere else: a test deployment and
    * the sandbox apply a change at once and announce nothing, so a stack of

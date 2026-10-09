@@ -125,21 +125,39 @@ WooCommerce connection's fulfilment are down from the first step until the
 release has started `app`, a window that includes pulling the images; an
 order paid in it waits, or ends when its time runs out.
 
-First, the two old containers stop, with the minute the release gives every
-service to finish what it is doing, so a purchase or an order being placed in
-a shop is not cut off halfway. The release stops the services it knows by
-their new name; left running, the old two would go on beside the new
+First, the cards on sale are written down, because the release's own check of
+them reads the catalog only after the gateway is already stopped, and so
+compares nothing at this release. On the machine the release is run from:
+
+```sh
+curl -sS https://test.agentify.ad/x402/catalog | python3 -c 'import json, sys; print("\n".join(sorted(item["id"] for item in json.load(sys.stdin)["items"])))' > cards-before-test
+```
+
+Then the two old containers stop, the dashboard before the gateway, the order
+Compose stopped them in, so the dashboard's WooCommerce worker does not lose
+the gateway in the middle of an order; each with the minute the release gives
+every service to finish what it is doing, so a purchase or an order being
+placed in a shop is not cut off halfway. The release stops the services it
+knows by their new name; left running, the old two would go on beside the new
 application, taking work off the same queue, through the dump and the
 migrations as well, and nothing would say so. The last line prints `exited`
 twice:
 
 ```sh
-ssh agentify-test "sudo docker stop -t 60 agentify-gateway-1 agentify-dashboard-1"
+ssh agentify-test "sudo docker stop -t 60 agentify-dashboard-1"
+ssh agentify-test "sudo docker stop -t 60 agentify-gateway-1"
 ssh agentify-test "sudo docker inspect -f '{{.Name}} {{.State.Status}}' agentify-gateway-1 agentify-dashboard-1"
 ```
 
 Then release ("Releasing to test"). On PRODUCTION the same commands run over
-`ssh agentify`, just before `agentify-release`.
+`ssh agentify`, with `https://agentify.ad` and a file of its own, just before
+`agentify-release`. Once the release is verified, the same catalog read
+compared with the file prints nothing when every card on sale before is on
+sale still:
+
+```sh
+curl -sS https://test.agentify.ad/x402/catalog | python3 -c 'import json, sys; print("\n".join(sorted(item["id"] for item in json.load(sys.stdin)["items"])))' | diff cards-before-test - | grep '^<'
+```
 
 Second, once the release is verified, the old containers go. Until then they
 are the way back. If the release is refused, or fails before it begins
@@ -158,6 +176,14 @@ Until a host is released, `pnpm approve` and `pnpm forget` from a checkout
 that carries this cannot reach it: they name `agentify-app-1`, which is not
 there yet, and refuse with nothing done. Run them from a checkout before this
 release in the meantime.
+
+Afterwards the same thing can happen the other way on TEST, which takes any
+branch: a revision without this change stops `gateway` and `dashboard`, which
+are not there, and starts them beside the `app` it does not know, which goes
+on running, two gateways on one queue. So rebase a branch onto `main` before
+putting it on TEST once this is there. To put an older revision on TEST all
+the same, stop `agentify-app-1` first, the way the two were stopped above,
+and remove it once that release is verified.
 
 ## Releasing to production
 
