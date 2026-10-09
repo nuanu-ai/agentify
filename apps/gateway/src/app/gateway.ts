@@ -1712,11 +1712,7 @@ export class Gateway {
         // stream rather than being lost with a failed response, and the poll
         // draws past it to whatever is next.
         console.error(`[gateway] could not record the hand-over of ${orderId}`, thrown);
-        await queue.publish(
-          merchantId,
-          sentNow(delivery.envelope, at),
-          config.settleInFlightRetryMs,
-        );
+        await this.#putBack(merchantId, delivery.envelope, at, config.settleInFlightRetryMs);
         finished.push(delivery.handle);
         continue;
       }
@@ -1727,11 +1723,7 @@ export class Gateway {
         // reports. The order goes back on the stream rather than being dropped,
         // because dropping it is how an order that was paid for never reaches a
         // merchant at all.
-        await queue.publish(
-          merchantId,
-          sentNow(delivery.envelope, at),
-          config.settleInFlightRetryMs,
-        );
+        await this.#putBack(merchantId, delivery.envelope, at, config.settleInFlightRetryMs);
         finished.push(delivery.handle);
         continue;
       }
@@ -1775,6 +1767,31 @@ export class Gateway {
     }
 
     return handing;
+  }
+
+  /**
+   * A hand-over a poll drew and gave to nobody, back on the stream behind a
+   * delay with its identifier untouched.
+   *
+   * One carrying a parcel's address goes back only under the hold on its
+   * order, and not at all once the address is erased (ADR-0032): it was built
+   * when the order was handed over, and the merchant may have taken the order
+   * on while the poll was failing. Every other goes straight back, as it
+   * always has — under the hold, a put-back would fail exactly when the store
+   * is failing, which is when the poll needs it.
+   */
+  async #putBack(
+    merchantId: string,
+    envelope: Extract<WorkerEnvelope, { kind: "order" }>,
+    at: number,
+    afterMs: number,
+  ): Promise<void> {
+    const again = sentNow(envelope, at);
+    if (envelope.payload.ship_to === undefined) {
+      await this.runtime.queue.publish(merchantId, again, afterMs);
+      return;
+    }
+    await this.runner.sendWhileTheAddressIsHeld(envelope.payload.id, () => again, afterMs);
   }
 
   /**
@@ -2056,7 +2073,7 @@ export class Gateway {
     this.#questions.set(priceId, { orderId, merchantId: record.merchantId });
     const parked = this.quotes.wait(priceId, config.deadlines.quoteResponseMs);
 
-    await queue.publish(record.merchantId, {
+    const question: WorkerEnvelope = {
       kind: "quote_request",
       id: ids("env"),
       sent_at: asTimestamp(askedAt),
@@ -2089,7 +2106,17 @@ export class Gateway {
           askedAt + config.deadlines.quoteResponseMs + config.deadlines.quoteTtlMs,
         ),
       },
-    });
+    };
+
+    if (record.shipTo === undefined) {
+      await queue.publish(record.merchantId, question);
+    } else {
+      // A parcel's question carries the place it goes, so it is written under
+      // the hold on the order like everything else that carries the address:
+      // a slow stream could otherwise land it after the order had ended on our
+      // patience and its address had been erased (ADR-0032).
+      await this.runner.sendWhileTheAddressIsHeld(orderId, () => question);
+    }
 
     const answered = await parked;
     this.#questions.delete(priceId);

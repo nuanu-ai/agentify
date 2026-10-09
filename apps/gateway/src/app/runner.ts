@@ -330,7 +330,7 @@ export class OrderRunner {
           ...known,
           order: moved.order,
           ...goodsToKeep(found, facts.delivery, moved.effects),
-          ...addressToKeep(moved.effects, event.at),
+          ...addressToKeep(moved.effects, this.#runtime.clock()),
         };
         refuseToKeepAnAddressPastItsTime(next);
 
@@ -654,8 +654,60 @@ export class OrderRunner {
       return 0;
     }
 
-    await this.#runtime.queue.publish(record.merchantId, this.#orderEnvelope(record, now));
-    return 1;
+    if (record.shipTo === undefined) {
+      await this.#runtime.queue.publish(record.merchantId, this.#orderEnvelope(record, now));
+      return 1;
+    }
+    // A parcel's hand-over carries its buyer's address, and the order was read
+    // at the start of the sweep: taken on since, its address is gone. So it is
+    // built from the order as it stands, under the hold, and only while it is
+    // still paid and still holds the address.
+    const sent = await this.sendWhileTheAddressIsHeld(record.order.id, (found) =>
+      found.order.state === "paid" ? this.#orderEnvelope(found, now) : null,
+    );
+    return sent ? 1 : 0;
+  }
+
+  /**
+   * Puts an envelope carrying a parcel's address on its merchant's stream
+   * outside a transition — the sweep sending a hand-over that went nowhere, a
+   * poll putting back one it drew and handed to nobody, the price question —
+   * under the hold on the order, and only while the order still holds the
+   * address (ADR-0032).
+   *
+   * The erasure deletes what is on the stream under that same hold. Written
+   * outside it, from a copy read earlier, an envelope can land after the
+   * deletion and keep the address for as long as the queue keeps a job. Under
+   * it, the envelope is either written before the erasure, which then deletes
+   * it, or not written at all.
+   *
+   * `envelopeOf` builds the envelope from the order as it stands, and answers
+   * null where the caller's own reason for sending has gone. What comes back
+   * is whether anything was written.
+   */
+  async sendWhileTheAddressIsHeld(
+    orderId: string,
+    envelopeOf: (found: StoredOrder) => WorkerEnvelope | null,
+    afterMs?: number,
+  ): Promise<boolean> {
+    const decided = await this.#runtime.store.withOrder(orderId, (found): OrderChange<boolean> => {
+      const envelope = holdsShipTo(found.order) ? envelopeOf(found) : null;
+      if (envelope === null) {
+        return { result: false };
+      }
+      return {
+        alongside: [
+          {
+            kind: "envelope",
+            merchantId: found.merchantId,
+            envelope,
+            ...(afterMs === undefined ? {} : { afterMs }),
+          },
+        ],
+        result: true,
+      };
+    });
+    return decided.found && decided.result;
   }
 
   /**
@@ -1413,6 +1465,12 @@ function refuseToWriteAnImpossibleOrder(order: Order): void {
  * What becomes of a parcel's address as the order moves: only the instant it
  * was erased, on the transition the machine says it stops being needed on
  * (ADR-0032), and nothing changes on any other.
+ *
+ * The instant is the clock's as the order is written, not the event's — the
+ * one stamp here that is about this gateway's own copy rather than about the
+ * order. A deadline's event carries the deadline, and its reminder can arrive
+ * well after it, a re-armed one days after; the address was here all that
+ * time, and the order must not say it was gone before it went.
  */
 function addressToKeep(
   effects: readonly Effect[],
