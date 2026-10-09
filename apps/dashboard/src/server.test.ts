@@ -4211,6 +4211,23 @@ describe("the screen a signed-out person was going to", () => {
     expect(sent.to).toBe("/sign-in?reason=unsaved&destination=keys");
   });
 
+  it("is the section an address below it belongs to: a screen inside it, or a form sent from it", async () => {
+    // The form a merchant is most likely to have lost is the payout wallet
+    // change (ADR-0019), and it is posted to an address under the settings,
+    // not to the settings. The new key form is a screen of the keys.
+    const running = await started();
+
+    const wallet = await running.browser.post("/settings/payout-wallet", {
+      payout_wallet: "0x1111111111111111111111111111111111111111",
+    });
+    const newKey = await running.browser.get("/keys/new");
+    const disable = await running.browser.post("/keys/some-key/disable");
+
+    expect(wallet.to).toBe("/sign-in?reason=unsaved&destination=settings");
+    expect(newKey.to).toBe("/sign-in?destination=keys");
+    expect(disable.to).toBe("/sign-in?reason=unsaved&destination=keys");
+  });
+
   it("is kept for a form sent there after the session ended, beside the word that it was not saved", async () => {
     const running = await started();
     await running.browser.signIn();
