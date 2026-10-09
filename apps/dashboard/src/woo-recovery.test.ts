@@ -108,10 +108,10 @@ const parts = (
         id: "acc_1",
         email: EMAIL,
         confirmed: true,
-        merchant: { id: "m_1", key: "csk_test_merchant" },
+        merchant: { id: "m_1" },
       }),
     },
-    gatewayForKey: () => ({
+    gatewayFor: () => ({
       getOrder: async () => {
         gatewayReads += 1;
         return {

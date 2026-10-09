@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import type { Delivery, OrderCallResponse, OrderWithStatus } from "@nuanu-ai/agentify-contracts";
 import type { Person } from "./dashboard-entry.js";
-import type { Answer } from "./gateway.js";
+import type { Acting, Answer } from "./gateway.js";
 import {
   createTheOrderInTheShop,
   inspectProductInTheShop,
@@ -41,7 +41,7 @@ interface RecoveryGateway {
 export interface WooRecoveryParts {
   readonly shops: WooShops;
   readonly identity: { byId(personId: string): Promise<Person | null> };
-  readonly gatewayForKey: (key: string) => RecoveryGateway;
+  readonly gatewayFor: (acting: Acting) => RecoveryGateway;
   readonly inspectProduct?: (keys: ShopKeys, itemId: string) => Promise<ProductInspection>;
   readonly createOrder?: (keys: ShopKeys, sold: SoldItem) => Promise<OrderMade>;
   readonly readOrder?: (keys: ShopKeys, wooOrderId: string) => Promise<WooOrderLookup>;
@@ -58,7 +58,7 @@ export const recoverWooOrder = async (
   if (person?.merchant === null || person === null) {
     return refused("The WooCommerce order no longer belongs to a merchant account.");
   }
-  const gateway = parts.gatewayForKey(person.merchant.key);
+  const gateway = parts.gatewayFor({ merchantId: person.merchant.id, email: person.email });
   const state = await gateway.getOrder(request.orderId);
   if (!state.ok) return unresolved("The Agentify order state could not be read.");
   if (!sameSoldOrder(state.document, record.facts, request.orderId)) {

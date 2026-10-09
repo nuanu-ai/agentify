@@ -31,7 +31,6 @@ const config = () =>
     AUTH_SECRET: "a".repeat(44),
     PAYMENT_NETWORK: "eip155:8453",
     FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
-    REGISTRATION_INVITATION: "the-existing-gateway-invitation",
     PUBLIC_BASE_URL: "https://agentify.ad",
     BASE_PATH: "/dashboard",
   });

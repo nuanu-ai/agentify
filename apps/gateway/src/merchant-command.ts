@@ -3,12 +3,11 @@
  *
  * None of them makes a merchant or issues a key. A merchant comes into being
  * one way: a person opens the link mailed to their address and presses the
- * dashboard's one control, which asks the gateway for the merchant and the key
- * the dashboard calls with (ADR-0014). A merchant issues and disables keys for
- * their own code from their dashboard, where each new key is announced to them
- * (ADR-0019), and sets the name their products are sold under there too. A
- * merchant who has lost every key signs in again, which renews the dashboard's
- * own, and issues a new one there.
+ * dashboard's one control, which asks the gateway for the merchant (ADR-0014).
+ * A merchant issues and disables keys for their own code from their dashboard,
+ * where each new key is announced to them (ADR-0019), and sets the name their
+ * products are sold under there too. A merchant who has lost every key signs in
+ * again, with no key, and issues a new one there.
  *
  * What is left here is what those routes deliberately cannot do: listing every
  * merchant and every key, disabling a key by naming it alone — which is what

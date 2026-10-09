@@ -16,7 +16,6 @@ const REQUIRED = {
   AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
   PAYMENT_NETWORK: "eip155:84532",
   FACILITATOR_URL: "sandbox:scripted",
-  REGISTRATION_INVITATION: "the-existing-gateway-process-secret",
 };
 
 const given = (environment: Record<string, string> = {}): Record<string, string> => ({
@@ -41,12 +40,6 @@ describe("what the dashboard will not start without", () => {
     ).toBe("a-dedicated-private-secret-at-least-32-characters");
   });
 
-  it("requires the existing gateway invitation as a process secret", () => {
-    const { REGISTRATION_INVITATION: _absent, ...withoutInvitation } = given();
-
-    expect(() => loadConfig(withoutInvitation)).toThrow(/REGISTRATION_INVITATION/);
-    expect(loadConfig(given()).gatewayInvitation).toBe("the-existing-gateway-process-secret");
-  });
   it("refuses to start with nothing to sign a session with", () => {
     // The component that signs people in has a fallback of its own, and a
     // deployment that leaned on it would be running on a value written in
@@ -67,16 +60,6 @@ describe("what the dashboard will not start without", () => {
     expect(() => loadConfig(withoutDatabase)).toThrow(/DATABASE_URL/);
   });
 
-  it("starts with no merchant key anywhere in its environment", () => {
-    // ADR-0014 §2: the key comes off the row of whoever is signed in, so there
-    // is no key in the configuration at all. A dashboard that still refused to
-    // start without one would be a deployment that cannot be brought up until
-    // somebody sets a variable nothing reads — and, worse, one whose operator
-    // reasonably believes that variable is what the screens are drawn with.
-    expect(loadConfig(given()).gatewayUrl).toBe("http://localhost:3000");
-    expect(Object.keys(loadConfig(given()))).not.toContain("merchantApiKey");
-  });
-
   it("does not refuse a key it is handed anyway, because it is not its business", () => {
     // A deployment that has not had the variable taken out of its compose file
     // yet must still come up. What used to be checked here — a floor under the
@@ -92,7 +75,6 @@ describe("the dashboard is told which stack it is in front of", () => {
     AUTH_SECRET: "a-secret-that-is-at-least-thirty-two-characters",
     PAYMENT_NETWORK: "eip155:84532",
     FACILITATOR_URL: "sandbox:scripted",
-    REGISTRATION_INVITATION: "the-existing-gateway-process-secret",
   };
 
   it("runs the same derivation its gateway runs", () => {
@@ -178,7 +160,7 @@ describe("where the dashboard thinks it is mounted", () => {
     // The engineer bringing the dashboard up learns the whole list in one go.
     const thrown = (): string => {
       try {
-        loadConfig({ BASE_PATH: "//evil.com", COOKIE_SECURE: "no", GATEWAY_URL: "not a url" });
+        loadConfig({ BASE_PATH: "//evil.com", COOKIE_SECURE: "no" });
         return "";
       } catch (error) {
         return String(error);
@@ -188,17 +170,7 @@ describe("where the dashboard thinks it is mounted", () => {
     const said = thrown();
     expect(said).toContain("BASE_PATH");
     expect(said).toContain("COOKIE_SECURE");
-    expect(said).toContain("GATEWAY_URL");
     expect(said).toContain("DATABASE_URL");
-  });
-
-  it("does not leave a double slash in front of every call it makes", () => {
-    // The contract's paths all begin with a slash, so a gateway address that
-    // ends with one produces "//v0/cards" — which some proxies route somewhere
-    // else entirely and others refuse.
-    expect(loadConfig(given({ GATEWAY_URL: "http://gateway:3000/" })).gatewayUrl).toBe(
-      "http://gateway:3000",
-    );
   });
 });
 

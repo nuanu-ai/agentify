@@ -10,13 +10,11 @@
  * Three things about the list are decisions rather than layout. The revoked keys
  * are on it, because "which key did I turn off, and when" is a question
  * somebody has on exactly this screen and a list of only the working ones
- * answers it with silence. And every row on it is a key the merchant asked for:
- * the key this dashboard signs in with is of the other kind (ADR-0014 §5), the
- * gateway lists it nowhere and refuses to revoke it, so there is no row here
- * that could take a merchant's dashboard away from them. What the gateway does
- * say beside the list, as `this_call`, is the identifier of that key — for a
- * caller reaching the API with a key of the merchant's own, which is what needs
- * to know. This screen is not one of those and does not read it. The third is
+ * answers it with silence. And every row on it is a key the merchant asked for,
+ * and every one can be revoked here: the dashboard is signed in to with a
+ * mailed link and calls the gateway inside the process it shares with it
+ * (ADR-0030), so no row is the dashboard's own way in, and revoking one cannot
+ * take the dashboard away from a merchant. The third is
  * the last call each key was seen on, which is the thing a merchant is here to
  * find out and the one place this screen can mislead them; `lastCall` below is
  * where an empty column is kept from turning into a claim about the key.
@@ -32,7 +30,7 @@
  * a merchant would be looking at.
  */
 
-import type { MerchantKey, MerchantKeyList } from "@nuanu-ai/agentify-contracts";
+import type { MerchantKey } from "@nuanu-ai/agentify-contracts";
 import { type Cell, escaped, momentCell, page, type Row, table, when } from "./html.js";
 import type { Viewer } from "./screens.js";
 
@@ -124,9 +122,8 @@ const keyControl = (base: string, entry: MerchantKey): string => {
  * question a merchant has in front of no rows — "where is the key I am signed
  * in with, and should I be worried" — is answered by what the list is rather
  * than by what is missing from it. The answer to the second half of that
- * question is the link: the dashboard holds a key of its own, which is not on
- * this list and cannot be, and the portal's first step says so where somebody
- * setting up is reading anyway.
+ * question is the link: the dashboard holds no key at all, and the portal's
+ * first step says so where somebody setting up is reading anyway.
  */
 const WHAT_A_KEY_IS = "Your code uses these keys to connect to Agentify.";
 
@@ -148,15 +145,15 @@ const WHAT_REVOKING_DOES =
 
 export const keysScreen = (
   viewer: Viewer,
-  keys: MerchantKeyList,
+  keys: readonly MerchantKey[],
   problem?: string,
   // Arrived from "Create an API key" elsewhere: the page opens on the form.
   // Autofocus scrolls to it; a #fragment in the address would switch it off.
   startNew = false,
 ): string => {
   const { base } = viewer;
-  const working = keys.keys.filter((entry) => entry.disabled_at === null).length;
-  const none = keys.keys.length === 0;
+  const working = keys.filter((entry) => entry.disabled_at === null).length;
+  const none = keys.length === 0;
 
   const body = `
   <div class="lede">
@@ -165,14 +162,14 @@ export const keysScreen = (
       <p>${escaped(
         none
           ? `You haven't created any API keys yet. ${WHAT_A_KEY_IS}`
-          : `${working} of the ${keys.keys.length} ${keys.keys.length === 1 ? "key" : "keys"} below` +
+          : `${working} of the ${keys.length} ${keys.length === 1 ? "key" : "keys"} below` +
               `${working === 1 ? " works" : " work"}. ${WHAT_A_KEY_IS}`,
       )}${WHICH_KEY_THE_DASHBOARD_USES}</p>
     </div>
   </div>
 ${table(
   ["Name", "Created", "Last call", "State", ""],
-  keys.keys.map((entry) => keyRow(base, entry)),
+  keys.map((entry) => keyRow(base, entry)),
   "No keys yet.",
 )}
 ${

@@ -125,11 +125,14 @@ export const merchantDeparted = (why: string): Refused => ({
 });
 
 /**
- * A price answer the door turned away, refused as a body that is not what the
- * call takes, with the reasons as the sentence itself rather than behind it: a
- * worker reporting a refused answer prints the sentence and not the list.
+ * A body that is not what the call takes, with the reasons as the sentence
+ * itself rather than behind it: a worker reporting a refused price answer
+ * prints the sentence and not the list, and a page shows the sentence. The
+ * door says this of a price answer whose price cannot be sold at; the
+ * dashboard says it of anything it would send that its route's schema
+ * refuses.
  */
-export const quoteAnswerRefused = (problems: readonly { readonly message: string }[]): Refused => ({
+export const bodyRefused = (problems: readonly { readonly message: string }[]): Refused => ({
   status: BAD_REQUEST,
   code: "malformed_body",
   message: problems.map((problem) => problem.message).join("; "),

@@ -28,7 +28,6 @@ function config() {
     REPORT_IDENTITY_SECRET: SECRET,
     PAYMENT_NETWORK: "eip155:84532",
     FACILITATOR_URL: "sandbox:scripted",
-    REGISTRATION_INVITATION: "the-existing-gateway-invitation",
     PUBLIC_BASE_URL: "https://agentify.ad",
     BASE_PATH: "/dashboard",
     COOKIE_SECURE: "true",
@@ -47,12 +46,9 @@ function identityWith(postman: Postman) {
   return { identity: identityFor(config(), { rows, postman }), rows };
 }
 
-/** Nobody here owns a merchant, so there is no key for a reading to renew. */
-const noKeyToRenew = async (): Promise<void> => undefined;
-
 async function serve(postman: Postman) {
   const { identity, rows } = identityWith(postman);
-  const server = buildReportIdentityApp(SECRET, identity, noKeyToRenew).listen(0, "127.0.0.1");
+  const server = buildReportIdentityApp(SECRET, identity).listen(0, "127.0.0.1");
   servers.push(server);
   await new Promise<void>((resolve, reject) => {
     server.once("listening", resolve);
@@ -96,7 +92,7 @@ afterEach(async () => {
 describe("the dashboard's internal route for the scanner", () => {
   it("opens no listener for a standalone dashboard without the private secret", () => {
     const { identity } = identityWith(async () => "accepted");
-    expect(startReportIdentityServer(null, identity, noKeyToRenew)).toBeNull();
+    expect(startReportIdentityServer(null, identity)).toBeNull();
   });
 
   it("authenticates before parsing and exposes one strict operation route", async () => {
@@ -259,53 +255,6 @@ describe("the dashboard's internal route for the scanner", () => {
     expect(new Date(rows.dashboard_sessions?.[0]?.expiresAt as Date).getTime()).toBeGreaterThan(
       Date.now() + 29 * 24 * 60 * 60 * 1_000,
     );
-  });
-
-  it("answers whose session a cookie is before a slow key renewal finishes", async () => {
-    // The scanner gives up on this question in seconds and a key renewal can
-    // wait on the gateway for longer; an answer held for the renewal would
-    // lose the browser its renewed cookie for a day (ADR-0026 §2).
-    let release: () => void = () => undefined;
-    const renewals: string[] = [];
-    const slowRenewal = async (person: { email: string }) => {
-      renewals.push(person.email);
-      await new Promise<void>((resolve) => {
-        release = resolve;
-      });
-    };
-    const messages: Message[] = [];
-    const { identity, rows } = identityWith(async (message) => {
-      messages.push(message);
-      return "accepted";
-    });
-    await identity.make(EMAIL, { id: "mer_owner", key: "the-owner-gateway-key" });
-    await identity.requestLink(EMAIL, "default");
-    const opened = await identity.openLink(tokenIn(messages[0] as Message));
-    if (opened.status !== "opened") throw new Error("the sign-in link did not open");
-    const cookie = opened.setCookies.map((line) => line.split(";")[0]).join("; ");
-    const aDayAndAnHourAgo = Date.now() - 25 * 60 * 60 * 1_000;
-    for (const session of rows.dashboard_sessions ?? []) {
-      session.expiresAt = new Date(aDayAndAnHourAgo + 30 * 24 * 60 * 60 * 1_000);
-    }
-    const server = buildReportIdentityApp(SECRET, identity, slowRenewal).listen(0, "127.0.0.1");
-    servers.push(server);
-    await new Promise<void>((resolve) => server.once("listening", resolve));
-    const { port } = server.address() as AddressInfo;
-
-    const answered = await Promise.race([
-      post(`http://127.0.0.1:${port}${REPORT_IDENTITY_PATH}`, {
-        operation: "session",
-        cookie,
-        renew: true,
-      }).then(async (response) => readSessionResponseSchema.parse(await response.json())),
-      new Promise<"held">((resolve) => setTimeout(() => resolve("held"), 2_000)),
-    ]);
-
-    release();
-    expect(answered).not.toBe("held");
-    if (answered === "held" || answered.status !== "signed_in") throw new Error("no answer");
-    expect(answered.set_cookie.some((line) => line.startsWith(`${COOKIE}=`))).toBe(true);
-    expect(renewals).toStrictEqual([EMAIL]);
   });
 
   it("returns a silent 503 without logging a thrown sensitive request", async () => {

@@ -797,12 +797,13 @@ export class Gateway {
    * wait — and answers with the wallet as it then stands, or with why it was
    * refused.
    *
-   * Only a dashboard's own key reaches it: keys operate the shop, and where its
-   * money goes is set through the dashboard, whose calls come from inside the
-   * stack; the public door does not route this call at all (ADR-0019). A key
-   * of the merchant's own code is refused here too, before anything is read or
-   * announced, the first address included, so a copy of one can neither move
-   * the money nor send a message about moving it.
+   * Only a session in the dashboard, which calls it inside the process, or a
+   * key made for a dashboard reaches it: keys operate the shop, and where its
+   * money goes is set through the dashboard; the public door does not route
+   * this call at all (ADR-0019). A key of the merchant's own code is refused
+   * here too, before anything is read or announced, the first address
+   * included, so a copy of one can neither move the money nor send a message
+   * about moving it.
    *
    * There is no taking one away, and no verb at a terminal writes one either:
    * every change reaches the gateway as this call, which is what lets it hold

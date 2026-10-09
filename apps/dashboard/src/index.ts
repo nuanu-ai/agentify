@@ -3,23 +3,23 @@
  * receipts and the keys, rendered on the server, behind a sign-in that knows
  * who a person is — and a registration that makes the merchant behind it.
  *
- * It runs in one process with the gateway, on a listener of its own (ADR-0030),
- * and it reaches the gateway through the same public API a merchant's own
- * tooling uses (ADR-0005 §3): by being an ordinary consumer of the API, it
- * cannot draw a screen the merchant could not have built themselves.
+ * It runs in one process with the gateway, on a listener of its own, and calls
+ * the gateway's application there as the merchant on the signed-in account's
+ * row (ADR-0030), with requests and answers held to the contract's schemas.
  *
  * Its identity tables are its own: the people who sign in, their sessions,
  * one-time links and privacy-bounded send evidence. The component's credential
  * table remains empty after password removal. None of that is a merchant's
- * catalogue data and no public API carries it. One column on the person is the
- * key that account reaches the gateway with (ADR-0014 §2), which is what makes
- * two accounts here two merchants rather than two people looking at one.
+ * catalogue data and no public API carries it. One column on the person names
+ * the merchant that account acts for, which is what makes two accounts here
+ * two merchants rather than two people looking at one.
  */
 
 export { runAccount, type Terminal } from "./account-command.js";
 export { type DashboardConfig, loadConfig } from "./config.js";
 export { connect, migrateAccounts } from "./database.js";
 export {
+  type Acting,
   type Answer,
   type GatewayClient,
   gatewayFor,
@@ -38,7 +38,7 @@ export {
   type IdentityParts,
   identityFor,
   type LinkRequestResult,
-  type MerchantKeyReplacement,
+  type MadeMerchant,
   type Person,
 } from "./identity.js";
 export { keysScreen, newKeyScreen } from "./keys.js";

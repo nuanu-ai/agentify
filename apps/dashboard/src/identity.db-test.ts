@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
 import { Pool } from "pg";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import { identityFor, LINK_MIN_INTERVAL_MS, LINK_RATE_WINDOW_MS } from "./identity.js";
 import type { Message } from "./mail.js";
@@ -89,7 +89,6 @@ if (databaseUrl === null) {
       AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
       PAYMENT_NETWORK: "eip155:84532",
       FACILITATOR_URL: "sandbox:scripted",
-      REGISTRATION_INVITATION: "the-existing-gateway-invitation",
     });
   }
 
@@ -397,7 +396,7 @@ if (databaseUrl === null) {
       const identity = identityOn(messages);
       const seeded = await identity.make("person@example.com", MERCHANT);
 
-      expect(seeded).toMatchObject({ confirmed: false, merchant: MERCHANT });
+      expect(seeded).toMatchObject({ confirmed: false, merchant: { id: MERCHANT.id } });
       expect(
         (await pool.query("select count(*)::int as count from dashboard_credentials")).rows[0],
       ).toStrictEqual({ count: 0 });
@@ -409,7 +408,7 @@ if (databaseUrl === null) {
       const opened = await identity.openLink(tokenIn(messages[0] as Message));
       expect(opened).toMatchObject({
         status: "opened",
-        person: { id: seeded?.id, confirmed: true, merchant: MERCHANT },
+        person: { id: seeded?.id, confirmed: true, merchant: { id: MERCHANT.id } },
       });
     });
 
@@ -603,23 +602,6 @@ if (databaseUrl === null) {
       expect((await identity.whoIs(partner))?.person.email).toBe("partner@example.com");
     });
 
-    it("retains compare-and-swap key rotation", async () => {
-      const identity = identityOn([]);
-      const person = await identity.make("person@example.com", MERCHANT);
-      if (person === null) throw new Error("the seed account was not made");
-
-      const [first, second] = await Promise.all([
-        identity.replaceMerchantKey(person.id, MERCHANT.key, "the-first-fresh-key"),
-        identity.replaceMerchantKey(person.id, MERCHANT.key, "the-second-fresh-key"),
-      ]);
-
-      expect([first, second].filter((result) => result === "replaced")).toHaveLength(1);
-      expect([first, second].filter((result) => result === "not-matched")).toHaveLength(1);
-      expect((await identity.byId(person.id))?.merchant?.key).toMatch(
-        /the-(first|second)-fresh-key/,
-      );
-    });
-
     it("keeps the operator flag off until the terminal sets it, and a session reads it afresh", async () => {
       // Being an operator is a flag on the account's row (ADR-0026 §6). A
       // sign-in writes the row without it; only the terminal's call moves it,
@@ -652,39 +634,6 @@ if (databaseUrl === null) {
       expect(
         (await pool.query("select count(*)::int as count from dashboard_accounts")).rows[0],
       ).toStrictEqual({ count: 1 });
-    });
-
-    it("reports an uncertain key write without logging its query or keys", async () => {
-      const identity = identityOn([]);
-      const person = await identity.make("person@example.com", MERCHANT);
-      if (person === null) throw new Error("the seed account was not made");
-      const fresh = "the-sensitive-fresh-key";
-      await pool.query(`
-        create function fail_dashboard_key_update() returns trigger language plpgsql as $$
-        begin raise exception 'injected failure carrying %', new.merchant_key; end $$
-      `);
-      await pool.query(`
-        create trigger fail_dashboard_key_update before update on dashboard_accounts
-        for each row execute function fail_dashboard_key_update()
-      `);
-      const lines: string[] = [];
-      const error = vi.spyOn(console, "error").mockImplementation((...parts) => {
-        lines.push(parts.map(String).join(" "));
-      });
-      try {
-        await expect(identity.replaceMerchantKey(person.id, MERCHANT.key, fresh)).resolves.toBe(
-          "unknown",
-        );
-      } finally {
-        error.mockRestore();
-      }
-
-      expect((await identity.byId(person.id))?.merchant?.key).toBe(MERCHANT.key);
-      const written = lines.join("\n");
-      expect(written).toMatch(/could not establish whether/i);
-      expect(written).not.toContain(MERCHANT.key);
-      expect(written).not.toContain(fresh);
-      expect(written).not.toContain('update "dashboard_accounts"');
     });
 
     it("enforces a minute between links and three sends per rolling hour without storing the raw address", async () => {

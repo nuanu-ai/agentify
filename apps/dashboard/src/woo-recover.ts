@@ -1,5 +1,13 @@
-/** Private exact-order recovery. It never scans WooCommerce or retries itself. */
+/**
+ * Private exact-order recovery. It never scans WooCommerce or retries itself.
+ *
+ * Run beside the application that is already up, it builds the gateway's
+ * application in its own process on the same database, with a queue that
+ * writes and does not consume (ADR-0030), and reads and delivers the one order
+ * as the merchant on the account that connected the shop.
+ */
 
+import { loadConfig as gatewayConfigOf, openCommandApplication } from "@agentify/gateway";
 import { loadConfig } from "./config.js";
 import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
@@ -25,14 +33,17 @@ if (request === null) {
   process.exitCode = 2;
 } else {
   let identity: ReturnType<typeof identityFor> | undefined;
+  let opened: Awaited<ReturnType<typeof openCommandApplication>> | undefined;
   try {
     const config = loadConfig(process.env);
+    opened = await openCommandApplication(gatewayConfigOf(process.env));
+    const application = opened.application;
     const pool = connect(config.databaseUrl);
     identity = identityFor(config, { pool });
     const outcome = await recoverWooOrder(request, {
       shops: postgresWooShops(pool),
       identity,
-      gatewayForKey: (key) => gatewayFor(config.gatewayUrl, key),
+      gatewayFor: (acting) => gatewayFor(application, acting),
       now: () => new Date(),
     });
     if (outcome.ok) {
@@ -51,5 +62,6 @@ if (request === null) {
     process.exitCode = 1;
   } finally {
     await identity?.close();
+    await opened?.close();
   }
 }

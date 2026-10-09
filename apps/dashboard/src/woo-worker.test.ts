@@ -16,14 +16,7 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import {
-  buyOverHttp,
-  type Harness,
-  harness,
-  type Served,
-  serve,
-  theMerchantKey,
-} from "@agentify/gateway/testing";
+import { buyOverHttp, type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
 import type { AgentOrderStatus, Order } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { gatewayFor } from "./gateway.js";
@@ -39,8 +32,6 @@ import {
 } from "./woo-shop.js";
 import { memoryWooShops, type WooConnection, type WooShops } from "./woo-shops.js";
 import { fillFromTheShop, startWooWorker, turnOnce } from "./woo-worker.js";
-
-const KEY = theMerchantKey("test");
 
 /** The shop showing this product as the one download it sells. */
 const showing = (product: EligibleWooProduct): ProductInspection => ({ ok: true, product });
@@ -486,7 +477,10 @@ describe("the whole way through, against a real gateway", () => {
     open = await harness();
     served = await serve(open);
     const shop = await aShopOnAPort();
-    const gateway = gatewayFor(served.url, KEY);
+    const gateway = gatewayFor(open.gateway, {
+      merchantId: open.merchant.id,
+      email: MERCHANT_EMAIL,
+    });
 
     // The catalogue, converted and published through the door every other card
     // goes through. No leniency of its own: a card refused here is a card the
@@ -624,7 +618,7 @@ describe("the whole way through, against a real gateway", () => {
           id: "p",
           email: MERCHANT_EMAIL,
           confirmed: true,
-          merchant: { id: open?.merchant.id ?? "", key: KEY },
+          merchant: { id: open?.merchant.id ?? "" },
         }),
       },
       clientFor: () => gateway,
@@ -673,7 +667,7 @@ describe("the whole way through, against a real gateway", () => {
             id: "p",
             email: MERCHANT_EMAIL,
             confirmed: true,
-            merchant: { id: "mer_1", key: KEY },
+            merchant: { id: "mer_1" },
           }),
         },
         clientFor: () => gateway,
@@ -747,7 +741,7 @@ describe("a price question off the merchant's stream", () => {
           id: "p",
           email: MERCHANT_EMAIL,
           confirmed: true,
-          merchant: { id: "mer_1", key: KEY },
+          merchant: { id: "mer_1" },
         }),
       },
       clientFor: () => gateway,
@@ -829,7 +823,7 @@ describe("a price question off the merchant's stream", () => {
             id: "p",
             email: MERCHANT_EMAIL,
             confirmed: true,
-            merchant: { id: "mer_1", key: KEY },
+            merchant: { id: "mer_1" },
           }),
         },
         clientFor: () => gateway,
@@ -925,7 +919,7 @@ describe("the worker that keeps every connected shop served", () => {
           id: "acc_1",
           email: MERCHANT_EMAIL,
           confirmed: true,
-          merchant: { id: "mer_1", key: KEY },
+          merchant: { id: "mer_1" },
         }),
       },
       clientFor: () => gateway.client as never,
@@ -962,7 +956,7 @@ describe("the worker that keeps every connected shop served", () => {
           id: "acc_1",
           email: MERCHANT_EMAIL,
           confirmed: true,
-          merchant: { id: "mer_1", key: KEY },
+          merchant: { id: "mer_1" },
         }),
       },
       clientFor: () => gateway.client as never,

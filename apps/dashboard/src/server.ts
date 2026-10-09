@@ -13,8 +13,10 @@
  *
  * Nothing here decides anything about a card, an order or the money. Each
  * handler is a translation between one request and a few calls on the gateway's
- * public API, and the pages are drawn from what those calls answered (ADR-0005
- * §3). A screen that cannot be drawn is API the merchant does not have either.
+ * application, made inside the process as the merchant on the signed-in
+ * account's row (ADR-0030), and the pages are drawn from what those calls
+ * answered, held to the contract's documents. A screen that needs something a
+ * merchant's own code could need gets it as a contract route (ADR-0005 §3).
  *
  * Who is allowed in is one middleware and not a check per handler, and that is
  * ADR-0009 §2. The gate sits above every route below it, so a page added later
@@ -33,6 +35,7 @@
 
 import { readFileSync } from "node:fs";
 import { readinessOf, UNKNOWN } from "@agentify/core";
+import type { Gateway } from "@agentify/gateway";
 import {
   EvmAddressSchema,
   IssueKeyRequestSchema,
@@ -47,8 +50,8 @@ import type {
   LinkDestination,
   Person,
 } from "./dashboard-entry.js";
-import { keyRenewal, sessionReader } from "./dashboard-key.js";
 import {
+  type Acting,
   type Answer,
   type GatewayClient,
   gatewayFor,
@@ -58,11 +61,7 @@ import {
 import { bare, brandLockup, DRAWN_FOR, escaped } from "./html.js";
 import { SESSION_DAYS } from "./identity.js";
 import { keysScreen, newKeyScreen } from "./keys.js";
-import {
-  ACCOUNT_KEY_CANNOT_SET_THE_WALLET,
-  WALLET_NEEDED,
-  whatIsWrongWithTheWallet,
-} from "./payout-wallet.js";
+import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import { printable } from "./printable.js";
 import {
   cardsScreen,
@@ -157,20 +156,6 @@ const mapAtMost = async <Input, Output>(
  */
 const WALLET_CHANGE_MS = 30_000;
 
-/**
- * What an account with no merchant on it is told, wherever it turns up.
- *
- * There is one such account and it is on a deployed server: it was made before
- * an account named its merchant, so there is no key on its row and not one
- * screen in this dashboard can be drawn for it. The two things it must not be
- * answered with are an empty dashboard, which reads as a catalogue somebody
- * emptied, and an exception, which reads as a broken dashboard.
- *
- * So it is told what it is and what the two ways out are. The person reading it
- * is whoever set the deployment up, because this account is one of ours and not
- * a merchant's, which is why it can name a command at all — and the command is
- * named in full, because half of one is a person at a terminal guessing.
- */
 /**
  * A shape an address has to have before a merchant is made for it.
  *
@@ -273,26 +258,31 @@ export interface DashboardParts {
    */
   readonly identity: DashboardIdentity;
   /**
-   * How the gateway is reached on behalf of one merchant, with the real client
-   * as the default.
-   *
-   * A function of the key rather than a client, because the key is not the
-   * dashboard's any more: it is on the row of whoever is signed in, so a client is
-   * built per request and two people signed into one dashboard are two merchants
-   * (ADR-0014 §2). Only a test ever passes anything else, and what a deployment
-   * runs is the client that speaks the contract's route table.
-   *
-   * The deadline is the caller's because not every call is made in front of a
-   * person: a screen is worth waiting on, and the two calls that replace this
-   * dashboard's own key while somebody signs in are not. Left out, the client's
-   * own is used.
+   * The money path: the gateway's application, in the process the two share
+   * (ADR-0030). Every screen calls it as the merchant on the signed-in
+   * account's row.
    */
-  readonly gatewayFor?: (key: string, answerWithinMs?: number) => GatewayClient;
+  readonly gateway: Gateway;
   /**
-   * How a merchant is made, which is the one call the dashboard makes with no key.
+   * How one account's calls are made, with the real client as the default.
    *
-   * Its own part rather than a method on the client above, because somebody
-   * opening a first link is not a merchant yet and there is no key to bind a client to.
+   * A function of the account rather than a client, because a client is built
+   * per request from whoever is signed in, so two people signed into one
+   * dashboard are two merchants. Only a test ever passes anything else, to have
+   * a call answered the way the gateway will not answer on command: a refusal,
+   * or a call that never finishes.
+   *
+   * The deadline is the caller's because a wallet change waits on the mail
+   * provider for longer than a screen waits (`WALLET_CHANGE_MS`). Left out, the
+   * client's own is used.
+   */
+  readonly clientFor?: (acting: Acting, answerWithinMs?: number) => GatewayClient;
+  /**
+   * How a merchant is made, for a signed-in person who has none, with the real
+   * registration as the default.
+   *
+   * Its own part rather than a method on the client above, because that person
+   * is not a merchant yet and there is no merchant to bind a client to.
    */
   readonly registrar?: Registrar;
   /**
@@ -384,27 +374,22 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     troubleAt(response, pageBase, config.surfaceMode, answer);
   const identity = parts.identity;
   const clientFor =
-    parts.gatewayFor ??
-    ((key: string, answerWithinMs?: number) => gatewayFor(config.gatewayUrl, key, answerWithinMs));
-  const registrar = parts.registrar ?? registrarFor(config.gatewayUrl);
-  const replaceTheKeyOf = keyRenewal(identity, clientFor);
+    parts.clientFor ??
+    ((acting: Acting, answerWithinMs?: number) =>
+      gatewayFor(parts.gateway, acting, answerWithinMs));
+  const registrar = parts.registrar ?? registrarFor(parts.gateway);
   /**
-   * Who a request's session belongs to. The first reading of a session's day
-   * also renews the key on the account (ADR-0014 §2), so every door below that
-   * reads a session goes through here and none reads the component directly.
-   */
-  const sessionIn = sessionReader(identity, replaceTheKeyOf);
-
-  /**
-   * The gateway as this request's merchant, built from the key on their row.
+   * The gateway as this request's merchant, the one on the signed-in
+   * account's row.
    *
    * Only ever called below the gate, which is what makes the merchant's absence
-   * a defect here rather than a case: the gate refuses an account that has no
-   * key on it, with a sentence saying what to do, precisely so that no handler
+   * a defect here rather than a case: the gate sends an account that names no
+   * merchant to the one control that makes it, precisely so that no handler
    * below has to hold an opinion about a dashboard with nothing to draw.
    */
   const gatewayAs = (request: Request, answerWithinMs?: number): GatewayClient => {
-    const merchant = whoIs(request).merchant;
+    const person = whoIs(request);
+    const merchant = person.merchant;
     if (merchant === null) {
       throw new Error(
         "a handler below the gate ran for an account with no merchant on it, which means the" +
@@ -412,7 +397,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
           " visitor's problem",
       );
     }
-    return clientFor(merchant.key, answerWithinMs);
+    return clientFor({ merchantId: merchant.id, email: person.email }, answerWithinMs);
   };
 
   /**
@@ -604,7 +589,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   if (parts.wooShops !== undefined) {
     const returnPath = `${base}/woocommerce/return`;
     app.get(returnPath, async (request, response) => {
-      const signedIn = await sessionIn(request.headers.cookie);
+      const signedIn = await identity.whoIs(request.headers.cookie);
       if (signedIn !== null) {
         carryCookies(response, signedIn.setCookies);
         response.redirect(303, `${base}/woocommerce?from=shop`);
@@ -619,7 +604,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   }
 
   app.get(`${base}/sign-in`, async (request, response) => {
-    const signedIn = await sessionIn(request.headers.cookie);
+    const signedIn = await identity.whoIs(request.headers.cookie);
     if (signedIn !== null) {
       carryCookies(response, signedIn.setCookies);
       response.redirect(
@@ -686,9 +671,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   });
 
   const registerMerchant = async (): Promise<{ id: string; key: string } | null> => {
-    const made = await registrar.register(config.gatewayInvitation);
+    const made = await registrar.register();
     if (!made.ok) {
-      console.error(`[dashboard] merchant registration unavailable (${made.status})`);
+      console.error(`[dashboard] no merchant was made: ${made.why}`);
       return null;
     }
     return { id: made.document.merchant_id, key: made.document.secret };
@@ -702,9 +687,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    *
    * Opening a link makes nothing (ADR-0026 §4): under Lax a link from another
    * site arrives signed in, so a navigation that could make a merchant is one
-   * anybody could start. What a sign-in does do is renew the dashboard's key
-   * for somebody who owns a merchant (ADR-0014 §2), before the cookie is
-   * handed over. A link the scanner asked for goes to the report it was asked
+   * anybody could start. A link the scanner asked for goes to the report it was asked
    * for, where the scanner finishes the request the session now names. A link
    * with no destination of its own goes to the person's start; one asked for
    * from a dashboard screen goes to that screen, or, for somebody with no
@@ -715,9 +698,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     person: Person,
     destination: LinkDestination,
   ): Promise<void> => {
-    if (person.merchant !== null) {
-      await replaceTheKeyOf(person);
-    }
     response.redirect(
       303,
       typeof destination !== "string"
@@ -740,7 +720,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    * nobody issued.
    */
   const refuseLink = async (request: Request, response: Response): Promise<void> => {
-    const signedIn = await sessionIn(request.headers.cookie);
+    const signedIn = await identity.whoIs(request.headers.cookie);
     if (signedIn !== null) {
       carryCookies(response, signedIn.setCookies);
       response.redirect(303, startOf(signedIn.person));
@@ -825,7 +805,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   app.use((request, response, next) => {
     void (async () => {
       try {
-        const session = await sessionIn(request.headers.cookie);
+        const session = await identity.whoIs(request.headers.cookie);
         const reading = request.method === "GET" || request.method === "HEAD";
         if (session === null) {
           // The cookies are cleared on the way out, so somebody whose session
@@ -1242,25 +1222,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   };
 
   /**
-   * A wallet call the gateway refused, in words that fit it.
-   *
-   * One refusal is worded here rather than passed through: an account whose
-   * key was made for the merchant's own code, which the gateway will not let
-   * set the wallet. Its sentence under "Try again" would send somebody round
-   * a loop nothing in the dashboard can end, so the settings screen is drawn as
-   * it stands and says why, and that nothing here mends it. Everything else is
-   * the usual page.
-   */
-  const walletRefused = async (
-    request: Request,
-    response: Response,
-    refused: Answer<unknown>,
-  ): Promise<void> =>
-    !refused.ok && refused.code === "not_a_dashboard_key"
-      ? await withNotice(request, response, ACCOUNT_KEY_CANNOT_SET_THE_WALLET, 403)
-      : trouble(response, base, refused);
-
-  /**
    * Cancels the replacement that waits, by asking the gateway for the address
    * that applies now, and ends every other session of the merchant (ADR-0019).
    *
@@ -1285,7 +1246,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     const person = whoIs(request);
     const cancelled = await gateway.setPayoutWallet(applies);
     if (!cancelled.ok) {
-      return await walletRefused(request, response, cancelled);
+      return trouble(response, base, cancelled);
     }
     const ended = await signOutTheOthers(request);
     if (cancelled.document.pending === null) {
@@ -1410,7 +1371,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
 
     const set = await gateway.setPayoutWallet(typed);
     if (!set.ok) {
-      return await walletRefused(request, response, set);
+      return trouble(response, base, set);
     }
     // The address itself stays out of the line. It is not a secret, but this
     // log is a process log and the record of who changed it is what it is for.
@@ -1429,7 +1390,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    *
    * Cancelling is asking the gateway for the address that applies now, which
    * is what the gateway reads as a cancel, and like every change of the wallet
-   * it is made with the dashboard's own key: a key of the merchant's own code
+   * it is asked as the person signed in here: a key of the merchant's own code
    * cannot set the wallet at all. It reads the wallet first rather than
    * trusting a page that may be a day old.
    *
@@ -2307,7 +2268,7 @@ const noted = (person: Person, did: string): void => {
   console.log(printable(`[dashboard] ${person.email} ${did}`));
 };
 
-/** What a merchant is shown when the gateway would not answer. */
+/** What a merchant is shown when a call did not come to a document. */
 function troubleAt(
   response: Response,
   base: string,
@@ -2317,48 +2278,19 @@ function troubleAt(
   if (answer.ok) {
     return;
   }
-  if (answer.status === 401) {
-    // The key is on the row of whoever is signed in (ADR-0014 §2), so this is
-    // still not a person who should sign in again: their session is valid and
-    // opening another cannot make the gateway accept a key it has stopped
-    // accepting. Signing them out here would send them to do exactly that and
-    // land them straight back on this page, with nothing said about the fault.
-    //
-    // What is said instead is the whole truth, including the part that is
-    // uncomfortable. The dashboard does replace this key, at every sign-in — and
-    // it asks for the replacement with the key it is already holding, which is
-    // the one being refused here. So signing in again is not the way out
-    // either, and saying "try signing in again" would be sending somebody
-    // around a loop we know the shape of.
-    response
-      .status(502)
-      .type("html")
-      .send(
-        problemPageAt(
-          base,
-          mode,
-          "The gateway will not accept the key stored for this account, so none of these" +
-            " screens can be drawn. Signing in again does not help: the dashboard asks for a" +
-            " fresh key with the one it is holding, and that is the key being refused. A new" +
-            " account has to be made for this merchant, by somebody holding a key the gateway" +
-            " still accepts. Your sign-in itself is unaffected.",
-        ),
-      );
-    return;
-  }
   if (answer.status === 0) {
-    // Nothing answered at all. This is the only case in which "the gateway did
-    // not answer" is true, and it is a different thing from a gateway that
-    // answered and said no — a merchant told the wrong one of those goes and
-    // checks a service that is running.
+    // Nothing answered in time. This is the only case in which "did not
+    // answer" is true, and it is a different thing from a refusal — a merchant
+    // told the wrong one of those goes and checks something that is working.
+    // The sentence says the rest: what was asked may still have been done.
     response
-      .status(502)
+      .status(504)
       .type("html")
-      .send(problemPageAt(base, mode, `The gateway did not answer: ${answer.why}`));
+      .send(problemPageAt(base, mode, answer.why));
     return;
   }
-  // The gateway answered and refused. Its own sentence, under its own status:
-  // nothing is claimed about what did or did not happen beyond what it said.
+  // A refusal. Its own sentence, under its own status: nothing is claimed about
+  // what did or did not happen beyond what it said.
   response
     .status(answer.status)
     .type("html")

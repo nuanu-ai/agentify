@@ -3,8 +3,8 @@
  *
  * They share a database with the gateway's (ADR-0003 §6, one Postgres), so the
  * names say whose they are. Nothing here is a merchant's data: a card, an order
- * and a receipt all come from the public API and none of them can be reached
- * from a query in this process.
+ * and a receipt all come from the gateway's application, and no query of the
+ * dashboard's reaches the gateway's tables.
  *
  * Better Auth keeps people, sessions, its empty account model and one-time
  * links in separate places. Dashboard code adds bounded link-send evidence,

@@ -36,6 +36,7 @@ import { agentOrderStatusOf } from "../app/runner.js";
 import type { KeyPurpose } from "../ports/store.js";
 import {
   BAD_REQUEST,
+  bodyRefused,
   CONFLICT,
   FORBIDDEN,
   KEY_MADE_FOR_A_DASHBOARD,
@@ -47,7 +48,6 @@ import {
   NO_SUCH_ORDER,
   OK,
   PAYMENT_REQUIRED,
-  quoteAnswerRefused,
   type Refused,
   UNPROCESSABLE,
   walletChangeRefused,
@@ -142,13 +142,12 @@ const notTheDashboards = (response: RouteCall["response"]): RouteAnswer =>
  * What a key of the merchant's own code is answered with at the payout wallet.
  *
  * The public door does not route a write to this path at all (ADR-0019), so
- * what meets this is something inside the stack: a dashboard account left
- * holding a key of the other kind, or a command somebody runs by hand. It
- * stays as the gateway's own word on the rule rather than the door's alone.
- * The code is the one the dashboard's key calls are refused under, because the
- * fact is the same: this call is one only a dashboard's key makes. The words are
- * this route's, because what the caller needs is where the wallet is set and
- * why this key cannot set it. The published list of codes does not move, and
+ * what meets this is something inside the stack, such as a command somebody
+ * runs by hand. It stays as the gateway's own word on the rule rather than the
+ * door's alone. The code is the one the calls about a dashboard's key are
+ * refused under, because the fact is the same: this call is not one a key of
+ * the merchant's own code makes. The words are this route's, because what the
+ * caller needs is where the wallet is set and why this key cannot set it. The published list of codes does not move, and
  * no worker of the SDK calls this route (ADR-0006 §2).
  */
 const walletIsSetInTheDashboard = (response: RouteCall["response"]): RouteAnswer =>
@@ -157,7 +156,7 @@ const walletIsSetInTheDashboard = (response: RouteCall["response"]): RouteAnswer
     FORBIDDEN,
     refusal(
       "not_a_dashboard_key",
-      "the payout wallet is set only through the dashboard, on its Settings screen, with the key the dashboard holds, and the key this call was made with was made for the merchant's own code: a key of that kind operates the shop and cannot change where its money goes. Nothing was changed",
+      "the payout wallet is set only in the dashboard, on its Settings screen, by a person signed in to it, and the key this call was made with was made for the merchant's own code: a key of that kind operates the shop and cannot change where its money goes. Nothing was changed",
     ),
   );
 
@@ -450,7 +449,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
           call.body as never,
         );
         if ("refused" in answered) {
-          return refusedWith(call.response, quoteAnswerRefused(answered.refused));
+          return refusedWith(call.response, bodyRefused(answered.refused));
         }
         return { status: OK, document: answered };
       },

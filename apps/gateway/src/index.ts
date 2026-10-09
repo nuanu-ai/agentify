@@ -44,6 +44,7 @@ export {
   type Runtime,
 } from "./app/runtime.js";
 export { Waiting } from "./app/waiting.js";
+export { type CommandApplication, openCommandApplication } from "./command-application.js";
 export {
   type DeadlineConfig,
   type GatewayConfig,
@@ -53,8 +54,8 @@ export {
   type WorkerConfig,
 } from "./config.js";
 export {
+  bodyRefused,
   CONFLICT,
-  GATEWAY_FAILED,
   KEY_MADE_FOR_A_DASHBOARD,
   merchantDeparted,
   merchantOrderAnswer,
@@ -62,7 +63,6 @@ export {
   NO_SUCH_ITEM,
   NO_SUCH_KEY,
   NO_SUCH_ORDER,
-  quoteAnswerRefused,
   type Refused,
   walletChangeRefused,
 } from "./http/merchant-answers.js";

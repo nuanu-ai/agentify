@@ -311,9 +311,9 @@ ${brandLockup("/")}
 /**
  * The screen a signed-in person without a merchant is offered (ADR-0026 §4).
  *
- * One control, and only its same-origin press makes the merchant and the key
- * the dashboard calls with. A gateway that did not answer leaves the person here,
- * signed in, to press again.
+ * One control, and only its same-origin press makes the merchant. A press that
+ * did not come to a merchant leaves the person here, signed in, to press
+ * again.
  */
 export const merchantSetupScreen = (
   base: string,

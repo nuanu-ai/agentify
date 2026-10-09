@@ -21,7 +21,6 @@ import {
   sendReportLinkResponseSchema,
 } from "@agentify/scanner-contracts/report-identity";
 import express, { type NextFunction, type Request, type Response } from "express";
-import type { Person } from "./dashboard-entry.js";
 import type { Identity } from "./identity.js";
 
 export const REPORT_IDENTITY_PATH = "/internal/report-identity";
@@ -41,24 +40,7 @@ type ReportIdentityOperations = Pick<
   "sendReportLink" | "deleteUnattachedPerson" | "whoIs"
 >;
 
-/**
- * The route, with what renews an account's key when a reading of its session
- * was the first of the day (ADR-0014 §2). The scanner's question is a reading
- * like any page's, so a day spent on reports renews the key too.
- *
- * The scanner is answered first and the key renewed after. The scanner gives
- * up on this question in seconds, a renewal may wait on the gateway for longer,
- * and an answer held for it would lose the browser its renewed cookie until the
- * next day; the scanner does not call the gateway, so it needs no key from the
- * renewal. What that costs is the window the dashboard's own pages already live
- * with: a dashboard request in flight on another tab, made with the key the
- * renewal is about to forget, is refused once and works on a reload.
- */
-export function buildReportIdentityApp(
-  secret: string,
-  identity: ReportIdentityOperations,
-  renewKey: (person: Person) => Promise<void>,
-) {
+export function buildReportIdentityApp(secret: string, identity: ReportIdentityOperations) {
   const app = express();
 
   app.post(
@@ -100,11 +82,6 @@ export function buildReportIdentityApp(
                 set_cookie: [...session.setCookies],
               };
         response.json(readSessionResponseSchema.parse(answer));
-        if (session !== null && session.setCookies.length > 0 && session.person.merchant !== null) {
-          void renewKey(session.person).catch(() => {
-            console.error("[dashboard] the key was not renewed after a reading of the day");
-          });
-        }
         return;
       }
       response.json(
@@ -128,10 +105,9 @@ export function buildReportIdentityApp(
 export function startReportIdentityServer(
   secret: string | null,
   identity: ReportIdentityOperations,
-  renewKey: (person: Person) => Promise<void>,
 ): Server | null {
   if (secret === null) return null;
-  const server = buildReportIdentityApp(secret, identity, renewKey).listen(REPORT_IDENTITY_PORT);
+  const server = buildReportIdentityApp(secret, identity).listen(REPORT_IDENTITY_PORT);
   server.requestTimeout = REQUEST_TIMEOUT_MS;
   server.headersTimeout = HEADERS_TIMEOUT_MS;
   server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;

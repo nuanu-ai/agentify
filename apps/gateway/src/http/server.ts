@@ -614,7 +614,14 @@ function declaresCompression(request: Request): boolean {
   return named !== "" && named !== "identity";
 }
 
-type Held = { ok: true; value: unknown } | { ok: false; problems: readonly unknown[] };
+/** One thing wrong with a body, in the schema's own words, and where it is. */
+interface Problem {
+  readonly path: readonly string[];
+  readonly code: string;
+  readonly message: string;
+}
+
+type Held = { ok: true; value: unknown } | { ok: false; problems: readonly Problem[] };
 
 export function hold(schema: ZodType, value: unknown): Held {
   const parsed = schema.safeParse(value);

@@ -13,50 +13,19 @@
  * because we cannot do.
  */
 
-import { queueOn } from "./adapters/pgboss/queue.js";
-import { connect, PostgresStore } from "./adapters/postgres/store.js";
-import { Gateway } from "./app/gateway.js";
+import { openCommandApplication } from "./command-application.js";
 import { loadConfig } from "./config.js";
 import { runPaymentReport } from "./payment-report-command.js";
-import { nobodyAnnounces } from "./ports/announcer.js";
-import { randomIds, systemClock } from "./ports/clock.js";
-import type { Facilitator } from "./ports/facilitator.js";
 
 const NO_SUCH_TABLE = "42P01";
 
-const refusesToAsk: Facilitator = {
-  verify() {
-    return Promise.reject(new Error("report-payment does not ask the facilitator"));
-  },
-  settle() {
-    return Promise.reject(new Error("report-payment does not ask the facilitator"));
-  },
-};
-
 const config = loadConfig(process.env);
-const { db, pool } = connect(config.databaseUrl);
-const queue = queueOn(config.databaseUrl, {
-  pollIntervalMs: 250,
-  reminders: {
-    attempts: config.reminderAttempts,
-    retryDelayMs: config.reminderRetryDelayMs,
-  },
-});
+let opened: Awaited<ReturnType<typeof openCommandApplication>> | undefined;
 
 let code = 1;
 try {
-  await queue.startWriter();
-  const gateway = new Gateway({
-    config,
-    store: PostgresStore.over(db, randomIds, queue.envelopes()),
-    queue,
-    facilitator: refusesToAsk,
-    clock: systemClock,
-    ids: randomIds,
-    // Recording what a payment layer said about an order changes no wallet
-    // and issues no key, so there is nothing here to announce.
-    announcer: nobodyAnnounces,
-  });
+  opened = await openCommandApplication(config);
+  const gateway = opened.application;
   code = await runPaymentReport(
     process.argv.slice(2),
     {
@@ -86,8 +55,7 @@ try {
     console.error(thrown);
   }
 } finally {
-  await queue.stop().catch(() => undefined);
-  await pool.end();
+  await opened?.close();
 }
 
 process.exitCode = code;
