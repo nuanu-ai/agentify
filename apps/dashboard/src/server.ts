@@ -814,14 +814,13 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
           const hadIdentityCookie = carriesIdentityCookie(request.headers.cookie);
           forget(response);
           const reason = reading ? "session-ended" : "session-ended-unsaved";
-          // A section opened by its address is where the person was going — a
-          // bookmark, or the wallet screen a message about a payout wallet
-          // change links to with no token in it (ADR-0019) — so the sign-in
-          // carries it and the link it mails returns them there. Only the
-          // sections are named; any other address leads to the start.
-          const going = reading
-            ? dashboardDestinationIn(request.path.slice(`${base}/`.length))
-            : "default";
+          // A section addressed is where the person was going — a bookmark,
+          // the wallet screen a message about a payout wallet change links to
+          // with no token in it (ADR-0019), or the screen a form that was not
+          // saved was sent from — so the sign-in carries it and the link it
+          // mails returns them there. Only the sections are named; any other
+          // address leads to the start.
+          const going = dashboardDestinationIn(request.path.slice(`${base}/`.length));
           // A form sent without a cookie is told it was not kept, at every
           // address below alike.
           const query = [
