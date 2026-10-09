@@ -20,10 +20,11 @@
  *
  * Who is allowed in is one middleware and not a check per handler, and that is
  * ADR-0026 §7. The gate sits above every route below it, so a page added later
- * is guarded because it is a page rather than because somebody remembered — and
- * a visitor with no session is answered identically at every address, including
- * the ones that do not exist, so the dashboard's inventory of pages is not
- * something a stranger can read off it.
+ * is guarded because it is a page rather than because somebody remembered. A
+ * visitor with no session is sent to the sign-in from every address, including
+ * the ones that do not exist; the sign-in names the section the address belongs
+ * to, so the person can be returned there, which tells a stranger the names of
+ * the sections and nothing that is not already in the open repository.
  *
  * What stands above the gate is written out in that decision and is short: the
  * sign-in and the sign-out, the page a mailed link lands on, the stylesheet,

@@ -964,8 +964,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /**
  * A claim read back, held to the closed set it was written from.
  *
- * A destination is one of the dashboard's three screens or the report of one
- * named scan, and a request is the scanner's identifier or nothing. A row
+ * A destination is one of the dashboard's sections, its start among them, or
+ * the report of one named scan, and a request is the scanner's identifier or nothing. A row
  * holding anything else was not written by this file and opens nothing.
  */
 function claimOf(value: Record<string, unknown>): LinkClaim | null {
