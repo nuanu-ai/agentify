@@ -79,6 +79,10 @@ export interface WooPermission extends Readonly<Record<string, unknown>> {
 export interface ParcelToFollow {
   readonly orderId: string;
   readonly wooOrderId: string;
+  /** The shop it was sold from, whose order the id is. */
+  readonly shopOrigin: string;
+  /** When the shop's order was bound to the sale. */
+  readonly placedAt: Date;
 }
 
 export interface WooRecoveryOrder {
@@ -545,7 +549,12 @@ export const postgresWooShops = (pool: Pool): WooShops => {
 
     async parcelsToFollow(accountId) {
       return await db
-        .select({ orderId: wooOrders.orderId, wooOrderId: wooOrders.wooOrderId })
+        .select({
+          orderId: wooOrders.orderId,
+          wooOrderId: wooOrders.wooOrderId,
+          shopOrigin: sql<string | null>`${wooOrders.facts}->>'shopOrigin'`,
+          placedAt: wooOrders.placedAt,
+        })
         .from(wooOrders)
         .where(
           and(
@@ -558,7 +567,16 @@ export const postgresWooShops = (pool: Pool): WooShops => {
         .orderBy(asc(wooOrders.placedAt), asc(wooOrders.orderId))
         .then((rows) =>
           rows.flatMap((row) =>
-            row.wooOrderId === null ? [] : [{ orderId: row.orderId, wooOrderId: row.wooOrderId }],
+            row.wooOrderId === null || row.shopOrigin === null || row.placedAt === null
+              ? []
+              : [
+                  {
+                    orderId: row.orderId,
+                    wooOrderId: row.wooOrderId,
+                    shopOrigin: row.shopOrigin,
+                    placedAt: row.placedAt,
+                  },
+                ],
           ),
         );
     },
@@ -622,6 +640,7 @@ export const memoryWooShops = (): WooShops => {
       attemptedAt: Date;
       phase: "precreate_refused" | "create_unknown" | "placed" | "shipped" | "closed";
       facts: WooOrderFacts;
+      placedAt?: Date;
       placed: {
         id: string;
         number: string;
@@ -760,10 +779,10 @@ export const memoryWooShops = (): WooShops => {
       }
     },
 
-    async recordOrder(orderId, placed) {
+    async recordOrder(orderId, placed, now) {
       const found = orders.get(orderId);
       if (found !== undefined && found.phase === "create_unknown" && found.placed === null) {
-        orders.set(orderId, { ...found, phase: "placed", placed });
+        orders.set(orderId, { ...found, phase: "placed", placed, placedAt: now });
         return true;
       }
       return false;
@@ -774,7 +793,8 @@ export const memoryWooShops = (): WooShops => {
       // As the Postgres store reads it: a parcel followed no further is no
       // phase recovery knows.
       if (found === undefined || found.phase === "shipped" || found.phase === "closed") return null;
-      return { orderId, ...found, phase: found.phase };
+      const { placedAt: _placedAt, ...kept } = found;
+      return { orderId, ...kept, phase: found.phase };
     },
 
     async parcelsToFollow(accountId) {
@@ -782,8 +802,16 @@ export const memoryWooShops = (): WooShops => {
         found.accountId === accountId &&
         found.phase === "placed" &&
         found.placed !== null &&
-        found.placed.permission === null
-          ? [{ orderId, wooOrderId: found.placed.id }]
+        found.placed.permission === null &&
+        found.placedAt !== undefined
+          ? [
+              {
+                orderId,
+                wooOrderId: found.placed.id,
+                shopOrigin: found.facts.shopOrigin,
+                placedAt: found.placedAt,
+              },
+            ]
           : [],
       );
     },

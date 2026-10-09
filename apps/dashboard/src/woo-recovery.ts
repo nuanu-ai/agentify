@@ -55,11 +55,13 @@ export const recoverWooOrder = async (
   const record = await parts.shops.recoveryOrder(request.orderId);
   if (record === null) return refused("No recoverable WooCommerce order has that id.");
   if (record.facts.kind === "parcel") {
-    // Recovery makes or binds an order from what was kept, and nothing of
-    // where a parcel goes is kept (ADR-0032): its address was erased when the
-    // order became a refund owed, and only the buyer has it now.
+    // Recovery makes or binds a download's order. A parcel refused before its
+    // order was made has no address left to make one with (ADR-0032), and one
+    // whose order may exist is settled with the merchant in their shop.
     return refused(
-      "A parcel's order is not recovered: its address was erased when it became a refund owed.",
+      "This command recovers downloads only. A parcel refused before its WooCommerce order was" +
+        " made has no address left to make one with; for one whose order may exist, look in the" +
+        " shop for an order carrying this identifier as its transaction id, and do not ship it.",
     );
   }
   const person = await parts.identity.byId(record.accountId);

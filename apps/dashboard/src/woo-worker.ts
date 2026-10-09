@@ -500,13 +500,22 @@ const fillParcelFromTheShop = async (
     );
     return null;
   }
+  // From here the shop may hold a paid order shipping to the buyer while the
+  // sale is refused and owes a refund, so the log names the shop's order
+  // where the shop named it: that order is not to be shipped.
+  const inTheShop =
+    made.id === undefined
+      ? ""
+      : `; the shop's order ${made.id} does not match it and is not to be shipped`;
   if (made.again) {
     // Not answered, and the claim stays: the order may be in the shop, so the
     // next hand-over meets "we do not know" rather than a clean slate.
-    console.error(`[dashboard] ${order.id} has no usable WooCommerce creation result`);
+    console.error(`[dashboard] ${order.id} has no usable WooCommerce creation result${inTheShop}`);
     return null;
   }
-  console.error(`[dashboard] ${order.id} has no verifiable WooCommerce creation result`);
+  console.error(
+    `[dashboard] ${order.id} has no verifiable WooCommerce creation result${inTheShop}`,
+  );
   return unknownCreation(order.id, connection.shopUrl, parts.now());
 };
 
@@ -565,7 +574,11 @@ export interface WorkingParts extends Filling {
    * How the shop is asked whether a parcel's order shipped, with the real read
    * as the default. A deployment passes nothing.
    */
-  readonly readShipment?: (keys: ShopKeys, wooOrderId: string) => Promise<ShipmentRead>;
+  readonly readShipment?: (
+    keys: ShopKeys,
+    wooOrderId: string,
+    orderId: string,
+  ) => Promise<ShipmentRead>;
 }
 
 /**
@@ -698,7 +711,7 @@ export const quoteFromTheShop = async (
   /** Not available, with the reason in the merchant's log and no word of the place. */
   const unpriced = (why: string): QuoteResponse => {
     console.error(
-      `[dashboard] the parcel ${question.merchant_item_id} has no price for ${question.price_id}: ${why}`,
+      `[dashboard] ${question.merchant_item_id} has no price for ${question.price_id}: ${why}`,
     );
     return unavailable;
   };
@@ -718,9 +731,7 @@ export const quoteFromTheShop = async (
     Promise.all([productInTheShop(connection, question.merchant_item_id, parts), shipping]),
     parts.quoteWithinMs ?? QUOTE_WITHIN_MS,
   );
-  if (read === null) {
-    return place === undefined ? unavailable : unpriced("the shop did not answer in time");
-  }
+  if (read === null) return unpriced("the shop did not answer in time");
   const [inspected, rates] = read;
   if (!inspected.ok) return unavailable;
   const product = inspected.product;
@@ -786,8 +797,24 @@ export const followShipments = async (
       const person = await parts.identity.byId(connection.accountId);
       if (person === null || person.merchant === null) continue;
       const gateway = parts.clientFor({ merchantId: person.merchant.id, email: person.email });
+      const origin = new URL(connection.shopUrl).origin;
       for (const parcel of parcels) {
-        const said = await read(connection, parcel.wooOrderId);
+        if (parts.now().getTime() - parcel.placedAt.getTime() > FOLLOWED_FOR_MS) {
+          await parts.shops.endParcel(parcel.orderId, "closed", parts.now());
+          console.error(
+            `[dashboard] ${parcel.orderId} was not completed in the shop within thirty days of` +
+              " being placed, and is followed no further",
+          );
+          continue;
+        }
+        if (parcel.shopOrigin !== origin) {
+          console.error(
+            `[dashboard] ${parcel.orderId} was sold from ${parcel.shopOrigin}, and its order is not` +
+              ` read in ${origin}, the shop this account connects now`,
+          );
+          continue;
+        }
+        const said = await read(connection, parcel.wooOrderId, parcel.orderId);
         if (said.kind === "waiting") continue;
         if (said.kind === "unknown") {
           console.error(`[dashboard] whether ${parcel.orderId} shipped is not known: ${said.why}`);
@@ -806,7 +833,9 @@ export const followShipments = async (
           await parts.shops.endParcel(parcel.orderId, "shipped", parts.now());
           continue;
         }
-        if (recorded.status === 0) {
+        // Nothing answered, or the payment is still settling, which the
+        // gateway asks to be called again after.
+        if (recorded.status === 0 || recorded.code === "settle_in_flight") {
           console.error(`[dashboard] the shipment of ${parcel.orderId} waits: ${recorded.why}`);
           continue;
         }
@@ -833,6 +862,15 @@ export const followShipments = async (
  * against the merchant's own shop, so it is not made more often than that.
  */
 const SHIPMENTS_EVERY_MS = 5 * 60_000;
+
+/**
+ * How long a placed parcel is read for: thirty days, the longest time to ship
+ * any card may name (ADR-0033). A parcel from this connector is past its seven
+ * days long before, and a shipment the merchant records late still closes a
+ * refund owed while the refund is unpaid (ADR-0028); after thirty days the shop
+ * is not read for it again.
+ */
+const FOLLOWED_FOR_MS = 30 * 24 * 60 * 60 * 1_000;
 
 /** A worker turning, until it is stopped. */
 export interface WooWorker {
@@ -950,6 +988,8 @@ export const startWooWorker = (
       } catch (thrown) {
         console.error("[dashboard] the parcels could not be followed this time", thrown);
       }
+      // A stop that came during the pass found nothing to wake.
+      if (!running) break;
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, parts.shipmentsEveryMs ?? SHIPMENTS_EVERY_MS);
         wake = () => {

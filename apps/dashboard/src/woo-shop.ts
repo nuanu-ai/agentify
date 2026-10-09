@@ -1003,7 +1003,13 @@ export interface ParcelSold {
 
 export type ParcelMade =
   | { readonly ok: true; readonly id: string; readonly number: string }
-  | { readonly ok: false; readonly why: string; readonly again: boolean };
+  | {
+      readonly ok: false;
+      readonly why: string;
+      readonly again: boolean;
+      /** The shop's id for an order it made that does not match the sale, where it named one. */
+      readonly id?: string;
+    };
 
 /**
  * A buyer's address as a WooCommerce order's shipping block.
@@ -1138,6 +1144,7 @@ export const createTheParcelInTheShop = async (
         "The shop created an order whose paid amount, product, shipping or Agentify correlation" +
         " does not match the sale.",
       again: true,
+      id: String(made.id),
     };
   }
   return { ok: true, id: String(made.id), number: String(made.number) };
@@ -1189,6 +1196,7 @@ const ENDED_UNSHIPPED = new Set(["cancelled", "refunded", "failed", "trash"]);
 
 const FollowedOrderSchema = z.looseObject({
   status: z.string(),
+  transaction_id: z.string(),
   shipping_lines: z.array(z.looseObject({ method_title: z.string() })),
 });
 
@@ -1211,7 +1219,8 @@ const FulfilmentsSchema = z.array(
  * of is the shipping method the parcel was paid to go by, and it has no
  * tracking number, because none was given.
  *
- * The order is read with the fields this needs, which leave the address out.
+ * The order is read with the fields this needs, which leave the address out,
+ * and is this sale's only if it carries the sale's own identifier.
  * What the merchant wrote is held to the shipment's rules and never cleaned:
  * a tracking address that is not one is left out, and a carrier or a number
  * that is not plain text is no shipment to record, so the order waits.
@@ -1219,6 +1228,7 @@ const FulfilmentsSchema = z.array(
 export const shipmentInTheShop = async (
   keys: ShopKeys,
   wooOrderId: string,
+  orderId: string,
   request: WooRequest = wooRequest,
 ): Promise<ShipmentRead> => {
   if (!/^\d+$/.test(wooOrderId)) {
@@ -1247,7 +1257,9 @@ export const shipmentInTheShop = async (
   const codeOf = (body: unknown): unknown =>
     typeof body === "object" && body !== null && "code" in body ? body.code : undefined;
 
-  const order = await read(`/wp-json/wc/v3/orders/${wooOrderId}?_fields=id,status,shipping_lines`);
+  const order = await read(
+    `/wp-json/wc/v3/orders/${wooOrderId}?_fields=id,status,transaction_id,shipping_lines`,
+  );
   if (order === null) return { kind: "unknown", why: "The shop did not answer." };
   if (order.status === 404 && codeOf(order.body) === "woocommerce_rest_shop_order_invalid_id") {
     return { kind: "ended", status: "deleted" };
@@ -1258,6 +1270,12 @@ export const shipmentInTheShop = async (
   const followed = FollowedOrderSchema.safeParse(order.body);
   if (!followed.success) {
     return { kind: "unknown", why: "The shop's order is not one this can read." };
+  }
+  // The order id is the shop's, and the shop can change under it — another
+  // shop connected, or this one rebuilt and numbering from the start — so
+  // only an order carrying this sale's own identifier is this sale's.
+  if (followed.data.transaction_id !== orderId) {
+    return { kind: "unknown", why: `The shop's order ${wooOrderId} is not this sale's.` };
   }
   if (ENDED_UNSHIPPED.has(followed.data.status)) {
     return { kind: "ended", status: followed.data.status };
