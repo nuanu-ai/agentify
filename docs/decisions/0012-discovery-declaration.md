@@ -1,76 +1,65 @@
 # 0012. The payment challenge declares the product, as a projection of its card
 
 Date: 2026-08-27
-Status: accepted (the product owner, 2026-08-27)
+Status: accepted (the product owner)
 
 ## Context
 
-ADR-0001 exposes the pilot on the x402 Bazaar: an entry appears in that catalog
-when an endpoint answers a payment challenge carrying a discovery declaration
-and a payment for that endpoint settles through the CDP facilitator. The spike
-(`docs/research/04-spike-bazaar-listing.md`) proved the path on a throwaway
-server; the gateway's own challenge carried no declaration at all, so nothing
-this product sells could be found by an agent that had not been told about it.
-Almost everything a declaration wants is already in a card.
+ADR-0001 exposes the product on the x402 Bazaar, a discovery catalog that lists
+an endpoint once its payment challenge carries a discovery declaration and a
+payment to it settles through the CDP facilitator
+(`docs/research/04-spike-bazaar-listing.md`). A card already holds almost
+everything a declaration wants.
 
 ## Decision
 
-**The declaration is a projection of a card**, in
+The declaration is a projection of a card, `bazaarDeclarationOf` in
 `packages/contracts/src/card.ts`, beside the projection an agent reads in our
-own catalog: the resource block, an example purchase body, the JSON Schema
-that body is held to, an example delivery. The wire format is assembled at the
-edge by the protocol's own library, never by hand; `@x402/extensions` is the
-gateway's dependency alone, since ADR-0003 §8 holds the contracts package to
-zod for the merchant SDK's sake.
+own catalog: the resource block, an example purchase body, the JSON Schema that
+body is held to, and an example of what the agent receives. A parcel's body and
+schema carry `ship_to`, and its example output is a recorded shipment. Examples
+stand for each declared type and carry no invented data. The wire format is
+assembled at the edge by the protocol's own library, never by hand, and
+`@x402/extensions` is the gateway's dependency alone, since ADR-0003 §8 keeps
+the contracts package, on which the merchant SDK depends, to zod. The resource
+address is pinned from `PUBLIC_BASE_URL` and the route table, never read off the
+request, which behind our reverse proxy arrives as `http://` with the caller's
+query string: a catalog keys a listing on the address, and two spellings would
+be two listings for one product.
 
-**The resource address is pinned from `PUBLIC_BASE_URL` and the route table**,
-not read off the request: behind our own reverse proxy the request arrives as
-`http://` with the caller's query string still attached, and a listing is keyed
-on that address — two spellings are two listings for one product.
+The listing name belongs to the merchant and the tags to the card, since a name
+per card would show one seller as several. The merchant sets the name in the
+dashboard or through the API, the operator can take it away, and it is never
+filled in from the display name, which may be in any alphabet where the listing
+name goes out under the catalog's ASCII rule. Merchant-written text is held at
+the publish to the catalog's limits, by the catalog's own code where that code
+can be run, because the catalog drops what breaks them without telling anybody.
 
-**The seller's listing name belongs to the merchant; the tags belong to the
-card.** A per-card name would be one seller appearing as several, so the name
-is a column on the merchants table, set by the merchant over the API or by
-`merchant listed-as` at a terminal. It is null by default and never filled in
-from the display name, which may be written in any alphabet where this one
-goes out under the catalog's ASCII rule. Merchant-written text is held on the
-way in to the catalog's own limits, with the catalog's own code where that
-code is runnable, because the catalog drops what breaks its rules without
-telling anybody; the numbers and their status are in the spike note.
-
-**Every card is declared, and only while it is for sale.** There is no opt-in
-flag: a merchant who published a card is selling it, and a card off sale — its
-own pause, its merchant's, or a merchant who left — answers no challenge at
-all, so the catalog never carries a product nobody can buy.
-
-**The declaration describes the purchase, whichever way the challenge was
-asked for**: a POST with a JSON body, on a crawler's GET as on an agent's
-POST. Declared as the GET, it said that paying the GET delivers the product,
-and an agent took it at its word on 2026-09-10. What makes the honest shape
-possible is the door: an unpaid call with no document — a GET, or a POST
-with nothing or an empty document — is answered with the challenge, which is
-how the catalog's validator asks. The validator holds the probe to the
-declaration, so it is asked with the purchase's method and accepts
-(`docs/research/26-discovery-method-on-get.md`). Whether the crawler accepts
-the resource at a real listing is measured only by one, and that is this
-paragraph's exit condition.
+Every card is declared, with no opt-in, and only while it is for sale: a card
+off sale for any reason answers no challenge, so the catalog never carries a
+product nobody can buy. The declaration describes the purchase, a POST with a
+JSON body, whichever method asked for the challenge. An unpaid call with no
+document, a GET or a POST with nothing or an empty one, gets the challenge,
+which is how the catalog's validator asks and what it accepts
+(`docs/research/26-discovery-method-on-get.md`); a document of the wrong shape
+is refused with its fields before anything is signed. Whether the crawler
+accepts it at a real listing only a real listing shows, and that is the exit
+condition of this rule.
 
 ## Consequences
 
-An agent that has never heard of us can find a product of ours in a catalog it
-already walks. Our own tests cannot say whether the catalog accepts what we
-emit — they hold the declaration to the library's schema and to a shape that
-was accepted once, which is not acceptance; `pnpm smoke:listing` makes the
-live call with the purchase's method and reports a probe with no verdict as
-no verdict. The card schema is shared by the publish and read paths on
-purpose, so a row stored before the description ceiling stops being readable
-until the card is republished; the plain-text rule of ADR-0017 is the one
-exception, held at the publish alone. We pay in what a merchant may write: a
-name in Cyrillic, Greek or Arabic cannot be a listing name, and the refusal
-happens here, where the merchant sees it, not in the catalog, where it is
-silent. The challenge carries the declaration in one header that grows with
-the card.
+Our tests hold the declaration to the library's schema and a shape accepted
+once, which is not acceptance; `pnpm smoke:listing` makes the live call with the
+purchase's method and reports a probe with no verdict as no verdict. The
+catalog's limits belong to the card schema the publish and read paths share, so
+a stored card that breaks a newer limit is unreadable until republished, except
+under ADR-0017's plain-text rule, held at the publish alone. A name in Cyrillic,
+Greek or Arabic cannot be a listing name, and the merchant is told so here
+rather than dropped silently by the catalog. The declaration rides in one
+challenge header that grows with the card.
 
-Rejected: an opt-in flag on the card — it would make the default invisibility,
-the state this change exists to leave. Reusing the merchant's display name as
-the listing name — one channel's alphabet rule on every merchant's name.
+Rejected: an opt-in flag, making invisibility the default this decision exists
+to leave; the display name as the listing name, which puts one catalog's
+alphabet rule on every merchant's name; and declaring the GET a crawler probes
+with, which tells an agent that paying the GET delivers the product; one agent
+paid it.

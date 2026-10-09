@@ -1,71 +1,64 @@
 # 0011. The order identifier is the agent's proof, for now
 
 Date: 2026-08-27
-Status: accepted for the controlled test and live launch; revisit before the first external buyer;
-the shipment paragraph added 2026-09-28 with ADR-0033, the seller paragraph 2026-10-07 with ADR-0034
+Status: accepted for the controlled launch; revisited before an outside buyer
 
 ## Context
 
 An agent that buys an asynchronous product receives an order before the goods
-exist. It needs `GET /x402/orders/:order_id/status` to return later, but the
-contract originally left authentication undecided and the gateway did not
-mount the route. The pilot eSIM therefore had no usable delivery path for an
-agent that is not an email inbox.
-
-Merchants have accounts and keys. Buyers deliberately do not: making an agent
-register before buying would undo the product's no-prior-relationship model.
+exist and collects them later from `GET /x402/orders/:order_id/status`, so that
+route needs a rule for who may ask. Merchants have accounts and keys. Buyers
+deliberately do not: making an agent register before buying would undo the
+product's model of buying with no prior relationship.
 
 ## Decision
 
-**Knowing the order identifier is the proof in both environments.** Whoever
-presents the long random identifier is answered about that order and no other.
-The production site uses the same rule as the test site for the controlled
-launch with no external users.
+Knowing the order identifier is the proof, on the test channel and the live one
+alike. Whoever presents it is answered about that order and no other.
 
-The identifier is generated from a random source, is impractical to guess and
-is absent from catalogues and order listings. It is not exclusive to the
-buyer: Agentify and the merchant also receive it as parties to the sale. It is
-a key to one order, not proof of payment ownership. Ownership still comes only
-from the verified payer.
+The identifier comes from a random source, is impractical to guess and appears
+in no catalog or order listing. It is not the buyer's alone: Agentify and the
+merchant hold it too, as parties to the sale. It is a key to one order, not
+proof of having paid for it; ownership of a payment comes only from the verified
+payer.
 
-The buyer response carries the order's state, price and goods after the order
-has closed as delivered. It omits the merchant's product identifier, notes and
-other orders. A missing identifier receives the same outward answer as an
-unknown one, so probing does not distinguish them.
+The answer is `agentOrderStatusOf` in `apps/gateway/src/app/runner.ts`, the same
+document the purchase itself returns, built field by field so that nothing
+reaches it until someone writes it there. It carries the order's state and
+price, the goods once delivered, a parcel's shipment once shipped, whether the
+sale was a test, who sold it, and the merchant's own words where the merchant
+refused it. It leaves out the merchant's product key, the parameters and address
+the buyer sent, and every other order. Every identifier that names no order gets
+the same `no_such_order`, so probing learns nothing about which strings were
+ever orders.
 
 ## Consequences
 
-Asynchronous purchases have a collection path. The weakness is explicit:
-anyone who obtains an identifier through a log, proxy or agent store can read
-that order. They cannot change it, act as its payer or enumerate other orders.
+Asynchronous purchases have a collection path, and the weakness is explicit:
+anyone who obtains an identifier through a log, a proxy or an agent's store can
+read that order. They cannot change it, act as its payer or list other orders.
+What they read includes, for a parcel, its tracking number and tracking link,
+whose carrier page may show the buyer's city or who signed for it (ADR-0033),
+and the seller's name and shop site as our catalog shows them beside the
+merchant's cards, with nothing of the merchant's account, product key or card
+(ADR-0034).
 
-The product owner accepts this bearer-link risk for the first controlled
-live launch. No external users exist yet, so wallet login would delay
-running the two environments without protecting a public audience. Before
-the first buyer or agent outside the product owner's controlled launch, this
-decision is revisited and the door is either narrowed or explicitly accepted
-for that new audience.
-
-Since ADR-0033 the same door hands out a parcel's shipment: a tracking number
-and a tracking link, whose carrier's page may show the buyer's city or who
-signed for it. The revisit weighs that too and writes its verdict here, and
-selling parcels on the live channel waits for it.
-
-Since ADR-0034 the same door names who sold the order: the name and the shop's
-site the merchant gave, as the catalog shows them beside the merchant's cards,
-and nothing of the merchant's account, product key or card (the product owner,
-2026-10-07). Whoever holds an identifier learns which public seller it was
-bought from; the revisit weighs that too.
+The product owner accepts this bearer risk for the controlled launch: it has no
+external users, so wallet sign-in would delay it without protecting anyone.
+Before the first buyer or agent outside that launch, this decision is revisited,
+weighing the shipment and the seller too, and the door is either narrowed or
+accepted for the new audience, with the verdict written here. Selling parcels on
+the live channel waits for that verdict (ADR-0033).
 
 ## Alternatives rejected
 
-**Leave the route unmounted.** This avoids the weak door but takes money for an
+Leaving the route unmounted avoids the weak door but takes money for an
 asynchronous product that an agent cannot collect.
 
-**Make the agent prove control of the paying address now.** This remains the
-long-term direction. x402 provides Sign-In-With-X: the gateway can ask a wallet
-to sign a challenge and verify that the caller controls an address. The
-integration is deliberately deferred until the launch has an external user.
+Making the agent prove control of the paying address now remains the long-term
+direction: x402's Sign-In-With-X lets the gateway ask a wallet to sign a
+challenge and check that the caller controls the address. It is deferred until
+the launch has an external user.
 
-**Give buyers accounts and keys.** This turns buying into signing up, while the
-product exists so an agent with a budget can buy without a relationship first.
+Giving buyers accounts and keys turns buying into signing up, while the product
+exists so that an agent with a budget can buy without a relationship first.
