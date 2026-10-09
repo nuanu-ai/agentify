@@ -16,7 +16,8 @@ import { makeBuyer } from "./buyer.js";
 import { EUROPE_ESIM } from "./cards.js";
 import { makeStandBuyer } from "./stand-buyer.js";
 
-const TEST_BUYER_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+/** Any valid key will do: nothing here signs a payment. */
+const TEST_BUYER_KEY = `0x${"11".repeat(32)}`;
 
 const readable = publicCardOf(EUROPE_ESIM, {
   id: "itm_esim_eu",

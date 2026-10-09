@@ -50,3 +50,6 @@ fb086fcb85cdc593df246a35378551feb2425549:packages/core/src/deployment/fixtures/l
 fb086fcb85cdc593df246a35378551feb2425549:packages/core/src/deployment/fixtures/test-channel.json:generic-api-key:222
 fb086fcb85cdc593df246a35378551feb2425549:packages/core/src/deployment/fixtures/test-channel.json:generic-api-key:296
 fbdfc4092e6f6abf584307d60a0b413b75b2b529:packages/slice/src/bootstrap-command.test.ts:generic-api-key:58
+# The first local-devnet account's public, valueless key in a catalog test, since
+# replaced by a computed one; the commit stays in the branch's history.
+7d3322e319a4ec9b583265540cc72cbc2d84dbe7:packages/slice/src/catalog-reading.test.ts:generic-api-key:19
