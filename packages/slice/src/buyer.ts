@@ -45,7 +45,7 @@
  * importing the contracts costs nothing, and not here.
  */
 
-import { CatalogPageSchema, type PublicCard } from "@nuanu-ai/agentify-contracts";
+import { CatalogPageSchema, cardsOf, type PublicCard } from "@nuanu-ai/agentify-contracts";
 import { x402Client } from "@x402/core/client";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import type { PaymentRequired, SettleResponse } from "@x402/core/types";
@@ -174,8 +174,7 @@ export function makeBuyer(options: BuyerOptions): Buyer {
       const response = await fetch(`${base}/x402/catalog`, {
         headers: { accept: "application/json" },
       });
-      const page = CatalogPageSchema.parse(await response.json());
-      return page.items;
+      return cardsOf(CatalogPageSchema.parse(await response.json()));
     },
 
     async challenge(itemId) {

@@ -114,6 +114,24 @@ export const IdentifierSchema = z.string().regex(
 );
 
 /**
+ * A word of a vocabulary that grows without a version (ADR-0006 §5): a mode
+ * on the card an agent reads, a status on its order.
+ *
+ * The storefront has no version, so a word added later reaches agents that
+ * still hold this contract, and they read it rather than refuse the document.
+ * Open is not anything at all, though: a word is read by a program and shown
+ * to a person, so it has the shape every word in those lists already has —
+ * lower-case letters, digits and underscores, starting with a letter — and
+ * markup, padding or a page of text is not one.
+ */
+export const OpenWordSchema = z
+  .string()
+  .regex(
+    /^[a-z][a-z0-9_]{0,63}$/,
+    "a word of this vocabulary is lower-case letters, digits and underscores, starts with a letter and is at most sixty-four characters long",
+  );
+
+/**
  * The price a purchase actually went through at.
  *
  * Four fields because the merchant's handler is meant to write the sale down
@@ -147,4 +165,5 @@ export type CurrencyCode = z.infer<typeof CurrencyCodeSchema>;
 export type Money = z.infer<typeof MoneySchema>;
 export type Timestamp = z.infer<typeof TimestampSchema>;
 export type Identifier = z.infer<typeof IdentifierSchema>;
+export type OpenWord = z.infer<typeof OpenWordSchema>;
 export type SalePrice = z.infer<typeof SalePriceSchema>;

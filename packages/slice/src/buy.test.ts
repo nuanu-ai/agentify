@@ -166,6 +166,18 @@ describe("the buy command watching an order whose goods come later", () => {
     expect(asks).toBe(2);
   });
 
+  it("keeps watching through a status word it does not know, rather than calling the order over", async () => {
+    // The storefront's words grow without a version (ADR-0006 §5). A word this
+    // buyer was not built with is not an ending it knows, so it asks again.
+    script = [orderAt("on_hold"), orderAt("delivered", GOODS)];
+
+    const run = await buy();
+
+    expect(run.printed).toContain(GOODS.iccid);
+    expect(run.code).toBe(0);
+    expect(asks).toBe(2);
+  });
+
   it("stops at an order that is over, rather than watching it to the ceiling", async () => {
     // The negative control. `refunded` is the debt paid back: a delivery after
     // it is refused, so nothing can arrive and there is nothing to wait for.

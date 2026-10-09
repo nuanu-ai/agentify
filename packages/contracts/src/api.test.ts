@@ -5,6 +5,7 @@ import {
   API_ROUTES,
   AUTH_MODES,
   CatalogPageSchema,
+  cardsOf,
   ERROR_CODES,
   ErrorEnvelopeSchema,
   expandPath,
@@ -666,24 +667,6 @@ describe("the status an agent reads", () => {
     }
   });
 
-  it("carries nothing about the sale that is the merchant's rather than the buyer's", () => {
-    // The buyer is owed where their order stands, what it cost and what came
-    // of it. The merchant's own key for the product, their notes and the
-    // internals of the sale are theirs, and this document is read by whoever
-    // holds an order identifier.
-    for (const theirs of [
-      { merchant_item_id: "esim-30d" },
-      { merchant_id: "mrc_1" },
-      { item_id: "item_1" },
-      { params: { email: "buyer@example.com" } },
-    ]) {
-      expect(
-        AgentOrderStatusSchema.safeParse({ ...status, ...theirs }).success,
-        JSON.stringify(theirs),
-      ).toBe(false);
-    }
-  });
-
   it("carries the merchant's own words for a refusal they made", () => {
     // The channel the vocabulary's fold was always argued on: `rejected` is
     // coarse because the reason travels separately, and this is where it
@@ -698,15 +681,16 @@ describe("the status an agent reads", () => {
     expect(AgentOrderStatusSchema.parse(refused)).toStrictEqual(refused);
   });
 
-  it("takes the two words the merchant wrote and nothing beside them", () => {
-    // The pair is the merchant's answer as it stands, not a place for this
-    // gateway to attach its own bookkeeping to somebody else's refusal.
+  it("takes both words the merchant wrote, and neither of them empty", () => {
+    // The pair is the merchant's answer as it stands. A field added beside it
+    // later is read past (ADR-0006 §5); that this gateway attaches no
+    // bookkeeping of its own to somebody else's refusal is held where the
+    // status is written, every object of it shut.
     for (const pair of [
       { code: "out_of_stock" },
       { message: "no seats left on that plan" },
       { code: "", message: "no seats left on that plan" },
       { code: "out_of_stock", message: "" },
-      { code: "out_of_stock", message: "no seats", cause: "merchant_refused" },
     ]) {
       expect(
         AgentOrderStatusSchema.safeParse({ ...status, refusal: pair }).success,
@@ -736,11 +720,49 @@ describe("the status an agent reads", () => {
     expect(description).toContain("no refusal to quote");
   });
 
-  it("answers in the words both sides read, and refuses the machine's own", () => {
+  it("reads a status word added later as a word, rather than refusing the order", () => {
+    // The storefront has no version (ADR-0006 §5). An agent holding this
+    // schema meets a word it does not know, and reading it as not an ending it
+    // knows — and asking again later — is the safe reading; refusing the whole
+    // document would leave it with nothing about an order it paid for. The
+    // merchant's own view of the order stays closed.
     expect(
       AgentOrderStatusSchema.safeParse({ ...status, status: "payment_unresolved" }).success,
     ).toBe(true);
-    expect(AgentOrderStatusSchema.safeParse({ ...status, status: "paid" }).success).toBe(false);
+    expect(AgentOrderStatusSchema.parse({ ...status, status: "on_hold" }).status).toBe("on_hold");
+  });
+
+  it("holds a word added later to the shape of a word", () => {
+    // Open is not anything at all: a status is read by a program and shown to
+    // a person, and markup, padding or a page of text is not a word anybody
+    // added to this vocabulary.
+    for (const word of ["", " on_hold ", "On_Hold", "<b>held</b>", "w".repeat(65)]) {
+      expect(AgentOrderStatusSchema.safeParse({ ...status, status: word }).success, word).toBe(
+        false,
+      );
+    }
+  });
+
+  it("takes a field added later, which an agent ignores", () => {
+    expect(
+      AgentOrderStatusSchema.safeParse({ ...status, estimated_at: "2026-09-30T00:00:00Z" }).success,
+    ).toBe(true);
+  });
+
+  it("takes a field added later inside any of its parts, not only beside them", () => {
+    for (const [part, grown] of [
+      ["price", { price: { ...price, tax_included: true } }],
+      ["seller", { seller: { ...status.seller, verified_by: "nobody" } }],
+      [
+        "refusal",
+        {
+          status: "rejected",
+          refusal: { code: "out_of_stock", message: "none left", retry_after: "P1D" },
+        },
+      ],
+    ] as const) {
+      expect(AgentOrderStatusSchema.safeParse({ ...status, ...grown }).success, part).toBe(true);
+    }
   });
 });
 
@@ -755,12 +777,51 @@ describe("the catalog an agent reads", () => {
     expect(errorOf(CatalogPageSchema, {})).toContain("items");
   });
 
-  it("holds every card in it to the projection an agent may see", () => {
-    // The merchant's published card is not this document. Handing one straight
-    // out would publish their own key and the address of their pricing service.
+  it("is read card by card, so a card an agent cannot read leaves the rest of the page", () => {
+    // ADR-0006 §5: one card a reader cannot make out is passed over, and
+    // every other card stays for sale. A page refused whole would empty the
+    // catalog over one card.
+    const broken = { id: "itm_9a0f11", title: "No price on it" };
+    const page = CatalogPageSchema.parse({ items: [publicCard, broken] });
+
+    expect(cardsOf(page)).toStrictEqual([publicCard]);
+  });
+
+  it("passes over a card of a mode this contract does not name, however well formed", () => {
+    // A mode added later reaches this reader on a card that is otherwise whole.
+    // It cannot know when such goods arrive or when the money moves, so it
+    // must not buy on it; the rest of the page still stands.
+    const later = { ...publicCard, fulfillment: "by_appointment" };
+    const page = CatalogPageSchema.parse({ items: [later, publicCard] });
+
+    expect(cardsOf(page)).toStrictEqual([publicCard]);
+  });
+
+  it("takes a field added later, which an agent ignores", () => {
+    expect(CatalogPageSchema.safeParse({ items: [], next_page: "cursor-42" }).success).toBe(true);
+  });
+
+  it("says in the exported documents that they take what is added later", () => {
+    // The reader furthest from us holds the JSON Schema and nothing else. A
+    // document exported closed would refuse the first field or word added
+    // after it, whatever this package does in TypeScript.
+    const exported = toJsonSchemas();
+    const known = (property: unknown): unknown[] =>
+      ((property as { anyOf?: { enum?: unknown[] }[] }).anyOf ?? []).flatMap(
+        (branch) => branch.enum ?? [],
+      );
+
+    for (const name of ["catalog_page", "public_card", "agent_order_status"] as const) {
+      expect(exported[name].additionalProperties, name).not.toBe(false);
+    }
+    expect(known(exported.public_card.properties?.fulfillment)).toContain("async");
+    expect(known(exported.agent_order_status.properties?.status)).toContain("refund_due");
     expect(
-      CatalogPageSchema.safeParse({ items: [{ ...publicCard, price_check: "handler" }] }).success,
-    ).toBe(false);
+      exported.agent_order_status.properties?.status,
+      "an open word sits beside the known ones",
+    ).toMatchObject({
+      anyOf: expect.arrayContaining([expect.objectContaining({ pattern: expect.any(String) })]),
+    });
   });
 
   it("says in the exported document that it does not claim to be the whole catalog", () => {

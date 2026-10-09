@@ -388,9 +388,6 @@ describe("the card an agent reads", () => {
     // and an agent given both would use the wrong one some of the time.
     expect(publicCard.id).toBe("itm_4d21bb");
     expect(Object.keys(publicCard)).not.toContain("merchant_item_id");
-    expect(
-      PublicCardSchema.safeParse({ ...publicCard, merchant_item_id: "access-monthly" }).success,
-    ).toBe(false);
   });
 
   it("says the price will be asked again without saying where", () => {
@@ -398,17 +395,15 @@ describe("the card an agent reads", () => {
     // that no agent calls and that publishing would expose to everyone. That
     // the price is asked again is the part an agent acts on: the catalog price
     // is what it compares, and the sale can go through at another.
+    const atAnAddress = publicCardOf(
+      CardSchema.parse({ ...syncCard, price_check: { url: "https://pricing.internal/quote" } }),
+      issued,
+    );
+
     expect(publicCard.price_checked_at_purchase).toBe(true);
     expect(Object.keys(publicCard)).not.toContain("price_check");
-    expect(PublicCardSchema.safeParse({ ...publicCard, price_check: "handler" }).success).toBe(
-      false,
-    );
-    expect(
-      PublicCardSchema.safeParse({
-        ...publicCard,
-        price_check: { url: "https://pricing.internal/quote" },
-      }).success,
-    ).toBe(false);
+    expect(atAnAddress.price_checked_at_purchase).toBe(true);
+    expect(JSON.stringify(atAnAddress)).not.toContain("pricing.internal");
   });
 
   it("says the price is firm when the card has no price check at all", () => {
@@ -482,43 +477,84 @@ describe("the card an agent reads", () => {
   it("cannot advertise a wait that the mode never has", () => {
     // A synchronous card delivers inside our own response budget, one number
     // for every product; a delivery deadline on it would be a promise about a
-    // wait that does not happen. The published card is already held to this,
-    // and holding the projection to it too is what keeps a bug in whoever
-    // builds the projection from reaching an agent as a false claim.
-    expect(
-      PublicCardSchema.safeParse({ ...publicCard, fulfill_deadline_seconds: 900 }).success,
-    ).toBe(false);
-    expect(
-      PublicCardSchema.safeParse({ ...publicCard, confirm_deadline_seconds: 60 }).success,
-    ).toBe(false);
-
+    // wait that does not happen. The agent's schema takes fields added later
+    // (ADR-0006 §5), so it cannot refuse one that should not be there, and
+    // the projection is what has to leave it out.
+    const sync = publicCardOf(CardSchema.parse({ ...syncCard, price_check: "handler" }), issued);
     const async = publicCardOf(
       CardSchema.parse({ ...syncCard, fulfillment: "async", fulfill_deadline_seconds: 900 }),
       issued,
     );
-    expect(PublicCardSchema.safeParse({ ...async, confirm_deadline_seconds: 60 }).success).toBe(
-      false,
+
+    const confirm = publicCardOf(
+      {
+        ...CardSchema.parse({ ...syncCard, fulfillment: "async" }),
+        fulfillment: "confirm",
+        confirm_deadline_seconds: 60,
+        fulfill_deadline_seconds: 900,
+      },
+      issued,
+    );
+    const common = [
+      "as_of",
+      "description",
+      "fulfillment",
+      "id",
+      "params",
+      "price",
+      "price_checked_at_purchase",
+      "result",
+      "seller",
+      "title",
+    ];
+
+    expect(Object.keys(sync).sort()).toStrictEqual(common);
+    expect(Object.keys(async).sort()).toStrictEqual([...common, "fulfill_deadline_seconds"].sort());
+    expect(Object.keys(confirm).sort()).toStrictEqual(
+      [...common, "confirm_deadline_seconds", "fulfill_deadline_seconds"].sort(),
     );
   });
 
-  it("says the deadline rule as structure, so it survives into the exported document", () => {
-    // The reason the shape is a union over the mode rather than one object
-    // with a rule attached: JSON Schema cannot hold "this field only when that
-    // one has this value", and zod drops such a rule without a word. As
-    // branches it crosses whole, and a generated client refuses what we refuse.
-    const document = toJsonSchemas().public_card;
-    const branches = document.anyOf ?? document.oneOf ?? [];
-    type Branch = { properties?: Record<string, { const?: unknown } | undefined> };
-    const modeOf = (branch: unknown) => (branch as Branch).properties?.fulfillment?.const;
-    const propertiesOf = (mode: string) =>
-      Object.keys((branches.find((branch) => modeOf(branch) === mode) as Branch)?.properties ?? {});
+  it("reads a card of a mode this contract does not name yet, so an agent can pass it over", () => {
+    // The storefront has no version (ADR-0006 §5): a mode added later reaches
+    // agents holding this schema, and refusing the card would leave them
+    // unable to tell it from a broken one. Read, it is a card whose mode they
+    // do not know, which is a reason to skip it and not to stop reading.
+    const later = PublicCardSchema.safeParse({ ...publicCard, fulfillment: "by_appointment" });
 
-    expect(branches).toHaveLength(3);
-    expect(propertiesOf("sync")).not.toContain("fulfill_deadline_seconds");
-    expect(propertiesOf("sync")).not.toContain("confirm_deadline_seconds");
-    expect(propertiesOf("async")).toContain("fulfill_deadline_seconds");
-    expect(propertiesOf("async")).not.toContain("confirm_deadline_seconds");
-    expect(propertiesOf("confirm")).toContain("confirm_deadline_seconds");
+    expect(later.success).toBe(true);
+    expect(later.data?.fulfillment).toBe("by_appointment");
+    for (const word of ["", "By_Appointment", " async", "<i>soon</i>"]) {
+      expect(PublicCardSchema.safeParse({ ...publicCard, fulfillment: word }).success, word).toBe(
+        false,
+      );
+    }
+  });
+
+  it("takes a field added later, which an agent ignores", () => {
+    expect(PublicCardSchema.safeParse({ ...publicCard, warranty_days: 30 }).success).toBe(true);
+  });
+
+  it("takes a field added later inside any of its parts, not only beside them", () => {
+    // A field added to the seller, the price or one declared field would
+    // otherwise make every card unreadable to an agent built before it, and
+    // the whole catalog would be passed over for one addition.
+    const params = publicCard.params ?? {};
+    const [name, spec] = Object.entries(params)[0] ?? [];
+    if (name === undefined || spec === undefined) throw new Error("the card declares no input");
+    const [resultName, resultSpec] = Object.entries(publicCard.result)[0] ?? [];
+    if (resultName === undefined || resultSpec === undefined) {
+      throw new Error("the card declares no result");
+    }
+
+    for (const [part, grown] of [
+      ["seller", { seller: { ...publicCard.seller, verified_by: "nobody" } }],
+      ["price", { price: { ...publicCard.price, tax_included: true } }],
+      ["params", { params: { ...params, [name]: { ...spec, pattern: "^\\S+$" } } }],
+      ["result", { result: { [resultName]: { ...resultSpec, format: "uri" } } }],
+    ] as const) {
+      expect(PublicCardSchema.safeParse({ ...publicCard, ...grown }).success, part).toBe(true);
+    }
   });
 
   it("carries its own caveats into the exported document, where the reader has nothing else", () => {

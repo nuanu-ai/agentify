@@ -26,11 +26,16 @@
  */
 
 import { z } from "zod";
-import type { ParamSpec, ParamSpecInput, ParamType } from "./param-spec.js";
-import { ParamSpecSchema, paramSpecToValidator } from "./param-spec.js";
+import type { FieldSpec, ParamSpec, ParamSpecInput, ParamType } from "./param-spec.js";
+import {
+  FieldSpecSchema,
+  ParamNameSchema,
+  ParamSpecSchema,
+  paramSpecToValidator,
+} from "./param-spec.js";
 import { notPlainTextIn, type TextLines } from "./plain-text.js";
 import type { Money } from "./primitives.js";
-import { IdentifierSchema, MoneySchema, TimestampSchema } from "./primitives.js";
+import { IdentifierSchema, MoneySchema, OpenWordSchema, TimestampSchema } from "./primitives.js";
 import { SellingStateSchema } from "./selling.js";
 
 /**
@@ -331,22 +336,39 @@ const DescriptionSchema = z
  * JSON Schema, so the same constraint goes into the metadata as
  * `minProperties`, where a generator can still see it.
  *
- * One schema, used by the published card and by the projection below, because
+ * One rule, held by the published card and by the projection below, because
  * the promise is the same one: what the agent reads before paying is what the
  * merchant is held to afterwards. Two copies of a refinement would be two
- * promises, and the export would carry whichever was edited last.
+ * promises, and the export would carry whichever was edited last. The two
+ * declarations it is put on differ only in what else a field may carry: the
+ * merchant's is closed, and the agent's takes what is added later
+ * (ADR-0006 §5).
  */
-const DeclaredResultSchema = ParamSpecSchema.refine(
-  // Not merely non-empty: at least one field that actually arrives. A
-  // declaration of one field marked `required: false` satisfies "at least
-  // one" and promises the agent exactly as much as an empty one does.
-  (spec) => Object.values(spec).some((field) => field.required !== false),
-  "a card declares at least one field of what the agent receives, and at least one of them arrives every time",
-).meta({
-  description:
-    "What the agent receives on delivery. At least one field, and at least one of the fields is not marked required: false — a result that might be entirely absent promises nothing.",
-  minProperties: 1,
-});
+const declaringAResult = <Declaration extends z.ZodType<Record<string, FieldSpec>>>(
+  declaration: Declaration,
+) =>
+  declaration
+    .refine(
+      // Not merely non-empty: at least one field that actually arrives. A
+      // declaration of one field marked `required: false` satisfies "at least
+      // one" and promises the agent exactly as much as an empty one does.
+      (spec) => Object.values(spec).some((field) => field.required !== false),
+      "a card declares at least one field of what the agent receives, and at least one of them arrives every time",
+    )
+    .meta({
+      description:
+        "What the agent receives on delivery. At least one field, and at least one of the fields is not marked required: false — a result that might be entirely absent promises nothing.",
+      minProperties: 1,
+    });
+
+const DeclaredResultSchema = declaringAResult(ParamSpecSchema);
+
+/**
+ * A declaration as an agent reads it: the merchant's fields, each open to what
+ * is added to a field later (ADR-0006 §5), so a new attribute of one field
+ * leaves the card readable to an agent built before it.
+ */
+const ReadDeclarationSchema = z.record(ParamNameSchema, FieldSpecSchema.loose());
 
 /**
  * The short forms a card may be written in, and the one form they all become.
@@ -773,11 +795,16 @@ export const deliveryCheckFor = (card: Card): z.ZodType =>
  * gateway's, and this document does not claim to know it.
  *
  * Both deadlines stay, because they are the merchant's promise to the agent
- * about how long it may wait, and the agent is told them before it pays. They
- * sit on the modes that have them, as branches of a union rather than as a
- * rule attached to one object: JSON Schema cannot say "this field only when
- * that one has this value", and zod drops such a rule without a word, so as
- * branches the constraint crosses whole into the export.
+ * about how long it may wait, and the agent is told them before it pays. The
+ * projection writes each only on a mode that has it, and the document says so
+ * in words rather than as structure: it takes fields added later (ADR-0006
+ * §5), so a field an agent does not expect is one it ignores, not one it can
+ * refuse.
+ *
+ * The mode is a word whose known values are listed beside it, for the same
+ * reason. The storefront has no version, so a mode added later reaches agents
+ * that still hold this contract, and to them it has to be a card to pass over
+ * rather than a catalog they cannot read.
  *
  * `as_of` is added: the moment the price shown here was published. A price
  * with no moment behind it cannot be judged stale, and this is the only
@@ -795,70 +822,65 @@ export const deliveryCheckFor = (card: Card): z.ZodType =>
  * claim that either was checked. Who "we" are to the buyer is a question this
  * document still does not answer.
  */
-const PublicCardFieldsSchema = z.strictObject({
-  /** Our catalog identifier, the one a purchase, a receipt and a status use. */
-  id: IdentifierSchema,
-
-  title: TitleSchema,
-
-  description: DescriptionSchema,
-
-  /** The price in the catalog: what an agent compares when it is choosing. */
-  price: MoneySchema,
-
-  /** When the price above was published. */
-  as_of: TimestampSchema,
-
-  /** What the agent has to supply to buy. Absent when the purchase needs no input. */
-  params: ParamSpecSchema.optional(),
-
-  result: DeclaredResultSchema,
-
-  /**
-   * Whether the merchant is asked for this product's price and availability at
-   * the moment of purchase, so the sale may go through at a price other than
-   * the one above.
-   *
-   * Required rather than defaulted, because both readings of a missing flag
-   * cost the agent something: read as false it budgets against a price that is
-   * about to move, read as true it distrusts a price that never moves.
-   */
-  price_checked_at_purchase: z.boolean(),
-
-  /**
-   * Who sells this product, in the merchant's own words and unchecked. It is
-   * read with the catalog rather than copied onto the card at publishing, so
-   * a merchant who changes their name or gives a site is found by it on every
-   * card they already sell.
-   */
-  seller: SellerSchema,
-});
-
 export const PublicCardSchema = z
-  .discriminatedUnion("fulfillment", [
-    // Synchronous: the product arrives in the answer to the purchase, inside our
-    // own response budget — one number for every product on the platform, which
-    // is why no card names it and no card may name a delivery deadline instead.
-    PublicCardFieldsSchema.extend({ fulfillment: z.literal("sync") }),
+  .looseObject({
+    /** Our catalog identifier, the one a purchase, a receipt and a status use. */
+    id: IdentifierSchema,
 
-    // Asynchronous: the money moves at the purchase and the product comes later,
-    // within the merchant's own delivery deadline where they set one.
-    PublicCardFieldsSchema.extend({
-      fulfillment: z.literal("async"),
-      fulfill_deadline_seconds: z.int().positive().optional(),
-    }),
+    title: TitleSchema,
 
-    // With confirmation: the merchant is asked first and the payment follows
-    // their yes, so both waits exist. No card can be published in this mode
-    // during the pilot; the branch is here because the mode is in the
-    // vocabulary, and a branch missing from a projection would be a second gate
-    // in a second place for whoever lifts the first one.
-    PublicCardFieldsSchema.extend({
-      fulfillment: z.literal("confirm"),
-      confirm_deadline_seconds: z.int().positive().optional(),
-      fulfill_deadline_seconds: z.int().positive().optional(),
-    }),
-  ])
+    description: DescriptionSchema,
+
+    /** The price in the catalog: what an agent compares when it is choosing. */
+    price: MoneySchema.loose(),
+
+    /** When the price above was published. */
+    as_of: TimestampSchema,
+
+    /** What the agent has to supply to buy. Absent when the purchase needs no input. */
+    params: ReadDeclarationSchema.optional(),
+
+    result: declaringAResult(ReadDeclarationSchema),
+
+    /**
+     * Whether the merchant is asked for this product's price and availability at
+     * the moment of purchase, so the sale may go through at a price other than
+     * the one above.
+     *
+     * Required rather than defaulted, because both readings of a missing flag
+     * cost the agent something: read as false it budgets against a price that is
+     * about to move, read as true it distrusts a price that never moves.
+     */
+    price_checked_at_purchase: z.boolean(),
+
+    /**
+     * Who sells this product, in the merchant's own words and unchecked. It is
+     * read with the catalog rather than copied onto the card at publishing, so
+     * a merchant who changes their name or gives a site is found by it on every
+     * card they already sell.
+     */
+    seller: SellerSchema.loose(),
+
+    /**
+     * How the product is sold: "sync", "async" or "confirm" today, and a word
+     * added later reaches this same document. A reader keeps a default arm,
+     * and a card whose mode it does not know is one to pass over.
+     *
+     * Two branches rather than a bare string, so the known values cross into
+     * the exported document as a list a client can switch over, beside the
+     * branch that reads any other word (`OpenWordSchema`). A declared field's
+     * type, inside params and result, stays a closed list: a card with a type
+     * a reader does not know is one it cannot fill in, and it is passed over
+     * like a card of an unknown mode.
+     */
+    fulfillment: z.union([FulfillmentSchema, OpenWordSchema]),
+
+    /** On "async" and "confirm": how long the merchant has to deliver, in seconds. */
+    fulfill_deadline_seconds: z.int().positive().optional(),
+
+    /** On "confirm": how long the merchant has to say yes, in seconds. */
+    confirm_deadline_seconds: z.int().positive().optional(),
+  })
   .meta({
     // Everything below is written in prose above as well, and it has to be
     // written twice: the reader this matters most to is the one holding the
@@ -867,10 +889,26 @@ export const PublicCardSchema = z
     // narrower here than the same name means elsewhere in this contract, and a
     // reader who assumed otherwise would trust a stale number.
     description:
-      "A product an agent can buy, projected from the card its merchant published. as_of is when the price shown here was published, and nothing more: on a card whose price is checked at purchase it says nothing about how fresh that check will be — elsewhere in this contract the same name means the moment a live answer was true. price_checked_at_purchase says the merchant is asked for a price at the moment of purchase, not that they answer; what happens when they are silent depends on the mode and belongs to the gateway. The number above is what an agent compares when choosing and may not be what the sale goes through at. Two rules hold beyond the shape: a synchronous product names no delivery deadline, because it is delivered inside a response budget that is the same for every product on the platform, and only a product whose merchant is asked to confirm names a confirmation deadline. seller is who sells, as the merchant gave it: Agentify did not check the name or the site.",
+      "A product an agent can buy, projected from the card its merchant published. as_of is when the price shown here was published, and nothing more: on a card whose price is checked at purchase it says nothing about how fresh that check will be — elsewhere in this contract the same name means the moment a live answer was true. price_checked_at_purchase says the merchant is asked for a price at the moment of purchase, not that they answer; what happens when they are silent depends on the mode and belongs to the gateway. The number above is what an agent compares when choosing and may not be what the sale goes through at. Two rules hold beyond the shape: a synchronous product names no delivery deadline, because it is delivered inside a response budget that is the same for every product on the platform, and only a product whose merchant is asked to confirm names a confirmation deadline. seller is who sells, as the merchant gave it: Agentify did not check the name or the site. fulfillment is a word whose known values are listed beside it, and more may be added: a reader keeps a default arm, and a card whose mode it does not know is one to pass over, not a reason to stop reading the catalog. This document and every part inside it may also gain fields; a reader ignores the ones it does not know. The type of a declared field in params and result is a closed list, and a card with a type a reader does not know is one to pass over too.",
   });
 
 export type PublicCard = z.infer<typeof PublicCardSchema>;
+
+/**
+ * A card as `publicCardOf` builds it: the card's own fields without the index
+ * signature the open schema adds, and a mode this version knows.
+ *
+ * An agent reads a card with `PublicCardSchema`, which takes fields and modes
+ * added later (ADR-0006 §5); what is built is held to the opposite. The type
+ * catches part of that: an unknown field written straight into the returned
+ * object is a compile error. It does not reach inside the card's parts, which
+ * keep the open schema's index signatures, nor tie a deadline to its mode. The
+ * gateway's outbound check holds the rest, at every depth, before anything is
+ * sent (`checksBeforeSending`).
+ */
+export type ProjectedCard = {
+  [Field in keyof PublicCard as string extends Field ? never : Field]: PublicCard[Field];
+} & { readonly fulfillment: Fulfillment };
 
 /**
  * The card as an agent reads it, built from the card the merchant published.
@@ -889,7 +927,7 @@ export type PublicCard = z.infer<typeof PublicCardSchema>;
 export const publicCardOf = (
   card: Card,
   issued: { readonly id: string; readonly as_of: string; readonly seller: Seller },
-): PublicCard => {
+): ProjectedCard => {
   const common = {
     id: issued.id,
     seller: issued.seller,

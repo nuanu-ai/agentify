@@ -3,7 +3,8 @@
 Date: 2026-08-27
 Status: accepted (autonomous mandate of 2026-08-26; revisited on the product
 owner's word; §5's open vocabularies and documents added 2026-09-28 with
-ADR-0033 and ADR-0034)
+ADR-0033 and ADR-0034, and opened inside a document's parts on the product
+owner's word, 2026-10-07)
 
 ## Context
 
@@ -80,10 +81,18 @@ the merchant's routes and is not derived from it.
    version that stops an old worker with words before any order is in flight,
    and the storefront has no version to give up — a closed list there only
    breaks a stranger's agent without a word. For the same reason the
-   storefront's documents take fields added later, which an agent ignores. The
-   merchant's schemas stay closed. The first values added this way are `ship`
-   and `shipped` (ADR-0033), and the first fields the seller's name and site
-   (ADR-0034).
+   storefront's documents take fields added later, which an agent ignores, and
+   so does every part inside them — the seller, a price, a declared field, a
+   merchant's refusal — since one addition inside a part would otherwise make
+   every card unreadable to an agent built before it. What a gateway writes is
+   held to the opposite: the fields and words its version names, and nothing
+   else, because a reader that ignores what it does not know can no longer
+   refuse a field that leaked. A word inside a part — the type of a declared
+   field — stays a closed list: a card with a type a reader does not know is
+   one it cannot fill in, and it is passed over like a card of an unknown mode.
+   The merchant's schemas stay closed. The first values added this way are
+   `ship` and `shipped` (ADR-0033), and the first fields the seller's name and
+   site (ADR-0034).
 
    Rejected: a version segment on the storefront, on the argument that an
    incompatibly changed wire *is* a different resource to an agent and should

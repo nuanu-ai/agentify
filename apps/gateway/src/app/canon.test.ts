@@ -1,4 +1,4 @@
-import { CatalogPageSchema, PublishResultSchema } from "@nuanu-ai/agentify-contracts";
+import { CatalogPageSchema, cardsOf, PublishResultSchema } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Harness, harness } from "../testing/harness.js";
 
@@ -48,7 +48,7 @@ describe("the canon behind the door", () => {
 
     const page = CatalogPageSchema.parse(await open.gateway.catalog());
 
-    expect(page.items[0]?.price).toStrictEqual({ amount: "80.00", currency: "USD" });
+    expect(cardsOf(page)[0]?.price).toStrictEqual({ amount: "80.00", currency: "USD" });
     expect(JSON.stringify(page)).not.toContain("80.00 USD");
   });
 });
