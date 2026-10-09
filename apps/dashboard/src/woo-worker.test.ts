@@ -1051,6 +1051,54 @@ describe("a parcel's price question", () => {
     }
   });
 
+  it("names no price where the product in the shop is no longer a parcel", async () => {
+    // The card ships, and a price of the goods alone would be paid for a
+    // parcel the shop now sells as something else.
+    const shops = memoryWooShops();
+    let answer: unknown;
+    const gateway = {
+      pollWorker: async () => ({
+        ok: true as const,
+        document: {
+          envelopes: [
+            { id: "env_quote", kind: "quote_request" as const, sent_at: NOW, payload: question },
+          ],
+        },
+      }),
+      answerQuote: async (_priceId: string, said: unknown) => {
+        answer = said;
+        return { ok: true as const, document: { used: true } };
+      },
+    } as never;
+
+    await turnOnce(connection(), {
+      shops,
+      identity: {
+        byId: async () => ({
+          id: "p",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1" },
+        }),
+      },
+      clientFor: () => gateway,
+      now: () => new Date(NOW),
+      inspectProduct: async () =>
+        showing({
+          kind: "download",
+          productId: "28",
+          downloadId: "dl_guide",
+          fileName: "Guide",
+          price: { amount: "20.00", currency: "USD" },
+          fingerprint: "a-download-now",
+        }),
+      shippingRates: async () => ({ ok: true, rates: [rate("Standard", "5.00")] }),
+    });
+
+    expect(answer).toStrictEqual({ available: false, as_of: NOW });
+    expect(await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id)).toBeNull();
+  });
+
   it("names no price for a parcel's question that carries no place", async () => {
     const { ship_to: _left, ...noPlace } = question;
     let asked = false;

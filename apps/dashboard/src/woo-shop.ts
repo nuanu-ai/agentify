@@ -16,9 +16,10 @@
  */
 
 import { createHash } from "node:crypto";
-import type { Money } from "@nuanu-ai/agentify-contracts";
+import type { Money, ShipToLocality } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
 import {
+  decimalOfMinorUnits,
   productIdFromMerchantItem,
   type StoreProduct,
   StoreProductsSchema,
@@ -591,6 +592,190 @@ export const catalogueOf = async (
       `Your shop offers more than ${atMost} products, which is more than this brings over in one` +
       " go. Nothing was imported.",
   };
+};
+
+/** One way the shop would ship a parcel, and what it costs. */
+export interface ShippingRate {
+  /** WooCommerce's own method, `flat_rate` and the like, which an order's shipping line names. */
+  readonly methodId: string;
+  /** The method's instance in the zone that matched, which the shipping line names too. */
+  readonly instanceId: string;
+  /** What the shop calls it at its own checkout. */
+  readonly title: string;
+  /** In US dollars at two decimals, as an order's shipping line carries it. */
+  readonly cost: string;
+}
+
+export type RatesRead =
+  | { readonly ok: true; readonly rates: readonly ShippingRate[] }
+  | { readonly ok: false; readonly why: string; readonly again: boolean };
+
+/**
+ * The methods that hand a parcel over at the shop rather than send it.
+ * Usually the cheapest on offer, and a parcel nobody collects never leaves.
+ */
+const NOT_SHIPPING = new Set(["local_pickup", "pickup_location"]);
+
+const CartRateSchema = z.looseObject({
+  method_id: z.string(),
+  instance_id: z.union([z.number().int(), z.string()]),
+  name: z.string(),
+  price: z.string(),
+  taxes: z.string(),
+  currency_code: z.string(),
+  currency_minor_unit: z.number().int(),
+});
+
+const CartSchema = z.looseObject({
+  needs_shipping: z.boolean(),
+  shipping_rates: z.array(z.looseObject({ shipping_rates: z.array(CartRateSchema) })),
+});
+
+/**
+ * What the shop would charge to ship one of this product to a place, as its
+ * own checkout would work it out.
+ *
+ * WooCommerce has no endpoint that calculates a rate, so this asks the Store
+ * API's cart the way a client with no browser can: a fresh cart, whose token
+ * stands in for a browser's nonce; the product added; the place set; and the
+ * rates read off the answer (`docs/research/41-woo-parcel-probe.md`). The
+ * place is the locality and nothing about who: every one of its fields is
+ * sent, empty where the address has none, because a field left out keeps the
+ * shop's own base location. No key goes with any of it — the cart is the
+ * public half of WooCommerce — and the cart is left in the shop as a guest
+ * session, which WooCommerce expires after two days.
+ *
+ * The rates come back in the shop's own order with pickup left out. An empty
+ * list is the shop saying it does not ship there; a refusal is said apart
+ * from it, and in words of our own, because the shop's own message names the
+ * place it refused.
+ */
+export const shippingRatesInTheShop = async (
+  shopUrl: string,
+  productId: string,
+  place: ShipToLocality,
+  request: WooRequest = wooRequest,
+): Promise<RatesRead> => {
+  const product = Number(productId);
+  if (!Number.isSafeInteger(product) || product <= 0) {
+    return { ok: false, why: "The card names no product in a WooCommerce shop.", again: false };
+  }
+  const cart = `${shopUrl}/wp-json/wc/store/v1/cart`;
+  /** One call to the cart, answered as its body, or as why there is none. */
+  const ask = async (
+    url: string,
+    init: RequestInit,
+  ): Promise<
+    | { readonly ok: true; readonly response: Response; readonly body: string }
+    | { readonly ok: false; readonly why: string; readonly again: boolean }
+  > => {
+    let response: Response;
+    let body: string;
+    try {
+      response = await request(url, {
+        ...init,
+        redirect: "manual",
+        signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
+      });
+      body = await response.text();
+    } catch {
+      return { ok: false, why: "The shop's cart did not answer.", again: true };
+    }
+    if (worthAskingAgain(response.status)) {
+      return { ok: false, why: "The shop's cart was too busy to answer.", again: true };
+    }
+    if (!response.ok) {
+      return {
+        ok: false,
+        why: `The shop's cart refused the question (HTTP ${response.status}).`,
+        again: false,
+      };
+    }
+    return { ok: true, response, body };
+  };
+
+  const opened = await ask(cart, { headers: { accept: "application/json" } });
+  if (!opened.ok) return opened;
+  const token = opened.response.headers.get("cart-token");
+  if (token === null || token === "") {
+    return {
+      ok: false,
+      why: "The shop's cart gave no cart token, and without one it takes no question from us.",
+      again: false,
+    };
+  }
+  const headers = {
+    accept: "application/json",
+    "content-type": "application/json",
+    "cart-token": token,
+  };
+  const added = await ask(`${cart}/add-item`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ id: product, quantity: 1 }),
+  });
+  if (!added.ok) return added;
+  const placed = await ask(`${cart}/update-customer`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      shipping_address: {
+        country: place.country,
+        state: place.state ?? "",
+        city: place.city,
+        postcode: place.postal_code ?? "",
+      },
+    }),
+  });
+  if (!placed.ok) return placed;
+
+  let document: unknown;
+  try {
+    document = JSON.parse(placed.body);
+  } catch {
+    return { ok: false, why: "The shop's cart did not answer with JSON.", again: false };
+  }
+  const read = CartSchema.safeParse(document);
+  if (!read.success) {
+    return { ok: false, why: "The shop's cart answered without its shipping rates.", again: false };
+  }
+  if (!read.data.needs_shipping) {
+    return { ok: false, why: "The shop's cart says this product needs no shipping.", again: false };
+  }
+  const [only, ...more] = read.data.shipping_rates;
+  if (only === undefined || more.length > 0) {
+    // One product is one parcel. A shop that splits it, or answers with no
+    // package at all, is not pricing what this sells.
+    return {
+      ok: false,
+      why: "The shop's cart did not price this product as one parcel.",
+      again: false,
+    };
+  }
+  const rates: ShippingRate[] = [];
+  for (const rate of only.shipping_rates) {
+    if (NOT_SHIPPING.has(rate.method_id)) continue;
+    const cost =
+      rate.currency_code === "USD" && rate.currency_minor_unit === USD_SCALE && rate.taxes === "0"
+        ? decimalOfMinorUnits(rate.price, USD_SCALE)
+        : null;
+    if (cost === null) {
+      // Not left out: a rate dropped in silence could make another one look
+      // like the cheapest, and the shop would be charging what we did not say.
+      return {
+        ok: false,
+        why: "The shop's cart offered a shipping rate that is not an untaxed US dollar amount.",
+        again: false,
+      };
+    }
+    rates.push({
+      methodId: rate.method_id,
+      instanceId: String(rate.instance_id),
+      title: rate.name,
+      cost,
+    });
+  }
+  return { ok: true, rates };
 };
 
 /**

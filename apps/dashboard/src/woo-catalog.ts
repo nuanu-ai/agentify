@@ -174,6 +174,19 @@ export const usdAmountOf = (typed: string): string | null => {
   return `${whole}.${fraction.slice(0, USD_SCALE).padEnd(USD_SCALE, "0")}`;
 };
 
+/**
+ * A US dollar amount at the two decimals this connector sells at, as whole
+ * cents, or null where it is not one. Sums of money are made in cents: a
+ * parcel's price is its goods and its shipping added, and twenty dollars and
+ * ten cents added in floating point is not always twenty dollars and ten cents.
+ */
+export const centsOf = (amount: string): bigint | null =>
+  /^\d+\.\d{2}$/.test(amount) ? BigInt(amount.replace(".", "")) : null;
+
+/** Whole cents written back as the dollar amount the contract carries. */
+export const amountOfCents = (cents: bigint): string =>
+  decimalOfMinorUnits(cents.toString(), USD_SCALE) ?? "";
+
 /** A finding the door words as a clause, written as a sentence of its own. */
 const sentenceOf = (clause: string): string =>
   `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`;

@@ -36,17 +36,21 @@ import type {
   Order,
   QuoteRequest,
   QuoteResponse,
+  ShipToLocality,
 } from "@nuanu-ai/agentify-contracts";
 import type { Acting, GatewayClient } from "./gateway.js";
 import type { Identity } from "./identity.js";
-import { productIdFromMerchantItem } from "./woo-catalog.js";
+import { amountOfCents, centsOf, productIdFromMerchantItem } from "./woo-catalog.js";
 import {
   createTheOrderInTheShop,
   inspectProductInTheShop,
   type OrderMade,
   type ProductInspection,
+  type RatesRead,
+  type ShippingRate,
   type ShopKeys,
   type SoldItem,
+  shippingRatesInTheShop,
 } from "./woo-shop.js";
 import type { WooConnection, WooOrderFacts, WooPermission, WooShops } from "./woo-shops.js";
 
@@ -71,6 +75,17 @@ export interface Filling {
     connection: WooConnection,
     merchantItemId: string,
   ) => Promise<ProductInspection>;
+  /**
+   * How the shop is asked what shipping a parcel to a place costs, with the
+   * shop's own cart as the default. A deployment passes nothing.
+   */
+  readonly shippingRates?: (
+    connection: WooConnection,
+    productId: string,
+    place: ShipToLocality,
+  ) => Promise<RatesRead>;
+  /** How long a price question may take; a deployment passes nothing. */
+  readonly quoteWithinMs?: number;
   /** Test seam for the durable quote binding; production reads WooShops. */
   readonly quotedProduct?: (
     connection: WooConnection,
@@ -414,9 +429,50 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
 };
 
 /**
+ * How long a price question may take, from the moment it is drawn.
+ *
+ * The gateway waits five seconds for a price (`QUOTE_RESPONSE_MS`) and then
+ * reads the merchant as silent, so an answer later than that answers nobody.
+ * Four seconds leaves the rest for the answer to travel, and keeps a slow
+ * shop from holding up the questions and orders queued behind this one.
+ */
+const QUOTE_WITHIN_MS = 4_000;
+
+/** What a piece of work came to, or null where it did not finish in time. */
+const inTime = async <T>(work: Promise<T>, ms: number): Promise<T | null> => {
+  let cut: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => {
+    cut = setTimeout(() => resolve(null), ms);
+  });
+  // A shop that answers after the deadline answers nobody, and what it says
+  // then must not surface as a failure of the turn that stopped waiting.
+  work.catch(() => undefined);
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(cut);
+  }
+};
+
+/** What the cheapest of the shop's rates costs, in cents, or null where there is none. */
+const cheapestCents = (rates: readonly ShippingRate[]): bigint | null => {
+  let cheapest: bigint | null = null;
+  for (const rate of rates) {
+    const cost = centsOf(rate.cost);
+    if (cost !== null && (cheapest === null || cost < cheapest)) cheapest = cost;
+  }
+  return cheapest;
+};
+
+/**
  * What this merchant's handler answers when an agent asks for a price: the
  * shop's own price for the product as it stands, with that product bound to
  * the price so the order paying it can be held to it — or no price at all.
+ *
+ * A parcel's price is the goods and the shop's cheapest rate to the place the
+ * question carries, added in cents (ADR-0023). The product is bound to the
+ * price and the rate is not: the rate says where the buyer is, and a binding
+ * is kept for good, so the order asks the shop again for the place it pays for.
  *
  * A price that was already bound to another product is not moved to this one.
  * The order comes back with the price identifier and is held to what it was
@@ -429,13 +485,52 @@ const quoteFromTheShop = async (
   at: Date,
   parts: Filling,
 ): Promise<QuoteResponse> => {
-  const inspected = await productInTheShop(connection, question.merchant_item_id, parts);
-  if (!inspected.ok) return { available: false, as_of: at.toISOString() };
+  const unavailable: QuoteResponse = { available: false, as_of: at.toISOString() };
+  /** Not available, with the reason in the merchant's log and no word of the place. */
+  const unpriced = (why: string): QuoteResponse => {
+    console.error(
+      `[dashboard] the parcel ${question.merchant_item_id} has no price for ${question.price_id}: ${why}`,
+    );
+    return unavailable;
+  };
+  const productId = productIdFromMerchantItem(connection.shopUrl, question.merchant_item_id);
+  const place = question.ship_to;
+  // Asked of the shop at the same time as the product is, because the two
+  // together have to fit in the time a price question has.
+  const shipping =
+    place === undefined || productId === null
+      ? Promise.resolve(null)
+      : (
+          parts.shippingRates ??
+          ((keys: WooConnection, id: string, where: ShipToLocality) =>
+            shippingRatesInTheShop(keys.shopUrl, id, where))
+        )(connection, productId, place);
+  const read = await inTime(
+    Promise.all([productInTheShop(connection, question.merchant_item_id, parts), shipping]),
+    parts.quoteWithinMs ?? QUOTE_WITHIN_MS,
+  );
+  if (read === null) {
+    return place === undefined ? unavailable : unpriced("the shop did not answer in time");
+  }
+  const [inspected, rates] = read;
+  if (!inspected.ok) return unavailable;
   const product = inspected.product;
-  // A parcel's price is the goods and the shop's rate for the buyer's place
-  // together, and the rate is not read here yet: the goods alone would be a
-  // price the parcel cannot be sold at.
-  if (product.kind === "parcel") return { available: false, as_of: at.toISOString() };
+  // A question with a place is a parcel's card, and the goods alone are not a
+  // price it can be sold at.
+  if (place !== undefined && product.kind !== "parcel") {
+    return unpriced("the product in the shop is no longer a parcel");
+  }
+  let price = product.price;
+  if (product.kind === "parcel") {
+    if (rates === null) return unpriced("the question carries no place to ship to");
+    if (!rates.ok) return unpriced(rates.why);
+    const goods = centsOf(product.price.amount);
+    const carriage = cheapestCents(rates.rates);
+    if (goods === null || carriage === null) {
+      return unpriced("the shop has no shipping rate to that place");
+    }
+    price = { amount: amountOfCents(goods + carriage), currency: product.price.currency };
+  }
   const recorded = await parts.shops.recordQuote(
     connection.accountId,
     question.price_id,
@@ -444,9 +539,7 @@ const quoteFromTheShop = async (
     new Date(question.expires_at),
     at,
   );
-  return recorded
-    ? { available: true, price: product.price, as_of: at.toISOString() }
-    : { available: false, as_of: at.toISOString() };
+  return recorded ? { available: true, price, as_of: at.toISOString() } : unavailable;
 };
 
 /** The product as the shop has it now, read the one way both answers read it. */
