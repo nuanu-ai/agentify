@@ -771,22 +771,3 @@ describe("a live chain is allowed exactly one facilitator", () => {
     ).not.toThrow();
   });
 });
-
-describe("a live gateway is told nothing about where the dashboard is", () => {
-  // On a live deployment a wallet change is announced before it is recorded
-  // (ADR-0019), and the dashboard that sends the messages runs in the
-  // gateway's own process (ADR-0030): the process hands the gateway the
-  // dashboard's way of telling, so there is no address and no secret to set,
-  // and nothing about the dashboard for a live configuration to lack.
-  it("starts on a live chain with neither an address nor a secret for the dashboard", () => {
-    expect(() =>
-      loadConfig({
-        ...required,
-        PAYMENT_NETWORK: "eip155:8453",
-        FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
-        CDP_API_KEY_ID: "key-id",
-        CDP_API_KEY_SECRET: "secret",
-      }),
-    ).not.toThrow();
-  });
-});

@@ -12,9 +12,9 @@
  *
  * The dashboard is not in this file. The harness records what the gateway asked
  * it to say and answers as a test tells it to, so each of the dashboard's answers
- * — every message handed over, nobody to tell, a message refused, no answer at
- * all — is a case here, and what the dashboard does with a request is the
- * dashboard's own suite.
+ * — every message handed over, nobody to tell, a message refused — and a
+ * telling that throws or does not finish are cases here, and what the dashboard
+ * does with an announcement is the dashboard's own suite.
  *
  * Time is the harness's clock and nothing else: forty-eight hours pass because
  * a test says so.
@@ -22,7 +22,7 @@
 
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buyOverHttp, type Harness, harness, type Served, serve } from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
 
@@ -441,7 +441,7 @@ describe("a change that could not be announced", () => {
     },
   );
 
-  it("is refused as not announced when telling fails part of the way, since a message may have gone out", async () => {
+  it("is refused as not announced when telling throws, without saying nothing was sent", async () => {
     // The dashboard tells in the gateway's own process (ADR-0030), so a
     // failure is a throw from our own code: reading the addresses, or a defect
     // before one message or between two. That is "not every message was handed
@@ -459,6 +459,32 @@ describe("a change that could not be announced", () => {
     expect(refused.status).toBe(503);
     expect(refusalOf(refused.body).code).toBe("wallet_change_not_announced");
     expect(refusalOf(refused.body).message).toMatch(/may still have received it/);
+    expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(before);
+  });
+  it("is refused as not announced when telling does not finish within twenty seconds, and nothing is recorded", async () => {
+    // The dashboard's page waits thirty seconds for this answer, so the gateway
+    // gives one before that: a page that stopped waiting first would tell a
+    // person the gateway did not answer while their change went on to be
+    // recorded. A telling held up by the mail provider or the database is cut
+    // off at twenty seconds, and its messages may still go out after.
+    const { served, harnessed } = await started();
+    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
+    await ask(served, dashboard, A_WALLET);
+    const before = await walletOf(served, harnessed.merchant.key);
+    harnessed.announcer.answer = () => new Promise(() => {});
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const asked = harnessed.gateway.setPayoutWallet(
+        harnessed.merchant.id,
+        ANOTHER_WALLET,
+        "dashboard",
+      );
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(await Promise.race([asked, Promise.resolve("still waiting")])).toBe("not_announced");
+    } finally {
+      vi.useRealTimers();
+    }
     expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(before);
   });
 });
