@@ -22,8 +22,10 @@ in one table at the end.
 
 ::: warning The public surface is versioned
 The package is `@nuanu-ai/agentify`. Use this reference for the version you
-installed. Function or field changes arrive in a new package and contract
-version before the gateway speaks them.
+installed. Function or field changes arrive in a new package version before
+the gateway speaks them. During the pilot the contract version does not move
+with each of them, so keep the package current: a release older than the
+gateway can read a word it does not know as a failure.
 :::
 
 ## The smallest card that sells
@@ -266,6 +268,36 @@ first asked, so the price question and the payment check are behind it rather
 than inside it. The confirmation mode has a deadline of its own — an hour, where
 the card names none — and it arrives together with the mode.
 
+## A parcel sent by a carrier
+
+A physical product that a carrier takes to the buyer is a card with
+`fulfillment: 'ship'`. The buyer is charged at the moment of purchase, as for
+goods that leave later, and the order ends when you record that a carrier has
+the parcel; how that goes is on [Orders and fulfillment modes](/orders).
+
+Such a card differs from every other in four ways. It names
+`ship_within_seconds`, the time you have to hand the parcel to a carrier,
+counted from the charge and at most thirty days; the agent sees it on the card,
+and on the order as the instant the parcel has to be shipped by. It declares no
+`result` and no `fulfill_deadline_seconds`, because what the agent receives is
+the record of the shipment rather than goods you describe. It asks for its
+price with your price handler (`price_check: 'handler'`), and that answer is
+the whole price with shipping, for the place the parcel goes: the price on the
+card is the goods without shipping. And it asks for no address among its
+`params`, because the purchase carries the address in a block of its own.
+
+Answering the price question with "not available" refuses the sale, and on a
+parcel that can mean the product is gone, you do not ship to that place, or the
+address lacks something your carrier needs; the agent is told the purchase did
+not happen. The price an agent pays does not cover duties the recipient may owe
+at the border, so say in the card's description where that can happen.
+
+Two things are asked of you rather than of the card. A parcel's card is
+published only once you have given the site of your shop, because a parcel
+that does not arrive is a question its buyer takes there (`no_seller_site`).
+And it is published on the test channel only: on the live one it is refused
+(`not_sold_yet`) until the refund of a lost parcel can be recorded there.
+
 ## A price worked out at the moment of purchase
 
 Where the price is not fixed — it comes off a rate, off a supplier's cost, off
@@ -500,10 +532,11 @@ required fields first.
 | `title` | plain text, one line | required | `One month of access to the service` |
 | `description` | plain text, up to 500 characters — the discovery catalog's ceiling, not ours | required | `Access for 30 days from delivery, renewal not included` |
 | `price` | an amount as a string, and a currency; or the two as one string | required | `{ amount: '5.00', currency: 'USD' }`, or `'5.00 USD'` |
-| `result` | the shape of what the agent receives on delivery | required | `{ access_url: { type: 'string' } }`, or `{ access_url: 'string' }` |
+| `result` | the shape of what the agent receives on delivery | required, except on a parcel's card, which has none | `{ access_url: { type: 'string' } }`, or `{ access_url: 'string' }` |
 | `params` | the shape of the purchase parameters | required where the delivery needs input | `{ email: { type: 'string', required: true } }` |
-| `fulfillment` | `'sync'` or `'async'`; `'confirm'` is not published during the pilot | optional; a card that names no mode is `'sync'` | `'sync'` |
+| `fulfillment` | `'sync'`, `'async'` or `'ship'`; `'confirm'` is not published during the pilot | optional; a card that names no mode is `'sync'` | `'sync'` |
 | `fulfill_deadline_seconds` | how long you may take to deliver | optional, and only on an asynchronous card | `86400` |
+| `ship_within_seconds` | how long you have to hand a parcel to a carrier, from the charge, at most thirty days | required on a parcel's card, and only there | `172800` |
 | `price_check` | what to ask the price and availability with: a handler, or an address we do not call yet | optional | `'handler'` |
 | `tags` | words describing the product for an agent's search, at most five | optional | `['esim', 'telecom']` |
 
@@ -549,12 +582,15 @@ second for anything about the card itself.
 They answer in the same shape as well. The check hands you a list of findings,
 each naming the field it is about and what is wrong with it; a publish we refuse
 carries that same list under `problems`, inside the `error` its answer comes
-back with, and that error's code is `card_rejected`. Three findings can stand in
+back with, and that error's code is `card_rejected`. Four findings can stand in
 our list that no check on your side can see, and all of them are about you
 rather than the card: no name set for buyers to read (`no_seller_name`), no
 wallet set for your sales to be paid into wherever a payment settles
-(`no_payout_wallet`), and, on the live channel only, no approval from the
-operator yet (`no_operator_approval`) ([publishing a card](/quickstart)).
+(`no_payout_wallet`), on the live channel only, no approval from the operator
+yet (`no_operator_approval`), and on a parcel's card alone, no site set for
+your shop (`no_seller_site`) ([publishing a card](/quickstart)). The check on
+your side cannot see either which channel a card is published on, so it passes
+a parcel's card that the live channel then refuses.
 
 ## Updating a card, and taking one off sale
 

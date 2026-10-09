@@ -47,10 +47,12 @@ the merchant's routes and is not derived from it.
 
 3. **The published SDK remains strict.** A result word riding alongside
    `ok: true` informs rather than directs, but it is still part of the generated
-   schema and the typed result a merchant records. Every new value moves the
-   contract version before the gateway sends it. The existing handshake then
-   refuses the whole newer vocabulary at worker startup, where no order is in
-   flight. Reading an unknown word as an open `string` was rejected: it would
+   schema and the typed result a merchant records. From the first merchant we
+   do not control (§2), every new value moves the contract version before the
+   gateway sends it, and the existing handshake then refuses the whole newer
+   vocabulary at worker startup, where no order is in flight. Until then an SDK
+   older than the gateway can read a newer word as a failure, and the portal
+   tells a merchant to keep the package current. Reading an unknown word as an open `string` was rejected: it would
    make one part of an otherwise closed generated contract silently open and
    move the compatibility rule from the version boundary into every consumer.
 
@@ -110,9 +112,9 @@ the merchant's routes and is not derived from it.
 
 ## Consequences
 
-- Gained: an installed SDK either reads the whole vocabulary it was built for or
-  stops before polling an order; generated schemas and TypeScript tell the same
-  truth.
+- Gained, from the first merchant we do not control: an installed SDK either
+  reads the whole vocabulary it was built for or stops before polling an order;
+  generated schemas and TypeScript tell the same truth.
 - Gained: a product's listed address survives our protocol changes, so a listing
   is earned once rather than re-earned on our schedule.
 - Paid: even an additive informational result requires a contract-version move

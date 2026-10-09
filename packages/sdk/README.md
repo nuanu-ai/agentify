@@ -125,11 +125,12 @@ than the engineer.
 
 ## Versions
 
-This is an early `0.x` pilot surface and the names in it can still change. What
-does not change quietly is the wire: the SDK and the gateway agree on a
-contract version, and a worker whose version the gateway does not share stops
-before it takes an order rather than half reading a document and misreporting
-its own successes. Register `agentify.on('problem', …)`, which is where you
+This is an early `0.x` pilot surface and the names in it can still change. The
+SDK and the gateway agree on a contract version, and a worker whose version the
+gateway does not share stops before it takes an order. During the pilot that
+version does not move with every change, so a release older than the gateway
+can read a word it does not know as a failure rather than stop: keep the
+package current. Register `agentify.on('problem', …)`, which is where you
 hear about that and about everything else that did not get through.
 
 ## License

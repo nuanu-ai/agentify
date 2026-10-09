@@ -11,15 +11,19 @@ on [What can go wrong](/failures).
 
 ::: warning The public surface is versioned
 Use this page with the package version you installed. Function or field changes
-arrive in a new package and contract version before the gateway speaks them.
+arrive in a new package version before the gateway speaks them. During the
+pilot the contract version does not move with each of them, so keep the package
+current: a release older than the gateway can read a word it does not know as a
+failure.
 :::
 
-## Three fulfillment modes
+## Fulfillment modes
 
 | Mode | `fulfillment` | The goods reach the agent | When the buyer is charged | If you refused or stayed silent |
 | --- | --- | --- | --- | --- |
 | Synchronous | `'sync'` | in the answer to the purchase | after your delivery, as the last step | the purchase did not happen and the buyer spent nothing |
 | Asynchronous | `'async'` | later, by a separate call | at the moment of purchase, before your delivery | the money is with you and the buyer has no goods: the order is marked as needing a refund |
+| A parcel | `'ship'` | with a carrier, once you record the shipment by a separate call | at the moment of purchase, before your shipment | as in the asynchronous mode |
 | With confirmation | `'confirm'` | later, by a separate call | right after your confirmation | before the confirmation nothing is charged; after it, as in the asynchronous mode |
 
 The mode is declared in the card, and the agent knows it before it pays. The
@@ -27,9 +31,9 @@ product decides which mode it is. The SDK handler supports synchronous and
 asynchronous delivery; delivery by a message is not available. What the moment
 of charging means for the owner of the business is on [Money](/money).
 
-The third mode is not open during the pilot. A card cannot be published with
-`fulfillment: 'confirm'`, because the request that asks you to confirm has no
-shape on the wire yet and your handler could not tell one from a paid order.
+The confirmation mode is not open during the pilot. A card cannot be published
+with `fulfillment: 'confirm'`, because the request that asks you to confirm has
+no shape on the wire yet and your handler could not tell one from a paid order.
 The rest of this page describes the mode as it is designed.
 
 From the agent's side the asynchronous mode and the confirmation mode look
@@ -37,10 +41,10 @@ almost the same: the order and the way of watching where it stands are
 identical. What differs is the moment of charging, and one consequence of
 confirming — a confirmed order acquires a deadline for the agent to pay it in.
 
-The three sequences below are the same three rows of the table, in the order
-the steps actually happen. The payment network is left off them: what reaches
-you is the order, and where the charge falls relative to your delivery is what
-the modes differ by.
+The sequences below are the rows of the table, in the order the steps actually
+happen; a parcel's is the asynchronous one with a shipment at its end. The
+payment network is left off them: what reaches you is the order, and where the
+charge falls relative to your delivery is what the modes differ by.
 
 ### Synchronous
 
@@ -78,6 +82,37 @@ sequenceDiagram
     A->>C: asks where the order stands
     C-->>A: the goods
 ```
+
+### A parcel
+
+A parcel's order is the asynchronous one with an address in it and a shipment
+at its end; what its card asks of you is on [Cards](/cards).
+
+Your price handler is asked the price for the place the parcel goes: its
+`ship_to` holds the country, the state, the city and the postal code, and
+nothing about who receives it. Once the order is paid, it reaches your handler
+with the whole address in `ship_to` — a name, the lines, the city, the state,
+the postal code, the country and a phone number. Store the address before you
+take the order on: the moment you answer `accepted`, or the order ends without
+you, Agentify erases its copy, the order reads only `ship_to: { erased_at }`
+from then on, and it is never handed to your handler again.
+
+When a carrier has the parcel, record the shipment with the same `deliver` call
+that delivers goods elsewhere. Its body is the shipment: `carrier`, the carrier's
+name or your own courier; `tracking_number`, or `null` where the parcel has
+none; and, where you have them, `tracking_url`, an https page on the carrier's
+domain, and `estimated_delivery` with its `earliest` and `latest` instants.
+Agentify records the instant the call arrived. The same shipment sent again
+succeeds, and a different one is refused with `shipment_already_recorded`: a
+recorded shipment cannot be changed. The agent then reads the order as
+`shipped`, with your shipment beside it, and that is the last word Agentify has
+about the parcel — whether it arrives is between you and the buyer, who is
+pointed at your shop's site.
+
+A parcel not shipped by its deadline leaves you owing a refund, as goods not
+delivered in time do, and a shipment recorded late still closes that debt. A
+parcel you admit lost is refunded through the operator, which is not running
+on the live channel yet — the reason a parcel sells on the test channel only.
 
 ### With confirmation
 
