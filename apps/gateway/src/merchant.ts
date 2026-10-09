@@ -42,7 +42,7 @@ let code = 1;
 try {
   code = await runMerchant(
     process.argv.slice(2),
-    new PostgresStore(db, randomIds),
+    PostgresStore.over(db, randomIds),
     systemClock,
     (line) => {
       console.log(line);

@@ -2,7 +2,8 @@
 
 Date: 2026-09-28
 Status: accepted (the product owner, 2026-09-28, after two rounds of
-adversarial review). Not built yet.
+adversarial review). Built so far: no error leaving the store or the queue
+carries a bound parameter. The address itself is not built yet.
 
 ## Context
 

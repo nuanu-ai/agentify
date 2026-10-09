@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { A_NAME_PG_BOSS_ACCEPTS, ENVELOPES, REMINDERS, streamOf } from "./queue.js";
+import { EventEmitter } from "node:events";
+import { inspect } from "node:util";
+import type { PgBoss } from "pg-boss";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { A_NAME_PG_BOSS_ACCEPTS, ENVELOPES, PgBossQueue, REMINDERS, streamOf } from "./queue.js";
 
 /**
  * The one thing about this adapter that can be checked without a database.
@@ -41,5 +44,36 @@ describe("the queue names", () => {
     expect(() => streamOf("a merchant")).toThrow(/cannot name a queue/);
     expect(() => streamOf("mch:a")).toThrow(/cannot name a queue/);
     expect(() => streamOf("")).toThrow(/cannot name a queue/);
+  });
+});
+
+describe("what the queue reports of pg-boss's own failures", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("logs them without the values of the row a refused write quoted", () => {
+    // pg-boss emits a worker's failure as an event, and it can carry the job's
+    // row in its detail (ADR-0032). Whichever pg-boss a queue is made over is
+    // listened to, so a test's queue is held to it as much as a deployment's.
+    const said: unknown[] = [];
+    vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      said.push(...args);
+    });
+    const boss = new EventEmitter();
+    PgBossQueue.over(boss as unknown as PgBoss, {
+      pollIntervalMs: 50,
+      reminders: { attempts: 3, retryDelayMs: 1_000 },
+    });
+
+    boss.emit("error", {
+      message: "a worker failed",
+      severity: "ERROR",
+      code: "23514",
+      detail: 'Failing row contains (job_1, {"orderId": "ord_buyer@example.com"}).',
+    });
+
+    expect(said.length).toBeGreaterThan(0);
+    expect(inspect(said, { depth: Number.POSITIVE_INFINITY })).not.toContain("buyer@example.com");
   });
 });

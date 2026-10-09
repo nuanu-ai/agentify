@@ -63,7 +63,7 @@ if (databaseUrl === null) {
 } else {
   const connected = connect(databaseUrl);
   const pool = connected.pool;
-  const store = new PostgresStore(connected.db, randomIds);
+  const store = PostgresStore.over(connected.db, randomIds);
   const messages: Message[] = [];
   const identity = identityFor(
     loadConfig({

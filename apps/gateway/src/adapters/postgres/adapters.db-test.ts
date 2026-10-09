@@ -36,6 +36,7 @@
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { inspect } from "node:util";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
@@ -278,7 +279,7 @@ if (databaseUrl === null) {
       await pool.query(`drop schema if exists ${QUEUE_SCHEMA} cascade`);
 
       boss = new PgBoss({ connectionString: databaseUrl, schema: QUEUE_SCHEMA });
-      queue = new PgBossQueue(boss, {
+      queue = PgBossQueue.over(boss, {
         pollIntervalMs: 50,
         reminders: { attempts: 3, retryDelayMs: 1_000 },
       });
@@ -286,7 +287,7 @@ if (databaseUrl === null) {
       // envelope that must not be lost goes into the same transaction as the
       // order that implies it (ADR-0013), which is the arrangement `main.ts`
       // makes and the one the tests below are about.
-      store = new PostgresStore(connected.db, countedIds(), queue.envelopes());
+      store = PostgresStore.over(connected.db, countedIds(), queue.envelopes());
       facilitator = new ScriptedFacilitator();
 
       const runtime: Runtime = {
@@ -472,9 +473,9 @@ if (databaseUrl === null) {
             return { save: { ...found, paidBy: who }, result: { took: true } };
           });
 
-        const aliceTaking = take(new PostgresStore(alice.db, countedIds()), "alice");
+        const aliceTaking = take(PostgresStore.over(alice.db, countedIds()), "alice");
         await bobMayStart;
-        const bobTaking = take(new PostgresStore(bob.db, countedIds()), "bob");
+        const bobTaking = take(PostgresStore.over(bob.db, countedIds()), "bob");
         const [first, second] = await Promise.all([aliceTaking, bobTaking]);
 
         const decided = [first, second].map((lookup) => (lookup.found ? lookup.result : null));
@@ -627,6 +628,77 @@ if (databaseUrl === null) {
       await queue.finish(A, first[0]?.handle ?? "");
 
       expect(await queue.draw(A, 10, 200)).toStrictEqual([]);
+    });
+
+    describe("a failure in the database", () => {
+      // ADR-0032: no error leaving the store or the queue carries a value bound
+      // to its statement. Each test makes the database refuse a write that has
+      // a buyer's parameter in it, the way a constraint, a full disk or a type
+      // error would, and reads everything a log line could print of what came
+      // back. The refusal quotes the failing row, and the library above it
+      // repeats every parameter, so the parameter is there to leak.
+      const BUYER = "buyer-ord-7c1e05@example.com";
+      const MARKER = "refused-by-this-test";
+      const printed = (thrown: unknown): string =>
+        inspect(thrown, { depth: Number.POSITIVE_INFINITY, showHidden: true });
+
+      async function refusedBy(table: string, column: string, work: () => Promise<unknown>) {
+        await pool.query(
+          `alter table ${table} add constraint refuse_the_marker check (${column}::text not like '%${MARKER}%')`,
+        );
+        try {
+          return await work().then(
+            () => {
+              throw new Error("the database took a write this test made it refuse");
+            },
+            (thrown: unknown) => thrown,
+          );
+        } finally {
+          await pool.query(`alter table ${table} drop constraint refuse_the_marker`);
+        }
+      }
+
+      it("leaves the store saying what failed, and without the buyer's parameters", async () => {
+        const published = await store.publishCard(
+          A,
+          { ...syncCard, merchant_item_id: "refused", params: { email: { type: "string" } } },
+          now,
+        );
+        const offered = await gateway.beginPurchase(published.id, { email: BUYER });
+        if (offered.step !== "pay") throw new Error("no price was offered");
+        const orderId = offered.order.order.id;
+
+        const thrown = await refusedBy("orders", "record", () =>
+          store.withOrder(orderId, (found) => ({
+            save: { ...found, params: { ...found.params, note: MARKER } },
+            result: null,
+          })),
+        );
+
+        expect(printed(thrown)).not.toContain(BUYER);
+        expect((thrown as Error).message).toContain("refuse_the_marker");
+      });
+
+      it("leaves the queue saying what failed, and without the envelope's contents", async () => {
+        const thrown = await refusedBy(`${QUEUE_SCHEMA}.job`, "data", () =>
+          // The refusal quotes the row only so far into each value, so what is
+          // to leak goes where it is quoted: the envelope's identifier, the
+          // first key of its document.
+          queue.publish(A, {
+            kind: "order_event",
+            id: `env_${BUYER}_${MARKER}`,
+            sent_at: "2026-08-26T12:00:00.000Z",
+            payload: {
+              type: "order.unpaid_after_confirmation",
+              order_id: "ord_db_refused",
+              at: "2026-08-26T12:00:00.000Z",
+            },
+          }),
+        );
+
+        expect(printed(thrown)).not.toContain(BUYER);
+        expect((thrown as Error).message).toContain("refuse_the_marker");
+      });
     });
 
     it("walks a whole synchronous sale through the database and the queue", async () => {
@@ -786,8 +858,8 @@ if (databaseUrl === null) {
       const onePool = oneGateway.pool;
       const otherPool = otherGateway.pool;
       try {
-        const one = new PostgresStore(oneGateway.db, countedIds());
-        const other = new PostgresStore(otherGateway.db, countedIds());
+        const one = PostgresStore.over(oneGateway.db, countedIds());
+        const other = PostgresStore.over(otherGateway.db, countedIds());
 
         // The first is held inside the work, so the second arrives while it is
         // genuinely still running rather than after it.
@@ -891,7 +963,7 @@ if (databaseUrl === null) {
         if (offered.step !== "pay") throw new Error("no price was offered");
         const orderId = offered.order.order.id;
 
-        const own = new PostgresStore(owner.db, countedIds());
+        const own = PostgresStore.over(owner.db, countedIds());
         // One connection in the pool, so this is the one the transaction will
         // check out and the one terminated inside it. Asked for before rather
         // than hunted for after, which is what keeps this off everybody else's.
@@ -914,12 +986,12 @@ if (databaseUrl === null) {
           // terminated passed everything below, including the check that
           // nothing went unlistened. The matcher is what makes this a test of
           // the connection dying rather than of any failure at all.
-          // The words are drizzle's, not Postgres's: when the connection dies
-          // mid-transaction the rollback is what fails, and its wrapper carries
-          // that rather than the backend's own sentence. Matching it is still
-          // the point — a run in which nothing was terminated fails here with
-          // the terminate helper's own complaint instead.
-          await expect(deciding).rejects.toThrow(/Failed query: rollback/);
+          // When the connection dies mid-transaction the rollback is what fails,
+          // and it leaves the store as a failure of the database, stripped of
+          // what was sent with it (ADR-0032). Matching that is still the point:
+          // the terminate helper's own complaint is not the database's, leaves
+          // untouched, and fails here instead.
+          await expect(deciding).rejects.toThrow(/the store's withOrder failed in the database/);
         });
 
         expect(unlistened).toStrictEqual([]);
@@ -967,7 +1039,7 @@ if (databaseUrl === null) {
       const owner = connect(databaseUrl, { max: 1 });
       const ownPool = owner.pool;
       try {
-        const own = new PostgresStore(owner.db, countedIds());
+        const own = PostgresStore.over(owner.db, countedIds());
         // The pool holds one connection, so this is the one `runAlone` will
         // pin and the one terminated below. Asked for before rather than
         // hunted for after, which is what keeps this off everybody else's.
@@ -1007,7 +1079,7 @@ if (databaseUrl === null) {
       const owner = connect(databaseUrl, { max: 1 });
       const ownPool = owner.pool;
       try {
-        const own = new PostgresStore(owner.db, countedIds());
+        const own = PostgresStore.over(owner.db, countedIds());
         const pinned = await backendPid(ownPool);
 
         const failing = own.runAlone("a_failing_terminated_sweep", async () => {
@@ -1035,7 +1107,7 @@ if (databaseUrl === null) {
       const its = connect(databaseUrl, { max: 1 });
       const otherPool = its.pool;
       try {
-        const other = new PostgresStore(its.db, countedIds());
+        const other = PostgresStore.over(its.db, countedIds());
 
         await expect(
           store.runAlone("a_failing_sweep", async () => {
@@ -1095,7 +1167,7 @@ if (databaseUrl === null) {
           },
         });
 
-        const stubborn = new PostgresStore(held.db, countedIds());
+        const stubborn = PostgresStore.over(held.db, countedIds());
         // The run itself is a success and is reported as one. An unlock nobody
         // could complete is not the sweep's failure to hand back to the queue.
         expect(await stubborn.runAlone("a_wedged_sweep", async () => "swept")).toStrictEqual({
@@ -1109,7 +1181,7 @@ if (databaseUrl === null) {
         // seconds, well inside the ten the pool would otherwise take to reap an
         // idle connection. A window that reached the reaper would pass with or
         // without the fix.
-        const next = new PostgresStore(asking.db, countedIds());
+        const next = PostgresStore.over(asking.db, countedIds());
         const until = Date.now() + 2_000;
         let free = await next.runAlone("a_wedged_sweep", async () => "free");
         while (!free.ran && Date.now() < until) {
@@ -1251,7 +1323,7 @@ if (databaseUrl === null) {
      */
     describeStore("the store on Postgres", async () => {
       await contract.pool.query(EMPTY_EVERY_TABLE);
-      return new PostgresStore(contract.db, countedIds());
+      return PostgresStore.over(contract.db, countedIds());
     });
   });
 }
