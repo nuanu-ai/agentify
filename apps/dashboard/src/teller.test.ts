@@ -42,6 +42,7 @@ const aWalletChange: Announcement = {
   from: FROM,
   to: TO,
   not_before: "2026-09-26T12:00:00.000Z",
+  asked_with: { kind: "signed_in", email: "owner@example.com" },
 };
 
 /**
@@ -135,7 +136,7 @@ describe("a key's label, which somebody else may have written", () => {
         id: "mk_91c0",
         label: "confirm at https://agentify.example/login or www.evil.example",
       },
-      asked_with: { kind: "dashboard" },
+      asked_with: { kind: "signed_in", email: "owner@example.com" },
     } satisfies Announcement);
 
     for (const text of [sent[0]?.body ?? "", sent[0]?.html ?? ""]) {
@@ -151,10 +152,17 @@ describe("a key's label, which somebody else may have written", () => {
 describe("what a message advises and claims", () => {
   // A first wallet and a cancel leave nothing waiting, so cancelling a
   // waiting change is advice that cannot work there; what works at once is
-  // pausing the selling, and then a replacement, which waits. And the gateway
-  // knows the key a change came with, not the person, so no message claims one.
+  // pausing the selling, and then a replacement, which waits.
   it.each([
-    ["a first wallet", { kind: "wallet_set", merchant_id: MERCHANT, to: TO }],
+    [
+      "a first wallet",
+      {
+        kind: "wallet_set",
+        merchant_id: MERCHANT,
+        to: TO,
+        asked_with: { kind: "signed_in", email: "owner@example.com" },
+      },
+    ],
     [
       "a cancelled change",
       {
@@ -162,6 +170,7 @@ describe("what a message advises and claims", () => {
         merchant_id: MERCHANT,
         kept: FROM,
         cancelled: TO,
+        asked_with: { kind: "signed_in", email: "owner@example.com" },
       },
     ],
   ] as const)(
@@ -185,26 +194,6 @@ describe("what a message advises and claims", () => {
       expect(body).not.toMatch(/cancelling a waiting/i);
     },
   );
-
-  it.each([
-    ["a replacement", aWalletChange],
-    ["a first wallet", { kind: "wallet_set", merchant_id: MERCHANT, to: TO }],
-    [
-      "a new key",
-      {
-        kind: "key_issued",
-        merchant_id: MERCHANT,
-        key: { id: "mk_91c0", label: "the price desk" },
-        asked_with: { kind: "dashboard" },
-      },
-    ],
-  ] as const)("claims no person signed in for %s, only the dashboard", async (_what, request) => {
-    const { tell, sent } = await telling([["owner@example.com", MERCHANT]]);
-
-    await tell(request satisfies Announcement);
-
-    expect(sent[0]?.body ?? "").not.toMatch(/person signed in/i);
-  });
 });
 
 describe("who asked", () => {
@@ -217,7 +206,10 @@ describe("who asked", () => {
 
   it.each([
     ["a replacement", { ...aWalletChange, asked_with: ASKED_FROM }],
-    ["a first wallet", { kind: "wallet_set", merchant_id: MERCHANT, to: TO, asked_with: ASKED_FROM }],
+    [
+      "a first wallet",
+      { kind: "wallet_set", merchant_id: MERCHANT, to: TO, asked_with: ASKED_FROM },
+    ],
     [
       "a cancelled change",
       {
@@ -237,22 +229,25 @@ describe("who asked", () => {
         asked_with: ASKED_FROM,
       },
     ],
-  ] as const)("names the account the session that asked for %s is signed in as", async (_what, request) => {
-    const { tell, sent } = await telling([
-      ["owner@example.com", MERCHANT],
-      ["partner@example.com", MERCHANT],
-    ]);
+  ] as const)(
+    "names the account the session that asked for %s is signed in as",
+    async (_what, request) => {
+      const { tell, sent } = await telling([
+        ["owner@example.com", MERCHANT],
+        ["partner@example.com", MERCHANT],
+      ]);
 
-    await tell(request satisfies Announcement);
+      await tell(request satisfies Announcement);
 
-    expect(sent).toHaveLength(2);
-    for (const message of sent) {
-      for (const text of [message.body, message.html]) {
-        expect(text).toMatch(/session signed in as partner@example\.com/);
-        expect(text).not.toMatch(/person signed in/i);
+      expect(sent).toHaveLength(2);
+      for (const message of sent) {
+        for (const text of [message.body, message.html]) {
+          expect(text).toMatch(/session signed in as partner@example\.com/);
+          expect(text).not.toMatch(/person signed in/i);
+        }
       }
-    }
-  });
+    },
+  );
 });
 
 describe("what is announced once it is done", () => {
@@ -265,6 +260,7 @@ describe("what is announced once it is done", () => {
       kind: "wallet_set",
       merchant_id: MERCHANT,
       to: TO,
+      asked_with: { kind: "signed_in", email: "owner@example.com" },
     } satisfies Announcement);
 
     expect(answered).toBe("handed_over");
@@ -283,6 +279,7 @@ describe("what is announced once it is done", () => {
       merchant_id: MERCHANT,
       kept: FROM,
       cancelled: TO,
+      asked_with: { kind: "signed_in", email: "owner@example.com" },
     } satisfies Announcement);
 
     expect(answered).toBe("handed_over");
@@ -297,7 +294,7 @@ describe("what is announced once it is done", () => {
       kind: "key_issued",
       merchant_id: MERCHANT,
       key: { id: "mk_91c0", label: "the price desk" },
-      asked_with: { kind: "dashboard" },
+      asked_with: { kind: "signed_in", email: "owner@example.com" },
     } satisfies Announcement);
 
     expect(answered).toBe("handed_over");

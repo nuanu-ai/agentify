@@ -29,7 +29,8 @@ import type {
   WorkerPollRequest,
 } from "@nuanu-ai/agentify-contracts";
 import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
-import type { Gateway, PurchaseAttempt, WalletChangeRefusal } from "../app/gateway.js";
+import type { Caller, Gateway, PurchaseAttempt, WalletChangeRefusal } from "../app/gateway.js";
+import { invitationAccepted } from "../app/merchants.js";
 import { agentOrderStatusOf, orderDocumentOf } from "../app/runner.js";
 import type { KeyPurpose } from "../ports/store.js";
 import type { MountedRoute, RouteAnswer, RouteCall } from "./server.js";
@@ -116,6 +117,11 @@ function callersPurpose({ keyPurpose }: RouteCall): KeyPurpose {
     );
   }
   return keyPurpose;
+}
+
+/** The key this call was made with, as the caller the gateway's flows take. */
+function keyCaller(call: RouteCall): Caller {
+  return { kind: "key", keyId: callersKey(call), purpose: callersPurpose(call) };
 }
 
 /**
@@ -270,8 +276,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
     register_merchant: {
       serve: async (call) => {
         const asked = call.body as RegistrationRequest;
-        const made = await gateway.registerMerchant(asked.invitation);
-        if (made === null) {
+        if (!invitationAccepted(config.registrationInvitation, asked.invitation)) {
           // One answer for a wrong code and for a gateway that takes no
           // registrations. Two answers would make this form a way of asking
           // which deployment is open, which is what the code in the door exists
@@ -286,7 +291,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
             ),
           );
         }
-        return { status: OK, document: made };
+        return { status: OK, document: await gateway.registerMerchant() };
       },
     },
 
@@ -327,7 +332,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
         const set = await gateway.setPayoutWallet(
           merchantOf(call),
           (call.body as PayoutWalletRequest).payout_wallet,
-          callersPurpose(call),
+          keyCaller(call),
         );
         if (set === "not_a_dashboard_key") {
           return walletIsSetInTheDashboard(call.response);
@@ -339,9 +344,18 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
     },
 
     list_keys: {
+      // The key that opened this call travels through rather than being looked
+      // up again: the door resolved it a moment ago, and a second lookup would
+      // be a second chance for the two to disagree. It is not always one of
+      // the keys beside it, since a key made for a dashboard is on no list, and
+      // it is answered all the same, because the field means the same thing on
+      // every call: which key opened this one.
       serve: async (call) => ({
         status: OK,
-        document: await gateway.merchantKeys(merchantOf(call), callersKey(call)),
+        document: {
+          keys: await gateway.merchantKeys(merchantOf(call)),
+          this_call: callersKey(call),
+        },
       }),
     },
 
@@ -351,7 +365,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
         document: await gateway.issueMerchantKey(
           merchantOf(call),
           (call.body as IssueKeyRequest).label,
-          { keyId: callersKey(call), purpose: callersPurpose(call) },
+          keyCaller(call),
         ),
       }),
     },
@@ -382,7 +396,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
         const disabled = await gateway.disableMerchantKey(
           merchantOf(call),
           call.params.key_id ?? "",
-          callersKey(call),
+          keyCaller(call),
         );
 
         if (disabled === "locked_out") {

@@ -150,13 +150,14 @@ describe("the first address a merchant sets", () => {
       payout_wallet: A_WALLET,
       pending: null,
     });
-    // It names no key: only a dashboard's key sets a wallet, so every change is
-    // one somebody signed in to the dashboard asked for.
+    // Asked with the key registering made for a dashboard, it names that key
+    // and nothing more: who holds a key is not something the gateway knows.
     expect(harnessed.announcer.announced).toStrictEqual([
       {
         kind: "wallet_set",
         merchant_id: (await harnessed.gateway.keyBehind(key))?.merchantId,
         to: A_WALLET,
+        asked_with: { kind: "dashboard" },
       },
     ]);
   });
@@ -286,6 +287,7 @@ describe("a replacement on the live deployment", () => {
         from: harnessed.merchant.wallet,
         to: A_WALLET,
         not_before: at(asked + THE_WAIT),
+        asked_with: { kind: "dashboard" },
       },
     ]);
   });
@@ -372,6 +374,7 @@ describe("asking again", () => {
       merchant_id: harnessed.merchant.id,
       kept: harnessed.merchant.wallet,
       cancelled: A_WALLET,
+      asked_with: { kind: "dashboard" },
     });
     harnessed.advance(THE_WAIT);
     expect(await payToNow(served, itemId)).toBe(harnessed.merchant.wallet);
@@ -475,11 +478,10 @@ describe("a change that could not be announced", () => {
 
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
-      const asked = harnessed.gateway.setPayoutWallet(
-        harnessed.merchant.id,
-        ANOTHER_WALLET,
-        "dashboard",
-      );
+      const asked = harnessed.gateway.setPayoutWallet(harnessed.merchant.id, ANOTHER_WALLET, {
+        kind: "signed_in",
+        email: "owner@example.com",
+      });
       await vi.advanceTimersByTimeAsync(20_000);
       expect(await Promise.race([asked, Promise.resolve("still waiting")])).toBe("not_announced");
     } finally {

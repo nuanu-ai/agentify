@@ -5,10 +5,9 @@
  * On the live deployment a change of a payout wallet already set is announced
  * to every account that names the merchant before anything is written, and a
  * first wallet, a new key of the merchant's own and a cancelled change are
- * announced once they are done. A wallet is changed only through the dashboard
- * (ADR-0019), so a wallet announcement names no key: it was asked for there.
- * A new key names the key that asked, because any key of the merchant's may
- * issue one.
+ * announced once they are done. Every announcement says who asked, as far as
+ * the gateway knows it: the account a dashboard session is signed in as, or
+ * the key a call over the API was made with.
  *
  * The gateway knows the merchant and the change; the dashboard knows the
  * addresses and sends the mail. The two run in one process (ADR-0030), and the
@@ -56,18 +55,32 @@ export function announcedLabel(label: string): string {
 }
 
 /**
- * Which key a new key was issued with, named the way the merchant's list of
- * keys names it.
+ * Who asked for a change the wallet screen makes: a session in the dashboard,
+ * or a call with the key registering made for a dashboard.
  *
- * A key of the merchant's own code is on that list under its label, with its
- * identifier beneath, so that is how a message names it: a person reading "the
- * key you called the stock worker" can find the row and disable it. The key the
- * dashboard signs in with is on no list, and a call made with it means a person
- * signed in to the dashboard acted — so it is named as the dashboard and nothing
- * more. A label here is always one written by `announcedLabel`.
+ * The dashboard calls the gateway inside the process the two share, as the
+ * merchant on the signed-in account's row (ADR-0030), so what the gateway
+ * knows of such a call is that account's address. It is named as the account
+ * a session is signed in as and not as a person, because a session somebody
+ * else took is signed in as the owner all the same. A key made for a dashboard
+ * still opens the API, though nothing in the dashboard calls with one, and a
+ * call made with it is named as that key: nothing more is known of it.
+ */
+export type AskedInTheDashboard =
+  | { readonly kind: "signed_in"; readonly email: string }
+  | { readonly kind: "dashboard" };
+
+/**
+ * Who asked for a new key: anything that may change the wallet, or a key of
+ * the merchant's own code, named the way the merchant's list of keys names it.
+ *
+ * That list shows a key under its label, with its identifier beneath, so that
+ * is how a message names it: a person reading "the key you called the stock
+ * worker" can find the row and disable it. A label here is always one written
+ * by `announcedLabel`.
  */
 export type AskedWith =
-  | { readonly kind: "dashboard" }
+  | AskedInTheDashboard
   | { readonly kind: "merchant_code"; readonly id: string; readonly label: string };
 
 /**
@@ -86,6 +99,7 @@ interface WalletSet {
   readonly kind: "wallet_set";
   readonly merchant_id: string;
   readonly to: Wallet;
+  readonly asked_with: AskedInTheDashboard;
 }
 
 /**
@@ -101,6 +115,7 @@ interface WalletChange {
   readonly from: Wallet;
   readonly to: Wallet;
   readonly not_before: string;
+  readonly asked_with: AskedInTheDashboard;
 }
 
 /** A waiting change was cancelled by asking for the address paid now. Sent after. */
@@ -109,6 +124,7 @@ interface WalletChangeCancelled {
   readonly merchant_id: string;
   readonly kept: Wallet;
   readonly cancelled: Wallet;
+  readonly asked_with: AskedInTheDashboard;
 }
 
 /** A key for the merchant's own code was issued. Sent after, and never waited on. */

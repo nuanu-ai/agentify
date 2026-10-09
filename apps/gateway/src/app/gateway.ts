@@ -61,7 +61,12 @@ import {
   type WorkerEnvelope,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
-import { type Announcement, type AskedWith, announcedLabel } from "../announcements.js";
+import {
+  type Announcement,
+  type AskedInTheDashboard,
+  type AskedWith,
+  announcedLabel,
+} from "../announcements.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
@@ -74,7 +79,6 @@ import type {
 } from "../ports/store.js";
 import { orderCallResponseOf } from "./answers.js";
 import {
-  invitationAccepted,
   issueDashboardKey,
   issueKey,
   keyDigest,
@@ -157,11 +161,15 @@ export type WalletChangeRefusal =
   | "raced"
   | "raced_after_announcing";
 
-/** The key a call was made with, as the door resolved it. */
-export interface KeyOnTheCall {
-  readonly keyId: string;
-  readonly purpose: KeyPurpose;
-}
+/**
+ * Who a call comes from: a key, as the door resolved it, or a session in the
+ * dashboard, which calls inside the process the two share as the merchant on
+ * the signed-in account's row and holds no key (ADR-0030). What is known of a
+ * session is the account it is signed in as, and that is what a message names.
+ */
+export type Caller =
+  | { readonly kind: "key"; readonly keyId: string; readonly purpose: KeyPurpose }
+  | { readonly kind: "signed_in"; readonly email: string };
 
 /** The queue's name for the daily sweep of claims on payments. */
 export const SWEEP_CLAIMS = "agentify_forget_old_claims";
@@ -652,25 +660,16 @@ export class Gateway {
   // --- merchants and their keys ---------------------------------------------
 
   /**
-   * Registers a merchant: the merchant and their dashboard's key, in one act. Null
-   * where the invitation is not the one this gateway holds, or where it holds
-   * none.
-   *
-   * The two refusals are one value on purpose. Registration being closed is a
-   * fact about this deployment rather than about the caller, and the route above
-   * answers both in the same words and the same status — otherwise the form is
-   * a way of asking whether registration is open here, which is what the code in
-   * the door exists to stop being findable (ADR-0014 §3).
+   * Registers a merchant: the merchant and a key made for a dashboard, in one
+   * act. Whether the caller may is decided before this: the dashboard calls it
+   * inside the process for a signed-in person who pressed for one (ADR-0026
+   * §4), and the route at the door asks for its invitation first.
    *
    * What comes back names no seller, because nobody has chosen one. The merchant
    * is listed under nothing until they set a name, and until then publishing is
    * refused — so the caller's next screen is the one that asks for it.
    */
-  async registerMerchant(invitation: string): Promise<RegisteredMerchant | null> {
-    if (!invitationAccepted(this.runtime.config.registrationInvitation, invitation)) {
-      return null;
-    }
-
+  async registerMerchant(): Promise<RegisteredMerchant> {
     const registered = await registerMerchant(
       this.runtime.store,
       this.runtime.ids,
@@ -850,11 +849,15 @@ export class Gateway {
   async setPayoutWallet(
     merchantId: string,
     wallet: string,
-    madeWith: KeyPurpose,
+    caller: Caller,
   ): Promise<PayoutWallet | WalletChangeRefusal | "not_a_dashboard_key"> {
-    if (madeWith !== "dashboard") {
+    if (caller.kind === "key" && caller.purpose !== "dashboard") {
       return "not_a_dashboard_key";
     }
+    const askedWith: AskedInTheDashboard =
+      caller.kind === "signed_in"
+        ? { kind: "signed_in", email: caller.email }
+        : { kind: "dashboard" };
     // The route holds the same rule on the way in, so a throw from here is a
     // caller that skipped it.
     const address = payoutWalletFrom(wallet);
@@ -882,6 +885,7 @@ export class Gateway {
           kind: "wallet_set",
           merchant_id: merchantId,
           to: address,
+          asked_with: askedWith,
         });
       }
       return set;
@@ -899,6 +903,7 @@ export class Gateway {
           merchant_id: merchantId,
           kept: address,
           cancelled,
+          asked_with: askedWith,
         });
       }
       return written;
@@ -914,6 +919,7 @@ export class Gateway {
       from: now.address,
       to: address,
       not_before: asTimestamp(this.runtime.clock() + WALLET_CHANGE_WAITS_MS),
+      asked_with: askedWith,
     });
     if (told !== "handed_over") {
       console.warn(`[gateway] a payout wallet change for ${merchantId} was refused: ${told}`);
@@ -1018,10 +1024,15 @@ export class Gateway {
   }
 
   /**
-   * The key a call was made with, named the way the merchant's list of keys
-   * names it — or as the dashboard's, which is on no list.
+   * Who a call came from, as a message names it: the account a dashboard
+   * session is signed in as, a key made for a dashboard, which is on no list,
+   * or a key of the merchant's own code, named the way their list of keys
+   * names it.
    */
-  async #named(merchantId: string, askedBy: KeyOnTheCall): Promise<AskedWith> {
+  async #named(merchantId: string, askedBy: Caller): Promise<AskedWith> {
+    if (askedBy.kind === "signed_in") {
+      return { kind: "signed_in", email: askedBy.email };
+    }
     if (askedBy.purpose === "dashboard") {
       return { kind: "dashboard" };
     }
@@ -1037,24 +1048,16 @@ export class Gateway {
   }
 
   /**
-   * The keys this merchant made for their own code, and the one the call was
-   * made with.
+   * The keys this merchant made for their own code.
    *
-   * The keys a dashboard holds are not in the list, and the read that leaves them
-   * out is the store's rather than a filter here: a merchant's list is a place
-   * they act, and a row they did not make and cannot revoke does not belong on
-   * it.
-   *
-   * So `this_call` is not always one of the keys beside it — a dashboard calls
-   * with a key of its own — and it is answered all the same, because the field
-   * means the same thing on every call: which key opened this one. The caller's
-   * own key travels through rather than being looked up again: the door
-   * resolved it a moment ago, and a second lookup would be a second chance for
-   * the two to disagree about which key opened this call.
+   * The keys made for a dashboard are not in the list, and the read that leaves
+   * them out is the store's rather than a filter here: a merchant's list is a
+   * place they act, and a row they did not make and cannot revoke does not
+   * belong on it. Which key opened a call over the API is the route's to add,
+   * since only such a call has one.
    */
-  async merchantKeys(merchantId: string, thisCall: string): Promise<MerchantKeyList> {
-    const keys = await this.runtime.store.codeKeysOf(merchantId);
-    return { keys: keys.map(merchantKeyOf), this_call: thisCall };
+  async merchantKeys(merchantId: string): Promise<MerchantKeyList["keys"]> {
+    return (await this.runtime.store.codeKeysOf(merchantId)).map(merchantKeyOf);
   }
 
   /**
@@ -1065,11 +1068,7 @@ export class Gateway {
    * the wallet, and a merchant must not be kept from a key — their first above
    * all — because mail is down.
    */
-  async issueMerchantKey(
-    merchantId: string,
-    label: string,
-    askedBy: KeyOnTheCall,
-  ): Promise<IssuedKey> {
+  async issueMerchantKey(merchantId: string, label: string, askedBy: Caller): Promise<IssuedKey> {
     const issued = await issueKey(
       this.runtime.store,
       this.runtime.ids,
@@ -1175,7 +1174,8 @@ export class Gateway {
    * longer takes (ADR-0014 §5), so it is refused before anything is read, which
    * also means it can never half-happen — and it is asked first for that reason
    * rather than for any other, since every answer below it costs a write or a
-   * read. `made_for_a_dashboard` is a key of theirs they did not issue: a
+   * read. A session in the dashboard holds no key, so it meets this never, and
+   * every key on its list can be disabled from there. `made_for_a_dashboard` is a key of theirs they did not issue: a
    * merchant switches off what they made, and this one is a dashboard's way in.
    * `null` is every other key that is not this merchant's to disable — one that
    * does not exist and one belonging to somebody else, told apart nowhere, so a
@@ -1189,15 +1189,15 @@ export class Gateway {
    * refusing a merchant their own last working key, which takes something away
    * from them and is a decision rather than a fix; §5 of ADR-0014 says as much
    * and says nobody has taken it. What it costs them is their own code going
-   * quiet, and not the way back in — their dashboard signs in on a key of a kind
-   * this call does not touch, and issuing another is a page away.
+   * quiet, and not the way back in — the dashboard is signed in to with a
+   * mailed link and holds no key, and issuing another is a page away.
    */
   async disableMerchantKey(
     merchantId: string,
     keyId: string,
-    thisCall: string,
+    caller: Caller,
   ): Promise<DisabledKey | "locked_out" | "made_for_a_dashboard" | null> {
-    if (keyId === thisCall) {
+    if (caller.kind === "key" && keyId === caller.keyId) {
       return "locked_out";
     }
     const disabled = await this.runtime.store.disableKeyOf(merchantId, keyId, this.runtime.clock());
