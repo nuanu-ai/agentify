@@ -882,7 +882,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   /**
    * The screen a signed-in person without a merchant is offered, with the one
    * control that makes it (ADR-0026 §4). Drawing it makes nothing: only the
-   * same-origin press below asks the gateway for the merchant and its key.
+   * same-origin press below asks the gateway for the merchant.
    */
   app.get(`${base}/merchant`, (request, response) => {
     const person = whoIs(request);

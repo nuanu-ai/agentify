@@ -118,18 +118,11 @@ const keyControl = (base: string, entry: MerchantKey): string => {
 /**
  * What this list is of, which is the sentence the empty one turns on.
  *
- * Said on the screen whether or not there is anything below it, because the
- * question a merchant has in front of no rows — "where is the key I am signed
- * in with, and should I be worried" — is answered by what the list is rather
- * than by what is missing from it. The answer to the second half of that
- * question is the link: the dashboard calls with none of these keys, and the
- * portal's first step says so where somebody setting up is reading anyway.
+ * Said on the screen whether or not there is anything below it, because a
+ * merchant in front of no rows is answered by what the list is rather than by
+ * what is missing from it.
  */
 const WHAT_A_KEY_IS = "Your code uses these keys to connect to Agentify.";
-
-const WHICH_KEY_THE_DASHBOARD_USES =
-  ' <a href="/docs/quickstart#_1-make-the-merchant-account-ready">Why the dashboard is not on this list' +
-  "</a>.";
 
 /**
  * What revoking does, beside the controls that do it rather than in the lede.
@@ -164,7 +157,7 @@ export const keysScreen = (
           ? `You haven't created any API keys yet. ${WHAT_A_KEY_IS}`
           : `${working} of the ${keys.length} ${keys.length === 1 ? "key" : "keys"} below` +
               `${working === 1 ? " works" : " work"}. ${WHAT_A_KEY_IS}`,
-      )}${WHICH_KEY_THE_DASHBOARD_USES}</p>
+      )}</p>
     </div>
   </div>
 ${table(
