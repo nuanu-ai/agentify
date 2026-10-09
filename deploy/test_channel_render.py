@@ -5,9 +5,8 @@ what `deploy/compose.public.yaml` does to the seed. This renders each channel
 the way deploy/stack.sh does — the same compose files in the same order, the
 jobs profile activation renders with — from a synthetic environment file, and
 runs the preflight over the result, as activation does. A deployed channel
-seeds no merchant (ADR-0014), whether or not its environment file still names
-AGENTIFY_SEED_KEY, since that line leaves a host's file only after a release
-is verified (deploy/README.md, "The release that stops seeding").
+seeds no merchant (ADR-0014), whether or not its environment file names
+AGENTIFY_SEED_KEY.
 
 It needs Docker with Compose and Node, as the release does.
 """

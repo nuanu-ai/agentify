@@ -112,236 +112,6 @@ commit has to move forward from the one the host runs. TEST takes a tag, a
 branch or a full commit SHA, as long as exactly one image build of it
 succeeded.
 
-## The release that renames the dashboard's service and its secret
-
-From this release the dashboard runs as the Compose service `dashboard`, in the
-container `agentify-dashboard-1`, and the secret the gateway presents to it is
-`GATEWAY_DASHBOARD_SECRET`. Until it, they were `cabinet`,
-`agentify-cabinet-1` and `GATEWAY_CABINET_SECRET`. Nothing in the release
-carries the old names over, so three things are done by hand on each host:
-two just before releasing it there, one after. The dashboard is down from the
-second until the release has started it again, and with it the WooCommerce
-connection's fulfilment, since the dashboard is what fulfils those orders;
-an order paid in that window waits for it, or ends when its time runs out.
-
-First, the secret's line in the host's file takes the new name and keeps its
-value. The running containers are not touched: they read the file when they
-were made. The last two lines print `1` and `0`, and the file keeps its owner
-and mode, `root 600`:
-
-```sh
-ssh agentify-test "sudo sed -i 's/^GATEWAY_CABINET_SECRET=/GATEWAY_DASHBOARD_SECRET=/' /etc/agentify/test.env"
-ssh agentify-test "sudo stat -c '%U %a' /etc/agentify/test.env"
-ssh agentify-test sudo grep -c '^GATEWAY_DASHBOARD_SECRET=' /etc/agentify/test.env
-ssh agentify-test sudo grep -c '^GATEWAY_CABINET_SECRET=' /etc/agentify/test.env
-```
-
-Second, the old container stops, with the minute the release gives every
-service to finish what it is doing, so an order it is placing in a shop is not
-cut off halfway. The release stops the services it knows by their new names;
-left running, the old one would go on beside the new one, through the dump and
-the migrations as well, and nothing would say so. The last line prints
-`exited`:
-
-```sh
-ssh agentify-test "sudo docker stop -t 60 agentify-cabinet-1"
-ssh agentify-test "sudo docker inspect -f '{{.State.Status}}' agentify-cabinet-1"
-```
-
-Then release ("Releasing to test"). On PRODUCTION the same commands run over
-`ssh agentify`, with `production.env` in place of `test.env`, just before
-`agentify-release`.
-
-Third, once the release is verified, the old container goes. Until then it is
-the way back. If the release is refused, or fails before it begins migrating,
-`sudo docker start agentify-cabinet-1` brings the old dashboard back as it was,
-since it keeps the environment it was made with, against tables the release
-has not touched. If it fails once it has begun migrating, the old dashboard no
-longer fits the tables, and the way back is the release's restore point
-("Restoring"), with the secret's line renamed back to `GATEWAY_CABINET_SECRET`
-before the previous revision is released again, since that revision asks for
-it under that name. The last line prints nothing:
-
-```sh
-ssh agentify-test "sudo docker rm agentify-cabinet-1"
-ssh agentify-test "sudo docker ps -a --filter label=com.docker.compose.service=cabinet --format '{{.Names}}'"
-```
-
-A release of this revision on a host whose file does not name
-`GATEWAY_DASHBOARD_SECRET` is refused in its preflight, before anything stops.
-On TEST that refusal is recorded as the revision's failure and the timer does
-not try it again; once the line is renamed, a person releases it
-(`ssh -t agentify-test sudo agentify-release <name>`). Afterwards the same
-refusal meets an older revision released on TEST, any from 2026-09-24 on,
-since each asks for the secret under an older name, so going back to one of
-those is refused before anything stops.
-
-Until a host is released, `pnpm approve` and `pnpm forget` from a checkout
-that carries this cannot reach it: they name `agentify-dashboard-1`, which is
-not there yet, and refuse with nothing done. Run them from a checkout before
-this release in the meantime.
-
-## The release that takes the password off /admin
-
-The operator's dashboard at `/admin` opens for a session whose account carries
-the operator flag, and answers everybody else with the site's 404 page
-(ADR-0026 §6). The route table in the web image has no password for it any
-more, so from the first verified release that carries this, `/admin` stops
-asking for one on both channels. Nothing about `/admin` has to be done on
-either host before that release (the secret in the section above still
-has to be there): it asks for neither of the two old settings,
-and its own check of the public routes expects `/admin` to answer 404.
-
-After it, the dashboard opens for nobody until somebody is flagged. The person
-who is to read it signs in once at `/dashboard/sign-in`, which makes their
-account; on TEST the dashboard writes its mail to its log rather than sending
-it, so the link is read with `deploy/stack.sh test logs dashboard` from the
-newest checkout. They are then flagged on the host of that channel:
-
-```sh
-ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T dashboard pnpm --filter ./apps/dashboard --fail-if-no-match account operator you@example.com'
-ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T dashboard pnpm --filter ./apps/dashboard --fail-if-no-match account operator you@example.com'
-```
-
-The scanner's header then shows them an Admin link, on the next page they
-open, without signing in again. `account list` says who is an operator, and
-`account operator you@example.com --off` takes the flag away.
-
-`ADMIN_BASIC_AUTH_USER` and `ADMIN_BASIC_AUTH_HASH` are left in the host's
-environment file by the release and read by nothing in it: no compose file of
-this release names them, so the preflight does not see them either. They go
-from `/etc/agentify/<channel>.env` by hand, with two things in mind. A
-release of an older revision renders that revision's compose files, which
-require both, so while going back is still an option, removing them turns
-such a release into a refusal before anything stops. And on PRODUCTION the
-edge Caddy was started from a checkout of `deploy/edge/` of its own, whose
-`compose.yaml` requires both whenever the edge is recreated, although its
-route table, which every release rewrites, has not used them. The first line
-below names the compose file the edge was started from, and the second prints
-`0` once that file no longer asks for them:
-
-```sh
-ssh agentify "sudo docker inspect -f '{{index .Config.Labels \"com.docker.compose.project.config_files\"}}' agentify-edge-caddy-1"
-ssh agentify "sudo grep -c ADMIN_BASIC_AUTH <that file>"
-```
-
-Until it prints `0`, the two stay in whatever file that compose is run with.
-What ends that is the edge being recreated from a checkout of this release or
-later, whose `deploy/edge/compose.yaml` does not name them; nothing else about
-the edge depends on them.
-
-## The release that stops seeding
-
-A merchant comes into being one way on either channel: a person asks for a
-link at `/dashboard/sign-in`, opens it from their mailbox, and presses the one
-control the dashboard then offers, which makes the merchant (ADR-0014). The
-gateway of a deployed channel used to write a merchant key of its own at every
-start, from `AGENTIFY_SEED_KEY` in the host's environment file, onto the
-merchant the database was created with, `the_merchant`. From the first release
-that carries this it does not, whatever the file says:
-`deploy/compose.public.yaml` gives the seed nothing, and the release's
-preflight refuses a rendered one. Nothing about the seed has to be done on
-either host before that release (the secret in "A secret a host's file may
-still lack" still has to be there).
-
-After it, the line in the host's file is read by nothing in the release, and it
-goes from `/etc/agentify/<channel>.env` by hand, with one thing in mind. A
-release of an older revision renders that revision's compose files, which seed
-from the line, and runs that revision's preflight, which requires a seed.
-Without the line those files fall back to the key written in this repository,
-which that preflight refuses, so while going back is still an option, taking
-the line out turns such a release, a restore's included, into a refusal before
-anything stops. On TEST that also holds for any branch that has not been
-rebased onto this. An older revision released while the line is there finds
-its key already in the database and writes nothing new.
-
-Once the release is verified and going back to a revision before it is no
-longer wanted, take the line out of each host's file. The last two lines print
-`0`, and the file keeps its owner and mode, which the two before them show as
-`root 600`:
-
-```sh
-ssh agentify-test "sudo sed -i '/^AGENTIFY_SEED_KEY=/d' /etc/agentify/test.env"
-ssh agentify "sudo sed -i '/^AGENTIFY_SEED_KEY=/d' /etc/agentify/production.env"
-ssh agentify-test "sudo stat -c '%U %a' /etc/agentify/test.env"
-ssh agentify "sudo stat -c '%U %a' /etc/agentify/production.env"
-ssh agentify-test sudo grep -c '^AGENTIFY_SEED_KEY=' /etc/agentify/test.env
-ssh agentify sudo grep -c '^AGENTIFY_SEED_KEY=' /etc/agentify/production.env
-```
-
-Taking the line out does not take the key out of the database. The key it
-held is a row on `the_merchant` and still opens that merchant for whoever
-presents it, until it is disabled; the release disables nothing. Disabling it
-cannot be undone, and nothing takes its place: no command issues a key or
-makes an account, so unless an account already names `the_merchant` — the
-dashboard's `account list` says whether one does — nobody can sign in and have
-the dashboard ask for a new one, and once its keys are disabled nothing can act
-as that merchant again. So look before disabling. The first line below lists that merchant's keys, the seeded
-one under the label "the sandbox key from the compose file", each with the day
-a call was last recorded on it; the second lists every merchant with its
-selling state, `open` or not, and the name it is sold under:
-
-```sh
-ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T gateway pnpm --filter @agentify/gateway merchant keys the_merchant'
-ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T gateway pnpm --filter @agentify/gateway merchant list'
-```
-
-After the release nothing on the channel presents that key by itself, so a
-call recorded on it on the day of the release or later was made by something
-still running as `the_merchant` — a worker started by hand, say. And a
-merchant whose selling is `open` under a name may have cards on sale. In
-either case disabling the key would end that for good. Take the merchant off
-sale instead, which leaves the key as it is, puts every card of theirs off
-sale, and is undone by listing them under a name again:
-
-```sh
-ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T gateway pnpm --filter @agentify/gateway merchant listed-as the_merchant --none'
-```
-
-Only when `the_merchant` sells nothing and no call has been recorded on its key
-since the release, disable the key, by the identifier the list printed:
-
-```sh
-ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T gateway pnpm --filter @agentify/gateway merchant disable <key id>'
-```
-
-On PRODUCTION the same commands run over `ssh -t agentify` with `production`
-in the path. On PRODUCTION a snapshot of the backup holds `production.env`
-("Backups"), so the key stays readable in the snapshots taken before the line
-went, for as long as they are kept.
-
-## The release that renames the dashboard's tables
-
-The dashboard's tables, keys and indexes were named for the cabinet, its old
-name, and from this release they are named for the dashboard: its migration
-0013 renames them, and the scanner's migration 0023 renames the one column of
-its own that was named the same way. Nothing moves. Nothing has to be done on
-either host before it or after it. The history the dashboard's migrations keep
-stays `drizzle.cabinet_migrations`, so that every revision finds it.
-
-One thing changes that a person may notice. The log of links sent, for signing
-in and for reports alike, is emptied, because its rows were keyed by a hash made
-with the old name; so the limits on links, three an hour to one address and one
-a minute, start again from nothing once, at the release.
-
-PRODUCTION refuses to move backwards. On TEST, a release of an older revision
-from 2026-09-24 on is refused before anything stops ("The release that renames
-the dashboard's service and its secret"). One from before that, whose dashboard
-migrations are all on `main`, finds every one of them in the history and
-applies none. Its dashboard then fails on the tables it looks for
-under the old names. Its scanner refuses a new request to delete a person's data
-with "Deletion could not be recorded", and a deletion already under way waits,
-retried every half minute without a word, until TEST moves forward. Moving
-`deploy-test` forward again, to `main` or a branch rebased onto it, puts TEST
-back as it was, with no restore.
-
-A branch that carries a dashboard migration of its own, not yet on `main`, is
-different: that migration runs, against tables that now have other names. If it
-changes one of them it fails, the release stops while migrating and TEST stays
-down; a release forward is then held back too, and the way out is to restore the
-restore point that release took ("Restoring"). So rebase a branch onto `main`
-before putting it on TEST once this is there.
-
 ## Releasing to production
 
 A production release starts from `main`. Every change a merchant can see in
@@ -800,9 +570,7 @@ PRODUCTION adds `AGENTIFY_DB_PASSWORD`,
 keep the defaults `compose.yaml` gives them unless the file names them, and on
 TEST the scanner's policy is fixed by `deploy/compose.agentify-test.yaml`
 whatever the file says. Neither channel's file needs `AGENTIFY_SEED_KEY`: a
-deployed channel seeds no merchant, and a line an older file still carries
-is taken out by hand once going back is no longer wanted ("The release that
-stops seeding").
+deployed channel seeds no merchant.
 
 A value holding a `$`, as a secret from a password manager sometimes does,
 goes inside single quotes: `AGENTIFY_AUTH_SECRET='…$…'`. Compose reads a `$`
@@ -810,6 +578,26 @@ anywhere else as the start of a variable, cuts the value there and prints the
 rest in a warning, so `stack.sh` refuses such a file and names the key. The first release renders
 the file and refuses, before it stops anything, if a variable is missing, the
 preflight disagrees or the scanner refuses the configuration at its own start.
+
+## Who opens /admin
+
+The operator's dashboard at `/admin` opens for a session whose account carries
+the operator flag, and answers everybody else with the site's 404 page
+(ADR-0026 §6). Nobody is flagged on a new channel, so it opens for nobody until
+somebody is. The person who is to read it signs in once at
+`/dashboard/sign-in`, which makes their account; on TEST the dashboard writes
+its mail to its log rather than sending it, so the link is read with
+`deploy/stack.sh test logs dashboard` from the newest checkout. They are then
+flagged on the host of that channel:
+
+```sh
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T dashboard pnpm --filter ./apps/dashboard --fail-if-no-match account operator you@example.com'
+ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T dashboard pnpm --filter ./apps/dashboard --fail-if-no-match account operator you@example.com'
+```
+
+The scanner's header then shows them an Admin link, on the next page they
+open, without signing in again. `account list` says who is an operator, and
+`account operator you@example.com --off` takes the flag away.
 
 ## The Woo acceptance route on TEST
 
