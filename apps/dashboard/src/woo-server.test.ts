@@ -138,9 +138,10 @@ interface Standing {
    * a short deadline instead: every one, which is how this suite asks what an
    * import says when nothing answers at all; or only the publishing, which is
    * a gateway that stopped answering in the middle of an import, after it had
-   * answered what the merchant has set.
+   * answered what the merchant has set. Or the publishing fails in our own
+   * code, the way a database that went away fails it.
    */
-  readonly silent?: "everything" | "publishing";
+  readonly silent?: "everything" | "publishing" | "publishing fails";
   /**
    * The channel the dashboard and its gateway are both on: the sandbox, where
    * nothing settles; the test channel, where test money settles on a chain;
@@ -263,12 +264,16 @@ const started = async (standing: Standing = {}): Promise<Running> => {
       : {
           clientFor: (acting: Acting, answerWithinMs?: number) => {
             const quiet = gatewayFor(silenced(harnessed.gateway), acting, SILENT_FOR_MS);
-            return silent === "everything"
-              ? quiet
-              : {
-                  ...gatewayFor(harnessed.gateway, acting, answerWithinMs),
-                  publishCard: quiet.publishCard,
-                };
+            if (silent === "everything") return quiet;
+            return {
+              ...gatewayFor(harnessed.gateway, acting, answerWithinMs),
+              publishCard:
+                silent === "publishing"
+                  ? quiet.publishCard
+                  : async () => {
+                      throw new Error("the database went away");
+                    },
+            };
           },
         }),
     shop: {
@@ -867,6 +872,29 @@ describe("importing the catalogue", () => {
     // Not under the door's rules: neither their heading nor their count.
     expect(text).not.toContain("Refused");
     expect(text).not.toContain("publishing rules");
+  });
+
+  it("keeps what it did when publishing fails in our own code, and says nobody knows whether it went", async () => {
+    // A failure of ours may come after the card was written, so it is no
+    // verdict rather than a refusal, and the import stops there with its
+    // record rather than being replaced by a page that says only that
+    // something broke.
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [aProduct(), aProduct({ id: 10, name: "Access code" })],
+      }),
+      silent: "publishing fails",
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+    const text = readable(imported.html);
+
+    expect(imported.status).toBe(200);
+    expect(text).toContain("1 got no verdict");
+    expect(text).toContain("1 not attempted");
+    expect(text).toContain("whether it was published is not known");
   });
 
   it("stops after the first unknown publish and names the products it did not attempt", async () => {

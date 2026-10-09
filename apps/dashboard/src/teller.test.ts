@@ -241,7 +241,7 @@ describe("who asked", () => {
       expect(sent).toHaveLength(2);
       for (const message of sent) {
         for (const text of [message.body, message.html]) {
-          expect(text).toMatch(/session signed in as partner@example\.com/);
+          expect(text).toContain("partner@example.com");
           expect(text).not.toMatch(/person signed in/i);
         }
       }

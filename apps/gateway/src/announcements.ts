@@ -56,7 +56,7 @@ export function announcedLabel(label: string): string {
 
 /**
  * Who asked for a change the wallet screen makes: a session in the dashboard,
- * or a call with the key registering made for a dashboard.
+ * or a call with a key made for a dashboard.
  *
  * The dashboard calls the gateway inside the process the two share, as the
  * merchant on the signed-in account's row (ADR-0030), so what the gateway

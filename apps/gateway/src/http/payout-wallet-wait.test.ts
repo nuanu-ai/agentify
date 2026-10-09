@@ -150,7 +150,7 @@ describe("the first address a merchant sets", () => {
       payout_wallet: A_WALLET,
       pending: null,
     });
-    // Asked with the key registering made for a dashboard, it names that key
+    // Asked with a key made for a dashboard, it names that kind of key
     // and nothing more: who holds a key is not something the gateway knows.
     expect(harnessed.announcer.announced).toStrictEqual([
       {

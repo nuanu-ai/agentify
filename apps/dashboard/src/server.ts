@@ -37,10 +37,12 @@ import { readFileSync } from "node:fs";
 import { readinessOf, UNKNOWN } from "@agentify/core";
 import type { Gateway } from "@agentify/gateway";
 import {
+  type CardInput,
   EvmAddressSchema,
   IssueKeyRequestSchema,
   type MerchantFinding,
   type PayoutWallet as PayoutWalletDocument,
+  type PublishResult,
 } from "@nuanu-ai/agentify-contracts";
 import express, { type Express, type Request, type Response } from "express";
 import type { DashboardConfig } from "./config.js";
@@ -911,8 +913,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       response.redirect(303, `${base}/sign-in`);
       return;
     }
-    // A gateway that did not answer leaves the person signed in to press
-    // again, rather than spending another link.
+    // A press that did not come to a merchant leaves the person signed in to
+    // press again, rather than spending another link.
     response
       .status(503)
       .type("html")
@@ -1694,7 +1696,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       const gateway = gatewayAs(request);
       const outcomes: ImportOutcome[] = [];
       for (const [index, one] of cards.entries()) {
-        const published = await gateway.publishCard(one.card);
+        const published = await publishedOrNot(gateway, one.card);
         if (!published.ok) {
           // The gateway did not answer, or answered something that is not this
           // route's document. Not a refused card, and said as what it is.
@@ -2267,6 +2269,32 @@ const walletIn = (request: Request): string => {
 const noted = (person: Person, did: string): void => {
   console.log(printable(`[dashboard] ${person.email} ${did}`));
 };
+
+/**
+ * One card sent to be published, with a failure of ours read as no verdict.
+ *
+ * A throw from the gateway's application — a database that went away, say —
+ * may come after the card was written, so it is not a refusal and not a
+ * publication: the import records it as a product with no verdict, says
+ * whether it was published is not known, and stops there, leaving the rest
+ * not attempted, as it does when nothing answers in time. Thrown out of the
+ * loop instead, it would take away the record of every card already published.
+ */
+async function publishedOrNot(
+  gateway: GatewayClient,
+  card: CardInput,
+): Promise<Answer<PublishResult>> {
+  try {
+    return await gateway.publishCard(card);
+  } catch (thrown) {
+    console.error("[dashboard] publishing a card failed", thrown);
+    return {
+      ok: false,
+      status: 500,
+      why: "something failed inside Agentify while this product was being published, so whether it was published is not known; import again later, which does not double cards",
+    };
+  }
+}
 
 /** What a merchant is shown when a call did not come to a document. */
 function troubleAt(

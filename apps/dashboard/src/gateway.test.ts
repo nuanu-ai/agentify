@@ -120,6 +120,14 @@ describe("what goes in", () => {
     expect(refused).toMatchObject({ ok: false, status: 400, code: "malformed_body" });
     expect((await harnessed.store.keysOf(harnessed.merchant.id)).length).toBe(before);
   });
+
+  it("refuses a wait the contract does not take, as the door would, and draws nothing", async () => {
+    const harnessed = await started();
+
+    const drawn = await asTheOwner(harnessed).pollWorker(1.5);
+
+    expect(drawn).toMatchObject({ ok: false, status: 400, code: "malformed_body" });
+  });
 });
 
 describe("a refusal", () => {

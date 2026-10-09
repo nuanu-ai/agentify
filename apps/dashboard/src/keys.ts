@@ -122,13 +122,13 @@ const keyControl = (base: string, entry: MerchantKey): string => {
  * question a merchant has in front of no rows — "where is the key I am signed
  * in with, and should I be worried" — is answered by what the list is rather
  * than by what is missing from it. The answer to the second half of that
- * question is the link: the dashboard holds no key at all, and the portal's
- * first step says so where somebody setting up is reading anyway.
+ * question is the link: the dashboard calls with none of these keys, and the
+ * portal's first step says so where somebody setting up is reading anyway.
  */
 const WHAT_A_KEY_IS = "Your code uses these keys to connect to Agentify.";
 
 const WHICH_KEY_THE_DASHBOARD_USES =
-  ' <a href="/docs/quickstart#_1-make-the-merchant-account-ready">Which key the dashboard itself uses' +
+  ' <a href="/docs/quickstart#_1-make-the-merchant-account-ready">Why the dashboard is not on this list' +
   "</a>.";
 
 /**

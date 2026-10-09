@@ -707,9 +707,7 @@ export class Gateway {
   async sellerName(merchantId: string): Promise<SellerName> {
     const merchant = await this.runtime.store.merchantById(merchantId);
     if (merchant === null) {
-      throw new Error(
-        `the key on this call resolved to ${merchantId}, and there is no such merchant`,
-      );
+      throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
     return { seller_name: merchant.serviceName, seller_site: merchant.sellerSite };
   }
@@ -767,9 +765,7 @@ export class Gateway {
       merchant = await setSellerSite(this.runtime.store, merchantId, asked.seller_site, at);
     }
     if (merchant === null) {
-      throw new Error(
-        `the key on this call resolved to ${merchantId}, and there is no such merchant`,
-      );
+      throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
     return { seller_name: merchant.serviceName, seller_site: merchant.sellerSite };
   }
@@ -785,9 +781,7 @@ export class Gateway {
   async payoutWallet(merchantId: string): Promise<PayoutWallet> {
     const merchant = await this.runtime.store.merchantById(merchantId);
     if (merchant === null) {
-      throw new Error(
-        `the key on this call resolved to ${merchantId}, and there is no such merchant`,
-      );
+      throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
     return payoutWalletAnswer(payoutWalletAt(merchant.payoutWallet, this.runtime.clock()));
   }
@@ -864,9 +858,7 @@ export class Gateway {
     const address = payoutWalletFrom(wallet);
     const merchant = await this.runtime.store.merchantById(merchantId);
     if (merchant === null) {
-      throw new Error(
-        `the key on this call resolved to ${merchantId}, and there is no such merchant`,
-      );
+      throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
     const read = merchant.payoutWallet;
     const now = payoutWalletAt(read, this.runtime.clock());
@@ -957,9 +949,7 @@ export class Gateway {
       this.runtime.clock(),
     );
     if (written === null) {
-      throw new Error(
-        `the key on this call resolved to ${merchantId}, and there is no such merchant`,
-      );
+      throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
     if (written !== "moved") {
       return payoutWalletAnswer(payoutWalletAt(written.payoutWallet, this.runtime.clock()));

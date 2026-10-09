@@ -8,7 +8,9 @@
  * refusal comes back as the sentence and the status the route at the door
  * answers the same refusal with, worded once in the gateway's
  * `merchant-answers.ts`, so a merchant reads on a page what their engineer
- * reads from the API.
+ * reads from the API. A body the request schema refuses is the one exception
+ * in wording: same code and status, and the schema's own problems as the
+ * sentence, where the door's sentence points at a list a page does not show.
  *
  * What goes in is held to the request schema the contract's route table names
  * for the same call, and what comes back to the response schema, before
@@ -425,9 +427,14 @@ export const gatewayFor = (
         answered(API_ROUTES.publish_card, await application.publishCard(merchantId, card)),
       ),
     pollWorker: (waitSeconds) =>
-      call("drawing the stream", async () =>
-        answered(API_ROUTES.poll_worker, await application.poll(merchantId, waitSeconds * 1_000)),
-      ),
+      call("drawing the stream", async () => {
+        const asked = sent(API_ROUTES.poll_worker, { wait_seconds: waitSeconds });
+        if (!asked.ok) return asked.refused;
+        return answered(
+          API_ROUTES.poll_worker,
+          await application.poll(merchantId, (asked.value.wait_seconds ?? waitSeconds) * 1_000),
+        );
+      }),
     answerOrder: (orderId, answer) =>
       call("answering an order", async () => {
         const asked = sent(API_ROUTES.answer_order, answer);
@@ -464,7 +471,7 @@ export const gatewayFor = (
 };
 
 /**
- * Registration, inside the process: a merchant and the key registering makes
+ * Registration, inside the process: a merchant and a key made for a dashboard
  * beside it, for a signed-in person who pressed for one (ADR-0026 §4). No
  * invitation is asked for here, because nothing crosses a door.
  */

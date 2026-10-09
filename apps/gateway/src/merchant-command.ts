@@ -266,8 +266,9 @@ function standingOf(key: StoredKey): string {
  * can type, and the keys that were written before a key said what it was for
  * carry whatever sentence made them at the time — so the label is a hint and
  * this is the answer. What the operator does with it is tell the keys a
- * merchant put in their own code from the one their dashboard is signed in with,
- * which is the difference between revoking a worker and locking somebody out.
+ * merchant put in their own code, which revoking stops a worker, from a key made
+ * for a dashboard, which nothing calls with since the dashboard calls the
+ * gateway inside the process (ADR-0030).
  */
 function madeFor(key: StoredKey): string {
   return key.purpose === "dashboard" ? "dashboard" : "own code ";
@@ -277,16 +278,15 @@ function madeFor(key: StoredKey): string {
  * When anything last called with this key, in a phrase wide enough for both
  * answers.
  *
- * The operator asks this about the keys a merchant never sees. A merchant's own
- * screen leaves the key their dashboard signs in with off the list, so "has that
- * dashboard stopped signing in" — the thing worth knowing before a row is cleared
- * away — can be read nowhere but here.
+ * The operator asks this about the keys a merchant never sees as well as the
+ * ones they do. A key made for a dashboard has not been called with since the
+ * dashboard began calling the gateway inside the process (ADR-0030), so its last
+ * call is the last day it was used that way, and not a sign of a dashboard that
+ * stopped signing in.
  *
  * The blank says there is no record and not that there were no calls, because
  * those are not the same thing and only one of them was checked: a key older
- * than the column carries this blank too, and nothing distinguishes it. Somebody
- * clearing away a dashboard key on the strength of "never called" would be
- * locking a person out on the strength of a word we did not earn.
+ * than the column carries this blank too, and nothing distinguishes it.
  *
  * A day rather than an instant, like the two columns before it. The mark is
  * written every few minutes at best, so the seconds it carries would be a
