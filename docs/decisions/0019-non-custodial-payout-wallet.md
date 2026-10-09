@@ -111,9 +111,10 @@ look up sessions and remove people. When every message has been handed over,
 the gateway records the pending change, answers with it and counts the
 forty-eight hours from then. Otherwise it writes nothing and refuses the
 change in words that say which of two cases it met: there is nobody to tell;
-or a message could not be handed over, which includes the telling failing
-part of the way, so a message may have gone out to some account although
-nothing was recorded, and the refusal does not read as "not sent". Changes
+or a message could not be confirmed as sent, because the provider refused
+one or the telling failed or did not finish within twenty seconds, so a
+message may have gone out to some account although nothing was recorded, and
+the refusal does not read as "not sent". Changes
 for one merchant are serialized without a lock held across the announcement,
 which is a call to a mail provider: a change is recorded only where the
 wallet still stands as it was read before its message went out, and one that

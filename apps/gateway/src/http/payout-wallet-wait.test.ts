@@ -726,8 +726,8 @@ describe("a new key on the live deployment", () => {
   it("names a key made elsewhere by one line of at most a hundred characters", async () => {
     // A key written before labels had a limit can carry anything. When it
     // issues another key, the announcement names it all the same, as one line
-    // the dashboard's listener takes, rather than failing to announce because of
-    // how a key was named.
+    // a message can carry, rather than failing to announce because of how a key
+    // was named.
     const { served, harnessed } = await started();
     const long = `the stock\nworker ${"k".repeat(200)}`;
     const key = await harnessed.addKey(harnessed.merchant.id, long);
