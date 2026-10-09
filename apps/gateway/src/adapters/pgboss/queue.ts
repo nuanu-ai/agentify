@@ -36,6 +36,7 @@ import type { WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { sql } from "drizzle-orm";
 import { type DrizzleTransactionLike, fromDrizzle, type Job, PgBoss } from "pg-boss";
 import type { DrawnEnvelope, Queue, Reminder, ReminderPatience } from "../../ports/queue.js";
+import { failingWithoutValues, withoutValues } from "../database-failure.js";
 import type { Envelopes } from "../postgres/store.js";
 
 /**
@@ -129,7 +130,16 @@ export class PgBossQueue implements Queue {
   #fire: ((reminder: Reminder) => Promise<void>) | null = null;
   #running = false;
 
-  constructor(boss: PgBoss, options: PgBossQueueOptions) {
+  /**
+   * A queue on this pg-boss, and the one way to make one: a failure of the
+   * database leaves it without the values bound to the statement
+   * (`database-failure.ts`, ADR-0032) — for a job, the envelope it carries.
+   */
+  static over(boss: PgBoss, options: PgBossQueueOptions): PgBossQueue {
+    return failingWithoutValues(new PgBossQueue(boss, options), "the queue");
+  }
+
+  private constructor(boss: PgBoss, options: PgBossQueueOptions) {
     this.#boss = boss;
     this.#options = options;
   }
@@ -437,7 +447,10 @@ export class PgBossQueue implements Queue {
 export function queueOn(databaseUrl: string, options: PgBossQueueOptions): PgBossQueue {
   const boss = new PgBoss(databaseUrl);
   boss.on("error", (error: unknown) => {
-    console.error("[gateway] the queue reported a failure", error);
+    console.error(
+      "[gateway] the queue reported a failure",
+      withoutValues(error, "the queue's own upkeep"),
+    );
   });
-  return new PgBossQueue(boss, options);
+  return PgBossQueue.over(boss, options);
 }

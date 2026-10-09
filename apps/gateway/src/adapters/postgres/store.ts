@@ -41,6 +41,7 @@ import type {
   StoredOrder,
   StoredPayoutWallet,
 } from "../../ports/store.js";
+import { failingWithoutValues } from "../database-failure.js";
 import { cards, merchantKeys, merchants, orders, paymentClaims, receipts } from "./schema.js";
 
 /**
@@ -105,7 +106,17 @@ export class PostgresStore implements Store {
   readonly #ids: Ids;
   readonly #envelopes: Envelopes;
 
-  constructor(db: Database, ids: Ids, envelopes: Envelopes = noEnvelopes) {
+  /**
+   * A store on this database, and the one way to make one: a failure of the
+   * database leaves it without the values bound to the statement
+   * (`database-failure.ts`, ADR-0032). A constructor anybody could call would
+   * be a store that forgot to.
+   */
+  static over(db: Database, ids: Ids, envelopes: Envelopes = noEnvelopes): PostgresStore {
+    return failingWithoutValues(new PostgresStore(db, ids, envelopes), "the store");
+  }
+
+  private constructor(db: Database, ids: Ids, envelopes: Envelopes) {
     this.#db = db;
     this.#ids = ids;
     this.#envelopes = envelopes;

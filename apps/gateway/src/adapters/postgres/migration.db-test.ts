@@ -379,7 +379,7 @@ if (databaseUrl === null) {
       const connected = connect(url);
       pool = connected.pool;
       db = connected.db;
-      store = new PostgresStore(db, countedIds());
+      store = PostgresStore.over(db, countedIds());
     }, 60_000);
 
     afterAll(async () => {

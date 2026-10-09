@@ -126,7 +126,7 @@ if (databaseUrl === null) {
       for (const [name, options] of Object.entries(queues)) {
         await boss.createQueue(name, options);
       }
-      const queue = new PgBossQueue(boss, {
+      const queue = PgBossQueue.over(boss, {
         pollIntervalMs: 50,
         reminders: { attempts: 3, retryDelayMs: 1_000 },
       });

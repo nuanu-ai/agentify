@@ -48,7 +48,7 @@ try {
   await queue.startWriter();
   const gateway = new Gateway({
     config,
-    store: new PostgresStore(db, randomIds, queue.envelopes()),
+    store: PostgresStore.over(db, randomIds, queue.envelopes()),
     queue,
     facilitator: refusesToAsk,
     clock: systemClock,

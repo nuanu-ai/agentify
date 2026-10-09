@@ -137,7 +137,7 @@ const runtime: Runtime = {
   // transaction: an envelope that must not be lost is written where the order
   // is, so a process that dies mid-flight either did both or did neither
   // (ADR-0013). Both live in the same Postgres, which is what makes it possible.
-  store: new PostgresStore(db, randomIds, queue.envelopes()),
+  store: PostgresStore.over(db, randomIds, queue.envelopes()),
   queue,
   facilitator: await paymentLayer(),
   clock: systemClock,

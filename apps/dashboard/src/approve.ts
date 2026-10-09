@@ -61,7 +61,7 @@ const main = async (): Promise<number> => {
   try {
     connected = connect(databaseUrl);
     const rawEmail = await emailFromStdin();
-    const store = new PostgresStore(connected.db, randomIds);
+    const store = PostgresStore.over(connected.db, randomIds);
     return await runApproval(
       rawEmail,
       new PostgresApprovalDirectory(connected.pool),
