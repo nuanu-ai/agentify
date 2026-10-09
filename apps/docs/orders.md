@@ -11,10 +11,10 @@ on [What can go wrong](/failures).
 
 ::: warning The public surface is versioned
 Use this page with the package version you installed. Function or field changes
-arrive in a new package version before the gateway speaks them. During the
-pilot the contract version does not move with each of them, so keep the package
-current: a release older than the gateway can read a word it does not know as a
-failure.
+arrive in a new package version, and the test channel can speak them before it
+is released. During the pilot the contract version does not move with each of
+them, so keep the package current: a release older than the gateway can read a
+word it does not know as a failure.
 :::
 
 ## Fulfillment modes
@@ -23,7 +23,7 @@ failure.
 | --- | --- | --- | --- | --- |
 | Synchronous | `'sync'` | in the answer to the purchase | after your delivery, as the last step | the purchase did not happen and the buyer spent nothing |
 | Asynchronous | `'async'` | later, by a separate call | at the moment of purchase, before your delivery | the money is with you and the buyer has no goods: the order is marked as needing a refund |
-| A parcel | `'ship'` | with a carrier, once you record the shipment by a separate call | at the moment of purchase, before your shipment | as in the asynchronous mode |
+| A parcel | `'ship'` | with a carrier, once you record the shipment by a separate call or your handler's answer | at the moment of purchase, before your shipment | as in the asynchronous mode |
 | With confirmation | `'confirm'` | later, by a separate call | right after your confirmation | before the confirmation nothing is charged; after it, as in the asynchronous mode |
 
 The mode is declared in the card, and the agent knows it before it pays. The
@@ -89,16 +89,17 @@ A parcel's order is the asynchronous one with an address in it and a shipment
 at its end; what its card asks of you is on [Cards](/cards).
 
 Your price handler is asked the price for the place the parcel goes: its
-`ship_to` holds the country, the state, the city and the postal code, and
-nothing about who receives it. Once the order is paid, it reaches your handler
-with the whole address in `ship_to` — a name, the lines, the city, the state,
-the postal code, the country and a phone number. Store the address before you
+`ship_to` holds the country and the city, the state and the postal code where
+the buyer gave them, and nothing about who receives it. Once the order is
+paid, it reaches your handler with the whole address in `ship_to`: a name, the
+first line, the city, the country and a phone number, and the second line, the
+state and the postal code where the buyer gave them. Store the address before you
 take the order on: the moment you answer `accepted`, or the order ends without
 you, Agentify erases its copy, the order reads only `ship_to: { erased_at }`
 from then on, and it is never handed to your handler again.
 
 When a carrier has the parcel, record the shipment with the same `deliver` call
-that delivers goods elsewhere. Its body is the shipment: `carrier`, the carrier's
+that delivers goods elsewhere, or answer your handler with it as `delivered`. Its body is the shipment: `carrier`, the carrier's
 name or your own courier; `tracking_number`, or `null` where the parcel has
 none; and, where you have them, `tracking_url`, an https page on the carrier's
 domain, and `estimated_delivery` with its `earliest` and `latest` instants.
@@ -111,8 +112,9 @@ pointed at your shop's site.
 
 A parcel not shipped by its deadline leaves you owing a refund, as goods not
 delivered in time do, and a shipment recorded late still closes that debt. A
-parcel you admit lost is refunded through the operator, which is not running
-on the live channel yet — the reason a parcel sells on the test channel only.
+parcel you admit lost cannot be refunded through Agentify yet: the operator's
+command that records such a refund is not built. That is why a parcel sells on
+the test channel only, where the money is not real.
 
 ### With confirmation
 

@@ -22,10 +22,11 @@ in one table at the end.
 
 ::: warning The public surface is versioned
 The package is `@nuanu-ai/agentify`. Use this reference for the version you
-installed. Function or field changes arrive in a new package version before
-the gateway speaks them. During the pilot the contract version does not move
-with each of them, so keep the package current: a release older than the
-gateway can read a word it does not know as a failure.
+installed. Function or field changes arrive in a new package version, and
+the test channel can speak them before it is released. During the pilot the
+contract version does not move with each of them, so keep the package current:
+a release older than the gateway can read a word it does not know as a
+failure.
 :::
 
 ## The smallest card that sells
@@ -295,8 +296,9 @@ at the border, so say in the card's description where that can happen.
 Two things are asked of you rather than of the card. A parcel's card is
 published only once you have given the site of your shop, because a parcel
 that does not arrive is a question its buyer takes there (`no_seller_site`).
-And it is published on the test channel only: on the live one it is refused
-(`not_sold_yet`) until the refund of a lost parcel can be recorded there.
+And it is published on the test channel only, where the money is not real: on
+the live one it is refused (`not_sold_yet`) until the refund of a lost parcel
+can be recorded, which is not built yet.
 
 ## A price worked out at the moment of purchase
 

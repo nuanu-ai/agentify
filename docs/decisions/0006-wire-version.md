@@ -52,9 +52,10 @@ the merchant's routes and is not derived from it.
    gateway sends it, and the existing handshake then refuses the whole newer
    vocabulary at worker startup, where no order is in flight. Until then an SDK
    older than the gateway can read a newer word as a failure, and the portal
-   tells a merchant to keep the package current. Reading an unknown word as an open `string` was rejected: it would
-   make one part of an otherwise closed generated contract silently open and
-   move the compatibility rule from the version boundary into every consumer.
+   tells a merchant to keep the package current. Reading an unknown word as an
+   open `string` was rejected: it would make one part of an otherwise closed
+   generated contract silently open and move the compatibility rule from the
+   version boundary into every consumer.
 
 4. **`/v0/` names the merchant's API and nothing else.** It is versioned for
    the reason a classic API is: an engineer writes a shop's code against those

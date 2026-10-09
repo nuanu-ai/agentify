@@ -9,9 +9,9 @@ that is null where the parcel has none and never empty, and optionally a
 `tracking_url`, an https address on a domain name and nothing else, and an
 `estimated_delivery` window; its words are plain text on one line. What a
 delivery is checked against comes from the order, so a card republished since
-the sale changes nothing for it. Agentify records when it arrived. The same shipment sent again
-succeeds, and a different one is refused with the new call error
-`shipment_already_recorded`. The order then reads `shipped`, a new word in
+the sale changes nothing for it. Agentify records the instant the call arrived
+as when the parcel shipped. The same shipment sent again succeeds, and a
+different one is refused with the new call error `shipment_already_recorded`. The order then reads `shipped`, a new word in
 `ORDER_STATUSES` and in a receipt's outcome. The agent's status document
 carries the shipment as `RecordedShipmentSchema` under `shipment`, and
 `ship_by`, the instant the parcel has to be with a carrier by. Both are present
