@@ -4200,6 +4200,14 @@ describe("the screen a signed-out person was going to", () => {
     expect(arrived.to).toBe("/sign-in?reason=session-ended&destination=orders");
   });
 
+  it("is kept for a form sent there with no session, so what was not saved can be done again", async () => {
+    const running = await started();
+
+    const sent = await running.browser.post("/keys", { label: "the stock worker" });
+
+    expect(sent.to).toBe("/sign-in?reason=unsaved&destination=keys");
+  });
+
   it("is where a person already signed in goes from the sign-in that names it", async () => {
     const running = await started();
     await running.browser.signIn();
