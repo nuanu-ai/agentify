@@ -230,6 +230,51 @@ export class PgBossQueue implements Queue {
   }
 
   /**
+   * Deletes, inside somebody else's transaction, every job on one merchant's
+   * stream that carries any of a parcel's address (ADR-0032): the order's
+   * hand-overs and the price question named, in whatever state they are.
+   *
+   * Every state, because pg-boss keeps a job it has finished in the same table
+   * for as long as the queue's retention says — days — and an envelope that was
+   * drawn and answered still holds what it carried. The jobs are found by what
+   * they carry, which is the library's own containment filter on the document
+   * a worker reads, and deleted by identifier, both on the transaction's
+   * connection, so they are gone exactly when the order that says the address
+   * was erased commits and not otherwise.
+   *
+   * A job a worker is holding is deleted too. Finishing it afterwards finds
+   * nothing and does nothing, which is the same answer a second finish gets.
+   */
+  async forgetWithin(
+    tx: DrizzleTransactionLike,
+    merchantId: string,
+    orderId: string,
+    priceQuestion: string | null,
+  ): Promise<void> {
+    const stream = await this.#stream(merchantId);
+    const db = fromDrizzle(tx, sql);
+    const carrying = [
+      ...(await this.#boss.findJobs(stream, {
+        data: { kind: "order", payload: { id: orderId } },
+        db,
+      })),
+      ...(priceQuestion === null
+        ? []
+        : await this.#boss.findJobs(stream, {
+            data: { kind: "quote_request", payload: { price_id: priceQuestion } },
+            db,
+          })),
+    ];
+    if (carrying.length > 0) {
+      await this.#boss.deleteJob(
+        stream,
+        carrying.map((job) => job.id),
+        { db },
+      );
+    }
+  }
+
+  /**
    * The transaction those envelopes were written in has committed, so the polls
    * parked on those streams are told to look again.
    *
@@ -248,6 +293,8 @@ export class PgBossQueue implements Queue {
     return {
       within: (tx, merchantId, envelope, afterMs) =>
         this.publishWithin(tx, merchantId, envelope, afterMs),
+      forgetWithin: (tx, merchantId, orderId, priceQuestion) =>
+        this.forgetWithin(tx, merchantId, orderId, priceQuestion),
       committed: (merchantIds) => {
         this.envelopesCommitted(merchantIds);
       },

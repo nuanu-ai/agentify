@@ -63,6 +63,17 @@ export interface Envelopes {
     envelope: WorkerEnvelope,
     afterMs?: number,
   ): Promise<void>;
+  /**
+   * Deletes the envelopes on a merchant's stream that carry a parcel's address
+   * (ADR-0032) as part of the same transaction, so the order that says the
+   * address was erased and the queue that no longer holds it commit together.
+   */
+  forgetWithin(
+    tx: DrizzleTransactionLike,
+    merchantId: string,
+    orderId: string,
+    priceQuestion: string | null,
+  ): Promise<void>;
   /** The transaction those envelopes were written in has committed. */
   committed(merchantIds: readonly string[]): void;
 }
@@ -78,6 +89,11 @@ export const noEnvelopes: Envelopes = {
   async within(_tx, _merchantId, envelope) {
     throw new Error(
       `this store was built with nowhere to put the envelope ${envelope.id}: a store that writes orders is given a stream`,
+    );
+  },
+  async forgetWithin(_tx, _merchantId, orderId) {
+    throw new Error(
+      `this store was built with no stream to take ${orderId}'s envelopes off: a store that writes orders is given a stream`,
     );
   },
   committed() {},
@@ -888,12 +904,23 @@ export class PostgresStore implements Store {
       // transaction — so the job insert is on this connection, inside this
       // transaction, and rolls back with the order if anything below fails.
       for (const write of decided.alongside ?? []) {
-        if (write.kind === "receipt") {
-          await this.#putReceiptWithin(tx, write.merchantId, write.receipt);
-          continue;
+        switch (write.kind) {
+          case "receipt":
+            await this.#putReceiptWithin(tx, write.merchantId, write.receipt);
+            break;
+          case "envelope":
+            await this.#envelopes.within(tx, write.merchantId, write.envelope, write.afterMs);
+            streams.push(write.merchantId);
+            break;
+          case "forget":
+            await this.#envelopes.forgetWithin(
+              tx,
+              write.merchantId,
+              write.orderId,
+              write.priceQuestion,
+            );
+            break;
         }
-        await this.#envelopes.within(tx, write.merchantId, write.envelope, write.afterMs);
-        streams.push(write.merchantId);
       }
 
       if (decided.save !== undefined) {

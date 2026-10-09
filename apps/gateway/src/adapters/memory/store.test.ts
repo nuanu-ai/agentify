@@ -147,15 +147,20 @@ describe("MemoryStore writes that go with an order", () => {
     // after the order is written, and this is what says so.
     let seenState: string | undefined;
     let store!: MemoryStore;
-    store = new MemoryStore(counted(), undefined, async (_merchantId, envelope) => {
-      expect(envelope.id).toBe("env_1");
-      return () => {
-        // Read inside the arrival, which is the whole point: by now the store
-        // must already be saying what the envelope announces.
-        void store.orderById("ord_1").then((found) => {
-          seenState = found?.order.state;
-        });
-      };
+    store = new MemoryStore(counted(), undefined, {
+      async stage(_merchantId, envelope) {
+        expect(envelope.id).toBe("env_1");
+        return () => {
+          // Read inside the arrival, which is the whole point: by now the store
+          // must already be saying what the envelope announces.
+          void store.orderById("ord_1").then((found) => {
+            seenState = found?.order.state;
+          });
+        };
+      },
+      async forget() {
+        return () => {};
+      },
     });
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
     await store.addOrder(order("ord_1", "paid"));
@@ -192,8 +197,13 @@ describe("MemoryStore writes that go with an order", () => {
     // adapter gets from a transaction. Here it comes from the order the writes
     // are taken in — the one that can refuse goes first — so a refusal leaves
     // no receipt, no envelope and an order exactly where it was.
-    const store = new MemoryStore(counted(), undefined, async () => {
-      throw new Error("the stream would not take it");
+    const store = new MemoryStore(counted(), undefined, {
+      async stage() {
+        throw new Error("the stream would not take it");
+      },
+      async forget() {
+        return () => {};
+      },
     });
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
     await store.addOrder(order("ord_1", "paid"));

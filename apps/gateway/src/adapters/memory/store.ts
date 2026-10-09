@@ -64,11 +64,16 @@ import type {
  * store's own hold, a merchant event is not: the poll hands one over without
  * touching the order at all.
  */
-export type Envelopes = (
-  merchantId: string,
-  envelope: WorkerEnvelope,
-  afterMs?: number,
-) => Promise<() => void>;
+export interface Envelopes {
+  stage(merchantId: string, envelope: WorkerEnvelope, afterMs?: number): Promise<() => void>;
+  /**
+   * Lets go of the envelopes that carry a parcel's address (ADR-0032), in the
+   * same two halves: anything that would refuse refuses here, and the call it
+   * hands back takes them off the stream once the order that says the address
+   * was erased is written.
+   */
+  forget(merchantId: string, orderId: string, priceQuestion: string | null): Promise<() => void>;
+}
 
 /**
  * The answer for a store that was built without one.
@@ -77,10 +82,17 @@ export type Envelopes = (
  * a test about the catalog, and none of those ever writes an order. Refusing
  * out loud is the alternative to a store that quietly drops a merchant's work.
  */
-const noEnvelopes: Envelopes = async (_merchantId, envelope) => {
-  throw new Error(
-    `this store was built with nowhere to put the envelope ${envelope.id}: a store that writes orders is given a stream`,
-  );
+const noEnvelopes: Envelopes = {
+  async stage(_merchantId, envelope) {
+    throw new Error(
+      `this store was built with nowhere to put the envelope ${envelope.id}: a store that writes orders is given a stream`,
+    );
+  },
+  async forget(_merchantId, orderId) {
+    throw new Error(
+      `this store was built with no stream to take ${orderId}'s envelopes off: a store that writes orders is given a stream`,
+    );
+  },
 };
 
 /** What a merchant's row holds here, with the selling word that may move. */
@@ -625,11 +637,15 @@ export class MemoryStore implements Store {
    * it is.
    */
   async #takeWithTheOrder(write: WithTheOrder): Promise<() => void> {
-    if (write.kind === "receipt") {
-      await this.putReceipt(write.merchantId, write.receipt);
-      return () => {};
+    switch (write.kind) {
+      case "receipt":
+        await this.putReceipt(write.merchantId, write.receipt);
+        return () => {};
+      case "envelope":
+        return this.#envelopes.stage(write.merchantId, write.envelope, write.afterMs);
+      case "forget":
+        return this.#envelopes.forget(write.merchantId, write.orderId, write.priceQuestion);
     }
-    return this.#envelopes(write.merchantId, write.envelope, write.afterMs);
   }
 
   // --- payments -------------------------------------------------------------
@@ -710,7 +726,7 @@ export class MemoryStore implements Store {
  * refuse, before the ones that cannot.
  */
 function rankOf(write: WithTheOrder): number {
-  return write.kind === "envelope" ? 0 : 1;
+  return write.kind === "receipt" ? 1 : 0;
 }
 
 /** A merchant's own identifier for a product, inside the merchant it belongs to. */

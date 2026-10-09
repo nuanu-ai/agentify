@@ -1253,6 +1253,13 @@ export class Gateway {
       return { step: "not_selling", message: created.rejection.message };
     }
 
+    // The price question is named before the order is written, because a
+    // parcel's order keeps the name: the question carries the place the parcel
+    // goes, and it leaves the queue with the rest of the address (ADR-0032).
+    const asksThePrice = created.effects.some((effect) => effect.kind === "request_quote");
+    const priceQuestion =
+      asksThePrice && quoteReachesTheMerchant(stored.card) ? this.runtime.ids("prc") : null;
+
     const record: StoredOrder = {
       order: created.order,
       // The sale belongs to whoever published the card it was made against, and
@@ -1263,6 +1270,7 @@ export class Gateway {
       merchantItemId: stored.card.merchant_item_id,
       params: { ...params },
       ...(shipTo === undefined ? {} : { shipTo }),
+      ...(shipTo === undefined || priceQuestion === null ? {} : { priceQuestion }),
       priceId: null,
       delivery: null,
       payment: null,
@@ -1279,8 +1287,8 @@ export class Gateway {
     };
     await this.runner.create(record, created.effects, at);
 
-    if (created.effects.some((effect) => effect.kind === "request_quote")) {
-      await this.#askThePrice(record, stored);
+    if (asksThePrice) {
+      await this.#askThePrice(record, stored, priceQuestion);
     }
 
     return this.#wherePurchaseStands(record.order.id);
@@ -2011,13 +2019,18 @@ export class Gateway {
    * Puts the price question to the merchant and waits out our own patience for
    * it. Whatever comes back — an answer, a refusal to sell, or nothing at all —
    * reaches the machine as an event, and what it costs the order is decided
-   * there.
+   * there. The question has its name already, or none where the card asks for
+   * its price at an address of the merchant's own, which is not called.
    */
-  async #askThePrice(record: StoredOrder, stored: StoredCard): Promise<void> {
+  async #askThePrice(
+    record: StoredOrder,
+    stored: StoredCard,
+    priceId: string | null,
+  ): Promise<void> {
     const { queue, ids, clock, config } = this.runtime;
     const orderId = record.order.id;
 
-    if (!quoteReachesTheMerchant(stored.card)) {
+    if (priceId === null) {
       // The card asks for its price at an address of the merchant's own. That
       // transport is not served in this stage, and the honest thing to report
       // is the same fact an unanswered question produces: nobody told us what
@@ -2034,7 +2047,6 @@ export class Gateway {
       return;
     }
 
-    const priceId = ids("prc");
     const askedAt = clock();
 
     // Registered and parked before the question goes out, not after. A worker

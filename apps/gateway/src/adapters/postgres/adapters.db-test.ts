@@ -930,7 +930,9 @@ if (databaseUrl === null) {
 
         expect(await jobsCarrying(A, { kind: "order", payload: { id: order.id } })).toBe(0);
         expect(await jobsCarrying(A, { payload: { price_id: priceId } })).toBe(0);
-        expect(await jobsCarrying(A, { kind: "order_event", payload: { order_id: order.id } })).toBe(1);
+        expect(
+          await jobsCarrying(A, { kind: "order_event", payload: { order_id: order.id } }),
+        ).toBe(1);
         expect(await jobsCarrying(A, { kind: "order", payload: { id: otherOrderId } })).toBe(1);
       });
 

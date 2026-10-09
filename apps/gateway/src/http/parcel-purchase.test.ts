@@ -333,10 +333,13 @@ describe("once the merchant has the address", () => {
       body: { params: {}, ship_to: address },
     });
 
-    const order = await theOrder(served);
-    expect(order.ship_to).toStrictEqual({ erased_at: expect.any(String) });
+    // An order that closed before it had a price is not in the merchant's
+    // list, so what the gateway kept is read where it keeps it.
+    const [record] = await harnessed.store.orders(harnessed.merchant.id);
+    expect(record?.order.state).toBe("rejected");
+    expect(record?.shipTo).toStrictEqual({ erasedAt: expect.any(Number) });
     expect(await drawEverything(harnessed)).toStrictEqual([]);
-    const kept = await keptOf(harnessed, order.id);
+    const kept = await keptOf(harnessed, record?.order.id ?? "");
     for (const part of whoAndWhere) {
       expect(kept, part).not.toContain(part);
     }
