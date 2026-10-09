@@ -55,6 +55,9 @@ describe("a shipment, as the merchant records it", () => {
       "https://www.jne.co.id/tracking",
       "https://www.jne.co.id/tracking?awb=0000000000000000",
       "https://www.jne.co.id",
+      "https://www.jne.co.id?awb=0000000000000000",
+      "https://www.17track.net/en#nums=0000000000000000",
+      "https://xn--80ak6aa92e.com/track",
     ]) {
       expect(ShipmentSchema.safeParse({ ...shipment, tracking_url }).success, tracking_url).toBe(
         true,
@@ -82,6 +85,7 @@ describe("a shipment, as the merchant records it", () => {
       "https://10.0.0.1/track",
       "https://www.jne.co.id:8443/track",
       "https://WWW.JNE.CO.ID/track",
+      "https://пример.com/track",
       `https://www.jne.co.id/${"x".repeat(500)}`,
     ]) {
       expect(ShipmentSchema.safeParse({ ...shipment, tracking_url }).success, tracking_url).toBe(
