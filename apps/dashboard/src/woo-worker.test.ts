@@ -27,6 +27,7 @@ import {
   inspectProductInTheShop,
   type OrderMade,
   type ProductInspection,
+  type RatesRead,
   type ShopKeys,
   type SoldItem,
 } from "./woo-shop.js";
@@ -914,6 +915,173 @@ describe("a price question off the merchant's stream", () => {
     expect(await shops.quotedProduct("acc_1", "prc_1", question.merchant_item_id)).toBe(
       "an-earlier-download",
     );
+  });
+});
+
+describe("a parcel's price question", () => {
+  // The price of a parcel is the goods and the shop's own rate to the buyer's
+  // place together (ADR-0033): the product read the way every price question
+  // reads it, and the rate asked of the shop's cart for the place the
+  // question carries, which is the locality and nothing about who.
+  const place = { country: "ID", state: "JK", city: "Jakarta", postal_code: "10110" };
+  const question = {
+    merchant_item_id: merchantItemIdFor("https://shop.example.com", "28"),
+    price_id: "prc_parcel",
+    purpose: "purchase" as const,
+    expires_at: "2026-09-14T12:01:00.000Z",
+    ship_to: place,
+  };
+  const NOW = "2026-09-14T12:00:00.000Z";
+  const theTote: ProductInspection = {
+    ok: true,
+    product: {
+      kind: "parcel",
+      productId: "28",
+      price: { amount: "20.00", currency: "USD" },
+      fingerprint: "accepted-parcel-fingerprint",
+    },
+  };
+  const rate = (title: string, cost: string, instanceId = "3") => ({
+    methodId: "flat_rate",
+    instanceId,
+    title,
+    cost,
+  });
+
+  const answering = async (
+    shops: WooShops,
+    rates: (place: unknown) => Promise<RatesRead>,
+    asked: Record<string, unknown> = question,
+    quoteWithinMs?: number,
+  ): Promise<unknown> => {
+    let answer: unknown;
+    const gateway = {
+      pollWorker: async () => ({
+        ok: true as const,
+        document: {
+          envelopes: [
+            { id: "env_quote", kind: "quote_request" as const, sent_at: NOW, payload: asked },
+          ],
+        },
+      }),
+      answerQuote: async (_priceId: string, said: unknown) => {
+        answer = said;
+        return { ok: true as const, document: { used: true } };
+      },
+      answerOrder: async () => {
+        throw new Error("no order was drawn, so none is answered");
+      },
+    } as never;
+    await turnOnce(connection(), {
+      shops,
+      identity: {
+        byId: async () => ({
+          id: "p",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1" },
+        }),
+      },
+      clientFor: () => gateway,
+      now: () => new Date(NOW),
+      inspectProduct: async () => theTote,
+      shippingRates: async (_connection, productId, where) =>
+        productId === "28" ? rates(where) : { ok: false, why: "another product", again: false },
+      ...(quoteWithinMs === undefined ? {} : { quoteWithinMs }),
+    });
+    return answer;
+  };
+
+  it("answers the goods and the cheapest rate together, and binds the price to the product", async () => {
+    const shops = memoryWooShops();
+    let asked: unknown;
+
+    const answer = await answering(shops, async (where) => {
+      asked = where;
+      return {
+        ok: true,
+        rates: [
+          rate("Express", "12.00", "4"),
+          rate("Standard", "5.00"),
+          rate("Courier", "5.00", "9"),
+        ],
+      };
+    });
+
+    expect(answer).toStrictEqual({
+      available: true,
+      price: { amount: "25.00", currency: "USD" },
+      as_of: NOW,
+    });
+    expect(asked).toStrictEqual(place);
+    expect(await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id)).toBe(
+      "accepted-parcel-fingerprint",
+    );
+  });
+
+  it("adds the rate to the goods in cents, not in floating point", async () => {
+    const shops = memoryWooShops();
+
+    const answer = await answering(shops, async () => ({
+      ok: true,
+      rates: [rate("Standard", "0.10")],
+    }));
+
+    expect(answer).toMatchObject({ available: true, price: { amount: "20.10" } });
+  });
+
+  it("names no price where the shop has no rate for the place, or the shop refused it", async () => {
+    // Not available is all an agent can be told today; the reason goes to the
+    // merchant's log. The shop that does not ship there and the shop that
+    // refused the place read the same to the agent.
+    for (const read of [
+      { ok: true as const, rates: [] },
+      { ok: false as const, why: "The shop refused the place.", again: false },
+      { ok: false as const, why: "The shop did not answer.", again: true },
+    ]) {
+      const shops = memoryWooShops();
+
+      expect(await answering(shops, async () => read), JSON.stringify(read)).toStrictEqual({
+        available: false,
+        as_of: NOW,
+      });
+      expect(
+        await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id),
+      ).toBeNull();
+    }
+  });
+
+  it("names no price for a parcel's question that carries no place", async () => {
+    const { ship_to: _left, ...noPlace } = question;
+    let asked = false;
+
+    const answer = await answering(
+      memoryWooShops(),
+      async () => {
+        asked = true;
+        return { ok: true, rates: [rate("Standard", "5.00")] };
+      },
+      noPlace,
+    );
+
+    expect(answer).toStrictEqual({ available: false, as_of: NOW });
+    expect(asked).toBe(false);
+  });
+
+  it("names no price when the shop is slower than the price check allows", async () => {
+    // The gateway waits five seconds for a price. A shop that answers after
+    // that answers nobody, and the worker has other questions waiting.
+    const started = Date.now();
+
+    const answer = await answering(
+      memoryWooShops(),
+      () => new Promise<RatesRead>(() => undefined),
+      question,
+      50,
+    );
+
+    expect(answer).toStrictEqual({ available: false, as_of: NOW });
+    expect(Date.now() - started).toBeLessThan(2_000);
   });
 });
 

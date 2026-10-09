@@ -23,18 +23,25 @@ const inspectProduct = (keys: Parameters<typeof inspectProductInTheShop>[0], ite
   inspectProductInTheShop(keys, itemId, fetch);
 const readOrder = (keys: Parameters<typeof readTheOrderInTheShop>[0], orderId: string) =>
   readTheOrderInTheShop(keys, orderId, fetch);
+const ratesFor = (url: string, productId: string, place: ShipToLocality) =>
+  shippingRatesInTheShop(url, productId, place, fetch);
 
+import type { ShipToLocality } from "@nuanu-ai/agentify-contracts";
 import {
   catalogueOf,
   createTheOrderInTheShop,
   inspectProductInTheShop,
   readTheOrderInTheShop,
+  shippingRatesInTheShop,
 } from "./woo-shop.js";
 
 interface Asked {
   readonly method: string;
   readonly url: string;
   readonly authorization: string | undefined;
+  /** The Store API's cart headers, which a client with no browser sends or not. */
+  readonly cartToken: string | undefined;
+  readonly nonce: string | undefined;
   readonly body: string;
 }
 
@@ -45,7 +52,11 @@ interface Stand {
 }
 
 const shopAnswering = async (
-  answer: (asked: Asked) => { status: number; body: unknown },
+  answer: (asked: Asked) => {
+    status: number;
+    body: unknown;
+    headers?: Readonly<Record<string, string>>;
+  },
 ): Promise<Stand> => {
   const asked: Asked[] = [];
   const server: Server = createServer((request, response) => {
@@ -56,11 +67,13 @@ const shopAnswering = async (
         method: request.method ?? "GET",
         url: request.url ?? "/",
         authorization: request.headers.authorization,
+        cartToken: request.headers["cart-token"] as string | undefined,
+        nonce: request.headers.nonce as string | undefined,
         body: Buffer.concat(chunks).toString("utf8"),
       };
       asked.push(call);
       const said = answer(call);
-      response.writeHead(said.status, { "content-type": "application/json" });
+      response.writeHead(said.status, { "content-type": "application/json", ...said.headers });
       response.end(JSON.stringify(said.body));
     });
   });
@@ -958,5 +971,157 @@ describe("the protected product check", () => {
     });
 
     expect(made).toMatchObject({ ok: true, id: "13", orderKey: "wc_order_13" });
+  });
+});
+
+describe("the shop's own shipping rate for a parcel's place", () => {
+  // The exchange is the one the probe ran against a live WooCommerce
+  // (`docs/research/41-woo-parcel-probe.md`): a fresh cart, its token in
+  // place of a browser's nonce, the product added, the place set, and the
+  // rates read off the answer. The shapes below are what that shop answered.
+  const TOKEN = "cart-token-1";
+  const rate = (overrides: Record<string, unknown> = {}) => ({
+    rate_id: "flat_rate:3",
+    name: "Standard",
+    method_id: "flat_rate",
+    instance_id: 3,
+    price: "500",
+    taxes: "0",
+    currency_code: "USD",
+    currency_minor_unit: 2,
+    selected: true,
+    ...overrides,
+  });
+  const cart = (rates: unknown[], overrides: Record<string, unknown> = {}) => ({
+    items: [{ id: 28, quantity: 1 }],
+    needs_shipping: true,
+    shipping_rates: [{ package_id: 0, name: "Shipment 1", shipping_rates: rates }],
+    ...overrides,
+  });
+  /** A cart that hands out a token and answers the place with these rates. */
+  const shopWithRates = (answered: () => { status: number; body: unknown }) =>
+    shopAnswering((asked) => {
+      if (asked.method === "GET" && asked.url === "/wp-json/wc/store/v1/cart") {
+        return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+      }
+      if (asked.url === "/wp-json/wc/store/v1/cart/add-item") {
+        return { status: 201, body: cart([]) };
+      }
+      return answered();
+    });
+  const JAKARTA: ShipToLocality = { country: "ID", city: "Jakarta" };
+
+  it("asks a fresh cart with its token and no nonce, and sends every field of the place", async () => {
+    // A field left out of the place is not cleared: the cart keeps the shop's
+    // own base location, and a German address without a state was checked as
+    // a German address in California. Every field goes, empty where the
+    // address has none.
+    stand = await shopWithRates(() => ({ status: 200, body: cart([rate()]) }));
+
+    const read = await ratesFor(stand.url, "28", JAKARTA);
+
+    expect(read).toStrictEqual({
+      ok: true,
+      rates: [{ methodId: "flat_rate", instanceId: "3", title: "Standard", cost: "5.00" }],
+    });
+    expect(stand.asked.map((asked) => `${asked.method} ${asked.url}`)).toStrictEqual([
+      "GET /wp-json/wc/store/v1/cart",
+      "POST /wp-json/wc/store/v1/cart/add-item",
+      "POST /wp-json/wc/store/v1/cart/update-customer",
+    ]);
+    expect(JSON.parse(stand.asked[1]?.body ?? "")).toStrictEqual({ id: 28, quantity: 1 });
+    expect(JSON.parse(stand.asked[2]?.body ?? "")).toStrictEqual({
+      shipping_address: { country: "ID", state: "", city: "Jakarta", postcode: "" },
+    });
+    expect(stand.asked.slice(1).every((asked) => asked.cartToken === TOKEN)).toBe(true);
+    // The cart is the public half of WooCommerce: no key, and no nonce.
+    expect(stand.asked.every((asked) => asked.authorization === undefined)).toBe(true);
+    expect(stand.asked.every((asked) => asked.nonce === undefined)).toBe(true);
+  });
+
+  it("keeps every rate in the shop's own order, and leaves pickup out", async () => {
+    // Pickup is not shipping: a parcel nobody collects is a parcel that never
+    // leaves, and it is usually the cheapest rate on offer.
+    stand = await shopWithRates(() => ({
+      status: 200,
+      body: cart([
+        rate({ rate_id: "local_pickup:5", method_id: "local_pickup", instance_id: 5, price: "0" }),
+        rate({
+          rate_id: "pickup_location:0",
+          method_id: "pickup_location",
+          instance_id: 0,
+          price: "0",
+        }),
+        rate({ name: "Express", instance_id: 4, price: "1200" }),
+        rate(),
+      ]),
+    }));
+
+    const read = await ratesFor(stand.url, "28", JAKARTA);
+
+    expect(read).toStrictEqual({
+      ok: true,
+      rates: [
+        { methodId: "flat_rate", instanceId: "4", title: "Express", cost: "12.00" },
+        { methodId: "flat_rate", instanceId: "3", title: "Standard", cost: "5.00" },
+      ],
+    });
+  });
+
+  it("tells a place the shop does not ship to from a shop that refused or did not answer", async () => {
+    stand = await shopWithRates(() => ({ status: 200, body: cart([]) }));
+    expect(await ratesFor(stand.url, "28", JAKARTA)).toStrictEqual({ ok: true, rates: [] });
+    await stand.close();
+
+    // The shop's own refusal names the place it refused, so none of it is
+    // carried into what this says.
+    stand = await shopWithRates(() => ({
+      status: 400,
+      body: {
+        code: "rest_invalid_param",
+        message: "The provided state (BE) is not valid in Jakarta.",
+      },
+    }));
+    const refused = await ratesFor(stand.url, "28", JAKARTA);
+    expect(refused).toMatchObject({ ok: false, again: false });
+    expect(JSON.stringify(refused)).not.toContain("Jakarta");
+    expect(JSON.stringify(refused)).not.toContain("BE");
+    await stand.close();
+
+    stand = await shopWithRates(() => ({ status: 503, body: {} }));
+    expect(await ratesFor(stand.url, "28", JAKARTA)).toMatchObject({ ok: false, again: true });
+    await stand.close();
+
+    // A cart with no token cannot be asked anything without a browser's nonce.
+    stand = await shopAnswering(() => ({ status: 200, body: cart([]) }));
+    expect(await ratesFor(stand.url, "28", JAKARTA)).toMatchObject({ ok: false, again: false });
+  });
+
+  it("refuses rates it could not sell at, rather than choosing among them", async () => {
+    // Another currency, another scale, a tax the shop added, or two packages
+    // for one product: each is a shop whose rate is not the price of shipping
+    // this parcel in dollars, and a choice made among them would be a guess.
+    for (const body of [
+      cart([rate({ currency_code: "EUR" })]),
+      cart([rate({ currency_minor_unit: 0, price: "5" })]),
+      cart([rate({ taxes: "50" })]),
+      cart([rate({ price: "five" })]),
+      cart([rate()], {
+        shipping_rates: [
+          { package_id: 0, shipping_rates: [rate()] },
+          { package_id: 1, shipping_rates: [rate()] },
+        ],
+      }),
+      cart([rate()], { needs_shipping: false }),
+    ]) {
+      stand = await shopWithRates(() => ({ status: 200, body }));
+
+      expect(await ratesFor(stand.url, "28", JAKARTA), JSON.stringify(body)).toMatchObject({
+        ok: false,
+        again: false,
+      });
+      await stand.close();
+      stand = null;
+    }
   });
 });
