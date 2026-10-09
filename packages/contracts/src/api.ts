@@ -75,12 +75,18 @@ import {
 import { OrderSchema } from "./order.js";
 import { OrderStatusSchema } from "./order-status.js";
 import { ParamNameSchema } from "./param-spec.js";
-import { IdentifierSchema, OpenWordSchema, SalePriceSchema } from "./primitives.js";
+import {
+  IdentifierSchema,
+  OpenWordSchema,
+  SalePriceSchema,
+  TimestampSchema,
+} from "./primitives.js";
 import { QuoteResponseSchema } from "./quote.js";
 import { ReceiptSchema } from "./receipt.js";
 import { CallErrorSchema, OrderCallResultSchema, PublishResultSchema } from "./results.js";
 import { SellingStateSchema } from "./selling.js";
 import { ShipToSchema } from "./ship-to.js";
+import { RecordedShipmentSchema } from "./shipment.js";
 
 /**
  * An order together with the word for where it stands.
@@ -477,6 +483,26 @@ export const AgentOrderStatusSchema = z
     delivered: DeliverySchema.nullable(),
 
     /**
+     * A parcel's shipment once its merchant has recorded it, and null until
+     * then (ADR-0033). Present on a parcel's order and on no other.
+     *
+     * It is beside `delivered` rather than in it because nothing reached the
+     * agent: what the merchant handed a carrier is not goods in hand, and
+     * `delivered` stays null on a parcel for that reason. It is the last thing
+     * Agentify knows about the parcel.
+     */
+    shipment: RecordedShipmentSchema.loose().nullable().optional(),
+
+    /**
+     * When a parcel has to be with its carrier by, as an absolute instant: the
+     * card's time to ship counted from the charge, and null until the order is
+     * paid (ADR-0033). Present on a parcel's order and on no other. A parcel
+     * not shipped by then leaves its merchant owing a refund, which this
+     * document then says.
+     */
+    ship_by: TimestampSchema.nullable().optional(),
+
+    /**
      * Whether the money behind this purchase was real.
      *
      * The receipt a merchant reads carries this word already, and the buyer's
@@ -530,7 +556,7 @@ export const AgentOrderStatusSchema = z
   })
   .meta({
     description:
-      'What became of one purchase, in the words an agent and a merchant both read: where the order stands, what it was priced at, the goods once they are the buyer\'s, and why the merchant would not sell where that is what ended it. "status_url" is where this document is read again — the whole address of the order\'s status route, and the place an agent that bought goods that come later collects them. It is absolute and called as it stands, and it is the address the gateway is configured to answer as, never one taken from the request that asked. It is smaller than the merchant\'s own view of the same order on purpose — no merchant account, no merchant\'s own key for the product, none of the purchase parameters and nothing about any other order. The price is what the buyer was asked for and not proof that anything was charged: an order that was priced and then ended without a sale still carries it, and the status is what says which happened. A null price means nobody ever named one for this order, and a null delivery means there are no goods here to hand over; both fields are always present, because an absent field is a silence a reader cannot tell from an oversight. "refusal" is the exception and is present only where a merchant refused: their own short code to branch on and their own sentence to show, carried across unchanged. The code is an open set — "out_of_stock", "invalid_params" and "cannot_fulfill" are read the same way by everybody, and a merchant whose reason fits none of them sends their own word, so an unfamiliar code has to fall through to the sentence rather than break a reader. An absent "refusal" means there is no refusal to quote and never that one was dropped, which leaves two endings still coarse: "rejected" also covers a product that was gone and a payment that failed its check, and neither of those was worded by anybody — the first because a price answer of "not available" carries no words, the second because it is refused at the door in an error envelope instead. A null delivery is likewise not a promise that no goods were ever made: a purchase whose charge failed or went unanswered can leave goods the buyer has not paid for, and this document withholds them rather than describing them. Every answer says whether the money behind the purchase was real: a gateway settling against nothing produces every other field here exactly as a real charge would, so a reader taking this for proof of a payment has to read that word first. "seller" is who sold it, as the merchant gave it and as the catalog shows it beside their cards: the name and the site of their shop, which Agentify did not check, and the site is where to take what this document cannot answer. "status" is a word whose known values are listed beside it, and more may be added: a word a reader does not know is not an ending it knows, so it asks again later and does not buy again on its strength. This document and every part inside it may also gain fields; a reader ignores the ones it does not know.',
+      'What became of one purchase, in the words an agent and a merchant both read: where the order stands, what it was priced at, the goods once they are the buyer\'s, and why the merchant would not sell where that is what ended it. "status_url" is where this document is read again — the whole address of the order\'s status route, and the place an agent that bought goods that come later collects them. It is absolute and called as it stands, and it is the address the gateway is configured to answer as, never one taken from the request that asked. It is smaller than the merchant\'s own view of the same order on purpose — no merchant account, no merchant\'s own key for the product, none of the purchase parameters and nothing about any other order. The price is what the buyer was asked for and not proof that anything was charged: an order that was priced and then ended without a sale still carries it, and the status is what says which happened. A null price means nobody ever named one for this order, and a null delivery means there are no goods here to hand over; both fields are always present, because an absent field is a silence a reader cannot tell from an oversight. A parcel\'s order also carries "shipment", its merchant\'s record of handing it to a carrier and null until then, and "ship_by", the instant it has to be with a carrier by and null until it is paid; no other order carries either. On a parcel "delivered" stays null, because nothing reached the agent: its status reads "shipped" once the shipment is recorded, and that is the last word Agentify has about it. "refusal" is the exception and is present only where a merchant refused: their own short code to branch on and their own sentence to show, carried across unchanged. The code is an open set — "out_of_stock", "invalid_params" and "cannot_fulfill" are read the same way by everybody, and a merchant whose reason fits none of them sends their own word, so an unfamiliar code has to fall through to the sentence rather than break a reader. An absent "refusal" means there is no refusal to quote and never that one was dropped, which leaves two endings still coarse: "rejected" also covers a product that was gone and a payment that failed its check, and neither of those was worded by anybody — the first because a price answer of "not available" carries no words, the second because it is refused at the door in an error envelope instead. A null delivery is likewise not a promise that no goods were ever made: a purchase whose charge failed or went unanswered can leave goods the buyer has not paid for, and this document withholds them rather than describing them. Every answer says whether the money behind the purchase was real: a gateway settling against nothing produces every other field here exactly as a real charge would, so a reader taking this for proof of a payment has to read that word first. "seller" is who sold it, as the merchant gave it and as the catalog shows it beside their cards: the name and the site of their shop, which Agentify did not check, and the site is where to take what this document cannot answer. "status" is a word whose known values are listed beside it, and more may be added: a word a reader does not know is not an ending it knows, so it asks again later and does not buy again on its strength. This document and every part inside it may also gain fields; a reader ignores the ones it does not know.',
   });
 
 /**
@@ -1099,7 +1125,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/orders/:order_id/deliver",
     auth: "merchant_key",
     description:
-      "The goods for an order the merchant took on earlier — the asynchronous mode's closure verb, called by the merchant rather than by the SDK. Idempotent by the order's identifier: called again after a dropped connection it delivers nothing twice and charges nothing twice, so repeating it is safe and keeping a note of what was already sent is not needed. A late call is accepted too — where the delivery deadline has passed and the refund has not yet been paid out, delivering closes the debt.",
+      "The goods for an order the merchant took on earlier — the asynchronous mode's closure verb, called by the merchant rather than by the SDK. Idempotent by the order's identifier: called again after a dropped connection it delivers nothing twice and charges nothing twice, so repeating it is safe and keeping a note of what was already sent is not needed. A late call is accepted too — where the delivery deadline has passed and the refund has not yet been paid out, delivering closes the debt. On a parcel's order the body is its shipment instead of goods (the shipment document: a carrier, a tracking number or null, and optionally a tracking page and an expected window). Agentify records when it arrived, the order reads shipped, and the shipment cannot be changed afterwards: the same one sent again succeeds, and a different one is refused with shipment_already_recorded.",
     request: DeliverySchema,
     response: { document: OrderCallResponseSchema },
   },

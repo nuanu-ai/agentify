@@ -65,20 +65,24 @@ export interface Readiness {
   readonly unknown: readonly MerchantFinding[];
 }
 
-const ASKED: Readonly<Record<SurfaceMode, readonly MerchantFinding[]>> = {
-  sandbox: ["no_seller_name"],
-  test: ["no_seller_name", "no_payout_wallet"],
-  live: ["no_seller_name", "no_payout_wallet", "no_operator_approval"],
-};
+const ASKED: Readonly<Record<SurfaceMode, readonly Exclude<MerchantFinding, "no_seller_site">[]>> =
+  {
+    sandbox: ["no_seller_name"],
+    test: ["no_seller_name", "no_payout_wallet"],
+    live: ["no_seller_name", "no_payout_wallet", "no_operator_approval"],
+  };
 
 const isSet = (value: string | null | Unknown): boolean | Unknown =>
   value === UNKNOWN ? UNKNOWN : value !== null;
 
 /** What this merchant lacks on this surface, and what the caller could not tell. */
 export function readinessOf(facts: MerchantFacts, surface: SurfaceMode): Readiness {
-  // Keyed by every code there is, so a fourth one added to the contract does
-  // not compile until somebody says which fact answers it.
-  const held: Readonly<Record<MerchantFinding, boolean | Unknown>> = {
+  // Keyed by every code there is, so a code added to the contract does not
+  // compile until somebody says which fact answers it. One is answered
+  // elsewhere on purpose: a shop's site is asked of a parcel's card alone
+  // (ADR-0033), never of a merchant on a surface, so the publish door asks it
+  // with the card in hand and this rule does not hold it.
+  const held: Readonly<Record<Exclude<MerchantFinding, "no_seller_site">, boolean | Unknown>> = {
     no_seller_name: isSet(facts.sellerName),
     no_payout_wallet: isSet(facts.payoutWallet),
     no_operator_approval: facts.liveApproval,

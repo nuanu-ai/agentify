@@ -124,6 +124,7 @@ describe("what publishing a card returns", () => {
       "no_seller_name",
       "no_payout_wallet",
       "no_operator_approval",
+      "no_seller_site",
     ]);
   });
 
@@ -222,6 +223,7 @@ describe("the error codes the calls answer with", () => {
       "order_already_closed",
       "not_applicable_in_mode",
       "delivery_does_not_match_card",
+      "shipment_already_recorded",
     ]);
   });
 

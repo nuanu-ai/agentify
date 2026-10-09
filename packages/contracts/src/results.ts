@@ -115,6 +115,10 @@ export const OrderCallResultSchema = z.enum(ORDER_CALL_RESULTS);
  * this order declares it delivers, so nothing was written down; the message
  * says whether the order still stands or has already ended, and the fields
  * that did not fit are named one by one in the error's `problems`.
+ * `shipment_already_recorded` — a parcel's shipment is recorded on this order
+ * and cannot be changed (ADR-0033); the same shipment sent again is answered
+ * as already delivered, and a different one is refused with this, never
+ * retryable, because a corrected number taken in silence would vanish.
  *
  * The fourth is the only one of them a merchant fixes rather than records, and
  * it is the reason it is promised rather than left to the open set. It is
@@ -142,6 +146,7 @@ export const ORDER_CALL_ERROR_CODES = Object.freeze([
   "order_already_closed",
   "not_applicable_in_mode",
   "delivery_does_not_match_card",
+  "shipment_already_recorded",
 ] as const);
 
 /**
@@ -183,7 +188,7 @@ export const ProblemSchema = z
      */
     code: z.string().regex(/\S/, "a finding carries a code").meta({
       description:
-        'What kind of finding it is, for the program that reads it. The set is open: a finding about a field of what was sent carries the name the check gave it. Three are promised, always with an empty path, and each says the merchant rather than the card is missing something, so no edit to the card clears it: "no_seller_name" (no name set for buyers to read), "no_payout_wallet" (no wallet set for the sales to be paid into, asked for wherever a payment settles) and "no_operator_approval" (the operator has not admitted this merchant to the live catalog, which only the operator can change).',
+        'What kind of finding it is, for the program that reads it. The set is open: a finding about a field of what was sent carries the name the check gave it. Four are promised, always with an empty path, and each says the merchant rather than the card is missing something, so no edit to the card clears it: "no_seller_name" (no name set for buyers to read), "no_payout_wallet" (no wallet set for the sales to be paid into, asked for wherever a payment settles), "no_operator_approval" (the operator has not admitted this merchant to the live catalog, which only the operator can change) and "no_seller_site" (no site set for the merchant\'s shop, asked for on a parcel\'s card alone, because a parcel that does not arrive is a question its buyer takes there).',
     }),
 
     /** The same finding in words, for the person who has to fix the card. */
@@ -223,7 +228,7 @@ export const CallErrorSchema = z.strictObject({
     // Same reason as the refusal code: the dictionary travels with the field
     // or it does not reach the reader the export exists for.
     description:
-      'Why the call did not go through. The set is open, and five are promised to mean one thing each — but not on the same calls, and which call a code can arrive on is part of what is promised about it. Publishing a card is refused with one word and no other: "card_rejected" (the card was not published, and every finding standing between it and the catalog is named in the error\'s problems — the fields at fault, and the merchant\'s own missing name, payout wallet or live operator approval where those are what is missing; it is never retryable, because the same card gets the same answer and what changes the outcome is fixing what the problems name). The calls that close an order — delivering, refusing, taking one on — are refused with the other four, and never with the first: "refund_already_settled" (the debt was paid back, so there is nothing left to deliver against). "order_already_closed" (the order reached an ending that no call reopens). "not_applicable_in_mode" (the call or the answer does not exist for this card\'s mode — in the synchronous one the handler\'s own answer is the delivery or the refusal, so delivering or refusing separately does not exist there, and neither does taking an order on while it waits for its goods, which promises them later through a call that mode does not have). "delivery_does_not_match_card" (the goods are not the ones the card for this order declares it delivers — nothing was written down, the problems name the fields that did not fit, and the message says whether the order still stands or has already ended). The last of those is retryable in a different sense from a lost connection: the call arrived and was understood, so sending the same goods again gives the same refusal, and what clears it is delivering what the card declares. It is not retryable at all where the order has already ended, because there is nothing left to deliver against.',
+      'Why the call did not go through. The set is open, and six are promised to mean one thing each — but not on the same calls, and which call a code can arrive on is part of what is promised about it. Publishing a card is refused with one word and no other: "card_rejected" (the card was not published, and every finding standing between it and the catalog is named in the error\'s problems — the fields at fault, and the merchant\'s own missing name, payout wallet or live operator approval where those are what is missing, and for a parcel\'s card their shop\'s site; it is never retryable, because the same card gets the same answer and what changes the outcome is fixing what the problems name). The calls that close an order — delivering, refusing, taking one on — are refused with the other four, and never with the first: "refund_already_settled" (the debt was paid back, so there is nothing left to deliver against). "order_already_closed" (the order reached an ending that no call reopens). "not_applicable_in_mode" (the call or the answer does not exist for this card\'s mode — in the synchronous one the handler\'s own answer is the delivery or the refusal, so delivering or refusing separately does not exist there, and neither does taking an order on while it waits for its goods, which promises them later through a call that mode does not have). "delivery_does_not_match_card" (the goods are not the ones the card for this order declares it delivers — nothing was written down, the problems name the fields that did not fit, and the message says whether the order still stands or has already ended). The last of those is retryable in a different sense from a lost connection: the call arrived and was understood, so sending the same goods again gives the same refusal, and what clears it is delivering what the card declares. It is not retryable at all where the order has already ended, because there is nothing left to deliver against. On a parcel\'s order the deliver call has one more: "shipment_already_recorded" (a shipment is recorded on this order and cannot be changed; the same one sent again succeeds as already delivered, and this refusal is never retryable).',
   }),
   message: z.string().regex(/\S/, "an error carries an explanation a person can read"),
   retryable: z.boolean(),
@@ -261,7 +266,9 @@ export const CARD_REJECTED = "card_rejected";
  * Each arrives in the refusal's `problems` with an empty path, beside whatever
  * is wrong with the card, and none of them is cleared by editing the card: the
  * merchant has no name set for buyers to read, no wallet set for their sales to
- * be paid into, or no approval from the operator for the live catalog. The
+ * be paid into, no approval from the operator for the live catalog, or — on a
+ * parcel's card alone (ADR-0033) — no site for their shop, where a buyer takes
+ * a parcel that did not arrive. The site is set where the name is. The
  * name is set with a call of the merchant's own (`POST /v0/seller-name`) or in
  * the dashboard; the wallet in the dashboard's Settings alone, since no key of the
  * merchant's code may say where the money goes; and the approval is the
@@ -275,6 +282,7 @@ export const MERCHANT_FINDINGS = Object.freeze({
   NO_SELLER_NAME: "no_seller_name",
   NO_PAYOUT_WALLET: "no_payout_wallet",
   NO_OPERATOR_APPROVAL: "no_operator_approval",
+  NO_SELLER_SITE: "no_seller_site",
 } as const);
 
 /** One of the findings about the merchant, as its code travels on the wire. */

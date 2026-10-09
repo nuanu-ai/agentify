@@ -54,6 +54,7 @@ import type {
 import {
   assertNever,
   deadlines,
+  fulfillmentDeadline,
   holdsShipTo,
   moneyInvariantViolations,
   outcomeFor,
@@ -66,6 +67,8 @@ import {
   localityOf,
   type Order as OrderDocument,
   type Receipt,
+  type ReceiptOutcome,
+  type RecordedShipment,
   type SalePrice,
   type Seller,
   type WorkerEnvelope,
@@ -1268,6 +1271,16 @@ export function agentOrderStatusOf(
     // still waiting on the payment layer. That is the one case where goods
     // exist, the buyer may have been charged, and nothing here hands them over.
     delivered: status === "delivered" ? (record.delivery ?? null) : null,
+    // A parcel's record of handing it to a carrier, and the instant it has to
+    // be with one by (ADR-0033): present on a parcel's order and on no other,
+    // and null until there is something to say. Nothing reached the agent, so
+    // the shipment is here and never under `delivered`.
+    ...(record.order.mode.parcel === true
+      ? {
+          shipment: status === "shipped" ? (record.delivery as RecordedShipment | null) : null,
+          ship_by: shipByOf(record.order),
+        }
+      : {}),
     // The same word the merchant's receipt carries. Every other field here
     // reads the same whether the charge was real or not, so a buyer with no
     // way to ask would be holding what looks like proof of a payment.
@@ -1351,13 +1364,24 @@ function shipToAsTheMerchantReadsIt(record: StoredOrder): {
  * has thought through — and it stops here rather than quietly going out saying
  * "delivered" over an order that was not.
  */
-function receiptOutcomeOf(order: Order): "in_progress" | "delivered" | "refund_due" | "refunded" {
+function receiptOutcomeOf(order: Order): ReceiptOutcome {
   if (order.state !== "delivered") {
     throw new Error(
       `a receipt was asked for on an order in ${order.state}, and this gateway has no word for that`,
     );
   }
-  return "delivered";
+  // A parcel's receipt says what its status says: it went to a carrier, and
+  // nothing reached the agent (ADR-0033).
+  return order.mode.parcel === true ? "shipped" : "delivered";
+}
+
+/**
+ * When a parcel has to be with its carrier by: the card's time to ship counted
+ * from the charge, and nothing before the order is paid.
+ */
+function shipByOf(order: Order): string | null {
+  const [deadline] = fulfillmentDeadline(order);
+  return deadline === undefined ? null : asTimestamp(deadline.at);
 }
 
 /**

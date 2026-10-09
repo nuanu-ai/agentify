@@ -109,14 +109,16 @@ export const needsAttention = (status: OrderStatus): boolean => NEEDS_ATTENTION.
 /**
  * What the publish door can refuse every card of a merchant for and the
  * merchant sets in Settings: the door's own codes, less the operator's
- * approval, which nobody sets there. Which of them the door asks for on which
- * channel is its rule (`readinessOf` in the core), never a screen's.
+ * approval, which nobody sets there, and less the shop's site, which the door
+ * asks of a parcel's card alone rather than of every card (ADR-0033). Which of
+ * them the door asks for on which channel is its rule (`readinessOf` in the
+ * core), never a screen's.
  *
  * Total by its type rather than by a walk: the type is drawn from the
  * contract's codes, so a code added there does not compile here until it has
  * words or is said to be nobody's to set.
  */
-export type Unset = Exclude<MerchantFinding, "no_operator_approval">;
+export type Unset = Exclude<MerchantFinding, "no_operator_approval" | "no_seller_site">;
 
 /** Each of them as the settings screen names it, for every screen that names one. */
 export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({

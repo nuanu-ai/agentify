@@ -275,9 +275,9 @@ by then, the call returns an error — there is nothing left to deliver against.
 `deliver`, `refuse` and `accept` hand their failures back rather than throwing
 them, in the envelope every call on this surface answers in: `ok` is false, and
 one `error` beside it carries a code to branch on, a sentence a person can read,
-and `retryable`. Seven codes are promised to mean one thing each — four sent by
+and `retryable`. Eight codes are promised to mean one thing each — five sent by
 us, and three the tools produce when no answer they could read came back. The
-set is open beyond those seven, so a case nobody anticipated reaches you in its
+set is open beyond those eight, so a case nobody anticipated reaches you in its
 own words instead of being flattened into the nearest of these.
 
 | Code | When it arrives | Repeating could change it |
@@ -286,6 +286,7 @@ own words instead of being flattened into the nearest of these.
 | `order_already_closed` | the order reached an ending that no call reopens | no |
 | `not_applicable_in_mode` | the call or the answer does not exist for this card's mode: in the synchronous one the handler's own answer is the delivery or the refusal, so there is no delivering or refusing separately and no taking the order on | no |
 | `delivery_does_not_match_card` | the goods are not the ones the card declares, so nothing was written down | while the order still stands, yes — with different goods; once it has ended, no |
+| `shipment_already_recorded` | a parcel's shipment is already recorded on this order, and a recorded shipment cannot be changed; the same shipment sent again succeeds | no |
 | `call_did_not_reach_us` | the call never got to us, so it did nothing | yes |
 | `answer_not_understood` | it reached us and came back in words these tools cannot read, so it may well have done its work | yes |
 | `outcome_unknown` | it went out into silence — the connection broke, the process was stopped mid-call — and nothing on your side knows whether it landed | yes |
@@ -300,7 +301,7 @@ means a third thing by the flag: that call arrived and was understood, so the
 same goods sent again get the same refusal, and the retry that helps is the one
 carrying what the card declares.
 
-A code outside those seven is the ordinary case rather than the exception, and
+A code outside those eight is the ordinary case rather than the exception, and
 the commonest one is us refusing the call at the door: a key we will not take,
 an order identifier that names nothing, a body we could not read. Those come
 back under our own word for the refusal — `not_authorised`, `no_such_order` —

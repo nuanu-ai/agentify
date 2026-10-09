@@ -276,7 +276,7 @@ const whoAndWhere = [address.name, address.line_one, address.city, address.phone
 
 const theOrder = async (served: Served) => {
   const listed = await served.call("GET", "/v0/orders", { headers: asMerchant });
-  const [order] = (listed.body as { orders: Order[] }).orders;
+  const [order] = (listed.body as { orders: (Order & { status: string })[] }).orders;
   if (order === undefined) throw new Error("the merchant has no order");
   return order;
 };
