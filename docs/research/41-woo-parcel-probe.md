@@ -180,17 +180,25 @@ and 118 milliseconds.
 ## Reading against the decision rule
 
 P1 and P2 hold. P3 failed as it was written, and its failure is not the one
-the rule stops on: "no rate" is told apart from an error. The rule is read as
-allowing the build, and that reading is the product owner's to confirm, since
-the deviation is one the handoff asked to be brought back.
+the rule stops on: "no rate" is told apart from an error. The rule was read as
+allowing the build, and the product owner, to whom the deviation was brought
+back, confirmed that reading on 2026-10-09.
 
-The build changes in two ways because of it. The connector sends all four
+The build changes in one way because of it. The connector sends all four
 fields of the locality on every `update-customer`, with an empty string for a
 field the address does not have, so nothing of the shop's own base location
-leaks into a price. And it does not send ADR-0032's state as it is: it reads
-the shop's own list of states for the country and sends the shop's code that
-equals the state, the country and a hyphen before it, or the country before
-it. Where none of the three is on the list — China, Hong Kong, Morocco, or a
-code the shop does not know — the price question is answered as not available
-rather than priced without the state, because a shop whose zones are states
-would then answer with a rate meant for somewhere else.
+leaks into a price.
+
+The state goes to the shop as the agent wrote it. That works where
+WooCommerce's codes are ADR-0032's codes, as for Indonesia and the United
+States, and where the agent gave no state. For a country whose codes
+WooCommerce writes its own way the shop refuses the state, and the agent is
+told the parcel is not available rather than given a price. Translating the
+code through the shop's own list of states was considered and put off by the
+product owner on 2026-10-09 as a question to settle before parcels sell on
+the live channel (`00-open-questions.md`). Two forms of translation were
+weighed: the country and a hyphen before the state is safe, while the country
+and the state run together is not, because WooCommerce numbers China's
+provinces its own way — its `CN11` is Jiangsu, while `11` was Beijing's ISO
+numeric code — so a buyer in Beijing would be priced and labelled for another
+province.
