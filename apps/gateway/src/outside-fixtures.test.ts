@@ -55,11 +55,7 @@ async function aGatewayOnAPort() {
   const queue = new MemoryQueue();
   // The queue is made first because the store publishes through it: an envelope
   // that must not be lost is written where the order is (ADR-0013).
-  const store = new MemoryStore(
-    ids,
-    () => Date.now(),
-    (merchantId, envelope, afterMs) => queue.stage(merchantId, envelope, afterMs),
-  );
+  const store = new MemoryStore(ids, () => Date.now(), queue.envelopes());
   const facilitator = new ScriptedFacilitator();
 
   // A merchant and a key, written the way anything that makes one writes one:

@@ -102,6 +102,7 @@ import {
   PublishResultSchema,
 } from "./results.js";
 import { SellingStateSchema } from "./selling.js";
+import { ErasedShipToSchema, ShipToLocalitySchema, ShipToSchema } from "./ship-to.js";
 
 export type {
   AgentOrderStatus,
@@ -293,6 +294,13 @@ export {
 } from "./results.js";
 export type { SellingState } from "./selling.js";
 export { SELLING_STATES, SellingStateSchema } from "./selling.js";
+export type { ErasedShipTo, ShipTo, ShipToLocality } from "./ship-to.js";
+export {
+  ErasedShipToSchema,
+  localityOf,
+  ShipToLocalitySchema,
+  ShipToSchema,
+} from "./ship-to.js";
 
 /**
  * The version of the public contract. It grows when the meaning of the fields
@@ -325,6 +333,7 @@ export const schemas = Object.freeze({
   dashboard_key: DashboardKeySchema,
   delivery: DeliverySchema,
   disabled_key: DisabledKeySchema,
+  erased_ship_to: ErasedShipToSchema,
   error_envelope: ErrorEnvelopeSchema,
   evm_address: EvmAddressSchema,
   field_spec: FieldSpecSchema,
@@ -379,6 +388,8 @@ export const schemas = Object.freeze({
   selling_state: SellingStateSchema,
   seller_site: SellerSiteSchema,
   service_name: ServiceNameSchema,
+  ship_to: ShipToSchema,
+  ship_to_locality: ShipToLocalitySchema,
   tags: TagsSchema,
   timestamp: TimestampSchema,
   worker_envelope: WorkerEnvelopeSchema,

@@ -78,6 +78,7 @@ export const FULFILLMENT_WORDS: Readonly<Record<Fulfillment, string>> = Object.f
   sync: "immediate",
   async: "later",
   confirm: "after you confirm",
+  ship: "by parcel",
 });
 
 /** Whether a merchant, or one of their cards, is taking new orders. */

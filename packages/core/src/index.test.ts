@@ -48,6 +48,9 @@ describe("@agentify/core", () => {
       "moneyInvariantViolations",
       "modeOf",
       "isOpen",
+      // Whether a parcel's order still holds its buyer's address: the gateway's
+      // last check before it writes one down (ADR-0032).
+      "holdsShipTo",
       "assertNever",
       // What a merchant must have before their cards are sold: asked by the
       // gateway's publish door and sale-time check and by the dashboard.

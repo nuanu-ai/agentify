@@ -54,6 +54,7 @@ import type {
 import {
   assertNever,
   deadlines,
+  holdsShipTo,
   moneyInvariantViolations,
   outcomeFor,
   transition,
@@ -62,6 +63,7 @@ import {
   API_ROUTES,
   type Delivery,
   expandPath,
+  localityOf,
   type Order as OrderDocument,
   type Receipt,
   type SalePrice,
@@ -191,11 +193,11 @@ export interface Swept {
  * that, and nothing else, is what this line decides.
  *
  * Whether the sweep may write one again is a second question with a different
- * answer, and the two are easy to run together. Of the four written down here
- * that this gateway carries out — a parcel's erasure is a fifth, refused until
- * it takes parcels — three have receivers that are promised a repeat and one
- * does not: a merchant event is delivered at most once, so it is written where
- * the state is and is never re-sent. `sweep` carries that distinction, and no
+ * answer, and the two are easy to run together. Of the five written down
+ * here, three have receivers that are promised a repeat and two do not: a
+ * merchant event is delivered at most once, so it is written where the state
+ * is and is never re-sent, and a parcel's erasure deletes rather than sends,
+ * so there is nobody to repeat it to. `sweep` carries that distinction, and no
  * arm may be added there for an effect whose receiver was not promised a
  * repeat.
  */
@@ -241,6 +243,7 @@ export class OrderRunner {
    */
   async create(record: StoredOrder, effects: readonly Effect[], at: number): Promise<StoredOrder> {
     refuseToWriteAnImpossibleOrder(record.order);
+    refuseToKeepAnAddressPastItsTime(record);
     // The clock is started before the order is written and not after it. Of the
     // two ways that can go wrong, one is harmless and the other is not: a
     // reminder for an order that was never written finds nothing and says so,
@@ -327,7 +330,9 @@ export class OrderRunner {
           ...known,
           order: moved.order,
           ...goodsToKeep(found, facts.delivery, moved.effects),
+          ...addressToKeep(moved.effects, this.#runtime.clock()),
         };
+        refuseToKeepAnAddressPastItsTime(next);
 
         // The clocks the order will be waiting on are started before the change
         // to it is committed, because of which way the two failures fall.
@@ -446,6 +451,11 @@ export class OrderRunner {
           paidBy: owner,
           ...this.#alsoSaid(found, word),
         };
+        // A verified payment never ends a parcel's need for its address — its
+        // money moves first and the order stays open — so nothing here erases
+        // it. Were the machine to change that, this stops the write rather than
+        // keep an address past its time.
+        refuseToKeepAnAddressPastItsTime(next);
 
         // The clocks are armed before the change is committed, for the same
         // reason `apply` arms them there.
@@ -644,8 +654,60 @@ export class OrderRunner {
       return 0;
     }
 
-    await this.#runtime.queue.publish(record.merchantId, this.#orderEnvelope(record, now));
-    return 1;
+    if (record.shipTo === undefined) {
+      await this.#runtime.queue.publish(record.merchantId, this.#orderEnvelope(record, now));
+      return 1;
+    }
+    // A parcel's hand-over carries its buyer's address, and the order was read
+    // at the start of the sweep: taken on since, its address is gone. So it is
+    // built from the order as it stands, under the hold, and only while it is
+    // still paid and still holds the address.
+    const sent = await this.sendWhileTheAddressIsHeld(record.order.id, (found) =>
+      found.order.state === "paid" ? this.#orderEnvelope(found, now) : null,
+    );
+    return sent ? 1 : 0;
+  }
+
+  /**
+   * Puts an envelope carrying a parcel's address on its merchant's stream
+   * outside a transition — the sweep sending a hand-over that went nowhere, a
+   * poll putting back one it drew and handed to nobody, the price question —
+   * under the hold on the order, and only while the order still holds the
+   * address (ADR-0032).
+   *
+   * The erasure deletes what is on the stream under that same hold. Written
+   * outside it, from a copy read earlier, an envelope can land after the
+   * deletion and keep the address for as long as the queue keeps a job. Under
+   * it, the envelope is either written before the erasure, which then deletes
+   * it, or not written at all.
+   *
+   * `envelopeOf` builds the envelope from the order as it stands, and answers
+   * null where the caller's own reason for sending has gone. What comes back
+   * is whether anything was written.
+   */
+  async sendWhileTheAddressIsHeld(
+    orderId: string,
+    envelopeOf: (found: StoredOrder) => WorkerEnvelope | null,
+    afterMs?: number,
+  ): Promise<boolean> {
+    const decided = await this.#runtime.store.withOrder(orderId, (found): OrderChange<boolean> => {
+      const envelope = holdsShipTo(found.order) ? envelopeOf(found) : null;
+      if (envelope === null) {
+        return { result: false };
+      }
+      return {
+        alongside: [
+          {
+            kind: "envelope",
+            merchantId: found.merchantId,
+            envelope,
+            ...(afterMs === undefined ? {} : { afterMs }),
+          },
+        ],
+        result: true,
+      };
+    });
+    return decided.found && decided.result;
   }
 
   /**
@@ -731,7 +793,9 @@ export class OrderRunner {
    * and an event at most once, and re-sending a debt is a second refund
    * somebody may act on. So the sweep has an arm for the first two and none for
    * the third, and an effect added here has to be placed in one of those two
-   * groups before it has an arm.
+   * groups before it has an arm. A parcel's erasure is in neither: it deletes
+   * what carries the address and sends nothing, and it lands with the order
+   * that says so.
    */
   #writesWithTheOrder(
     record: StoredOrder,
@@ -796,14 +860,16 @@ export class OrderRunner {
           break;
 
         case "erase_ship_to":
-          // No card here sells a parcel yet, so no order of this gateway's is
-          // one and nothing asks for this. Reaching it means an order was made
-          // a parcel without the erasure that mode promises its buyer, and it
-          // stops here, before the order is written past the moment the
-          // erasure belongs to.
-          throw new Error(
-            `${effect.kind} on ${record.order.id}: this gateway does not take parcels yet, so it cannot erase a buyer's address`,
-          );
+          // The order itself already says only when (`addressToKeep`); what is
+          // left is everything on the merchant's stream that carries any of
+          // the address, deleted in the same unit as that order (ADR-0032).
+          writes.push({
+            kind: "forget",
+            merchantId: record.merchantId,
+            orderId: record.order.id,
+            priceQuestion: record.priceQuestion ?? null,
+          });
+          break;
 
         default:
           // Everything else is carried out after the order is written, and
@@ -1251,8 +1317,28 @@ export function orderDocumentOf(record: StoredOrder): OrderDocument {
     params: { ...record.params },
     price,
     ...(record.priceId === null ? {} : { price_id: record.priceId }),
+    ...shipToAsTheMerchantReadsIt(record),
     test: record.order.test,
   };
+}
+
+/**
+ * A parcel's address on the merchant's order, as far as the order has got
+ * (ADR-0032): the place the price was asked for until the order is paid, the
+ * whole address once it is, and only when it was erased once the merchant has
+ * it. Nothing at all on an order that is not a parcel's.
+ */
+function shipToAsTheMerchantReadsIt(record: StoredOrder): {
+  readonly ship_to?: OrderDocument["ship_to"];
+} {
+  const held = record.shipTo;
+  if (held === undefined) {
+    return {};
+  }
+  if ("erasedAt" in held) {
+    return { ship_to: { erased_at: asTimestamp(held.erasedAt) } };
+  }
+  return { ship_to: record.order.timestamps.paidAt === null ? localityOf(held) : held };
 }
 
 /**
@@ -1373,6 +1459,61 @@ function refuseToWriteAnImpossibleOrder(order: Order): void {
       `the order ${order.id} breaks what must be true about money and will not be written down — ${violations.join("; ")}`,
     );
   }
+}
+
+/**
+ * What becomes of a parcel's address as the order moves: only the instant it
+ * was erased, on the transition the machine says it stops being needed on
+ * (ADR-0032), and nothing changes on any other.
+ *
+ * The instant is the clock's as the order is written, not the event's — the
+ * one stamp here that is about this gateway's own copy rather than about the
+ * order. A deadline's event carries the deadline, and its reminder can arrive
+ * well after it, a re-armed one days after; the address was here all that
+ * time, and the order must not say it was gone before it went.
+ */
+function addressToKeep(
+  effects: readonly Effect[],
+  at: number,
+): { readonly shipTo?: { readonly erasedAt: number } } {
+  return effects.some((effect) => effect.kind === "erase_ship_to")
+    ? { shipTo: { erasedAt: at } }
+    : {};
+}
+
+/**
+ * The last check before an order is written down, for a buyer's address
+ * (ADR-0032): a parcel's order holds the whole of it exactly while the machine
+ * says it is still needed, and afterwards only when it was erased; no other
+ * order holds one at all. Failing it is a defect, as above, and what it costs
+ * is a buyer's address kept after it stopped being needed, or a merchant handed
+ * a parcel with nowhere to send it. The words name the order and never the
+ * address.
+ */
+function refuseToKeepAnAddressPastItsTime(record: StoredOrder): void {
+  const wrong = whatIsWrongWithTheAddress(record);
+  if (wrong !== null) {
+    throw new Error(`the order ${record.order.id} ${wrong}, and will not be written down`);
+  }
+}
+
+function whatIsWrongWithTheAddress(record: StoredOrder): string | null {
+  const held = record.shipTo;
+  if (record.order.mode.parcel !== true) {
+    return held === undefined ? null : "holds an address and is not a parcel";
+  }
+  if (held === undefined) {
+    return "is a parcel with no address";
+  }
+  const needed = holdsShipTo(record.order);
+  const erased = "erasedAt" in held;
+  if (needed && erased) {
+    return "has erased the address its merchant still needs";
+  }
+  if (!needed && !erased) {
+    return "still holds the buyer's address after it stopped being needed";
+  }
+  return null;
 }
 
 /**

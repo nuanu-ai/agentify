@@ -47,10 +47,14 @@ export function policyFor(card: Card, config: GatewayConfig): OrderPolicy {
         card.confirm_deadline_seconds === undefined
           ? deadlines.defaultConfirmationResponseMs
           : card.confirm_deadline_seconds * 1_000,
+      // A parcel's is the time to hand it to a carrier, which its card always
+      // names (ADR-0033); the clock runs from the charge either way.
       asyncFulfillmentMs:
-        card.fulfill_deadline_seconds === undefined
-          ? deadlines.defaultAsyncFulfillmentMs
-          : card.fulfill_deadline_seconds * 1_000,
+        card.ship_within_seconds !== undefined
+          ? card.ship_within_seconds * 1_000
+          : card.fulfill_deadline_seconds === undefined
+            ? deadlines.defaultAsyncFulfillmentMs
+            : card.fulfill_deadline_seconds * 1_000,
     },
     redelivery: config.redelivery,
   };

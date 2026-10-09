@@ -163,7 +163,7 @@ export type OrderMode =
     };
 
 /** The modes a card can declare. */
-export const FULFILLMENT_MODES = ["sync", "async", "confirm"] as const;
+export const FULFILLMENT_MODES = ["sync", "async", "confirm", "ship"] as const;
 
 export type FulfillmentMode = (typeof FULFILLMENT_MODES)[number];
 
@@ -175,6 +175,11 @@ export function modeOf(fulfillment: FulfillmentMode): OrderMode {
       return { needsConfirmation: false, settle: "on_purchase" };
     case "confirm":
       return { needsConfirmation: true, settle: "on_purchase" };
+    case "ship":
+      // Goods handed to a carrier (ADR-0033): the money moves as the
+      // asynchronous mode's does, and the order holds the buyer's address
+      // until the merchant has it.
+      return { needsConfirmation: false, settle: "on_purchase", parcel: true };
     default:
       return assertNever(fulfillment, "fulfillment mode");
   }

@@ -45,7 +45,7 @@
  */
 
 import type { MerchantSelling, Order } from "@agentify/core";
-import type { Card, Delivery, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
+import type { Card, Delivery, Receipt, ShipTo, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 
 /** A card as its merchant published it, under the catalog identifier we issued. */
 export interface StoredCard {
@@ -96,6 +96,22 @@ export interface StoredOrder {
   /** The merchant's own identifier for it, so they need no mapping table. */
   readonly merchantItemId: string;
   readonly params: Readonly<Record<string, unknown>>;
+  /**
+   * Where a parcel goes, on a parcel's order and on no other (ADR-0032): the
+   * buyer's whole address while the order holds it, and only the instant it
+   * was erased once nothing here needs it. Absent on every other order, and on
+   * every order stored before parcels existed, which is the same fact.
+   */
+  readonly shipTo?: ShipTo | { readonly erasedAt: number };
+  /**
+   * The price question put to the merchant for a parcel's order, by the
+   * identifier it went out under. The question carries the place the parcel
+   * goes, so it leaves the queue with the rest of the address (ADR-0032), and
+   * this is how it is found: nothing in a price question names the order it
+   * was asked for. Absent on every other order, and on a parcel's whose price
+   * was never asked of the merchant.
+   */
+  readonly priceQuestion?: string;
   /** The price question this order was priced by, where one was asked. */
   readonly priceId: string | null;
   /** What the merchant handed over, once they have. */
@@ -208,20 +224,24 @@ export interface PaymentWord {
  * that held a transaction handle would be holding a Postgres in a port that
  * has never known about one.
  *
- * Two shapes of write are on this list — an envelope for a merchant and a
- * receipt — and adding a third shape is a decision rather than a detail.
+ * Three shapes of write are on this list — an envelope for a merchant, a
+ * receipt, and the deletion of the envelopes that carry a parcel's address —
+ * and adding a fourth shape is a decision rather than a detail.
  *
  * What is on the list is not the same as what the sweep may write again
  * afterwards, and running the two together is the mistake worth naming here.
  * Landing with the state is about an effect that cannot be re-driven once the
  * order has moved past it. Being re-drivable is about what its receiver was
- * promised, and by that reading the two shapes carry three receivers between
- * them: an order envelope, whose merchant is told his handler can see the same
- * order twice; a receipt, which is one row keyed by its order, so writing it
- * again writes the same row; and an event envelope, which is delivered at most
- * once and must never be sent a second time. All three land with the state.
+ * promised, and by that reading the first two shapes carry three receivers
+ * between them: an order envelope, whose merchant is told his handler can see
+ * the same order twice; a receipt, which is one row keyed by its order, so
+ * writing it again writes the same row; and an event envelope, which is
+ * delivered at most once and must never be sent a second time. All three land
+ * with the state.
  * Only the first two have an arm in the sweep, and that is a decision rather
- * than an omission.
+ * than an omission. The deletion has no receiver at all: it lands with the
+ * order that says the address was erased, so neither is ever true without the
+ * other, and there is nothing for anybody to write again.
  */
 export type WithTheOrder =
   | {
@@ -231,7 +251,21 @@ export type WithTheOrder =
       /** How long the stream holds it back, where something asked it to wait. */
       readonly afterMs?: number;
     }
-  | { readonly kind: "receipt"; readonly merchantId: string; readonly receipt: Receipt };
+  | { readonly kind: "receipt"; readonly merchantId: string; readonly receipt: Receipt }
+  /**
+   * Every envelope on the merchant's stream that carries any of a parcel's
+   * address, deleted in whatever state it is in (ADR-0032): the order's own
+   * hand-overs, and the price question it was priced by, where one was put.
+   * Waiting, drawn or finished, they go — a queue keeps a finished envelope
+   * for days, and drawn is not gone. The events about the order carry no
+   * address and are left where they are.
+   */
+  | {
+      readonly kind: "forget";
+      readonly merchantId: string;
+      readonly orderId: string;
+      readonly priceQuestion: string | null;
+    };
 
 /**
  * What `withOrder` decided: the order to write back, if any, the writes that go

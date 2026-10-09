@@ -161,14 +161,10 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
   // The queue is made first because the store writes through it: an envelope
   // that must not be lost is written where the order is (ADR-0013). It is
   // `stage` rather than `publish` because the store needs the two halves apart
-  // — take it before the order is written, make it visible after — and the call
-  // is made through the queue rather than bound to its method, so a test that
-  // replaces `queue.stage` replaces the one the store uses too.
-  const store = new MemoryStore(
-    countedIds(),
-    () => now,
-    (merchantId, envelope, afterMs) => queue.stage(merchantId, envelope, afterMs),
-  );
+  // — take it before the order is written, make it visible after — and the
+  // calls are made through the queue rather than bound to its methods, so a
+  // test that replaces `queue.stage` replaces the one the store uses too.
+  const store = new MemoryStore(countedIds(), () => now, queue.envelopes());
   const facilitator = new ScriptedFacilitator();
   const announcer = new RecordingAnnouncer();
   const ids = countedIds();
@@ -455,11 +451,16 @@ export async function buyOverHttp(
   served: Served,
   itemId: string,
   behaviour: WorkerBehaviour,
+  /** What the agent sends to ask the price, and then again with its payment. */
+  body: { readonly priced: unknown; readonly paid: unknown } = {
+    priced: { params: {} },
+    paid: { params: {} },
+  },
 ): Promise<Call> {
   const worker = workUntilStopped(worked, behaviour);
   try {
     const priced = await served.call("POST", `/x402/${itemId}/purchase`, {
-      body: { params: {} },
+      body: body.priced,
     });
     const requirements = decodePaymentRequiredHeader(
       priced.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
@@ -469,7 +470,7 @@ export async function buyOverHttp(
     }
 
     return await served.call("POST", `/x402/${itemId}/purchase`, {
-      body: { params: {} },
+      body: body.paid,
       headers: {
         [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader({
           x402Version: 2,

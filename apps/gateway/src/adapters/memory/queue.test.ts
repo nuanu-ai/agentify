@@ -166,6 +166,82 @@ describe("MemoryQueue delivery", () => {
   });
 });
 
+describe("MemoryQueue letting go of a parcel's address", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** An order envelope: what carries the whole address once a parcel is paid. */
+  const handOver = (id: string, orderId: string): WorkerEnvelope => ({
+    kind: "order",
+    id,
+    sent_at: "2026-08-26T00:00:00.000Z",
+    payload: {
+      id: orderId,
+      merchant_item_id: "beans-1kg",
+      params: {},
+      price: {
+        amount: "21.00",
+        currency: "USD",
+        at: "2026-08-26T00:00:00.000Z",
+        as_of: "2026-08-26T00:00:00.000Z",
+      },
+      test: true,
+    },
+  });
+
+  /** A price question: what carries the place the parcel goes. */
+  const question = (id: string, priceId: string): WorkerEnvelope => ({
+    kind: "quote_request",
+    id,
+    sent_at: "2026-08-26T00:00:00.000Z",
+    payload: {
+      merchant_item_id: "beans-1kg",
+      price_id: priceId,
+      purpose: "purchase",
+      expires_at: "2026-08-26T00:10:00.000Z",
+    },
+  });
+
+  it("forgets an order's hand-overs and its price question wherever they wait, and nothing else", async () => {
+    // ADR-0032: once the merchant has the address, no envelope that carries any
+    // of it is left for a worker to be handed. A hand-over waiting out a delay
+    // is one of them, and must not arrive after the gateway let go. The events
+    // about the order carry no address and stay, as does everybody else's work.
+    const queue = await started();
+    await queue.publish(A, question("env_q1", "prc_1"));
+    await queue.publish(A, handOver("env_o1", "ord_1"));
+    await queue.publish(A, handOver("env_o1_later", "ord_1"), 1_000);
+    await queue.publish(A, envelope("env_event"));
+    await queue.publish(A, question("env_q2", "prc_2"));
+    await queue.publish(A, handOver("env_o2", "ord_2"));
+
+    queue.forget(A, "ord_1", "prc_1");
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect((await queue.draw(A, 10, 0)).map((d) => d.envelope.id)).toStrictEqual([
+      "env_event",
+      "env_q2",
+      "env_o2",
+    ]);
+    expect(await queue.holdsOrder(A, "ord_1")).toBe(false);
+  });
+
+  it("forgets only on the stream it is told to", async () => {
+    // A stream belongs to one merchant, and so does letting go of what is on
+    // it: another merchant's order of the same name is somebody else's sale.
+    const queue = await started();
+    await queue.publish(B, handOver("env_b", "ord_1"));
+
+    queue.forget(A, "ord_1", null);
+
+    expect((await queue.draw(B, 10, 0)).map((d) => d.envelope.id)).toStrictEqual(["env_b"]);
+  });
+});
+
 describe("MemoryQueue reminders", () => {
   beforeEach(() => {
     vi.useFakeTimers();

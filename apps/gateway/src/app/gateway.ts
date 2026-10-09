@@ -23,6 +23,7 @@ import {
   type Acceptance,
   CARD_REJECTED,
   type CallError,
+  type Card,
   CardSchema,
   CONTRACT_VERSION,
   type DashboardKey,
@@ -32,6 +33,7 @@ import {
   type ForgottenDashboardKey,
   type HandlerAnswer,
   type IssuedKey,
+  localityOf,
   MERCHANT_FINDINGS,
   type MerchantCard,
   type MerchantCardList,
@@ -55,6 +57,7 @@ import {
   type Seller,
   type SellerName,
   type SellerNameRequest,
+  type ShipTo,
   type WorkerEnvelope,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
@@ -216,6 +219,10 @@ export type PurchaseAttempt =
   | { readonly step: "under_way"; readonly order: StoredOrder }
   | { readonly step: "no_such_item" }
   | { readonly step: "params_rejected"; readonly problems: readonly Problem[] }
+  /** A parcel's purchase without an address, or another purchase with one. */
+  | { readonly step: "ship_to_rejected"; readonly message: string }
+  /** A payment carrying an address other than the one its order was priced for. */
+  | { readonly step: "ship_to_changed" }
   | { readonly step: "not_selling"; readonly message: string }
   /** This payment has already been presented for a different order. */
   | {
@@ -453,7 +460,7 @@ export class Gateway {
     }
     // Asked of the card as it was opened out, so a price written as one string
     // meets the same rule in the same words as one written as two fields.
-    const unsellable = priceProblemsOf(parsed.data.price);
+    const unsellable = [...priceProblemsOf(parsed.data.price), ...notYetSold(parsed.data)];
     if (missing.length > 0 || unsellable.length > 0) {
       return cardRejected(missing, unsellable);
     }
@@ -1210,6 +1217,7 @@ export class Gateway {
   async beginPurchase(
     itemId: string,
     params: Readonly<Record<string, unknown>>,
+    shipTo?: ShipTo,
   ): Promise<PurchaseAttempt> {
     const stored = await this.runtime.store.cardById(itemId);
     if (stored === null) {
@@ -1222,6 +1230,24 @@ export class Gateway {
     const fit = purchaseCheckFor(stored.card).safeParse(params);
     if (!fit.success) {
       return { step: "params_rejected", problems: findingsOf(fit.error.issues) };
+    }
+
+    // A parcel goes somewhere, and nothing else needs to (ADR-0032): an address
+    // sent with anything else would be a buyer's details handed over for
+    // nothing, so it is refused rather than dropped.
+    const parcel = stored.card.fulfillment === "ship";
+    if (parcel && shipTo === undefined) {
+      return {
+        step: "ship_to_rejected",
+        message:
+          "this product is a parcel, and its purchase carries ship_to, the address it goes to",
+      };
+    }
+    if (!parcel && shipTo !== undefined) {
+      return {
+        step: "ship_to_rejected",
+        message: "this product is not shipped, so its purchase takes no ship_to",
+      };
     }
 
     const at = this.runtime.clock();
@@ -1257,6 +1283,13 @@ export class Gateway {
       return { step: "not_selling", message: created.rejection.message };
     }
 
+    // The price question is named before the order is written, because a
+    // parcel's order keeps the name: the question carries the place the parcel
+    // goes, and it leaves the queue with the rest of the address (ADR-0032).
+    const asksThePrice = created.effects.some((effect) => effect.kind === "request_quote");
+    const priceQuestion =
+      asksThePrice && quoteReachesTheMerchant(stored.card) ? this.runtime.ids("prc") : null;
+
     const record: StoredOrder = {
       order: created.order,
       // The sale belongs to whoever published the card it was made against, and
@@ -1266,6 +1299,8 @@ export class Gateway {
       itemId: stored.id,
       merchantItemId: stored.card.merchant_item_id,
       params: { ...params },
+      ...(shipTo === undefined ? {} : { shipTo }),
+      ...(shipTo === undefined || priceQuestion === null ? {} : { priceQuestion }),
       priceId: null,
       delivery: null,
       payment: null,
@@ -1282,8 +1317,8 @@ export class Gateway {
     };
     await this.runner.create(record, created.effects, at);
 
-    if (created.effects.some((effect) => effect.kind === "request_quote")) {
-      await this.#askThePrice(record, stored);
+    if (asksThePrice) {
+      await this.#askThePrice(record, stored, priceQuestion);
     }
 
     return this.#wherePurchaseStands(record.order.id);
@@ -1299,10 +1334,30 @@ export class Gateway {
     orderId: string,
     payment: string,
     fingerprint: string,
+    shipTo?: ShipTo,
   ): Promise<PurchaseAttempt> {
     const before = await this.runtime.store.orderById(orderId);
     if (before === null) {
       return { step: "no_such_item" };
+    }
+
+    // The address a payment is for is the one its order was priced for
+    // (ADR-0032), and it is settled here, before anything is verified: a
+    // payment that names another is a different purchase, and the agent starts
+    // that one again. A payment that names none pays for the one priced. Once
+    // the merchant has the address and Agentify's copy is erased, the purchase
+    // is under way and there is nothing left here to compare with.
+    if (shipTo !== undefined) {
+      const held = before.shipTo;
+      if (held === undefined) {
+        return {
+          step: "ship_to_rejected",
+          message: "this product is not shipped, so a payment for it carries no ship_to",
+        };
+      }
+      if (!("erasedAt" in held) && !sameAddress(held, shipTo)) {
+        return { step: "ship_to_changed" };
+      }
     }
 
     const price = before.order.price;
@@ -1687,11 +1742,7 @@ export class Gateway {
         // stream rather than being lost with a failed response, and the poll
         // draws past it to whatever is next.
         console.error(`[gateway] could not record the hand-over of ${orderId}`, thrown);
-        await queue.publish(
-          merchantId,
-          sentNow(delivery.envelope, at),
-          config.settleInFlightRetryMs,
-        );
+        await this.#putBack(merchantId, delivery.envelope, at, config.settleInFlightRetryMs);
         finished.push(delivery.handle);
         continue;
       }
@@ -1702,11 +1753,7 @@ export class Gateway {
         // reports. The order goes back on the stream rather than being dropped,
         // because dropping it is how an order that was paid for never reaches a
         // merchant at all.
-        await queue.publish(
-          merchantId,
-          sentNow(delivery.envelope, at),
-          config.settleInFlightRetryMs,
-        );
+        await this.#putBack(merchantId, delivery.envelope, at, config.settleInFlightRetryMs);
         finished.push(delivery.handle);
         continue;
       }
@@ -1750,6 +1797,31 @@ export class Gateway {
     }
 
     return handing;
+  }
+
+  /**
+   * A hand-over a poll drew and gave to nobody, back on the stream behind a
+   * delay with its identifier untouched.
+   *
+   * One carrying a parcel's address goes back only under the hold on its
+   * order, and not at all once the address is erased (ADR-0032): it was built
+   * when the order was handed over, and the merchant may have taken the order
+   * on while the poll was failing. Every other goes straight back, as it
+   * always has — under the hold, a put-back would fail exactly when the store
+   * is failing, which is when the poll needs it.
+   */
+  async #putBack(
+    merchantId: string,
+    envelope: Extract<WorkerEnvelope, { kind: "order" }>,
+    at: number,
+    afterMs: number,
+  ): Promise<void> {
+    const again = sentNow(envelope, at);
+    if (envelope.payload.ship_to === undefined) {
+      await this.runtime.queue.publish(merchantId, again, afterMs);
+      return;
+    }
+    await this.runner.sendWhileTheAddressIsHeld(envelope.payload.id, () => again, afterMs);
   }
 
   /**
@@ -1994,13 +2066,18 @@ export class Gateway {
    * Puts the price question to the merchant and waits out our own patience for
    * it. Whatever comes back — an answer, a refusal to sell, or nothing at all —
    * reaches the machine as an event, and what it costs the order is decided
-   * there.
+   * there. The question has its name already, or none where the card asks for
+   * its price at an address of the merchant's own, which is not called.
    */
-  async #askThePrice(record: StoredOrder, stored: StoredCard): Promise<void> {
+  async #askThePrice(
+    record: StoredOrder,
+    stored: StoredCard,
+    priceId: string | null,
+  ): Promise<void> {
     const { queue, ids, clock, config } = this.runtime;
     const orderId = record.order.id;
 
-    if (!quoteReachesTheMerchant(stored.card)) {
+    if (priceId === null) {
       // The card asks for its price at an address of the merchant's own. That
       // transport is not served in this stage, and the honest thing to report
       // is the same fact an unanswered question produces: nobody told us what
@@ -2017,7 +2094,6 @@ export class Gateway {
       return;
     }
 
-    const priceId = ids("prc");
     const askedAt = clock();
 
     // Registered and parked before the question goes out, not after. A worker
@@ -2027,13 +2103,19 @@ export class Gateway {
     this.#questions.set(priceId, { orderId, merchantId: record.merchantId });
     const parked = this.quotes.wait(priceId, config.deadlines.quoteResponseMs);
 
-    await queue.publish(record.merchantId, {
+    const question: WorkerEnvelope = {
       kind: "quote_request",
       id: ids("env"),
       sent_at: asTimestamp(askedAt),
       payload: {
         merchant_item_id: stored.card.merchant_item_id,
         params: { ...record.params },
+        // Where a parcel goes, as a place and nothing about who (ADR-0032): a
+        // question like this one reaches the merchant for purchases that are
+        // never made, and a shipping rate needs the place alone.
+        ...(record.shipTo === undefined || "erasedAt" in record.shipTo
+          ? {}
+          : { ship_to: localityOf(record.shipTo) }),
         price_id: priceId,
         purpose: "purchase",
         // Until when the price the merchant names will be honoured, which is
@@ -2054,7 +2136,17 @@ export class Gateway {
           askedAt + config.deadlines.quoteResponseMs + config.deadlines.quoteTtlMs,
         ),
       },
-    });
+    };
+
+    if (record.shipTo === undefined) {
+      await queue.publish(record.merchantId, question);
+    } else {
+      // A parcel's question carries the place it goes, so it is written under
+      // the hold on the order like everything else that carries the address:
+      // a slow stream could otherwise land it after the order had ended on our
+      // patience and its address had been erased (ADR-0032).
+      await this.runner.sendWhileTheAddressIsHeld(orderId, () => question);
+    }
 
     const answered = await parked;
     this.#questions.delete(priceId);
@@ -2407,6 +2499,38 @@ function misfitsIn(findings: readonly Problem[]): string {
 
   const rest = findings.length - MISFITS_NAMED;
   return rest > 0 ? `${named} (and ${rest} more)` : named;
+}
+
+/**
+ * Whether two addresses are the same address: the same fields with the same
+ * words, whatever order they were written in.
+ */
+function sameAddress(one: ShipTo, other: ShipTo): boolean {
+  const written = (address: ShipTo) =>
+    JSON.stringify(Object.entries(address).sort(([a], [b]) => a.localeCompare(b)));
+  return written(one) === written(other);
+}
+
+/**
+ * A card in a mode this gateway cannot yet carry to its end, said as a finding
+ * on the mode rather than discovered by the first buyer.
+ *
+ * A parcel's order ends when its shipment is recorded, and recording one is not
+ * built yet (ADR-0033). A parcel card published now would take orders and the
+ * buyer's money with no way for its merchant to finish them, so it is refused
+ * with words that say why, until it can be.
+ */
+function notYetSold(card: Card): Problem[] {
+  return card.fulfillment === "ship"
+    ? [
+        {
+          path: ["fulfillment"],
+          code: "not_sold_yet",
+          message:
+            'a parcel\'s card, fulfillment "ship", cannot be published yet: its order ends when its shipment is recorded, and this gateway cannot record a shipment yet',
+        },
+      ]
+    : [];
 }
 
 /**

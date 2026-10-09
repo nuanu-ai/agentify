@@ -26,6 +26,7 @@
 
 import type { WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import type { DrawnEnvelope, Queue, Reminder, ReminderPatience } from "../../ports/queue.js";
+import type { Envelopes } from "./store.js";
 
 type Waiter = () => void;
 
@@ -93,9 +94,54 @@ export class MemoryQueue implements Queue {
       }
       stream.held.add(envelope);
       this.#later(() => {
-        stream.held.delete(envelope);
-        this.#arrive(merchantId, envelope);
+        // Gone from what is held means forgotten while it waited, and a
+        // forgotten envelope does not arrive afterwards.
+        if (stream.held.delete(envelope)) {
+          this.#arrive(merchantId, envelope);
+        }
       }, afterMs);
+    };
+  }
+
+  /**
+   * Lets go of every envelope on one merchant's stream that carries any of a
+   * parcel's address (ADR-0032): the order's hand-overs and the price question
+   * named, whether a worker could draw them now or they are waiting out a
+   * delay. The events about the order carry no address and stay. One already
+   * drawn is in a worker's hands, and what this process keeps of it goes when
+   * that delivery is answered; nothing here outlives the process anyway.
+   *
+   * It cannot refuse, and the store calls it once the order that says the
+   * address was erased is written, in the same span as the write.
+   */
+  forget(merchantId: string, orderId: string, priceQuestion: string | null): void {
+    const carries = (envelope: WorkerEnvelope): boolean =>
+      (envelope.kind === "order" && envelope.payload.id === orderId) ||
+      (envelope.kind === "quote_request" &&
+        priceQuestion !== null &&
+        envelope.payload.price_id === priceQuestion);
+
+    const stream = this.#streamOf(merchantId);
+    const kept = stream.ready.filter((envelope) => !carries(envelope));
+    stream.ready.splice(0, stream.ready.length, ...kept);
+    for (const envelope of [...stream.held]) {
+      if (carries(envelope)) {
+        stream.held.delete(envelope);
+      }
+    }
+  }
+
+  /**
+   * This queue as the store's way of writing with an order. Each call goes
+   * through the queue rather than being bound to its method, so a test that
+   * replaces `stage` replaces the one the store uses too.
+   */
+  envelopes(): Envelopes {
+    return {
+      stage: (merchantId, envelope, afterMs) => this.stage(merchantId, envelope, afterMs),
+      forget: async (merchantId, orderId, priceQuestion) => () => {
+        this.forget(merchantId, orderId, priceQuestion);
+      },
     };
   }
 
