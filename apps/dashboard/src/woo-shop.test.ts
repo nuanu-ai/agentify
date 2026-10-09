@@ -433,6 +433,102 @@ describe("the protected product check", () => {
     return "no";
   };
 
+  /** A physical simple product as `wc/v3` writes one: no file and nothing virtual. */
+  const parcelDocument = (overrides: Record<string, unknown> = {}) =>
+    productDocument({
+      id: 28,
+      virtual: false,
+      downloadable: false,
+      downloads: [],
+      price: "20.00",
+      ...overrides,
+    });
+
+  /** The settings a parcel is sold under, with shipping to the shipping address. */
+  const parcelSettingFor = (url: string): string => {
+    if (url.includes("woocommerce_ship_to_countries")) return "";
+    if (url.includes("woocommerce_ship_to_destination")) return "shipping";
+    return settingFor(url);
+  };
+
+  it("accepts a physical simple product as a parcel, judged by the shop's shipping settings", async () => {
+    // The download settings are the ones a download is sold under. A shop
+    // whose download settings would refuse every file, and one that will not
+    // even show them, still sells a parcel, and no file is asked for.
+    stand = await shopAnswering((asked) => {
+      if (asked.url.includes("woocommerce_file_download_method")) {
+        return { status: 401, body: { code: "woocommerce_rest_cannot_view" } };
+      }
+      if (asked.url.includes("woocommerce_downloads_require_login")) {
+        return { status: 200, body: { value: "yes" } };
+      }
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: { value: parcelSettingFor(asked.url) } };
+      }
+      return { status: 200, body: parcelDocument() };
+    });
+
+    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "28"));
+
+    expect(read).toMatchObject({
+      ok: true,
+      product: {
+        kind: "parcel",
+        productId: "28",
+        price: { amount: "20.00", currency: "USD" },
+        fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+    });
+    expect(stand.asked.every((asked) => asked.url.startsWith("/wp-json/wc/v3/"))).toBe(true);
+  });
+
+  it("refuses a parcel from a shop that ships nowhere, or only to the billing address", async () => {
+    // A shop with shipping switched off has no rate to give, and one that
+    // forces the billing address keeps no shipping address of its own: the
+    // address the agent sent would vanish from the merchant's order screen.
+    for (const [setting, value, named] of [
+      ["woocommerce_ship_to_countries", "disabled", "Shipping location"],
+      ["woocommerce_ship_to_destination", "billing_only", "billing address"],
+    ] as const) {
+      stand = await shopAnswering((asked) => {
+        if (asked.url.includes(setting)) return { status: 200, body: { value } };
+        if (asked.url.includes("/settings/")) {
+          return { status: 200, body: { value: parcelSettingFor(asked.url) } };
+        }
+        return { status: 200, body: parcelDocument() };
+      });
+
+      const read = await inspectProduct(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, "28"),
+      );
+
+      expect(read, setting).toMatchObject({
+        ok: false,
+        again: false,
+        why: expect.stringContaining(named),
+      });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("refuses a parcel whose shipping settings the shop will not show", async () => {
+    stand = await shopAnswering((asked) => {
+      if (asked.url.includes("woocommerce_ship_to_destination")) {
+        return { status: 401, body: { code: "woocommerce_rest_cannot_view" } };
+      }
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: { value: parcelSettingFor(asked.url) } };
+      }
+      return { status: 200, body: parcelDocument() };
+    });
+
+    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "28"));
+
+    expect(read).toMatchObject({ ok: false, again: false });
+  });
+
   it("says a shop that would not answer the product check is worth asking again", async () => {
     // The order this check stands in front of is still live while the shop is
     // down or busy, and a refusal read off a timeout would close it for good
@@ -491,7 +587,11 @@ describe("the protected product check", () => {
         fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
       },
     });
-    expect(stand.asked.filter((asked) => asked.authorization !== undefined)).toHaveLength(8);
+    // The key goes with every question to the shop's API and with nothing
+    // else: the raw file is asked for as a stranger would ask for it.
+    const api = stand.asked.filter((asked) => asked.url.startsWith("/wp-json/"));
+    expect(api.length).toBeGreaterThan(0);
+    expect(api.every((asked) => asked.authorization !== undefined)).toBe(true);
     expect(
       stand.asked.find((asked) => asked.url === "/protected/guide.txt")?.authorization,
     ).toBeUndefined();

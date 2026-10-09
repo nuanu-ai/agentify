@@ -335,3 +335,34 @@ describe("turning a shop's products into cards", () => {
     expect(skipped[0]?.title).toBe("Абонемент на месяц");
   });
 });
+
+describe("a physical product, which a carrier takes to the buyer", () => {
+  /** The same product as a parcel: neither virtual nor downloadable, and no file. */
+  const parcel = (overrides: Partial<StoreProduct> = {}): StoreProduct =>
+    product({ virtual: false, downloadable: false, downloads: [], ...overrides });
+
+  it("becomes a parcel's card, priced at purchase with seven days to ship and no result", () => {
+    // The card's price is the goods alone; the price check answers the whole,
+    // shipping to the buyer's place included (ADR-0033). The seven days are
+    // the connector's stand-in for a time the merchant never stated
+    // (ADR-0023), and a card naming a result would be refused at the door.
+    const { cards, skipped } = cardsFromTheShop([parcel()]);
+
+    expect(skipped).toStrictEqual([]);
+    expect(cards[0]?.card).toMatchObject({
+      price: { amount: "25.00", currency: "USD" },
+      fulfillment: "ship",
+      price_check: "handler",
+      ship_within_seconds: 604_800,
+    });
+    expect(cards[0]?.card.result).toBeUndefined();
+    expect(CardSchema.safeParse(cards[0]?.card).success).toBe(true);
+  });
+
+  it("leaves a physical product whose stock the shop counts in the shop", () => {
+    const { cards, skipped } = cardsFromTheShop([parcel({ manage_stock: true })]);
+
+    expect(cards).toHaveLength(0);
+    expect(skipped[0]?.why).toContain("stock");
+  });
+});
