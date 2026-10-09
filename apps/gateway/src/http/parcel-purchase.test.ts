@@ -9,6 +9,10 @@
  * it was priced for: a payment carrying another is refused before anything is
  * verified, with words to start again.
  *
+ * Once the merchant has the address, or the order ends without them, the
+ * gateway lets go of it: the order says only when, and nothing on the
+ * merchant's stream carries any of it any more.
+ *
  * Nothing can publish a parcel's card yet, so each test puts one in the store
  * directly, as a card already published would be.
  */
@@ -31,6 +35,7 @@ import {
   type Served,
   serve,
   theMerchantKey,
+  workOnce,
   workUntilStopped,
 } from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
@@ -73,8 +78,8 @@ afterEach(async () => {
   open = null;
 });
 
-const started = async () => {
-  const harnessed = await harness();
+const started = async (overrides: Record<string, string> = {}) => {
+  const harnessed = await harness(overrides);
   const served = await serve(harnessed);
   open = { harnessed, served };
   const stored = await harnessed.store.publishCard(
@@ -257,5 +262,83 @@ describe("buying a parcel", () => {
       envelope.kind === "order" ? [envelope.payload as Order] : [],
     );
     expect(handedOver?.ship_to).toStrictEqual(address);
+  });
+});
+
+describe("once the merchant has the address", () => {
+  /** Everything the gateway keeps about one order, as one string to search. */
+  const keptOf = async (harnessed: Harness, orderId: string) =>
+    JSON.stringify(await harnessed.store.orderById(orderId));
+
+  /** The parts of the address that say who and where, none of which may be kept. */
+  const whoAndWhere = [address.name, address.line_one, address.city, address.phone_number];
+
+  const theOrder = async (served: Served) => {
+    const listed = await served.call("GET", "/v0/orders", { headers: asMerchant });
+    const [order] = (listed.body as { orders: Order[] }).orders;
+    if (order === undefined) throw new Error("the merchant has no order");
+    return order;
+  };
+
+  it("erases it when they take the order on, and the order then says only when", async () => {
+    const { harnessed, served, itemId } = await started();
+    await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
+
+    await workOnce(harnessed, { onOrder: () => ({ accepted: {} }) });
+
+    const order = await theOrder(served);
+    expect(order.ship_to).toStrictEqual({ erased_at: expect.any(String) });
+    expect(Date.parse((order.ship_to as { erased_at: string }).erased_at)).toBe(harnessed.now());
+    const kept = await keptOf(harnessed, order.id);
+    for (const part of whoAndWhere) {
+      expect(kept, part).not.toContain(part);
+    }
+  });
+
+  it("takes the order off the merchant's stream when they take it on by the call", async () => {
+    // The order was handed over and is still waiting on the stream when the
+    // merchant takes it on with the accept call. Left there, a worker would be
+    // handed the address after the gateway had said it let go of it.
+    const { harnessed, served, itemId } = await started();
+    await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
+    const order = await theOrder(served);
+
+    const accepted = await served.call("POST", `/v0/orders/${order.id}/accept`, {
+      headers: asMerchant,
+      body: {},
+    });
+    expect(accepted.status).toBe(200);
+
+    const left = JSON.stringify(await drawEverything(harnessed));
+    for (const part of whoAndWhere) {
+      expect(left, part).not.toContain(part);
+    }
+    expect((await theOrder(served)).ship_to).toStrictEqual({ erased_at: expect.any(String) });
+  });
+
+  it("deletes the price question nobody answered, with the order that ends unsold", async () => {
+    // No worker is turning, so the question about the place the parcel goes
+    // sits on the stream; the gateway's patience runs out and a parcel, whose
+    // money moves at the purchase, is not sold at the card's price. The order
+    // ends, and the question carrying its locality goes with it.
+    const { harnessed, served, itemId } = await started({ QUOTE_RESPONSE_MS: "50" });
+
+    await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {}, ship_to: address },
+    });
+
+    const order = await theOrder(served);
+    expect(order.ship_to).toStrictEqual({ erased_at: expect.any(String) });
+    expect(await drawEverything(harnessed)).toStrictEqual([]);
+    const kept = await keptOf(harnessed, order.id);
+    for (const part of whoAndWhere) {
+      expect(kept, part).not.toContain(part);
+    }
   });
 });

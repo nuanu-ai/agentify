@@ -840,6 +840,119 @@ if (databaseUrl === null) {
         expect((await store.receiptForOrder(order.id))?.order_id).toBe(order.id);
         expect((await store.orderById(order.id))?.priceId).toBe("the write that happened");
       });
+
+      /** How many jobs on that stream carry a document containing this one, in any state. */
+      const jobsCarrying = async (merchantId: string, data: object): Promise<number> => {
+        const { rows } = await pool.query<{ n: string }>(
+          `select count(*) as n from ${QUEUE_SCHEMA}.job where name = $1 and data @> $2::jsonb`,
+          [streamOf(merchantId), JSON.stringify(data)],
+        );
+        return Number(rows[0]?.n ?? "0");
+      };
+
+      /** A hand-over of one order, which for a parcel carries the whole address. */
+      const aHandOver = (orderId: string): WorkerEnvelope => ({
+        kind: "order",
+        id: `env_${randomUUID()}`,
+        sent_at: "2026-08-26T12:00:00.000Z",
+        payload: {
+          id: orderId,
+          merchant_item_id: "beans-1kg",
+          params: {},
+          price: {
+            amount: "21.00",
+            currency: "USD",
+            at: "2026-08-26T12:00:00.000Z",
+            as_of: "2026-08-26T12:00:00.000Z",
+          },
+          test: true,
+        },
+      });
+
+      /** A price question, which for a parcel carries the place it goes. */
+      const aQuestion = (priceId: string): WorkerEnvelope => ({
+        kind: "quote_request",
+        id: `env_${randomUUID()}`,
+        sent_at: "2026-08-26T12:00:00.000Z",
+        payload: {
+          merchant_item_id: "beans-1kg",
+          price_id: priceId,
+          purpose: "purchase",
+          expires_at: "2026-08-26T12:10:00.000Z",
+        },
+      });
+
+      /**
+       * An order whose question and first hand-over a worker drew and finished,
+       * with a second hand-over waiting out a delay, an event about it, and
+       * another order's hand-over beside them. pg-boss keeps a finished job in
+       * its table for days, so "drawn" is not "gone".
+       */
+      const aStreamCarryingAnAddress = async (name: string) => {
+        const order = await anOrder(name);
+        const priceId = `prc_${randomUUID()}`;
+        const otherOrderId = `ord_${randomUUID()}`;
+        await queue.draw(A, 100, 0);
+        await queue.publish(A, aQuestion(priceId));
+        await queue.publish(A, aHandOver(order.id));
+        for (const drawn of await queue.draw(A, 10, 2_000)) {
+          await queue.finish(A, drawn.handle);
+        }
+        await queue.publish(A, aHandOver(order.id), 3_600_000);
+        await queue.publish(A, {
+          kind: "order_event",
+          id: `env_${randomUUID()}`,
+          sent_at: "2026-08-26T12:00:00.000Z",
+          payload: {
+            type: "order.unpaid_after_confirmation",
+            order_id: order.id,
+            at: "2026-08-26T12:00:00.000Z",
+          },
+        });
+        await queue.publish(A, aHandOver(otherOrderId));
+        expect(await jobsCarrying(A, { kind: "order", payload: { id: order.id } })).toBe(2);
+        expect(await jobsCarrying(A, { payload: { price_id: priceId } })).toBe(1);
+        return { order, priceId, otherOrderId };
+      };
+
+      it("deletes every job carrying a parcel's address with the order, finished ones included", async () => {
+        // ADR-0032: once the merchant has the address, the order's hand-overs
+        // and its price question leave the queue in the same transaction as the
+        // order that says so. The event about the order carries no address and
+        // stays, and so does another order's hand-over.
+        const { order, priceId, otherOrderId } = await aStreamCarryingAnAddress("forgotten");
+
+        await store.withOrder(order.id, (found) => ({
+          save: found,
+          alongside: [{ kind: "forget", merchantId: A, orderId: order.id, priceQuestion: priceId }],
+          result: null,
+        }));
+
+        expect(await jobsCarrying(A, { kind: "order", payload: { id: order.id } })).toBe(0);
+        expect(await jobsCarrying(A, { payload: { price_id: priceId } })).toBe(0);
+        expect(await jobsCarrying(A, { kind: "order_event", payload: { order_id: order.id } })).toBe(1);
+        expect(await jobsCarrying(A, { kind: "order", payload: { id: otherOrderId } })).toBe(1);
+      });
+
+      it("deletes nothing when the write it went in with rolled back", async () => {
+        // The order would otherwise still hold the address while the queue had
+        // let go of the hand-over that was to deliver it.
+        const { order, priceId } = await aStreamCarryingAnAddress("forgotten-rolled-back");
+
+        await expect(
+          store.withOrder(order.id, (found) => ({
+            save: found,
+            alongside: [
+              { kind: "forget", merchantId: A, orderId: order.id, priceQuestion: priceId },
+              { kind: "receipt", merchantId: "mch_nobody", receipt: aReceipt(order.id, "item") },
+            ],
+            result: null,
+          })),
+        ).rejects.toThrow();
+
+        expect(await jobsCarrying(A, { kind: "order", payload: { id: order.id } })).toBe(2);
+        expect(await jobsCarrying(A, { payload: { price_id: priceId } })).toBe(1);
+      });
     });
 
     it("lets one gateway run the sweep and tells the other it is taken", async () => {
