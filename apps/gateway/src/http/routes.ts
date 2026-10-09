@@ -694,7 +694,7 @@ function answeredOrder(
 /**
  * The challenge and nothing else: the answer to a call that is not a purchase.
  * `why` is the error line, and it is the reason this call did not return the
- * resource (ADR-0021).
+ * resource (research note 25).
  */
 async function probeAnswer(
   gateway: Gateway,
@@ -738,7 +738,7 @@ async function probeAnswer(
       },
       // What every other paid resource on this shelf says here, and no more.
       // Measured 2026-09-01 across eighteen hosts in the public catalogue
-      // (docs/research/25-what-the-challenge-says.md): fourteen of the
+      // (research note 25): fourteen of the
       // fifteen challenges that came back carry an error line, and thirteen
       // of those are the words below. Nobody puts anything about their
       // product in it, and nothing reads it — the catalogue's own record
@@ -746,7 +746,7 @@ async function probeAnswer(
       // the published one and a purchase is priced when it is made; that is
       // true, has no reader in this field, and is not load-bearing, because
       // an agent signs against the requirements of the call it actually
-      // makes and its own ceiling catches a difference. ADR-0021.
+      // makes and its own ceiling catches a difference. research note 25.
       //
       // Unless the GET brought a payment. A crawler never does, so a payment
       // here is an agent that took the probe for the purchase — one did, on
@@ -919,7 +919,7 @@ async function purchase(
     // having moved on this call.
     null,
     // Why this call did not return the resource, in the shortest words that are
-    // true (ADR-0021). Three cases arrive here and they are not one: nothing was
+    // true (research note 25). Three cases arrive here and they are not one: nothing was
     // presented, which needs no explaining; something was presented and could
     // not be decoded; and something decoded that named an order we are not
     // holding. The middle one used to be answered as the first — a price with no

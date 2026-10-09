@@ -196,7 +196,7 @@ const narrowMenu = (chrome: Chrome): string => `<details class="app-menu">
  *
  * The stylesheet is linked rather than inlined so that a merchant moving
  * between the screens fetches it once, and so that the one visual
- * language ADR-0005 §6 asks for is one file rather than four copies.
+ * language the surfaces share is one file rather than four copies.
  *
  * The faces are linked separately, from the shared origin, because they are
  * woff2 files Caddy serves out of the visual package and their addresses are

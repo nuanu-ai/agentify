@@ -13,7 +13,7 @@
  * and then clicks into it in another.
  *
  * Only the light declarations are compared, because there is only one set: the
- * language is light everywhere (ADR-0005 §6). The two files are parsed rather
+ * language is light everywhere (`packages/visual/tokens.css`). The two files are parsed rather
  * than spelled out here, so a colour the portal starts copying is compared from
  * the day it appears and nobody has to remember to add a case.
  */

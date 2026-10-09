@@ -1,7 +1,7 @@
 // The default VitePress theme, wearing the palette the rest of the site wears.
 //
-// The web surface decision asks for one visual language across the four
-// surfaces. The documentation is the one of them that is not ours to lay out —
+// The four surfaces share one visual language (packages/visual/tokens.css).
+// The documentation is the one of them that is not ours to lay out —
 // it is a generated site with its own theme — so almost the whole of the
 // customisation is a stylesheet that maps that theme's own variables onto our
 // tokens. No component is overridden and no layout is replaced: the next

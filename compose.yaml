@@ -1,6 +1,6 @@
 # The whole thing, on one command.
 #
-# ADR-0005 §7: `docker compose up` brings up everything a merchant's engineer
+# ADR-0005 §1: `docker compose up` brings up everything a merchant's engineer
 # would look at — the scanner at the front page, the documentation, the
 # dashboard and the gateway, all on http://localhost:8080, with one Postgres
 # behind them (ADR-0003 §6) holding one database, `agentify`.

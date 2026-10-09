@@ -21,7 +21,7 @@
 #   AGENTIFY_SCANNER_UPSTREAM  host:port of the scanner process   scanner:3000
 #   AGENTIFY_SURFACE_MODE      what the static pages say           sandbox
 #
-# The defaults are the container's view of the world, because ADR-0005 §7 wants
+# The defaults are the container's view of the world, because ADR-0005 §1 wants
 # the whole chain to come up from `docker compose up`, and it does: the compose
 # file in this repository brings up all of it, and the services these defaults
 # name are the service names on its network. Running this file from a checkout
@@ -260,7 +260,7 @@
 	# for the reason /docs below is not permanent either: a browser keeps a
 	# permanent redirect, so after a rollback to a revision with no /dashboard
 	# it would keep sending somebody to a page that is not there. This block is
-	# removed on 2026-11-06, a month after the move (ADR-0005 §1).
+	# removed on 2026-11-06, a month after the move.
 	@cabinet_moved path_regexp cabinet_moved (?i)^/cabinet(/.*)?$
 	handle @cabinet_moved {
 		redir * /dashboard{re.cabinet_moved.1}{?query} 307

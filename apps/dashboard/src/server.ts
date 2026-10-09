@@ -228,8 +228,8 @@ const dashboardPathFor = (base: string, destination: DashboardDestination): stri
  * The stylesheet the dashboard serves: the shared visual language, then the
  * dashboard's own layout. Read once at startup — neither changes while we run.
  *
- * ADR-0005 §6 wants one visual language across the surfaces, held in one
- * stylesheet rather than repeated per page, and that file is
+ * The surfaces share one visual language, held in one stylesheet rather than
+ * repeated per page, and that file is
  * `packages/visual/tokens.css`. Nothing serves it over HTTP on the deployed
  * origin, so every reader takes it at build time or off disk; the dashboard reads
  * it off disk and serves it inside its own response. That also suits how the
@@ -254,8 +254,8 @@ function readTokens(): string {
     // one file it does not read.
     throw new Error(
       `The dashboard cannot start: it serves the shared visual language from ${TOKENS_AT.pathname},` +
-        " which is not there. That file is packages/visual/tokens.css, and ADR-0005 §6 makes" +
-        " it the one place every surface takes its palette from — so the dashboard ships" +
+        " which is not there. That file is packages/visual/tokens.css, the one place every" +
+        " surface takes its palette from — so the dashboard ships" +
         ` beside it rather than carrying a copy. ${String(thrown)}`,
     );
   }

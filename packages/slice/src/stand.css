@@ -1,8 +1,8 @@
 /*
  * What the stand needs on top of the shared visual language.
  *
- * ADR-0005 §6 asks for one visual language across the surfaces, held in one
- * stylesheet rather than repeated per page. That file is
+ * The surfaces share one visual language, held in one stylesheet rather than
+ * repeated per page. That file is
  * `packages/visual/tokens.css`, and the stand serves it — and the faces that
  * sit beside it — straight out of the repository rather than keeping a copy,
  * for the reason the dashboard gives above its own stylesheet: two copies of one

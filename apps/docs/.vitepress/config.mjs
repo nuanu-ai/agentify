@@ -16,7 +16,7 @@ export default withMermaid(
   defineConfig({
     lang: "en",
     title: "Agentify",
-    // The origin has one palette and it is light (ADR-0005 §6). Left on, the
+    // The origin has one palette and it is light (packages/visual/tokens.css). Left on, the
     // theme would offer a dark portal in front of a scanner and a dashboard that
     // have none, which is the seam this setting used to widen rather than close.
     appearance: false,

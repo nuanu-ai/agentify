@@ -185,7 +185,7 @@ with an order identifier, which is the whole of its proof when it comes back
 for the goods (ADR-0011). Fulfillment against the merchant's confirmation is
 designed in the machine and refused at the door: a card asking for it is not
 published, because the message that would tell the agent it may now pay does
-not exist yet (ADR-0007). The portal's [orders page](apps/docs/orders.md)
+not exist yet (`docs/research/40-confirmation-mode-seam.md`). The portal's [orders page](apps/docs/orders.md)
 draws each of the three, and its table of how an order can end is the test
 suite's own fixture.
 
@@ -218,7 +218,7 @@ its own.
 | `packages/core` | The order state machine: pure logic, zero IO, zero runtime dependencies. |
 | `packages/sdk` | `@nuanu-ai/agentify`: what a merchant integrates against. Its runtime tree is the contracts package and zod, and nothing else. |
 | `packages/slice` | A mock merchant and a buyer, driving the offline gate, the `buy` and `smoke` commands, and the stand. |
-| `packages/visual` | `@agentify/visual`: one stylesheet — the tokens, the base element rules and the shared primitives every surface on the origin is drawn with (ADR-0005 §6) — and under `public/`, the mark and the faces Caddy serves at `/assets` and `/styles`. No build step and no JavaScript. |
+| `packages/visual` | `@agentify/visual`: one stylesheet — the tokens, the base element rules and the shared primitives every surface on the origin is drawn with — and under `public/`, the mark and the faces Caddy serves at `/assets` and `/styles`. No build step and no JavaScript. |
 | `packages/scanner-contracts`, `packages/scanner-database`, `packages/scanner` | The scanner's private contracts, storage and evaluation engine. |
 | `packages/analytics`, `packages/observability`, `packages/remediation` | The scanner's remaining packages, kept separate from the engine. |
 | `deploy/` | Every Dockerfile, the Compose overlays for test and production, the Caddy route table, and the release: `agentify-release`, the activation script and the one Compose command line per channel. `deploy/README.md` is the release runbook. |
