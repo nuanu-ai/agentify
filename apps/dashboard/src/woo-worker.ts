@@ -496,7 +496,7 @@ const fillParcelFromTheShop = async (
       return { accepted: {} };
     }
     console.error(
-      `[dashboard] ${order.id} was created in WooCommerce but its order was not durably bound`,
+      `[dashboard] ${order.id} was created in WooCommerce as order ${made.id} but was not durably bound`,
     );
     return null;
   }
@@ -867,7 +867,7 @@ const SHIPMENTS_EVERY_MS = 5 * 60_000;
  * How long a placed parcel is read for: thirty days, the longest time to ship
  * any card may name (ADR-0033). A parcel from this connector is past its seven
  * days long before, and a shipment the merchant records late still closes a
- * refund owed while the refund is unpaid (ADR-0028); after thirty days the shop
+ * refund owed until a refund is recorded (ADR-0028); after thirty days the shop
  * is not read for it again.
  */
 const FOLLOWED_FOR_MS = 30 * 24 * 60 * 60 * 1_000;
