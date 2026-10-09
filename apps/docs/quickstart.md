@@ -68,7 +68,8 @@ can still read it with `GET /v0/payout-wallet`.
 
 On the live channel a wallet already saved is not replaced at once. Everybody
 who signs in to your merchant's dashboard is sent a message first, saying the change
-was asked for in the dashboard and which account's session asked for it, and the new address takes effect forty-eight
+was asked for in the dashboard and which account's session asked for it, and the
+new address takes effect forty-eight
 hours after the message went out. Until then every payment request names the
 address still paid, and the Settings screen shows the waiting address, the
 moment it takes effect and a control to cancel it. Your code reading the
@@ -91,9 +92,8 @@ characters — and copy it. The secret is shown once. Keep it with your other
 secrets; do not put it in source control.
 
 Every key on that page is one you asked for, and your code is what calls with
-it. The dashboard uses none of them and holds no key at all, so revoking a key
-on that page stops a caller and never closes the browser session you are
-reading it in.
+it. The dashboard calls with none of them, so revoking a key on that page stops
+a caller and never closes the browser session you are reading it in.
 
 ## 2. Install the tools
 

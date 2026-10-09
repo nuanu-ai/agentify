@@ -209,7 +209,11 @@ On PRODUCTION the same commands run over `ssh agentify`, with
 From this release the dashboard calls the gateway's application inside the
 process it shares with it (ADR-0030), makes a merchant with no invitation, and
 reads no key off an account's row. Nothing has to be done on either host
-before it. Afterwards `AGENTIFY_INVITATION` in the host's file is read by
+before it. On PRODUCTION, release it together with the one that deletes the
+keys made for a dashboard (ADR-0030, step 4), not before: from this release
+on, the key on each account row is neither renewed nor forgotten, so a copy of
+the database taken in between, a backup included, holds keys that open the
+API. Afterwards `AGENTIFY_INVITATION` in the host's file is read by
 nothing. Take its line out once going back to an earlier revision is no longer
 wanted, since an earlier revision's preflight refuses a file without it. The
 last line prints `0`, and the file keeps its owner and mode, `root 600`:

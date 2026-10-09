@@ -43,9 +43,9 @@ The keys a merchant issues operate the shop; where its money goes is a
 person's act, done on the dashboard's Settings screen. Any key of the
 merchant's reads the address, and a person signed in to the dashboard sets it,
 by a call inside the process the dashboard shares with the gateway (ADR-0030).
-The public door does not route a write to `/v0/payout-wallet`, so a copy of the
-key registering made for a dashboard, which the dashboard's database holds as
-issued, sets nothing from outside; and the gateway refuses a key made for the
+The public door does not route a write to `/v0/payout-wallet`, so a copy of a
+key made for a dashboard, which the dashboard's database holds as issued, sets
+nothing from outside; and the gateway refuses a key made for the
 merchant's own code under `not_a_dashboard_key`, the first address too. The
 dashboard's key ends with ADR-0030, and with it this route's place on `/v0`.
 
@@ -156,8 +156,8 @@ message cannot be handed over, the key is issued all the same. A key moves
 no money and cannot set the wallet, and a merchant must not be kept from a
 key, their first above all,
 because mail is down. A new key's message names who asked: the account a
-dashboard session was signed in as, or the key a call was made with. The key
-registering makes for a dashboard is announced to nobody. No command at a server's terminal issues a key
+dashboard session was signed in as, or the key a call was made with. A key made for a
+dashboard is announced to nobody. No command at a server's terminal issues a key
 (ADR-0014), so every key made for a merchant's own code is issued through the
 gateway's keys route and announced as above, the laptop sandbox's seed aside.
 The pause stays immediate, because it is the act for "stop selling now".

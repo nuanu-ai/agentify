@@ -43,10 +43,11 @@ one.
 **2. An account names its merchant.** The dashboard calls the gateway's
 application as the merchant on the signed-in account's row (ADR-0030), so two
 accounts are two merchants; `MERCHANT_API_KEY` left the configuration with the
-process-wide client. The row also holds the key registering made for a
-dashboard, stored as issued. Nothing reads it, and nothing renews or forgets
-it: a key in a copy of the database keeps opening the API until keys of that
-kind are deleted (ADR-0030). The database is a boundary against the network,
+process-wide client. The row also holds a key made for a dashboard, at
+registration or at the last renewal there was, stored as issued. Nothing calls
+with it, and nothing renews or forgets it: a key in a copy of the database,
+backups included, keeps opening the API until keys of that kind are deleted
+(ADR-0030). The database is a boundary against the network,
 not against a host, and the day that stops being enough the fix is one, not a
 cleverer column.
 
@@ -72,28 +73,20 @@ seller reaches an agent inside a payment challenge that names nobody.
 
 **5. Keys are made and disabled from the dashboard, and a key says what it is
 for.** Three merchant-scoped routes over the keys a merchant made for their own
-code — list, issue, disable — and two at `/v0/keys/dashboard` that make a key for
-a dashboard and forget one, refused to any other key and reachable only inside
-the stack, so that a copied dashboard key cannot mint another from outside that
-no renewal ever forgets. That kind is in no
+code — list, issue, disable — which a merchant's own code calls over the API,
+and which the dashboard reaches as the same operations, called inside the
+process as a signed-in person (ADR-0030). Two more at `/v0/keys/dashboard` make
+a key for a dashboard and forget one, refused to any other key and reachable
+only inside the stack; nothing calls them since the dashboard stopped calling
+with such a key, and ADR-0030 deletes them with that kind. That kind is in no
 merchant's list and is refused by the disabling, since a merchant switches off
-what they issued; forgetting removes rather than revokes. The forgetting takes
-the key the call was made with and no other: a rule of the form "every key but
-this one" is decided when the call is sent and stale when it lands, so a key
-written in between is removed by a caller that never heard of it, and two
-overlapping sign-ins leave an account naming a key that is gone. Reaching only
-the key in the caller's hand, nobody can take away a credential anybody else
-holds. What that costs is that nothing sweeps up after an interrupted sign-in;
-clearing those by age is counted from the dashboard, which knows the keys still in
-use, and is not built — the gateway now records when a key was last called, but
-a dashboard key nobody has used is as likely to be the one on the row of a person
-who has not signed in for a while, and removing that locks them out from the
-outside, so the age that decides is the dashboard's. A merchant cannot disable the
-key their own call was made with — a rule in the route, because that click
-leaves whoever made it calling with something the gateway no longer takes. It
-sees the key on the call, so two keys disabling each other in one moment still
-leave a merchant with none of their own, which nobody has decided to refuse;
-the way back in is a key of the other kind.
+what they issued. A call over the API cannot disable the key it was made with —
+a rule in the route, because that click leaves whoever made it calling with
+something the gateway no longer takes; a session in the dashboard holds no key,
+so every key on its list can be disabled there. The rule sees the key on the
+call, so two keys disabling each other in one moment still leave a merchant
+with none of their own, which nobody has decided to refuse; the way back in is
+the mailed link.
 
 ## Consequences
 
@@ -111,8 +104,8 @@ wrote an account for an existing merchant from a key piped in were a second
 door beside the mailed link: a merchant nobody could sign in as, a key no
 announcement covered (ADR-0019), an account whose address nobody had proved.
 What they were for is what the one way in does: a person who needs an
-account signs in, and a merchant who has lost every key signs in, which
-renews the dashboard's own, and issues a new one there.
+account signs in, and a merchant who has lost every key signs in with a mailed
+link and issues a new one there.
 **Seeding a merchant on a deployed channel.** A key in a host's file, written
 into the database at every start, is a merchant nobody registered and a
 credential nobody can retire without a release: disabling its row stops it,
