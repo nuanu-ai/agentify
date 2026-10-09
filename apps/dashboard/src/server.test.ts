@@ -4177,7 +4177,9 @@ describe("the screen a signed-out person was going to", () => {
   const SECTIONS = ["orders", "receipts", "integrations", "keys", "settings", "woocommerce"];
 
   it.each(SECTIONS)("is %s after the link, for a visitor with no session", async (section) => {
-    const running = await started();
+    // Mounted with the shop screens, as every deployment mounts them, so the
+    // WooCommerce section is a page and not the dashboard's "no such page".
+    const running = await started({ wooShops: memoryWooShops() });
 
     const arrived = await running.browser.get(`/${section}`);
     expect(arrived.to).toBe(`/sign-in?destination=${section}`);
@@ -4191,6 +4193,7 @@ describe("the screen a signed-out person was going to", () => {
     });
 
     expect(opened.to).toBe(`/${section}`);
+    expect((await running.browser.get(opened.to ?? "")).status).toBe(200);
   });
 
   it("is kept for a session that ran out, beside the word that it did", async () => {

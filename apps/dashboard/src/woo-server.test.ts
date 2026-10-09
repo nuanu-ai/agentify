@@ -1613,6 +1613,21 @@ describe("coming back from the shop with no session on the request", () => {
     expect(readable(seen.html)).toContain("Continue to your dashboard");
   });
 
+  it("leads its Continue, through the sign-in, back to the shop screen", async () => {
+    // The merchant this page is for has no session, so Continue meets the gate,
+    // and the sign-in it lands on keeps the shop screen as where the link
+    // returns them, the query the button adds notwithstanding.
+    const running = await started();
+    const stripped = await cameBack(running);
+    const page = (await running.getWithoutCookie(stripped.to ?? "/woocommerce/return")).html;
+    const action = /<form[^>]*action="([^"]+)"/.exec(page)?.[1] ?? "";
+    const from = /name="from" value="([^"]+)"/.exec(page)?.[1] ?? "";
+
+    const pressed = await running.getWithoutCookie(`${action}?from=${from}`);
+
+    expect(pressed.to).toBe("/sign-in?destination=woocommerce");
+  });
+
   it("still takes the state token out of the address bar", async () => {
     // The property the redirect was written for, and the one this change could
     // silently have dropped: with the cookie held back by SameSite, the visit
