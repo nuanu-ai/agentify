@@ -367,6 +367,11 @@ describe("the contract as JSON Schema", () => {
     // site or both, which compares two fields; `seller_name_request.seller_name`
     // is the name's plain-text rule, the door's alone, reached through the one
     // request that writes a name.
+    //
+    // `shipment.carrier` and `shipment.tracking_number` are a parcel's
+    // shipment held to plain text (ADR-0033), and `shipment.estimated_delivery`
+    // compares its two ends; the recorded shipment an agent reads shares all
+    // three and is reported under the entry met first.
     expect(refinedSchemaPaths().sort()).toStrictEqual([
       "agent_order_status.seller.site",
       "card",
@@ -377,6 +382,9 @@ describe("the contract as JSON Schema", () => {
       "public_card.result",
       "seller_name_request",
       "seller_name_request.seller_name",
+      "shipment.carrier",
+      "shipment.estimated_delivery",
+      "shipment.tracking_number",
     ]);
   });
 

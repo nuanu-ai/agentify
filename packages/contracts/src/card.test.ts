@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PurchaseRequestSchema } from "./api.js";
 import type { CardInput } from "./card.js";
 import {
   bazaarDeclarationOf,
@@ -14,7 +15,6 @@ import {
   SellerSiteSchema,
   ServiceNameSchema,
 } from "./card.js";
-import { PurchaseRequestSchema } from "./api.js";
 import { toJsonSchemas } from "./index.js";
 import { ShipToSchema } from "./ship-to.js";
 import { RecordedShipmentSchema } from "./shipment.js";

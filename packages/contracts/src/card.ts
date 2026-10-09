@@ -37,6 +37,8 @@ import { notPlainTextIn, type TextLines } from "./plain-text.js";
 import type { Money } from "./primitives.js";
 import { IdentifierSchema, MoneySchema, OpenWordSchema, TimestampSchema } from "./primitives.js";
 import { SellingStateSchema } from "./selling.js";
+import { type ShipTo, ShipToSchema } from "./ship-to.js";
+import { ShipmentSchema } from "./shipment.js";
 
 /**
  * When the product reaches the agent, and therefore when the money moves.
@@ -868,13 +870,12 @@ export const purchaseCheckFor = (card: Card): z.ZodType =>
   paramSpecToValidator(card.params ?? {}, "purchase");
 
 /**
- * The check this card's delivery is held to. A parcel is not delivered with
- * goods at all: its shipment is recorded instead, so nothing passes this.
+ * The check this card's delivery is held to: the goods its `result` declared,
+ * or for a parcel, which is not delivered with goods at all, its shipment
+ * (ADR-0033).
  */
 export const deliveryCheckFor = (card: Card): z.ZodType =>
-  card.result === undefined
-    ? z.never({ error: "a parcel is not delivered with goods: its shipment is recorded instead" })
-    : paramSpecToValidator(card.result, "delivery");
+  card.result === undefined ? ShipmentSchema : paramSpecToValidator(card.result, "delivery");
 
 /**
  * The fields of a card as an agent reads it in a catalog.
@@ -1135,7 +1136,10 @@ export interface BazaarDeclaration {
   readonly input: Record<string, unknown>;
   /** The JSON Schema that body is held to, derived from the card's `params`. */
   readonly inputSchema: Record<string, unknown>;
-  /** An example of what arrives on delivery, derived from the card's `result`. */
+  /**
+   * An example of what arrives on delivery, derived from the card's `result`,
+   * or for a parcel the record of its shipment.
+   */
   readonly output: { readonly example: Record<string, unknown> };
 }
 
@@ -1174,8 +1178,43 @@ const exampleOf = (spec: ParamSpec): Record<string, unknown> =>
  * inside another schema, so that one line is dropped here.
  */
 const purchaseBodySchemaOf = (card: Card): Record<string, unknown> => {
-  const { $schema, ...body } = z.toJSONSchema(z.strictObject({ params: purchaseCheckFor(card) }));
+  const { $schema, ...body } = z.toJSONSchema(
+    z.strictObject({
+      params: purchaseCheckFor(card),
+      // A parcel's purchase carries the address it goes to beside its
+      // parameters, and is refused without one (ADR-0032).
+      ...(card.fulfillment === "ship" ? { ship_to: ShipToSchema } : {}),
+    }),
+  );
   return body as Record<string, unknown>;
+};
+
+/**
+ * Where a parcel goes, in a listing's example purchase: Agentify's own office
+ * (ADR-0033), with the number taken out of it, so that the example is a real
+ * place and nobody's home.
+ */
+const LISTED_SHIP_TO: ShipTo = {
+  name: "Agentify",
+  line_one: "Jl. Raya Kediri, Beraban",
+  line_two: "Nuanu Creative City",
+  city: "Tabanan",
+  state: "BA",
+  postal_code: "82121",
+  country: "ID",
+  phone_number: "+62 000 0000 0000",
+};
+
+/**
+ * A recorded shipment, in a listing's example output, written as every other
+ * example here is: each field standing for what goes there, and the instant
+ * at the start of the clock rather than a date that looks like one somebody
+ * shipped on.
+ */
+const LISTED_SHIPMENT = {
+  carrier: "string",
+  tracking_number: "string",
+  shipped_at: "1970-01-01T00:00:00Z",
 };
 
 /**
@@ -1200,11 +1239,14 @@ export const bazaarDeclarationOf = (
     ...(listed.serviceName === null ? {} : { serviceName: listed.serviceName }),
     ...(card.tags === undefined ? {} : { tags: card.tags }),
   },
-  input: { params: exampleOf(card.params ?? {}) },
+  input: {
+    params: exampleOf(card.params ?? {}),
+    ...(card.fulfillment === "ship" ? { ship_to: LISTED_SHIP_TO } : {}),
+  },
   inputSchema: purchaseBodySchemaOf(card),
-  // A parcel's output is the record of its shipment, which is not built yet;
-  // until it is, no parcel's card can be published, so no listing reaches here.
-  output: { example: exampleOf(card.result ?? {}) },
+  // What the agent is finally handed: the goods the card declared, or for a
+  // parcel the record of its shipment.
+  output: { example: card.result === undefined ? LISTED_SHIPMENT : exampleOf(card.result) },
 });
 
 /**

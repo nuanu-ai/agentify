@@ -103,6 +103,7 @@ import {
 } from "./results.js";
 import { SellingStateSchema } from "./selling.js";
 import { ErasedShipToSchema, ShipToLocalitySchema, ShipToSchema } from "./ship-to.js";
+import { RecordedShipmentSchema, ShipmentSchema } from "./shipment.js";
 
 export type {
   AgentOrderStatus,
@@ -301,6 +302,8 @@ export {
   ShipToLocalitySchema,
   ShipToSchema,
 } from "./ship-to.js";
+export type { RecordedShipment, Shipment } from "./shipment.js";
+export { RecordedShipmentSchema, ShipmentSchema } from "./shipment.js";
 
 /**
  * The version of the public contract. It grows when the meaning of the fields
@@ -390,6 +393,8 @@ export const schemas = Object.freeze({
   service_name: ServiceNameSchema,
   ship_to: ShipToSchema,
   ship_to_locality: ShipToLocalitySchema,
+  shipment: ShipmentSchema,
+  recorded_shipment: RecordedShipmentSchema,
   tags: TagsSchema,
   timestamp: TimestampSchema,
   worker_envelope: WorkerEnvelopeSchema,
