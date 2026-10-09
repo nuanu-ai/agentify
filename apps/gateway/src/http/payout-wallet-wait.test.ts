@@ -426,12 +426,11 @@ describe("asking again", () => {
 });
 
 describe("a change that could not be announced", () => {
-  // Three cases, three codes, and in every one nothing is written: the wallet
-  // paid now and whatever was already waiting are exactly as they were.
+  // Two cases, two codes, and in each nothing is written: the wallet paid now
+  // and whatever was already waiting are exactly as they were.
   it.each([
     ["nobody_to_tell", 409, "wallet_change_nobody_to_tell"],
     ["not_handed_over", 503, "wallet_change_not_announced"],
-    ["unconfirmed", 503, "wallet_change_unconfirmed"],
   ] as const)(
     "is refused when the dashboard answers %s, and nothing is recorded",
     async (outcome, status, code) => {
@@ -450,35 +449,25 @@ describe("a change that could not be announced", () => {
     },
   );
 
-  it("is refused as not announced when the dashboard turned the request away before telling anybody", async () => {
-    // A listener that refused the request — the wrong secret, a body it would
-    // not read — told nobody, so the refusal must not say an account may have
-    // been told.
+  it("is refused as not announced when telling fails part of the way, since a message may have gone out", async () => {
+    // The dashboard tells in the gateway's own process (ADR-0030), so a
+    // failure is a throw from our own code: reading the addresses, or a defect
+    // before one message or between two. That is "not every message was handed
+    // over, and some may have been", which is what this refusal already says.
     const { served, harnessed } = await started();
     const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
     await ask(served, dashboard, A_WALLET);
     const before = await walletOf(served, harnessed.merchant.key);
-    harnessed.announcer.answer = "refused_by_dashboard";
+    harnessed.announcer.answer = async () => {
+      throw new Error("the addresses could not be read");
+    };
 
     const refused = await asking(served, dashboard, ANOTHER_WALLET);
 
     expect(refused.status).toBe(503);
     expect(refusalOf(refused.body).code).toBe("wallet_change_not_announced");
-    expect(refusalOf(refused.body).message).not.toMatch(/may (still )?have/i);
+    expect(refusalOf(refused.body).message).toMatch(/may still have received it/);
     expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(before);
-  });
-
-  it("is refused when the dashboard cannot be reached at all, which reads as no answer", async () => {
-    const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    harnessed.announcer.answer = async () => {
-      throw new Error("the dashboard is not there");
-    };
-
-    const refused = await asking(served, dashboard, A_WALLET);
-
-    expect(refused.status).toBe(503);
-    expect(refusalOf(refused.body).code).toBe("wallet_change_unconfirmed");
   });
 });
 
