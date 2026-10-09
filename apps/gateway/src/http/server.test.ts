@@ -27,6 +27,10 @@ import { ORDER_ID_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } 
  */
 const routesSource = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
 const serverSource = readFileSync(new URL("./server.ts", import.meta.url), "utf8");
+const merchantAnswersSource = readFileSync(
+  new URL("./merchant-answers.ts", import.meta.url),
+  "utf8",
+);
 
 /**
  * The key the harness's own merchant holds, named rather than spelled again.
@@ -304,9 +308,9 @@ describe("what a call answers with", () => {
     // The half left over is the one the compiler cannot see: a code in the list
     // that this gateway no longer sends. Nothing goes red when a refusal is
     // deleted, and what is left behind is a name a consumer writes a branch for
-    // and waits forever to reach. So the two files that hold every refusal are
-    // read, and each published code has to be written in one of them.
-    const written = [routesSource, serverSource].join("\n");
+    // and waits forever to reach. So the three files that hold every refusal
+    // are read, and each published code has to be written in one of them.
+    const written = [routesSource, serverSource, merchantAnswersSource].join("\n");
     const unsent = ERROR_CODES.filter((code) => !written.includes(`"${code}"`));
 
     expect(

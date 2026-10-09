@@ -9,7 +9,9 @@
  *
  * Every refusal here is written straight to the response rather than returned
  * as a document, and so is the payment challenge, whose whole content is a
- * header. Everything a call answers with when it works goes back as a document
+ * header. The refusals a merchant's call meets are worded in
+ * `merchant-answers.ts`, because the dashboard meets them too, calling the same
+ * flows inside the process (ADR-0030). Everything a call answers with when it works goes back as a document
  * and is held to the route's own schema on the way out. The purchase is not an
  * exception to that any more: what it answers a paid call with is the state of
  * the order it made, in the document the agent's own door answers with.
@@ -19,7 +21,6 @@ import { outcomeFor } from "@agentify/core";
 import type {
   IssueKeyRequest,
   OrderListQuery,
-  OrderWithStatus,
   PayoutWalletRequest,
   PurchaseRequest,
   RegistrationRequest,
@@ -29,10 +30,28 @@ import type {
   WorkerPollRequest,
 } from "@nuanu-ai/agentify-contracts";
 import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
-import type { Caller, Gateway, PurchaseAttempt, WalletChangeRefusal } from "../app/gateway.js";
+import type { Caller, Gateway, PurchaseAttempt } from "../app/gateway.js";
 import { invitationAccepted } from "../app/merchants.js";
-import { agentOrderStatusOf, orderDocumentOf } from "../app/runner.js";
+import { agentOrderStatusOf } from "../app/runner.js";
 import type { KeyPurpose } from "../ports/store.js";
+import {
+  BAD_REQUEST,
+  CONFLICT,
+  FORBIDDEN,
+  KEY_MADE_FOR_A_DASHBOARD,
+  merchantDeparted,
+  merchantOrderAnswer,
+  merchantOrderList,
+  NO_SUCH_ITEM,
+  NO_SUCH_KEY,
+  NO_SUCH_ORDER,
+  OK,
+  PAYMENT_REQUIRED,
+  quoteAnswerRefused,
+  type Refused,
+  UNPROCESSABLE,
+  walletChangeRefused,
+} from "./merchant-answers.js";
 import type { MountedRoute, RouteAnswer, RouteCall } from "./server.js";
 import { hold, refusal } from "./server.js";
 import {
@@ -42,30 +61,6 @@ import {
   paymentFingerprint,
   presentedPayment,
 } from "./x402.js";
-
-/**
- * The status codes.
- *
- * They are here rather than scattered through the handlers so that a reader can
- * see the whole judgement at once. Two of them are worth arguing. A merchant's
- * call that the machine could not honour comes back as 409 rather than 200:
- * the document already says `ok: false`, but a client that only reads statuses
- * would otherwise record a refusal as a success. And a purchase whose order
- * ended in anything but delivery is also 409 — the call was understood, and
- * what it ran into is the state of the world.
- */
-const OK = 200;
-const BAD_REQUEST = 400;
-const PAYMENT_REQUIRED = 402;
-const FORBIDDEN = 403;
-const NOT_FOUND = 404;
-const CONFLICT = 409;
-const UNPROCESSABLE = 422;
-/**
- * A dependency of this call did not do its part — the dashboard or the mail
- * provider behind a wallet change — and nothing was recorded.
- */
-const UNAVAILABLE = 503;
 
 /**
  * The merchant whose key opened this call.
@@ -165,76 +160,6 @@ const walletIsSetInTheDashboard = (response: RouteCall["response"]): RouteAnswer
       "the payout wallet is set only through the dashboard, on its Settings screen, with the key the dashboard holds, and the key this call was made with was made for the merchant's own code: a key of that kind operates the shop and cannot change where its money goes. Nothing was changed",
     ),
   );
-
-/**
- * What a wallet change the gateway would not record is answered with.
- *
- * Three codes, and in every one nothing was written: the address paid now
- * and whatever change was already waiting are as they were (ADR-0019). They
- * are three codes rather than one because each asks something different of
- * whoever reads it. A message that could not be confirmed as sent to every
- * account may still have reached some, whether the provider refused one, the
- * telling failed part of the way or it did not finish in time, and its words
- * say so without naming a cause the gateway cannot know. The race comes in two
- * wordings, because the words say what may have reached a mailbox and the
- * code alone does not know: a change raced after its message went out has a
- * message in an inbox, where one raced before anything was announced has
- * none. A merchant who has read a message about a change must not be told
- * nothing was sent, and one who has none must not be sent looking for it.
- *
- * The codes are this route's alone and no worker of the SDK meets them, which
- * is why they joined the published list without moving the contract version
- * (ADR-0006 §2). None is retryable under the gateway's rule: each ends in a
- * call that works only once something else has changed — an account made,
- * mail back, a merchant who has read what is waiting.
- */
-function walletChangeRefused(
-  response: RouteCall["response"],
-  why: WalletChangeRefusal,
-): RouteAnswer {
-  switch (why) {
-    case "nobody_to_tell":
-      return written(
-        response,
-        CONFLICT,
-        refusal(
-          "wallet_change_nobody_to_tell",
-          "a change of the payout wallet is told to every dashboard account that names this merchant before it is recorded, and no account names this merchant, so there is nobody to tell; nothing was changed and sales are paid where they were",
-        ),
-      );
-    case "not_announced":
-      return written(
-        response,
-        UNAVAILABLE,
-        refusal(
-          "wallet_change_not_announced",
-          "the message about this change could not be confirmed as sent to every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the dashboard's wallet screen shows it, which it does not",
-        ),
-      );
-    case "raced":
-      return written(
-        response,
-        CONFLICT,
-        refusal(
-          "wallet_change_raced",
-          "another change of this merchant's payout wallet was recorded between reading the wallet and writing this one, so this one was not recorded; read the wallet and ask again if this is still the address wanted",
-        ),
-      );
-    case "raced_after_announcing":
-      return written(
-        response,
-        CONFLICT,
-        refusal(
-          "wallet_change_raced",
-          "another change of this merchant's payout wallet was recorded while this one was being announced, so this one was not recorded; its message went out and says the change takes effect only if the dashboard's wallet screen shows it, which it does not. Read the wallet and ask again if this is still the address wanted",
-        ),
-      );
-    default: {
-      const unanswered: never = why;
-      throw new Error(`there are no words for the wallet refusal ${String(unanswered)}`);
-    }
-  }
-}
 
 export function handlersFor(gateway: Gateway): Partial<Record<RouteName, MountedRoute>> {
   const { config } = gateway.runtime;
@@ -338,7 +263,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
           return walletIsSetInTheDashboard(call.response);
         }
         return typeof set === "string"
-          ? walletChangeRefused(call.response, set)
+          ? refusedWith(call.response, walletChangeRefused(set))
           : { status: OK, document: set };
       },
     },
@@ -416,26 +341,10 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
           );
         }
         if (disabled === "made_for_a_dashboard") {
-          // Their own key, and not one they made. A merchant switches off what
-          // they issued; this one is how a dashboard reaches the gateway for
-          // them, and revoking it signs somebody out of the page they are
-          // standing on. Said in its own words rather than as "no such key",
-          // because the caller is owed the reason and because the key is
-          // theirs — there is nothing here a stranger learns.
-          return written(
-            call.response,
-            CONFLICT,
-            refusal(
-              "key_made_for_a_dashboard",
-              "this key was made for a dashboard to call as this merchant with, and only the keys the merchant issued for their own code are disabled here",
-            ),
-          );
+          return refusedWith(call.response, KEY_MADE_FOR_A_DASHBOARD);
         }
         if (disabled === null) {
-          // A key of another merchant's is refused in the words a key that is
-          // not there gets. Disabling is not a way of counting somebody else's
-          // keys.
-          return written(call.response, NOT_FOUND, refusal("no_such_key", "there is no such key"));
+          return refusedWith(call.response, NO_SUCH_KEY);
         }
         return { status: OK, document: disabled };
       },
@@ -443,50 +352,15 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
 
     get_order: {
       serve: async (call) => {
-        const { params, response } = call;
-        // The merchant's own read of one order, and another merchant's order is
-        // not found — the same answer an identifier naming nothing gets, so a
-        // stranger learns nothing by guessing.
-        const record = await gateway.merchantOrder(merchantOf(call), params.order_id ?? "");
-        if (record === null) {
-          return written(response, NOT_FOUND, refusal("no_such_order", "there is no such order"));
-        }
-        if (record.order.price === null) {
-          // The shape this call answers in carries a sale price and this order
-          // has none: standing the card's number in for it would be a claim
-          // about a sale that was never priced. Which of the two silences it is
-          // matters to the merchant, so both are said, along with where the
-          // order ended — one closed before it was priced is not waiting for
-          // anything, and saying it was would be a positive false statement
-          // about a purchase that is over.
-          const status = outcomeFor(record.order);
-          const open = status === "in_progress";
-          return written(
-            response,
-            CONFLICT,
-            refusal(
-              open ? "order_not_priced_yet" : "order_closed_before_it_was_priced",
-              open
-                ? "this order is still waiting for its price, and until it has one there is no sale to describe"
-                : `this order ended as ${status} before anybody named a price for it, so there is no sale to describe`,
-              { status },
-            ),
-          );
-        }
-        const document: OrderWithStatus = {
-          ...orderDocumentOf(record),
-          status: outcomeFor(record.order),
-        };
-        return { status: OK, document };
+        const answered = merchantOrderAnswer(
+          await gateway.merchantOrder(merchantOf(call), call.params.order_id ?? ""),
+        );
+        return answered.ok
+          ? { status: OK, document: answered.document }
+          : refusedWith(call.response, answered.refused);
       },
     },
 
-    // Worth knowing before this list is reconciled against: it cannot show an
-    // order that was closed before anybody named a price for it — a product the
-    // merchant said was gone, or a price check he never answered on a card whose
-    // money moves at the purchase. The document every row is written in carries
-    // a sale price and those orders have none. They are readable one at a time
-    // by identifier, where the refusal says what became of them.
     list_orders: {
       serve: async (call) => {
         // Only "true" narrows the list. Anything else asks for everything, which
@@ -495,14 +369,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
         // merchant is in the query and nobody else's order is read at all.
         const asked = (call.query as OrderListQuery | undefined)?.open;
         const records = await gateway.orders(merchantOf(call), asked === "true" ? true : undefined);
-        return {
-          status: OK,
-          document: {
-            orders: records
-              .filter((record) => record.order.price !== null)
-              .map((record) => ({ ...orderDocumentOf(record), status: outcomeFor(record.order) })),
-          },
-        };
+        return { status: OK, document: merchantOrderList(records) };
       },
     },
 
@@ -583,18 +450,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
           call.body as never,
         );
         if ("refused" in answered) {
-          // Refused as a body that is not what this call takes, with the
-          // reasons as the sentence itself rather than behind it: a worker
-          // reporting a refused answer prints the sentence and not the list.
-          return written(
-            call.response,
-            BAD_REQUEST,
-            refusal(
-              "malformed_body",
-              answered.refused.map((problem) => problem.message).join("; "),
-              { problems: answered.refused },
-            ),
-          );
+          return refusedWith(call.response, quoteAnswerRefused(answered.refused));
         }
         return { status: OK, document: answered };
       },
@@ -635,7 +491,7 @@ async function orderStatus(
 ): Promise<RouteAnswer> {
   const record = await gateway.orderById(params.order_id ?? "");
   if (record === null) {
-    return written(response, NOT_FOUND, refusal("no_such_order", "there is no such order"));
+    return refusedWith(response, NO_SUCH_ORDER);
   }
 
   return {
@@ -667,7 +523,7 @@ async function sellingSet(
   // merchant's exactly where they were.
   const changed = await gateway.setSelling(merchantOf(call), selling);
   if (!changed.ok) {
-    return written(call.response, CONFLICT, refusal("merchant_departed", changed.why));
+    return refusedWith(call.response, merchantDeparted(changed.why));
   }
   return { status: OK, document: changed.cards };
 }
@@ -687,9 +543,7 @@ async function cardPaused(
 ): Promise<RouteAnswer> {
   const card = await gateway.setCardPaused(merchantOf(call), call.params.item_id ?? "", paused);
   if (card === null) {
-    // A card of another merchant's is refused in the words a card that is not
-    // there gets. Pausing is not a way of finding out what somebody else sells.
-    return written(call.response, NOT_FOUND, refusal("no_such_item", "there is no such product"));
+    return refusedWith(call.response, NO_SUCH_ITEM);
   }
   return { status: OK, document: card };
 }
@@ -700,7 +554,7 @@ function answeredOrder(
   answered: { readonly ok: boolean } | null,
 ): RouteAnswer {
   if (answered === null) {
-    return written(response, NOT_FOUND, refusal("no_such_order", "there is no such order"));
+    return refusedWith(response, NO_SUCH_ORDER);
   }
   return { status: answered.ok ? OK : CONFLICT, document: answered };
 }
@@ -719,7 +573,7 @@ async function probeAnswer(
 ): Promise<RouteAnswer> {
   const offered = await gateway.paidResource(itemId);
   if (offered === null) {
-    return written(response, NOT_FOUND, refusal("no_such_item", "there is no such product"));
+    return refusedWith(response, NO_SUCH_ITEM);
   }
   if (offered.selling !== "open") {
     // A card that is off sale answers no challenge, and the reason is not
@@ -963,7 +817,7 @@ async function answerPurchase(
 ): Promise<RouteAnswer> {
   switch (attempt.step) {
     case "no_such_item":
-      return written(response, NOT_FOUND, refusal("no_such_item", "there is no such product"));
+      return refusedWith(response, NO_SUCH_ITEM);
 
     case "params_rejected":
       // The findings are what the agent fixes, and the sentence is what tells
@@ -1156,4 +1010,9 @@ async function answerPurchase(
 function written(response: RouteCall["response"], status: number, document: unknown): RouteAnswer {
   response.status(status).json(document);
   return { written: true };
+}
+
+/** One of the refusals worded for both callers, written into the envelope. */
+function refusedWith(response: RouteCall["response"], refused: Refused): RouteAnswer {
+  return written(response, refused.status, refusal(refused.code, refused.message, refused.details));
 }

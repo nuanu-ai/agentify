@@ -22,7 +22,7 @@ export { MemoryStore } from "./adapters/memory/store.js";
 export { PgBossQueue, queueOn } from "./adapters/pgboss/queue.js";
 export { connect, PostgresStore } from "./adapters/postgres/store.js";
 export { X402Facilitator } from "./adapters/x402/facilitator.js";
-export { Gateway, type PurchaseAttempt } from "./app/gateway.js";
+export { type Caller, Gateway, type PurchaseAttempt } from "./app/gateway.js";
 export {
   grantLiveApproval,
   type IssuedKey,
@@ -52,7 +52,27 @@ export {
   type RedeliveryConfig,
   type WorkerConfig,
 } from "./config.js";
-export { buildApp, type MountedRoute, type RouteAnswer, type RouteHandler } from "./http/server.js";
+export {
+  CONFLICT,
+  GATEWAY_FAILED,
+  KEY_MADE_FOR_A_DASHBOARD,
+  merchantDeparted,
+  merchantOrderAnswer,
+  merchantOrderList,
+  NO_SUCH_ITEM,
+  NO_SUCH_KEY,
+  NO_SUCH_ORDER,
+  quoteAnswerRefused,
+  type Refused,
+  walletChangeRefused,
+} from "./http/merchant-answers.js";
+export {
+  buildApp,
+  hold,
+  type MountedRoute,
+  type RouteAnswer,
+  type RouteHandler,
+} from "./http/server.js";
 export { PaymentEdge, paymentFingerprint, presentedPayment } from "./http/x402.js";
 export { type AnnouncementOutcome, type Announcer, nobodyAnnounces } from "./ports/announcer.js";
 export { asTimestamp, type Clock, type Ids, randomIds, systemClock } from "./ports/clock.js";
