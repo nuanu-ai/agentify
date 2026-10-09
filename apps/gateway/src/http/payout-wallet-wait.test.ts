@@ -763,3 +763,89 @@ describe("a new key on the live deployment", () => {
     expect(harnessed.announcer.announced).toStrictEqual([]);
   });
 });
+
+describe("a change asked for from a session in the dashboard", () => {
+  // The dashboard calls the gateway inside the process the two share, as the
+  // merchant on the signed-in account's row (ADR-0030). No key is on such a
+  // call, and what the gateway knows is the account the session is signed in
+  // as, so that is what every message names: an account at the merchant can
+  // tell whose session asked. Whoever holds a session is not something the
+  // gateway can know, which is why it names the session's account and nobody
+  // behind it.
+  const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
+
+  it("names the account a first wallet was set from", async () => {
+    const { harnessed } = await started();
+    const made = await harnessed.gateway.registerMerchant();
+
+    await harnessed.gateway.setPayoutWallet(made.merchant_id, A_WALLET, SIGNED_IN);
+
+    expect(harnessed.announcer.announced).toStrictEqual([
+      { kind: "wallet_set", merchant_id: made.merchant_id, to: A_WALLET, asked_with: SIGNED_IN },
+    ]);
+  });
+
+  it("names the account a replacement was asked from, before it is recorded", async () => {
+    const { harnessed } = await started();
+    const asked = harnessed.now();
+
+    const answered = await harnessed.gateway.setPayoutWallet(
+      harnessed.merchant.id,
+      A_WALLET,
+      SIGNED_IN,
+    );
+
+    expect(answered).toStrictEqual({
+      payout_wallet: harnessed.merchant.wallet,
+      pending: { payout_wallet: A_WALLET, takes_effect_at: at(asked + THE_WAIT) },
+    });
+    expect(harnessed.announcer.announced).toStrictEqual([
+      {
+        kind: "wallet_change",
+        merchant_id: harnessed.merchant.id,
+        from: harnessed.merchant.wallet,
+        to: A_WALLET,
+        not_before: at(asked + THE_WAIT),
+        asked_with: SIGNED_IN,
+      },
+    ]);
+  });
+
+  it("names the account a cancel was asked from", async () => {
+    const { harnessed } = await started();
+    await harnessed.gateway.setPayoutWallet(harnessed.merchant.id, A_WALLET, SIGNED_IN);
+
+    await harnessed.gateway.setPayoutWallet(
+      harnessed.merchant.id,
+      harnessed.merchant.wallet,
+      SIGNED_IN,
+    );
+
+    expect(harnessed.announcer.announced[1]).toStrictEqual({
+      kind: "wallet_change_cancelled",
+      merchant_id: harnessed.merchant.id,
+      kept: harnessed.merchant.wallet,
+      cancelled: A_WALLET,
+      asked_with: SIGNED_IN,
+    });
+  });
+
+  it("names the account a new key was issued from", async () => {
+    const { harnessed } = await started();
+
+    const issued = await harnessed.gateway.issueMerchantKey(
+      harnessed.merchant.id,
+      "the stock worker",
+      SIGNED_IN,
+    );
+
+    expect(harnessed.announcer.announced).toStrictEqual([
+      {
+        kind: "key_issued",
+        merchant_id: harnessed.merchant.id,
+        key: { id: issued.key.id, label: "the stock worker" },
+        asked_with: SIGNED_IN,
+      },
+    ]);
+  });
+});

@@ -207,6 +207,54 @@ describe("what a message advises and claims", () => {
   });
 });
 
+describe("who asked", () => {
+  // A change asked for from the dashboard comes from a session, and the
+  // gateway knows the account that session is signed in as (ADR-0030). Every
+  // message names that account, so the accounts at a merchant can tell whose
+  // session it was; it says a session and not a person, because a session
+  // somebody else took is signed in as the owner all the same.
+  const ASKED_FROM = { kind: "signed_in", email: "partner@example.com" } as const;
+
+  it.each([
+    ["a replacement", { ...aWalletChange, asked_with: ASKED_FROM }],
+    ["a first wallet", { kind: "wallet_set", merchant_id: MERCHANT, to: TO, asked_with: ASKED_FROM }],
+    [
+      "a cancelled change",
+      {
+        kind: "wallet_change_cancelled",
+        merchant_id: MERCHANT,
+        kept: FROM,
+        cancelled: TO,
+        asked_with: ASKED_FROM,
+      },
+    ],
+    [
+      "a new key",
+      {
+        kind: "key_issued",
+        merchant_id: MERCHANT,
+        key: { id: "mk_91c0", label: "the price desk" },
+        asked_with: ASKED_FROM,
+      },
+    ],
+  ] as const)("names the account the session that asked for %s is signed in as", async (_what, request) => {
+    const { tell, sent } = await telling([
+      ["owner@example.com", MERCHANT],
+      ["partner@example.com", MERCHANT],
+    ]);
+
+    await tell(request satisfies Announcement);
+
+    expect(sent).toHaveLength(2);
+    for (const message of sent) {
+      for (const text of [message.body, message.html]) {
+        expect(text).toMatch(/session signed in as partner@example\.com/);
+        expect(text).not.toMatch(/person signed in/i);
+      }
+    }
+  });
+});
+
 describe("what is announced once it is done", () => {
   it("tells of a first wallet set, naming the address and where to replace it", async () => {
     // It applied at once, so the message is the owner's only word of it if
