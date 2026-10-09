@@ -1,5 +1,62 @@
 # Contracts release history
 
+## 0.7.0
+
+### Minor Changes
+
+- 6f8521e: The calls and documents about the key a dashboard holds are called by the
+  product's name for it. The two routes move from `/v0/keys/cabinet` to
+  `/v0/keys/dashboard`, `API_ROUTES.issue_cabinet_key` and
+  `API_ROUTES.forget_cabinet_key` become `issue_dashboard_key` and
+  `forget_dashboard_key`, `CabinetKeySchema` and `ForgottenCabinetKeySchema` become
+  `DashboardKeySchema` and `ForgottenDashboardKeySchema` (documents
+  `dashboard_key` and `forgotten_dashboard_key`), the types `CabinetKey` and
+  `ForgottenCabinetKey` become `DashboardKey` and `ForgottenDashboardKey`, and the
+  refusal codes `not_a_cabinet_key` and `key_made_for_a_cabinet` become
+  `not_a_dashboard_key` and `key_made_for_a_dashboard`. The old names are gone
+  rather than kept beside the new ones. These routes are not on the public origin
+  and only the dashboard calls them, so a merchant's own code is affected only if
+  it imports one of these names or matches one of the two refusal codes.
+- effa6e3: The documents an agent reads take what is added to them later (ADR-0006 §5).
+  The catalog page, the card in it and an order's status accept fields this
+  version does not name, both beside their fields and inside their parts — the
+  seller, a price, a declared field, a merchant's refusal — and a card's
+  `fulfillment` and an order's `status` are words whose known values are listed
+  beside them, so a word added later is read rather than refused. Such a word is
+  an `OpenWordSchema`: lower-case letters, digits and underscores, starting with
+  a letter and at most sixty-four characters long. A declared field's `type`
+  stays a closed list. The exported `public_card` is now one object rather than a
+  branch per mode, so the rule that only some modes name a deadline is stated in
+  its description rather than in its structure. The catalog page holds its items
+  as they arrive, and the new `cardsOf(page)` reads each one on its own, passing
+  over an item that does not read as a card and a card of a mode this version
+  does not name, so the rest of the page stays for sale. In TypeScript,
+  `CatalogPage["items"]` is `unknown[]`, a card's `fulfillment` and an order
+  status's `status` are strings, and `publicCardOf` returns a `ProjectedCard`:
+  the card's own fields without the open schema's index signature, and a mode
+  this version names. The merchant's own documents stay closed.
+- 3862afa: An agent reads who sells. Every card in the catalog and the status of every
+  order carry `seller`, the name the merchant sells under and the https origin of
+  their shop's own site, each `null` where none was given and neither checked by
+  Agentify (ADR-0034). The seller-name document carries `seller_site` beside
+  `seller_name`, and a request to the seller-name route may send the name, the
+  site or both; a request that sends the name alone is taken as before, and its
+  answer gains `seller_site`. A reader validating the card, the order status or
+  the seller-name document with an earlier version of this package refuses the
+  new fields: update it before reading a gateway that sends them.
+  `SellerSchema` and `SellerSiteSchema` are exported. A seller name sent to the
+  route is now held to the plain-text rule the card's words are: HTML markup and
+  character references such as `&amp;` are refused.
+
+### Patch Changes
+
+- 685b465: The answer route, the `accept` call and the `not_applicable_in_mode` code now
+  say that a synchronous order still waiting for its goods cannot be taken on. An
+  acceptance from a synchronous handler, or the `accept` call on such an order, is
+  refused with `not_applicable_in_mode`, because the goods of that mode travel
+  only in the handler's answer and the `deliver` call that would carry them later
+  does not exist there.
+
 ## 0.6.0
 
 ### Minor Changes
