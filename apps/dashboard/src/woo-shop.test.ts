@@ -25,11 +25,16 @@ const readOrder = (keys: Parameters<typeof readTheOrderInTheShop>[0], orderId: s
   readTheOrderInTheShop(keys, orderId, fetch);
 const ratesFor = (url: string, productId: string, place: ShipToLocality) =>
   shippingRatesInTheShop(url, productId, place, fetch);
+const createParcel = (
+  keys: Parameters<typeof createTheParcelInTheShop>[0],
+  sold: Parameters<typeof createTheParcelInTheShop>[1],
+) => createTheParcelInTheShop(keys, sold, fetch);
 
 import type { ShipToLocality } from "@nuanu-ai/agentify-contracts";
 import {
   catalogueOf,
   createTheOrderInTheShop,
+  createTheParcelInTheShop,
   inspectProductInTheShop,
   readTheOrderInTheShop,
   shippingRatesInTheShop,
@@ -1123,5 +1128,184 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       await stand.close();
       stand = null;
     }
+  });
+});
+
+describe("creating a parcel's order", () => {
+  // What a live WooCommerce 11.1 answered to an order like this one, with the
+  // address read back as it was sent (`docs/research/41-woo-parcel-probe.md`).
+  // The address is Agentify's own office, the one the discovery listing's
+  // example ships to: a real place and nobody's home.
+  const ADDRESS = {
+    name: "Nuanu Reception",
+    line_one: "Jl. Raya Kediri, Beraban",
+    line_two: "Nuanu Creative City",
+    city: "Tabanan",
+    state: "BA",
+    postal_code: "82121",
+    country: "ID",
+    phone_number: "+62 000 0000 0000",
+  };
+  const sold = {
+    orderId: "ord_9",
+    productId: "28",
+    email: "merchant@example.com",
+    paid: { amount: "23.00", currency: "USD" },
+    goods: "20.00",
+    rate: { methodId: "flat_rate", instanceId: "1", title: "Bali courier", cost: "3.00" },
+    address: ADDRESS,
+  };
+  const shipping = {
+    first_name: "Nuanu Reception",
+    last_name: "",
+    company: "",
+    address_1: "Jl. Raya Kediri, Beraban",
+    address_2: "Nuanu Creative City",
+    city: "Tabanan",
+    state: "BA",
+    postcode: "82121",
+    country: "ID",
+    phone: "+62 000 0000 0000",
+  };
+  const madeParcel = (overrides: Record<string, unknown> = {}) => ({
+    id: 30,
+    number: "30",
+    order_key: "wc_order_30",
+    status: "processing",
+    currency: "USD",
+    total: "23.00",
+    total_tax: "0.00",
+    shipping_total: "3.00",
+    payment_method: "agentify",
+    transaction_id: "ord_9",
+    billing: { email: "merchant@example.com" },
+    shipping,
+    meta_data: [{ id: 13, key: "agentify_order_id", value: "ord_9" }],
+    line_items: [
+      { product_id: 28, quantity: 1, subtotal: "20.00", total: "20.00", total_tax: "0.00" },
+    ],
+    shipping_lines: [
+      {
+        id: 6,
+        method_title: "Bali courier",
+        method_id: "flat_rate",
+        instance_id: "1",
+        total: "3.00",
+        total_tax: "0.00",
+      },
+    ],
+    ...overrides,
+  });
+  /** Every word of the address, none of which any answer here may carry. */
+  const ADDRESS_WORDS = [
+    "Reception",
+    "Kediri",
+    "Beraban",
+    "Creative City",
+    "Tabanan",
+    "82121",
+    "0000 0000",
+  ];
+
+  it("sends a paid order shipping to the buyer, with the rate the price was paid at", async () => {
+    stand = await shopAnswering(() => ({ status: 201, body: madeParcel() }));
+
+    const made = await createParcel(connectionTo(stand.url), sold);
+
+    expect(made).toStrictEqual({ ok: true, id: "30", number: "30" });
+    const asked = stand.asked[0];
+    expect(asked?.method).toBe("POST");
+    expect(asked?.authorization).toMatch(/^Basic /);
+    // The answer is read with the fields this needs, the address among them so
+    // that it can be checked, and nothing else the shop would echo.
+    expect(new URL(asked?.url ?? "", stand.url).searchParams.get("_fields")?.split(",")).toContain(
+      "shipping",
+    );
+    const body = JSON.parse(asked?.body ?? "{}");
+    expect(body).toMatchObject({
+      set_paid: true,
+      transaction_id: "ord_9",
+      billing: { email: "merchant@example.com" },
+      // One name goes whole into the first name: splitting it would be a guess.
+      shipping: {
+        first_name: "Nuanu Reception",
+        address_1: "Jl. Raya Kediri, Beraban",
+        address_2: "Nuanu Creative City",
+        city: "Tabanan",
+        state: "BA",
+        postcode: "82121",
+        country: "ID",
+        phone: "+62 000 0000 0000",
+      },
+      line_items: [{ product_id: 28, quantity: 1, subtotal: "20.00", total: "20.00" }],
+      shipping_lines: [
+        { method_id: "flat_rate", instance_id: "1", method_title: "Bali courier", total: "3.00" },
+      ],
+    });
+    expect(body.shipping.last_name).toBeUndefined();
+  });
+
+  it("does not call an order placed whose answer does not carry the address it was sent", async () => {
+    // Taking the order on erases Agentify's copy of the address (ADR-0032), so
+    // the shop has to be seen holding it first. An answer that holds another,
+    // or none, is an order that may exist without it: unknown, never placed,
+    // and never posted again.
+    for (const changed of [
+      { shipping: { ...shipping, address_1: "Jl. Raya Kediri" } },
+      { shipping: { ...shipping, phone: "" } },
+      { shipping: undefined },
+    ]) {
+      stand = await shopAnswering(() => ({ status: 201, body: madeParcel(changed) }));
+
+      const made = await createParcel(connectionTo(stand.url), sold);
+
+      expect(made, JSON.stringify(changed)).toMatchObject({ ok: false, again: true });
+      for (const word of ADDRESS_WORDS) expect(JSON.stringify(made)).not.toContain(word);
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("does not call an order placed whose totals or shipping line are not the sale", async () => {
+    for (const changed of [
+      { total: "20.00" },
+      { shipping_lines: [] },
+      { shipping_lines: [{ ...madeParcel().shipping_lines[0], method_id: "free_shipping" }] },
+      { shipping_lines: [{ ...madeParcel().shipping_lines[0], total: "5.00" }] },
+      {
+        line_items: [
+          { product_id: 28, quantity: 1, subtotal: "23.00", total: "23.00", total_tax: "0.00" },
+        ],
+      },
+      { meta_data: [] },
+    ]) {
+      stand = await shopAnswering(() => ({ status: 201, body: madeParcel(changed) }));
+
+      const made = await createParcel(connectionTo(stand.url), sold);
+
+      expect(made, JSON.stringify(changed)).toMatchObject({ ok: false, again: true });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("carries none of the address into a refusal, and says whether to ask again", async () => {
+    stand = await shopAnswering(() => ({
+      status: 400,
+      body: {
+        code: "rest_invalid_param",
+        message: "Invalid shipping: Jl. Raya Kediri, Beraban, Tabanan",
+      },
+    }));
+    const refused = await createParcel(connectionTo(stand.url), sold);
+    expect(refused).toMatchObject({ ok: false, again: false });
+    for (const word of ADDRESS_WORDS) expect(JSON.stringify(refused)).not.toContain(word);
+    await stand.close();
+
+    stand = await shopAnswering(() => ({ status: 503, body: {} }));
+    expect(await createParcel(connectionTo(stand.url), sold)).toMatchObject({
+      ok: false,
+      again: true,
+    });
   });
 });

@@ -18,7 +18,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { buyOverHttp, type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
 import type { AgentOrderStatus, Order } from "@nuanu-ai/agentify-contracts";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { gatewayFor } from "./gateway.js";
 import { cardsFromTheShop, merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
 import {
@@ -26,13 +26,15 @@ import {
   type EligibleWooProduct,
   inspectProductInTheShop,
   type OrderMade,
+  type ParcelMade,
+  type ParcelSold,
   type ProductInspection,
   type RatesRead,
   type ShopKeys,
   type SoldItem,
 } from "./woo-shop.js";
 import { memoryWooShops, type WooConnection, type WooShops } from "./woo-shops.js";
-import { fillFromTheShop, startWooWorker, turnOnce } from "./woo-worker.js";
+import { type Filling, fillFromTheShop, startWooWorker, turnOnce } from "./woo-worker.js";
 
 /** The shop showing this product as the one download it sells. */
 const showing = (product: EligibleWooProduct): ProductInspection => ({ ok: true, product });
@@ -1130,6 +1132,305 @@ describe("a parcel's price question", () => {
 
     expect(answer).toStrictEqual({ available: false, as_of: NOW });
     expect(Date.now() - started).toBeLessThan(2_000);
+  });
+});
+
+describe("a parcel's paid order", () => {
+  // The office the discovery listing's example ships to: a real place and
+  // nobody's home.
+  const ADDRESS = {
+    name: "Nuanu Reception",
+    line_one: "Jl. Raya Kediri, Beraban",
+    line_two: "Nuanu Creative City",
+    city: "Tabanan",
+    state: "BA",
+    postal_code: "82121",
+    country: "ID",
+    phone_number: "+62 000 0000 0000",
+  };
+  const ADDRESS_WORDS = ["Reception", "Kediri", "Beraban", "Creative City", "Tabanan", "82121"];
+  const parcelOrder = (overrides: Partial<Order> = {}): Order =>
+    anOrder({
+      merchant_item_id: merchantItemIdFor("https://shop.example.com", "28"),
+      price: {
+        amount: "25.00",
+        currency: "USD",
+        at: "2026-09-14T12:00:00.000Z",
+        as_of: "2026-09-14T12:00:00.000Z",
+      },
+      price_id: "prc_parcel",
+      ship_to: ADDRESS,
+      ...overrides,
+    });
+  const THE_TOTE: ProductInspection = {
+    ok: true,
+    product: {
+      kind: "parcel",
+      productId: "28",
+      price: { amount: "20.00", currency: "USD" },
+      fingerprint: "accepted-parcel-fingerprint",
+    },
+  };
+  const rate = (title: string, cost: string, instanceId: string) => ({
+    methodId: "flat_rate",
+    instanceId,
+    title,
+    cost,
+  });
+  const TODAY: RatesRead = {
+    ok: true,
+    rates: [rate("Express", "12.00", "4"), rate("Standard", "5.00", "3")],
+  };
+
+  /** A shop that takes every parcel's order, remembering what it was sent. */
+  const aParcelShop = () => {
+    const placed: ParcelSold[] = [];
+    return {
+      placed,
+      place: async (_keys: ShopKeys, sold: ParcelSold): Promise<ParcelMade> => {
+        placed.push(sold);
+        return { ok: true, id: String(29 + placed.length), number: String(29 + placed.length) };
+      },
+    };
+  };
+
+  const parcelParts = (
+    shops: WooShops,
+    place: (keys: ShopKeys, sold: ParcelSold) => Promise<ParcelMade>,
+    overrides: Partial<Filling> = {},
+  ): Filling => ({
+    shops,
+    now: () => new Date("2026-09-14T12:00:00.000Z"),
+    placeParcel: place,
+    inspectProduct: async () => THE_TOTE,
+    shippingRates: async () => TODAY,
+    quotedProduct: async () => "accepted-parcel-fingerprint",
+    ...overrides,
+  });
+
+  it("places it with the address and the rate it was paid at, and takes it on", async () => {
+    const shops = memoryWooShops();
+    const shop = aParcelShop();
+    let asked: unknown;
+
+    const answer = await fillFromTheShop(
+      parcelOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      parcelParts(shops, shop.place, {
+        shippingRates: async (_connection, _productId, where) => {
+          asked = where;
+          return TODAY;
+        },
+      }),
+    );
+
+    expect(answer).toStrictEqual({ accepted: {} });
+    // The shop is asked for rates to the place, not the person.
+    expect(asked).toStrictEqual({
+      country: "ID",
+      state: "BA",
+      city: "Tabanan",
+      postal_code: "82121",
+    });
+    expect(shop.placed).toHaveLength(1);
+    expect(shop.placed[0]).toMatchObject({
+      orderId: "ord_1",
+      productId: "28",
+      email: MERCHANT_EMAIL,
+      paid: { amount: "25.00", currency: "USD" },
+      goods: "20.00",
+      rate: rate("Standard", "5.00", "3"),
+      address: ADDRESS,
+    });
+    expect(await shops.knownOrder("ord_1")).toStrictEqual({
+      kind: "placed_parcel",
+      id: "30",
+      number: "30",
+    });
+    // The ledger keeps the sale and the shop's order, and nothing of where it goes.
+    const kept = JSON.stringify(await shops.recoveryOrder("ord_1"));
+    for (const word of ADDRESS_WORDS) expect(kept).not.toContain(word);
+  });
+
+  it("chooses the rate the price was paid at, not the cheapest of today", async () => {
+    // The agent was quoted the cheapest rate, and a cheaper one the shop added
+    // since must not make the paid price look wrong: the rate costing what was
+    // paid above the goods is the rate that was sold.
+    const shop = aParcelShop();
+
+    const answer = await fillFromTheShop(
+      parcelOrder({
+        price: {
+          amount: "32.00",
+          currency: "USD",
+          at: "2026-09-14T12:00:00.000Z",
+          as_of: "2026-09-14T12:00:00.000Z",
+        },
+      }),
+      connection(),
+      MERCHANT_EMAIL,
+      parcelParts(memoryWooShops(), shop.place),
+    );
+
+    expect(answer).toStrictEqual({ accepted: {} });
+    expect(shop.placed[0]?.rate).toStrictEqual(rate("Express", "12.00", "4"));
+  });
+
+  it("refuses an order whose shipping no longer costs what was paid, and posts nothing", async () => {
+    const shops = memoryWooShops();
+    const shop = aParcelShop();
+
+    const answer = await fillFromTheShop(
+      parcelOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      parcelParts(shops, shop.place, {
+        shippingRates: async () => ({ ok: true, rates: [rate("Standard", "6.00", "3")] }),
+      }),
+    );
+
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(shop.placed).toHaveLength(0);
+    expect(await shops.knownOrder("ord_1")).toStrictEqual({ kind: "precreate_refused" });
+  });
+
+  it("refuses an order whose product changed since its price, and posts nothing", async () => {
+    for (const changed of [
+      { quotedProduct: async () => "an-earlier-parcel" },
+      { inspectProduct: async () => RULED_OUT },
+      {
+        inspectProduct: async (): Promise<ProductInspection> => ({
+          ok: true,
+          product: {
+            kind: "download",
+            productId: "28",
+            downloadId: "dl",
+            fileName: "Tote.pdf",
+            price: { amount: "20.00", currency: "USD" },
+            fingerprint: "accepted-parcel-fingerprint",
+          },
+        }),
+      },
+    ]) {
+      const shops = memoryWooShops();
+      const shop = aParcelShop();
+
+      const answer = await fillFromTheShop(
+        parcelOrder(),
+        connection(),
+        MERCHANT_EMAIL,
+        parcelParts(shops, shop.place, changed),
+      );
+
+      expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+      expect(shop.placed).toHaveLength(0);
+    }
+  });
+
+  it("answers nothing and writes nothing while the shop does not answer", async () => {
+    // A parcel has days to ship, so a shop that is down for a minute is asked
+    // again on the next hand-over rather than refused for good.
+    for (const silent of [
+      {
+        inspectProduct: async (): Promise<ProductInspection> => ({
+          ok: false,
+          why: "The shop did not answer the protected product check.",
+          again: true,
+        }),
+      },
+      {
+        shippingRates: async (): Promise<RatesRead> => ({
+          ok: false,
+          why: "The shop's cart did not answer.",
+          again: true,
+        }),
+      },
+    ]) {
+      const shops = memoryWooShops();
+      const shop = aParcelShop();
+
+      const answer = await fillFromTheShop(
+        parcelOrder(),
+        connection(),
+        MERCHANT_EMAIL,
+        parcelParts(shops, shop.place, silent),
+      );
+
+      expect(answer).toBeNull();
+      expect(shop.placed).toHaveLength(0);
+      expect(await shops.knownOrder("ord_1")).toBeNull();
+    }
+  });
+
+  it("takes a parcel handed over twice on again, with one order in the shop", async () => {
+    const shops = memoryWooShops();
+    const shop = aParcelShop();
+    const parts = parcelParts(shops, shop.place);
+
+    await fillFromTheShop(parcelOrder(), connection(), MERCHANT_EMAIL, parts);
+    const again = await fillFromTheShop(parcelOrder(), connection(), MERCHANT_EMAIL, parts);
+
+    expect(again).toStrictEqual({ accepted: {} });
+    expect(shop.placed).toHaveLength(1);
+  });
+
+  it("refuses a paid parcel order that carries no address to ship to", async () => {
+    const shop = aParcelShop();
+
+    const answer = await fillFromTheShop(
+      parcelOrder({ ship_to: { erased_at: "2026-09-14T12:00:00.000Z" } }),
+      connection(),
+      MERCHANT_EMAIL,
+      parcelParts(memoryWooShops(), shop.place),
+    );
+
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(shop.placed).toHaveLength(0);
+  });
+
+  it("writes none of the address into the merchant's log, whatever happens", async () => {
+    const logged: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...said: unknown[]) => {
+      logged.push(
+        said
+          .map((one) => (one instanceof Error ? one.stack : (JSON.stringify(one) ?? String(one))))
+          .join(" "),
+      );
+    });
+    try {
+      for (const overrides of [
+        { shippingRates: async () => ({ ok: true as const, rates: [] }) },
+        {
+          placeParcel: async () => ({
+            ok: false as const,
+            why: "The shop did not answer.",
+            again: true,
+          }),
+        },
+        {
+          placeParcel: async () => ({ ok: false as const, why: "The shop refused.", again: false }),
+        },
+        {
+          placeParcel: async () => {
+            throw new Error("the socket closed");
+          },
+        },
+        { inspectProduct: async () => RULED_OUT },
+      ]) {
+        await fillFromTheShop(
+          parcelOrder(),
+          connection(),
+          MERCHANT_EMAIL,
+          parcelParts(memoryWooShops(), aParcelShop().place, overrides),
+        ).catch(() => null);
+      }
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(logged.length).toBeGreaterThan(0);
+    for (const word of ADDRESS_WORDS) expect(logged.join("\n")).not.toContain(word);
   });
 });
 

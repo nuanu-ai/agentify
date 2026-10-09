@@ -287,3 +287,20 @@ describe("exact Woo order recovery", () => {
     });
   });
 });
+
+describe("a parcel's order", () => {
+  it("is not recovered: its address was erased when it became a refund owed", async () => {
+    // Recovery creates or binds an order from what was kept, and of a parcel
+    // nothing of where it goes is kept (ADR-0032).
+    const shops = memoryWooShops();
+    await shops.recordPrecreateRefusal("acc_1", "ord_1", { ...FACTS, kind: "parcel" }, NOW);
+
+    const outcome = await recoverWooOrder({ orderId: "ord_1" }, parts(shops).value);
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      state: "refused",
+      why: expect.stringContaining("parcel"),
+    });
+  });
+});
