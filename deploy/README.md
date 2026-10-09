@@ -185,6 +185,25 @@ putting it on TEST once this is there. To put an older revision on TEST all
 the same, stop `agentify-app-1` first, the way the two were stopped above,
 and remove it once that release is verified.
 
+## The release that takes the gateway's route into the dashboard away
+
+From this release the gateway has the dashboard tell a merchant of a change by
+a call inside the application (ADR-0030), and the dashboard opens no listener
+on 3003. Nothing has to be done on either host before it. Afterwards
+`GATEWAY_DASHBOARD_SECRET` in the host's file is read by nothing. Take its line
+out once going back to an earlier revision is no longer wanted, since an
+earlier revision's preflight refuses a file without it. The last line prints
+`0`, and the file keeps its owner and mode, `root 600`:
+
+```sh
+ssh agentify-test "sudo sed -i '/^GATEWAY_DASHBOARD_SECRET=/d' /etc/agentify/test.env"
+ssh agentify-test "sudo stat -c '%U %a' /etc/agentify/test.env"
+ssh agentify-test sudo grep -c '^GATEWAY_DASHBOARD_SECRET=' /etc/agentify/test.env
+```
+
+On PRODUCTION the same commands run over `ssh agentify`, with
+`production.env` in place of `test.env`.
+
 ## Releasing to production
 
 A production release starts from `main`. Every change a merchant can see in
@@ -628,11 +647,10 @@ image: activation records the images per checkout. On both channels it names
 `AGENTIFY_PUBLIC_ORIGIN`, `AGENTIFY_COOKIE_SECURE`, `AGENTIFY_SURFACE_MODE`,
 `AGENTIFY_PAYMENT_NETWORK`, `AGENTIFY_FACILITATOR_URL`,
 `AGENTIFY_AUTH_SECRET`, `AGENTIFY_INVITATION`, `TOKEN_HMAC_SECRET`,
-`EMAIL_ENCRYPTION_KEY`, `REPORT_IDENTITY_SECRET` and `GATEWAY_DASHBOARD_SECRET`, the last two each at
-least 32 characters of their own (`openssl rand -base64 32`): the gateway
-presents `GATEWAY_DASHBOARD_SECRET` to the dashboard to have a merchant told of a
-payout wallet change, and the preflight refuses a channel where any other
-service holds it or it opens any other door. TEST adds
+`EMAIL_ENCRYPTION_KEY` and `REPORT_IDENTITY_SECRET`, the last at least 32
+characters of its own (`openssl rand -base64 32`): the scanner presents it to
+the dashboard's private route, and the preflight refuses a channel where any
+other service holds it or it opens any other door. TEST adds
 `AGENTIFY_TEST_LISTEN_ADDRESS`, the private address its door binds on.
 PRODUCTION adds `AGENTIFY_DB_PASSWORD`,
 `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `MAIL_URL`, `MAIL_API_KEY` and

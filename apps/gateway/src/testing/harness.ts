@@ -57,20 +57,6 @@ export const countedIds = (): Ids => {
   };
 };
 
-/**
- * What a live gateway is told about the dashboard it announces through.
- *
- * A live configuration does not start without both (ADR-0019), and the harness
- * never calls the address: every harness announces through the recording
- * announcer below, whatever the configuration names. So a test that makes a
- * gateway live spreads this beside the chain and the facilitator and buys the
- * configuration check, nothing else.
- */
-export const ANNOUNCING = {
-  DASHBOARD_INTERNAL_URL: "http://dashboard:3003",
-  GATEWAY_DASHBOARD_SECRET: "the-harness-gateway-dashboard-secret-nobody-reuses",
-} as const;
-
 export const testConfig = (overrides: Record<string, string> = {}): GatewayConfig =>
   loadConfig({
     DATABASE_URL: "postgres://agentify@localhost:5432/agentify",

@@ -287,14 +287,6 @@ const SDK_WORKER_POLL_DEADLINE_MS = 50_000;
 const WORKER_POLL_WAIT_CEILING_MS = 40_000;
 
 /**
- * The shortest secret the gateway will present on its route into the
- * dashboard: what `openssl rand -base64 32` produces, and the floor the dashboard
- * holds its own internal secrets to. It catches a placeholder left in a file,
- * not a weak choice by somebody who read the sentence.
- */
-const SHORTEST_INTERNAL_SECRET = 32;
-
-/**
  * The environment is just as much an external boundary as someone else's HTTP
  * request, so it goes through a zod schema (ADR-0003 §5). A gateway that
  * started with a half-empty configuration will discover that on the very first
@@ -608,42 +600,6 @@ const environmentSchema = z.object({
   // malformed one that stops a stack whose facilitator asks for neither.
   CDP_API_KEY_ID: emptyIsAbsent(z.string().min(1)),
   CDP_API_KEY_SECRET: emptyIsAbsent(z.string().min(1)),
-
-  /**
-   * Where the dashboard is asked to tell a merchant of a change, and what it is
-   * asked with (ADR-0019). The route and the secret are the gateway's one way
-   * into the dashboard, and anything else it ever needs from the dashboard is
-   * asked over them too.
-   *
-   * On a live deployment a change of a payout wallet already set is announced
-   * to every account naming the merchant before anything is written, and a new
-   * key and a cancelled change are announced once they are done. The dashboard
-   * holds the addresses, so the gateway asks it, over an internal route of its
-   * own and with a secret held for that route alone — never the scanner's route
-   * or the scanner's secret, which would give the money path the power to look
-   * up sessions and remove people. The two run in one process (ADR-0030), so
-   * the route is the dashboard's listener on loopback.
-   *
-   * Required on a live deployment and read nowhere else: a test deployment and
-   * the sandbox apply a change at once and announce nothing, so a stack of
-   * either kind that names these is not asked to use them. Set to nothing reads
-   * the same as never set, for the reason the facilitator's credentials above
-   * give. The secret is held to the length the dashboard's other internal secret
-   * is, and a refusal names the variable and never the value.
-   */
-  DASHBOARD_INTERNAL_URL: emptyIsAbsent(
-    z
-      .string()
-      .refine(isHttpUrl, "must be an http address of the gateway's route into the dashboard"),
-  ),
-  GATEWAY_DASHBOARD_SECRET: emptyIsAbsent(
-    z
-      .string()
-      .refine(
-        (value) => value.length >= SHORTEST_INTERNAL_SECRET,
-        `must be at least ${SHORTEST_INTERNAL_SECRET} characters; make one with: openssl rand -base64 32`,
-      ),
-  ),
 });
 
 /**
@@ -686,13 +642,6 @@ export interface RedeliveryConfig {
 
 export interface WorkerConfig {
   readonly pollWaitMs: number;
-}
-
-/** Where and with what a live gateway asks the dashboard, to tell a merchant of a change. */
-export interface DashboardRouteConfig {
-  readonly url: string;
-  /** Presented as a bearer to the dashboard's route. Never printed. */
-  readonly secret: string;
 }
 
 export interface PaymentConfig {
@@ -738,14 +687,6 @@ export interface GatewayConfig {
    * sandbox settles against nothing on a chain whose name says otherwise.
    */
   readonly surfaceMode: SurfaceMode;
-  /**
-   * Where and with what the gateway asks the dashboard over its route into it,
-   * which is how a wallet change, a new key and a cancelled change are
-   * announced, on the live deployment and nowhere else (ADR-0019). Null
-   * everywhere a change applies at once and nothing is announced, whatever the
-   * environment named.
-   */
-  readonly dashboardRoute: DashboardRouteConfig | null;
 }
 
 /**
@@ -953,26 +894,6 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
     );
   }
 
-  // A live gateway that could not announce would refuse every wallet change a
-  // merchant asked for, with nothing wrong until somebody asked. Which of the
-  // two is missing is the whole of what an operator needs to fix it.
-  if (chainEnvironment === "live") {
-    const missing = [
-      ...(environmentValues.DASHBOARD_INTERNAL_URL === undefined ? ["DASHBOARD_INTERNAL_URL"] : []),
-      ...(environmentValues.GATEWAY_DASHBOARD_SECRET === undefined
-        ? ["GATEWAY_DASHBOARD_SECRET"]
-        : []),
-    ];
-    if (missing.length > 0) {
-      problems.push(
-        `PAYMENT_NETWORK is ${JSON.stringify(network)}, where the money is real, and ` +
-          `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} not set — a change of a ` +
-          "merchant's payout wallet is announced through the dashboard before it is recorded, so " +
-          "without a way to ask it every such change would be refused",
-      );
-    }
-  }
-
   if (problems.length > 0) {
     throw new Error(
       `The gateway cannot start, these settings do not work together — ${problems.join("; ")}`,
@@ -1014,16 +935,5 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
     },
     environment: derivedEnvironment,
     surfaceMode: surfaceModeOf(network, environmentValues.FACILITATOR_URL),
-    // Past the refusal above a live chain has both, so the only question left
-    // is whether this deployment announces at all.
-    dashboardRoute:
-      derivedEnvironment === "live" &&
-      environmentValues.DASHBOARD_INTERNAL_URL !== undefined &&
-      environmentValues.GATEWAY_DASHBOARD_SECRET !== undefined
-        ? {
-            url: environmentValues.DASHBOARD_INTERNAL_URL.replace(/\/+$/, ""),
-            secret: environmentValues.GATEWAY_DASHBOARD_SECRET,
-          }
-        : null,
   };
 }

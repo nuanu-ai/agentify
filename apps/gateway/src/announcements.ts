@@ -1,49 +1,28 @@
 /**
- * What the gateway asks the dashboard over the one internal route between them,
- * and what the dashboard answers (ADR-0005 §3, ADR-0019).
+ * What the gateway has the dashboard tell a merchant, and what the dashboard
+ * answers (ADR-0019).
  *
- * The route and its secret are named for the gateway, not for what it asks,
- * and each request says what it asks in `operation`, the way the scanner's
- * route says it (ADR-0026 §2). Today the gateway asks one thing, to announce:
- * on the live deployment a change of a payout wallet already set is announced
+ * On the live deployment a change of a payout wallet already set is announced
  * to every account that names the merchant before anything is written, and a
  * first wallet, a new key of the merchant's own and a cancelled change are
- * announced once they are done. A wallet is changed only with the dashboard's
- * own key (ADR-0019), so a wallet announcement names no key: it was asked for
- * through the dashboard. A new key names the key that asked,
- * because any key of the merchant's may issue one. Anything else the gateway
- * ever needs from the dashboard is another `operation` in
- * `GatewayRequestSchema`, over this route and with this secret, never a
- * second route or a second secret.
+ * announced once they are done. A wallet is changed only through the dashboard
+ * (ADR-0019), so a wallet announcement names no key: it was asked for there.
+ * A new key names the key that asked, because any key of the merchant's may
+ * issue one.
  *
- * The gateway knows the merchant and the change; the dashboard knows
- * the addresses and sends the mail. This file is the wire between them, and it
- * is here rather than in the published contracts because nobody outside these
- * two processes calls it: the dashboard imports it from this package's
- * `./announcements` entry, which carries this file and nothing else, so the
- * two sides read one definition.
+ * The gateway knows the merchant and the change; the dashboard knows the
+ * addresses and sends the mail. The two run in one process (ADR-0030), and the
+ * process hands the gateway the dashboard's way of telling, so this is the
+ * shape of a call between them rather than a wire: the dashboard imports it
+ * from this package's `./announcements` entry, which carries this file and
+ * nothing else, so the two sides read one definition.
  *
- * What a request carries is facts and no words. The message a person reads is
- * the dashboard's to write, because the dashboard is what knows where its own
- * screens are; the gateway says what changed, from what to what, and, for a
- * new key, which key asked. Nothing in it can open anything: there is no
+ * What an announcement carries is facts and no words. The message a person
+ * reads is the dashboard's to write, because the dashboard is what knows where
+ * its own screens are; the gateway says what changed, from what to what, and,
+ * for a new key, which key asked. Nothing in it can open anything: there is no
  * token here, and the message built from it carries none.
  */
-
-import { checksummedAddressOf, EvmAddressSchema } from "@nuanu-ai/agentify-contracts";
-import { z } from "zod";
-
-/** The path the dashboard answers the gateway on, on its own listener inside the compose network. */
-export const GATEWAY_ROUTE_PATH = "/internal/gateway";
-
-/** The port of that listener. Nothing publishes it. */
-export const GATEWAY_ROUTE_PORT = 3003;
-
-/** An address as the gateway holds one: the mixed-case spelling a wallet shows. */
-const WalletSchema = EvmAddressSchema.refine(
-  (address) => address === checksummedAddressOf(address),
-  "an address in an announcement is written the way a wallet shows it",
-);
 
 /**
  * The longest a key's label is when an announcement names the key: the
@@ -59,9 +38,8 @@ const LONGEST_ANNOUNCED_LABEL = 101;
  * A new key's label is held to that at the door, but a key written before the
  * door held labels to anything, including one a terminal command issued when
  * there was such a command, can be named anything at all — and an announcement
- * of a key issued with such a key must still be one the dashboard takes. So the
- * gateway writes every label it
- * announces down to this, and the dashboard refuses anything else.
+ * of a key issued with such a key must still read as one line in a message. So
+ * the gateway writes every label it announces down to this.
  */
 export function announcedLabel(label: string): string {
   const oneLine = label.replace(/[\p{Cc}\p{Zl}\p{Zp}\s]+/gu, " ").trim();
@@ -77,17 +55,6 @@ export function announcedLabel(label: string): string {
         .trimEnd()}…`;
 }
 
-/** A label on the wire: one line, not empty, no longer than a cut label. */
-const AnnouncedLabelSchema = z
-  .string()
-  .min(1)
-  .max(LONGEST_ANNOUNCED_LABEL * 2)
-  .regex(/^[^\p{Cc}\p{Zl}\p{Zp}]+$/u, "a label is announced as one line")
-  .refine(
-    (label) => [...label].length <= LONGEST_ANNOUNCED_LABEL,
-    "a label is announced cut to one line",
-  );
-
 /**
  * Which key a new key was issued with, named the way the merchant's list of
  * keys names it.
@@ -97,16 +64,17 @@ const AnnouncedLabelSchema = z
  * key you called the stock worker" can find the row and disable it. The key the
  * dashboard signs in with is on no list, and a call made with it means a person
  * signed in to the dashboard acted — so it is named as the dashboard and nothing
- * more.
+ * more. A label here is always one written by `announcedLabel`.
  */
-export const AskedWithSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("dashboard") }),
-  z.strictObject({
-    kind: z.literal("merchant_code"),
-    id: z.string().min(1),
-    label: AnnouncedLabelSchema,
-  }),
-]);
+export type AskedWith =
+  | { readonly kind: "dashboard" }
+  | { readonly kind: "merchant_code"; readonly id: string; readonly label: string };
+
+/**
+ * An address as the gateway holds one, the mixed-case spelling a wallet shows,
+ * and an instant as an ISO 8601 timestamp with its offset.
+ */
+type Wallet = string;
 
 /**
  * A merchant's first payout wallet was set in the dashboard, and applies
@@ -114,11 +82,11 @@ export const AskedWithSchema = z.discriminatedUnion("kind", [
  * merchant has to be able to start selling — but a session that is not the
  * owner's could set it, and this is how the owner hears of it.
  */
-const WalletSetSchema = z.strictObject({
-  kind: z.literal("wallet_set"),
-  merchant_id: z.string().min(1),
-  to: WalletSchema,
-});
+interface WalletSet {
+  readonly kind: "wallet_set";
+  readonly merchant_id: string;
+  readonly to: Wallet;
+}
 
 /**
  * A replacement for the wallet paid now has been asked for. Sent before
@@ -127,53 +95,32 @@ const WalletSetSchema = z.strictObject({
  * after `not_before`, the instant the gateway can name while it is still
  * asking.
  */
-const WalletChangeSchema = z.strictObject({
-  kind: z.literal("wallet_change"),
-  merchant_id: z.string().min(1),
-  from: WalletSchema,
-  to: WalletSchema,
-  not_before: z.iso.datetime({ offset: true }),
-});
+interface WalletChange {
+  readonly kind: "wallet_change";
+  readonly merchant_id: string;
+  readonly from: Wallet;
+  readonly to: Wallet;
+  readonly not_before: string;
+}
 
 /** A waiting change was cancelled by asking for the address paid now. Sent after. */
-const WalletChangeCancelledSchema = z.strictObject({
-  kind: z.literal("wallet_change_cancelled"),
-  merchant_id: z.string().min(1),
-  kept: WalletSchema,
-  cancelled: WalletSchema,
-});
+interface WalletChangeCancelled {
+  readonly kind: "wallet_change_cancelled";
+  readonly merchant_id: string;
+  readonly kept: Wallet;
+  readonly cancelled: Wallet;
+}
 
 /** A key for the merchant's own code was issued. Sent after, and never waited on. */
-const KeyIssuedSchema = z.strictObject({
-  kind: z.literal("key_issued"),
-  merchant_id: z.string().min(1),
-  key: z.strictObject({ id: z.string().min(1), label: AnnouncedLabelSchema }),
-  asked_with: AskedWithSchema,
-});
+interface KeyIssued {
+  readonly kind: "key_issued";
+  readonly merchant_id: string;
+  readonly key: { readonly id: string; readonly label: string };
+  readonly asked_with: AskedWith;
+}
 
 /** What the gateway has the dashboard tell a merchant. */
-const AnnouncementSchema = z.discriminatedUnion("kind", [
-  WalletSetSchema,
-  WalletChangeSchema,
-  WalletChangeCancelledSchema,
-  KeyIssuedSchema,
-]);
-
-const ANNOUNCE = { operation: z.literal("announce") };
-
-/**
- * Everything the gateway may ask the dashboard over its route, told apart by
- * `operation`. A request to announce is an announcement with
- * `"operation": "announce"` beside its `kind`.
- */
-export const GatewayRequestSchema = z.discriminatedUnion("operation", [
-  z.discriminatedUnion("kind", [
-    WalletSetSchema.extend(ANNOUNCE),
-    WalletChangeSchema.extend(ANNOUNCE),
-    WalletChangeCancelledSchema.extend(ANNOUNCE),
-    KeyIssuedSchema.extend(ANNOUNCE),
-  ]),
-]);
+export type Announcement = WalletSet | WalletChange | WalletChangeCancelled | KeyIssued;
 
 /**
  * What became of the messages, as the dashboard knows it.
@@ -184,11 +131,6 @@ export const GatewayRequestSchema = z.discriminatedUnion("operation", [
  * take — and others may have been, which is why nothing a caller says about
  * this may read as "nothing was sent".
  */
-export const AnnouncementAnswerSchema = z.strictObject({
-  outcome: z.enum(["handed_over", "nobody_to_tell", "not_handed_over"]),
-});
-
-export type AskedWith = z.infer<typeof AskedWithSchema>;
-export type Announcement = z.infer<typeof AnnouncementSchema>;
-export type GatewayRequest = z.infer<typeof GatewayRequestSchema>;
-export type AnnouncementAnswer = z.infer<typeof AnnouncementAnswerSchema>;
+export interface AnnouncementAnswer {
+  readonly outcome: "handed_over" | "nobody_to_tell" | "not_handed_over";
+}

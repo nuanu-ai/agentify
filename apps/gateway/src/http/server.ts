@@ -717,12 +717,11 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
 
   // A payout wallet change the gateway would not record (ADR-0019). Each ends
   // in a call that works once something else has changed — an account made,
-  // mail back, a dashboard up, a merchant who has read what is now waiting —
+  // mail back, a merchant who has read what is now waiting —
   // and repeating it blindly sends another message about a change nobody
   // recorded.
   wallet_change_nobody_to_tell: false,
   wallet_change_not_announced: false,
-  wallet_change_unconfirmed: false,
   wallet_change_raced: false,
 };
 

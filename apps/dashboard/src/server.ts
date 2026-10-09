@@ -150,10 +150,10 @@ const mapAtMost = async <Input, Output>(
  * How long the dashboard waits on the gateway for a payout wallet change.
  *
  * Longer than a screen's ten seconds, because on the live deployment the
- * gateway does not answer until this dashboard's own listener for the gateway has
- * handed every message to the mail provider, and it gives that twenty seconds
- * (ADR-0019). A dashboard that stopped waiting first would tell a person the
- * gateway did not answer while their change was being recorded.
+ * gateway does not answer until this dashboard has handed every message to the
+ * mail provider, and it gives that twenty seconds (`ANNOUNCEMENT_ANSWER_MS` in
+ * the gateway, ADR-0019). A dashboard that stopped waiting first would tell a
+ * person the gateway did not answer while their change was being recorded.
  */
 const WALLET_CHANGE_MS = 30_000;
 

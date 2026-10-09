@@ -77,10 +77,10 @@ page for a person, so the shape of that is a decision rather than a detail.
    merchant's data. Everything on every screen still comes from the public API,
    and no query in the dashboard can reach the gateway's tables — that is the
    part of this section the dogfooding argument is about, and it is unchanged.
-   One route goes the other way: the gateway asks the dashboard, over an internal
-   route of its own, to announce a payout wallet change before recording it,
-   and a cancelled change or a new merchant key once it is done, and asks it
-   anything else it ever needs from the dashboard over the same route (ADR-0019).
+   One call goes the other way: the gateway has the dashboard announce a
+   payout wallet change before recording it, and a cancelled change or a new
+   merchant key once it is done (ADR-0019), by a call inside the process the
+   two share (ADR-0030).
 
 4. **Server-rendered HTML, no client-side framework and no client build step.**
    The dashboard v0 shows three lists and offers one real action. A single-page

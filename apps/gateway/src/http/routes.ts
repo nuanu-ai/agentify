@@ -163,22 +163,24 @@ const walletIsSetInTheDashboard = (response: RouteCall["response"]): RouteAnswer
 /**
  * What a wallet change the gateway would not record is answered with.
  *
- * Four codes, and in every one nothing was written: the address paid now
+ * Three codes, and in every one nothing was written: the address paid now
  * and whatever change was already waiting are as they were (ADR-0019). They
- * are four codes rather than one because each asks something different of
- * whoever reads it. Two of them come in two wordings, because the words say
- * what may have reached a mailbox and the code alone does not know: a dashboard
- * that turned the request away told nobody, where one whose provider refused
- * a message may have told some; a change raced after its message went out
- * has a message in an inbox, where one raced before anything was announced
- * has none. A merchant who has read a message about a change must not be told
+ * are three codes rather than one because each asks something different of
+ * whoever reads it. A message that could not be confirmed as sent to every
+ * account may still have reached some, whether the provider refused one, the
+ * telling failed part of the way or it did not finish in time, and its words
+ * say so without naming a cause the gateway cannot know. The race comes in two
+ * wordings, because the words say what may have reached a mailbox and the
+ * code alone does not know: a change raced after its message went out has a
+ * message in an inbox, where one raced before anything was announced has
+ * none. A merchant who has read a message about a change must not be told
  * nothing was sent, and one who has none must not be sent looking for it.
  *
  * The codes are this route's alone and no worker of the SDK meets them, which
  * is why they joined the published list without moving the contract version
  * (ADR-0006 §2). None is retryable under the gateway's rule: each ends in a
  * call that works only once something else has changed — an account made,
- * mail back, a dashboard up, a merchant who has read what is waiting.
+ * mail back, a merchant who has read what is waiting.
  */
 function walletChangeRefused(
   response: RouteCall["response"],
@@ -200,25 +202,7 @@ function walletChangeRefused(
         UNAVAILABLE,
         refusal(
           "wallet_change_not_announced",
-          "the message about this change could not be handed to the mail provider for every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the dashboard's wallet screen shows it, which it does not",
-        ),
-      );
-    case "refused_by_dashboard":
-      return written(
-        response,
-        UNAVAILABLE,
-        refusal(
-          "wallet_change_not_announced",
-          "the dashboard that sends the message about this change turned the request away before telling anybody, so nothing was sent and nothing was recorded; sales are paid where they were",
-        ),
-      );
-    case "unconfirmed":
-      return written(
-        response,
-        UNAVAILABLE,
-        refusal(
-          "wallet_change_unconfirmed",
-          "the dashboard that sends the message about this change did not answer, so a message may have gone out although nothing was recorded; sales are paid where they were, and a message that did go out says the change takes effect only if the dashboard's wallet screen shows it, which it does not",
+          "the message about this change could not be confirmed as sent to every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the dashboard's wallet screen shows it, which it does not",
         ),
       );
     case "raced":

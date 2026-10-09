@@ -16,7 +16,7 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { ANNOUNCING, type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
+import { type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
 import { MERCHANT_FINDINGS } from "@nuanu-ai/agentify-contracts";
 import type { Express } from "express";
 import { afterEach, describe, expect, it } from "vitest";
@@ -176,7 +176,6 @@ type Channel = keyof typeof CHANNELS;
 const LIVE_GATEWAY_ONLY = {
   CDP_API_KEY_ID: "key-id",
   CDP_API_KEY_SECRET: "key-secret",
-  ...ANNOUNCING,
 } as const;
 
 /** What the harness's gateway takes a registration with, in this suite. */

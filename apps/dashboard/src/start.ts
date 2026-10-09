@@ -1,11 +1,12 @@
 /**
  * Starting the dashboard, inside the resident process (ADR-0030).
  *
- * It opens a connection to its own tables, puts the pages on a port, opens the
- * two internal listeners its secrets ask for, and starts the one thing in here
- * that runs without anybody looking at a screen. The process itself, its
- * signals and the order things stop in belong to `apps/app`, which starts the
- * gateway beside this. The tables are the people who sign in, their sessions,
+ * It opens a connection to its own tables and hands the process its way of
+ * telling a merchant of a change, which the gateway announces through; then
+ * it puts the pages on a port, opens the scanner's route where its secret is
+ * set, and starts the one thing in here that runs without anybody looking at a
+ * screen. The process itself, its signals and the order things start and stop
+ * in belong to `apps/app`, which starts the gateway beside this. The tables are the people who sign in, their sessions,
  * the one-time links they are sent, and a merchant's connected WooCommerce
  * shop (ADR-0009 §1, ADR-0023): every card, order and receipt on every screen
  * still comes from the gateway's public API, which is the promise ADR-0005 §3
@@ -28,19 +29,18 @@ import type { DashboardConfig } from "./config.js";
 import { keyRenewal } from "./dashboard-key.js";
 import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
-import { startGatewayServer, tellerFor } from "./gateway-server.js";
 import { identityFor } from "./identity.js";
 import { isSandboxMail, postmanFor } from "./mail.js";
 import { startReportIdentityServer } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
+import { type Teller, tellerFor } from "./teller.js";
 import { postgresWooShops } from "./woo-shops.js";
 import { startWooWorker } from "./woo-worker.js";
 
 /**
  * The port the merchant's pages answer on, behind Caddy at `/dashboard`. Fixed,
- * like the scanner's route on 3002 and the gateway's on 3003, because the
- * gateway shares this process's environment and a `PORT` there could mean only
- * one of them.
+ * like the scanner's route on 3002, because the gateway shares this process's
+ * environment and a `PORT` there could mean only one of them.
  */
 export const DASHBOARD_PORT = 3001;
 
@@ -65,25 +65,44 @@ export interface RunningDashboard {
   close(): Promise<void>;
 }
 
+/**
+ * The dashboard, before it opens its doors: what the gateway needs from it
+ * before either starts serving, and the start itself.
+ */
+export interface Dashboard {
+  /**
+   * Tells every account naming a merchant of a change to their wallet or their
+   * keys (ADR-0019): what the process hands the gateway to announce through.
+   */
+  readonly tell: Teller;
+  /** Opens its doors and starts the WooCommerce worker. */
+  start(): RunningDashboard;
+}
+
 const closed = (listener: Server | null): Promise<void> =>
   listener === null ? Promise.resolve() : closedWithin(listener, CLOSING_GRACE_MS);
 
-export function startDashboard(config: DashboardConfig): RunningDashboard {
+export function dashboardFor(config: DashboardConfig): Dashboard {
   const pool = connect(config.databaseUrl);
   const identity = identityFor(config, { pool });
   const wooShops = postgresWooShops(pool);
+  return {
+    tell: tellerFor(config, identity, postmanFor(config)),
+    start: () => started(config, identity, wooShops),
+  };
+}
+
+function started(
+  config: DashboardConfig,
+  identity: ReturnType<typeof identityFor>,
+  wooShops: ReturnType<typeof postgresWooShops>,
+): RunningDashboard {
   const reportIdentityServer = startReportIdentityServer(
     config.reportIdentitySecret,
     identity,
     keyRenewal(identity, (key, answerWithinMs) =>
       gatewayFor(config.gatewayUrl, key, answerWithinMs),
     ),
-  );
-  // The gateway's route, for telling a merchant of a change to their wallet or
-  // their keys (ADR-0019), on a port of its own behind a secret of its own.
-  const gatewayServer = startGatewayServer(
-    config.gatewayDashboardSecret,
-    tellerFor(config, identity, postmanFor(config)),
   );
 
   const server = buildApp(config, { identity, wooShops }).listen(DASHBOARD_PORT, () => {
@@ -106,7 +125,7 @@ export function startDashboard(config: DashboardConfig): RunningDashboard {
 
   return {
     async closeListeners() {
-      await Promise.all([server, reportIdentityServer, gatewayServer].map(closed));
+      await Promise.all([server, reportIdentityServer].map(closed));
     },
     stopWorker: () => worker.stop(),
     close: () => identity.close(),

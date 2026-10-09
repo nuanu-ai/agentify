@@ -42,7 +42,6 @@ const expectNoFixtureSecrets = (stderr: string, resolved: ResolvedCompose): void
     resolved.services.app.environment?.CDP_API_KEY_ID,
     resolved.services.app.environment?.CDP_API_KEY_SECRET,
     resolved.services.app.environment?.AUTH_SECRET,
-    resolved.services.app.environment?.GATEWAY_DASHBOARD_SECRET,
   ];
   for (const value of values) {
     if (value !== undefined && value !== "") {
@@ -595,123 +594,6 @@ describe("the private identity route belongs to the application and the scanner 
     ];
     expect(problemsWith("production", exposed)).toContainEqual(
       expect.stringMatching(/app: .*port/),
-    );
-  });
-});
-
-describe("the gateway's route belongs to the application alone", () => {
-  // Every service of a channel shares one network. What keeps anybody else
-  // from asking the dashboard to mail a merchant about their money is that only
-  // the application, where the gateway and the dashboard both run, holds the
-  // secret its route asks for (ADR-0019, ADR-0024, ADR-0030), that the secret
-  // opens no other door, and that the gateway asks nothing but the dashboard's
-  // own listener inside that process.
-  const CHANNELS = [
-    ["test", TEST_CHANNEL],
-    ["production", PRODUCTION_CHANNEL],
-  ] as const;
-  const secretOf = (resolved: ResolvedCompose): string => {
-    const secret = envFor(resolved, "app").GATEWAY_DASHBOARD_SECRET;
-    if (secret === undefined) {
-      throw new Error("the fixture's application holds no gateway secret");
-    }
-    return secret;
-  };
-
-  it.each(CHANNELS)(
-    "refuses the secret or the route on any service but the application in %s",
-    (channel, config) => {
-      const secret = secretOf(config);
-      for (const service of ["scanner", "web", "migrate", "scanner-worker", "scanner-privacy"]) {
-        const credential = problemsWith(
-          channel,
-          withEnv(config, service, "GATEWAY_DASHBOARD_SECRET", secret),
-        );
-        expect(credential).toContainEqual(
-          expect.stringMatching(`${service}: GATEWAY_DASHBOARD_SECRET`),
-        );
-        expect(credential.join("\n")).not.toContain(secret);
-
-        const route = problemsWith(
-          channel,
-          withEnv(config, service, "DASHBOARD_INTERNAL_URL", "http://127.0.0.1:3003"),
-        );
-        expect(route).toContainEqual(expect.stringMatching(`${service}: DASHBOARD_INTERNAL_URL`));
-      }
-    },
-  );
-
-  it("refuses an application with no secret, or one too short to be a secret", () => {
-    for (const value of [null, "", "x".repeat(31)]) {
-      expect(
-        problemsWith("test", withEnv(TEST_CHANNEL, "app", "GATEWAY_DASHBOARD_SECRET", value)),
-      ).toContainEqual(expect.stringMatching(/app: GATEWAY_DASHBOARD_SECRET/));
-    }
-  });
-
-  it("refuses the secret written in this repository", () => {
-    const wrong = withEnv(
-      TEST_CHANNEL,
-      "app",
-      "GATEWAY_DASHBOARD_SECRET",
-      "a-sandbox-gateway-dashboard-secret-nobody-should-reuse",
-    );
-    expect(problemsWith("test", wrong)).toContainEqual(
-      expect.stringMatching(/app: GATEWAY_DASHBOARD_SECRET/),
-    );
-  });
-
-  it("refuses the scanner's secret as the gateway's secret, or the secret of any other door", () => {
-    // The scanner's credential opens the route that names sessions and removes
-    // people. Presented on this route as well, whoever holds either holds both.
-    const secret = secretOf(PRODUCTION_CHANNEL);
-    for (const [service, name] of [
-      ["app", "REPORT_IDENTITY_SECRET"],
-      ["scanner", "REPORT_IDENTITY_SECRET"],
-      ["app", "AUTH_SECRET"],
-      ["app", "REGISTRATION_INVITATION"],
-      ["app", "MAIL_API_KEY"],
-      ["app", "CDP_API_KEY_SECRET"],
-      ["scanner", "TOKEN_HMAC_SECRET"],
-    ] as const) {
-      const problems = problemsWith(
-        "production",
-        withEnv(PRODUCTION_CHANNEL, service, name, secret),
-      );
-      expect(problems, `${service} ${name}`).toContainEqual(
-        expect.stringMatching(new RegExp(`${service}: .*${name}`)),
-      );
-      expect(problems.join("\n")).not.toContain(secret);
-    }
-  });
-
-  it("refuses a gateway that asks anybody but the dashboard's own listener in its process", () => {
-    // The service the route lived on before the two processes became one is
-    // among them, and so is the scanner's route in this same process.
-    for (const url of [
-      null,
-      "https://agentify.ad/dashboard",
-      "http://127.0.0.1:3002",
-      "http://dashboard:3003",
-    ]) {
-      expect(
-        problemsWith(
-          "production",
-          withEnv(PRODUCTION_CHANNEL, "app", "DASHBOARD_INTERNAL_URL", url),
-        ),
-      ).toContainEqual(expect.stringMatching(/app: DASHBOARD_INTERNAL_URL/));
-    }
-  });
-
-  it("refuses a production secret still holding the template's placeholder", () => {
-    const placeholder = "REPLACE_WITH_A_NEW_GATEWAY_DASHBOARD_SECRET";
-    expect(
-      problemsWith(
-        "production",
-        withEnv(PRODUCTION_CHANNEL, "app", "GATEWAY_DASHBOARD_SECRET", placeholder),
-      ),
-    ).toContainEqual(
-      expect.stringMatching(/GATEWAY_DASHBOARD_SECRET still contains a template placeholder/),
     );
   });
 });

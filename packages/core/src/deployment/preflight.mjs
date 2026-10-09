@@ -54,7 +54,6 @@ const WRITTEN_IN_THIS_REPOSITORY = [
   ["scanner", "TOKEN_HMAC_SECRET", "a-sandbox-token-hmac-secret-nobody-should-reuse"],
   ["app", "REPORT_IDENTITY_SECRET", "a-sandbox-report-identity-secret-nobody-should-reuse"],
   ["scanner", "REPORT_IDENTITY_SECRET", "a-sandbox-report-identity-secret-nobody-should-reuse"],
-  ["app", "GATEWAY_DASHBOARD_SECRET", "a-sandbox-gateway-dashboard-secret-nobody-should-reuse"],
 ];
 
 const envOf = (resolved, service) => resolved.services?.[service]?.environment ?? {};
@@ -180,7 +179,6 @@ export function problemsWith(channel, resolved) {
       "CDP_API_KEY_ID",
       "CDP_API_KEY_SECRET",
       "REGISTRATION_INVITATION",
-      "GATEWAY_DASHBOARD_SECRET",
       "AUTH_SECRET",
       "MAIL_URL",
       "MAIL_API_KEY",
@@ -292,56 +290,10 @@ export function problemsWith(channel, resolved) {
       );
     }
   }
-  // The gateway's internal route (ADR-0019), held to the same proof: the
-  // application, where the gateway and the dashboard both run, holds its secret
-  // and nothing else does, the secret opens no other door — the scanner's route
-  // above all, which can name sessions and remove people — and the gateway asks
-  // the dashboard's own listener inside that process and nothing else.
-  const gatewaySecret = app.GATEWAY_DASHBOARD_SECRET ?? "";
-  if (gatewaySecret.length < 32) {
-    problems.push(
-      "app: GATEWAY_DASHBOARD_SECRET is missing or shorter than 32 characters, so the " +
-        "gateway's route has no secret to ask for",
-    );
-  }
-  if (app.DASHBOARD_INTERNAL_URL !== "http://127.0.0.1:3003") {
-    problems.push(
-      `app: DASHBOARD_INTERNAL_URL is ${JSON.stringify(app.DASHBOARD_INTERNAL_URL ?? null)} ` +
-        "and the route is http://127.0.0.1:3003, the dashboard's listener in the same process",
-    );
-  }
-  for (const [service, name] of [
-    ["app", "REPORT_IDENTITY_SECRET"],
-    ["scanner", "REPORT_IDENTITY_SECRET"],
-    ["app", "AUTH_SECRET"],
-    ["app", "REGISTRATION_INVITATION"],
-    ["app", "MAIL_API_KEY"],
-    ["app", "CDP_API_KEY_SECRET"],
-    ["scanner", "TOKEN_HMAC_SECRET"],
-  ]) {
-    if (gatewaySecret !== "" && envOf(resolved, service)[name] === gatewaySecret) {
-      problems.push(
-        `${service}: GATEWAY_DASHBOARD_SECRET is also its ${name}, and one credential opens one door`,
-      );
-    }
-  }
-  for (const [service, definition] of Object.entries(resolved.services ?? {})) {
-    const environment = definition?.environment ?? {};
-    if (service !== "app" && "GATEWAY_DASHBOARD_SECRET" in environment) {
-      problems.push(
-        `${service}: GATEWAY_DASHBOARD_SECRET is handed to a service that is not the application`,
-      );
-    }
-    if (service !== "app" && "DASHBOARD_INTERNAL_URL" in environment) {
-      problems.push(
-        `${service}: DASHBOARD_INTERNAL_URL is handed to a service that is not the application`,
-      );
-    }
-  }
 
   if ((resolved.services?.app?.ports ?? []).length > 0) {
     problems.push(
-      "app: it publishes a port on the host, and the dashboard's internal listeners answer only inside the stack",
+      "app: it publishes a port on the host, and the dashboard's identity listener answers only inside the stack",
     );
   }
 

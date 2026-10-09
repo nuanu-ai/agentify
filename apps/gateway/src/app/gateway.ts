@@ -122,21 +122,35 @@ const KEY_USE_WRITTEN_EVERY_MS = 5 * 60_000;
 export const WALLET_CHANGE_WAITS_MS = 48 * 60 * 60 * 1_000;
 
 /**
+ * How long the gateway waits for the dashboard to hand every message of an
+ * announcement over.
+ *
+ * The dashboard gives the mail provider ten seconds a message, and a merchant is
+ * named by one account today and by a few at most, so twenty seconds covers
+ * the ordinary case with room and ends a telling that is going nowhere well
+ * inside the half minute a person pressing a button will wait: the dashboard's
+ * page waits thirty seconds for a wallet change on the strength of this, and a
+ * page that stopped waiting first would tell a person the gateway did not
+ * answer while their change went on to be recorded. A telling cut off here may
+ * still hand its messages over afterwards, which is what the refusal says. It is
+ * a constant rather than a setting: what a knob here could do is make every
+ * wallet change on the live site wait on a stuck mail provider for as long as
+ * somebody typed.
+ */
+const ANNOUNCEMENT_ANSWER_MS = 20_000;
+
+/**
  * Why a wallet change was refused, and in every case nothing was written.
  *
  * `nobody_to_tell`: no account names the merchant. `not_announced`: a message
- * could not be handed to the mail provider — though others may have been.
- * `refused_by_dashboard`: the dashboard turned the request away before telling
- * anybody. `unconfirmed`: the dashboard did not answer, so a message may have
- * gone out. `raced`: another write landed between reading the wallet and
+ * could not be confirmed as sent to every account — the provider refused one,
+ * or telling failed or did not finish in time — though some may have gone out. `raced`: another write landed between reading the wallet and
  * writing it, on a change nothing had announced; `raced_after_announcing`:
  * the same, after this change's own message went out.
  */
 export type WalletChangeRefusal =
   | "nobody_to_tell"
   | "not_announced"
-  | "refused_by_dashboard"
-  | "unconfirmed"
   | "raced"
   | "raced_after_announcing";
 
@@ -815,7 +829,7 @@ export class Gateway {
    * now with nothing waiting is nothing at all.
    *
    * Changes for one merchant are serialized without a lock held across the
-   * announcement, which is a call to another process and to a mail provider:
+   * announcement, which is a call to a mail provider:
    * the write is conditional on the row still holding what was read before the
    * announcement went out, and a change recorded in between turns this one
    * away as `raced` rather than being overwritten by it. So the address waiting
@@ -953,15 +967,31 @@ export class Gateway {
   }
 
   /**
-   * Asks the dashboard to tell the merchant, and reads a dashboard that threw the
-   * way the adapter reads one that did not answer: a message may have gone out.
+   * Asks the dashboard to tell the merchant, and reads a telling that threw,
+   * or did not finish within `ANNOUNCEMENT_ANSWER_MS`, as one that did not hand
+   * every message over: it fails in our own code or waits on the mail provider,
+   * before one message or between two, so some may have gone out (ADR-0030).
    */
   async #announce(announcement: Announcement): Promise<AnnouncementOutcome> {
+    let cut: ReturnType<typeof setTimeout> | undefined;
+    const outOfTime = new Promise<"out_of_time">((resolve) => {
+      cut = setTimeout(() => resolve("out_of_time"), ANNOUNCEMENT_ANSWER_MS);
+      cut.unref?.();
+    });
     try {
-      return await this.runtime.announcer.announce(announcement);
+      const told = await Promise.race([this.runtime.announcer.announce(announcement), outOfTime]);
+      if (told === "out_of_time") {
+        console.error(
+          `[gateway] an announcement (${announcement.kind}) did not finish within ${ANNOUNCEMENT_ANSWER_MS} ms`,
+        );
+        return "not_handed_over";
+      }
+      return told;
     } catch (thrown) {
       console.error(`[gateway] an announcement (${announcement.kind}) failed`, thrown);
-      return "unconfirmed";
+      return "not_handed_over";
+    } finally {
+      clearTimeout(cut);
     }
   }
 

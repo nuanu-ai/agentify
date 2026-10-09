@@ -105,8 +105,6 @@
 #   TOKEN_HMAC_SECRET       what signs a report link         a sandbox value
 #   REPORT_IDENTITY_SECRET  what the scanner shows the       a sandbox value
 #                           dashboard's private route
-#   GATEWAY_DASHBOARD_SECRET  what the gateway shows the       a sandbox value
-#                           dashboard's route for the gateway
 #
 # The scanner's remaining settings — who the operator is, which analytics
 # datasets may be named, the bot check, the paid surfaces — are the names its
@@ -236,7 +234,8 @@ services:
   # under /x402. The dashboard is the merchant's pages and the people who sign
   # in to them. Each keeps its own listener, so Caddy sends /v0, /x402 and
   # /healthz to 3000 and /dashboard to 3001 as before; 3002 is the scanner's
-  # route to the dashboard and 3003 the gateway's, and nothing publishes either.
+  # route to the dashboard, which nothing publishes. The gateway tells a
+  # merchant of a change through the dashboard by a call inside the process.
   # Both read this one environment, so a variable here means one thing to both.
   app:
     <<: *app
@@ -308,18 +307,6 @@ services:
       # Nothing ever arrives at it: it is the second well-known local-devnet
       # account, public and valueless, and this gateway settles against nothing.
       PAY_TO_ADDRESS: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
-      # Where a live gateway asks the dashboard to tell a merchant of a payout
-      # wallet change, a cancelled one or a new key, and the secret it asks
-      # with (ADR-0019): the dashboard's listener on 3003, inside this process,
-      # never the scanner's route on 3002 or its secret. A test stack and the
-      # sandbox ask nothing, since they apply a change at once and announce
-      # nothing; a live gateway will not start without both, and the dashboard
-      # opens 3003 only where the secret is set. It is held apart from every
-      # other secret here: the dashboard refuses to start if it is the session
-      # secret, the invitation, the mail key or the scanner's secret, and the
-      # release's preflight refuses the rest.
-      DASHBOARD_INTERNAL_URL: http://127.0.0.1:3003
-      GATEWAY_DASHBOARD_SECRET: "${GATEWAY_DASHBOARD_SECRET:-a-sandbox-gateway-dashboard-secret-nobody-should-reuse}"
       # Where the dashboard reaches the gateway: the same public API a
       # merchant's own code uses (ADR-0005 §3), on the gateway's listener inside
       # this process rather than the origin a browser types.

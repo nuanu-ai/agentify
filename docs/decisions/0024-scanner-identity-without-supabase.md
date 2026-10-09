@@ -59,10 +59,9 @@ Running the complete Supabase platform ourselves adds services without advancing
 the shared stack. Reusing legacy hand-written verification avoids a dependency
 but abandons the component boundary established by ADR-0009. The route above is
 the dashboard's second listener, publishing no port and reached by service name;
-the release proves that each of the dashboard's internal credentials is held
-where it is used and by no other service in the rendered graph: this one by
-the application, where the dashboard runs (ADR-0030), and the scanner, and the
-gateway's (ADR-0019) by the application alone.
+the release proves that its credential, the dashboard's one internal
+credential, is held by the application, where the dashboard runs (ADR-0030),
+and the scanner, and by no other service in the rendered graph.
 Cross-domain SSO and automatic merging of scanner and merchant
 identities are not built; the one session for the site and what crosses the
 boundary are ADR-0026's decision, and the separation above stands for scans,
