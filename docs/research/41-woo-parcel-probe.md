@@ -112,3 +112,85 @@ product owner is told.
 
 The script is `41-woo-parcel-probe/probe.sh`; its output is
 `41-woo-parcel-probe/results.txt`.
+
+## Results
+
+The probe ran on 2026-10-09 at 14:54 UTC from a laptop outside the shop's
+network; its output is `41-woo-parcel-probe/results.txt`. Two follow-ups ran
+by hand afterwards and are reported as such below.
+
+**P1 holds.** Every `GET /cart` answered 200 with a `Cart-Token`, and every
+`add-item` sent with that token and no nonce answered 201 with the product in
+the cart.
+
+**P2 holds.** Each locality got exactly the rates predicted: Bali only the
+Bali courier at 300, Jakarta the two Indonesian rates at 500 and 1200, San
+Francisco 750, and New York none. Every rate carried `method_id: "flat_rate"`,
+its `instance_id`, `currency_code: "USD"`, `currency_minor_unit: 2` and
+`taxes: "0"`. The four fields of the locality were enough: a zone keyed by a
+state and a zone keyed by a postcode both matched on them, and no name, street
+or phone was sent.
+
+**P3 did not hold as written.** The Berlin request, which left `state` out,
+was answered 400 `rest_invalid_param`: "The provided state (CA) is not valid.
+Must be one of: DE-BW, … DE-BE, …". Two things are behind it, and both were
+found by hand after the run.
+
+The first is that a field left out of `update-customer` is not cleared. The
+cart's customer starts from the shop's own base location, `US:CA` on this
+shop, so a German address without a state was checked as a German address in
+California. Sent with `"state": ""`, the same locality answered 200 with an
+empty rate list, as P3 predicted. France and Singapore, sent the same way,
+answered the same.
+
+The second is that WooCommerce does not write every state the way ADR-0032
+does. ADR-0032 takes a subdivision code without the country in front, one to
+three capitals or digits: `BA`, `CA`, `BE`. WooCommerce 11.1.0 keeps states
+for 69 countries. For 32 of them its codes are of that shape (915 codes,
+Indonesia and the United States among them). For 23 its codes carry the
+country and a hyphen in front, `DE-BE` for Berlin, and Germany, Thailand,
+Bulgaria, Colombia and Bangladesh are among them. For 14 they have other
+shapes: the country and the number run together (`JP13`, `TR34`, `KE01`,
+`UA05`), numbers of WooCommerce's own for China (`CN2`), lower case for
+Morocco, and district names for Hong Kong. Sent `BE`, the German shop refused
+it, as it refused `CA`; sent `DE-BE`, it answered 200.
+
+What P3 was there to settle does hold: a locality the shop does not ship to is
+a 2xx answer with an empty rate list (New York; Berlin, France and Singapore
+with every field sent), and an error is a 4xx answer with a `code` — the
+product that does not exist was `woocommerce_rest_cart_invalid_product`, and
+the refused state `rest_invalid_param`.
+
+**P4.** The shop's session table was empty before the run, so the plain
+`GET /cart` made while the shop was being read left no row. Afterwards it held
+seven rows, one for each cart that had held a product, each expiring 48 hours
+after it was written. A row holds the customer's locality as it was sent (the
+Bali row carries "Denpasar" and "80361"), and the name fields of the customer,
+empty.
+
+**Negative control.** The virtual gift card answered `needs_shipping: false`
+and no rate, before and after the locality was set.
+
+**Time.** From the laptop each call took 0.9 to 2.8 seconds, a whole exchange
+3 to 5 seconds, most of it new TLS connections across the network. From inside
+the test channel's dashboard container, which reaches the shop through the
+TEST hairpin route (`deploy/README.md`), three whole exchanges took 200, 142
+and 118 milliseconds.
+
+## Reading against the decision rule
+
+P1 and P2 hold. P3 failed as it was written, and its failure is not the one
+the rule stops on: "no rate" is told apart from an error. The rule is read as
+allowing the build, and that reading is the product owner's to confirm, since
+the deviation is one the handoff asked to be brought back.
+
+The build changes in two ways because of it. The connector sends all four
+fields of the locality on every `update-customer`, with an empty string for a
+field the address does not have, so nothing of the shop's own base location
+leaks into a price. And it does not send ADR-0032's state as it is: it reads
+the shop's own list of states for the country and sends the shop's code that
+equals the state, the country and a hyphen before it, or the country before
+it. Where none of the three is on the list — China, Hong Kong, Morocco, or a
+code the shop does not know — the price question is answered as not available
+rather than priced without the state, because a shop whose zones are states
+would then answer with a rate meant for somewhere else.
