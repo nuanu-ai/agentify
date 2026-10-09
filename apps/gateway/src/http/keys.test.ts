@@ -156,6 +156,34 @@ const sellerInTheChallenge = async (
   return { serviceName: challenge.resource.serviceName, extensions: challenge.extensions?.bazaar };
 };
 
+describe("the calls a key made for a dashboard was for", () => {
+  it("are calls this gateway does not have, and the wallet is still read here", async () => {
+    // The dashboard calls the gateway inside the process the two share and
+    // holds no key (ADR-0030): registering, the dashboard's own keys and the
+    // wallet write were its calls, and they are gone from the door. Reading
+    // the wallet is a call a merchant's own code makes, and it stays.
+    const { served, harnessed } = await started();
+
+    for (const [method, path, body] of [
+      ["POST", "/v0/merchants", { invitation: INVITATION }],
+      ["POST", "/v0/keys/dashboard", undefined],
+      ["DELETE", "/v0/keys/dashboard", undefined],
+      ["POST", "/v0/payout-wallet", { payout_wallet: PAY_TO }],
+    ] as const) {
+      const answered = await served.call(method, path, {
+        ...(body === undefined ? {} : { body }),
+        headers: bearer(harnessed.merchant.key),
+      });
+      expect(answered.status, `${method} ${path}`).toBe(404);
+      expect((answered.body as { error: { code: string } }).error.code).toBe("no_such_route");
+    }
+    const read = await served.call("GET", "/v0/payout-wallet", {
+      headers: bearer(harnessed.merchant.key),
+    });
+    expect(read.status).toBe(200);
+  });
+});
+
 describe("registering a merchant", () => {
   it("makes a merchant whose first key opens the door", async () => {
     // The whole promise of the call: somebody with an invitation ends up with a

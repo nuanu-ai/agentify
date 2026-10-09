@@ -223,6 +223,40 @@ if (databaseUrl === null) {
       ).rejects.toMatchObject({ code: "23514" });
     });
 
+    it("keeps the merchant on every account when the key column goes", async () => {
+      // The dashboard calls the gateway inside the process and reads no key
+      // off a row (ADR-0030), so the column that held one goes, and an
+      // account names its merchant and nothing more.
+      await emptyEverything();
+      const files = (await readdir(migrationsIn)).filter((file) => file.endsWith(".sql")).sort();
+      const dropped = files.findIndex((file) =>
+        /^\d{4}_account_names_its_merchant\.sql$/.test(file),
+      );
+      expect(dropped, "the migration that drops the key column").toBeGreaterThan(0);
+      for (const file of files.slice(0, dropped)) await run(file);
+      await pool.query(
+        `insert into dashboard_accounts
+           (id, email, email_verified, name, created_at, updated_at, merchant_id, merchant_key)
+         values ('person_owner', 'owner@example.com', true, '', now(), now(), $1, $2),
+                ('person_reader', 'reader@example.com', true, '', now(), now(), null, null)`,
+        [MERCHANT.id, MERCHANT.key],
+      );
+
+      await run(files[dropped] ?? "");
+
+      expect(
+        (await pool.query(`select email, merchant_id from dashboard_accounts order by email`)).rows,
+      ).toStrictEqual([
+        { email: "owner@example.com", merchant_id: MERCHANT.id },
+        { email: "reader@example.com", merchant_id: null },
+      ]);
+      const columns = await pool.query<{ column_name: string }>(
+        `select column_name from information_schema.columns
+         where table_schema = 'public' and table_name = 'dashboard_accounts'`,
+      );
+      expect(columns.rows.map((column) => column.column_name)).not.toContain("merchant_key");
+    });
+
     it("makes nobody an operator when the flag arrives on accounts already there", async () => {
       await emptyEverything();
       const files = (await readdir(migrationsIn)).filter((file) => file.endsWith(".sql")).sort();

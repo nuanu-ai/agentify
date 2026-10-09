@@ -889,4 +889,80 @@ if (databaseUrl === null) {
       ).rejects.toThrow(/pending_payout_wallet/);
     });
   });
+
+  describe("the migration that deletes the keys made for a dashboard", () => {
+    // The dashboard calls the gateway inside the process the two share and
+    // holds no key (ADR-0030), so a key made for one opens the API for whoever
+    // holds a copy of it and for nobody else. Every one goes, the leftovers of
+    // an interrupted renewal included, and with them the column that told the
+    // two kinds apart: every key left is one a merchant issued for their code.
+    const url = databaseUrl;
+    let pool: Pool;
+    const MERCHANT = "mch_a";
+
+    const run = async (file: string): Promise<void> => {
+      for (const statement of await statementsOf(file)) {
+        await pool.query(statement);
+      }
+    };
+
+    const writeKey = async (id: string, purpose: string): Promise<void> => {
+      await pool.query(
+        `insert into merchant_keys (id, merchant_id, label, purpose, digest, created_at)
+         values ($1, $2, $3, $4, $5, now())`,
+        [id, MERCHANT, `the key ${id}`, purpose, `digest-of-${id}`],
+      );
+    };
+
+    beforeAll(async () => {
+      pool = connect(url).pool;
+    }, 60_000);
+
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    beforeEach(async () => {
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      for (const file of [
+        "0000_init.sql",
+        "0001_payment_claims.sql",
+        "0002_selling.sql",
+        "0003_merchant_tenancy.sql",
+        "0004_merchant_service_name.sql",
+        "0005_merchant_payout_wallet.sql",
+        "0006_order_pay_to_backfill.sql",
+        "0007_cabinet_keys.sql",
+        "0008_key_last_use.sql",
+        "0009_live_approval.sql",
+        "0010_pending_payout_wallet.sql",
+        "0011_merchant_seller_site.sql",
+        "0012_dashboard_keys.sql",
+      ]) {
+        await run(file);
+      }
+      await pool.query(
+        `insert into merchants (id, name, selling, created_at, updated_at)
+         values ($1, 'A merchant', 'open', now(), now())`,
+        [MERCHANT],
+      );
+    });
+
+    it("deletes every key made for a dashboard and keeps every key a merchant issued", async () => {
+      await writeKey("mk_on_the_row", "dashboard");
+      await writeKey("mk_left_by_a_renewal", "dashboard");
+      await writeKey("mk_worker", "merchant_code");
+
+      await run("0013_delete_dashboard_keys.sql");
+
+      const { rows } = await pool.query<{ id: string }>("select id from merchant_keys order by id");
+      expect(rows.map((row) => row.id)).toStrictEqual(["mk_worker"]);
+      const columns = await pool.query<{ column_name: string }>(
+        `select column_name from information_schema.columns
+         where table_schema = 'public' and table_name = 'merchant_keys'`,
+      );
+      expect(columns.rows.map((column) => column.column_name)).not.toContain("purpose");
+    });
+  });
 }
