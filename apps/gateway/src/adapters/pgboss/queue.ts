@@ -134,8 +134,24 @@ export class PgBossQueue implements Queue {
    * A queue on this pg-boss, and the one way to make one: a failure of the
    * database leaves it without the values bound to the statement
    * (`database-failure.ts`, ADR-0032) — for a job, the envelope it carries.
+   * That covers the queue's own calls. An envelope written inside an order's
+   * transaction (`envelopes`) fails inside the store's `withOrder`, and the
+   * store strips it there.
+   *
+   * pg-boss reports its internal failures as an event, and they are listened
+   * to here for the same reason: a worker's failure can carry the row of the
+   * job it was working on. An unhandled one of those events is also an
+   * uncaught exception and a dead process, which costs more here than in most
+   * services: every parked purchase and every parked worker lives in this
+   * process's memory.
    */
   static over(boss: PgBoss, options: PgBossQueueOptions): PgBossQueue {
+    boss.on("error", (error: unknown) => {
+      console.error(
+        "[gateway] the queue reported a failure",
+        withoutValues(error, "the queue's own upkeep"),
+      );
+    });
     return failingWithoutValues(new PgBossQueue(boss, options), "the queue");
   }
 
@@ -435,22 +451,7 @@ export class PgBossQueue implements Queue {
   }
 }
 
-/**
- * A queue on this database, ready to be started.
- *
- * pg-boss reports its internal failures as an event, and an unhandled one of
- * those is an uncaught exception and a dead process. That costs more here than
- * in most services: every parked purchase and every parked worker lives in this
- * process's memory, so a database hiccup that killed it would drop every agent
- * mid-purchase rather than degrading anything.
- */
+/** A queue on this database, ready to be started. */
 export function queueOn(databaseUrl: string, options: PgBossQueueOptions): PgBossQueue {
-  const boss = new PgBoss(databaseUrl);
-  boss.on("error", (error: unknown) => {
-    console.error(
-      "[gateway] the queue reported a failure",
-      withoutValues(error, "the queue's own upkeep"),
-    );
-  });
-  return PgBossQueue.over(boss, options);
+  return PgBossQueue.over(new PgBoss(databaseUrl), options);
 }

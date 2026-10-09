@@ -20,8 +20,6 @@
  * caller's words.
  */
 
-import { DrizzleQueryError } from "drizzle-orm/errors";
-
 /** What a refusal may name: identifiers the database gives, never a value. */
 interface Named {
   readonly code?: unknown;
@@ -30,10 +28,30 @@ interface Named {
   readonly column?: unknown;
 }
 
-/** A refusal raised by the database server itself: it has a severity and a code. */
-function isServerRefusal(thrown: unknown): thrown is Error & Named {
+/**
+ * Drizzle's wrapper round a failed statement, known by its shape: the statement
+ * and its parameters, and the driver's failure as its cause. By shape rather
+ * than by class, because this repository installs more than one copy of the
+ * library and a wrapper from another copy is not an instance of this one's.
+ */
+function isStatementWrapper(thrown: unknown): thrown is { readonly cause?: unknown } {
   return (
-    thrown instanceof Error &&
+    typeof thrown === "object" &&
+    thrown !== null &&
+    typeof (thrown as { query?: unknown }).query === "string" &&
+    Array.isArray((thrown as { params?: unknown }).params)
+  );
+}
+
+/**
+ * A refusal raised by the database server: it has a severity and a code. Not
+ * necessarily an `Error` — pg-boss spreads one into a plain object before it
+ * reports a worker's failure, detail and all.
+ */
+function isServerRefusal(thrown: unknown): thrown is Named {
+  return (
+    typeof thrown === "object" &&
+    thrown !== null &&
     typeof (thrown as { severity?: unknown }).severity === "string" &&
     typeof (thrown as { code?: unknown }).code === "string"
   );
@@ -65,7 +83,7 @@ export class DatabaseFailure extends Error {
  * any other exactly as it was thrown.
  */
 export function withoutValues(thrown: unknown, doing: string): unknown {
-  if (thrown instanceof DrizzleQueryError) {
+  if (isStatementWrapper(thrown)) {
     // The cause is the driver's refusal or the connection's failure; only
     // their identifiers are read, and neither is kept.
     const cause: unknown = thrown.cause;
