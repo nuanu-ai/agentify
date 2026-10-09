@@ -188,8 +188,7 @@ the operator flag, and answers everybody else with the site's 404 page
 (ADR-0026 §6). The route table in the web image has no password for it any
 more, so from the first verified release that carries this, `/admin` stops
 asking for one on both channels. Nothing about `/admin` has to be done on
-either host before that release (the secret in the section above still
-has to be there): it asks for neither of the two old settings,
+either host before that release: it asks for neither of the two old settings,
 and its own check of the public routes expects `/admin` to answer 404.
 
 After it, the dashboard opens for nobody until somebody is flagged. The person
@@ -241,8 +240,7 @@ merchant the database was created with, `the_merchant`. From the first release
 that carries this it does not, whatever the file says:
 `deploy/compose.public.yaml` gives the seed nothing, and the release's
 preflight refuses a rendered one. Nothing about the seed has to be done on
-either host before that release (the secret in "A secret a host's file may
-still lack" still has to be there).
+either host before that release.
 
 After it, the line in the host's file is read by nothing in the release, and it
 goes from `/etc/agentify/<channel>.env` by hand, with one thing in mind. A
