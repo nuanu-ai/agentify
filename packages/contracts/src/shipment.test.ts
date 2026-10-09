@@ -77,6 +77,7 @@ describe("a shipment, as the merchant records it", () => {
       "https://www.jne.co.id/track?note=<b>now</b>",
       "https://www.jne.co.id/track please",
       "https://user:secret@www.jne.co.id/track",
+      "https://user@www.jne.co.id/track",
       "https://10.0.0.1/track",
       "https://www.jne.co.id:8443/track",
       "https://WWW.JNE.CO.ID/track",
