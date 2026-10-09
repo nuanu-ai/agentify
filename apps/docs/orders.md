@@ -540,6 +540,7 @@ becomes a refund you owe.
 | Situation | Where the money is | What the agent sees |
 | --- | --- | --- |
 | You delivered the goods | with you | the goods, the price they were charged and whether the money behind it was real |
+| You recorded a parcel's shipment | with you | that the parcel shipped, with your carrier, your tracking number and when you recorded it — and nothing after: whether it arrives is between you and the buyer |
 | There is none, the parameters did not fit, the payment failed its check — or you refused in the synchronous mode | never moved | a refusal, and that the purchase did not happen; where the refusal was yours, your code and your message arrive with it |
 | You answered "I will not deliver" to a request to confirm | never moved | a refusal with your code and your message, and that nothing was charged |
 | Time ran out: no confirmation, no payment or no synchronous delivery arrived | never moved | the order was closed on its deadline |

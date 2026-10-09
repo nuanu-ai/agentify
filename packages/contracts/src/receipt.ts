@@ -43,16 +43,23 @@ import { IdentifierSchema, SalePriceSchema, TimestampSchema } from "./primitives
  * if it did not, there was never anything to record. That is the same promise
  * the portal makes to the buyer in words: we say so when we learn.
  *
- * That leaves four: paid and still running, paid and delivered, paid and owed
- * back, paid and paid back.
+ * That leaves five: paid and still running, paid and delivered, a paid parcel
+ * shipped (ADR-0033), paid and owed back, paid and paid back.
  *
  * What this list does not say is when a receipt is written at all, and a reader
  * should not infer it from here. That is the gateway's, and a gateway that
- * writes one only as goods are released will only ever produce `delivered` —
- * so a consumer must not read the presence of these four as a promise that a
- * receipt exists for every payment that executed.
+ * writes one only as goods are released or a parcel ships will only ever
+ * produce `delivered` and `shipped` — so a consumer must not read the presence
+ * of these five as a promise that a receipt exists for every payment that
+ * executed.
  */
-export const ReceiptOutcomeSchema = z.enum(["in_progress", "delivered", "refund_due", "refunded"]);
+export const ReceiptOutcomeSchema = z.enum([
+  "in_progress",
+  "delivered",
+  "shipped",
+  "refund_due",
+  "refunded",
+]);
 
 export const ReceiptSchema = z.strictObject({
   /**

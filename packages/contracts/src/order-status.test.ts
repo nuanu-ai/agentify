@@ -17,6 +17,7 @@ describe("the status an order can be in", () => {
       [
         "in_progress",
         "delivered",
+        "shipped",
         "rejected",
         "payment_unresolved",
         "declined",

@@ -2,7 +2,7 @@
  * What the agent is told an order came to.
  *
  * The vocabulary here is the portal's table of how an order can end, read from
- * the buyer's side: eight endings, plus the word for an order that has not
+ * the buyer's side: nine endings, plus the word for an order that has not
  * ended yet, plus the one for a debt that has been paid back. The projection is
  * separate from the state on purpose — the machine keeps distinctions the
  * merchant's own accounting needs, and the agent is told only what is true of
@@ -21,6 +21,14 @@ export const ORDER_OUTCOMES = [
   "in_progress",
   /** The goods are the agent's and the receipt is written. */
   "delivered",
+  /**
+   * A parcel is with the carrier and the money with the merchant (ADR-0033).
+   * The machine's state is `delivered`, and the agent is told something
+   * narrower, because nothing reached the agent: this is the last word anybody
+   * here has about the parcel, and whether it arrives is between the buyer and
+   * the merchant.
+   */
+  "shipped",
   /**
    * The purchase did not happen and nothing was charged: the goods were gone,
    * the parameters did not fit, the payment did not pass verification, the
@@ -87,7 +95,7 @@ export function outcomeFor(order: Order): OrderOutcome {
     case "fulfilled":
       return "in_progress";
     case "delivered":
-      return "delivered";
+      return order.mode.parcel === true ? "shipped" : "delivered";
     case "delivered_unpaid":
       return "delivered_unpaid";
     case "refund_due":

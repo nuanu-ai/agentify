@@ -256,6 +256,7 @@ describe("the contract as JSON Schema", () => {
     expect(toJsonSchemas().receipt_outcome.enum).toStrictEqual([
       "in_progress",
       "delivered",
+      "shipped",
       "refund_due",
       "refunded",
     ]);

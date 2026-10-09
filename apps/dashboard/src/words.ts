@@ -50,13 +50,14 @@ export interface Word {
  * Where an order stands, in the merchant's words.
  *
  * The endings that cost the merchant something are marked `warn` and the ones
- * that cost nobody anything are quiet. `delivered` is the only `ok`: it is the
- * only ending in which the goods are the buyer's and the money is the
- * merchant's.
+ * that cost nobody anything are quiet. `delivered` and `shipped` are the only
+ * `ok`: the endings in which the goods have gone to the buyer, in hand or with
+ * a carrier, and the money is the merchant's.
  */
 export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
   in_progress: { text: "in progress", tone: "busy" },
   delivered: { text: "delivered", tone: "ok" },
+  shipped: { text: "shipped", tone: "ok" },
   rejected: { text: "refused", tone: "quiet" },
   payment_unresolved: { text: "payment outcome unknown", tone: "warn" },
   declined: { text: "declined at confirmation", tone: "quiet" },
