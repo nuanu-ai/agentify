@@ -435,6 +435,41 @@ export const wooShopsContract = (
       });
     });
 
+    it("follows a placed parcel until it ships or the shop ends it, and then lets go", async () => {
+      await using(async (shops, accounts) => {
+        const parcel = { ...FACTS, kind: "parcel" as const };
+        for (const orderId of ["ord_1", "ord_2"]) {
+          await shops.claimOrder(accounts.one, orderId, parcel, NOW);
+          await shops.recordOrder(
+            orderId,
+            { id: `w_${orderId}`, number: "30", permission: null },
+            NOW,
+          );
+        }
+        await shops.claimOrder(accounts.other, "ord_3", parcel, NOW);
+        await shops.recordOrder("ord_3", { id: "w_ord_3", number: "31", permission: null }, NOW);
+
+        expect(await shops.parcelsToFollow(accounts.one)).toEqual([
+          { orderId: "ord_1", wooOrderId: "w_ord_1" },
+          { orderId: "ord_2", wooOrderId: "w_ord_2" },
+        ]);
+        expect(await shops.endParcel("ord_1", "shipped", LATER)).toBe(true);
+        expect(await shops.endParcel("ord_2", "closed", LATER)).toBe(true);
+        // Ended once: a second ending of either kind changes nothing.
+        expect(await shops.endParcel("ord_1", "closed", LATER)).toBe(false);
+        expect(await shops.parcelsToFollow(accounts.one)).toEqual([]);
+        // An ended parcel is still a sale the shop holds, and is never placed again.
+        expect(await shops.knownOrder("ord_1")).toEqual({
+          kind: "placed_parcel",
+          id: "w_ord_1",
+          number: "30",
+        });
+        expect(await shops.parcelsToFollow(accounts.other)).toEqual([
+          { orderId: "ord_3", wooOrderId: "w_ord_3" },
+        ]);
+      });
+    });
+
     it("says it does not know, for an attempt that never came back", async () => {
       await using(async (shops, accounts) => {
         await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);

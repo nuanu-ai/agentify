@@ -25,6 +25,8 @@ const readOrder = (keys: Parameters<typeof readTheOrderInTheShop>[0], orderId: s
   readTheOrderInTheShop(keys, orderId, fetch);
 const ratesFor = (url: string, productId: string, place: ShipToLocality) =>
   shippingRatesInTheShop(url, productId, place, fetch);
+const shipmentOf = (keys: Parameters<typeof shipmentInTheShop>[0], wooOrderId: string) =>
+  shipmentInTheShop(keys, wooOrderId, fetch);
 const createParcel = (
   keys: Parameters<typeof createTheParcelInTheShop>[0],
   sold: Parameters<typeof createTheParcelInTheShop>[1],
@@ -37,6 +39,7 @@ import {
   createTheParcelInTheShop,
   inspectProductInTheShop,
   readTheOrderInTheShop,
+  shipmentInTheShop,
   shippingRatesInTheShop,
 } from "./woo-shop.js";
 
@@ -1307,5 +1310,194 @@ describe("creating a parcel's order", () => {
       ok: false,
       again: true,
     });
+  });
+});
+
+describe("reading whether a parcel has shipped", () => {
+  // WooCommerce has no "shipped". Completed is the merchant's word that the
+  // order needs nothing more, and it is the one this reads; tracking, where
+  // there is any, is read from WooCommerce's own fulfilments, in the shape a
+  // live 11.1 answered (`docs/research/41-woo-parcel-probe.md`).
+  const order = (status: string, lines: unknown[] = [{ method_title: "Bali courier" }]) => ({
+    id: 30,
+    status,
+    shipping_lines: lines,
+  });
+  const fulfilment = (overrides: Record<string, unknown> = {}, meta: unknown[] = []) => ({
+    id: 1,
+    entity_type: "WC_Order",
+    entity_id: "30",
+    status: "fulfilled",
+    is_fulfilled: "1",
+    meta_data: [
+      { id: 1, key: "_items", value: [{ item_id: 5, qty: 1 }] },
+      { id: 2, key: "_tracking_number", value: "PROBE123" },
+      { id: 3, key: "_shipment_provider", value: "jne" },
+      { id: 4, key: "_tracking_url", value: "https://example.com/track/PROBE123" },
+      ...meta,
+    ],
+    ...overrides,
+  });
+  const NO_ROUTE = {
+    status: 404,
+    body: { code: "rest_no_route", message: "No route was found matching the URL." },
+  };
+  const shopShowing = (
+    theOrder: { status: number; body: unknown },
+    fulfilments: { status: number; body: unknown } = NO_ROUTE,
+  ) =>
+    shopAnswering((asked) =>
+      asked.url.startsWith("/wp-json/wc/v3/orders/30/fulfillments") ? fulfilments : theOrder,
+    );
+
+  it("reads a completed order's tracking from the shop's own fulfilment, and not its address", async () => {
+    stand = await shopShowing(
+      { status: 200, body: order("completed") },
+      { status: 200, body: [fulfilment()] },
+    );
+
+    const read = await shipmentOf(connectionTo(stand.url), "30");
+
+    expect(read).toStrictEqual({
+      kind: "shipped",
+      shipment: {
+        carrier: "jne",
+        tracking_number: "PROBE123",
+        tracking_url: "https://example.com/track/PROBE123",
+      },
+    });
+    const fields = new URL(stand.asked[0]?.url ?? "", stand.url).searchParams.get("_fields");
+    expect(fields?.split(",")).not.toContain("shipping");
+    expect(fields?.split(",")).not.toContain("billing");
+    expect(stand.asked.every((asked) => asked.authorization !== undefined)).toBe(true);
+  });
+
+  it("names the shop's shipping method as the carrier, with no number, where nothing else is said", async () => {
+    // Fulfilments are switched off in WooCommerce by default, so this is the
+    // ordinary case: the method the parcel was paid to go by is what the
+    // agent is told carries it, and that it has no number we know.
+    for (const fulfilments of [
+      NO_ROUTE,
+      { status: 200, body: [] },
+      { status: 200, body: [fulfilment({ status: "unfulfilled", is_fulfilled: "" })] },
+    ]) {
+      stand = await shopShowing({ status: 200, body: order("completed") }, fulfilments);
+
+      expect(await shipmentOf(connectionTo(stand.url), "30")).toStrictEqual({
+        kind: "shipped",
+        shipment: { carrier: "Bali courier", tracking_number: null },
+      });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("leaves out a tracking address that is not one, and records nothing worded otherwise", async () => {
+    // A tracking address an agent cannot take as an address is left out, never
+    // cleaned up; a carrier or a number that is not plain text is not a
+    // shipment to record, and the order waits for the merchant to correct it.
+    stand = await shopShowing(
+      { status: 200, body: order("completed") },
+      {
+        status: 200,
+        body: [
+          fulfilment({
+            meta_data: [
+              { key: "_tracking_number", value: "PROBE123" },
+              { key: "_shipment_provider", value: "jne" },
+              { key: "_tracking_url", value: "http://example.com/track/PROBE123" },
+            ],
+          }),
+        ],
+      },
+    );
+    expect(await shipmentOf(connectionTo(stand.url), "30")).toStrictEqual({
+      kind: "shipped",
+      shipment: { carrier: "jne", tracking_number: "PROBE123" },
+    });
+    await stand.close();
+
+    for (const [carrier, number] of [
+      ["<b>jne</b>", "PROBE123"],
+      ["jne", "PROBE &amp; 123"],
+    ]) {
+      stand = await shopShowing(
+        { status: 200, body: order("completed") },
+        {
+          status: 200,
+          body: [
+            fulfilment({
+              meta_data: [
+                { key: "_tracking_number", value: number },
+                { key: "_shipment_provider", value: carrier },
+              ],
+            }),
+          ],
+        },
+      );
+      expect(await shipmentOf(connectionTo(stand.url), "30"), `${carrier} ${number}`).toMatchObject(
+        {
+          kind: "unknown",
+        },
+      );
+      await stand.close();
+    }
+    stand = await shopShowing({
+      status: 200,
+      body: order("completed", [{ method_title: "Flat &amp; fast" }]),
+    });
+    expect(await shipmentOf(connectionTo(stand.url), "30")).toMatchObject({ kind: "unknown" });
+  });
+
+  it("does not choose among several fulfilments or several shipping lines", async () => {
+    stand = await shopShowing(
+      { status: 200, body: order("completed") },
+      { status: 200, body: [fulfilment(), fulfilment({ id: 2 })] },
+    );
+    expect(await shipmentOf(connectionTo(stand.url), "30")).toMatchObject({ kind: "unknown" });
+    await stand.close();
+
+    stand = await shopShowing({
+      status: 200,
+      body: order("completed", [{ method_title: "Bali courier" }, { method_title: "Express" }]),
+    });
+    expect(await shipmentOf(connectionTo(stand.url), "30")).toMatchObject({ kind: "unknown" });
+  });
+
+  it("waits for an order not completed, and lets go of one the shop ended", async () => {
+    for (const status of ["processing", "on-hold", "pending"]) {
+      stand = await shopShowing({ status: 200, body: order(status) });
+      expect(await shipmentOf(connectionTo(stand.url), "30"), status).toStrictEqual({
+        kind: "waiting",
+      });
+      await stand.close();
+      stand = null;
+    }
+    for (const status of ["cancelled", "refunded", "failed", "trash"]) {
+      stand = await shopShowing({ status: 200, body: order(status) });
+      expect(await shipmentOf(connectionTo(stand.url), "30"), status).toStrictEqual({
+        kind: "ended",
+        status,
+      });
+      await stand.close();
+      stand = null;
+    }
+    // The shop saying it has no such order is an ending; a 404 from anything
+    // else in front of it is not the shop saying so.
+    stand = await shopShowing({
+      status: 404,
+      body: { code: "woocommerce_rest_shop_order_invalid_id", message: "Invalid ID." },
+    });
+    expect(await shipmentOf(connectionTo(stand.url), "30")).toStrictEqual({
+      kind: "ended",
+      status: "deleted",
+    });
+    await stand.close();
+    for (const unclear of [NO_ROUTE, { status: 503, body: {} }, { status: 200, body: {} }]) {
+      stand = await shopShowing(unclear);
+      expect(await shipmentOf(connectionTo(stand.url), "30")).toMatchObject({ kind: "unknown" });
+      await stand.close();
+      stand = null;
+    }
   });
 });
