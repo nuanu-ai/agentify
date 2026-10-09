@@ -306,7 +306,7 @@ describe("a parcel's order", () => {
 });
 
 describe("a parcel's order the shop holds", () => {
-  it("is not recovered, and the merchant is not told to hold it back", async () => {
+  it("is not recovered, and the operator is not told to withhold it", async () => {
     // A placed parcel is a sale taken on, followed in the shop until it is
     // completed. Recovery has nothing to do with it, and must not read as a
     // reason not to ship it.

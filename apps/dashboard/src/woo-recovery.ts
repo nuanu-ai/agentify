@@ -62,7 +62,8 @@ export const recoverWooOrder = async (
     return refused(
       record.phase === "placed"
         ? "This command recovers downloads only. This parcel's WooCommerce order is placed, and" +
-            " its shipment is read from the shop until the order is marked Completed."
+            " is read in the shop it was sold from until it is marked Completed, cancelled or" +
+            " refunded there, or for thirty days after it was placed."
         : "This command recovers downloads only. A parcel refused before its WooCommerce order was" +
             " made has no address left to make one with; for one whose order may exist, look in" +
             " the shop for an order carrying this identifier as its transaction id, and do not" +
