@@ -586,6 +586,49 @@ describe("the whole way through, against a real gateway", () => {
     expect(redelivery && "refused" in redelivery).toBe(true);
   });
 
+  it("draws the stream of the merchant the connected account names, and nobody else's", async () => {
+    // The worker acts for the account that connected the shop, calling the
+    // gateway's application inside the process (ADR-0030). What it draws is
+    // that merchant's stream; an envelope waiting for another merchant stays
+    // where it is, for that merchant's own worker.
+    open = await harness();
+    const other = await open.addMerchant();
+    const anEvent = (id: string) => ({
+      kind: "order_event" as const,
+      id,
+      sent_at: "2026-09-14T12:00:00.000Z",
+      payload: {
+        type: "order.refund_due" as const,
+        order_id: "ord_7c1e05",
+        at: "2026-09-14T12:00:00.000Z",
+        price: { amount: "25.00", currency: "USD" },
+        reason: "deadline_passed" as const,
+      },
+    });
+    await open.queue.publish(open.merchant.id, anEvent("msg_ours"));
+    await open.queue.publish(other.id, anEvent("msg_theirs"));
+    const application = open.gateway;
+
+    const turned = await turnOnce(connection(), {
+      shops: memoryWooShops(),
+      identity: {
+        byId: async () => ({
+          id: "p",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: open?.merchant.id ?? "" },
+        }),
+      },
+      clientFor: (acting) => gatewayFor(application, acting),
+      now: () => new Date("2026-09-14T12:00:00.000Z"),
+      waitSeconds: 1,
+    });
+
+    expect(turned).toBe(1);
+    const left = await application.poll(other.id, 100);
+    expect(left.envelopes.map((envelope) => envelope.id)).toStrictEqual(["msg_theirs"]);
+  });
+
   it("counts an event it drew, so the loop comes straight back for what follows", async () => {
     // The gateway hands out one envelope a poll, so an event is often all a
     // turn draws. Counted as nothing, it would send the loop to rest between
