@@ -513,20 +513,23 @@ change of behaviour and the ones that change behaviour touch no deployment.
    and from `apps/docs/quickstart.md`. The contracts package is released.
 3. **The cabinet calls the application in-process.** The screens, the
    registration and the WooCommerce worker get the in-process implementation
-   of their port; the fetch client and its wire tests, `GATEWAY_URL` and
-   `REGISTRATION_INVITATION` go; the renewal and its two triggers go, so the
-   key on the account row is no longer read or renewed, though registration
-   still writes one until step 4 drops the column; a message about a wallet
-   change asked for in the cabinet names the signed-in person; `woo:recover`
-   builds the application in its own process.
+   of their port; the fetch client and its wire tests and `GATEWAY_URL` go,
+   and `REGISTRATION_INVITATION` leaves the cabinet and every deployment,
+   which closes the registration route until step 4 removes it with the
+   gateway's setting for it; the renewal and its two triggers go, so the key
+   on the account row is no longer read or renewed, though registration still
+   writes one until step 4 drops the column; a message about a wallet change
+   asked for in the cabinet names the account the session is signed in as;
+   `woo:recover` builds the application in its own process.
 4. **The cabinet key is deleted.** The gateway loses the kind and its six
    special cases; a migration in the gateway's history deletes the rows made
    for a cabinet, leftovers included, and the `purpose` column, and one in the
    cabinet's history drops `merchant_key` and the check beside it; the account
    directory `pnpm approve` reads treats an account as bound when it names a
    merchant (`apps/dashboard/src/approval-directory.ts`); the three routes, their
-   schemas and their three codes leave the contract, and `this_call` is always
-   one of the listed keys. The contracts package is released.
+   schemas and their three codes leave the contract, with the gateway's
+   `REGISTRATION_INVITATION`, and `this_call` is always one of the listed keys.
+   The contracts package is released.
 
 The contract version does not move in steps 2 and 4: no SDK worker calls
 these routes or reads these codes, and moving it would stop every installed
@@ -609,12 +612,11 @@ and might describe a registration that change does not leave.
   own keys and the rule about the key on the call, and loses the two
   cabinet-key routes, the unswept leftovers and "the way back in is a key of
   the other kind"; the rejected "encrypting the stored key" goes.
-- ADR-0019: "the cabinet's own key, renewed daily, is announced to nobody"
-  goes.
-- ADR-0023: "the same host boundary as the cabinet key" becomes the account's;
-  the rejected "putting shop credentials in Gateway" stays true of the
-  gateway's tables.
-- ADR-0026 §4 and its table: the press makes the merchant with no key.
+- ADR-0019: "a copy of a key made for a dashboard sets nothing from outside"
+  and "a key made for a dashboard is never announced" go, and the refusal of a
+  key made for the merchant's own code is said for a gateway that knows no
+  other kind.
+- ADR-0030: the status line says the move is built.
 
 ## What was not verified
 
@@ -629,21 +631,21 @@ names from the rename branch were read from uncommitted work.
 
 ## Where the move stands
 
-Read on 2026-10-09 at `main` 5412b719. ADR-0030 records the decision and its
+Read on 2026-10-09 at `main` cb22013b. ADR-0030 records the decision and its
 security boundary; the order of the move, above, is this note's.
 
-Steps 1 and 2 have landed, as pull requests #90 and #91, together with the
-edits to other decisions listed for them. The cabinet has since been renamed
-the dashboard (`apps/dashboard`, served at `/dashboard`), so what step 2
+Steps 1, 2 and 3 have landed, as pull requests #90, #91 and #95, together with
+the edits to other decisions listed for them. The cabinet has since been
+renamed the dashboard (`apps/dashboard`, served at `/dashboard`), so what step 2
 removed went under the names `GATEWAY_DASHBOARD_SECRET` and
-`DASHBOARD_INTERNAL_URL`.
+`DASHBOARD_INTERNAL_URL`. The decisions have since been shortened, and the
+step 4 list above names their sentences as they now read.
 
-Steps 3 and 4 have not landed, and what they remove still exists: the
-dashboard's HTTP client and `GATEWAY_URL` in `apps/dashboard/src/config.ts`;
-the dashboard key with its renewal in `apps/dashboard/src/dashboard-key.ts`,
-its routes at `/v0/keys/dashboard` with their refusals, and the
-`merchant_key` column; and the registration route at `/v0/merchants` with its
-invitation code, which `registerMerchant` in `apps/gateway/src/app/gateway.ts`
-serves. Each of the two remaining pull requests still edits, in the same
-change, the paragraphs of other decisions listed for its step above and none
-earlier, and neither moves the contract version.
+Step 4 has not landed, and what it removes still exists: the key made for a
+dashboard, which registration still writes and nothing calls with or renews,
+its routes at `/v0/keys/dashboard` with their refusals, and the `merchant_key`
+column; and the registration route at `/v0/merchants`, closed since no
+deployment carries an invitation, with the gateway's `REGISTRATION_INVITATION`.
+Production takes steps 3 and 4 together (`deploy/README.md`). Step 4 edits, in
+the same change, the paragraphs of other decisions listed for it above, and
+does not move the contract version.

@@ -1,9 +1,10 @@
 # 0030. The gateway and the dashboard are one process
 
 Date: 2026-09-25
-Status: accepted (the product owner, 2026-09-25). Built up to the gateway
-telling the dashboard by a call; the dashboard key and the dashboard's HTTP
-calls remain until the steps left in `docs/research/35-one-process.md` land.
+Status: accepted (the product owner, 2026-09-25). Built up to the dashboard
+calling the application; the key made for a dashboard, its routes and the
+registration route remain until the last step in
+`docs/research/35-one-process.md` lands.
 
 ## Context
 

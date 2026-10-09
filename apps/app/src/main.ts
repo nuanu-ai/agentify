@@ -8,9 +8,11 @@
  * boundary between them protected little and cost a network call with a
  * credential for everything that crossed it. Here they share a process and
  * keep their own listeners: 3000 for the gateway, 3001 for the dashboard's
- * pages and 3002 for the scanner's route to the dashboard. The gateway tells a
- * merchant of a change through the dashboard by a call, handed to it here; the
- * dashboard still calls the gateway over its port, on loopback.
+ * pages and 3002 for the scanner's route to the dashboard. Between them are
+ * calls rather than requests, and both are handed over here: the gateway tells
+ * a merchant of a change through the dashboard's way of telling, and the
+ * dashboard calls the gateway's application as the merchant on the signed-in
+ * account's row.
  *
  * What one process costs is said in ADR-0030: a defect in the dashboard now
  * stops sales as well. Orders survive in Postgres and resume after the restart.
@@ -32,12 +34,12 @@ const startedOrStopped = async () => {
     const gatewayConfig = gatewayConfigOf(process.env);
     const dashboardConfig = dashboardConfigOf(process.env);
     // The gateway announces a change through the dashboard's telling, so the
-    // dashboard is made first; but the gateway starts serving first, because
-    // the dashboard's pages and its WooCommerce worker call it from the moment
-    // they are up.
+    // dashboard is made first; but the gateway starts first, because the
+    // dashboard's pages and its WooCommerce worker call its application from
+    // the moment they are up.
     const made = dashboardFor(dashboardConfig);
     const gateway = await startGateway(gatewayConfig, { announce: made.tell });
-    const dashboard = made.start();
+    const dashboard = made.start(gateway.application);
     return { gateway, dashboard };
   } catch (thrown) {
     // Whole, stack and all: a configuration refused says what is wrong in its

@@ -22,11 +22,12 @@ and answered checksummed, which a person can check by eye (ADR-0017). Outside
 the sandbox (ADR-0026 §5) a merchant without one cannot publish
 (`no_payout_wallet`). It is changed, never removed: the pause ends sales.
 
-Any key of the merchant's reads it at `/v0/payout-wallet`; only the dashboard
-writes it, with its own key, from inside the stack. The public door routes no
-write there, the gateway refuses a key made for the merchant's own code
-(`not_a_dashboard_key`), first address included, and no terminal command writes
-it, so the gateway sees every change.
+Any key of the merchant's reads it at `/v0/payout-wallet`; a person signed in to
+the dashboard writes it, by a call inside the process the two share (ADR-0030).
+The public door routes no write there, so a copy of a key made for a dashboard
+sets nothing from outside; the gateway refuses a key made for the merchant's own
+code (`not_a_dashboard_key`), first address included, and no terminal command
+writes it, so the gateway sees every change.
 
 On the live deployment (ADR-0020) the first address, replacing nothing, applies
 at once and is announced afterwards. A replacement is announced first, answered
@@ -47,11 +48,14 @@ failure, and a message about one that did not land is the safe one, since every
 message says the change applies only if the wallet screen shows it.
 
 The message says what changes, the earliest moment it can apply and that it was
-asked for in the dashboard, and links to the wallet screen without a token. A
-cancel there ends every session of every account naming the merchant but the one
-that pressed, and, moving money nowhere new, is announced afterwards and never
-refused. So is a key issued for the merchant's own code, its message naming the
-key that asked; the dashboard's own key (ADR-0014 §2) is never announced.
+asked for in the dashboard from a session signed in as which account, naming no
+person, since the gateway knows the account and not who holds the session; it
+links to the wallet screen without a token. A cancel there ends every session of
+every account naming the merchant but the one that pressed, and, moving money
+nowhere new, is announced afterwards and never refused. So is a key issued for
+the merchant's own code, its message naming who asked: the account a dashboard
+session was signed in as, or the key a call was made with. A key made for a
+dashboard is never announced.
 
 ## Consequences
 
@@ -61,9 +65,10 @@ tree is `zod` alone (ADR-0003 §8), until a second need for a hash brings an
 audited library. A replacement costs two days of sales to the old wallet. An
 intruding session can ask again after each cancel, or set a first address; the
 owner answers with the immediate pause, signing out other devices (ADR-0026 §3)
-and the cancel, all of which hold only while the mailbox is theirs (ADR-0026 §1). A
-replacement waits on the mail provider, and a merchant no account names, such as
-the one every database starts with (ADR-0010), cannot have its wallet replaced.
+and the cancel, all of which hold only while the mailbox is theirs (ADR-0026
+§1). A replacement waits on the mail provider, and a merchant no account names,
+such as the one every database starts with (ADR-0010), cannot have its wallet
+replaced.
 
 Rejected: one address per deployment, which is custody; an address per card,
 fifty chances for one to be wrong; defaulting to the configured

@@ -27,6 +27,10 @@ import { ORDER_ID_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } 
  */
 const routesSource = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
 const serverSource = readFileSync(new URL("./server.ts", import.meta.url), "utf8");
+const merchantAnswersSource = readFileSync(
+  new URL("./merchant-answers.ts", import.meta.url),
+  "utf8",
+);
 
 /**
  * The key the harness's own merchant holds, named rather than spelled again.
@@ -304,9 +308,9 @@ describe("what a call answers with", () => {
     // The half left over is the one the compiler cannot see: a code in the list
     // that this gateway no longer sends. Nothing goes red when a refusal is
     // deleted, and what is left behind is a name a consumer writes a branch for
-    // and waits forever to reach. So the two files that hold every refusal are
-    // read, and each published code has to be written in one of them.
-    const written = [routesSource, serverSource].join("\n");
+    // and waits forever to reach. So the three files that hold every refusal
+    // are read, and each published code has to be written in one of them.
+    const written = [routesSource, serverSource, merchantAnswersSource].join("\n");
     const unsent = ERROR_CODES.filter((code) => !written.includes(`"${code}"`));
 
     expect(
@@ -963,6 +967,29 @@ describe("what an agent is told when the money is not settled", () => {
     expect(read.body).toMatchObject({
       error: { code: "order_closed_before_it_was_priced", status: "rejected" },
     });
+  });
+
+  it("leaves an order closed before it was priced out of the list, and still answers the list", async () => {
+    // Every row of the list is written in a document that carries a sale
+    // price. An order that never had one is not a row with the card's number
+    // standing in for it, and it is not a list that fails for everyone because
+    // of it: it is left out, and read one at a time by its identifier.
+    const { served, harnessed } = await started({ QUOTE_RESPONSE_MS: "10" });
+    const itemId = await publish(served, {
+      ...syncCard,
+      merchant_item_id: "gone",
+      fulfillment: "async",
+      price_check: "handler",
+    });
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "settled") throw new Error("the silent async card sold anyway");
+
+    const listed = await served.call("GET", "/v0/orders", { headers: asMerchant });
+
+    expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+    expect(
+      (listed.body as { orders: { id: string }[] }).orders.map((order) => order.id),
+    ).not.toContain(offered.order.order.id);
   });
 });
 

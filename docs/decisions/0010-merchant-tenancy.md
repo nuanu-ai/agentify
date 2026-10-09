@@ -56,5 +56,6 @@ pools and provisioning per tenant nothing at this scale earns, against a failure
 the store's tests exist to catch; keys in the environment, one per merchant,
 where every key change is a deployment, nobody can revoke one key of several and
 no merchant can make a key for themselves; scoping in the dashboard alone, which
-leaves the API it calls answering everything to anybody with any key, when the
-gateway is the boundary both sides trust.
+leaves the public API, the application's other caller, answering everything to
+anybody with any key, when the gateway's store is what every caller goes
+through.

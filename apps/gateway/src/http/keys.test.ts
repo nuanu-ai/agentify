@@ -239,6 +239,17 @@ describe("registering a merchant", () => {
     expect((await harnessed.store.merchants()).length).toBe(1);
   });
 
+  it("makes a merchant for a dashboard session on a gateway that holds no invitation", async () => {
+    // The press in the dashboard calls the gateway inside the process the two
+    // share (ADR-0030), where no door is crossed and no code is asked for, so
+    // a deployment that carries no invitation still makes a merchant for it.
+    const { harnessed } = await started({ REGISTRATION_INVITATION: "" });
+
+    const made = await harnessed.gateway.registerMerchant();
+
+    expect(await harnessed.store.merchantById(made.merchant_id)).not.toBeNull();
+  });
+
   it("gives each registration a merchant of its own", async () => {
     // Two people with the same invitation are two merchants, not two people at
     // one. Registering into a shared merchant would hand the second one the

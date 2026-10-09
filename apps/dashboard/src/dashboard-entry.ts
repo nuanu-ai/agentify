@@ -7,8 +7,17 @@
  * operator-facing `Identity` in `identity.ts` and does not make this larger.
  */
 
-/** The merchant an account belongs to, and the key used only behind a page. */
+/** The merchant an account belongs to. */
 export interface AccountMerchant {
+  readonly id: string;
+}
+
+/**
+ * A merchant registering has just made, with the key it made beside it for a
+ * dashboard. The account row keeps the key with the merchant, and nothing
+ * reads it: the dashboard calls the gateway inside the process (ADR-0030).
+ */
+export interface MadeMerchant {
   readonly id: string;
   readonly key: string;
 }
@@ -76,9 +85,6 @@ export type AttachMerchantResult =
   | Readonly<{ status: "unavailable"; person: UnattachedPerson }>
   | Readonly<{ status: "person-missing" }>;
 
-/** What is known after the conditional merchant-key write returns. */
-export type MerchantKeyReplacement = "replaced" | "not-matched" | "unknown";
-
 /**
  * A live session: whose it is, whether that person is an operator, which
  * request its link was asked for, and what reading it asked of the browser.
@@ -120,14 +126,8 @@ export interface DashboardIdentity {
 
   attachMerchant(
     personId: string,
-    register: () => Promise<AccountMerchant | null>,
+    register: () => Promise<MadeMerchant | null>,
   ): Promise<AttachMerchantResult>;
-
-  replaceMerchantKey(
-    personId: string,
-    expectedKey: string,
-    replacementKey: string,
-  ): Promise<MerchantKeyReplacement>;
 
   /**
    * Ends every session of every account naming this merchant except the ones

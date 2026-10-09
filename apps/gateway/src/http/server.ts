@@ -52,6 +52,7 @@ import type { Gateway } from "../app/gateway.js";
 import { checksBeforeSending } from "../app/written.js";
 import type { KeyPurpose } from "../ports/store.js";
 import { bearerIn } from "./auth.js";
+import { GATEWAY_FAILED } from "./merchant-answers.js";
 import { handlersFor } from "./routes.js";
 
 /** What a handler answers with: a document and its status, or its own writing. */
@@ -287,8 +288,8 @@ export function buildApp(
 
       console.error("[gateway] a request failed before it reached a route", thrown);
       response
-        .status(500)
-        .json(refusal("gateway_failed", "this call did not complete and nothing was decided"));
+        .status(GATEWAY_FAILED.status)
+        .json(refusal(GATEWAY_FAILED.code, GATEWAY_FAILED.message));
     },
   );
 
@@ -313,15 +314,11 @@ function mount(
       try {
         await answer(request, response, route, handler, gateway, carriesBody);
       } catch (thrown) {
-        // A defect. The agent or the merchant is told that something here is
-        // broken, and nothing about what: an error text is a claim like any
-        // other, and one assembled out of an exception makes claims about our
-        // internals to somebody who cannot act on them.
         console.error(`[gateway] ${name} failed`, thrown);
         if (!response.headersSent) {
           response
-            .status(500)
-            .json(refusal("gateway_failed", "this call did not complete and nothing was decided"));
+            .status(GATEWAY_FAILED.status)
+            .json(refusal(GATEWAY_FAILED.code, GATEWAY_FAILED.message));
         }
       }
     };
@@ -617,7 +614,14 @@ function declaresCompression(request: Request): boolean {
   return named !== "" && named !== "identity";
 }
 
-type Held = { ok: true; value: unknown } | { ok: false; problems: readonly unknown[] };
+/** One thing wrong with a body, in the schema's own words, and where it is. */
+interface Problem {
+  readonly path: readonly string[];
+  readonly code: string;
+  readonly message: string;
+}
+
+type Held = { ok: true; value: unknown } | { ok: false; problems: readonly Problem[] };
 
 export function hold(schema: ZodType, value: unknown): Held {
   const parsed = schema.safeParse(value);

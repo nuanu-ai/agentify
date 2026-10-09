@@ -98,8 +98,6 @@
 #   CDP_API_KEY_ID             Coinbase facilitator key ID   absent
 #   CDP_API_KEY_SECRET         Coinbase facilitator secret   absent
 #   AGENTIFY_SURFACE_MODE     what the static pages say       sandbox
-#   AGENTIFY_INVITATION     the private dashboard-to-gateway   register-on-this-laptop
-#                           registration secret
 #   AGENTIFY_POSTGRES_PUBLISH  the published port of the     5432:5432
 #                           database, or a narrower bind
 #   TOKEN_HMAC_SECRET       what signs a report link         a sandbox value
@@ -140,13 +138,6 @@
 # and a database brought up from nothing is seeded off that same line again.
 # The public overlay gives the seed nothing whatever a channel's file says, and
 # the release's preflight refuses a rendered one.
-#
-# AGENTIFY_INVITATION protects registration between the dashboard and gateway
-# (ADR-0014). People never type it. On a laptop it defaults to a local value;
-# a deployment supplies its own nonempty secret, which both read. The dashboard
-# refuses to start without it, because the dashboard's one control must be able
-# to create the merchant. Admission to live sales is a separate operator
-# approval.
 
 # One image behind three of the services below. They are three entry points
 # into one workspace and share every dependency below their own file, so which
@@ -260,12 +251,6 @@ services:
       # only when nobody named the variable, so a deployment naming it with
       # nothing after it gets nothing rather than the sandbox's key back.
       SANDBOX_MERCHANT_KEY: "${AGENTIFY_SEED_KEY-csk_test_local-sandbox-merchant-key}"
-      # What the dashboard presents to the gateway to make a merchant once a
-      # person has proved their address; people never type it. The dashboard
-      # refuses to start without a nonempty one, so set to nothing it stops this
-      # whole process, and the release's preflight refuses such a channel
-      # before anything stops.
-      REGISTRATION_INVITATION: "${AGENTIFY_INVITATION-register-on-this-laptop}"
       # The address a merchant and an agent reach this stack at, which is the
       # door Caddy answers and not a port this process listens on. A payment
       # challenge tells an agent to come back to it and a catalogue keys a
@@ -307,16 +292,11 @@ services:
       # Nothing ever arrives at it: it is the second well-known local-devnet
       # account, public and valueless, and this gateway settles against nothing.
       PAY_TO_ADDRESS: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
-      # Where the dashboard reaches the gateway: the same public API a
-      # merchant's own code uses (ADR-0005 §3), on the gateway's listener inside
-      # this process rather than the origin a browser types.
-      GATEWAY_URL: http://127.0.0.1:3000
       # What the scanner presents on the private identity route, and the reason
       # the dashboard opens a listener on 3002 at all (ADR-0026). This service
       # and the scanner are the only ones that hold it, and it is theirs alone:
-      # handed the session secret or the registration invitation as well, the
-      # dashboard refuses to start rather than sharing one credential between
-      # two doors. Nothing publishes 3002, so the route is reachable from this
+      # handed the session secret as well, the dashboard refuses to start
+      # rather than sharing one credential between two doors. Nothing publishes 3002, so the route is reachable from this
       # stack's own network and from nowhere else.
       REPORT_IDENTITY_SECRET: "${REPORT_IDENTITY_SECRET:-a-sandbox-report-identity-secret-nobody-should-reuse}"
       # What signs a merchant's session cookie. The component behind the sign-in
@@ -389,11 +369,9 @@ services:
       # variable, this service would go on presenting a key the gateway no
       # longer knows and the catalogue would come up empty.
       #
-      # The dash carries no colon for the reason SANDBOX_MERCHANT_KEY and
-      # REGISTRATION_INVITATION give above, and the three part company on what
-      # an empty value then means: seeding set to nothing writes no key, an
-      # invitation set to nothing stops the application starting, and this one
-      # stops the merchant. Named with nothing after it, it refuses to start —
+      # The dash carries no colon for the reason SANDBOX_MERCHANT_KEY gives
+      # above, and the two part company on what an empty value then means:
+      # seeding set to nothing writes no key, and this one stops the merchant. Named with nothing after it, it refuses to start —
       # "MERCHANT_API_KEY is not set … there is no default for it" — which is
       # what a deployment that emptied the variable should get, rather than the
       # key printed in this file quietly selling on a server.

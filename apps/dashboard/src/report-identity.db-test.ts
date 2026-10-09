@@ -74,7 +74,6 @@ if (databaseUrl === null) {
       AUTH_SECRET: authSecret,
       PAYMENT_NETWORK: "eip155:84532",
       FACILITATOR_URL: "sandbox:scripted",
-      REGISTRATION_INVITATION: "the-existing-gateway-invitation",
       PUBLIC_BASE_URL: "https://agentify.ad",
       BASE_PATH: "/dashboard",
       COOKIE_SECURE: "true",
@@ -314,7 +313,7 @@ if (databaseUrl === null) {
           email: EMAIL,
         }),
       ).resolves.toStrictEqual({ status: "retained" });
-      expect(await identity.byEmail(EMAIL)).toMatchObject({ merchant: MERCHANT });
+      expect(await identity.byEmail(EMAIL)).toMatchObject({ merchant: { id: MERCHANT.id } });
       expect(
         (
           await pool.query(
@@ -426,7 +425,7 @@ if (databaseUrl === null) {
 
       await expect(attaching).resolves.toMatchObject({ status: "attached" });
       await expect(deleting).resolves.toStrictEqual({ status: "retained" });
-      expect(await identity.byId(person.id)).toMatchObject({ merchant: MERCHANT });
+      expect(await identity.byId(person.id)).toMatchObject({ merchant: { id: MERCHANT.id } });
     });
 
     it("replays a deleted tombstone after credential rotation without touching a replacement", async () => {
@@ -456,7 +455,7 @@ if (databaseUrl === null) {
       await expect(restarted.deleteUnattachedPerson(request)).resolves.toStrictEqual({
         status: "deleted",
       });
-      expect(await restarted.byId(replacement.id)).toMatchObject({ merchant: MERCHANT });
+      expect(await restarted.byId(replacement.id)).toMatchObject({ merchant: { id: MERCHANT.id } });
       await expect(restarted.openLink(replacementLink)).resolves.toMatchObject({
         status: "opened",
       });
@@ -485,7 +484,7 @@ if (databaseUrl === null) {
       await expect(restarted.deleteUnattachedPerson(request)).resolves.toStrictEqual({
         status: "retained",
       });
-      expect(await restarted.byId(person.id)).toMatchObject({ merchant: MERCHANT });
+      expect(await restarted.byId(person.id)).toMatchObject({ merchant: { id: MERCHANT.id } });
       await expect(restarted.openLink(newLink)).resolves.toMatchObject({ status: "opened" });
     });
 
@@ -506,7 +505,7 @@ if (databaseUrl === null) {
       await expect(
         identity.deleteUnattachedPerson({ ...request, email: "other@example.com" }),
       ).resolves.toStrictEqual({ status: "refused" });
-      expect(await identity.byId(made.id)).toMatchObject({ merchant: MERCHANT });
+      expect(await identity.byId(made.id)).toMatchObject({ merchant: { id: MERCHANT.id } });
       await expect(identity.openLink(dashboardToken)).resolves.toMatchObject({ status: "opened" });
       expect(
         (

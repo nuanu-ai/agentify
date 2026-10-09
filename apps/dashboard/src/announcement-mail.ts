@@ -4,14 +4,15 @@
  *
  * Four kinds: a first payout wallet set, a replacement that is waiting, a
  * waiting change that was cancelled, and a new key for the merchant's own
- * code. Each says what happened, where it was asked for, and where in the
- * dashboard to look. A wallet is changed only through the dashboard, whose calls
- * come from inside the stack (ADR-0019), so the three about the wallet say it
- * was asked for in the dashboard; a new key may be issued with any key of the
- * merchant's, so that message names the one. None of them claims a person:
- * what the gateway knows is the key a call came with, not who held it. The
- * one the rest exist around is the replacement, and it has three things to get
- * right.
+ * code. Each says what happened, who asked, and where in the dashboard to
+ * look. Who asked is what the gateway knows of the call: the account a
+ * dashboard session was signed in as, which is how a wallet is changed
+ * (ADR-0019) and a key is usually issued, or the key a call over the API was
+ * made with. None of them claims a person, because a session somebody else
+ * took is signed in as the owner all the same, and a message that said "you
+ * did this" would tell the owner to stand down on the one day they must not.
+ * The one the rest exist around is the replacement, and it has three things to
+ * get right.
  *
  * When. The gateway counts the forty-eight hours from the moment every message
  * was handed over, which is after this one is written, so the message cannot
@@ -31,8 +32,8 @@
  *
  * A key that issued a new one is named the way the merchant's list of keys
  * names it: its label, with its identifier beside it, so the row can be found
- * and disabled. The key the dashboard calls with is on no list, so it is named
- * as the dashboard's.
+ * and disabled. A key made for a dashboard is on no list, so it is named as
+ * that.
  *
  * What a message advises has to work in the state it describes. A waiting
  * change can be cancelled, and the cancel signs every other session out. After
@@ -42,7 +43,7 @@
  * `control-labels.ts`, the file the screens draw them from.
  */
 
-import type { Announcement, AskedWith } from "@agentify/gateway/announcements";
+import type { Announcement, AskedInTheDashboard, AskedWith } from "@agentify/gateway/announcements";
 import { SIGN_OUT_EVERY_OTHER_DEVICE, STOP_ALL_SELLING } from "./control-labels.js";
 import type { Message } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
@@ -68,14 +69,20 @@ export interface Screens {
  */
 const inert = (label: string): string => label.replace(/[.:/@]/g, (mark) => `${mark}\u200B`);
 
-/** A key, the way a person reading the message finds it in the dashboard. */
-const named = (key: AskedWith): string =>
-  key.kind === "dashboard"
-    ? "the key your dashboard calls with"
-    : `the key ${key.id}, named "${inert(key.label)}", one of the keys issued for your own code`;
+/**
+ * Who asked for something the wallet screen does, as a phrase that follows
+ * "was asked for" or "was set".
+ */
+const askedIn = (asked: AskedInTheDashboard): string =>
+  asked.kind === "signed_in"
+    ? `in the dashboard, from a session signed in as ${asked.email}`
+    : "with a key made for your dashboard";
 
-/** Where every wallet change is asked for, and the only place it can be. */
-const IN_THE_DASHBOARD = "in the dashboard";
+/** Who asked for a new key: as above, or a key the reader finds on their list. */
+const askedBy = (asked: AskedWith): string =>
+  asked.kind === "merchant_code"
+    ? `with the key ${asked.id}, named "${inert(asked.label)}", one of the keys issued for your own code`
+    : askedIn(asked);
 
 /** What to do about a waiting change, if the reader did not ask for it. */
 const IF_NOT_YOU =
@@ -99,7 +106,7 @@ export function announcementMessage(
     case "wallet_change": {
       const notBefore = moment(announcement.not_before);
       const lead =
-        `A change of the wallet your sales are paid into was asked for ${IN_THE_DASHBOARD}.` +
+        `A change of the wallet your sales are paid into was asked for ${askedIn(announcement.asked_with)}.` +
         ` From ${announcement.from} to ${announcement.to}.`;
       const paragraphs = [
         `It takes effect not before ${notBefore}, and only if the wallet screen of your dashboard shows it waiting: ${screens.wallet}. Until then every sale is paid into ${announcement.from}.`,
@@ -118,7 +125,7 @@ export function announcementMessage(
     }
     case "wallet_set": {
       const lead =
-        `The wallet your sales are paid into was set to ${announcement.to} ${IN_THE_DASHBOARD}.` +
+        `The wallet your sales are paid into was set to ${announcement.to} ${askedIn(announcement.asked_with)}.` +
         " It is the first address your merchant has had, so it applies now.";
       return written(to, {
         subject: "A payout wallet was set for your merchant",
@@ -135,7 +142,7 @@ export function announcementMessage(
     }
     case "wallet_change_cancelled": {
       const lead =
-        `The waiting change of your payout wallet to ${announcement.cancelled} was cancelled ${IN_THE_DASHBOARD}.` +
+        `The waiting change of your payout wallet to ${announcement.cancelled} was cancelled ${askedIn(announcement.asked_with)}.` +
         ` Your sales are still paid into ${announcement.kept}.`;
       return written(to, {
         subject: "A payout wallet change was cancelled",
@@ -152,7 +159,7 @@ export function announcementMessage(
     }
     case "key_issued": {
       const lead =
-        `A new key, ${announcement.key.id}, named "${inert(announcement.key.label)}", was issued for your own code with ${named(announcement.asked_with)}.` +
+        `A new key, ${announcement.key.id}, named "${inert(announcement.key.label)}", was issued for your own code ${askedBy(announcement.asked_with)}.` +
         " A key can call everything your code can, except changing where your money goes, which only the dashboard does.";
       return written(to, {
         subject: "A new key was issued for your merchant",

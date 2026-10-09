@@ -18,7 +18,6 @@ function config() {
     AUTH_SECRET: "x".repeat(44),
     PAYMENT_NETWORK: "eip155:84532",
     FACILITATOR_URL: "sandbox:scripted",
-    REGISTRATION_INVITATION: "the-existing-gateway-invitation",
     PUBLIC_BASE_URL: "https://agentify.ad",
     BASE_PATH: "/dashboard",
     COOKIE_SECURE: "true",
@@ -222,7 +221,7 @@ describe("a privacy deletion asked for by the scanner", () => {
         email: EMAIL,
       }),
     ).resolves.toStrictEqual({ status: "retained" });
-    expect(await p2.identity.byEmail(EMAIL)).toMatchObject({ merchant: MERCHANT });
+    expect(await p2.identity.byEmail(EMAIL)).toMatchObject({ merchant: { id: MERCHANT.id } });
     // The report link still in the mailbox leads nowhere once the reports it
     // was for are being deleted.
     expect(await p2.identity.openLink(unconsumed.token)).toStrictEqual({ status: "refused" });
@@ -241,7 +240,7 @@ describe("a privacy deletion asked for by the scanner", () => {
     await expect(one.identity.deleteUnattachedPerson(request)).resolves.toStrictEqual({
       status: "already_absent",
     });
-    expect(await one.identity.byEmail(EMAIL)).toMatchObject({ merchant: MERCHANT });
+    expect(await one.identity.byEmail(EMAIL)).toMatchObject({ merchant: { id: MERCHANT.id } });
     expect(one.rows.dashboard_verifications).toHaveLength(1);
     await expect(
       one.identity.deleteUnattachedPerson({ ...request, email: "other@example.com" }),

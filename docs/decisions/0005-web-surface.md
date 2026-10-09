@@ -36,15 +36,21 @@ expensive to change once merchants hold links, keys and code against them.
    own (ADR-0030).** The gateway's surface stays the contract's route table,
    mounted in one generic loop; the pages for people stay `apps/dashboard`.
 
-3. **The dashboard reads the gateway through the public API with a merchant
-   key**, the door a merchant's own tooling uses: if the dashboard cannot show
-   something, the API is missing it, and the gap is closed by a contract
-   addition, never by a private route. No query in the dashboard reaches the
-   gateway's tables. Its own tables hold the people who sign in and their
-   sessions (ADR-0026 §2) and the WooCommerce connector's bookkeeping (ADR-0023),
-   never a card, an order or a receipt. One call goes the other way, inside the
-   shared process: the gateway has the dashboard tell a merchant of a change
-   to their payout wallet or keys (ADR-0019).
+3. **The dashboard calls the gateway's application** as the merchant on the
+   signed-in account's row (ADR-0030): the `Gateway` operations the `/v0`
+   handlers call, inside the shared process, with requests and answers held to
+   the contract's schemas. So the dashboard proves that the application and the
+   contract's documents can draw every screen, and what a merchant's engineer
+   uses proves the HTTP API: the SDK's tests, the purchase through the real
+   gateway in `packages/slice`, the portal's examples run as fixtures and the
+   gateway's HTTP test of every `/v0` route. A screen that needs what a
+   merchant's code could need gets a contract route, never a private call. No
+   query in the dashboard reaches the gateway's tables. Its own tables hold the
+   people who sign in and their sessions (ADR-0026 §2) and the WooCommerce
+   connector's bookkeeping (ADR-0023), never a card, an order or a receipt. One
+   call goes the other way, inside the shared process: the gateway has the
+   dashboard tell a merchant of a change to their payout wallet or keys
+   (ADR-0019).
 
 4. **Server-rendered HTML, no client-side framework, no client build.** Pages
    are tested over HTTP against the real gateway. Interactivity is form posts,
@@ -58,14 +64,16 @@ expensive to change once merchants hold links, keys and code against them.
 
 ## Consequences
 
-A person clicks through the chain end to end, the dashboard proves the API
-usable by construction, and the local stack rehearses the deployment. One
-origin is one script authority: an escaping defect on any surface reaches the
-session for all of them. Rich interaction is awkward on server-rendered pages.
+A person clicks through the chain end to end, the dashboard proves by
+construction that the application and the contract's documents can draw every
+screen, and the local stack rehearses the deployment. One origin is one script
+authority: an escaping defect on any surface reaches the session for all of
+them. Rich interaction is awkward on server-rendered pages.
 
 Rejected: a single-page application, which buys a build pipeline and a
-dependency tree before any screen needs them; a dashboard reading Postgres
-directly, which hides exactly the API gaps it exists to expose; and an origin
-per surface, which isolates scripts but stops the session crossing between
-them and gives a merchant's engineer several addresses. That last one is the
-way out if script isolation becomes a requirement.
+dependency tree before any screen needs them; a dashboard querying the
+gateway's tables, a second reader of the money path's data that would hide the
+gaps in the contract's documents it exists to expose; and an origin per
+surface, which isolates scripts but stops the session crossing between them and
+gives a merchant's engineer several addresses. That last one is the way out if
+script isolation becomes a requirement.

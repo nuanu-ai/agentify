@@ -53,9 +53,10 @@ its page was drawn for, and one naming another or none is refused unacted.
 
 **4. The merchant is made on the dashboard's explicit request.** A signed-in
 person without one is offered one control, and only its same-origin POST asks
-the gateway for the merchant and the key the dashboard calls with; under `Lax` a
-link from another site arrives signed in, so opening one makes nothing. That
-press is the only way to a merchant, as the link is to an account (ADR-0014).
+the gateway's application, inside the shared process (ADR-0030), for the
+merchant; under `Lax` a link from another site arrives signed in, so opening one
+makes nothing. That press is the only way to a merchant, as the link is to an
+account (ADR-0014).
 
 **5. The door to the shared catalogue is live publication**, not an invitation,
 which stops nobody. One rule, `readinessOf` in `packages/core`, asked by every

@@ -194,25 +194,24 @@
 	# through untouched, so /dashboard/healthz already arrives.
 	#
 	# Three of the gateway's calls are not on this door at all: registering a
-	# merchant, and making and forgetting the key a dashboard calls with. Only the
-	# dashboard makes them, and it makes them over the stack's own network, at the
-	# gateway's service name, never through here. A merchant comes into being
-	# one way, when a signed-in person presses the dashboard's one control
-	# (ADR-0014), and the registration call behind that press asks for nothing
-	# but the invitation, which lives in configuration files; reachable from
-	# outside, it would make a merchant and its dashboard's key for whoever holds
-	# a copy, with no address and no person. So these paths are left out of the
+	# merchant, and making and forgetting a key made for a dashboard. Nothing
+	# calls them: the dashboard calls the gateway's application inside the
+	# process the two share (ADR-0030), and a merchant comes into being one way,
+	# when a signed-in person presses the dashboard's one control (ADR-0014).
+	# The registration route asks for nothing but an invitation; reachable from
+	# outside, it would make a merchant and a key for whoever held a copy of one,
+	# with no address and no person. So these paths are left out of the
 	# gateway's matcher and fall through to the front page, which answers them
 	# as it answers any path this site does not have, with its missing page.
 	# The matcher is the same one the gateway's line uses, so a path spelled in
 	# another case, encoded, or with a dot segment or a doubled slash is left
 	# out exactly when the gateway's line would have taken it.
 	#
-	# Setting the payout wallet is not on this door. Only the dashboard sets it,
-	# for a person signed in to it, and it calls the gateway over the stack's own
-	# network at the gateway's service name, never through here (ADR-0019). A
-	# copy of the key a dashboard calls with — its database holds them as issued —
-	# must not be a way to move a merchant's money from anywhere on the internet.
+	# Setting the payout wallet is not on this door. A person signed in to the
+	# dashboard sets it, by a call inside the process the dashboard shares with
+	# the gateway (ADR-0019, ADR-0030). A copy of a key made for a dashboard —
+	# its database holds them as issued — must not be a way to move a merchant's
+	# money from anywhere on the internet.
 	# So every request to that path but a read is left out of the gateway's
 	# matcher and falls through to the front page, which answers it as any path
 	# this site does not have. The path matcher is the gateway line's own, so a

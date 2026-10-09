@@ -38,18 +38,19 @@ and is a bearer secret, shown only in that delivery. An accepted price answer
 durably binds its `price_id` to a fingerprint of product, price, file and
 settings, which the product read at payment must match.
 
-The dashboard fills the order as the merchant's worker: it checks the product
-again, claims the order in a ledger, creates one paid WooCommerce order and
-records its permission before answering, so a redelivery returns the stored
-result, never a second order. The ledger moves forward only: a refusal proved
-before the create request is `precreate_refused`; once that request is sent the
-order is `create_unknown`, never resent on its own, until a validated,
-correlated answer makes it `placed`, which is final and needs no shop credential
-to deliver. A private command for one order, not a public route or SDK method,
-closes paid failures: a pre-create refusal may create once after the merchant
-reconnects the same shop and the product still qualifies; an unknown create
-binds only an order id an operator supplies, read back and matched on every fact
-of the sale. A mismatch stays a refund owed.
+The dashboard fills the order as the merchant's worker, calling the gateway's
+application inside the shared process (ADR-0030): it checks the product again,
+claims the order in a ledger, creates one paid WooCommerce order and records its
+permission before answering, so a redelivery returns the stored result, never a
+second order. The ledger moves forward only: a refusal proved before the create
+request is `precreate_refused`; once that request is sent the order is
+`create_unknown`, never resent on its own, until a validated, correlated answer
+makes it `placed`, which is final and needs no shop credential to deliver. A
+private command for one order, not a public route or SDK method, closes paid
+failures: a pre-create refusal may create once after the merchant reconnects the
+same shop and the product still qualifies; an unknown create binds only an order
+id an operator supplies, read back and matched on every fact of the sale. A
+mismatch stays a refund owed.
 
 ## Consequences
 

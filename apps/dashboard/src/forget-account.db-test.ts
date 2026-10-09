@@ -71,7 +71,6 @@ if (databaseUrl === null) {
       AUTH_SECRET,
       PAYMENT_NETWORK: TEST_NETWORK,
       FACILITATOR_URL: "sandbox:scripted",
-      REGISTRATION_INVITATION: "y".repeat(40),
     }),
     {
       pool,

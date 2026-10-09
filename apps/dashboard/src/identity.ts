@@ -29,7 +29,6 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import type { DashboardConfig } from "./config.js";
 import type {
-  AccountMerchant,
   AttachMerchantResult,
   DashboardDestination,
   DashboardIdentity,
@@ -38,6 +37,7 @@ import type {
   LinkRequestResult,
   LinkWall,
   LiveSession,
+  MadeMerchant,
   MerchantPerson,
   Person,
   UnattachedPerson,
@@ -64,7 +64,7 @@ export type {
   LinkDestination,
   LinkRequestResult,
   LiveSession,
-  MerchantKeyReplacement,
+  MadeMerchant,
   MerchantPerson,
   Person,
   UnattachedPerson,
@@ -88,7 +88,7 @@ export interface Identity extends DashboardIdentity {
    * merchant by that person's press. It is how a suite arranges a person who
    * already owns a merchant.
    */
-  make(email: string, merchant: AccountMerchant): Promise<Person | null>;
+  make(email: string, merchant: MadeMerchant): Promise<Person | null>;
   byEmail(email: string): Promise<Person | null>;
   byId(personId: string): Promise<Person | null>;
   endEverySessionFor(email: string): Promise<number>;
@@ -411,7 +411,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const makeWith = async (
     bound: typeof auth,
     email: string,
-    merchant: AccountMerchant,
+    merchant: MadeMerchant,
   ): Promise<Person | null> => {
     const context = await bound.$context;
     if ((await context.internalAdapter.findUserByEmail(email)) !== null) return null;
@@ -771,7 +771,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           row.updatedAt = new Date();
           return {
             status: "attached",
-            person: asMerchantPerson({ ...person, merchant }),
+            person: asMerchantPerson({ ...person, merchant: { id: merchant.id } }),
           };
         });
       }
@@ -811,30 +811,9 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         if (written.length !== 1) throw new Error("dashboard_merchant_attachment_lost_lock");
         return {
           status: "attached",
-          person: asMerchantPerson({ ...person, merchant }),
+          person: asMerchantPerson({ ...person, merchant: { id: merchant.id } }),
         };
       });
-    },
-
-    async replaceMerchantKey(personId, expected, fresh) {
-      try {
-        const written = await (await contextOf()).adapter.update<{ merchantKey?: unknown }>({
-          model: "user",
-          where: [
-            { field: "id", value: personId },
-            { field: "merchantKey", value: expected },
-          ],
-          update: { merchantKey: fresh },
-        });
-        return written?.merchantKey === fresh ? "replaced" : "not-matched";
-      } catch {
-        // A connection can fail after PostgreSQL commits the update. The caller
-        // must keep both keys when it cannot know which one the row holds.
-        console.error(
-          "[dashboard] the database could not establish whether a fresh gateway key was written",
-        );
-        return "unknown";
-      }
     },
 
     async make(rawEmail, merchant) {
@@ -970,7 +949,7 @@ function personFrom(user: PersonRow): Person {
     id: user.id,
     email: user.email,
     confirmed: user.emailVerified === true,
-    merchant: { id: user.merchantId, key: user.merchantKey },
+    merchant: { id: user.merchantId },
   };
 }
 

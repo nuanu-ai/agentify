@@ -5,18 +5,13 @@
  * zod schema (ADR-0003 §5) and the process names every problem at once rather
  * than one per restart.
  *
- * There is a database address here and there is exactly one thing it is for:
- * the people who sign into the dashboard, their sessions, their merchant binding,
- * and the one-time links they are sent (ADR-0026). ADR-0005 §3 still holds for
- * everything else — every card, order and receipt on every screen comes from
- * the public API, because the reason that section gives is dogfooding: a screen
- * the dashboard cannot draw is API the merchant does not have either.
- *
- * There is no merchant key here, and its absence is the point rather than an
- * omission. The dashboard used to read one at start-up and use it for the life of
- * the process, which made every screen show that one merchant's money whoever
- * was signed in. The key is on the row of the person signed in now (ADR-0014
- * §2), so a deployment has one less thing to set and one more thing to back up.
+ * There is a database address here and the dashboard's own tables are what it
+ * is for: the people who sign into the dashboard, their sessions, their
+ * merchant binding, the one-time links they are sent (ADR-0026 §2) and a
+ * connected WooCommerce shop. Every card, order and receipt on every screen
+ * comes from the gateway's application, which runs in this process and is
+ * handed to the dashboard there (ADR-0030), so nothing here says where the
+ * gateway is or how to reach it.
  *
  * Process secrets are read and never printed. The sentences this file throws
  * name the variable that is wrong and not the value it held, because a startup
@@ -91,22 +86,6 @@ const environmentSchema = z.object({
   DATABASE_URL: z
     .string({ error: absentOrWrong("must be a string") })
     .refine(isPostgresUrl, "must be an address of the form postgres://user@host:port/database"),
-
-  /**
-   * Where the gateway answers. Every screen is drawn from calls to this, so a
-   * dashboard pointed at nothing draws nothing and says so.
-   */
-  GATEWAY_URL: z.url().default("http://localhost:3000"),
-
-  /**
-   * The existing shared secret that lets this dashboard make a merchant.
-   *
-   * It no longer appears in a person's form. The dashboard presents it to the
-   * gateway only after a one-time link has opened an authenticated P1 session.
-   */
-  REGISTRATION_INVITATION: z
-    .string({ error: absentOrWrong("must be a string") })
-    .min(1, "must not be empty"),
 
   /**
    * Where the dashboard is mounted, when it is not at the root of its origin.
@@ -255,9 +234,6 @@ function emptyIsAbsent(rule: z.ZodType<string, string>) {
 
 export interface DashboardConfig {
   readonly surfaceMode: SurfaceMode;
-  readonly gatewayUrl: string;
-  /** The process secret used only for gateway merchant registration. */
-  readonly gatewayInvitation: string;
   readonly basePath: string;
   readonly cookieSecure: boolean;
   readonly databaseUrl: string;
@@ -344,9 +320,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
 
   if (
     values.REPORT_IDENTITY_SECRET !== undefined &&
-    [values.AUTH_SECRET, values.REGISTRATION_INVITATION, values.MAIL_API_KEY].includes(
-      values.REPORT_IDENTITY_SECRET,
-    )
+    [values.AUTH_SECRET, values.MAIL_API_KEY].includes(values.REPORT_IDENTITY_SECRET)
   ) {
     throw new Error(
       "The dashboard cannot start, REPORT_IDENTITY_SECRET must be dedicated to the private" +
@@ -360,11 +334,6 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
 
   return {
     surfaceMode,
-    // A trailing slash on the gateway address and the leading slash on every
-    // contract path would make every call a double slash, which some proxies
-    // route somewhere else entirely.
-    gatewayUrl: values.GATEWAY_URL.replace(/\/+$/, ""),
-    gatewayInvitation: values.REGISTRATION_INVITATION,
     basePath: values.BASE_PATH,
     cookieSecure: values.COOKIE_SECURE,
     databaseUrl: values.DATABASE_URL,
