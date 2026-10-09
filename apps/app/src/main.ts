@@ -36,7 +36,9 @@ const startedOrStopped = async () => {
     const dashboard = startDashboard(dashboardConfig);
     return { gateway, dashboard };
   } catch (thrown) {
-    console.error(thrown instanceof Error ? thrown.message : thrown);
+    // Whole, stack and all: a configuration refused says what is wrong in its
+    // message, and a database that did not answer needs the rest.
+    console.error(thrown);
     process.exit(1);
   }
 };
@@ -47,12 +49,12 @@ const { gateway, dashboard } = await startedOrStopped();
  * A shutdown in the order that lets each part finish what the others need.
  *
  * The dashboard's doors close first, and the requests in flight through them
- * end while the gateway they call still answers. Then the gateway takes no new
- * connection, and it stops at the same time as the WooCommerce worker rather
- * than after it: the worker's turn may be a poll parked on the gateway, and it
- * is the gateway stopping that wakes it, with nothing, as it wakes every
- * merchant's parked poll and every agent's parked purchase. Only then do the
- * connections to the database close.
+ * end while the gateway they call still answers, within a grace a busy browser
+ * cannot stretch. Then the gateway takes no new connection, and it stops at the
+ * same time as the WooCommerce worker rather than after it: the worker's turn
+ * may be a poll parked on the gateway, and it is the gateway's queue stopping
+ * that lets every parked poll and parked purchase go, the worker's among them.
+ * Only then do the connections to the database close.
  */
 let stopping = false;
 const shutDown = async (signal: string): Promise<void> => {

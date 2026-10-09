@@ -225,6 +225,18 @@ export function problemsWith(channel, resolved) {
     );
   }
 
+  // The dashboard presents the invitation to make a merchant and refuses to
+  // start without one. In one process with the gateway (ADR-0030) that is a
+  // channel with no sales either, found at the start, after the stop and the
+  // migrations; here it is found before anything stops. The value is never
+  // repeated.
+  if ((app.REGISTRATION_INVITATION ?? "") === "") {
+    problems.push(
+      "app: REGISTRATION_INVITATION is not set, and the dashboard refuses to start without it, " +
+        "which in one process with the gateway stops sales as well",
+    );
+  }
+
   for (const [service, name, published] of WRITTEN_IN_THIS_REPOSITORY) {
     if (envOf(resolved, service)[name] === published) {
       problems.push(

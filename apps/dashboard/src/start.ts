@@ -23,6 +23,7 @@
  */
 
 import type { Server } from "node:http";
+import { closedWithin } from "./closing.js";
 import type { DashboardConfig } from "./config.js";
 import { keyRenewal } from "./dashboard-key.js";
 import { connect } from "./database.js";
@@ -43,9 +44,20 @@ import { startWooWorker } from "./woo-worker.js";
  */
 export const DASHBOARD_PORT = 3001;
 
+/**
+ * How long a page already being answered at shutdown is given to finish
+ * before its connection is cut. The gateway is let go only after it, so it is
+ * short of the ten seconds a page gives a call to the gateway and of the ten a
+ * laptop's `docker compose stop` waits before killing the process.
+ */
+const CLOSING_GRACE_MS = 5_000;
+
 /** The dashboard, started, with what the process stops it by. */
 export interface RunningDashboard {
-  /** Takes no new request on any of its ports, and settles once the ones in flight have ended. */
+  /**
+   * Takes no new request on any of its ports, and settles once the ones in
+   * flight have ended, or have been cut at the end of the grace.
+   */
   closeListeners(): Promise<void>;
   /** Stops filling WooCommerce orders, and settles once the turn in flight has ended. */
   stopWorker(): Promise<void>;
@@ -54,9 +66,7 @@ export interface RunningDashboard {
 }
 
 const closed = (listener: Server | null): Promise<void> =>
-  listener === null
-    ? Promise.resolve()
-    : new Promise<void>((resolve) => listener.close(() => resolve()));
+  listener === null ? Promise.resolve() : closedWithin(listener, CLOSING_GRACE_MS);
 
 export function startDashboard(config: DashboardConfig): RunningDashboard {
   const pool = connect(config.databaseUrl);
