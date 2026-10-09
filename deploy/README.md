@@ -204,6 +204,29 @@ ssh agentify-test sudo grep -c '^GATEWAY_DASHBOARD_SECRET=' /etc/agentify/test.e
 On PRODUCTION the same commands run over `ssh agentify`, with
 `production.env` in place of `test.env`.
 
+## The release that has the dashboard call the gateway in its own process
+
+From this release the dashboard calls the gateway's application inside the
+process it shares with it (ADR-0030), makes a merchant with no invitation, and
+reads no key off an account's row. Nothing has to be done on either host
+before it. On PRODUCTION, release it together with the one that deletes the
+keys made for a dashboard (ADR-0030, step 4), not before: from this release
+on, the key on each account row is neither renewed nor forgotten, so a copy of
+the database taken in between, a backup included, holds keys that open the
+API. Afterwards `AGENTIFY_INVITATION` in the host's file is read by
+nothing. Take its line out once going back to an earlier revision is no longer
+wanted, since an earlier revision's preflight refuses a file without it. The
+last line prints `0`, and the file keeps its owner and mode, `root 600`:
+
+```sh
+ssh agentify-test "sudo sed -i '/^AGENTIFY_INVITATION=/d' /etc/agentify/test.env"
+ssh agentify-test "sudo stat -c '%U %a' /etc/agentify/test.env"
+ssh agentify-test sudo grep -c '^AGENTIFY_INVITATION=' /etc/agentify/test.env
+```
+
+On PRODUCTION the same commands run over `ssh agentify`, with
+`production.env` in place of `test.env`.
+
 ## Releasing to production
 
 A production release starts from `main`. Every change a merchant can see in
@@ -646,7 +669,7 @@ The environment file, `/etc/agentify/<channel>.env`, owned by root with mode
 image: activation records the images per checkout. On both channels it names
 `AGENTIFY_PUBLIC_ORIGIN`, `AGENTIFY_COOKIE_SECURE`, `AGENTIFY_SURFACE_MODE`,
 `AGENTIFY_PAYMENT_NETWORK`, `AGENTIFY_FACILITATOR_URL`,
-`AGENTIFY_AUTH_SECRET`, `AGENTIFY_INVITATION`, `TOKEN_HMAC_SECRET`,
+`AGENTIFY_AUTH_SECRET`, `TOKEN_HMAC_SECRET`,
 `EMAIL_ENCRYPTION_KEY` and `REPORT_IDENTITY_SECRET`, the last at least 32
 characters of its own (`openssl rand -base64 32`): the scanner presents it to
 the dashboard's private route, and the preflight refuses a channel where any

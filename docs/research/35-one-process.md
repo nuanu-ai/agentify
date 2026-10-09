@@ -513,20 +513,23 @@ change of behaviour and the ones that change behaviour touch no deployment.
    and from `apps/docs/quickstart.md`. The contracts package is released.
 3. **The cabinet calls the application in-process.** The screens, the
    registration and the WooCommerce worker get the in-process implementation
-   of their port; the fetch client and its wire tests, `GATEWAY_URL` and
-   `REGISTRATION_INVITATION` go; the renewal and its two triggers go, so the
-   key on the account row is no longer read or renewed, though registration
-   still writes one until step 4 drops the column; a message about a wallet
-   change asked for in the cabinet names the signed-in person; `woo:recover`
-   builds the application in its own process.
+   of their port; the fetch client and its wire tests and `GATEWAY_URL` go,
+   and `REGISTRATION_INVITATION` leaves the cabinet and every deployment,
+   which closes the registration route until step 4 removes it with the
+   gateway's setting for it; the renewal and its two triggers go, so the key
+   on the account row is no longer read or renewed, though registration still
+   writes one until step 4 drops the column; a message about a wallet change
+   asked for in the cabinet names the account the session is signed in as;
+   `woo:recover` builds the application in its own process.
 4. **The cabinet key is deleted.** The gateway loses the kind and its six
    special cases; a migration in the gateway's history deletes the rows made
    for a cabinet, leftovers included, and the `purpose` column, and one in the
    cabinet's history drops `merchant_key` and the check beside it; the account
    directory `pnpm approve` reads treats an account as bound when it names a
    merchant (`apps/dashboard/src/approval-directory.ts`); the three routes, their
-   schemas and their three codes leave the contract, and `this_call` is always
-   one of the listed keys. The contracts package is released.
+   schemas and their three codes leave the contract, with the gateway's
+   `REGISTRATION_INVITATION`, and `this_call` is always one of the listed keys.
+   The contracts package is released.
 
 The contract version does not move in steps 2 and 4: no SDK worker calls
 these routes or reads these codes, and moving it would stop every installed

@@ -16,14 +16,7 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import {
-  buyOverHttp,
-  type Harness,
-  harness,
-  type Served,
-  serve,
-  theMerchantKey,
-} from "@agentify/gateway/testing";
+import { buyOverHttp, type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
 import type { AgentOrderStatus, Order } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { gatewayFor } from "./gateway.js";
@@ -39,8 +32,6 @@ import {
 } from "./woo-shop.js";
 import { memoryWooShops, type WooConnection, type WooShops } from "./woo-shops.js";
 import { fillFromTheShop, startWooWorker, turnOnce } from "./woo-worker.js";
-
-const KEY = theMerchantKey("test");
 
 /** The shop showing this product as the one download it sells. */
 const showing = (product: EligibleWooProduct): ProductInspection => ({ ok: true, product });
@@ -486,7 +477,10 @@ describe("the whole way through, against a real gateway", () => {
     open = await harness();
     served = await serve(open);
     const shop = await aShopOnAPort();
-    const gateway = gatewayFor(served.url, KEY);
+    const gateway = gatewayFor(open.gateway, {
+      merchantId: open.merchant.id,
+      email: MERCHANT_EMAIL,
+    });
 
     // The catalogue, converted and published through the door every other card
     // goes through. No leniency of its own: a card refused here is a card the
@@ -592,6 +586,49 @@ describe("the whole way through, against a real gateway", () => {
     expect(redelivery && "refused" in redelivery).toBe(true);
   });
 
+  it("draws the stream of the merchant the connected account names, and nobody else's", async () => {
+    // The worker acts for the account that connected the shop, calling the
+    // gateway's application inside the process (ADR-0030). What it draws is
+    // that merchant's stream; an envelope waiting for another merchant stays
+    // where it is, for that merchant's own worker.
+    open = await harness();
+    const other = await open.addMerchant();
+    const anEvent = (id: string) => ({
+      kind: "order_event" as const,
+      id,
+      sent_at: "2026-09-14T12:00:00.000Z",
+      payload: {
+        type: "order.refund_due" as const,
+        order_id: "ord_7c1e05",
+        at: "2026-09-14T12:00:00.000Z",
+        price: { amount: "25.00", currency: "USD" },
+        reason: "deadline_passed" as const,
+      },
+    });
+    await open.queue.publish(open.merchant.id, anEvent("msg_ours"));
+    await open.queue.publish(other.id, anEvent("msg_theirs"));
+    const application = open.gateway;
+
+    const turned = await turnOnce(connection(), {
+      shops: memoryWooShops(),
+      identity: {
+        byId: async () => ({
+          id: "p",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: open?.merchant.id ?? "" },
+        }),
+      },
+      clientFor: (acting) => gatewayFor(application, acting),
+      now: () => new Date("2026-09-14T12:00:00.000Z"),
+      waitSeconds: 1,
+    });
+
+    expect(turned).toBe(1);
+    const left = await application.poll(other.id, 100);
+    expect(left.envelopes.map((envelope) => envelope.id)).toStrictEqual(["msg_theirs"]);
+  });
+
   it("counts an event it drew, so the loop comes straight back for what follows", async () => {
     // The gateway hands out one envelope a poll, so an event is often all a
     // turn draws. Counted as nothing, it would send the loop to rest between
@@ -624,7 +661,7 @@ describe("the whole way through, against a real gateway", () => {
           id: "p",
           email: MERCHANT_EMAIL,
           confirmed: true,
-          merchant: { id: open?.merchant.id ?? "", key: KEY },
+          merchant: { id: open?.merchant.id ?? "" },
         }),
       },
       clientFor: () => gateway,
@@ -673,7 +710,7 @@ describe("the whole way through, against a real gateway", () => {
             id: "p",
             email: MERCHANT_EMAIL,
             confirmed: true,
-            merchant: { id: "mer_1", key: KEY },
+            merchant: { id: "mer_1" },
           }),
         },
         clientFor: () => gateway,
@@ -747,7 +784,7 @@ describe("a price question off the merchant's stream", () => {
           id: "p",
           email: MERCHANT_EMAIL,
           confirmed: true,
-          merchant: { id: "mer_1", key: KEY },
+          merchant: { id: "mer_1" },
         }),
       },
       clientFor: () => gateway,
@@ -829,7 +866,7 @@ describe("a price question off the merchant's stream", () => {
             id: "p",
             email: MERCHANT_EMAIL,
             confirmed: true,
-            merchant: { id: "mer_1", key: KEY },
+            merchant: { id: "mer_1" },
           }),
         },
         clientFor: () => gateway,
@@ -925,7 +962,7 @@ describe("the worker that keeps every connected shop served", () => {
           id: "acc_1",
           email: MERCHANT_EMAIL,
           confirmed: true,
-          merchant: { id: "mer_1", key: KEY },
+          merchant: { id: "mer_1" },
         }),
       },
       clientFor: () => gateway.client as never,
@@ -962,7 +999,7 @@ describe("the worker that keeps every connected shop served", () => {
           id: "acc_1",
           email: MERCHANT_EMAIL,
           confirmed: true,
-          merchant: { id: "mer_1", key: KEY },
+          merchant: { id: "mer_1" },
         }),
       },
       clientFor: () => gateway.client as never,

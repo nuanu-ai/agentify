@@ -2,7 +2,7 @@
 #
 # Everything that differs between the two channels is a variable in the host's
 # `.env` — the chain, the facilitator, the surface mode, the origin, the Caddy
-# address, the published port, the invitation — so there is one file here
+# address, the published port — so there is one file here
 # rather than one per channel. What is in it is what is true of any stack this
 # repository does not run on somebody's laptop.
 

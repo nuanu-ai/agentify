@@ -31,7 +31,6 @@ const config = () =>
     AUTH_SECRET: "a".repeat(44),
     PAYMENT_NETWORK: "eip155:8453",
     FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
-    REGISTRATION_INVITATION: "the-existing-gateway-invitation",
     PUBLIC_BASE_URL: "https://agentify.ad",
     BASE_PATH: "/dashboard",
   });
@@ -42,6 +41,7 @@ const aWalletChange: Announcement = {
   from: FROM,
   to: TO,
   not_before: "2026-09-26T12:00:00.000Z",
+  asked_with: { kind: "signed_in", email: "owner@example.com" },
 };
 
 /**
@@ -135,7 +135,7 @@ describe("a key's label, which somebody else may have written", () => {
         id: "mk_91c0",
         label: "confirm at https://agentify.example/login or www.evil.example",
       },
-      asked_with: { kind: "dashboard" },
+      asked_with: { kind: "signed_in", email: "owner@example.com" },
     } satisfies Announcement);
 
     for (const text of [sent[0]?.body ?? "", sent[0]?.html ?? ""]) {
@@ -151,10 +151,17 @@ describe("a key's label, which somebody else may have written", () => {
 describe("what a message advises and claims", () => {
   // A first wallet and a cancel leave nothing waiting, so cancelling a
   // waiting change is advice that cannot work there; what works at once is
-  // pausing the selling, and then a replacement, which waits. And the gateway
-  // knows the key a change came with, not the person, so no message claims one.
+  // pausing the selling, and then a replacement, which waits.
   it.each([
-    ["a first wallet", { kind: "wallet_set", merchant_id: MERCHANT, to: TO }],
+    [
+      "a first wallet",
+      {
+        kind: "wallet_set",
+        merchant_id: MERCHANT,
+        to: TO,
+        asked_with: { kind: "signed_in", email: "owner@example.com" },
+      },
+    ],
     [
       "a cancelled change",
       {
@@ -162,6 +169,7 @@ describe("what a message advises and claims", () => {
         merchant_id: MERCHANT,
         kept: FROM,
         cancelled: TO,
+        asked_with: { kind: "signed_in", email: "owner@example.com" },
       },
     ],
   ] as const)(
@@ -185,26 +193,60 @@ describe("what a message advises and claims", () => {
       expect(body).not.toMatch(/cancelling a waiting/i);
     },
   );
+});
+
+describe("who asked", () => {
+  // A change asked for from the dashboard comes from a session, and the
+  // gateway knows the account that session is signed in as (ADR-0030). Every
+  // message names that account, so the accounts at a merchant can tell whose
+  // session it was; it says a session and not a person, because a session
+  // somebody else took is signed in as the owner all the same.
+  const ASKED_FROM = { kind: "signed_in", email: "partner@example.com" } as const;
 
   it.each([
-    ["a replacement", aWalletChange],
-    ["a first wallet", { kind: "wallet_set", merchant_id: MERCHANT, to: TO }],
+    ["a replacement", { ...aWalletChange, asked_with: ASKED_FROM }],
+    [
+      "a first wallet",
+      { kind: "wallet_set", merchant_id: MERCHANT, to: TO, asked_with: ASKED_FROM },
+    ],
+    [
+      "a cancelled change",
+      {
+        kind: "wallet_change_cancelled",
+        merchant_id: MERCHANT,
+        kept: FROM,
+        cancelled: TO,
+        asked_with: ASKED_FROM,
+      },
+    ],
     [
       "a new key",
       {
         kind: "key_issued",
         merchant_id: MERCHANT,
         key: { id: "mk_91c0", label: "the price desk" },
-        asked_with: { kind: "dashboard" },
+        asked_with: ASKED_FROM,
       },
     ],
-  ] as const)("claims no person signed in for %s, only the dashboard", async (_what, request) => {
-    const { tell, sent } = await telling([["owner@example.com", MERCHANT]]);
+  ] as const)(
+    "names the account the session that asked for %s is signed in as",
+    async (_what, request) => {
+      const { tell, sent } = await telling([
+        ["owner@example.com", MERCHANT],
+        ["partner@example.com", MERCHANT],
+      ]);
 
-    await tell(request satisfies Announcement);
+      await tell(request satisfies Announcement);
 
-    expect(sent[0]?.body ?? "").not.toMatch(/person signed in/i);
-  });
+      expect(sent).toHaveLength(2);
+      for (const message of sent) {
+        for (const text of [message.body, message.html]) {
+          expect(text).toContain("partner@example.com");
+          expect(text).not.toMatch(/person signed in/i);
+        }
+      }
+    },
+  );
 });
 
 describe("what is announced once it is done", () => {
@@ -217,6 +259,7 @@ describe("what is announced once it is done", () => {
       kind: "wallet_set",
       merchant_id: MERCHANT,
       to: TO,
+      asked_with: { kind: "signed_in", email: "owner@example.com" },
     } satisfies Announcement);
 
     expect(answered).toBe("handed_over");
@@ -235,6 +278,7 @@ describe("what is announced once it is done", () => {
       merchant_id: MERCHANT,
       kept: FROM,
       cancelled: TO,
+      asked_with: { kind: "signed_in", email: "owner@example.com" },
     } satisfies Announcement);
 
     expect(answered).toBe("handed_over");
@@ -249,7 +293,7 @@ describe("what is announced once it is done", () => {
       kind: "key_issued",
       merchant_id: MERCHANT,
       key: { id: "mk_91c0", label: "the price desk" },
-      asked_with: { kind: "dashboard" },
+      asked_with: { kind: "signed_in", email: "owner@example.com" },
     } satisfies Announcement);
 
     expect(answered).toBe("handed_over");

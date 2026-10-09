@@ -311,9 +311,9 @@ ${brandLockup("/")}
 /**
  * The screen a signed-in person without a merchant is offered (ADR-0026 §4).
  *
- * One control, and only its same-origin press makes the merchant and the key
- * the dashboard calls with. A gateway that did not answer leaves the person here,
- * signed in, to press again.
+ * One control, and only its same-origin press makes the merchant. A press that
+ * did not come to a merchant leaves the person here, signed in, to press
+ * again.
  */
 export const merchantSetupScreen = (
   base: string,
@@ -331,7 +331,7 @@ ${brandLockup("/")}
   <p>You are signed in as <strong>${escaped(email)}</strong>.</p>
   ${
     unavailable
-      ? `<p class="problem">The merchant could not be made because of a fault on our side. Nothing is lost, and you are still signed in, so pressing again needs no new link.</p>`
+      ? `<p class="problem">Your seller dashboard was not opened because of a fault on our side. You are still signed in, so pressing again needs no new link.</p>`
       : `<p>A seller dashboard is where your engineer publishes what you sell to agents and where the orders arrive. Nothing is made until you press the button.</p>`
   }
   <form method="post" action="${escaped(base)}/merchant">

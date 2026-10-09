@@ -16,12 +16,13 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { Gateway } from "@agentify/gateway";
 import { type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
 import { MERCHANT_FINDINGS } from "@nuanu-ai/agentify-contracts";
 import type { Express } from "express";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
-import { gatewayFor } from "./gateway.js";
+import { type Acting, gatewayFor } from "./gateway.js";
 import { DRAWN_FOR } from "./html.js";
 import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
@@ -133,18 +134,14 @@ interface Standing {
    */
   readonly breakTheShopsRead?: () => never;
   /**
-   * Where the dashboard is told the gateway is, instead of the one this harness
-   * serves. Pointed at an address nothing answers at, it is the one way this
-   * suite can ask what an import says when the gateway is not there at all.
+   * Which of the dashboard's calls to the gateway never finish, and run out of
+   * a short deadline instead: every one, which is how this suite asks what an
+   * import says when nothing answers at all; or only the publishing, which is
+   * a gateway that stopped answering in the middle of an import, after it had
+   * answered what the merchant has set. Or the publishing fails in our own
+   * code, the way a database that went away fails it.
    */
-  readonly gatewayAt?: string;
-  /**
-   * Where the dashboard sends a card to be published, while every other call
-   * still reaches the gateway this harness serves. Pointed at an address
-   * nothing answers at, it is a gateway that went away in the middle of an
-   * import, after it had answered what the merchant has set.
-   */
-  readonly publishingAt?: string;
+  readonly silent?: "everything" | "publishing" | "publishing fails";
   /**
    * The channel the dashboard and its gateway are both on: the sandbox, where
    * nothing settles; the test channel, where test money settles on a chain;
@@ -178,49 +175,45 @@ const LIVE_GATEWAY_ONLY = {
   CDP_API_KEY_SECRET: "key-secret",
 } as const;
 
-/** What the harness's gateway takes a registration with, in this suite. */
-const INVITATION = "i".repeat(24);
-
 /**
- * A merchant made through the gateway's registration door, the way the
- * dashboard makes one, and named or not. Nothing else is set on them.
+ * A merchant made the way the dashboard's press makes one, and named or not.
+ * Nothing else is set on them.
  */
 const registered = async (
-  gateway: Served,
+  application: Gateway,
   named: boolean,
 ): Promise<{ readonly id: string; readonly key: string }> => {
-  const made = await gateway.call("POST", "/v0/merchants", { body: { invitation: INVITATION } });
-  if (made.status !== 200) {
-    throw new Error(`the gateway would not register a merchant: ${JSON.stringify(made.body)}`);
-  }
-  const { merchant_id: id, secret: key } = made.body as { merchant_id: string; secret: string };
+  const made = await application.registerMerchant();
   if (named) {
-    const listed = await gateway.call("POST", "/v0/seller-name", {
-      body: { seller_name: "Their own shop" },
-      headers: { authorization: `Bearer ${key}` },
-    });
-    if (listed.status !== 200) {
-      throw new Error(`the gateway would not name the merchant: ${JSON.stringify(listed.body)}`);
-    }
+    await application.setSellerName(made.merchant_id, { seller_name: "Their own shop" });
   }
-  return { id, key };
+  return { id: made.merchant_id, key: made.secret };
 };
+
+/** The application, with every call it is asked to make waiting for good. */
+const silenced = (application: Gateway): Gateway =>
+  new Proxy(application, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? () => new Promise(() => undefined) : value;
+    },
+  });
+
+/** How long a silenced call is waited on: long enough to start, short enough not to stall. */
+const SILENT_FOR_MS = 50;
 
 const started = async (standing: Standing = {}): Promise<Running> => {
   const channel = standing.channel ?? "sandbox";
   const harnessed = await harness({
     ...CHANNELS[channel],
     ...(channel === "live" ? LIVE_GATEWAY_ONLY : {}),
-    REGISTRATION_INVITATION: INVITATION,
   });
   const gateway = await serve(harnessed);
   const config = loadConfig({
-    GATEWAY_URL: standing.gatewayAt ?? gateway.url,
     DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
     AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
     ...CHANNELS[channel],
     PUBLIC_BASE_URL: PUBLIC,
-    REGISTRATION_INVITATION: "the-existing-gateway-process-secret",
   });
   const messages: Message[] = [];
   const rows: Record<string, Record<string, unknown>[]> = {
@@ -240,10 +233,8 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   const merchant =
     standing.fresh === undefined
       ? { id: harnessed.merchant.id, key: harnessed.merchant.key }
-      : await registered(gateway, standing.fresh === "named");
-  // A key of the merchant's own, apart from the one on the account: signing in
-  // replaces that one and forgets the key it replaced (ADR-0014 §2), and a test
-  // reading the catalogue afterwards must not be holding a forgotten key.
+      : await registered(harnessed.gateway, standing.fresh === "named");
+  // A key of the merchant's own, for the calls a test makes as their code.
   const ownKey =
     standing.fresh === undefined ? harnessed.merchant.key : await harnessed.addKey(merchant.id);
   const person = await identity.make(PERSON, merchant);
@@ -263,17 +254,27 @@ const started = async (standing: Standing = {}): Promise<Running> => {
         };
   const asked: string[] = [];
   const read: string[] = [];
-  const publishingAt = standing.publishingAt;
+  const silent = standing.silent;
   const app: Express = buildApp(config, {
+    gateway: harnessed.gateway,
     identity,
     wooShops: shops,
-    ...(publishingAt === undefined
+    ...(silent === undefined
       ? {}
       : {
-          gatewayFor: (key: string, answerWithinMs?: number) => ({
-            ...gatewayFor(config.gatewayUrl, key, answerWithinMs),
-            publishCard: gatewayFor(publishingAt, key, answerWithinMs).publishCard,
-          }),
+          clientFor: (acting: Acting, answerWithinMs?: number) => {
+            const quiet = gatewayFor(silenced(harnessed.gateway), acting, SILENT_FOR_MS);
+            if (silent === "everything") return quiet;
+            return {
+              ...gatewayFor(harnessed.gateway, acting, answerWithinMs),
+              publishCard:
+                silent === "publishing"
+                  ? quiet.publishCard
+                  : async () => {
+                      throw new Error("the database went away");
+                    },
+            };
+          },
         }),
     shop: {
       grantScreen: async (authorizeUrl) => {
@@ -417,19 +418,6 @@ const started = async (standing: Standing = {}): Promise<Running> => {
 /** The token in the authorize address the preflight was asked about. */
 const tokenIn = (authorizeUrl: string): string =>
   new URL(authorizeUrl).searchParams.get("user_id") ?? "";
-
-/**
- * An address on this machine that nothing answers at: a port taken and given
- * back, so that a connection to it is refused rather than left hanging.
- */
-const nowhere = async (): Promise<string> => {
-  const taken = createServer();
-  taken.listen(0, "127.0.0.1");
-  await new Promise<void>((resolve) => taken.once("listening", resolve));
-  const { port } = taken.address() as AddressInfo;
-  await new Promise<void>((resolve) => taken.close(() => resolve()));
-  return `http://127.0.0.1:${port}`;
-};
 
 describe("the shop screens are behind the sign-in", () => {
   it("sends a stranger to the sign-in", async () => {
@@ -870,7 +858,7 @@ describe("importing the catalogue", () => {
     // instead of an answer, and what to do about that.
     const running = await started({
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
-      publishingAt: await nowhere(),
+      silent: "publishing",
     });
     await connected(running);
 
@@ -880,10 +868,33 @@ describe("importing the catalogue", () => {
     expect(imported.status).toBe(200);
     expect(text).toContain("1 got no verdict");
     expect(text).toContain("Canvas tote bag");
-    expect(text).toContain("the gateway could not be reached");
+    expect(text).toContain("Agentify did not answer");
     // Not under the door's rules: neither their heading nor their count.
     expect(text).not.toContain("Refused");
     expect(text).not.toContain("publishing rules");
+  });
+
+  it("keeps what it did when publishing fails in our own code, and says nobody knows whether it went", async () => {
+    // A failure of ours may come after the card was written, so it is no
+    // verdict rather than a refusal, and the import stops there with its
+    // record rather than being replaced by a page that says only that
+    // something broke.
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [aProduct(), aProduct({ id: 10, name: "Access code" })],
+      }),
+      silent: "publishing fails",
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+    const text = readable(imported.html);
+
+    expect(imported.status).toBe(200);
+    expect(text).toContain("1 got no verdict");
+    expect(text).toContain("1 not attempted");
+    expect(text).toContain("whether it was published is not known");
   });
 
   it("stops after the first unknown publish and names the products it did not attempt", async () => {
@@ -892,7 +903,7 @@ describe("importing the catalogue", () => {
         ok: true,
         products: [aProduct(), aProduct({ id: 10, name: "Access code" })],
       }),
-      publishingAt: await nowhere(),
+      silent: "publishing",
     });
     await connected(running);
 
@@ -1069,14 +1080,14 @@ describe("importing the catalogue", () => {
     // reading the shop product by product first is work done for nothing.
     const running = await started({
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
-      gatewayAt: await nowhere(),
+      silent: "everything",
     });
     await connected(running);
 
     const imported = await running.post("/woocommerce/import", { [DRAWN_FOR]: PERSON });
 
-    expect(imported.status).toBe(502);
-    expect(readable(imported.html)).toContain("could not be reached");
+    expect(imported.status).toBe(504);
+    expect(readable(imported.html)).toContain("did not answer");
     expect(running.read).toEqual([]);
   });
 

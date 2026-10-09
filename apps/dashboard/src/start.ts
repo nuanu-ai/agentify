@@ -2,21 +2,22 @@
  * Starting the dashboard, inside the resident process (ADR-0030).
  *
  * It opens a connection to its own tables and hands the process its way of
- * telling a merchant of a change, which the gateway announces through; then
- * it puts the pages on a port, opens the scanner's route where its secret is
- * set, and starts the one thing in here that runs without anybody looking at a
- * screen. The process itself, its signals and the order things start and stop
- * in belong to `apps/app`, which starts the gateway beside this. The tables are the people who sign in, their sessions,
- * the one-time links they are sent, and a merchant's connected WooCommerce
- * shop (ADR-0009 §1, ADR-0023): every card, order and receipt on every screen
- * still comes from the gateway's public API, which is the promise ADR-0005 §3
- * is actually about.
+ * telling a merchant of a change, which the gateway announces through; then,
+ * given the gateway's application, it puts the pages on a port, opens the
+ * scanner's route where its secret is set, and starts the one thing in here
+ * that runs without anybody looking at a screen. The process itself, its
+ * signals and the order things start and stop in belong to `apps/app`, which
+ * starts the gateway beside this. The tables are the people who sign in, their
+ * sessions, the one-time links they are sent, and a merchant's connected
+ * WooCommerce shop (ADR-0009 §1, ADR-0023): every card, order and receipt on
+ * every screen comes from the gateway's application, called inside this
+ * process as the merchant on the signed-in account's row (ADR-0030).
  *
  * The worker is the one part of the dashboard that is not a page. A merchant who
  * connected a WooCommerce shop wrote no code of their own, so their paid orders
- * are filled here — drawn off their own stream with their own key, over the
- * same public API any merchant's worker uses. A dashboard with no connected shop
- * does nothing at all in it.
+ * are filled here — drawn off their own stream by the same calls a merchant's
+ * worker makes over the API. A dashboard with no connected shop does nothing
+ * at all in it.
  *
  * There is nothing to migrate here. `pnpm --filter @agentify/dashboard db:migrate`
  * is a step somebody takes before this starts, because a process that migrates
@@ -24,9 +25,9 @@
  */
 
 import type { Server } from "node:http";
+import type { Gateway } from "@agentify/gateway";
 import { closedWithin } from "./closing.js";
 import type { DashboardConfig } from "./config.js";
-import { keyRenewal } from "./dashboard-key.js";
 import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
 import { identityFor } from "./identity.js";
@@ -75,8 +76,11 @@ export interface Dashboard {
    * keys (ADR-0019): what the process hands the gateway to announce through.
    */
   readonly tell: Teller;
-  /** Opens its doors and starts the WooCommerce worker. */
-  start(): RunningDashboard;
+  /**
+   * Opens its doors and starts the WooCommerce worker, calling the gateway's
+   * application inside the process.
+   */
+  start(application: Gateway): RunningDashboard;
 }
 
 const closed = (listener: Server | null): Promise<void> =>
@@ -88,38 +92,36 @@ export function dashboardFor(config: DashboardConfig): Dashboard {
   const wooShops = postgresWooShops(pool);
   return {
     tell: tellerFor(config, identity, postmanFor(config)),
-    start: () => started(config, identity, wooShops),
+    start: (application) => started(config, application, identity, wooShops),
   };
 }
 
 function started(
   config: DashboardConfig,
+  application: Gateway,
   identity: ReturnType<typeof identityFor>,
   wooShops: ReturnType<typeof postgresWooShops>,
 ): RunningDashboard {
-  const reportIdentityServer = startReportIdentityServer(
-    config.reportIdentitySecret,
-    identity,
-    keyRenewal(identity, (key, answerWithinMs) =>
-      gatewayFor(config.gatewayUrl, key, answerWithinMs),
-    ),
-  );
+  const reportIdentityServer = startReportIdentityServer(config.reportIdentitySecret, identity);
 
-  const server = buildApp(config, { identity, wooShops }).listen(DASHBOARD_PORT, () => {
-    console.log(`[dashboard] listening on ${DASHBOARD_PORT}, reading ${config.gatewayUrl}`);
-    // Mail is the sign-in channel; make the configured delivery mode visible
-    // without writing recipients or action links from a real provider to logs.
-    console.log(
-      isSandboxMail(config.mailUrl)
-        ? "[dashboard] no mail provider is configured: every message is written to this log instead"
-        : `[dashboard] messages are sent through ${config.mailUrl}, from ${config.mailFrom}`,
-    );
-  });
+  const server = buildApp(config, { gateway: application, identity, wooShops }).listen(
+    DASHBOARD_PORT,
+    () => {
+      console.log(`[dashboard] listening on ${DASHBOARD_PORT}`);
+      // Mail is the sign-in channel; make the configured delivery mode visible
+      // without writing recipients or action links from a real provider to logs.
+      console.log(
+        isSandboxMail(config.mailUrl)
+          ? "[dashboard] no mail provider is configured: every message is written to this log instead"
+          : `[dashboard] messages are sent through ${config.mailUrl}, from ${config.mailFrom}`,
+      );
+    },
+  );
 
   const worker = startWooWorker({
     shops: wooShops,
     identity,
-    clientFor: (key) => gatewayFor(config.gatewayUrl, key),
+    clientFor: (acting) => gatewayFor(application, acting),
     now: () => new Date(),
   });
 

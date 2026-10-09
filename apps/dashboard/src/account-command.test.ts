@@ -14,7 +14,6 @@ const config = loadConfig({
   AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
   PAYMENT_NETWORK: "eip155:84532",
   FACILITATOR_URL: "sandbox:scripted",
-  REGISTRATION_INVITATION: "the-existing-gateway-invitation",
 });
 
 function store() {

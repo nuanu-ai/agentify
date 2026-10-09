@@ -38,8 +38,8 @@ remembered — it runs in a plain express app, its server API can be called from
 our handlers, mail is a function we supply, and telemetry is off by default. We
 switch telemetry off explicitly anyway: a default we depend on can change.
 
-**2. Tenancy stays ours.** The merchant on the account, that merchant's key, the
-gateway client built per request from it, the key screens, the gate above every
+**2. Tenancy stays ours.** The merchant on the account, the calls made to the
+gateway as that merchant (ADR-0030), the key screens, the gate above every
 route. None of that is identity and no component would know what to do with it.
 The gate denies by default, and what stands above it is listed here rather than
 discovered by reading the routing: the sign-in and the sign-out, the page a

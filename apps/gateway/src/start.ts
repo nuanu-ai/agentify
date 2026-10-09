@@ -199,6 +199,11 @@ async function seedTheSandbox(config: GatewayConfig, runtime: Runtime): Promise<
 
 /** The gateway, started, with what the process stops it by. */
 export interface RunningGateway {
+  /**
+   * The application the surface is mounted on, which the dashboard calls
+   * inside the same process (ADR-0030).
+   */
+  readonly application: Gateway;
   /** Takes no new connection on the gateway's port; the parked ones stay until `stop`. */
   closeListener(): void;
   /**
@@ -268,6 +273,7 @@ export async function startGateway(
   });
 
   return {
+    application: gateway,
     closeListener() {
       server.close();
     },

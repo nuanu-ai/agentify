@@ -41,10 +41,11 @@ which a merchant's money is ours.
 
 The keys a merchant issues operate the shop; where its money goes is a
 person's act, done on the dashboard's Settings screen. Any key of the
-merchant's reads the address, and only the dashboard sets it, with its own key,
-from inside the stack. The public door does not route a write to
-`/v0/payout-wallet`, so a copy of a dashboard's key, which its database holds as
-issued, sets nothing from outside; and the gateway refuses a key made for the
+merchant's reads the address, and a person signed in to the dashboard sets it,
+by a call inside the process the dashboard shares with the gateway (ADR-0030).
+The public door does not route a write to `/v0/payout-wallet`, so a copy of a
+key made for a dashboard, which the dashboard's database holds as issued, sets
+nothing from outside; and the gateway refuses a key made for the
 merchant's own code under `not_a_dashboard_key`, the first address too. The
 dashboard's key ends with ADR-0030, and with it this route's place on `/v0`.
 
@@ -135,7 +136,9 @@ screen shows it.
 The message says what changes, when — not before a moment it names, since
 the forty-eight hours are counted from after it is handed over, while the
 wallet screen shows the exact one — and that it was asked for in the
-dashboard, and links plainly
+dashboard, from a session signed in as which account: the gateway knows the
+account, not who holds the session, so the message names no person. It links
+plainly
 to the dashboard's wallet screen, a named dashboard screen that an ordinary
 sign-in reaches when the person is signed out; the message carries no
 token. That screen shows the pending change with a cancel control, a
@@ -152,8 +155,9 @@ the key never waits on its message: if there is nobody to tell or the
 message cannot be handed over, the key is issued all the same. A key moves
 no money and cannot set the wallet, and a merchant must not be kept from a
 key, their first above all,
-because mail is down. The dashboard's own key, renewed daily (ADR-0014 §2),
-is announced to nobody. No command at a server's terminal issues a key
+because mail is down. A new key's message names who asked: the account a
+dashboard session was signed in as, or the key a call was made with. A key made for a
+dashboard is announced to nobody. No command at a server's terminal issues a key
 (ADR-0014), so every key made for a merchant's own code is issued through the
 gateway's keys route and announced as above, the laptop sandbox's seed aside.
 The pause stays immediate, because it is the act for "stop selling now".
@@ -205,9 +209,7 @@ deployed channel seeds a key and nobody can ask for live approval. A test
 deployment never shows a pending change, so an integrator meets that shape
 only on production. A wallet change also depends on the mail provider being
 up, which is accepted: changes are rare, and a refusal
-at the door is honest where a silent change is not. An account left holding
-a key made for the merchant's own code, from before accounts were checked,
-cannot set the wallet, and nothing in the product replaces its key.
+at the door is honest where a silent change is not.
 
 Rejected: one address per deployment, kept as it was — custody with
 extra steps, and the reconciliation it implies is a product nobody has

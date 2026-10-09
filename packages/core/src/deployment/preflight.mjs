@@ -50,7 +50,6 @@ const CHANNELS = {
  */
 const WRITTEN_IN_THIS_REPOSITORY = [
   ["app", "AUTH_SECRET", "a-sandbox-secret-nobody-should-reuse-anywhere"],
-  ["app", "REGISTRATION_INVITATION", "register-on-this-laptop"],
   ["scanner", "TOKEN_HMAC_SECRET", "a-sandbox-token-hmac-secret-nobody-should-reuse"],
   ["app", "REPORT_IDENTITY_SECRET", "a-sandbox-report-identity-secret-nobody-should-reuse"],
   ["scanner", "REPORT_IDENTITY_SECRET", "a-sandbox-report-identity-secret-nobody-should-reuse"],
@@ -178,7 +177,6 @@ export function problemsWith(channel, resolved) {
     for (const name of [
       "CDP_API_KEY_ID",
       "CDP_API_KEY_SECRET",
-      "REGISTRATION_INVITATION",
       "AUTH_SECRET",
       "MAIL_URL",
       "MAIL_API_KEY",
@@ -223,18 +221,6 @@ export function problemsWith(channel, resolved) {
     );
   }
 
-  // The dashboard presents the invitation to make a merchant and refuses to
-  // start without one. In one process with the gateway (ADR-0030) that is a
-  // channel with no sales either, found at the start, after the stop and the
-  // migrations; here it is found before anything stops. The value is never
-  // repeated.
-  if ((app.REGISTRATION_INVITATION ?? "") === "") {
-    problems.push(
-      "app: REGISTRATION_INVITATION is not set, and the dashboard refuses to start without it, " +
-        "which in one process with the gateway stops sales as well",
-    );
-  }
-
   for (const [service, name, published] of WRITTEN_IN_THIS_REPOSITORY) {
     if (envOf(resolved, service)[name] === published) {
       problems.push(
@@ -268,7 +254,6 @@ export function problemsWith(channel, resolved) {
   }
   for (const [service, name] of [
     ["app", "AUTH_SECRET"],
-    ["app", "REGISTRATION_INVITATION"],
     ["scanner", "TOKEN_HMAC_SECRET"],
   ]) {
     if (identity !== "" && envOf(resolved, service)[name] === identity) {

@@ -5,10 +5,10 @@
  * A merchant who connected a shop wrote no code. Their products are on sale,
  * agents buy them, and something has to turn a paid order here into an order
  * there — so the dashboard stands in as their handler, drawing their own stream
- * with their own key and answering on the routes any merchant's worker would
- * use. Nothing about that is a private arrangement with the gateway: it is the
- * public merchant API, called the way ADR-0004 says a worker calls it, which is
- * the dogfooding ADR-0005 §3 asks for taken one step further than a screen.
+ * and answering with the calls any merchant's worker makes, the way ADR-0004
+ * says a worker calls them. It calls the gateway's application inside the
+ * process the two share rather than over the API (ADR-0030), as the merchant on
+ * the account that connected the shop.
  *
  * The hand-over itself is the gateway's queue-shaped effect and it is not
  * reimplemented here. An order reaches this because the envelope carrying it
@@ -37,7 +37,7 @@ import type {
   QuoteRequest,
   QuoteResponse,
 } from "@nuanu-ai/agentify-contracts";
-import type { GatewayClient } from "./gateway.js";
+import type { Acting, GatewayClient } from "./gateway.js";
 import type { Identity } from "./identity.js";
 import { productIdFromMerchantItem } from "./woo-catalog.js";
 import {
@@ -327,9 +327,9 @@ export const deliveryFromWooPermission = (permission: WooPermission): Record<str
 
 /** What the loop needs to fill one connected shop's orders. */
 export interface WorkingParts extends Filling {
-  /** How the account behind a connection is read: its address and its key. */
+  /** How the account behind a connection is read: its address and its merchant. */
   readonly identity: Pick<Identity, "byId">;
-  readonly clientFor: (key: string) => GatewayClient;
+  readonly clientFor: (acting: Acting) => GatewayClient;
   /** How long one poll holds the stream open. */
   readonly waitSeconds?: number;
 }
@@ -364,7 +364,7 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
     return 0;
   }
 
-  const gateway = parts.clientFor(person.merchant.key);
+  const gateway = parts.clientFor({ merchantId: person.merchant.id, email: person.email });
   const drawn = await gateway.pollWorker(parts.waitSeconds ?? WAIT_SECONDS);
   if (!drawn.ok) {
     console.error(`[dashboard] the WooCommerce worker could not draw its stream: ${drawn.why}`);
