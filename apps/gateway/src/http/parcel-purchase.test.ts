@@ -393,6 +393,23 @@ describe("once the address is gone, nothing puts it back", () => {
     expectNothingOfTheAddressIn(await onTheStream(harnessed));
   });
 
+  it("is not sent again by a sweep that read the order before a worker drew it", async () => {
+    // The other half of the same reading: the order is still the merchant's to
+    // take on, so its address is still here, but a worker has drawn it since
+    // and the hand-over is recorded. A second one would spend a delivery the
+    // merchant never failed, and put the address on the stream once more.
+    const { harnessed, orderId } = await paidAndWaiting();
+    const readBefore = await harnessed.store.openOrders();
+    await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    vi.spyOn(harnessed.store, "openOrders").mockResolvedValueOnce(readBefore);
+    harnessed.advance(harnessed.runtime.config.sweepDispatchGraceMs + 60_000);
+
+    await harnessed.gateway.runner.sweep();
+
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("dispatched");
+    expect(await harnessed.queue.holdsOrder(harnessed.merchant.id, orderId)).toBe(false);
+  });
+
   it("is not put back by a poll whose hand-over failed while the order was taken on", async () => {
     // A poll that cannot record a hand-over puts the envelope it drew back on
     // the stream. That envelope was built when the order was handed over, with
