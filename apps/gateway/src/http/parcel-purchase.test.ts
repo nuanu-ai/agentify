@@ -376,6 +376,43 @@ describe("once the address is gone, nothing puts it back", () => {
   const takeOn = (served: Served, orderId: string) =>
     served.call("POST", `/v0/orders/${orderId}/accept`, { headers: asMerchant, body: {} });
 
+  it("is sent again by the sweep while it is still held, the whole address with it", async () => {
+    // The control for the two below: a paid parcel whose hand-over went nowhere
+    // still goes out again, under the hold, with the address the merchant
+    // needs to send it.
+    const { harnessed, orderId } = await paidAndWaiting();
+    for (const drawn of await harnessed.queue.draw(harnessed.merchant.id, 10, 0)) {
+      await harnessed.queue.finish(harnessed.merchant.id, drawn.handle);
+    }
+    harnessed.advance(harnessed.runtime.config.sweepDispatchGraceMs + 60_000);
+
+    await harnessed.gateway.runner.sweep();
+
+    const [again] = await harnessed.queue.draw(harnessed.merchant.id, 10, 0);
+    expect(again?.envelope.kind).toBe("order");
+    expect((again?.envelope.payload as Order).id).toBe(orderId);
+    expect((again?.envelope.payload as Order).ship_to).toStrictEqual(address);
+  });
+
+  it("is put back by a poll whose hand-over failed while the address is still held", async () => {
+    // The control for the put-back below: nobody took the order on, so the
+    // envelope the poll could not hand over goes back on the stream.
+    const { harnessed, orderId } = await paidAndWaiting();
+    const deciding = harnessed.store.withOrder.bind(harnessed.store);
+    let first = true;
+    vi.spyOn(harnessed.store, "withOrder").mockImplementation(async (id, change, scope) => {
+      if (first) {
+        first = false;
+        throw new Error("the database timed out");
+      }
+      return deciding(id, change, scope);
+    });
+
+    await harnessed.gateway.poll(harnessed.merchant.id, 0);
+
+    expect(await harnessed.queue.holdsOrder(harnessed.merchant.id, orderId)).toBe(true);
+  });
+
   it("is not sent again by a sweep that read the order before it was taken on", async () => {
     // The sweep reads every open order first and works through the list, so an
     // order can be taken on between the reading and the sending. Sent from
