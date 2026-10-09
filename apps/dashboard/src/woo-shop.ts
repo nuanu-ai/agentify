@@ -69,7 +69,9 @@ export interface ShopKeys {
   readonly consumerSecret: string;
 }
 
-export interface EligibleWooProduct {
+/** A download the connector can hand to the agent: one protected file. */
+export interface EligibleDownload {
+  readonly kind: "download";
   readonly productId: string;
   readonly downloadId: string;
   readonly fileName: string;
@@ -77,6 +79,18 @@ export interface EligibleWooProduct {
   /** Digest of the delivery-critical product, settings and protected source. */
   readonly fingerprint: string;
 }
+
+/** A physical product the connector can sell as a parcel, for the shop to ship. */
+export interface EligibleParcel {
+  readonly kind: "parcel";
+  readonly productId: string;
+  /** The goods alone; shipping is the shop's rate for the buyer's place. */
+  readonly price: Money;
+  /** Digest of the product and the shop settings a parcel is sold under. */
+  readonly fingerprint: string;
+}
+
+export type EligibleWooProduct = EligibleDownload | EligibleParcel;
 
 export type ProductInspection =
   | { readonly ok: true; readonly product: EligibleWooProduct }
@@ -129,7 +143,16 @@ const ProductSchema = z.looseObject({
 
 const SettingSchema = z.looseObject({ value: z.union([z.string(), z.boolean()]) });
 
-/** Reads every fact that makes the connector able to deliver this product. */
+/**
+ * Reads every fact that makes the connector able to sell this product: as a
+ * download handed to the agent, or as a parcel the shop ships.
+ *
+ * The product says which. A physical product is judged by the shop's shipping
+ * settings and a download by its download settings, so both are asked for in
+ * the one batch — one round trip whichever it turns out to be — and only the
+ * answers that bear on the product's class decide anything. A shop that will
+ * not show its download settings can still sell a parcel.
+ */
 export const inspectProductInTheShop = async (
   keys: ShopKeys,
   merchantItemId: string,
@@ -148,8 +171,16 @@ export const inspectProductInTheShop = async (
     "/wp-json/wc/v3/settings/products/woocommerce_downloads_grant_access_after_payment",
     "/wp-json/wc/v3/settings/products/woocommerce_downloads_redirect_fallback_allowed",
     "/wp-json/wc/v3/settings/general/woocommerce_price_num_decimals",
+    "/wp-json/wc/v3/settings/general/woocommerce_ship_to_countries",
+    "/wp-json/wc/v3/settings/shipping/woocommerce_ship_to_destination",
   ] as const;
+  /** Which of the answers above bear on each class, the product first. */
+  const BEARING = {
+    download: [0, 1, 2, 3, 4, 5, 6, 7],
+    parcel: [0, 1, 2, 7, 8, 9],
+  } as const;
   let responses: Response[];
+  let bodies: string[];
   try {
     responses = await Promise.all(
       endpoints.map((path) =>
@@ -163,23 +194,8 @@ export const inspectProductInTheShop = async (
   } catch {
     return { ok: false, why: "The shop did not answer the protected product check.", again: true };
   }
-  if (responses.some((response) => worthAskingAgain(response.status))) {
-    return {
-      ok: false,
-      why: "The shop was too busy to answer the protected product check.",
-      again: true,
-    };
-  }
-  if (responses.some((response) => !response.ok)) {
-    return {
-      ok: false,
-      why: "The shop refused the protected product or download-settings check.",
-      again: false,
-    };
-  }
-  let documents: unknown[];
   try {
-    documents = await Promise.all(responses.map((response) => response.json()));
+    bodies = await Promise.all(responses.map((response) => response.text()));
   } catch {
     return {
       ok: false,
@@ -187,8 +203,42 @@ export const inspectProductInTheShop = async (
       again: false,
     };
   }
-  const parsed = ProductSchema.safeParse(documents[0]);
-  const settings = documents.slice(1).map((document) => SettingSchema.safeParse(document));
+  /** One answer as a document, or undefined where it is not JSON. */
+  const documentOf = (index: number): unknown => {
+    try {
+      return JSON.parse(bodies[index] ?? "");
+    } catch {
+      return undefined;
+    }
+  };
+  /** Whether these answers, between them, are something to judge the product by. */
+  const unanswered = (indices: readonly number[]): ProductInspection | null => {
+    if (indices.some((index) => worthAskingAgain(responses[index]?.status ?? 0))) {
+      return {
+        ok: false,
+        why: "The shop was too busy to answer the protected product check.",
+        again: true,
+      };
+    }
+    if (indices.some((index) => responses[index]?.ok !== true)) {
+      return {
+        ok: false,
+        why: "The shop refused the protected product or its settings check.",
+        again: false,
+      };
+    }
+    if (indices.some((index) => documentOf(index) === undefined)) {
+      return {
+        ok: false,
+        why: "The shop's protected product check did not return readable JSON.",
+        again: false,
+      };
+    }
+    return null;
+  };
+  const productUnanswered = unanswered([0]);
+  if (productUnanswered !== null) return productUnanswered;
+  const parsed = ProductSchema.safeParse(documentOf(0));
   if (!parsed.success) {
     return {
       ok: false,
@@ -196,20 +246,36 @@ export const inspectProductInTheShop = async (
       again: false,
     };
   }
-  if (settings[1]?.success !== true) {
+  const product = parsed.data;
+  // Neither virtual nor downloadable is a parcel; everything else is judged
+  // as the download it would have to be, so a virtual product with no file
+  // is told what a download lacks.
+  const kind = !product.virtual && !product.downloadable ? "parcel" : "download";
+  const settingsUnanswered = unanswered(BEARING[kind]);
+  if (settingsUnanswered !== null) return settingsUnanswered;
+  const settings = endpoints.map((_, index) => SettingSchema.safeParse(documentOf(index)));
+  if (settings[2]?.success !== true) {
     return { ok: false, why: "The shop's tax calculation setting is unreadable.", again: false };
   }
-  if (settings.some((setting) => !setting.success)) {
+  if (BEARING[kind].slice(1).some((index) => settings[index]?.success !== true)) {
     return {
       ok: false,
       why: "The shop's protected product or settings document is incomplete.",
       again: false,
     };
   }
-  const product = parsed.data;
-  const [currency, taxes, method, login, afterPayment, redirectFallback, decimals] = settings.map(
-    (setting) => (setting.success ? setting.data.value : ""),
-  );
+  const [
+    ,
+    currency,
+    taxes,
+    method,
+    login,
+    afterPayment,
+    redirectFallback,
+    decimals,
+    shipTo,
+    destination,
+  ] = settings.map((setting) => (setting.success ? setting.data.value : ""));
   const unsupported: string[] = [];
   if (product.type !== "simple") unsupported.push("it is not a simple product");
   if (product.status !== "publish") unsupported.push("it is not published");
@@ -217,23 +283,44 @@ export const inspectProductInTheShop = async (
   if (product.stock_status !== "instock") unsupported.push("it is out of stock");
   if (product.manage_stock) unsupported.push("managed stock is enabled");
   if (product.sold_individually) unsupported.push("sold individually is enabled");
-  if (!product.virtual) unsupported.push("it is not virtual");
-  if (!product.downloadable) unsupported.push("it is not downloadable");
-  if (product.downloads.length !== 1) unsupported.push("it does not have exactly one file");
-  if (product.download_limit !== -1) unsupported.push("its download count is limited");
-  if (product.download_expiry !== -1) unsupported.push("its download access expires");
+  if (kind === "download") {
+    if (!product.virtual) unsupported.push("it is not virtual");
+    if (!product.downloadable) unsupported.push("it is not downloadable");
+    if (product.downloads.length !== 1) unsupported.push("it does not have exactly one file");
+    if (product.download_limit !== -1) unsupported.push("its download count is limited");
+    if (product.download_expiry !== -1) unsupported.push("its download access expires");
+  }
   if (currency !== "USD") unsupported.push("the shop currency is not USD");
   if (taxes !== "no") unsupported.push("WooCommerce tax calculation is not disabled");
-  if (method !== "force") unsupported.push("the download method is not Force Downloads");
-  if (login !== "no") unsupported.push("downloads require a WooCommerce login");
-  if (afterPayment !== "yes") unsupported.push("download access is not granted after payment");
-  if (redirectFallback !== "no") unsupported.push("insecure redirect fallback is enabled");
+  if (kind === "download") {
+    if (method !== "force") unsupported.push("the download method is not Force Downloads");
+    if (login !== "no") unsupported.push("downloads require a WooCommerce login");
+    if (afterPayment !== "yes") unsupported.push("download access is not granted after payment");
+    if (redirectFallback !== "no") unsupported.push("insecure redirect fallback is enabled");
+  }
+  if (kind === "parcel") {
+    if (shipTo === "disabled") {
+      unsupported.push(
+        "the shop has shipping switched off (WooCommerce → Settings → General → Shipping" +
+          " location(s))",
+      );
+    }
+    // A shop that forces it keeps the buyer's address as a billing address
+    // and shows no shipping address on its order screen, so the merchant
+    // would not see where the parcel goes.
+    if (destination === "billing_only") {
+      unsupported.push(
+        "the shop forces shipping to the customer billing address (WooCommerce → Settings →" +
+          " Shipping → Shipping destination)",
+      );
+    }
+  }
   // WooCommerce writes an order's totals at this setting, and the order this
   // creates is matched with those totals character for character. A shop at
   // any other number is refused here, before a paid order exists there that
-  // could not be matched. It is left out of the fingerprint below: every
-  // product that passes has the same value, and leaving it out keeps the
-  // fingerprints already recorded for accepted quotes valid.
+  // could not be matched. It is left out of the download fingerprint below:
+  // every product that passes has the same value, and leaving it out keeps
+  // the fingerprints already recorded for accepted quotes valid.
   if (decimals !== String(USD_SCALE)) {
     unsupported.push(
       `prices are not written at ${USD_SCALE} decimals (set WooCommerce → Settings → General →` +
@@ -245,6 +332,54 @@ export const inspectProductInTheShop = async (
       ok: false,
       why: `This product cannot be imported: ${unsupported.join("; ")}.`,
       again: false,
+    };
+  }
+  if (!TYPED_PRICE.test(product.price)) {
+    return { ok: false, why: "The protected product price is not a decimal amount.", again: false };
+  }
+  // From here on the price is the one form the card, the quote, the order and
+  // WooCommerce's own order totals all speak. The fingerprint hashes that form
+  // too, so a price that already had two decimals hashes as it always did and
+  // "25" hashes as "25.00" does.
+  const amount = usdAmountOf(product.price);
+  if (amount === null) {
+    return {
+      ok: false,
+      why:
+        `The shop's price for this product is ${product.price}, which has more than the two` +
+        " decimal places a US dollar price has. It is not rounded to an amount the shop never" +
+        " set; give the product a price in whole cents in WooCommerce.",
+      again: false,
+    };
+  }
+  if (kind === "parcel") {
+    // The class is the first thing hashed, so no parcel's digest can equal a
+    // download's: a product that changed class after its quote is a product
+    // that changed.
+    const fingerprint = createHash("sha256")
+      .update(
+        JSON.stringify([
+          "parcel",
+          new URL(keys.shopUrl).origin,
+          productId,
+          amount,
+          "USD",
+          product.type,
+          product.status,
+          product.stock_status,
+          product.manage_stock,
+          product.sold_individually,
+          product.virtual,
+          product.downloadable,
+          taxes,
+          shipTo,
+          destination,
+        ]),
+      )
+      .digest("hex");
+    return {
+      ok: true,
+      product: { kind, productId, price: { amount, currency: "USD" }, fingerprint },
     };
   }
   const download = product.downloads[0];
@@ -294,24 +429,6 @@ export const inspectProductInTheShop = async (
       again: false,
     };
   }
-  if (!TYPED_PRICE.test(product.price)) {
-    return { ok: false, why: "The protected product price is not a decimal amount.", again: false };
-  }
-  // From here on the price is the one form the card, the quote, the order and
-  // WooCommerce's own order totals all speak. The fingerprint hashes that form
-  // too, so a price that already had two decimals hashes as it always did and
-  // "25" hashes as "25.00" does.
-  const amount = usdAmountOf(product.price);
-  if (amount === null) {
-    return {
-      ok: false,
-      why:
-        `The shop's price for this product is ${product.price}, which has more than the two` +
-        " decimal places a US dollar price has. It is not rounded to an amount the shop never" +
-        " set; give the product a price in whole cents in WooCommerce.",
-      again: false,
-    };
-  }
   const fingerprint = createHash("sha256")
     .update(
       JSON.stringify([
@@ -342,6 +459,7 @@ export const inspectProductInTheShop = async (
   return {
     ok: true,
     product: {
+      kind,
       productId,
       downloadId: download.id,
       fileName: download.name,

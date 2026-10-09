@@ -121,6 +121,7 @@ const filling = (
   placeOrder: place,
   inspectProduct: async (_connection: WooConnection, merchantItemId: string) =>
     showing({
+      kind: "download",
       productId: merchantItemId.split("_").at(-1) ?? "",
       downloadId: "dl_guide",
       fileName: "Guide",
@@ -358,6 +359,7 @@ describe("one paid order, in the merchant's own shop", () => {
         quotedProduct: async () => "quoted-download-fingerprint",
         inspectProduct: async () =>
           showing({
+            kind: "download",
             productId: "11",
             downloadId: "dl_replaced",
             fileName: "Replacement",
@@ -383,6 +385,7 @@ describe("one paid order, in the merchant's own shop", () => {
       inspectProduct: async () =>
         supported
           ? showing({
+              kind: "download",
               productId: "11",
               downloadId: "dl_guide",
               fileName: "Guide",
@@ -503,6 +506,7 @@ describe("the whole way through, against a real gateway", () => {
       ) => createTheOrderInTheShop(keys, sold, fetch),
       inspectProduct: async () =>
         showing({
+          kind: "download",
           productId: "11",
           downloadId: "dl_guide",
           fileName: "Guide",
@@ -567,6 +571,7 @@ describe("the whole way through, against a real gateway", () => {
       ) => createTheOrderInTheShop(keys, sold, fetch),
       inspectProduct: async () =>
         showing({
+          kind: "download",
           productId: "11",
           downloadId: "dl_guide",
           fileName: "Guide",
@@ -739,6 +744,7 @@ describe("a price question off the merchant's stream", () => {
   };
   const NOW = "2026-09-14T12:00:00.000Z";
   const inTheShop = {
+    kind: "download" as const,
     productId: "11",
     downloadId: "dl_guide",
     fileName: "Guide",

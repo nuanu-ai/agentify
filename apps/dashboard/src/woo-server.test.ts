@@ -294,6 +294,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
         (async (_keys, merchantItemId) => ({
           ok: true,
           product: {
+            kind: "download",
             productId: merchantItemId.split("_").at(-1) ?? "",
             downloadId: "dl_guide",
             fileName: "Guide",
@@ -821,6 +822,7 @@ describe("importing the catalogue", () => {
         return {
           ok: true,
           product: {
+            kind: "download",
             productId: merchantItemId.split("_").at(-1) ?? "",
             downloadId: "dl_guide",
             fileName: "Guide",

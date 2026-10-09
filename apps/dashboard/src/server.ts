@@ -1674,21 +1674,22 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
               "The public catalog price does not match the protected WooCommerce product price.",
           };
         }
+        // The Store API's list does not say whether a product is virtual or a
+        // download, so the class the protected check found is written in, and
+        // it is the one the catalogue turns into a card.
+        const checked = inspected.product;
         return {
           ...product,
           status: "publish",
-          virtual: true,
-          downloadable: true,
+          virtual: checked.kind === "download",
+          downloadable: checked.kind === "download",
           manage_stock: false,
           download_limit: -1,
           download_expiry: -1,
-          downloads: [
-            {
-              id: inspected.product.downloadId,
-              name: inspected.product.fileName,
-              file: "protected-by-woo",
-            },
-          ],
+          downloads:
+            checked.kind === "download"
+              ? [{ id: checked.downloadId, name: checked.fileName, file: "protected-by-woo" }]
+              : [],
           qualification_problem: null,
         };
       });

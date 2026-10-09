@@ -103,7 +103,11 @@ export const recoverWooOrder = async (
       "The shop did not answer the product check. Nothing was changed, and the recovery can be run again.",
     );
   }
-  if (!inspected.ok || !sameProduct(inspected.product, record.facts)) {
+  if (
+    !inspected.ok ||
+    inspected.product.kind !== "download" ||
+    !sameProduct(inspected.product, record.facts)
+  ) {
     return refused("The product no longer matches the accepted WooCommerce sale.");
   }
 

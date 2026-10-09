@@ -154,6 +154,16 @@ export const fillFromTheShop = async (
       },
     };
   }
+  if (eligible.kind !== "download") {
+    await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
+    return {
+      refused: {
+        code: "cannot_fulfill",
+        message:
+          "This shop product is no longer a supported single-file download, so no WooCommerce order was created.",
+      },
+    };
+  }
   if (
     eligible.price.amount !== order.price.amount ||
     eligible.price.currency !== order.price.currency
@@ -422,6 +432,10 @@ const quoteFromTheShop = async (
   const inspected = await productInTheShop(connection, question.merchant_item_id, parts);
   if (!inspected.ok) return { available: false, as_of: at.toISOString() };
   const product = inspected.product;
+  // A parcel's price is the goods and the shop's rate for the buyer's place
+  // together, and the rate is not read here yet: the goods alone would be a
+  // price the parcel cannot be sold at.
+  if (product.kind === "parcel") return { available: false, as_of: at.toISOString() };
   const recorded = await parts.shops.recordQuote(
     connection.accountId,
     question.price_id,

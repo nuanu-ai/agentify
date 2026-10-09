@@ -17,6 +17,7 @@ const FACTS: WooOrderFacts = {
   currency: "USD",
 };
 const PRODUCT: EligibleWooProduct = {
+  kind: "download",
   productId: "22",
   downloadId: "download_owned",
   fileName: "agentify-test.txt",

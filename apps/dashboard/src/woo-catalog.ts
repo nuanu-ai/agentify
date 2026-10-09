@@ -64,6 +64,13 @@ export const StoreProductSchema = z.looseObject({
   is_purchasable: z.boolean(),
   is_in_stock: z.boolean(),
   status: z.string().default("publish"),
+  /**
+   * Whether the product is virtual and whether it is a download. The Store
+   * API's list does not carry either, so the import writes both from the
+   * protected product check (`inspectProductInTheShop`) before a product
+   * reaches `cardsFromTheShop`; the defaults are what an unchecked product
+   * reads as, and an unchecked product is refused for its check's reason.
+   */
   virtual: z.boolean().default(false),
   downloadable: z.boolean().default(false),
   manage_stock: z.boolean().default(false),
@@ -218,6 +225,19 @@ const WHAT_THE_BUYER_RECEIVES = {
 } as const;
 
 /**
+ * The time to hand a parcel to a carrier that every parcel card from a shop
+ * names: seven days, counted from the charge.
+ *
+ * It is Agentify's number, not the merchant's estimate. WooCommerce has no
+ * field for it, so this is a stand-in: it holds while parcels sell on the test
+ * channel only, and from the day they sell on the live channel the time to
+ * ship has to come from the merchant (ADR-0023). The import screen tells the
+ * merchant, because after these seven days an order not shipped reads as a
+ * refund owed.
+ */
+export const SHIP_WITHIN_SECONDS = 7 * 24 * 60 * 60;
+
+/**
  * The cards a shop's catalogue becomes, and the products that stayed behind.
  *
  * Order is preserved so that a merchant reading the two lists against their own
@@ -265,11 +285,19 @@ export const cardsFromTheShop = (
       refused("The product is not published in the shop.");
       continue;
     }
-    if (!product.virtual) {
-      refused("Only virtual products can be delivered to an agent without a shipping address.");
+    // Two classes, and nothing between them: a virtual download, handed to
+    // the agent, and a physical product, which a carrier takes to the buyer.
+    // A virtual product with no file has nothing to hand over and nothing to
+    // ship, and a download that is not virtual would be both at once.
+    const parcel = !product.virtual && !product.downloadable;
+    if (!parcel && !product.virtual) {
+      refused(
+        "The shop sells this as a download that also ships. This connector sells a virtual" +
+          " download or a physical product that ships, not both at once.",
+      );
       continue;
     }
-    if (!product.downloadable) {
+    if (!parcel && !product.downloadable) {
       refused("This product has no WooCommerce download to deliver to the agent.");
       continue;
     }
@@ -277,11 +305,11 @@ export const cardsFromTheShop = (
       refused("Products whose stock is counted are not supported by this connector.");
       continue;
     }
-    if (product.download_limit !== -1 || product.download_expiry !== -1) {
+    if (!parcel && (product.download_limit !== -1 || product.download_expiry !== -1)) {
       refused("The download must have unlimited uses and no expiry.");
       continue;
     }
-    if (product.downloads.length !== 1) {
+    if (!parcel && product.downloads.length !== 1) {
       refused("The product must carry exactly one downloadable file.");
       continue;
     }
@@ -361,15 +389,25 @@ export const cardsFromTheShop = (
     cards.push({
       id,
       title,
-      card: {
-        merchant_item_id: merchantItemId,
-        title,
-        description,
-        price: { amount, currency },
-        result: { ...WHAT_THE_BUYER_RECEIVES },
-        fulfillment: "async",
-        price_check: "handler",
-      },
+      card: parcel
+        ? {
+            merchant_item_id: merchantItemId,
+            title,
+            description,
+            price: { amount, currency },
+            fulfillment: "ship",
+            price_check: "handler",
+            ship_within_seconds: SHIP_WITHIN_SECONDS,
+          }
+        : {
+            merchant_item_id: merchantItemId,
+            title,
+            description,
+            price: { amount, currency },
+            result: { ...WHAT_THE_BUYER_RECEIVES },
+            fulfillment: "async",
+            price_check: "handler",
+          },
     });
   }
 

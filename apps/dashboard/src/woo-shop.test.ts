@@ -947,6 +947,7 @@ describe("the protected product check", () => {
     const keys = connectionTo(stand.url);
     const read = await inspectProduct(keys, merchantItemIdFor(stand.url, "11"));
     if (!read.ok) throw new Error(`the product check refused: ${read.why}`);
+    if (read.product.kind !== "download") throw new Error("the product check found a parcel");
 
     const made = await createOrder(keys, {
       orderId: "ord_7",
