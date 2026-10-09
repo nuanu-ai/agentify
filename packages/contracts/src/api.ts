@@ -358,7 +358,7 @@ export const PurchaseRequestSchema = z
   })
   .meta({
     description:
-      "What an agent supplies to buy: the purchase parameters, empty for a product that needs none, and for a parcel the address it goes to. The names are held to the shape a card could have declared and no further — that these values fit this card is checked against that card at the moment of purchase. ship_to is required when the card's fulfillment is \"ship\" and refused on any other card. The merchant's price question receives only its locality; the merchant receives the whole address once the order is paid. Sent again with the payment it must be the same address, or be left out, in which case the payment is for the address that was priced; a different one is refused before the payment is checked, and is a new purchase.",
+      "What an agent supplies to buy: the purchase parameters, empty for a product that needs none, and for a parcel the address it goes to. The names are held to the shape a card could have declared and no further — that these values fit this card is checked against that card at the moment of purchase. ship_to is required when the card's fulfillment is \"ship\" and refused on any other card. The merchant's price question receives only its locality; the merchant receives the whole address once the order is paid. Sent again with the payment it must be the same address, or be left out, in which case the payment is for the address that was priced; a different one is refused before the payment is checked, and is a new purchase. That holds while Agentify still holds the address: once it has let go of it — the order taken on, or ended — there is nothing to compare with, a payment's ship_to is not read, and the answer is the order as it stands.",
   });
 
 /**

@@ -2472,6 +2472,38 @@ function misfitsIn(findings: readonly Problem[]): string {
 }
 
 /**
+ * Whether two addresses are the same address: the same fields with the same
+ * words, whatever order they were written in.
+ */
+function sameAddress(one: ShipTo, other: ShipTo): boolean {
+  const written = (address: ShipTo) =>
+    JSON.stringify(Object.entries(address).sort(([a], [b]) => a.localeCompare(b)));
+  return written(one) === written(other);
+}
+
+/**
+ * A card in a mode this gateway cannot yet carry to its end, said as a finding
+ * on the mode rather than discovered by the first buyer.
+ *
+ * A parcel's order ends when its shipment is recorded, and recording one is not
+ * built yet (ADR-0033). A parcel card published now would take orders and the
+ * buyer's money with no way for its merchant to finish them, so it is refused
+ * with words that say why, until it can be.
+ */
+function notYetSold(card: Card): Problem[] {
+  return card.fulfillment === "ship"
+    ? [
+        {
+          path: ["fulfillment"],
+          code: "not_sold_yet",
+          message:
+            'a parcel\'s card, fulfillment "ship", cannot be published yet: its order ends when its shipment is recorded, and this gateway cannot record a shipment yet',
+        },
+      ]
+    : [];
+}
+
+/**
  * A card that is not going in the catalog, with everything standing in its way.
  *
  * The findings are the answer and the sentence is how it is recognised: a
@@ -2486,38 +2518,6 @@ function misfitsIn(findings: readonly Problem[]): string {
  * fault, because a card can have a dozen findings and one of them can be as
  * long as what the merchant sent.
  */
-/**
- * A card in a mode this gateway cannot yet carry to its end, said as a finding
- * on the mode rather than discovered by the first buyer.
- *
- * A parcel's order ends when its shipment is recorded, and recording one is not
- * built yet (ADR-0033). A parcel card published now would take orders and the
- * buyer's money with no way for its merchant to finish them, so it is refused
- * with words that say why, until it can be.
- */
-/**
- * Whether two addresses are the same address: the same fields with the same
- * words, whatever order they were written in.
- */
-function sameAddress(one: ShipTo, other: ShipTo): boolean {
-  const written = (address: ShipTo) =>
-    JSON.stringify(Object.entries(address).sort(([a], [b]) => a.localeCompare(b)));
-  return written(one) === written(other);
-}
-
-function notYetSold(card: Card): Problem[] {
-  return card.fulfillment === "ship"
-    ? [
-        {
-          path: ["fulfillment"],
-          code: "not_sold_yet",
-          message:
-            'a parcel\'s card, fulfillment "ship", cannot be published yet: its order ends when its shipment is recorded, and this gateway cannot record a shipment yet',
-        },
-      ]
-    : [];
-}
-
 function cardRejected(
   merchant: readonly MerchantFinding[],
   card: readonly Problem[],

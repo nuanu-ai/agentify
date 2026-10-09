@@ -99,7 +99,7 @@ export interface StoredOrder {
   /**
    * Where a parcel goes, on a parcel's order and on no other (ADR-0032): the
    * buyer's whole address while the order holds it, and only the instant it
-   * was erased once the merchant has it. Absent on every other order, and on
+   * was erased once nothing here needs it. Absent on every other order, and on
    * every order stored before parcels existed, which is the same fact.
    */
   readonly shipTo?: ShipTo | { readonly erasedAt: number };

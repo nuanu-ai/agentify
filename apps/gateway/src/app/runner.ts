@@ -1486,7 +1486,7 @@ function addressToKeep(
  * (ADR-0032): a parcel's order holds the whole of it exactly while the machine
  * says it is still needed, and afterwards only when it was erased; no other
  * order holds one at all. Failing it is a defect, as above, and what it costs
- * is a buyer's address kept after the merchant has it, or a merchant handed
+ * is a buyer's address kept after it stopped being needed, or a merchant handed
  * a parcel with nowhere to send it. The words name the order and never the
  * address.
  */
@@ -1511,7 +1511,7 @@ function whatIsWrongWithTheAddress(record: StoredOrder): string | null {
     return "has erased the address its merchant still needs";
   }
   if (!needed && !erased) {
-    return "still holds the buyer's address after the merchant has it";
+    return "still holds the buyer's address after it stopped being needed";
   }
   return null;
 }

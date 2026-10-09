@@ -37,13 +37,15 @@ afterEach(async () => {
 });
 
 describe("a card for a parcel", () => {
-  it("is refused at publishing until a shipment can be recorded, with words saying so", async () => {
+  it("is refused at publishing until a shipment can be recorded, as a finding on its mode", async () => {
     open = await harness();
 
     const published = await open.gateway.publishCard(open.merchant.id, parcelCard);
 
-    expect(published.ok).toBe(false);
-    expect(JSON.stringify(published)).toContain("shipment");
+    if (published.ok) throw new Error("a parcel's card was published");
+    expect(published.error.problems).toContainEqual(
+      expect.objectContaining({ path: ["fulfillment"], code: "not_sold_yet" }),
+    );
   });
 
   it("holds its orders to the time to ship, counted from the charge", () => {

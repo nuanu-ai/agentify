@@ -47,7 +47,7 @@ import { SellingStateSchema } from "./selling.js";
  * asked first, and the payment executes right after they say yes. `ship` — a
  * parcel the merchant hands to a carrier (ADR-0033): the payment executes at
  * the moment of purchase, as in `async`, and the order carries the buyer's
- * address until the merchant has it.
+ * address until the merchant takes it on, or it ends without them.
  */
 export const FulfillmentSchema = z.enum(["sync", "async", "confirm", "ship"]).meta({
   description:

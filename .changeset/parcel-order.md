@@ -14,7 +14,8 @@ Agentic Commerce Protocol's names, `ShipToLocalitySchema`, the place without the
 person, `ErasedShipToSchema` and `localityOf(address)`. A purchase request takes
 `ship_to`; a price question carries its locality; and an order reads the
 locality before it is paid, the whole address once it is, and only
-`{ erased_at }` once the merchant has it. Two error codes join a purchase's
+`{ erased_at }` once Agentify has let go of it: the merchant took the order on,
+or the order ended or came to owe a refund without them. Two error codes join a purchase's
 refusals: `ship_to_does_not_fit`, for an address on a product that is not
 shipped or none on one that is, and `ship_to_changed`, for a payment carrying an
 address other than the one the purchase was priced for.

@@ -2,9 +2,10 @@
 
 Date: 2026-09-28
 Status: accepted (the product owner, 2026-09-28, after two rounds of
-adversarial review). Built so far: the card and its rules, and the order that
-records it is a parcel. A parcel's card is refused at publishing, with words,
-until a shipment can be recorded.
+adversarial review). Built so far: the card's shape and the rules the contract
+checks, and the order that records it is a parcel. A parcel's card is refused
+at publishing, with words, until a shipment can be recorded; the rule that its
+merchant has given their site comes with it.
 
 ## Context
 

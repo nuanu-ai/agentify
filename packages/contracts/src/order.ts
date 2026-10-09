@@ -80,10 +80,11 @@ export const OrderSchema = z.strictObject({
    * any other, in one of three shapes as the order goes along. Before it is
    * paid, the locality the price was asked for — the place and nothing about
    * who. Once paid, the whole address, which the merchant stores before taking
-   * the order on. Once the merchant has it — the order taken on, its shipment
-   * recorded, or the order ended — only when Agentify erased its copy: the
-   * address itself is the merchant's from then on, and the order is not handed
-   * to a handler again.
+   * the order on. Once Agentify no longer needs it — the order taken on, its
+   * shipment recorded, or the order ended or owing a refund without being taken
+   * on — only when Agentify erased its copy. From then on the merchant has the
+   * address only as they stored it from the paid order, and the order is not
+   * handed to a handler again.
    */
   ship_to: z.union([ShipToSchema, ShipToLocalitySchema, ErasedShipToSchema]).optional(),
 

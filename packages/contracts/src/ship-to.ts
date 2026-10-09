@@ -18,8 +18,8 @@
  * The address is the buyer's and passes through Agentify. The merchant's price
  * question receives only the locality — where the parcel goes, not to whom —
  * and the full address reaches the merchant only once the order is paid. Once
- * the merchant has it, Agentify erases its copy, and the order reads only when
- * that happened.
+ * the merchant takes the order on, or the order ends without them, Agentify
+ * erases its copy, and the order reads only when that happened.
  */
 
 import { z } from "zod";
@@ -55,7 +55,7 @@ export const ShipToSchema = z
   })
   .meta({
     description:
-      "Where a parcel goes, in the Agentic Commerce Protocol's names. A name, a first line, a city, a country and a phone are required; the country is ISO 3166-1 alpha-2 and a state, where given, is its subdivision code without the country in front. Whether a state or a postal code is needed here, and whether the merchant ships to this place, is the merchant's to answer. The address passes through Agentify: the merchant's price question receives only its locality, the merchant receives the whole of it once the order is paid, and Agentify erases its copy as soon as the merchant has it.",
+      "Where a parcel goes, in the Agentic Commerce Protocol's names. A name, a first line, a city, a country and a phone are required; the country is ISO 3166-1 alpha-2 and a state, where given, is its subdivision code without the country in front. Whether a state or a postal code is needed here, and whether the merchant ships to this place, is the merchant's to answer. The address passes through Agentify: the merchant's price question receives only its locality, the merchant receives the whole of it once the order is paid, and Agentify erases its copy once the merchant takes the order on, or the order ends without them.",
   });
 
 /** Where a parcel goes as its price is asked: the place, not the person. */
@@ -78,7 +78,7 @@ export const ErasedShipToSchema = z
   })
   .meta({
     description:
-      "An address Agentify has erased, because the merchant has it: the merchant took the order on, recorded its shipment, or the order ended. Only when it was erased is kept, and nothing of what it was.",
+      "An address Agentify has erased, because nothing of Agentify's needs it any more: the merchant took the order on or recorded its shipment, or the order ended or came to owe a refund without being taken on. Only when it was erased is kept, and nothing of what it was. The merchant holds the address only as they stored it from the paid order, and an order that ended before it was paid never gave it to them.",
   });
 
 export type ShipTo = z.infer<typeof ShipToSchema>;
