@@ -701,6 +701,79 @@ if (databaseUrl === null) {
       });
     });
 
+    it("walks a parcel through the database and the queue, and keeps nothing of its address", async () => {
+      // ADR-0032 end to end on the stores that keep things: the price question
+      // and the hand-over are drawn and finished, which pg-boss keeps in its
+      // table for days, and taking the order on erases the order's copy and
+      // deletes both. Searched as text across every job on the stream, so a
+      // field this test did not think of is found too.
+      const buyer = `The buyer ${randomUUID()}`;
+      const shipTo = {
+        name: buyer,
+        line_one: "Jl. Raya Kediri, Beraban",
+        city: "Tabanan",
+        country: "ID",
+        phone_number: "+62 000 0000 0000",
+      };
+      const published = await store.publishCard(
+        A,
+        {
+          merchant_item_id: `beans-${randomUUID()}`,
+          title: "Coffee beans, one kilogram",
+          description: "Roasted in Bali this week and sent by courier.",
+          price: { amount: "18.00", currency: "USD" },
+          fulfillment: "ship",
+          ship_within_seconds: 172_800,
+          price_check: "handler",
+        },
+        now,
+      );
+      const merchant = { id: A, name: "", key: "", keyId: "", wallet: "" };
+      const pricing = workUntilStopped(
+        { gateway, merchant },
+        {
+          onQuote: () => ({
+            available: true,
+            price: { amount: "21.00", currency: "USD" },
+            as_of: "2026-08-26T10:15:00Z",
+          }),
+        },
+      );
+      const offered = await gateway.beginPurchase(published.id, {}, shipTo);
+      await pricing.stop();
+      if (offered.step !== "pay") throw new Error("no price was offered");
+      const orderId = offered.order.order.id;
+
+      const paid = `parcel-${randomUUID()}`;
+      await gateway.payPurchase(orderId, paid, paid);
+      const takingOn = workUntilStopped(
+        { gateway, merchant },
+        { onOrder: () => ({ accepted: {} }) },
+      );
+      await vi.waitFor(async () => {
+        expect((await store.orderById(orderId))?.shipTo).toStrictEqual({
+          erasedAt: expect.any(Number),
+        });
+      });
+      await takingOn.stop();
+
+      const { rows } = await pool.query<{ n: string }>(
+        `select count(*) as n from ${QUEUE_SCHEMA}.job where name = $1 and data::text like $2`,
+        [streamOf(A), `%${buyer}%`],
+      );
+      expect(Number(rows[0]?.n)).toBe(0);
+      // The price question carries the place and not the person, so it is
+      // found by the identifier the order kept for it.
+      const kept = await store.orderById(orderId);
+      const asked = await pool.query<{ n: string }>(
+        `select count(*) as n from ${QUEUE_SCHEMA}.job where name = $1 and data @> $2::jsonb`,
+        [streamOf(A), JSON.stringify({ payload: { price_id: kept?.priceQuestion } })],
+      );
+      expect(kept?.priceQuestion).toEqual(expect.any(String));
+      expect(Number(asked.rows[0]?.n)).toBe(0);
+      expect(JSON.stringify(kept)).not.toContain(buyer);
+    }, 30_000);
+
     it("walks a whole synchronous sale through the database and the queue", async () => {
       // Everything from here is the same flow the in-memory tests walk. What
       // this adds is that it survives the round trip through JSONB and through
