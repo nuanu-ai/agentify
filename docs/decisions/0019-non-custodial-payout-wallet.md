@@ -88,7 +88,7 @@ cancels the pending one. Setting and reading the wallet answer with the
 pending address and the moment it takes effect, always present and null
 when nothing is pending, so a caller that reads the old address back does
 not take it for a failed write. These fields, and the refusals this route
-answers with, are added without moving `CONTRACT_VERSION`
+answers with, are added and removed without moving `CONTRACT_VERSION`
 (ADR-0006 §2), as the product owner agreed: no SDK worker reads this
 route's answers or refusals, and moving the version would stop every
 installed worker for words no worker sees. The price is that a merchant's
@@ -103,28 +103,21 @@ writes the wallet, so every change reaches the gateway as the same call and the
 gateway is the one place that sees them all. Before writing anything, the
 gateway asks the dashboard, which holds the addresses, to tell every account
 that names the merchant, since several accounts may name one merchant, and
-the message to every one of them must be handed to the mail provider. It
-asks over an internal route of its own, reachable only on the compose
-network and authenticated by a secret that only the gateway and the
-dashboard hold. It never uses the scanner's route or secret (ADR-0026),
-which would give the money path the power to look up sessions and remove
-people. That route and its secret (`/internal/gateway`,
-`GATEWAY_DASHBOARD_SECRET`) are the gateway's one way into the dashboard, and
-are named for it: each request names its `operation`, as the scanner's
-do, and anything else the gateway ever needs from the dashboard is another
-operation on the same route with the same secret, never a second route or
-a second secret. When every message has been handed over, the gateway
-records the pending change, answers with it and counts the forty-eight hours from
-then. Otherwise it writes nothing and refuses the change in words that say
-which of three cases it met: there is nobody to tell; a message could not
-be handed over, or the dashboard turned the request away before sending any;
-or the dashboard did not answer, so a message may have gone out although
-nothing was recorded. The third is not "not sent", and the
-refusal does not read as if it were. Changes for one merchant are
-serialized without a lock held across the announcement, which is a call to
-another process and a mail provider: a change is recorded only where the
+the message to every one of them must be handed to the mail provider. The
+two run in one process (ADR-0030), and the gateway asks by a call: the
+process hands it the dashboard's way of telling. It never reaches the
+scanner's route (ADR-0026), which would give the money path the power to
+look up sessions and remove people. When every message has been handed over,
+the gateway records the pending change, answers with it and counts the
+forty-eight hours from then. Otherwise it writes nothing and refuses the
+change in words that say which of two cases it met: there is nobody to tell;
+or a message could not be handed over, which includes the telling failing
+part of the way, so a message may have gone out to some account although
+nothing was recorded, and the refusal does not read as "not sent". Changes
+for one merchant are serialized without a lock held across the announcement,
+which is a call to a mail provider: a change is recorded only where the
 wallet still stands as it was read before its message went out, and one that
-another change overtook meanwhile is refused in words of its own, a fourth
+another change overtook meanwhile is refused in words of its own, a third
 refusal, which says a message went out only when this change's own did. A
 change that finds the wallet already holding exactly what it asked for, a
 retry that overtook its own first attempt, is answered with it instead. So nothing recorded is ever written over by a change announced
@@ -153,7 +146,7 @@ because it moves money nowhere new: it is announced the way a new key is,
 and a failed announcement refuses nothing. Every change comes from a
 session, which is why the cancel ends the others.
 
-The same route announces a key the merchant issues for their own code, but
+The same call announces a key the merchant issues for their own code, but
 the key never waits on its message: if there is nobody to tell or the
 message cannot be handed over, the key is issued all the same. A key moves
 no money and cannot set the wallet, and a merchant must not be kept from a
@@ -209,8 +202,8 @@ press whose dashboard failed after the gateway answered, whose key nobody holds,
 or the merchant every database is created with (ADR-0010), for which no
 deployed channel seeds a key and nobody can ask for live approval. A test
 deployment never shows a pending change, so an integrator meets that shape
-only on production. A wallet change also depends on the dashboard and the
-mail provider being up, which is accepted: changes are rare, and a refusal
+only on production. A wallet change also depends on the mail provider being
+up, which is accepted: changes are rare, and a refusal
 at the door is honest where a silent change is not. An account left holding
 a key made for the merchant's own code, from before accounts were checked,
 cannot set the wallet, and nothing in the product replaces its key.
