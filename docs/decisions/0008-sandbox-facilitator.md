@@ -9,7 +9,7 @@ owner's word)
 The whole surface now comes up from `docker compose up` — the landing, the
 documentation, the dashboard and the gateway on one origin, with Postgres behind
 them (ADR-0005). What it cannot do is sell anything, and the reason is one
-line: `apps/gateway/src/main.ts` builds its facilitator from
+line: `apps/gateway/src/start.ts` builds its facilitator from
 `HTTPFacilitatorClient` unconditionally, so every purchase needs the network, a
 funded testnet wallet and a faucet before it can move at all.
 

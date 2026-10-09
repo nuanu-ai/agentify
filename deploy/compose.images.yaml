@@ -15,10 +15,7 @@ services:
   migrate:
     build: !reset null
     image: "${AGENTIFY_APP_IMAGE:?deploy/images.env names the app image}"
-  gateway:
-    build: !reset null
-    image: "${AGENTIFY_APP_IMAGE:?deploy/images.env names the app image}"
-  dashboard:
+  app:
     build: !reset null
     image: "${AGENTIFY_APP_IMAGE:?deploy/images.env names the app image}"
   web:

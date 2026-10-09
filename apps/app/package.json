@@ -1,0 +1,18 @@
+{
+  "name": "@agentify/app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Agentify application — the gateway and the dashboard in one process",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@agentify/dashboard": "workspace:*",
+    "@agentify/gateway": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.12"
+  }
+}

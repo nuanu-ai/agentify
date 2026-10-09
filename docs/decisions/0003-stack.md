@@ -17,7 +17,8 @@ SDK, который ставят себе посторонние инженер�
 1. TypeScript strict (расширенный набор флагов schematic), Node ≥24, ESM.
 2. Монорепо pnpm workspaces без оркестратора; разрез: `packages/core`
    (домен, ноль IO), `packages/contracts` (zod-схемы — исток истины),
-   `packages/sdk`, `apps/gateway`.
+   `packages/sdk`, `apps/gateway` и `apps/app` — процесс, в котором гейтвей
+   работает вместе с кабинетом (ADR-0030).
    Весь продукт, включая портал и компоненты сканера в `apps/`, `packages/`,
    `ops/` и `fixtures/`, входит в один workspace и lockfile на Node 24.21.x,
    pnpm 11.12.x и TypeScript 5.9.3. Node 24.21.x — версия CI и образов

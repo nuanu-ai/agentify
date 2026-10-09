@@ -1,23 +1,19 @@
 /**
- * The resident process.
+ * Starting the gateway, inside the resident process (ADR-0030).
  *
  * It is resident rather than serverless because of what it holds open: workers
  * parked on a poll, an agent parked on a synchronous purchase, a consumer of
  * the queue, and a sequence around a payment that has to survive between two
- * HTTP calls. A function that runs and exits could hold none of them.
+ * HTTP calls. A function that runs and exits could hold none of them. The
+ * process itself, its signals and the order things stop in belong to
+ * `apps/app`, which starts the dashboard beside this.
  *
- * Everything below is wiring. The configuration is read once and refused whole,
- * the three ports are given their real implementations, and the surface is
- * mounted from the contract's own table. There is no logic here to test,
- * because everything that could be got wrong lives behind one of those three
- * ports and is tested against the in-memory ones.
- *
- * It is run through a loader that compiles TypeScript on the way in rather than
- * from compiled output, and that is a step not taken rather than a preference.
- * The workspace packages this depends on publish their TypeScript sources, so
- * compiling this one alone produces imports of files that are not there;
- * building it properly means building those too, which is a change to how they
- * are published and belongs with the deployment step rather than here.
+ * Everything below is wiring. The configuration is read once and refused whole
+ * before this is called, the three ports are given their real
+ * implementations, and the surface is mounted from the contract's own table.
+ * There is no logic here to test, because everything that could be got wrong
+ * lives behind one of those three ports and is tested against the in-memory
+ * ones.
  */
 
 import { DashboardAnnouncer } from "./adapters/dashboard/announcer.js";
@@ -29,17 +25,19 @@ import { X402Facilitator } from "./adapters/x402/facilitator.js";
 import { Gateway } from "./app/gateway.js";
 import { seedSandboxKey } from "./app/merchants.js";
 import type { Runtime } from "./app/runtime.js";
-import { isSandboxFacilitator, loadConfig } from "./config.js";
+import { type GatewayConfig, isSandboxFacilitator } from "./config.js";
 import { buildApp } from "./http/server.js";
 import { PaymentEdge } from "./http/x402.js";
 import { nobodyAnnounces } from "./ports/announcer.js";
 import { randomIds, systemClock } from "./ports/clock.js";
 import type { Facilitator } from "./ports/facilitator.js";
 
-const config = loadConfig(process.env);
-const { db, pool } = connect(config.databaseUrl);
-
-const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.payment.timeoutSeconds);
+/**
+ * The port the gateway's surface answers on: `/v0`, `/x402` and `/healthz`.
+ * Fixed, like the dashboard's three, because the dashboard shares this
+ * process's environment and a `PORT` there could mean only one of them.
+ */
+export const GATEWAY_PORT = 3000;
 
 /**
  * How long a poll leans on the queue's own polling before coming back empty on
@@ -47,14 +45,6 @@ const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.paymen
  * all, so this only carries work published by another one.
  */
 const QUEUE_POLL_INTERVAL_MS = 250;
-
-const queue = queueOn(config.databaseUrl, {
-  pollIntervalMs: QUEUE_POLL_INTERVAL_MS,
-  reminders: {
-    attempts: config.reminderAttempts,
-    retryDelayMs: config.reminderRetryDelayMs,
-  },
-});
 
 /**
  * The payment layer, real or none at all (ADR-0008).
@@ -80,7 +70,7 @@ const queue = queueOn(config.databaseUrl, {
  * the key — so an unreachable facilitator cannot stop the gateway starting,
  * which is the failure the spike's server had.
  */
-async function paymentLayer(): Promise<Facilitator> {
+async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Promise<Facilitator> {
   if (isSandboxFacilitator(config.payment.facilitatorUrl)) {
     return new ScriptedFacilitator();
   }
@@ -98,7 +88,7 @@ async function paymentLayer(): Promise<Facilitator> {
  * thing to be. There are three now, and the difference between "settles with
  * test funds" and "settles against nothing" is one somebody acts on.
  */
-function announceTheEnvironment(): void {
+function announceTheEnvironment(config: GatewayConfig): void {
   const { network, facilitatorUrl } = config.payment;
   const where = `${network} through ${facilitatorUrl}`;
 
@@ -128,30 +118,6 @@ function announceTheEnvironment(): void {
     }
   }
 }
-
-announceTheEnvironment();
-
-const runtime: Runtime = {
-  config,
-  // The store is given the queue's way of writing an envelope inside its own
-  // transaction: an envelope that must not be lost is written where the order
-  // is, so a process that dies mid-flight either did both or did neither
-  // (ADR-0013). Both live in the same Postgres, which is what makes it possible.
-  store: PostgresStore.over(db, randomIds, queue.envelopes()),
-  queue,
-  facilitator: await paymentLayer(),
-  clock: systemClock,
-  ids: randomIds,
-  // The gateway's route into the dashboard on the live deployment, and nothing at
-  // all anywhere else: the configuration is null exactly where a change
-  // applies at once and nobody is told (ADR-0019).
-  announcer:
-    config.dashboardRoute === null
-      ? nobodyAnnounces
-      : new DashboardAnnouncer(config.dashboardRoute),
-};
-
-const gateway = new Gateway(runtime);
 
 /**
  * The sandbox's one key, put in the database if it is not there already.
@@ -187,7 +153,8 @@ const gateway = new Gateway(runtime);
  * merchant there comes into being only through the link mailed to a person
  * and the dashboard's one control.
  */
-async function seedTheSandbox(secret: string | null): Promise<void> {
+async function seedTheSandbox(config: GatewayConfig, runtime: Runtime): Promise<void> {
+  const secret = config.sandboxMerchantKey;
   const surface = config.surfaceMode.toUpperCase();
   if (secret === null) {
     console.log(
@@ -231,37 +198,79 @@ async function seedTheSandbox(secret: string | null): Promise<void> {
   }
 }
 
-try {
-  await gateway.start();
-  await seedTheSandbox(config.sandboxMerchantKey);
-} catch (thrown) {
-  // The first thing an engineer bringing this up sees. A stack trace out of the
-  // queue's own internals says "something about Postgres" and makes them go
-  // looking; this says which database was not there.
-  console.error(
-    `[gateway] cannot start: the queue and the store both live in ${config.databaseUrl.replace(/:[^:@/]*@/, ":***@")}, and it did not answer`,
-  );
-  console.error(thrown);
-  process.exit(1);
+/** The gateway, started, with what the process stops it by. */
+export interface RunningGateway {
+  /** Takes no new connection on the gateway's port; the parked ones stay until `stop`. */
+  closeListener(): void;
+  /**
+   * Lets go of what it is holding. Parked workers and parked purchases are
+   * woken with nothing rather than left waiting on a process that is going
+   * away, which is the difference between a restart an agent retries and one
+   * it times out on; then the store's connections close.
+   */
+  stop(): Promise<void>;
 }
 
-const server = buildApp(gateway).listen(config.port, () => {
-  console.log(`[gateway] listening on ${config.port}, answering as ${config.publicBaseUrl}`);
-});
+/** Starts the order machine and the surface, or throws saying why it could not. */
+export async function startGateway(config: GatewayConfig): Promise<RunningGateway> {
+  const { db, pool } = connect(config.databaseUrl);
+  const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.payment.timeoutSeconds);
+  const queue = queueOn(config.databaseUrl, {
+    pollIntervalMs: QUEUE_POLL_INTERVAL_MS,
+    reminders: {
+      attempts: config.reminderAttempts,
+      retryDelayMs: config.reminderRetryDelayMs,
+    },
+  });
 
-/**
- * A shutdown that lets go of what it is holding. Parked workers and parked
- * purchases are woken with nothing rather than left waiting on a process that
- * is going away, which is the difference between a restart an agent retries and
- * one it times out on.
- */
-const shutDown = async (signal: string): Promise<void> => {
-  console.log(`[gateway] ${signal}: stopping`);
-  server.close();
-  await gateway.stop();
-  await pool.end();
-  process.exit(0);
-};
+  announceTheEnvironment(config);
 
-process.on("SIGINT", () => void shutDown("SIGINT"));
-process.on("SIGTERM", () => void shutDown("SIGTERM"));
+  const runtime: Runtime = {
+    config,
+    // The store is given the queue's way of writing an envelope inside its own
+    // transaction: an envelope that must not be lost is written where the order
+    // is, so a process that dies mid-flight either did both or did neither
+    // (ADR-0013). Both live in the same Postgres, which is what makes it possible.
+    store: PostgresStore.over(db, randomIds, queue.envelopes()),
+    queue,
+    facilitator: await paymentLayer(config, edge),
+    clock: systemClock,
+    ids: randomIds,
+    // The gateway's route into the dashboard on the live deployment, and nothing at
+    // all anywhere else: the configuration is null exactly where a change
+    // applies at once and nobody is told (ADR-0019).
+    announcer:
+      config.dashboardRoute === null
+        ? nobodyAnnounces
+        : new DashboardAnnouncer(config.dashboardRoute),
+  };
+
+  const gateway = new Gateway(runtime);
+
+  try {
+    await gateway.start();
+    await seedTheSandbox(config, runtime);
+  } catch (thrown) {
+    // The first thing an engineer bringing this up sees. A stack trace out of the
+    // queue's own internals says "something about Postgres" and makes them go
+    // looking; this says which database was not there.
+    console.error(
+      `[gateway] cannot start: the queue and the store both live in ${config.databaseUrl.replace(/:[^:@/]*@/, ":***@")}, and it did not answer`,
+    );
+    throw thrown;
+  }
+
+  const server = buildApp(gateway).listen(GATEWAY_PORT, () => {
+    console.log(`[gateway] listening on ${GATEWAY_PORT}, answering as ${config.publicBaseUrl}`);
+  });
+
+  return {
+    closeListener() {
+      server.close();
+    },
+    async stop() {
+      await gateway.stop();
+      await pool.end();
+    },
+  };
+}

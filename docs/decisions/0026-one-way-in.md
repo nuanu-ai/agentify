@@ -180,8 +180,9 @@ whoever reads a merchant's mail is that merchant. A refused request says when
 the next link may be asked for, which reveals the timing of an address's last
 link, never whether it has an account or a report. Delivery is the single point
 of failure of the way in, measured, with the resend on the same screen, and the
-seller dashboard's absence stops every sign-in, every full report and the operator's dashboard. A
-session left open on a shared computer opens everything its person may see until
+seller dashboard's absence stops every sign-in, every full report and the
+operator's dashboard, and, since it shares a process with the gateway
+(ADR-0030), sales as well. A session left open on a shared computer opens everything its person may see until
 somebody signs out, though it moves no money by itself, because a wallet change
 waits and is announced (ADR-0019). A second factor outside the mailbox, optional
 and not a condition of live publication, is the second stage agreed in

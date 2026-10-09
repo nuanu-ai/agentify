@@ -310,13 +310,6 @@ const environmentSchema = z.object({
   DATABASE_URL: z
     .string({ error: absentOrWrong("must be a string") })
     .refine(isPostgresUrl, "must be an address of the form postgres://user@host:port/database"),
-  /** The port of the resident process; from outside it is closed off by Caddy. */
-  PORT: z
-    .string({ error: absentOrWrong("must be a string") })
-    .regex(/^\d+$/, "must be a whole number")
-    .transform(Number)
-    .refine((port) => port >= 1 && port <= 65535, "must be within the range 1..65535")
-    .default(3000),
 
   /**
    * A key to make sure exists when this process starts, so that a sandbox comes
@@ -713,7 +706,6 @@ export interface PaymentConfig {
 /** The gateway configuration — what the process has no right to start without. */
 export interface GatewayConfig {
   readonly databaseUrl: string;
-  readonly port: number;
   /** A key this environment is seeded with at start-up, or nothing at all. */
   readonly sandboxMerchantKey: string | null;
   /** The code registration is behind, or nothing at all, which closes it. */
@@ -992,7 +984,6 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
 
   return {
     databaseUrl: environmentValues.DATABASE_URL,
-    port: environmentValues.PORT,
     sandboxMerchantKey: environmentValues.SANDBOX_MERCHANT_KEY,
     registrationInvitation: environmentValues.REGISTRATION_INVITATION,
     publicBaseUrl: environmentValues.PUBLIC_BASE_URL,

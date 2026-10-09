@@ -20,7 +20,7 @@ function runEntrypoint(overrides = {}) {
       APP_BASE_URL: "https://agentify.ad",
       DATABASE_URL: "postgresql://agentify:synthetic@postgres:5432/agentify",
       TOKEN_HMAC_SECRET: "synthetic-hmac-key-000000000000000000000000",
-      DASHBOARD_IDENTITY_URL: "http://dashboard:3002",
+      DASHBOARD_IDENTITY_URL: "http://app:3002",
       REPORT_IDENTITY_SECRET: "synthetic-report-identity-secret-32-bytes",
       ...overrides,
     },

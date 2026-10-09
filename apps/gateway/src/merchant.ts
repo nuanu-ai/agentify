@@ -7,7 +7,7 @@
  * one control (ADR-0014). Against the local stack it is one line, run on the
  * gateway that is already up:
  *
- *   docker compose exec gateway \
+ *   docker compose exec app \
  *     pnpm --filter @agentify/gateway merchant list
  *
  * Outside Docker it needs the same DATABASE_URL the gateway itself is given,
