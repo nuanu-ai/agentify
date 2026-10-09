@@ -202,3 +202,73 @@ and the state run together is not, because WooCommerce numbers China's
 provinces its own way — its `CN11` is Jiangsu, while `11` was Beijing's ISO
 numeric code — so a buyer in Beijing would be priced and labelled for another
 province.
+
+## Observed for the build
+
+Three answers of the same shop were read after the probe, through WooCommerce's
+own REST routes inside the shop, and the connector's tests use their shapes.
+
+A paid order created through `wc/v3` with a `shipping` block and one
+`shipping_lines` entry answered 201 with status `processing`, the shipping block
+exactly as sent, `last_name` and `company` empty, a `shipping_total` of 3.00 and
+a `total` of 23.00, the line and the shipping added. The shipping line came back
+with its `instance_id` as the string `"1"`. The shop sent no mail, having none to
+send with. That order, number 30, was then marked Completed and left in the test
+shop as it is.
+
+Read back with `_fields=id,status,shipping_lines`, a completed order answers its
+status and its shipping lines and nothing of the address. A missing order is a
+404 with the code `woocommerce_rest_shop_order_invalid_id`.
+
+WooCommerce's own fulfilments are off in 11.1.0, and their route then answers
+404 `rest_no_route`. Switched on for one run and off again, a fulfilment created
+for order 30 read back with `status: "fulfilled"`, `is_fulfilled` as the string
+`"1"` (it was `true` in the answer that created it), and its tracking in
+`meta_data` under `_tracking_number`, `_shipment_provider` (a provider's slug,
+`jne`) and `_tracking_url`. The connector reads `status`, not `is_fulfilled`.
+
+## What the build does
+
+These are the mechanics ADR-0023 leaves to this note.
+
+The price question reads the product and asks the cart at the same time, and
+answers within four seconds of drawing the question or answers that the parcel
+is not available, because the gateway waits five. Pickup methods
+(`local_pickup`, `pickup_location`) are left out of the rates, a cart pricing
+one product as more than one package is refused, and a rate that is not an
+untaxed US dollar amount at two decimals refuses the whole answer rather than
+dropping out of the choice. The cheapest rate is added to the goods in cents.
+The price identifier is bound to the product's fingerprint only; the rate is
+not stored. Why the price was not available goes to the merchant's log, never
+the place.
+
+The paid order asks the cart again for the paid address's locality and takes
+the first rate, in the shop's order, costing exactly what was paid above the
+goods. That is the cheapest rate of the price question, still found if the shop
+added a cheaper one since. A product or a rate that no longer matches is
+refused before the shop is called and becomes a refund owed; a shop that does
+not answer leaves the order to be handed over again, with nothing written.
+The address goes into the order's shipping block with the whole name as the
+first name, absent parts empty, the state as the agent wrote it, and the order
+is read back with `shipping` among its fields. The order is taken on only if
+every field of the shipping block came back as sent; otherwise it is treated as
+an order whose creation is unknown, never posted again. The answer and the
+shop's own error messages, which may name the address, are compared in memory
+and kept nowhere.
+
+A placed parcel is followed every five minutes, in a loop of its own beside
+the shops' turns. Its order is read without the address. Completed is the
+shipment: a single fulfilled fulfilment gives the carrier, the tracking number
+and the tracking address, and without one the carrier is the order's single
+shipping line's method title, with no tracking number. Several fulfilments, or
+several shipping lines with no fulfilment, are not chosen among. What the shop
+wrote is held to the shipment's rules: a tracking address that fails them is
+left out, and a carrier or a number that is not plain text records nothing, so
+the order waits. An order the shop cancels, refunds, fails, trashes or no
+longer has is let go with nothing told to the gateway. A gateway that does not
+answer the shipment is asked again on the next pass; one that refuses it is
+not, and the refusal goes to the log. The ledger marks a parcel `shipped` or
+`closed` when it is let go, after `placed`.
+
+The Shipment Tracking extension, which keeps tracking in an order's meta, is
+not read: it is paid, and this shop cannot show what it writes.
