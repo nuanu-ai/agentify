@@ -18,11 +18,8 @@ services:
   # being one way: a person opens the link mailed to their address and presses
   # the dashboard's one control. The base file seeds the laptop's key by default,
   # so this puts nothing in its place, and says nothing rather than reading a
-  # variable: a channel's environment file may still name AGENTIFY_SEED_KEY,
-  # because an older revision, whose preflight requires a seed, can be released
-  # back onto the channel only while it does, so the line leaves the file after
-  # a release is verified (deploy/README.md, "The release that stops
-  # seeding"). The release's preflight refuses a rendered seed all the same.
+  # variable, so a channel's environment file that names AGENTIFY_SEED_KEY seeds
+  # nothing either. The release's preflight refuses a rendered seed all the same.
   gateway:
     environment:
       SANDBOX_MERCHANT_KEY: ""
