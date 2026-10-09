@@ -444,9 +444,9 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
     describe("a merchant", () => {
       it("is written down once, and is not written over by a second attempt", async () => {
-        // Its callers are the sandbox's seed, which runs at every start, and a
-        // command somebody typed, which people run twice. Neither may replace
-        // the merchant that is there.
+        // One caller is the sandbox's seed, which runs at every start and finds
+        // its merchant there from the second start on. It must not replace the
+        // merchant that is there.
         const store = await fresh();
 
         expect(await store.addMerchant({ id: A, name: "Merchant A" }, 1_000)).toMatchObject({
@@ -742,8 +742,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // insertion order in memory the same list would mean something else
         // again.
         //
-        // A tie is the ordinary case and not a contrived one — registering
-        // writes a merchant and their first key at one instant, and a merchant
+        // A tie is the ordinary case and not a contrived one — a merchant
         // issuing two keys in one sitting can land both in the same
         // millisecond. The three below go in in an order that is neither
         // answer, so what is read is the promise and not the sequence they were

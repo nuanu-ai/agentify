@@ -31,18 +31,20 @@ host names: port 3000 serves `/v0`, `/x402` and `/healthz`, port 3001 serves
 stays the scanner's route to the dashboard (ADR-0026 §2); the scanner stays
 apart, and Caddy the one door.
 
-**The dashboard calls the application, not the HTTP API.** Its screens, its
-WooCommerce worker and its registration call the `Gateway` methods the `/v0`
-handlers call, as the merchant on the signed-in account's row, with requests
-and answers still held to the contract's schemas. The caller is the signed-in
+**The dashboard calls the application, not the HTTP API.** Its screens and its
+WooCommerce worker call the `Gateway` methods the `/v0` handlers call, as the
+merchant on the signed-in account's row, with requests and answers still held to
+the contract's schemas. Two calls are the dashboard's alone and have no route:
+registering, and setting the payout wallet (ADR-0019), whose address and answer
+are held to the contract's schemas all the same. The caller is the signed-in
 person rather than a key, so a message about a payout wallet change, which is
-asked for only in the dashboard (ADR-0019), names that person.
-The dashboard then proves that the application and the contract's documents are
-enough to draw every screen, and no longer that the HTTP API is. What proves
-that is what a merchant's engineer uses: the SDK's tests, the purchase through
-the real gateway in `packages/slice`, the portal's examples run as fixtures,
-and the gateway's HTTP test of every `/v0` route. A screen that needs what a
-merchant's code could need still gets a contract route.
+asked for only in the dashboard (ADR-0019), names that person. The dashboard
+then proves that the application and the contract's documents are enough to draw
+every screen, and no longer that the HTTP API is. What proves that is what a
+merchant's engineer uses: the SDK's tests, the purchase through the real gateway
+in `packages/slice`, the portal's examples run as fixtures, and the gateway's
+HTTP test of every `/v0` route. A screen that needs what a merchant's code could
+need still gets a contract route.
 
 **No key between them.** Every key is one the merchant issued. Nothing is
 made for the dashboard, so there is no renewal, no `merchant_key` column, no

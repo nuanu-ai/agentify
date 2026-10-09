@@ -16,7 +16,10 @@
  *
  * What goes in is held to the request schema the contract's route table names
  * for the same call, and what comes back to the response schema, before
- * anything is drawn. The door holds both on the API, and a page drawn from a
+ * anything is drawn. Two calls have no route at the door: registering, which
+ * answers a merchant's identifier and nothing to hold, and setting the wallet,
+ * whose address is held to the contract's address rule and whose answer to the
+ * document the wallet is read in. The door holds both on the API, and a page drawn from a
  * document the contract would not recognise is a page that cannot be trusted;
  * failing here is how that is found rather than as a blank cell in front of a
  * merchant. So the dashboard still proves that the application and the

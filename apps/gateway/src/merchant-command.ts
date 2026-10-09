@@ -30,8 +30,9 @@
  * decision rather than a gap (ADR-0019). A change of it waits and is announced
  * to the merchant before anything is written, and the gateway can hold to that
  * only if every change reaches it as the one call it announces — so the wallet
- * is set by a person signed in to the dashboard, and nowhere else, and a person at a terminal who could write it would be the one change
- * nobody was told about.
+ * is set by a person signed in to the dashboard, and nowhere else, and a person
+ * at a terminal who could write it would be the one change nobody was told
+ * about.
  *
  * It is a tested module with the terminal handed to it rather than a script
  * that prints as it goes, for the reason the dashboard's account command is.

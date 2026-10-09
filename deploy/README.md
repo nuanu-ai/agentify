@@ -244,7 +244,13 @@ migrations drop, so going back means restoring the databases to it, not
 releasing the earlier revision onto the migrated ones. A key read off an
 account row in a copy of the database taken before this release, a backup
 included, opens nothing once the release has run, because its row in the
-gateway is gone.
+gateway is gone. Restoring that restore point brings those rows back, and
+with them every such key, until this release runs again.
+
+The same holds for TEST, which takes any branch: a revision without this
+change finds both migrations applied, starts, and fails on every call that
+reads a key and on every account it reads. So rebase a branch onto `main`
+before putting it on TEST once this is there.
 
 On PRODUCTION this release goes out together with the previous one, which
 leaves those keys on the rows unrenewed. On TEST it can go alone.

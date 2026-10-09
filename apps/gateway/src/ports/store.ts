@@ -339,8 +339,8 @@ export interface StoredPayoutWallet {
  * The name is what a person reads in a list at a terminal, and nothing on the
  * wire carries it. There is no address, no password and no record of who signed
  * this merchant up, and there is not meant to be: registering makes a merchant
- * and a key here and an account on the other side of the boundary, and the
- * address and the password belong to whatever signs a person in (ADR-0014 §1).
+ * here and an account on the other side of the boundary names it, and the
+ * address belongs to whatever signs a person in (ADR-0014 §1).
  */
 export interface StoredMerchant {
   readonly id: string;
@@ -631,7 +631,8 @@ export interface Store {
    * gateway processes write it from two clocks and the door does not serialise
    * them, so an older instant can arrive after a newer one — taken as written,
    * a key in constant use would read as one nobody has touched since morning.
-   * A key that is not there is not an error, and nothing is written for it.
+   * A key that is not there is not an error, and nothing is written for it: it
+   * went with its merchant between the door reading it and this being written.
    */
   noteKeyUse(id: string, at: number): Promise<void>;
 

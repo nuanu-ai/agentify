@@ -27,18 +27,18 @@ accounts, disables a key, takes a listing name away, ends a person's sessions,
 moves the operator flag, approves live sales. Only the laptop's stack seeds its
 sandbox merchant, so that one command brings it up selling (ADR-0010).
 
-**1. The account is written at sign-in, the merchant on the dashboard's
-explicit request.** The account appears when a one-time link is consumed for
-an address that has none (ADR-0009 §5), and no form asks for a password or an
-invitation. The merchant is made later, when the signed-in person presses the
-one control the dashboard offers (ADR-0026 §4). The press calls the gateway
-inside the process the two share (ADR-0030), and each side writes in a
-transaction of its own: the gateway makes the merchant, with no key, and the
-dashboard writes its identifier on the person. A database that does not answer leaves the person signed in without a
-merchant, pressing again from inside the session rather than spending another
-link; a dashboard that fails after the gateway made the merchant leaves a
-merchant nobody names — litter, not damage, and the next attempt makes a new
-one.
+**1. The account is written at sign-in, the merchant on the dashboard's explicit
+request.** The account appears when a one-time link is consumed for an address
+that has none (ADR-0009 §5), and no form asks for a password or an invitation.
+The merchant is made later, when the signed-in person presses the one control
+the dashboard offers (ADR-0026 §4). The press calls the gateway inside the
+process the two share (ADR-0030), and each side writes in a transaction of its
+own: the gateway makes the merchant, with no key, and the dashboard writes its
+identifier on the person. A database that does not answer leaves the person
+signed in without a merchant, pressing again from inside the session rather than
+spending another link; a dashboard that fails after the gateway made the
+merchant leaves a merchant nobody names — litter, not damage, and the next
+attempt makes a new one.
 
 **2. An account names its merchant, and holds nothing else of it.** The
 dashboard calls the gateway's application as the merchant on the signed-in
@@ -64,44 +64,44 @@ routes over a merchant's keys — list, issue, disable — which a merchant's ow
 code calls over the API, and which the dashboard reaches as the same
 operations, called inside the process as a signed-in person (ADR-0030). Every
 key is one the merchant issued, so the list is all of them, the key a call
-over the API was made with included. A call over the API cannot disable the key it was made with —
-a rule in the route, because that click leaves whoever made it calling with
-something the gateway no longer takes; a session in the dashboard holds no key,
-so every key on its list can be disabled there. The rule sees the key on the
-call, so two keys disabling each other in one moment still leave a merchant
-with none of their own, which nobody has decided to refuse; the way back in is
-the mailed link.
+over the API was made with included. A call over the API cannot disable the
+key it was made with — a rule in the route, because that click leaves whoever
+made it calling with something the gateway no longer takes; a session in the
+dashboard holds no key, so every key on its list can be disabled there. The
+rule sees the key on the call, so two keys disabling each other in one moment
+still leave a merchant with none, which nobody has decided to refuse; the way
+back in is the mailed link.
 
 ## Consequences
 
 The dashboard is multi-tenant; the process-wide client and its variable are
 gone. A person who has only signed in owns no merchant yet (ADR-0026 §4); one
-who has asked the dashboard for one owns exactly one, and
-a merchant who has only ever signed in has no keys of their own. Not built and not pretended: a second
-person at a merchant, roles, deleting a merchant.
+who has asked the dashboard for one owns exactly one, and a merchant who has
+only ever signed in has no keys. Not built and not pretended: a second person at
+a merchant, roles, deleting a merchant.
 
 ## Alternatives rejected
 
-**A merchant or an account made at the terminal.** Commands that made a
-merchant with no account, wrote a key for it straight into the database, and
-wrote an account for an existing merchant from a key piped in were a second
-door beside the mailed link: a merchant nobody could sign in as, a key no
-announcement covered (ADR-0019), an account whose address nobody had proved.
-What they were for is what the one way in does: a person who needs an
-account signs in, and a merchant who has lost every key signs in with a mailed
-link and issues a new one there.
-**Seeding a merchant on a deployed channel.** A key in a host's file, written
-into the database at every start, is a merchant nobody registered and a
-credential nobody can retire without a release: disabling its row stops it,
-and a database brought up from nothing is seeded off the same line again.
-**Open registration.** Not before an address means something: the catalogue is
-shared, and the first cost of a stranger's words is the buyer's, not ours.
-**Wait for mail, build nothing.** Everything here is needed whichever the door
-is; only the door changes. **One privileged dashboard key naming the merchant
-per request.** The same secret with a second authentication mode on the money
-path (ADR-0005 §2), plus a "which merchant" parameter somebody forgets to
-check. **A registration route behind an invitation code.** It was the
-dashboard's way in while it called the gateway over HTTP; with the call inside
-the process a route is only a door to guard, and its code a secret every host
-has to keep. **Registration on the gateway.** A public form, a password and a rate limit on the money path,
-and the gateway would need the account table this decision keeps out of it.
+**A merchant or an account made at the terminal.** Commands that made a merchant
+with no account, wrote a key for it straight into the database, and wrote an
+account for an existing merchant from a key piped in were a second door beside
+the mailed link: a merchant nobody could sign in as, a key no announcement
+covered (ADR-0019), an account whose address nobody had proved. What they were
+for is what the one way in does: a person who needs an account signs in, and a
+merchant who has lost every key signs in with a mailed link and issues a new one
+there. **Seeding a merchant on a deployed channel.** A key in a host's file,
+written into the database at every start, is a merchant nobody registered and a
+credential nobody can retire without a release: disabling its row stops it, and
+a database brought up from nothing is seeded off the same line again. **Open
+registration.** Not before an address means something: the catalogue is shared,
+and the first cost of a stranger's words is the buyer's, not ours. **Wait for
+mail, build nothing.** Everything here is needed whichever the door is; only the
+door changes. **One privileged dashboard key naming the merchant per request.**
+The same secret with a second authentication mode on the money path (ADR-0005
+§2), plus a "which merchant" parameter somebody forgets to check. **A
+registration route behind an invitation code.** It was the dashboard's way in
+while it called the gateway over HTTP; with the call inside the process a route
+is only a door to guard, and its code a secret every host has to keep.
+**Registration on the gateway.** A public form, a password and a rate limit on
+the money path, and the gateway would need the account table this decision keeps
+out of it.

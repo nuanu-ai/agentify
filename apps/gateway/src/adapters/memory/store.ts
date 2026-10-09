@@ -270,7 +270,7 @@ export class MemoryStore implements Store {
   async noteKeyUse(id: string, at: number): Promise<void> {
     const found = this.#keys.get(id);
     if (found === undefined) {
-      // Revoked or forgotten between the door reading it and this being
+      // Gone with its merchant between the door reading it and this being
       // written. Nothing is owed to a row that is not there.
       return;
     }

@@ -154,9 +154,10 @@ message cannot be handed over, the key is issued all the same. A key moves
 no money and cannot set the wallet, and a merchant must not be kept from a
 key, their first above all,
 because mail is down. A new key's message names who asked: the account a
-dashboard session was signed in as, or the key a call was made with. No command at a server's terminal issues a key
-(ADR-0014), so every key made for a merchant's own code is issued through the
-gateway's keys route and announced as above, the laptop sandbox's seed aside.
+dashboard session was signed in as, or the key a call was made with. No
+command at a server's terminal issues a key (ADR-0014), so every key is issued
+through the gateway's keys route or from the dashboard, and announced as
+above, the laptop sandbox's seed aside.
 The pause stays immediate, because it is the act for "stop selling now".
 
 The wait and the messages hold on a live deployment, the one whose chain

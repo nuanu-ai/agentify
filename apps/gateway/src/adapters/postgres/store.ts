@@ -156,8 +156,8 @@ export class PostgresStore implements Store {
       .onConflictDoNothing({ target: merchants.id })
       .returning();
     // Nothing came back: the identifier is taken, and this wrote nothing over
-    // whatever was there. A command somebody typed twice is one way to get here;
-    // a generated identifier colliding is the other.
+    // whatever was there. The sandbox's seed at its second start is one way to
+    // get here; a generated identifier colliding is the other.
     return row === undefined ? null : storedMerchantOf(row);
   }
 
@@ -319,8 +319,8 @@ export class PostgresStore implements Store {
     // window in which the newer instant lands and is then written over by the
     // older one — which is the failure this is for, arrived at more slowly.
     //
-    // A key that is not there matches nothing and that is the answer: nothing
-    // removes a key, so it is an identifier nobody wrote.
+    // A key that is not there matches nothing and that is the answer: it went
+    // with its merchant between the door reading it and this being sent.
     await this.#db
       .update(merchantKeys)
       .set({ lastUsedAt: new Date(at) })

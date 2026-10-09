@@ -2,10 +2,8 @@
 #
 # ADR-0005 §1: Caddy is the only address anybody types. `/` is the scanner,
 # `/docs` the portal, `/dashboard` the dashboard, and `/v0/*` and `/x402/*`
-# are both the gateway — the merchant's API and the storefront an agent buys at,
-# less the calls only the dashboard makes from inside the stack, setting the
-# payout wallet among them — so a merchant's engineer sees one origin and never
-# reasons about ports. The
+# are both the gateway — the merchant's API and the storefront an agent buys at
+# — so a merchant's engineer sees one origin and never reasons about ports. The
 # same file describes the server later, which is why nothing below is written
 # twice: every address the routes depend on is one environment variable with a
 # local default, and the deployment overrides the variable rather than editing

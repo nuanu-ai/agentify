@@ -1072,9 +1072,10 @@ export class Gateway {
    * also means it can never half-happen — and it is asked first for that reason
    * rather than for any other, since every answer below it costs a write or a
    * read. A session in the dashboard holds no key, so it meets this never, and
-   * every key on its list can be disabled from there. `null` is every other key that is not this merchant's to disable — one that
-   * does not exist and one belonging to somebody else, told apart nowhere, so a
-   * refusal is not a way of counting another merchant's keys.
+   * every key on its list can be disabled from there. `null` is every other key
+   * that is not this merchant's to disable — one that does not exist and one
+   * belonging to somebody else, told apart nowhere, so a refusal is not a way
+   * of counting another merchant's keys.
    *
    * How far these refusals reach is worth stating. A merchant with two keys
    * they issued can still disable either with the other, and two calls made at
