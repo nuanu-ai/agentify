@@ -156,7 +156,7 @@ describe("an order off the worker stream", () => {
   ])(
     "sends what the handler returned — %s — to the order's answer route",
     async (_what, answer) => {
-      // The addendum to ADR-0004: the handler's return has an address of its
+      // ADR-0004 §2: the handler's return has an address of its
       // own, and the SDK posts it in every mode. Without it a synchronous
       // handler's answer reaches nobody.
       await workerOver(

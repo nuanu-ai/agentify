@@ -1,8 +1,8 @@
 /*
  * The visual language, shared by every surface on the origin.
  *
- * ADR-0005 §6 asks for one visual language held in one stylesheet rather than
- * repeated per page. This is that stylesheet, and it lives in a package of its
+ * The surfaces on the origin share one visual language, held in one stylesheet
+ * rather than repeated per page. This is that stylesheet, and it lives in a package of its
  * own because no two of its readers reach it the same way. Nothing serves it
  * over HTTP on the deployed origin: deploy/Caddyfile names the shared browser
  * assets one path at a time and this file is not among them, so a surface that
@@ -16,7 +16,7 @@
  * The language is light. There is no dark set and no theme attribute: the page
  * a merchant actually lands on is the scanner's, which has never had one, and
  * a second palette kept in step by hand is how the four stylesheets on this
- * origin drifted apart in the first place (ADR-0005 §6).
+ * origin drifted apart in the first place.
  *
  * The file has three parts, in this order. The tokens: colour, type, radius and
  * the border weight. The base element rules that follow from them, which is

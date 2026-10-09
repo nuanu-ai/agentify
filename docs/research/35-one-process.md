@@ -49,7 +49,7 @@ sees a restart it can retry.
 
 The cabinet starts in `apps/dashboard/src/main.ts`. It reads its own
 configuration (`apps/dashboard/src/config.ts`), opens its own pool, builds the
-identity component (Better Auth, ADR-0009), and opens up to three listeners.
+identity component (Better Auth, ADR-0026 §2), and opens up to three listeners.
 It also starts the WooCommerce worker (`apps/dashboard/src/woo-worker.ts`), a
 loop that fills the orders of merchants who connected a shop by drawing their
 stream from the gateway, the way a merchant's own worker would.
@@ -228,7 +228,7 @@ holds for a key over HTTP.
 ### Shared resources
 
 Both processes reach one database, `agentify`, with one account, the
-instance's bootstrap superuser (ADR-0003 §2, ADR-0024), and on production the
+instance's bootstrap superuser (ADR-0003 §2), and on production the
 preflight requires every service's `DATABASE_URL` to be the same one (line
 180). Either process can therefore read and write every table, the merchant's
 payout wallet included, which is the part of the boundary that no longer
@@ -587,8 +587,8 @@ and might describe a registration that change does not leave.
   by construction" narrows to the application and the contract's documents;
   the rejected "the cabinet talking to Postgres directly" becomes "the cabinet
   querying the gateway's tables".
-- ADR-0009 §2: "that merchant's key, the gateway client built per request from
-  it" becomes the calls made as that merchant.
+- ADR-0014 §2: the gateway client built per request from the account's key
+  becomes the calls made as that merchant.
 - ADR-0010, the rejected "scoping in the cabinet only": the cabinet is a caller
   of the application, and scoping still lives in the gateway's store.
 - ADR-0014 §1: registration is a call inside the process, and a gateway that
@@ -616,13 +616,12 @@ and might describe a registration that change does not leave.
   own keys and the rule about the key on the call, and loses the two
   cabinet-key routes, the unswept leftovers and "the way back in is a key of
   the other kind"; the rejected "encrypting the stored key" goes.
-- ADR-0019: "the cabinet's own key, renewed daily, is announced to nobody"
-  goes.
-- ADR-0023: "the same host boundary as the cabinet key" becomes the account's;
-  the rejected "putting shop credentials in Gateway" stays true of the
-  gateway's tables.
-- ADR-0026 §4 and its table: the press makes the merchant with no key.
-- ADR-0030: the move is complete, and the wallet write is among what went.
+- ADR-0019: "a copy of a key made for a dashboard sets nothing from outside"
+  and "a key made for a dashboard is never announced" go, and the refusal of a
+  key made for the merchant's own code is said for a gateway that knows no
+  other kind.
+- ADR-0030: the status line says the move is built, and the wallet write is
+  among what went.
 - `deploy/README.md`: a release section for the two one-way migrations.
 
 ## What was not verified
@@ -635,3 +634,22 @@ without surprises, though both packages pin the same express, 5.2.1. Whether
 outside this repository ever called the cabinet-key routes or registration;
 the argument that none could rests on their refusals, read in `routes.ts`. The
 names from the rename branch were read from uncommitted work.
+
+## Where the move stands
+
+Read on 2026-10-09 at `main` cb22013b. ADR-0030 records the decision and its
+security boundary; the order of the move, above, is this note's.
+
+Steps 1, 2 and 3 have landed, as pull requests #90, #91 and #95, together with
+the edits to other decisions listed for them. The cabinet has since been
+renamed the dashboard (`apps/dashboard`, served at `/dashboard`), so what step 2
+removed went under the names `GATEWAY_DASHBOARD_SECRET` and
+`DASHBOARD_INTERNAL_URL`. The decisions have since been shortened, and the
+step 4 list above names their sentences as they now read.
+
+Step 4 is the change that removes the key made for a dashboard, its routes at
+`/v0/keys/dashboard`, the `merchant_key` column, the registration route with
+the gateway's `REGISTRATION_INVITATION`, and the wallet write at
+`/v0/payout-wallet`, by two one-way migrations; it edits the decisions listed
+for it above and does not move the contract version. Production takes steps 3
+and 4 together (`deploy/README.md`).

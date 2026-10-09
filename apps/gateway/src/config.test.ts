@@ -140,7 +140,7 @@ describe("loadConfig", () => {
     // The promise: a local stack completes a purchase with no chain behind it,
     // and a deployment that names a real facilitator cannot also be pretending.
     // One field holds one value, so the two cannot be held at once — there is
-    // no flag beside the address to be left set from yesterday (ADR-0008).
+    // no flag beside the address to be left set from yesterday (ADR-0020).
     expect(isSandboxFacilitator(loadConfig(required).payment.facilitatorUrl)).toBe(false);
 
     const sandbox = loadConfig({ ...required, FACILITATOR_URL: SANDBOX_FACILITATOR });
@@ -158,7 +158,7 @@ describe("loadConfig", () => {
     // The mistake this catches is a production environment file copied onto a
     // sandbox. Those credentials exist only to talk to a real facilitator, so
     // beside an address that settles against nothing they are somebody's
-    // leftovers rather than a choice (ADR-0008).
+    // leftovers rather than a choice (ADR-0020).
     const sandbox = { ...required, FACILITATOR_URL: SANDBOX_FACILITATOR };
 
     expect(() => loadConfig({ ...sandbox, CDP_API_KEY_ID: "key-id" })).toThrowError(/CDP_API_KEY/);
@@ -186,7 +186,7 @@ describe("loadConfig", () => {
     });
 
     it("still refuses a real credential beside a facilitator that settles nothing", () => {
-      // The door ADR-0008 put here does not move: what changed is the reading of
+      // The door ADR-0020 puts here does not move: what changed is the reading of
       // nothing, not the reading of something.
       expect(() =>
         loadConfig({ ...required, FACILITATOR_URL: SANDBOX_FACILITATOR, CDP_API_KEY_ID: "key-id" }),

@@ -4,7 +4,7 @@
  * The tokens, the base element rules, the focus ring and the primitives — the
  * container, the button, the eyebrow, the mark — come from
  * `@agentify/visual/tokens.css`, imported ahead of this file in app/layout.tsx
- * (ADR-0005 §6). Nothing here declares a colour, a family or a radius.
+ * as every surface does. Nothing here declares a colour, a family or a radius.
  */
 
 html {

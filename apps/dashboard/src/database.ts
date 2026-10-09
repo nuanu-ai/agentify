@@ -3,7 +3,7 @@
  * that brings them up to date.
  *
  * Nothing here reads or writes a row. The component that signs people in does
- * all of that through drizzle (ADR-0009), and what this file owns is the two
+ * all of that through drizzle (ADR-0026 §2), and what this file owns is the two
  * things a component cannot own for us: a pool that does not take the process
  * down when a connection dies, and a migration history kept apart from the
  * gateway's.

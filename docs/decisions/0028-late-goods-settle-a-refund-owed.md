@@ -1,94 +1,68 @@
 # 0028. Late goods settle a refund owed until a refund is recorded
 
 Date: 2026-09-23
-Status: accepted (the product owner, 2026-09-23; the shipped order added
-2026-09-28 with ADR-0033). Not built yet: the command that records a refund,
-the operator's pause, and the merchant's view of the debt.
+Status: accepted (the product owner, 2026-09-23 and 2026-09-28). The order
+state machine follows the rule; the refund command, the operator's pause, the
+merchant's view and the published words for a recorded refund are not built.
 
 ## Context
 
 When an asynchronous order passes its delivery deadline with no goods, it
-becomes `refund_due`. The buyer has paid, and the merchant owes the goods or
-the money back from their own wallet (ADR-0019). The order state machine in
-`packages/core` would end the debt as `refunded` on a `refund_settled` event,
-but no command, route or screen produces that event. The merchant is not shown
-the address to pay back. A late delivery is accepted and closes the debt. It
-can come from the merchant's own worker without anyone deciding it, because a
-`refund_due` order stays on the list of open orders a worker walks. No rule
-says how long a debt may stand.
+becomes `refund_due`: the buyer has paid, and the merchant owes the goods or
+the money back from their own wallet (ADR-0019), a refund paid outside Agentify
+that nothing in the system sees. A late delivery can still arrive, even from
+the merchant's own worker with nobody deciding it, because a `refund_due` order
+stays on the list of open orders a worker walks.
 
 ## Decision
 
 Late goods settle the debt until a refund is recorded. Before that, a delivery
-closes the order as `delivered`. A recorded refund makes it `refunded`, which
-is final, and a later delivery gets a final error. This narrows what the
-contract's `deliver_order` description and the portal's Orders page promise
-today, "an error once the refund has gone out". A refund nobody reports cannot
-be seen, so both texts change with the implementation.
+closes the order as `delivered`, and the agent reads `refund_due` as not an
+end: goods may still arrive at the order's `status_url`, and `refund_due` has
+no deadline of its own. A recorded refund makes the order `refunded`, which is
+final, and a later delivery gets a final error. A refund nobody reports cannot
+be seen, so the contract and the portal promise that error once a refund is
+recorded, not once it has gone out.
 
-The operator is whoever runs this deployment and its terminal commands. The
-operator records a refund with a command, as ADR-0027 records a silent charge.
-The command writes `refund_settled` and keeps the transaction beside the order,
-in a field of its own. It is marked as a report, not a reading of the chain,
-and it records who paid: the merchant, or Agentify where Agentify paid the buyer
-back and then settles with the merchant outside the system.
+The operator, whoever runs this deployment, records a refund with a terminal
+command, as ADR-0027 records a silent charge. The transaction is kept beside
+the order in a field of its own, marked as a report rather than a reading of
+the chain, with who paid: the merchant, or Agentify where it paid the buyer
+back and settles with the merchant outside the system. The same command records
+a refund on a shipped order (ADR-0033) whose parcel the merchant admits lost.
+That order is not reopened into a refund owed, because a stale delivery from
+the merchant's worker would close the debt with nothing sent, and a replacement
+parcel is the merchant's to send, unrecorded here.
 
-The same command records a refund on a shipped order (ADR-0033) whose parcel
-the merchant admits lost, and the order becomes `refunded`. A shipped order is
-not reopened into a refund owed: the merchant's worker walks the open orders,
-and a stale delivery of the lost parcel's record would close that debt with
-nothing sent. A replacement parcel is the merchant's to send, and it is not
-recorded here. The merchant's view below shows the payer's wallet address on a
-shipped order as well, since that is where a lost parcel's money goes back.
+The merchant sees, on a `refund_due` order and on a shipped one, the payer's
+checksummed wallet address where the payment layer named one, with the amount
+and the network. On a `refund_due` order they also see the two ways out,
+deliver or report the refund to the operator, the timeline below, and a warning
+that a refund paid but not reported does not stop a late delivery.
 
-On a `refund_due` order the merchant sees five things. The first is the
-payer's address, checksummed, wherever the payment layer named one. The second
-is the amount and the network. The third is the two ways out: deliver, or
-report the refund to the operator. The fourth is a warning that a refund paid
-but not reported does not stop a late delivery, including one the merchant's
-own worker makes. The fifth is what follows if neither happens: within three
-business days of the deadline, the operator contacts them and pauses their
-selling until the debt is settled. Where no payer was named, only goods close
-the debt, so the fourteen days below cannot be kept for that order. Until the
-dashboard names a way to reach the operator, a merchant who signed themselves up
-can report a refund only after the operator has contacted them.
-
-The operator keeps the time, counted from the delivery deadline. After three
-business days with neither goods nor a recorded refund, the operator contacts
-the merchant and pauses their selling. By fourteen calendar days the buyer
-holds the goods or the money. If the merchant has still done neither, the
-operator settles it by hand, and at pilot prices Agentify may pay the buyer
-back itself. These numbers are our own adaptation of practice. The sources,
-each of which starts its clock at a different moment, are in
-`docs/research/34-refund-due.md`. For an undelivered order this ends the
-portal's line that Agentify does not stand between merchant and buyer.
-
-The agent reads that `refund_due` is not an end: goods may still arrive at the
-order's `status_url` until a refund is recorded. `refunded` is final, and
-`refund_due` has no deadline of its own. Agents are told nothing about the three
-or the fourteen days. If that ever changes, the time is given as an absolute
-time the agent can read, never in business days, which an agent has no time
-zone to count.
+The operator keeps the time from the delivery deadline, by numbers adapted from
+practice (`docs/research/34-refund-due.md`). After three business days with
+neither goods nor a recorded refund, they contact the merchant and pause their
+selling until the debt is settled. By fourteen calendar days the buyer holds
+the goods or the money, settled by the operator by hand if need be, and at
+pilot prices Agentify may pay the buyer back itself. Where no payer was named,
+only goods close the debt and the fourteen days cannot be kept. Agents are told
+nothing of these days; if ever they are, it is as an absolute instant, never in
+business days, which an agent has no time zone to count.
 
 ## Consequences
 
-A buyer can still get the goods after the deadline, and a merchant has a way
-out of the debt. A recorded refund cannot be undone. The cost is showing
-the payer's address, a field on each order, two operator commands, the
-operator's attention and, at worst, Agentify's money. The contract's words for
-the agent and the merchant change with it, and so does the portal. This does not
-protect against a refund that is paid but not reported and then followed by a
-late delivery: the buyer ends up with both, which costs at most one purchase.
-Practice lets the buyer choose between money and late goods; here the buyer
-cannot. The timeline moves into the machine the first time an operator misses
-it.
+A buyer can still get the goods after the deadline, a merchant has a way out of
+the debt, and for an undelivered order Agentify stands between merchant and
+buyer. A recorded refund cannot be undone. The cost is showing the payer's
+address, a field on each order, two operator commands, the operator's attention
+and, at worst, Agentify's money. A refund paid but not reported and followed by
+a late delivery leaves the buyer with both, at most one purchase. The timeline
+moves into the machine the first time an operator misses it.
 
-Rejected:
-- Refusing late goods. With no refund payable or recordable, the buyer would be
-  left with nothing.
-- A grace window. It is a second deadline and a knob, and it does not stop the
-  double outcome.
-- The buyer choosing. It needs a route an agent writes through, where the only
-  proof is the order identifier (ADR-0011).
-- A merchant button to record a refund. It is another surface to learn and
-  secure, while there are few merchants and one operator can record for them.
+Rejected: refusing late goods (with no refund payable or recordable, the buyer
+is left with nothing); a grace window (a second deadline and a knob, which does
+not stop the double outcome); the buyer choosing between money and late goods,
+as practice allows (it needs a route an agent writes through, where the only
+proof is the order identifier, ADR-0011); a merchant button to record a refund
+(one more surface to secure, while one operator can record for few merchants).

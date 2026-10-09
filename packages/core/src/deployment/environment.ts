@@ -3,7 +3,7 @@
  *
  * There is no `AGENTIFY_ENV`. The chain is a field the gateway already takes,
  * it holds one value, and a single field cannot disagree with itself — which
- * is the argument ADR-0008 made for the sandbox and the same one made again.
+ * is the argument ADR-0020 makes for the sandbox, made for the chain as well.
  * A flag beside the chain is a second field that survives a copied `.env`, can
  * be left set from yesterday, and enables the one mistake worth designing
  * against: a gateway that believes it is testing while it moves real money.
@@ -49,7 +49,7 @@ export const LIVE_CHAINS: ReadonlySet<string> = new Set([
 
 /**
  * The address that selects the scripted facilitator: verify and settle against
- * nothing, and every payment accepted is pretend (ADR-0008).
+ * nothing, and every payment accepted is pretend (ADR-0020).
  *
  * It lives here rather than in the gateway because the dashboard needs the same
  * answer about the same string, and two spellings of one distinguished value
@@ -168,8 +168,8 @@ export const SURFACE_MARKER_ATTRIBUTE = "data-agentify-surface";
  * worker does when the order reaches it, and the merchants here are real
  * integrators running their own code.
  *
- * The sandbox wording is ADR-0008's own sentence, said to a reader instead of
- * to a log.
+ * The sandbox wording says what ADR-0020 says of the sandbox — nothing it
+ * accepts is real — to a reader instead of to a log.
  */
 export const SURFACE_WORDS: Readonly<Record<SurfaceMode, string | null>> = {
   sandbox:

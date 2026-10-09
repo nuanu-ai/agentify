@@ -89,7 +89,7 @@ interface Running {
    * without a session, because the session ended while they were there or the
    * shop was opened in another browser.
    *
-   * The session cookie is `SameSite=Lax` (ADR-0009 §6), so a browser that is
+   * The session cookie is `SameSite=Lax` (ADR-0026 §2), so a browser that is
    * signed in carries it back and is sent on into the dashboard; the page the
    * return address draws is for the browser that does not.
    */
@@ -1596,7 +1596,7 @@ describe("coming back from the shop with no session on the request", () => {
    * The session may have ended while the merchant was in their shop, or the
    * shop may have been opened in another browser. Behind the gate, that lands
    * the merchant on a sign-in at the end of a flow that worked, and what they
-   * read is "it broke" (ADR-0009 §2).
+   * read is "it broke" (ADR-0026 §7).
    */
   const cameBack = (running: Running, query = "?success=1&user_id=whatever"): Promise<Visit> =>
     running.getWithoutCookie(`/woocommerce/return${query}`);

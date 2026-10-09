@@ -1,94 +1,71 @@
 # 0030. The gateway and the dashboard are one process
 
 Date: 2026-09-25
-Status: accepted (the product owner, 2026-09-25, on the direction, with the
-merger as the next step; 2026-09-25, on the name, the wallet message, the
-WooCommerce worker and the contract version, with the recommendations agreed;
-the move complete 2026-10-09)
+Status: accepted (the product owner, 2026-09-25). Built, to the last step in
+`docs/research/35-one-process.md`, 2026-10-09.
 
 ## Context
 
-ADR-0005 made the gateway, the money path under `/v0` and `/x402`, and the
-dashboard, the merchant's pages, two processes, with the dashboard a client of the
-public API. The dashboard owns people (ADR-0009) and the gateway knows none, so
-everything between them is a network call with a credential, and three things
-exist for that alone: a key per account for the dashboard to call as its
-merchant, stored as issued, renewed at sign-in and daily, and left alive when a
-renewal breaks off (ADR-0014 §2, §5); a route with its own secret for the
-gateway to have a merchant mailed about a payout wallet change or a new key
-(ADR-0019); and the refusal `wallet_change_unconfirmed`, for a dashboard that did
-not answer. The boundary protects little: both processes write the one
-database as its superuser (ADR-0024), payout wallets included, run from one
-image and are released together (`deploy/activate.sh`). The survey is
-`docs/research/35-one-process.md`.
+The gateway is the money path under `/v0` and `/x402`, and the dashboard is the
+merchant's pages; the dashboard owns people (ADR-0026 §2) and the gateway knows
+none. As two processes, everything between them is a network call with a
+credential, which takes a key per account for the dashboard to call as its
+merchant (ADR-0014), a route with its own secret for the gateway to have a
+merchant mailed (ADR-0019), and a refusal for a dashboard that did not answer.
+That boundary protects little: both write the one database as its superuser
+(ADR-0003 §2), payout wallets included, and run from one image, released together.
 
 ## Decision
 
-**One process**, the `app` service, named after the image it runs from. Two
-public listeners let each surface keep its middleware and Caddy change only
-host names: port 3000 serves `/v0`, `/x402` and `/healthz`, port 3001 serves
-`/dashboard` and `/dashboard/healthz`, and the health check asks both. Port 3002
-stays the scanner's route to the dashboard (ADR-0026 §2); the scanner stays
-apart, and Caddy the one door.
+One process, the `app` service, named after the image it runs from. Two public
+listeners let each surface keep its middleware and Caddy change only host
+names: port 3000 serves `/v0`, `/x402` and `/healthz`, port 3001 serves
+`/dashboard` and `/dashboard/healthz`, and the health check asks both. Port
+3002 stays the scanner's route to the dashboard (ADR-0026 §2); the scanner
+stays apart, and Caddy is the one door.
 
-**The dashboard calls the application, not the HTTP API.** Its screens and its
+The dashboard calls the application, not the HTTP API. Its screens and its
 WooCommerce worker call the `Gateway` methods the `/v0` handlers call, as the
-merchant on the signed-in account's row, with requests and answers still held to
-the contract's schemas. Two calls are the dashboard's alone and have no route:
-registering, and setting the payout wallet (ADR-0019), whose address and answer
-are held to the contract's schemas all the same. The caller is the signed-in
-person rather than a key, so a message about a payout wallet change, which is
-asked for only in the dashboard (ADR-0019), names that person. The dashboard
-then proves that the application and the contract's documents are enough to draw
-every screen, and no longer that the HTTP API is. What proves that is what a
-merchant's engineer uses: the SDK's tests, the purchase through the real gateway
-in `packages/slice`, the portal's examples run as fixtures, and the gateway's
-HTTP test of every `/v0` route. A screen that needs what a merchant's code could
-need still gets a contract route.
+signed-in account's merchant, held to the contract's schemas. Registering and
+setting the payout wallet (ADR-0019) are the dashboard's alone and have no
+route, and their address and answer are held to the same schemas. The message about a payout wallet change, asked for only in the
+dashboard (ADR-0019), names the signed-in person. The dashboard then proves
+that the application and the contract's documents can draw every screen. What
+proves the HTTP API is what a merchant's engineer uses: the SDK's tests, the
+purchase through the real gateway in `packages/slice`, the portal's examples
+run as fixtures and the gateway's HTTP test of every `/v0` route. A screen that
+needs what a merchant's code could need still gets a contract route.
 
-**No key between them.** Every key is one the merchant issued. Nothing is
-made for the dashboard, so there is no renewal, no `merchant_key` column, no
-routes at `/v0/keys/dashboard` and no refusals of their own; no registration
-route and no invitation, since the press is a call inside the process; and no
-wallet write on `/v0`, which only the dashboard's key reached. The route on port
-3003 with `GATEWAY_DASHBOARD_SECRET` and `DASHBOARD_INTERNAL_URL`,
-`wallet_change_unconfirmed`, and the dashboard's HTTP client with `GATEWAY_URL`
-are gone with the network between them. Besides the race, two wallet refusals
-remain, because the mail provider is still outside: nobody to tell, and a
-message the provider did not take while others may have gone out. The
-dashboard words them, and they carry no published code.
-
-**The move** was four pull requests, each leaving `main` releasable: one
-process with both calls still made over loopback, the only step that touches
-deployment; the gateway telling the dashboard in-process; the dashboard calling the
-application in-process; the key deleted from the contract, the gateway and the
-data, by two migrations that cannot be undone but by a restore point. The
-research note lists the steps. The contract version stays, since no SDK worker
-calls these routes or reads these codes: the reasoning of ADR-0006 §2, whose
-exception this widens beyond the payout wallet's fields.
+Inside the process nothing between the two needs a credential: the gateway
+tells the dashboard by a call, with no route, secret or refusal for silence.
+No key is made for the dashboard, so every key the gateway knows is one the
+merchant issued: there are no routes at `/v0/keys/dashboard`, no
+`merchant_key` column, no registration route or invitation code, and no wallet
+write on `/v0`, which only such a key reached. Of the payout wallet refusals,
+only the race and those about the mail provider, still outside, remain, worded
+by the dashboard with no published code. No SDK worker called those routes or
+read those codes, so the contract version does not move: ADR-0006 §2's
+exception widens to them. The key's rows and column were deleted by two
+migrations that a restore point alone undoes.
 
 ## Consequences
 
-A defect in the dashboard now stops sales: a crash, a leak or a blocked event
+A defect in the dashboard stops sales: a crash, a leak or a blocked event
 loop ends the process holding every parked purchase and worker poll. Orders
-resume from Postgres after the restart (ADR-0013); a synchronous purchase in
-flight is lost to its agent, which retries. That is accepted because the two
+resume from Postgres after the restart (ADR-0013), and a synchronous purchase
+in flight is lost to its agent, which retries. That is accepted because the two
 are already released and restarted together, and at this scale a crash is a
 defect to fix rather than a load to isolate. The money path shares a process
 with sessions, mail and the power to remove a person, kept apart by the package
-boundary and review, as they already were in the database. The release's checks
-per service become one service's, and the preflight's comparisons of the two
-environments go. The trigger to split again is a measured incident in which
-the dashboard took sales down, or a dashboard that needs a runtime the gateway
-cannot share.
+boundary and review, as in the database. The trigger to split again is a
+measured incident in which the dashboard took sales down, or a dashboard that
+needs a runtime the gateway cannot share.
 
-Rejected. **Microservices**: more network, more secrets and more states of "did
-not answer", the cost removed here. **A growing internal route**: each fact
-about people the money path needs becomes one more call with its own refusal
-for silence. **Keeping the dashboard on `/v0`**: over loopback, something on the
-public listener must name the merchant, the second mode of authentication
-ADR-0014 rejected; through the handlers in-process, the published contract
-keeps describing a caller with no key. **Merging the scanner**: a Next.js
-server and a browser-driving worker, whose one call to the dashboard is about
-identity rather than money, would add the crash cost above for nothing, until
-that call grows.
+Rejected: microservices (more network, more secrets and more states of "did not
+answer", the cost removed here); a growing internal route (each fact about
+people the money path needs becomes one more call with its own refusal for
+silence); keeping the dashboard on `/v0` (over loopback something on the public
+listener must name the merchant, the second mode of authentication ADR-0014
+rejected; in-process the published contract would describe a caller with no
+key); merging the scanner (a browser-driving worker whose one call to the
+dashboard is about identity, not money, would add the crash cost for nothing).

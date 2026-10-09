@@ -47,9 +47,9 @@ import type { StoredOrder } from "../../ports/store.js";
  * has to survive a restart — configuration is what the operator sets, and this
  * is what the merchant sets.
  *
- * There is no address, no password and no record of who signed them up. That is
- * registration, which is the decision after this one (ADR-0010), and a column
- * nobody fills in is a column that lies. The name is what a person reads at a
+ * There is no address, no password and no record of who signed them up. Those
+ * belong to registration (ADR-0014), not here, and a column nobody fills in is a
+ * column that lies. The name is what a person reads at a
  * terminal; nothing on the wire carries it. What does go out is the separate
  * listing name beside it, and only where somebody set one.
  */

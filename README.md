@@ -96,7 +96,7 @@ pnpm buy                      # the first card in the catalogue
 pnpm buy esim                 # the one delivered later
 ```
 
-The gateway settles against nothing locally (ADR-0008): a purchase completes
+The gateway settles against nothing locally (ADR-0020): a purchase completes
 with no wallet, no network and no faucet, and the first line of its log says so.
 
 The dashboard is where a merchant sets the name buyers see and issues the keys
@@ -127,8 +127,8 @@ application's log (`docker compose logs app`) like every other one here, and it 
 one session the whole site has, the report and the dashboard alike, for thirty
 days from the last visit; the scanner keeps no session of its own and asks the
 dashboard whose a cookie is. A person becomes a merchant only by pressing the one
-control the dashboard offers for it. ADR-0026 draws that boundary and ADR-0024
-says what the scanner keeps of its own.
+control the dashboard offers for it. ADR-0026 draws that boundary and says what
+the scanner keeps of its own.
 
 The scanner's tables live in the same database as the gateway's and the
 dashboard's, `agentify`. A machine whose volume still holds them in a second
@@ -184,7 +184,7 @@ with an order identifier, which is the whole of its proof when it comes back
 for the goods (ADR-0011). Fulfillment against the merchant's confirmation is
 designed in the machine and refused at the door: a card asking for it is not
 published, because the message that would tell the agent it may now pay does
-not exist yet (ADR-0007). The portal's [orders page](apps/docs/orders.md)
+not exist yet (`docs/research/40-confirmation-mode-seam.md`). The portal's [orders page](apps/docs/orders.md)
 draws each of the three, and its table of how an order can end is the test
 suite's own fixture.
 
@@ -217,7 +217,7 @@ its own.
 | `packages/core` | The order state machine: pure logic, zero IO, zero runtime dependencies. |
 | `packages/sdk` | `@nuanu-ai/agentify`: what a merchant integrates against. Its runtime tree is the contracts package and zod, and nothing else. |
 | `packages/slice` | A mock merchant and a buyer, driving the offline gate, the `buy` and `smoke` commands, and the stand. |
-| `packages/visual` | `@agentify/visual`: one stylesheet — the tokens, the base element rules and the shared primitives every surface on the origin is drawn with (ADR-0005 §6) — and under `public/`, the mark and the faces Caddy serves at `/assets` and `/styles`. No build step and no JavaScript. |
+| `packages/visual` | `@agentify/visual`: one stylesheet — the tokens, the base element rules and the shared primitives every surface on the origin is drawn with — and under `public/`, the mark and the faces Caddy serves at `/assets` and `/styles`. No build step and no JavaScript. |
 | `packages/scanner-contracts`, `packages/scanner-database`, `packages/scanner` | The scanner's private contracts, storage and evaluation engine. |
 | `packages/analytics`, `packages/observability`, `packages/remediation` | The scanner's remaining packages, kept separate from the engine. |
 | `deploy/` | Every Dockerfile, the Compose overlays for test and production, the Caddy route table, and the release: `agentify-release`, the activation script and the one Compose command line per channel. `deploy/README.md` is the release runbook. |

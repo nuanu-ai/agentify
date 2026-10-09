@@ -7,7 +7,7 @@
  *
  * There is a database address here and the dashboard's own tables are what it
  * is for: the people who sign into the dashboard, their sessions, their
- * merchant binding, the one-time links they are sent (ADR-0009) and a
+ * merchant binding, the one-time links they are sent (ADR-0026 §2) and a
  * connected WooCommerce shop. Every card, order and receipt on every screen
  * comes from the gateway's application, which runs in this process and is
  * handed to the dashboard there (ADR-0030), so nothing here says where the
@@ -209,8 +209,7 @@ const environmentSchema = z.object({
    * What a message says it is from.
    *
    * Nothing reads mail sent back to it — there is no inbox behind this address
-   * and no bounce anybody looks at — so ADR-0009 asks that the address itself
-   * say so. A deployment that sends real mail has to name one; the sandbox does
+   * and no bounce anybody looks at — so the address itself has to say so. A deployment that sends real mail has to name one; the sandbox does
    * not, because the log is not delivered to anybody.
    */
   MAIL_FROM: emptyIsAbsent(z.string().min(1)),

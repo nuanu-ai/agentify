@@ -9,7 +9,7 @@
  * signals and the order things start and stop in belong to `apps/app`, which
  * starts the gateway beside this. The tables are the people who sign in, their
  * sessions, the one-time links they are sent, and a merchant's connected
- * WooCommerce shop (ADR-0009 §1, ADR-0023): every card, order and receipt on
+ * WooCommerce shop (ADR-0026 §2, ADR-0023): every card, order and receipt on
  * every screen comes from the gateway's application, called inside this
  * process as the merchant on the signed-in account's row (ADR-0030).
  *

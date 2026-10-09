@@ -174,7 +174,7 @@ const sections = (chrome: Chrome): string =>
 /**
  * The menu behind the burger on a phone and a tablet, where there is no room
  * for the sidebar. A details element, so it opens and closes on its button
- * with no script at all (ADR-0009 §3), and every link in it leads to another
+ * with no script at all (ADR-0005 §4), and every link in it leads to another
  * page, which closes it. Its button says "Menu" in both states, because a
  * details element already tells a screen reader whether it is open.
  *
@@ -196,7 +196,7 @@ const narrowMenu = (chrome: Chrome): string => `<details class="app-menu">
  *
  * The stylesheet is linked rather than inlined so that a merchant moving
  * between the screens fetches it once, and so that the one visual
- * language ADR-0005 §6 asks for is one file rather than four copies.
+ * language the surfaces share is one file rather than four copies.
  *
  * The faces are linked separately, from the shared origin, because they are
  * woff2 files Caddy serves out of the visual package and their addresses are

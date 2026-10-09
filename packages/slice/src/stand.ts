@@ -737,7 +737,7 @@ const doAction = async (form: URLSearchParams): Promise<void> => {
         // The console says this, and the wire does not. A challenge for a card
         // alone quotes the published price and does not ask the merchant, and
         // the gateway's own line beside it is the ecosystem's boilerplate
-        // (ADR-0021). Explaining that to a person is this console's job, and
+        // (research note 25). Explaining that to a person is this console's job, and
         // the flag it reads is the one the catalogue publishes for exactly this.
         if (askedAtPurchase) {
           beat(
@@ -953,7 +953,7 @@ const queueAction = (form: URLSearchParams): Promise<boolean> => {
 /* --- the files the product is drawn with -------------------------------- */
 
 /*
- * ADR-0005 §6 asks for one visual language held in one stylesheet rather than
+ * The surfaces share one visual language, held in one stylesheet rather than
  * copied per surface. That file is `packages/visual/tokens.css`, and the stand
  * serves the repository's own — which is the point. A second copy of the
  * palette living beside this console is exactly how one visual language becomes

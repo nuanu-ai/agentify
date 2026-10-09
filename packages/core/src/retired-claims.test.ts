@@ -17,9 +17,8 @@
  * What this is not: a style checker. A phrase earns a line here only after it
  * has been believed, written down, and found to be false — and the line records
  * what the truth is, so that whoever trips it learns something rather than
- * searching for a synonym. The decision records are exempt: a corrected
- * decision keeps its wrong sentence on purpose, so that anybody who built on it
- * can see what they read.
+ * searching for a synonym. The decision records are held to it too: a
+ * corrected decision is edited in place, and git keeps what it used to say.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -30,13 +29,14 @@ import { describe, expect, it } from "vitest";
 const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 
 /**
- * What we search: source, the merchant's pages, and the notes at the root.
+ * What we search: source, the merchant's pages, the research notes and the
+ * decisions.
  *
  * Walked with the standard library rather than a glob package, because a
  * dependency added for one search is a dependency somebody has to justify at
  * every release afterwards.
  */
-const LOOK_IN = ["apps", "packages", "docs/research"];
+const LOOK_IN = ["apps", "packages", "docs/research", "docs/decisions"];
 const READABLE = /\.(ts|md)$/;
 const SKIP = new Set(["node_modules", "dist", ".vitepress", "cache"]);
 
@@ -58,13 +58,8 @@ function filesUnder(directory: string): string[] {
 
 const everyFile = (): string[] => LOOK_IN.flatMap(filesUnder);
 
-/**
- * Where a retired sentence is allowed to survive.
- *
- * `docs/decisions/` keeps the wrong words of a corrected decision deliberately,
- * and this file quotes them all by definition.
- */
-const EXEMPT = [/^docs\/decisions\//, /retired-claims\.test\.ts$/];
+/** Where a retired sentence is allowed to survive: this file quotes them all. */
+const EXEMPT = [/retired-claims\.test\.ts$/];
 
 interface Retired {
   /** The words, lowercased, as they were actually written. */

@@ -1,88 +1,65 @@
 # 0023. A connected WooCommerce shop is a merchant credential we hold and fill orders with
 
 Date: 2026-09-14
-Status: accepted
+Status: accepted; the connector is experimental
 
 ## Context
 
-A WooCommerce owner has a catalogue and no code that can answer Agentify
-orders. Stock Woo can grant a key, read products, create an order and grant a
-protected download without an Agentify plugin. Connecting it gives us a third
-party's write credential and makes Agentify responsible for returning actual
-goods to the buying agent. An order number is not a product.
+A WooCommerce owner has a catalogue and no code that answers Agentify orders.
+Stock WooCommerce can grant an application a key, serve products, create an
+order and grant a protected download (`docs/research/33-woo-connect-probe.md`),
+so connecting a shop hands us a third party's write credential and the duty to
+give the buying agent actual goods, which an order number is not. The connector
+is experimental and not the product's acceptance gate; the SDK is its path.
 
 ## Decision
 
-**Dashboard keeps the shop key and secret as Woo issued them.** They live on the
-merchant account, behind the host boundary everything on it is behind. Woo can
-revoke them. The database is a boundary against the network, not the host.
+The dashboard keeps the shop's key and secret as WooCommerce issued them, on the
+merchant's account in the dashboard's database, a boundary against the network
+and not the host; the shop owner can revoke them, and no screen is handed the
+row that holds them. The callback that brings them spends, in the transaction
+that writes the connection, a random grant row bound for fifteen minutes to the
+account and the shop's root origin, and takes the shop address from that row,
+never from the callback. The account's next Connect replaces the row, so an
+older callback cannot overwrite a newer connection; an expired row is refused
+but stays visible to its owner. Requests to a shop go only to a checked and
+pinned public address, keep TLS host verification and follow no redirect off the
+shop.
 
-**The callback spends one random grant row and writes the connection atomically.** It is bound to the account and
-root shop origin and expires after fifteen minutes. A live callback deletes it;
-an expired callback is refused while the attempt remains visible. That
-account's next Connect supersedes it, so an older callback cannot replace a
-newer connection. Another account never sweeps it. The shop address comes from
-the row, never callback input. Each connection gets a private revision.
+The one product class is a single protected download: a published, purchasable,
+in-stock simple product in US dollars, virtual and downloadable, without managed
+stock and not sold individually, with one non-public same-origin file
+downloadable without limit or expiry, from a shop at its root address with tax
+calculation off and safe download settings; anything else is named and skipped
+at import. The card is asynchronous, priced at purchase and keyed by shop origin
+and product id. It delivers WooCommerce's own download permission URL, file name
+and order number; the URL holds the order key and a hash of the order's email
+and is a bearer secret, shown only in that delivery. An accepted price answer
+durably binds its `price_id` to a fingerprint of product, price, file and
+settings, which the product read at payment must match.
 
-**The working product is one protected native download.** Import accepts a
-published, purchasable, in-stock, unmanaged-stock simple USD product that is
-virtual, downloadable and not sold individually, and has one protected
-same-origin file with unlimited count and expiry. Shop tax calculation is
-disabled, regardless of the product's dormant tax-status default, and the safe
-download settings are authoritative. Public raw files and everything outside
-this class are named and skipped.
-
-The card is asynchronous and live-priced. Its identity binds shop origin and
-Woo product id. Delivery is Woo's native permission URL, file name and order
-number. The URL contains Woo's order key and a hash of the merchant order email,
-contains no email, and is a bearer secret rather than wallet-bound. It appears
-only in that order's delivery.
-
-Every accepted quote durably binds its `price_id` to a digest of the root shop
-origin, product, amount/currency, download id/name, protected source address and
-supported settings. The paid order must carry that price id and the fresh
-authoritative product must match. The protected address is never stored.
-
-**Dashboard fills the order as the merchant's worker,** calling the gateway's
-application inside the process the two share (ADR-0030). After Agentify settles,
-Dashboard rechecks the product and settings, claims the Agentify order, creates
-one paid Woo order and durably records the permission ingredients before
-answering. Redelivery returns the stored result and never creates a second Woo
-order. The ledger phase is `precreate_refused`, `create_unknown` or `placed`;
-only a refusal proved before POST is `precreate_refused`. Every response or
-failure after POST that does not validate a complete correlated result remains
-`create_unknown` and never reopens POST. A placed result can be delivered after
-disconnect or shop switch because it needs no Woo credential.
-
-The ledger is monotone. Absent becomes either `precreate_refused` or
-`create_unknown`; explicit recovery alone moves the former to the latter;
-validated binding alone moves `create_unknown` to `placed`; `placed` is final.
-Every phase retains the accepted `price_id` and its quote fingerprint, never a
-changed product observed while refusing or recovering the order.
-
-**A private exact-order command closes paid failures.** A pre-create refusal may
-make one POST only after the same origin reconnects under a new revision and
-the sold product still passes preflight. An unknown create requires an
-operator-supplied Woo id and authenticated GET-by-id. Exact shop, transaction,
-metadata, merchant, product, quantity, amount, currency, paid state and native
-permission facts are required before idempotent late delivery. Mismatch remains
-refund debt. This adds no public route or SDK method.
+The dashboard fills the order as the merchant's worker, calling the gateway's
+application inside the shared process (ADR-0030): it checks the product again,
+claims the order in a ledger, creates one paid WooCommerce order and records its
+permission before answering, so a redelivery returns the stored result, never a
+second order. The ledger moves forward only: a refusal proved before the create
+request is `precreate_refused`; once that request is sent the order is
+`create_unknown`, never resent on its own, until a validated, correlated answer
+makes it `placed`, which is final and needs no shop credential to deliver. A
+private command for one order, not a public route or SDK method, closes paid
+failures: a pre-create refusal may create once after the merchant reconnects the
+same shop and the product still qualifies; an unknown create binds only an order
+id an operator supplies, read back and matched on every fact of the sale. A
+mismatch stays a refund owed.
 
 ## Consequences
 
-Woo orders use the merchant's email; no buyer email is requested or exposed.
-Managed stock, physical and variable goods, gifts/vouchers, multiple files,
-finite permissions and external file stores are unsupported. Import reads at
-most two hundred products, qualifies at most four concurrently, and stops after
-the first unknown publish result.
-Stale cards remain visible, but a fresh authoritative quote refuses unsupported
-state before payment; a change after quote can become visible refund debt.
-
-All outbound Connect, catalogue, authenticated REST, recovery and raw-file
-requests resolve only public addresses, pin the approved address, preserve TLS
-host verification and refuse redirects. Non-root WordPress paths are refused.
-A different origin cannot fulfil a card imported from the previous one.
-
-Rejected: an Agentify Woo plugin, buyer-email delivery, raw file URLs,
-order-number-only delivery, automatic scans that infer an unknown order is
-absent, and putting shop credentials in Gateway.
+The WooCommerce order carries the merchant's own email, since WooCommerce mails
+whatever address is on it; whose address belongs there is an open product
+question, and no buyer email is asked for. A card whose product changed or went
+stays listed until the merchant pauses it; the price check refuses it before
+payment, and a change after the quote becomes a refund owed. Rejected: a plugin
+of ours, which stock WooCommerce makes unnecessary; a buyer's email, which
+buyers do not give; the raw file URL; the order number alone; a scan inferring
+an unknown order is absent, which risks a second order in somebody's shop; and
+shop credentials in the gateway.

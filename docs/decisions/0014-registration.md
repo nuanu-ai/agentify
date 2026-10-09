@@ -29,7 +29,7 @@ sandbox merchant, so that one command brings it up selling (ADR-0010).
 
 **1. The account is written at sign-in, the merchant on the dashboard's explicit
 request.** The account appears when a one-time link is consumed for an address
-that has none (ADR-0009 §5), and no form asks for a password or an invitation.
+that has none (ADR-0026 §1), and no form asks for a password or an invitation.
 The merchant is made later, when the signed-in person presses the one control
 the dashboard offers (ADR-0026 §4). The press calls the gateway inside the
 process the two share (ADR-0030), and each side writes in a transaction of its

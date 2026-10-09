@@ -16,7 +16,7 @@
  * request names its seller in the sandbox exactly as it does anywhere else; a
  * payout wallet wherever a payment settles, which is the test and the live
  * surface and not the sandbox, where nothing settles and there is no money to
- * send (ADR-0008); and the operator's approval on the live surface alone.
+ * send (ADR-0020); and the operator's approval on the live surface alone.
  *
  * What comes out is the three codes a refused publish already carries on the
  * wire, so the door, a screen and a merchant's own program name one missing
