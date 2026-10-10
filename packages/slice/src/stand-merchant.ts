@@ -373,7 +373,7 @@ export const makeStandMerchant = (
       }
       case "accept_then_deliver": {
         taken.set(order.id, order);
-        const answer = order.accepted({ eta_seconds: Math.ceil(moods.deliverAfterMs / 1_000) });
+        const answer = order.accepted();
         writeOrderAnswer("The handler accepted the order and promised the goods later.", order, {
           answer,
         });

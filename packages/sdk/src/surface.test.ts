@@ -307,9 +307,9 @@ describe("an order that carries the calls which close it", () => {
     agentify.on("order", (arrived) => {
       built.push(arrived.delivered({ access_url: "https://a.example" }));
       built.push(arrived.refused({ code: "out_of_stock", message: "Мест на тарифе нет" }));
-      built.push(arrived.accepted({ eta_seconds: 60 }));
       built.push(arrived.accepted());
-      return arrived.accepted({ eta_seconds: 60 });
+      built.push(arrived.accepted());
+      return arrived.accepted();
     });
 
     running = agentify;
@@ -319,10 +319,10 @@ describe("an order that carries the calls which close it", () => {
     expect(built).toStrictEqual([
       { delivered: { access_url: "https://a.example" } },
       { refused: { code: "out_of_stock", message: "Мест на тарифе нет" } },
-      { accepted: { eta_seconds: 60 } },
+      { accepted: {} },
       { accepted: {} },
     ]);
-    expect(answers).toStrictEqual([{ accepted: { eta_seconds: 60 } }]);
+    expect(answers).toStrictEqual([{ accepted: {} }]);
 
     // The load-bearing half: four answers were built and none of them was
     // sent. A builder that also sent would close an order the handler was only
@@ -347,7 +347,7 @@ describe("an order that carries the calls which close it", () => {
 
     agentify.on("order", (arrived) => {
       taken = arrived;
-      return arrived.accepted({ eta_seconds: 60 });
+      return arrived.accepted();
     });
 
     running = agentify;
@@ -385,10 +385,10 @@ describe("an order that carries the calls which close it", () => {
     expect(
       await taken?.refuse({ code: "out_of_stock", message: "the supplier had none" }),
     ).toStrictEqual({ ok: true, result: "refused" });
-    expect(await taken?.accept({ eta_seconds: 30 })).toStrictEqual({ ok: true });
+    expect(await taken?.accept()).toStrictEqual({ ok: true });
 
     expect(gateway?.callsTo("refuse_order")[0]?.params).toStrictEqual({ order_id: order.id });
-    expect(gateway?.callsTo("accept_order")[0]?.body).toStrictEqual({ eta_seconds: 30 });
+    expect(gateway?.callsTo("accept_order")[0]?.body).toStrictEqual({});
   });
 
   it("names the order the merchant asked for when they have only its identifier", async () => {

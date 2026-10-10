@@ -214,7 +214,7 @@ it("carries one merchant's two products from publishing to the last refusal", as
     takenOn.set(order.id, order);
     provision(order.id);
 
-    return order.accepted({ eta_seconds: 120 });
+    return order.accepted();
   });
 
   agentify.on("event", (arrived) => {
@@ -263,7 +263,7 @@ it("carries one merchant's two products from publishing to the last refusal", as
     soldOutOrder.id,
   ]);
   expect(answers[0]?.body).toStrictEqual({ delivered: { phone_number: "+31 970 1020 3040" } });
-  expect(answers[1]?.body).toStrictEqual({ accepted: { eta_seconds: 120 } });
+  expect(answers[1]?.body).toStrictEqual({ accepted: {} });
 
   // The handler ran on every delivery and the merchant's own system issued one
   // profile: the idempotency the portal asks of them, kept by them.

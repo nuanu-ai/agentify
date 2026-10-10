@@ -14,7 +14,7 @@
  * calls that answer it, and that is the part worth reading before changing
  * anything here, because two things that look alike are deliberately not.
  *
- * `order.delivered(...)`, `order.refused(...)` and `order.accepted(...)`
+ * `order.delivered(...)`, `order.refused(...)` and `order.accepted()`
  * build the answer and send nothing; the handler still returns it. A bot
  * library lets a handler reply and forget, and forgetting there costs a
  * message; forgetting here is an order nobody answered — redelivered, a
@@ -57,7 +57,6 @@
  */
 
 import type {
-  Acceptance,
   CallError,
   CardInput,
   Delivery,
@@ -152,11 +151,11 @@ export interface OrderCalls {
   refused(refusal: Refusal): HandlerAnswer;
 
   /**
-   * Taking the order on without delivering yet, as the handler's answer. An
-   * empty acceptance is a complete answer; the expected time is said where it
-   * is known.
+   * Taking the order on without delivering yet, as the handler's answer. It
+   * carries nothing: what the merchant is held to is the delivery deadline on
+   * the card.
    */
-  accepted(acceptance?: Acceptance): HandlerAnswer;
+  accepted(): HandlerAnswer;
 
   /**
    * The goods for an order taken on earlier. Idempotent by the order's own
@@ -168,7 +167,7 @@ export interface OrderCalls {
   refuse(refusal: Refusal): Promise<OrderCallResponse>;
 
   /** Takes the order on from outside a handler. Repeats are ordinary. */
-  accept(acceptance?: Acceptance): Promise<OrderAcceptResponse>;
+  accept(): Promise<OrderAcceptResponse>;
 }
 
 /**
@@ -723,15 +722,12 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
       : { ok: false, error: failedCall(route === "deliver_order", answer.failure) };
   };
 
-  const acceptCall = async (
-    orderId: string,
-    acceptance: Acceptance | undefined,
-  ): Promise<OrderAcceptResponse> => {
+  const acceptCall = async (orderId: string): Promise<OrderAcceptResponse> => {
     reachable();
 
     const answer = await callRoute(gateway, "accept_order", {
       path: { order_id: orderId },
-      body: acceptance ?? {},
+      body: {},
     });
 
     // Accepting the same order again is ordinary: an order is taken on afresh
@@ -753,10 +749,10 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
   const callsFor = (orderId: string): OrderCalls => ({
     delivered: (delivery) => ({ delivered: delivery }),
     refused: (refusal) => ({ refused: refusal }),
-    accepted: (acceptance) => ({ accepted: acceptance ?? {} }),
+    accepted: () => ({ accepted: {} }),
     deliver: (delivery) => orderCall("deliver_order", orderId, delivery),
     refuse: (refusal) => orderCall("refuse_order", orderId, refusal),
-    accept: (acceptance) => acceptCall(orderId, acceptance),
+    accept: () => acceptCall(orderId),
   });
 
   const withCalls = <Shape extends Order>(order: Shape): Shape & OrderCalls =>

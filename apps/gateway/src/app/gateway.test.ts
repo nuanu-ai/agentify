@@ -594,7 +594,7 @@ describe("an asynchronous purchase", () => {
 
     // And the merchant then does the work, on his own clock.
     const worked = await workOnce(harnessed, {
-      onOrder: () => ({ accepted: { eta_seconds: 60 } }),
+      onOrder: () => ({ accepted: {} }),
     });
     expect(worked).toBe(1);
 
@@ -2444,7 +2444,7 @@ describe("the merchant's calls", () => {
     await harnessed.gateway.poll(harnessed.merchant.id, 0);
 
     const answered = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
-      accepted: { eta_seconds: 30 },
+      accepted: {},
     });
 
     expect(answered).toStrictEqual({ ok: true, result: "accepted" });

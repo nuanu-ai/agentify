@@ -88,20 +88,29 @@ export const DeliverySchema = z.record(ParamNameSchema, z.unknown()).meta({
 });
 
 /**
- * Taking an order on: the merchant will deliver, and here is how long they
- * expect that to take, when they know. An empty acceptance is a complete
- * answer.
+ * Taking an order on: the merchant will deliver it. It carries nothing.
+ *
+ * It once carried `eta_seconds`, how long the merchant expected the delivery
+ * to take, and nothing kept the number or showed it to an agent: a setting
+ * accepted and then ignored. A field sent here now is refused, in words that
+ * say so, rather than dropped where nobody would learn it did nothing.
  *
  * Named and exported for the same reason as the delivery above — it is both a
  * handler's answer and the body of a call.
  */
 export const AcceptanceSchema = z
-  .strictObject({
-    eta_seconds: z.int().positive().optional(),
-  })
+  .strictObject(
+    {},
+    {
+      error: (issue) =>
+        issue.code === "unrecognized_keys"
+          ? `an acceptance carries nothing, and ${issue.keys.join(", ")} is not kept: eta_seconds was removed because nothing kept it and no agent saw it, so answer accepted() with nothing in it`
+          : undefined,
+    },
+  )
   .meta({
     description:
-      "Taking an order on: the merchant will deliver it. eta_seconds is how long they expect that to take, when they know; leaving it out is a complete answer and not a refusal to say. It is an expectation and not a commitment — what the merchant is actually held to is the delivery deadline on the card, and the two are different numbers.",
+      "Taking an order on: the merchant will deliver it, and the delivery deadline on the card is what they are held to. It carries nothing; an empty acceptance is the whole answer.",
   });
 
 export const HandlerAnswerSchema = z.union(

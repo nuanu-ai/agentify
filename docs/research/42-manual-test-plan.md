@@ -439,7 +439,7 @@ exists to find.
 | D-07 | A `result` with no fields; a parameter of a type outside string, number, integer and boolean; a parameter the delivery needs but the card does not declare. | The first two are refused. The third is accepted, by design: no check can see what a delivery needs. Record whether the documentation's warning about it was where the newcomer would have read it. | Door, DX |
 | D-08 | Tags: six of them; one of 33 characters; one with a curly quote; one with a leading space; `eSIM` beside `esim`; an empty list. | The first five refused with the rule named. Record what an empty list does. | Door |
 | D-09 | A card whose price check names an address of yours instead of the handler. | Refused at publication, with a finding at `price_check` saying the price is asked of your own price handler and a hook is not called yet. The card check refuses it the same way. | Door, Claim |
-| D-10 | In an asynchronous handler, answer `order.accepted({ eta_seconds: 60 })`. | Accepted. The documentation says nothing keeps the number and the agent never sees it. Record whether anything in the SDK's types or messages says so. | Door, Extra |
+| D-10 | From JavaScript, answer an asynchronous order with `order.accepted({ eta_seconds: 60 })`, and call `POST /v0/orders/<id>/accept` with that body. | The SDK sends an empty acceptance; the route refuses the field in words saying it was removed and to answer `accepted()` with nothing in it. | Door, Extra |
 | D-11 | Republish a card under the same `merchant_item_id` with a new price while an order against it is open. | The same catalogue `id`, the new price in the catalogue and on the dashboard; the open order keeps the price it was sold at, and so does its receipt. | State, Claim |
 | D-12 | Accept an asynchronous order, republish its card with a different `result`, then deliver the goods the agent was promised when it paid; on a second such order, deliver the new shape. | The promised goods close the order: it is held to the result it was sold with. The new shape is refused for that order with the missing fields named, and is what new orders are sold with. | State, Door |
 | D-13 | Run every card refused in D-02 to D-08 through the card check. Run it also with no file, with an unknown command, on a file that does not exist, and on a file that is not JSON. | The check finds what publication found, and exits 1. No file: refuses and says why, exit 3. Unknown command or unreadable file: exit 2. Not JSON: one finding about the card as a whole. | DX |
@@ -609,24 +609,23 @@ fixing what is not broken.
     price; the code may refuse the payment instead (C-16).
 11. The dashboard and the agent's vocabulary have a word for a refund paid back,
     but nothing can record a refund, so no order can reach it (Block C).
-12. `eta_seconds` is accepted and kept nowhere (D-10).
-13. A price below the live channel's unmeasured minimum is accepted at
+12. A price below the live channel's unmeasured minimum is accepted at
     publication and may be refused when a buyer pays (D-05).
-14. The catalogue has no paging (E-18).
-15. The seller's name and site are shown as they are now rather than as they
+13. The catalogue has no paging (E-18).
+14. The seller's name and site are shown as they are now rather than as they
     were at the sale, and nothing in the agent's document itself says nobody
     checked them (B-02, E-11).
-16. The documentation's front page says the pilot takes only goods that survive
+15. The documentation's front page says the pilot takes only goods that survive
     being delivered twice, while parcels, which do not, are on sale on the test
     channel (A-02).
-17. The WooCommerce screens say the connector works in test mode only, while
+16. The WooCommerce screens say the connector works in test mode only, while
     they are offered on every channel (H-07).
-18. In the scanner: a raw IP address passes the browser's check, is refused by
+17. In the scanner: a raw IP address passes the browser's check, is refused by
     the server, and is then offered "Retry scan"; the headline saying a site
     blocked the reader appears only through a development fixture; the
     full-report offer mentions a phone number the form marks optional; the
     data-notice checkbox links to no notice (I-02, I-03, I-04).
-19. `/sell` on the test channel shows pricing variants that were never approved,
+18. `/sell` on the test channel shows pricing variants that were never approved,
     with their working notes (I-09).
 
 ## What changed this week, and where it is checked
@@ -694,8 +693,8 @@ than by how hard it is to fix.
 | S3 | Confusion a person recovers from alone: a word only the team understands, a step or an entity the goal did not need, an error that is true but does not say what to do. |
 | S4 | Cosmetics that do not change meaning: spelling, alignment, spacing. |
 
-A gap the documentation already admits — a field nothing keeps, such as
-`eta_seconds` — is still recorded as a finding, marked
+A gap the documentation already admits — a setting accepted and then
+ignored, say — is still recorded as a finding, marked
 "documented", and weighed on the same scale: what it costs a stranger does not
 shrink because we wrote it down.
 

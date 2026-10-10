@@ -473,7 +473,7 @@ describe("when a delivery goes unanswered", () => {
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
     const taking = workUntilStopped(harnessed, {
-      onOrder: () => ({ accepted: { eta_seconds: 60 } }),
+      onOrder: () => ({ accepted: {} }),
     });
 
     // The wait is for the order's own deadline to expire, and not for a stretch

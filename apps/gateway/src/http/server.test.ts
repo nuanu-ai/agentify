@@ -1342,7 +1342,7 @@ describe("the worker's calls over HTTP", () => {
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
     const answered = await served.call("POST", `/v0/orders/${orderId}/answer`, {
-      body: { accepted: { eta_seconds: 30 } },
+      body: { accepted: {} },
       headers: asMerchant,
     });
 

@@ -34,7 +34,6 @@
  */
 
 export type {
-  Acceptance,
   CallError,
   Card,
   CardInput,

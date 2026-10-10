@@ -909,7 +909,7 @@ describe("the answer a handler returned, on its way back", () => {
     expect(
       verdictOf(body(), { refused: { code: "out_of_stock", message: "Мест на тарифе нет" } }),
     ).toBe("accepted");
-    expect(verdictOf(body(), { accepted: { eta_seconds: 60 } })).toBe("accepted");
+    expect(verdictOf(body(), { accepted: {} })).toBe("accepted");
     expect(verdictOf(body(), { accepted: {} })).toBe("accepted");
   });
 
@@ -935,11 +935,6 @@ describe("the answer a handler returned, on its way back", () => {
     expect(verdictOf(body(), { refused: { code: "out_of_stock", message: " " } })).not.toBe(
       "accepted",
     );
-  });
-
-  it("refuses an acceptance that promises a delivery in no time at all", () => {
-    expect(verdictOf(body(), { accepted: { eta_seconds: 0 } })).not.toBe("accepted");
-    expect(verdictOf(body(), { accepted: { eta_seconds: -60 } })).not.toBe("accepted");
   });
 
   it("refuses a fourth kind of answer", () => {
