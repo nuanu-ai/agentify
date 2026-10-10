@@ -1405,6 +1405,41 @@ describe("the goods against the card that sold them", () => {
   });
 });
 
+describe("a price's life", () => {
+  // A price holds for a fixed time, and the timer that closes an order whose
+  // price has lapsed can fire late. A payment that arrives after the price's
+  // life pays for a price that no longer holds, timer or no timer: nothing is
+  // verified, nothing is claimed and nothing is charged.
+  it("refuses a payment that arrives once the price has lapsed, before its timer fires", async () => {
+    const harnessed = await started();
+    const itemId = await published(harnessed, asyncCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const orderId = offered.order.order.id;
+    harnessed.advance(harnessed.runtime.config.deadlines.quoteTtlMs);
+
+    const paid = await harnessed.gateway.payPurchase(orderId, "LATE", "LATE");
+
+    expect(paid.step).toBe("settled");
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("expired");
+    expect(harnessed.facilitator.verifies).toHaveLength(0);
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+  });
+
+  it("takes a payment that arrives a moment before the price lapses", async () => {
+    const harnessed = await started();
+    const itemId = await published(harnessed, asyncCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const orderId = offered.order.order.id;
+    harnessed.advance(harnessed.runtime.config.deadlines.quoteTtlMs - 1);
+
+    await harnessed.gateway.payPurchase(orderId, "IN-TIME", "IN-TIME");
+
+    expect(harnessed.facilitator.settles).toHaveLength(1);
+  });
+});
+
 describe("two payments racing one order", () => {
   it("gives a losing buyer their authorisation back, so it can buy something else", async () => {
     // The promise: an agent that lost a race for an order still holds a usable
