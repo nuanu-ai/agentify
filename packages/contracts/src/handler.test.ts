@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { HandlerAnswerSchema, RECOMMENDED_REFUSAL_CODES, RefusalSchema } from "./handler.js";
+import {
+  AcceptanceSchema,
+  HandlerAnswerSchema,
+  RECOMMENDED_REFUSAL_CODES,
+  RefusalSchema,
+} from "./handler.js";
 import { errorOf, expectMissingFieldRejected } from "./testing/expect-schema.js";
 
 describe("what a handler may answer", () => {
@@ -19,10 +24,7 @@ describe("what a handler may answer", () => {
     expect(HandlerAnswerSchema.parse(answer)).toStrictEqual(answer);
   });
 
-  it("accepts an order taken on, with or without an estimate", () => {
-    expect(HandlerAnswerSchema.parse({ accepted: { eta_seconds: 60 } })).toStrictEqual({
-      accepted: { eta_seconds: 60 },
-    });
+  it("accepts an order taken on, with nothing in it", () => {
     expect(HandlerAnswerSchema.parse({ accepted: {} })).toStrictEqual({ accepted: {} });
   });
 
@@ -55,13 +57,16 @@ describe("what a handler may answer", () => {
     }
   });
 
-  it("refuses an estimate that is not a whole number of seconds", () => {
-    for (const eta of [-1, 0, 1.5, "60"]) {
-      expect(
-        HandlerAnswerSchema.safeParse({ accepted: { eta_seconds: eta } }).success,
-        JSON.stringify(eta),
-      ).toBe(false);
-    }
+  it("refuses an estimate of delivery time, which nothing kept, in words that say so", () => {
+    // An acceptance once carried eta_seconds, and nothing kept it or showed it
+    // to an agent: a setting accepted and then ignored. It is refused rather
+    // than dropped, so a merchant still sending it learns it does nothing.
+    expect(HandlerAnswerSchema.safeParse({ accepted: { eta_seconds: 60 } }).success).toBe(false);
+    const refused = AcceptanceSchema.safeParse({ eta_seconds: 60 });
+
+    expect(refused.success).toBe(false);
+    expect(refused.error?.issues[0]?.message).toContain("eta_seconds");
+    expect(refused.error?.issues[0]?.message).toContain("accepted()");
   });
 });
 
