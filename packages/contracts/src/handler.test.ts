@@ -66,6 +66,10 @@ describe("what a handler may answer", () => {
 
     expect(refused.success).toBe(false);
     expect(refused.error?.issues[0]?.message).toContain("eta_seconds");
+    // A field that never was one is not told it was removed.
+    const unknown = AcceptanceSchema.safeParse({ note: "soon" });
+    expect(unknown.error?.issues[0]?.message).toContain("note");
+    expect(unknown.error?.issues[0]?.message).not.toContain("eta_seconds");
     expect(refused.error?.issues[0]?.message).toContain("accepted()");
   });
 });

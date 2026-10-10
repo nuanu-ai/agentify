@@ -136,11 +136,11 @@ export function outcomeFor(order: Order): OrderOutcome {
 export const ENDING_REASONS = [
   /** The merchant's price check said there is none; it did not say why. */
   "unavailable",
-  /** The merchant's price check did not answer in time. */
+  /** The merchant's price check gave no price the purchase could use. */
   "price_check_unanswered",
   /** The payment layer said the charge did not go through. */
   "payment_not_settled",
-  /** The price ran out before a payment arrived for it. */
+  /** The price ran out before a payment for it was taken. */
   "price_expired",
   /** The merchant did not answer a synchronous purchase in time. */
   "merchant_timed_out",

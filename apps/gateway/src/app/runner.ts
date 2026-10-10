@@ -1335,11 +1335,11 @@ const REASON_WORDS: Readonly<Record<EndingReason, (order: Order) => string>> = {
   unavailable: () =>
     "The seller's price check said this is not available, and gave no reason; nothing was charged. Buy it elsewhere, or ask the seller at their site.",
   price_check_unanswered: () =>
-    "The seller's price check did not answer in time; nothing was charged. Trying again later may find it answering.",
+    "The seller's price check gave no price this purchase could use: it did not answer in time, or its answer could not be accepted. Nothing was charged. Trying again later may work if the seller's price check recovers.",
   payment_not_settled: () =>
     "The charge did not go through, and nothing was taken. Check the paying wallet before buying again.",
   price_expired: () =>
-    "The price ran out before the payment arrived; nothing was charged. Start a new purchase to get a fresh price.",
+    "The price ran out before the payment was taken; nothing was charged. Start a new purchase to get a fresh price.",
   merchant_timed_out: (order) =>
     order.heldFulfillment
       ? "The seller's goods arrived after the purchase had closed; nothing was charged. Pay this same order again, from the same wallet, to collect them."

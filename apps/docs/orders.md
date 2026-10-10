@@ -609,11 +609,13 @@ Where we rather than you ended the order, and one status word would leave the
 agent guessing its next step, the status says why in our own words, under
 `reason`: a code to branch on and a sentence. `rejected` comes with
 `unavailable` (your price check said there is none), `price_check_unanswered`
-(it did not answer in time) or `payment_not_settled` (the charge did not go
-through); `expired` comes with `price_expired` (the price ran out before the
-payment) or `merchant_timed_out` (a synchronous answer did not arrive in
-time). A reason never stands beside your refusal: where you refused, your words
-are the whole answer.
+(it did not answer in time, or its answer could not be accepted) or
+`payment_not_settled` (the charge did not go through); `expired` comes with
+`price_expired` (the price ran out before the payment was taken) or
+`merchant_timed_out` (a synchronous answer did not arrive in time). The other
+deadlines — your confirmation, the agent's payment after it, an asynchronous
+delivery — end the order with its status word alone. A reason never stands
+beside your refusal: where you refused, your words are the whole answer.
 
 ## Time ran out
 

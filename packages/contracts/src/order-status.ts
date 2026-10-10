@@ -140,11 +140,14 @@ export const ORDER_ENDING_REASONS = Object.freeze([
    * address given; nothing here can say which.
    */
   "unavailable",
-  /** `rejected`: the merchant's price check did not answer in time. */
+  /**
+   * `rejected`: the merchant's price check gave no price this purchase could
+   * use — it did not answer in time, or its answer could not be accepted.
+   */
   "price_check_unanswered",
   /** `rejected`: the payment layer said the charge did not go through. */
   "payment_not_settled",
-  /** `expired`: the price ran out before a payment arrived for it. */
+  /** `expired`: the price ran out before a payment for it was taken. */
   "price_expired",
   /** `expired`: the merchant did not answer a synchronous purchase in time. */
   "merchant_timed_out",

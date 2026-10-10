@@ -67,10 +67,12 @@ is what the agent branches on to decide whether to try different parameters or
 go elsewhere, and the message is what it has to show a person. So write the
 message for a stranger rather than for your own logs, and prefer one of the
 common codes where it fits ([the vocabulary](/cards#refusal-codes)). Nothing
-else reaches the agent in your words. Where we ended the order — a deadline
-that passed, a price check that reported the product gone or did not answer, a
-charge that did not go through — the agent is told why in a reason of our own,
-never beside a refusal of yours ([How an order can end](/orders)).
+else reaches the agent in your words. Where we ended the order and the status
+word alone would leave the agent guessing — a price that ran out, a synchronous
+answer that came too late, a price check that reported the product gone or gave
+no usable answer, a charge that did not go through — the agent is told why in a
+reason of our own, never beside a refusal of yours ([How an order can
+end](/orders)).
 
 This is also how the mode gets chosen: if refusals at delivery happen to you
 regularly, catch them earlier, in the answer to the question about price and

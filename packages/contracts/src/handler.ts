@@ -104,7 +104,9 @@ export const AcceptanceSchema = z
     {
       error: (issue) =>
         issue.code === "unrecognized_keys"
-          ? `an acceptance carries nothing, and ${issue.keys.join(", ")} is not kept: eta_seconds was removed because nothing kept it and no agent saw it, so answer accepted() with nothing in it`
+          ? issue.keys.includes("eta_seconds")
+            ? "an acceptance carries nothing: eta_seconds was removed because nothing kept it and no agent saw it, so answer accepted() with nothing in it"
+            : `an acceptance carries nothing, and ${issue.keys.join(", ")} is not part of it, so answer accepted() with nothing in it`
           : undefined,
     },
   )
