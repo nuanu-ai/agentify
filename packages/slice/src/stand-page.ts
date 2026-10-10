@@ -228,9 +228,7 @@ const cardTerms = (card: Card): string => {
       break;
   }
   if (card.price_check !== undefined) {
-    terms.push(
-      card.price_check === "handler" ? "price asked of the handler" : "price asked of a URL",
-    );
+    terms.push("price asked of the handler");
   }
   return terms.join(" · ");
 };

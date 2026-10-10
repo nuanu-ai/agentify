@@ -64,25 +64,9 @@ export function modeForCard(card: Card): OrderMode {
   return modeOf(card.fulfillment);
 }
 
-/**
- * Whether the merchant is asked what this product costs at the moment of
- * purchase.
- *
- * A card whose price check names an address rather than the handler is asked
- * over a transport the pilot does not serve, and this says so out loud instead
- * of quietly treating the card as static. The order is created with a price
- * check that will go unanswered, and the merchant's silence is then resolved
- * by the machine's own per-mode policy — which is the honest ending, because a
- * question we cannot ask and a question that got no answer are the same fact
- * from the order's side.
- */
+/** Whether the merchant is asked what this product costs at the moment of purchase. */
 export function priceCheckOf(card: Card): "none" | "merchant" {
   return card.price_check === undefined ? "none" : "merchant";
-}
-
-/** Whether the price question can actually be put to this merchant today. */
-export function quoteReachesTheMerchant(card: Card): boolean {
-  return card.price_check === "handler";
 }
 
 /**

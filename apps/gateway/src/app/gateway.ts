@@ -86,7 +86,6 @@ import {
   payoutWalletAt,
   policyFor,
   priceCheckOf,
-  quoteReachesTheMerchant,
   type Runtime,
   sellableBy,
   sellingFor,
@@ -1182,8 +1181,7 @@ export class Gateway {
     // parcel's order keeps the name: the question carries the place the parcel
     // goes, and it leaves the queue with the rest of the address (ADR-0032).
     const asksThePrice = created.effects.some((effect) => effect.kind === "request_quote");
-    const priceQuestion =
-      asksThePrice && quoteReachesTheMerchant(stored.card) ? this.runtime.ids("prc") : null;
+    const priceQuestion = asksThePrice ? this.runtime.ids("prc") : null;
 
     const record: StoredOrder = {
       order: created.order,
@@ -1216,7 +1214,7 @@ export class Gateway {
     };
     await this.runner.create(record, created.effects, at);
 
-    if (asksThePrice) {
+    if (priceQuestion !== null) {
       await this.#askThePrice(record, stored, priceQuestion);
     }
 
@@ -1997,34 +1995,11 @@ export class Gateway {
    * Puts the price question to the merchant and waits out our own patience for
    * it. Whatever comes back — an answer, a refusal to sell, or nothing at all —
    * reaches the machine as an event, and what it costs the order is decided
-   * there. The question has its name already, or none where the card asks for
-   * its price at an address of the merchant's own, which is not called.
+   * there. The question has its name already.
    */
-  async #askThePrice(
-    record: StoredOrder,
-    stored: StoredCard,
-    priceId: string | null,
-  ): Promise<void> {
+  async #askThePrice(record: StoredOrder, stored: StoredCard, priceId: string): Promise<void> {
     const { queue, ids, clock, config } = this.runtime;
     const orderId = record.order.id;
-
-    if (priceId === null) {
-      // The card asks for its price at an address of the merchant's own. That
-      // transport is not served in this stage, and the honest thing to report
-      // is the same fact an unanswered question produces: nobody told us what
-      // this costs.
-      //
-      // Said out loud as well, because it is otherwise invisible from every
-      // side. The merchant's pricing is never once consulted, the merchant is
-      // never told so, and on a synchronous card the product simply sells at
-      // its snapshot price forever.
-      console.warn(
-        `[gateway] ${stored.id} asks for its price at an address, which this stage does not call — ${orderId} is priced as if nobody answered`,
-      );
-      await this.runner.apply(orderId, { kind: "quote_silent", at: clock() });
-      return;
-    }
-
     const askedAt = clock();
 
     // Registered and parked before the question goes out, not after. A worker
