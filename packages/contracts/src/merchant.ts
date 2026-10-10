@@ -1,19 +1,16 @@
 /**
- * How a merchant comes to exist, the name their products are sold under, the
- * wallet their sales are paid into, and the keys they open the door with.
+ * What a merchant says about themselves: the name their products are sold
+ * under, the wallet their sales are paid into, and the keys they open the door
+ * with.
  *
- * The first two belong together because registering is the act that produces
- * both: one call makes the merchant and the key its dashboard will call as them
- * with, and what comes back carries that key once. Split across two files, a
- * reader working out what registering leaves a merchant holding would have to
- * read both to find that it is a key of a kind no list here carries. The name is here for the same reason read the other way round — it is a
- * fact about the merchant and about none of their cards, and the one question a
- * reader arrives with is which of the two names a merchant has is which.
+ * The name is here rather than beside the card because it is a fact about the
+ * merchant and about none of their cards, and the one question a reader
+ * arrives with is which of the two names a merchant has is which.
  *
  * Two rules run through the file and are worth saying once.
  *
- * The secret appears in exactly three documents, and every one of them is the
- * answer to a call that has just made a key. Nothing that is ever drawn again —
+ * The secret appears in one document, the answer to the call that has just
+ * made a key. Nothing that is ever drawn again —
  * the list a merchant reads, the row that comes back from disabling one — can
  * carry it, and the shapes below refuse it rather than merely omit it. What is
  * kept on our side is a digest, so there is nothing to put in those documents
@@ -107,19 +104,6 @@ const KeySecretSchema = z
   .regex(/^\S+$/, "a key travels as a bearer token, so it carries no whitespace and is not empty");
 
 /**
- * The code that stands in the door of registration.
- *
- * It is one value out of the gateway's configuration, handed to a person along
- * with the address of the site (ADR-0014 §3). All this shape asks is that
- * something was actually typed: a form submitted with an empty field is a
- * mistake at the keyboard rather than a wrong code, and the two are worth
- * telling apart before anything is compared.
- */
-const InvitationSchema = z
-  .string()
-  .regex(/\S/, "an invitation is the code handed over with the address of the site");
-
-/**
  * One key a merchant holds, as they read it.
  *
  * The secret is not here and cannot be put here. This is the document a screen
@@ -180,11 +164,8 @@ export const MerchantKeySchema = z
  * refuses, on the one page where being refused looks like the product being
  * broken.
  *
- * It is not always one of the keys beside it, and that is the thing a reader is
- * likeliest to assume and be wrong about. A dashboard calls with a key made for a
- * dashboard, and those are in nobody's list, so a client that looked this
- * identifier up among the rows would find nothing — which is an answer rather
- * than an error, and a screen has to be built for it.
+ * It is always one of the keys beside it: every key is one a merchant issued
+ * for their own code, and the dashboard calls with none (ADR-0030).
  *
  * An object rather than a bare array, for that reason before any other — an
  * array has nowhere to put it.
@@ -194,11 +175,6 @@ export const MerchantKeyListSchema = z
     /**
      * The keys this merchant made for their own code, the revoked ones among
      * them.
-     *
-     * The keys a dashboard holds are not here and never will be: the merchant did
-     * not issue one and has nothing to do with one. A list is what somebody
-     * acts on, and a row nobody has any business acting on is a row that only
-     * raises the question of why it will not go away.
      */
     keys: z.array(MerchantKeySchema),
 
@@ -207,7 +183,7 @@ export const MerchantKeyListSchema = z
   })
   .meta({
     description:
-      "The keys one merchant made for their own code, working and revoked together, and the identifier of the key this very call was made with. That last field is here because a merchant cannot disable the key they are holding: without it a screen would offer a button the gateway refuses. It is not always among the keys listed — a dashboard calls with a key of its own, and those are in no list here — so a client matching it against the rows has to be built for finding none. The keys a dashboard holds are left out entirely: they are not issued by the merchant and cannot be revoked by them. This document does not say whether it is the whole list either — paging is not designed, and the absence of a field about it is not a promise that there is no more.",
+      "The keys one merchant made for their own code, working and revoked together, and the identifier of the key this very call was made with. That last field is here because a merchant cannot disable the key they are holding: without it a screen would offer a button the gateway refuses. It is always one of the keys listed, since every key is one the merchant issued. This document does not say whether it is the whole list either — paging is not designed, and the absence of a field about it is not a promise that there is no more.",
   });
 
 /** What a merchant sends to have a key made. */
@@ -236,7 +212,7 @@ export const IssuedKeySchema = z
   })
   .meta({
     description:
-      "A key as it comes back from being issued: the row a merchant will see in their list from now on, and the key itself. It carries the key once. Three answers in this contract carry one — this, what registering gives back, and the key a dashboard asks for — and nothing else does, because what is written down on our side is a digest. A key that is lost is replaced by a new one rather than read back.",
+      "A key as it comes back from being issued: the row a merchant will see in their list from now on, and the key itself. It carries the key once, and it is the one answer in this contract that carries one, because what is written down on our side is a digest. A key that is lost is replaced by a new one rather than read back.",
   });
 
 /**
@@ -253,48 +229,6 @@ export const DisabledKeySchema = z
   .meta({
     description:
       "The key that was just revoked, with the instant it stopped working on it, so a merchant reads back what happened rather than taking the call's word for it. Revoking a key that was already revoked answers this same way and keeps the first instant, because that is the true one and a retry after a dropped connection must not rewrite it.",
-  });
-
-/**
- * A key made for a dashboard, which is the secret and nothing else.
- *
- * Every other answer that makes a key carries the row beside it, and this one
- * cannot. A key made for a dashboard is in no merchant's list — they did not
- * issue it and have no reason to know it exists — so an identifier here would
- * name a row that no screen of theirs draws and no call of theirs reaches: not
- * the list it is absent from, and not the revoking, which takes the keys a
- * merchant issued and refuses this kind by name. What the caller does with this
- * is put it on the row of whoever just signed in, and that is the whole of what
- * it needs.
- */
-export const DashboardKeySchema = z
-  .strictObject({
-    /** The only moment this is readable. Nothing on our side keeps it. */
-    secret: KeySecretSchema,
-  })
-  .meta({
-    description:
-      "A key made for a dashboard to call as one merchant, carried once and readable nowhere afterwards. There is no row beside it and there is nothing to put one: a key made this way is in no merchant's list of keys, and the call that revokes a key refuses this kind by name — so an identifier for it would name something no answer shows and no call acts on. Whoever asked for this holds it until they ask for another.",
-  });
-
-/**
- * That the key a call was made with is gone.
- *
- * A constant, and deliberately: the call has one outcome. It removes the key it
- * was made with and no other, so there is nothing to count — a number here
- * could only be about rows this call cannot reach — and nothing to name, since
- * the caller is holding the only key it names. What is left to say is that it
- * is done, and it is said in a field rather than left to a status code so that
- * a client reads one document and not two kinds of evidence.
- */
-export const ForgottenDashboardKeySchema = z
-  .strictObject({
-    /** The key this call was made with no longer exists. */
-    forgotten: z.literal(true),
-  })
-  .meta({
-    description:
-      "That the key this call was made with has been removed, which is the only thing this call does. There is nothing to count and nothing to name: it reaches one key, the one in the caller's hand, and the caller already knows which that is.",
   });
 
 /**
@@ -477,118 +411,12 @@ export const PayoutWalletSchema = z
       "The address a merchant's sales are paid into, and any change of it that is waiting. Payments are not held by anybody on the way: a buyer's agent pays payout_wallet directly, and it is the payTo of every payment request made for this merchant's products now. Null means nobody has set one, which is where every merchant starts; the field is always present rather than left out, because an absent field is indistinguishable from a client that dropped it. The address comes back in the mixed-case spelling a wallet shows, whichever of the two accepted spellings was sent — so what a merchant reads back on a screen is character for character what they copied out of their wallet. On a deployment that settles on a real chain a merchant with no wallet here cannot publish a card, because the money from that card's sales would have nowhere to go. pending is a replacement that has been asked for and has not taken effect: on the live deployment a merchant who already has a wallet and asks for a different one is told of it by message, and the new address takes effect forty-eight hours later, so until takes_effect_at this answer names the address still paid and the waiting one beside it. A caller reading its old address back beside a pending change has not failed to write; the change is waiting. Null means nothing is waiting, which is every answer on the test channel and in a sandbox, where a change applies at once.",
   });
 
-/**
- * What a merchant sends to change where their sales are paid.
- *
- * The same field held to the same rule, and one difference, which is the same
- * difference the seller name has and rests on something harder. There is no
- * null. A merchant goes from having no wallet to having one and from one wallet
- * to another, and not back: a merchant who took their address away would keep
- * every card they had already published on sale, and the payment request an
- * agent is answered with cannot be built at all without an address — so the
- * products would stop being buyable and nothing anywhere would say why. What
- * somebody reaching for null actually wants is one of two other acts: a
- * different address, which is this same call, or an end to selling, which is
- * the pause, and the pause leaves their cards where they can put them back.
- *
- * There is nowhere here to put a key, and a document carrying one is refused
- * rather than trimmed. This contract knows where a merchant is paid and has no
- * business knowing anything that could spend it.
- */
-export const PayoutWalletRequestSchema = z
-  .strictObject({
-    /**
-     * Where this merchant's sales are to be paid.
-     *
-     * The rule lives once, in `EvmAddressSchema`, and this reaches it through a
-     * string that carries its own words for "this is not an address at all".
-     */
-    payout_wallet: z
-      .string({
-        // A field that is missing is a client with a bug and a field holding
-        // null is a client with a misunderstanding. Only the second gets this
-        // sentence; the first falls through to the ordinary words about a
-        // field that is not there.
-        error: (issue) =>
-          issue.input === undefined
-            ? undefined
-            : "a payout wallet cannot be taken away, only changed: a merchant who wants to stop being paid pauses their selling, which leaves their cards where they can put them back on sale — a merchant with cards on sale and no wallet has products a payment request cannot even be written for",
-      })
-      .pipe(EvmAddressSchema),
-  })
-  .meta({
-    description:
-      "What a merchant sends to set or change the address their sales are paid into. The same rule as the answer — 0x and forty hexadecimal characters, in lower case or in the exact mixed-case spelling a wallet shows — and one difference: null is refused. A merchant goes from no wallet to a wallet and from one wallet to another, never back to none, because their published cards stay on sale and a payment request for one of them cannot be written without an address. Somebody reaching for null wants either a different address, which is this call with a different value, or an end to selling, which is the pause. Nothing here takes a private key or a seed phrase, and a document carrying one is refused rather than ignored: this contract knows where a merchant is paid and nothing that could spend it.",
-  });
-
-/**
- * What somebody sends to become a merchant.
- *
- * One field, and what is not here is most of what is worth reading. The address
- * and the password belong to the account rather than to the merchant, and they
- * stay on the other side of the boundary (ADR-0014 §1) — a gateway that took
- * either would be holding a person's credentials on the money path, which is
- * what this route's whole shape is arranged to avoid.
- *
- * The name the seller's products are sold under is not here either, and that
- * omission is a decision rather than a simplification. It is a public answer,
- * and asking for it here asks for it at the one moment a merchant knows least:
- * no products, no catalogue seen, no idea what the name is for. It is asked for
- * on the screen after this one instead, where there is room to say why it
- * matters, and it can be changed afterwards from the merchant's own settings.
- *
- * The shape refuses a name rather than ignoring one, because a field quietly
- * dropped is a person believing they have chosen what buyers will read.
- */
-export const RegistrationRequestSchema = z
-  .strictObject({
-    /** The code handed over with the address of the site. */
-    invitation: InvitationSchema,
-  })
-  .meta({
-    description:
-      "What somebody sends to become a merchant: the invitation code they were given, and nothing else. The name their products are sold under is deliberately not here — it is a public answer, and asked for on the way in it is answered by somebody with no products and no idea what the name is for; it is set afterwards, and changed afterwards, through the merchant's own call for it. Nothing about an account is here either: an address and a password belong to whatever signs the person in, and are never sent to the gateway. A document carrying either is refused rather than trimmed, because a field accepted and dropped is somebody believing they said something.",
-  });
-
-/**
- * What registering answers with: a merchant and the key their dashboard will call
- * as them with.
- *
- * The key is made for a dashboard rather than for the merchant's own code, and
- * that is what the caller of this route is. So it is in no list: a merchant who
- * has just registered has no keys of their own at all, and the first one they
- * do have is one they ask for. No row travels beside the secret for the same
- * reason no row appears in the list — the merchant did not issue it and cannot
- * disable it, so an identifier for it would be a value with nothing to do.
- *
- * No name comes back either, because none was chosen. A merchant who has just
- * registered is listed under nothing at all, and a field here would either be a
- * name this call invented or a null that says the same thing at more length.
- */
-export const RegisteredMerchantSchema = z
-  .strictObject({
-    /** The merchant that now exists, which every key and card of theirs names. */
-    merchant_id: IdentifierSchema,
-
-    /** The key itself, shown once, exactly as issuing one shows it. */
-    secret: KeySecretSchema,
-  })
-  .meta({
-    description:
-      "What registering produced: the merchant, and a key made for a dashboard to call as them with. The key is readable here and nowhere afterwards, so whoever made this call is the only party that can keep it. It is a key made for a dashboard rather than one of the merchant's own: it appears in no list of their keys and the call that revokes a key refuses its kind by name, so no row for it comes back here either. A merchant who has just registered has no keys of their own until they ask for one. The merchant is listed under no name yet and this answer carries none — the name their products are sold under is chosen afterwards, and until it is, publishing a card is refused. What this answer does not carry either is any notion of an account or a session: registering makes a merchant and a key, and whatever signs a person in is on the other side of this call.",
-  });
-
 export type SellerName = z.infer<typeof SellerNameSchema>;
 export type SellerNameRequest = z.infer<typeof SellerNameRequestSchema>;
 export type PayoutWallet = z.infer<typeof PayoutWalletSchema>;
-export type PayoutWalletRequest = z.infer<typeof PayoutWalletRequestSchema>;
 export type PendingPayoutWallet = z.infer<typeof PendingPayoutWalletSchema>;
 export type MerchantKey = z.infer<typeof MerchantKeySchema>;
 export type MerchantKeyList = z.infer<typeof MerchantKeyListSchema>;
 export type IssueKeyRequest = z.infer<typeof IssueKeyRequestSchema>;
 export type IssuedKey = z.infer<typeof IssuedKeySchema>;
 export type DisabledKey = z.infer<typeof DisabledKeySchema>;
-export type DashboardKey = z.infer<typeof DashboardKeySchema>;
-export type ForgottenDashboardKey = z.infer<typeof ForgottenDashboardKeySchema>;
-export type RegistrationRequest = z.infer<typeof RegistrationRequestSchema>;
-export type RegisteredMerchant = z.infer<typeof RegisteredMerchantSchema>;

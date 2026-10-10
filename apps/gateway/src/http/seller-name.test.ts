@@ -26,8 +26,8 @@ import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
 
 const PAY_TO = "0x0000000000000000000000000000000000000001";
 
-/** The code this suite's gateway is configured to accept. */
-const INVITATION = "the-code-from-the-invitation";
+/** The session the dashboard calls as, for the calls only it makes. */
+const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
 
 const cardFor = (merchantItemId: string, title: string): Card => ({
   merchant_item_id: merchantItemId,
@@ -41,11 +41,7 @@ const cardFor = (merchantItemId: string, title: string): Card => ({
 let open: { harnessed: Harness; served: Served } | null = null;
 
 const started = async (overrides: Record<string, string> = {}) => {
-  const harnessed = await harness({
-    PAY_TO_ADDRESS: PAY_TO,
-    REGISTRATION_INVITATION: INVITATION,
-    ...overrides,
-  });
+  const harnessed = await harness({ PAY_TO_ADDRESS: PAY_TO, ...overrides });
   const served = await serve(harnessed);
   open = { harnessed, served };
   return open;
@@ -71,16 +67,15 @@ const setSellerName = async (served: Served, key: string, name: string | null) =
 
 /**
  * A merchant listed under nothing, made the only way one comes to exist: by
- * registering. The harness names the merchants it seeds, because a merchant
- * with no name publishes nothing and almost every test here sells something;
- * this is the state a real merchant is in between signing up and choosing.
+ * registering in the dashboard, with a key for their own code issued from
+ * there. The harness names the merchants it seeds, because a merchant with no
+ * name publishes nothing and almost every test here sells something; this is
+ * the state a real merchant is in between signing up and choosing.
  */
-const nameless = async (served: Served): Promise<string> => {
-  const answered = await served.call("POST", "/v0/merchants", {
-    body: { invitation: INVITATION },
-  });
-  expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-  return (answered.body as { secret: string }).secret;
+const nameless = async (harnessed: Harness): Promise<{ merchantId: string; key: string }> => {
+  const merchantId = await harnessed.gateway.registerMerchant();
+  const issued = await harnessed.gateway.issueMerchantKey(merchantId, "their worker", SIGNED_IN);
+  return { merchantId, key: issued.secret };
 };
 
 /**
@@ -91,12 +86,13 @@ const nameless = async (served: Served): Promise<string> => {
  * this gateway settles for real, so a merchant with no wallet is refused at the
  * publish too, and a test that left it out would pass on the wrong reason.
  */
-const payableAt = async (served: Served, key: string): Promise<void> => {
-  const answered = await served.call("POST", "/v0/payout-wallet", {
-    body: { payout_wallet: "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed" },
-    headers: bearer(key),
-  });
-  expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+const payableAt = async (harnessed: Harness, merchantId: string): Promise<void> => {
+  const paid = await harnessed.gateway.setPayoutWallet(
+    merchantId,
+    "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed",
+    SIGNED_IN,
+  );
+  expect(typeof paid, JSON.stringify(paid)).toBe("object");
 };
 
 describe("the name a merchant is listed under", () => {
@@ -105,8 +101,8 @@ describe("the name a merchant is listed under", () => {
     // no name has a settings page to draw, and the shape it draws from has to
     // say "there is none" in a way a reader cannot mistake for "I could not
     // find you".
-    const { served } = await started();
-    const key = await nameless(served);
+    const { served, harnessed } = await started();
+    const { key } = await nameless(harnessed);
 
     expect(await sellerName(served, key)).toStrictEqual({ seller_name: null, seller_site: null });
   });
@@ -416,8 +412,8 @@ describe("publishing before a name has been chosen", () => {
     // name reaches a buyer's agent inside a payment request that names no
     // seller at all, and the agent is invited to pay somebody the request does
     // not name. This gateway has shipped that once.
-    const { served } = await started();
-    const key = await nameless(served);
+    const { served, harnessed } = await started();
+    const { key } = await nameless(harnessed);
 
     const refused = await publishing(served, key, cardFor("a-room", "A room"));
 
@@ -435,8 +431,8 @@ describe("publishing before a name has been chosen", () => {
   it("writes nothing, so the card is not there afterwards", async () => {
     // A refusal that had already written the card would be worse than no rule:
     // the merchant would be told no and be selling anyway.
-    const { served } = await started();
-    const key = await nameless(served);
+    const { served, harnessed } = await started();
+    const { key } = await nameless(harnessed);
 
     await publishing(served, key, cardFor("a-room", "A room"));
 
@@ -452,9 +448,9 @@ describe("publishing before a name has been chosen", () => {
     // missing that too, and this gateway settles for real: the name is what
     // this test is about, and being refused for the other reason would say
     // nothing about it either way.
-    const { served } = await started();
-    const key = await nameless(served);
-    await payableAt(served, key);
+    const { served, harnessed } = await started();
+    const { merchantId, key } = await nameless(harnessed);
+    await payableAt(harnessed, merchantId);
     expect((await publishing(served, key, cardFor("a-room", "A room"))).status).toBe(422);
 
     await setSellerName(served, key, "Their own shop");
@@ -505,17 +501,13 @@ const soldUnderNoName = async (
   served: Served,
   merchantItemId = "a-room",
 ): Promise<{ readonly itemId: string; readonly key: string; readonly merchantId: string }> => {
-  const key = await nameless(served);
-  await payableAt(served, key);
+  const { merchantId, key } = await nameless(harnessed);
+  await payableAt(harnessed, merchantId);
   await setSellerName(served, key, "A name that was pulled");
   const itemId = await publish(served, key, cardFor(merchantItemId, "A room"));
 
-  const opened = await harnessed.gateway.keyBehind(key);
-  if (opened === null) {
-    throw new Error("the key this test just registered opens nothing");
-  }
-  await setServiceName(harnessed.store, opened.merchantId, null, harnessed.now());
-  return { itemId, key, merchantId: opened.merchantId };
+  await setServiceName(harnessed.store, merchantId, null, harnessed.now());
+  return { itemId, key, merchantId };
 };
 
 describe("a card whose merchant is listed under no name", () => {

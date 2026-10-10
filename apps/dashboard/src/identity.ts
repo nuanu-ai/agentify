@@ -28,19 +28,19 @@ import { and, asc, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import type { DashboardConfig } from "./config.js";
-import type {
-  AttachMerchantResult,
-  DashboardDestination,
-  DashboardIdentity,
-  DashboardLinkResult,
-  LinkDestination,
-  LinkRequestResult,
-  LinkWall,
-  LiveSession,
-  MadeMerchant,
-  MerchantPerson,
-  Person,
-  UnattachedPerson,
+import {
+  type AttachMerchantResult,
+  DASHBOARD_DESTINATIONS,
+  type DashboardDestination,
+  type DashboardIdentity,
+  type DashboardLinkResult,
+  type LinkDestination,
+  type LinkRequestResult,
+  type LinkWall,
+  type LiveSession,
+  type MerchantPerson,
+  type Person,
+  type UnattachedPerson,
 } from "./dashboard-entry.js";
 import { type Message, type Postman, postmanFor } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
@@ -64,7 +64,6 @@ export type {
   LinkDestination,
   LinkRequestResult,
   LiveSession,
-  MadeMerchant,
   MerchantPerson,
   Person,
   UnattachedPerson,
@@ -88,7 +87,7 @@ export interface Identity extends DashboardIdentity {
    * merchant by that person's press. It is how a suite arranges a person who
    * already owns a merchant.
    */
-  make(email: string, merchant: MadeMerchant): Promise<Person | null>;
+  make(email: string, merchantId: string): Promise<Person | null>;
   byEmail(email: string): Promise<Person | null>;
   byId(personId: string): Promise<Person | null>;
   endEverySessionFor(email: string): Promise<number>;
@@ -212,7 +211,6 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         modelName: "dashboard_accounts",
         additionalFields: {
           merchantId: { type: "string", required: false, input: false },
-          merchantKey: { type: "string", required: false, input: false },
           // Whether this person may read the operator's dashboard (ADR-0026
           // §6). Closed to input like the merchant: only the terminal's
           // command writes it.
@@ -411,7 +409,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const makeWith = async (
     bound: typeof auth,
     email: string,
-    merchant: MadeMerchant,
+    merchantId: string,
   ): Promise<Person | null> => {
     const context = await bound.$context;
     if ((await context.internalAdapter.findUserByEmail(email)) !== null) return null;
@@ -420,8 +418,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         email,
         emailVerified: false,
         name: "",
-        merchantId: merchant.id,
-        merchantKey: merchant.key,
+        merchantId,
       },
       { method: "operator" },
     );
@@ -699,11 +696,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           await tx.select().from(accounts).where(eq(accounts.email, request.email)).for("update")
         )[0];
         const result: DeleteResult =
-          row === undefined
-            ? "already_absent"
-            : row.merchantId === null && row.merchantKey === null
-              ? "deleted"
-              : "retained";
+          row === undefined ? "already_absent" : row.merchantId === null ? "deleted" : "retained";
         const proofs = await tx
           .select({ id: verifications.id, value: verifications.value })
           .from(verifications);
@@ -762,16 +755,15 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           if (person.merchant !== null) {
             return { status: "already-attached", person: asMerchantPerson(person) };
           }
-          const merchant = await register();
-          if (merchant === null) {
+          const merchantId = await register();
+          if (merchantId === null) {
             return { status: "unavailable", person: asUnattachedPerson(person) };
           }
-          row.merchantId = merchant.id;
-          row.merchantKey = merchant.key;
+          row.merchantId = merchantId;
           row.updatedAt = new Date();
           return {
             status: "attached",
-            person: asMerchantPerson({ ...person, merchant: { id: merchant.id } }),
+            person: asMerchantPerson({ ...person, merchant: { id: merchantId } }),
           };
         });
       }
@@ -783,8 +775,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         );
         const row = (
           await tx.execute<PersonRow>(sql`
-            select id, email, email_verified as "emailVerified", merchant_id as "merchantId",
-                   merchant_key as "merchantKey"
+            select id, email, email_verified as "emailVerified", merchant_id as "merchantId"
             from dashboard_accounts where id = ${personId} for update
           `)
         ).rows[0];
@@ -793,33 +784,27 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         if (person.merchant !== null) {
           return { status: "already-attached", person: asMerchantPerson(person) };
         }
-        const merchant = await register();
-        if (merchant === null) {
+        const merchantId = await register();
+        if (merchantId === null) {
           return { status: "unavailable", person: asUnattachedPerson(person) };
         }
         const written = await tx
           .update(accounts)
-          .set({ merchantId: merchant.id, merchantKey: merchant.key, updatedAt: new Date() })
-          .where(
-            and(
-              eq(accounts.id, personId),
-              isNull(accounts.merchantId),
-              isNull(accounts.merchantKey),
-            ),
-          )
+          .set({ merchantId, updatedAt: new Date() })
+          .where(and(eq(accounts.id, personId), isNull(accounts.merchantId)))
           .returning({ id: accounts.id });
         if (written.length !== 1) throw new Error("dashboard_merchant_attachment_lost_lock");
         return {
           status: "attached",
-          person: asMerchantPerson({ ...person, merchant: { id: merchant.id } }),
+          person: asMerchantPerson({ ...person, merchant: { id: merchantId } }),
         };
       });
     },
 
-    async make(rawEmail, merchant) {
+    async make(rawEmail, merchantId) {
       const email = emailAs(rawEmail);
       if (parts.pool === undefined) {
-        return await inMemoryTransaction(async (bound) => await makeWith(bound, email, merchant));
+        return await inMemoryTransaction(async (bound) => await makeWith(bound, email, merchantId));
       }
       const db = drizzle(parts.pool);
       return await db.transaction(async (tx) => {
@@ -829,7 +814,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         return await makeWith(
           authFor(drizzleAdapter(tx, { provider: "pg", schema })),
           email,
-          merchant,
+          merchantId,
         );
       });
     },
@@ -922,13 +907,10 @@ type PersonRow = {
   email: string;
   emailVerified: boolean;
   merchantId?: unknown;
-  merchantKey?: unknown;
 };
 
 function personFrom(user: PersonRow): Person {
-  const idAbsent = user.merchantId === null || user.merchantId === undefined;
-  const keyAbsent = user.merchantKey === null || user.merchantKey === undefined;
-  if (idAbsent && keyAbsent) {
+  if (user.merchantId === null || user.merchantId === undefined) {
     return {
       id: user.id,
       email: user.email,
@@ -936,14 +918,10 @@ function personFrom(user: PersonRow): Person {
       merchant: null,
     };
   }
-  if (
-    idAbsent !== keyAbsent ||
-    typeof user.merchantId !== "string" ||
-    typeof user.merchantKey !== "string" ||
-    user.merchantId === "" ||
-    user.merchantKey === ""
-  ) {
-    throw new Error("dashboard_account_partial_merchant_binding");
+  // Nothing writes an empty identifier; a row holding one was edited by hand,
+  // and reading it as no merchant would hide that behind the press.
+  if (typeof user.merchantId !== "string" || user.merchantId === "") {
+    throw new Error("dashboard_account_unreadable_merchant");
   }
   return {
     id: user.id,
@@ -986,17 +964,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /**
  * A claim read back, held to the closed set it was written from.
  *
- * A destination is one of the dashboard's three screens or the report of one
- * named scan, and a request is the scanner's identifier or nothing. A row
- * holding anything else was not written by this file and opens nothing.
+ * A destination is one of the dashboard's sections, its start among them, or
+ * the report of one named scan, and a request is the scanner's identifier or
+ * nothing. A row holding anything else was not written by this file and opens
+ * nothing.
  */
 function claimOf(value: Record<string, unknown>): LinkClaim | null {
   if (typeof value.email !== "string" || value.email !== emailAs(value.email)) return null;
   const request = value.request ?? null;
   if (request !== null && (typeof request !== "string" || !UUID.test(request))) return null;
   const destination = value.destination;
-  if (destination === "default" || destination === "settings" || destination === "woocommerce") {
-    return { email: value.email, destination, request };
+  if (typeof destination === "string") {
+    const known = DASHBOARD_DESTINATIONS.find((one) => one === destination);
+    return known === undefined ? null : { email: value.email, destination: known, request };
   }
   if (typeof destination !== "object" || destination === null) return null;
   const keys = Object.keys(destination);

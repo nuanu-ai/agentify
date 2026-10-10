@@ -19,7 +19,9 @@ const databaseUrl = await readyDatabase(wanted);
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsIn = join(here, "..", "drizzle");
 
-const MERCHANT = { id: "mer_the_merchant", key: "the-merchants-own-key-long-enough" };
+const MERCHANT = "mer_the_merchant";
+/** What an account row held beside its merchant until the column was dropped. */
+const A_KEY_ON_THE_ROW = "the-merchants-own-key-long-enough";
 const NOW = new Date("2026-09-17T12:00:00.000Z");
 
 async function statementsOf(file: string): Promise<string[]> {
@@ -137,7 +139,7 @@ if (databaseUrl === null) {
          values
            ('person_p2', 'owner@example.com', false, '', $1, $1, $2, $3),
            ('person_p1', 'reader@example.com', true, '', $1, $1, null, null)`,
-        [NOW, MERCHANT.id, MERCHANT.key],
+        [NOW, MERCHANT, A_KEY_ON_THE_ROW],
       );
       await pool.query(
         `insert into cabinet_credentials
@@ -221,6 +223,44 @@ if (databaseUrl === null) {
       await expect(
         pool.query(`update cabinet_accounts set merchant_key = null where id = 'person_p2'`),
       ).rejects.toMatchObject({ code: "23514" });
+    });
+
+    it("keeps the merchant on every account when the key column goes", async () => {
+      // The dashboard calls the gateway inside the process and reads no key
+      // off a row (ADR-0030), so the column that held one goes, and an
+      // account names its merchant and nothing more.
+      await emptyEverything();
+      const files = (await readdir(migrationsIn)).filter((file) => file.endsWith(".sql")).sort();
+      const dropped = files.findIndex((file) =>
+        /^\d{4}_account_names_its_merchant\.sql$/.test(file),
+      );
+      expect(dropped, "the migration that drops the key column").toBeGreaterThan(0);
+      for (const file of files.slice(0, dropped)) await run(file);
+      await pool.query(
+        `insert into dashboard_accounts
+           (id, email, email_verified, name, created_at, updated_at, merchant_id, merchant_key)
+         values ('person_owner', 'owner@example.com', true, '', now(), now(), $1, $2),
+                ('person_reader', 'reader@example.com', true, '', now(), now(), null, null)`,
+        [MERCHANT, A_KEY_ON_THE_ROW],
+      );
+
+      await run(files[dropped] ?? "");
+
+      expect(
+        (await pool.query(`select email, merchant_id from dashboard_accounts order by email`)).rows,
+      ).toStrictEqual([
+        { email: "owner@example.com", merchant_id: MERCHANT },
+        { email: "reader@example.com", merchant_id: null },
+      ]);
+      const columns = await pool.query<{ column_name: string }>(
+        `select column_name from information_schema.columns
+         where table_schema = 'public' and table_name = 'dashboard_accounts'`,
+      );
+      expect(columns.rows.map((column) => column.column_name)).not.toContain("merchant_key");
+      // An empty identifier is neither a merchant nor none, and stays refused.
+      await expect(
+        pool.query(`update dashboard_accounts set merchant_id = '' where id = 'person_reader'`),
+      ).rejects.toMatchObject({ code: "23514", constraint: "dashboard_accounts_merchant_named" });
     });
 
     it("makes nobody an operator when the flag arrives on accounts already there", async () => {
@@ -396,7 +436,7 @@ if (databaseUrl === null) {
       const identity = identityOn(messages);
       const seeded = await identity.make("person@example.com", MERCHANT);
 
-      expect(seeded).toMatchObject({ confirmed: false, merchant: { id: MERCHANT.id } });
+      expect(seeded).toMatchObject({ confirmed: false, merchant: { id: MERCHANT } });
       expect(
         (await pool.query("select count(*)::int as count from dashboard_credentials")).rows[0],
       ).toStrictEqual({ count: 0 });
@@ -408,7 +448,7 @@ if (databaseUrl === null) {
       const opened = await identity.openLink(tokenIn(messages[0] as Message));
       expect(opened).toMatchObject({
         status: "opened",
-        person: { id: seeded?.id, confirmed: true, merchant: { id: MERCHANT.id } },
+        person: { id: seeded?.id, confirmed: true, merchant: { id: MERCHANT } },
       });
     });
 
@@ -443,12 +483,11 @@ if (databaseUrl === null) {
       expect([first.status, second.status].sort()).toStrictEqual(["already-attached", "attached"]);
       expect(
         (
-          await pool.query(
-            "select merchant_id, merchant_key from dashboard_accounts where id = $1",
-            [opened.person.id],
-          )
+          await pool.query("select merchant_id from dashboard_accounts where id = $1", [
+            opened.person.id,
+          ])
         ).rows,
-      ).toStrictEqual([{ merchant_id: MERCHANT.id, merchant_key: MERCHANT.key }]);
+      ).toStrictEqual([{ merchant_id: MERCHANT }]);
     });
 
     it("keeps P1 and its session when gateway registration is unavailable", async () => {
@@ -477,7 +516,7 @@ if (databaseUrl === null) {
       // and not only of the memory store.
       const messages: Message[] = [];
       const identity = identityOn(messages);
-      const signedIn = async (email: string, merchant: typeof MERCHANT): Promise<string> => {
+      const signedIn = async (email: string, merchant: string): Promise<string> => {
         await identity.make(email, merchant);
         await identity.requestLink(email, "default");
         const opened = await identity.openLink(tokenIn(messages.at(-1) as Message));
@@ -486,16 +525,13 @@ if (databaseUrl === null) {
       };
       const pressed = await signedIn("owner@example.com", MERCHANT);
       const partner = await signedIn("partner@example.com", MERCHANT);
-      const elsewhere = await signedIn("stranger@example.com", {
-        id: "mer_another",
-        key: "another-merchants-own-key-long-enough",
-      });
+      const elsewhere = await signedIn("stranger@example.com", "mer_another");
 
-      expect([...(await identity.emailsNaming(MERCHANT.id))].sort()).toStrictEqual([
+      expect([...(await identity.emailsNaming(MERCHANT))].sort()).toStrictEqual([
         "owner@example.com",
         "partner@example.com",
       ]);
-      expect(await identity.endOtherSessionsOfMerchant(MERCHANT.id, pressed)).toBe(1);
+      expect(await identity.endOtherSessionsOfMerchant(MERCHANT, pressed)).toBe(1);
       expect((await identity.whoIs(pressed))?.person.email).toBe("owner@example.com");
       expect(await identity.whoIs(partner)).toBeNull();
       expect((await identity.whoIs(elsewhere))?.person.email).toBe("stranger@example.com");
@@ -541,7 +577,7 @@ if (databaseUrl === null) {
         const ended =
           reach === "person"
             ? await identity.endOtherSessionsOfPerson(owner.id, pressed)
-            : await identity.endOtherSessionsOfMerchant(MERCHANT.id, pressed);
+            : await identity.endOtherSessionsOfMerchant(MERCHANT, pressed);
 
         expect(ended).toBe(1);
         expect(await identity.whoIs(laptop)).toBeNull();

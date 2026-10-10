@@ -2,7 +2,7 @@ import { printable } from "./printable.js";
 
 /** The dashboard-owned identity seam used by the private production operator. */
 export type ApprovalDirectoryEntry =
-  | { readonly email: string; readonly binding: "unbound" | "partial" }
+  | { readonly email: string; readonly binding: "unbound" }
   | { readonly email: string; readonly binding: "bound"; readonly merchantId: string };
 
 export interface ApprovalDirectory {
@@ -66,11 +66,7 @@ export async function runApproval(
     return 1;
   }
   if (match.binding !== "bound") {
-    say(
-      match.binding === "unbound"
-        ? `PRODUCTION approval refused: ${match.email} has no merchant binding.`
-        : `PRODUCTION approval refused: ${match.email} has an incomplete merchant binding.`,
-    );
+    say(`PRODUCTION approval refused: ${match.email} has no merchant binding.`);
     return 1;
   }
 

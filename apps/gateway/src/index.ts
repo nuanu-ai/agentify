@@ -22,7 +22,12 @@ export { MemoryStore } from "./adapters/memory/store.js";
 export { PgBossQueue, queueOn } from "./adapters/pgboss/queue.js";
 export { connect, PostgresStore } from "./adapters/postgres/store.js";
 export { X402Facilitator } from "./adapters/x402/facilitator.js";
-export { type Caller, Gateway, type PurchaseAttempt } from "./app/gateway.js";
+export {
+  type Caller,
+  Gateway,
+  type PurchaseAttempt,
+  type WalletChangeRefusal,
+} from "./app/gateway.js";
 export {
   grantLiveApproval,
   type IssuedKey,
@@ -56,7 +61,6 @@ export {
 export {
   bodyRefused,
   CONFLICT,
-  KEY_MADE_FOR_A_DASHBOARD,
   merchantDeparted,
   merchantOrderAnswer,
   merchantOrderList,
@@ -64,7 +68,6 @@ export {
   NO_SUCH_KEY,
   NO_SUCH_ORDER,
   type Refused,
-  walletChangeRefused,
 } from "./http/merchant-answers.js";
 export {
   buildApp,

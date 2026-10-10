@@ -1,7 +1,8 @@
 # 0019. The money goes straight to the merchant's own wallet
 
 Date: 2026-08-28
-Status: accepted (the product owner, 2026-09-24 and 2026-09-25)
+Status: accepted (the product owner, 2026-09-24 and 2026-09-25); the write
+left `/v0` with the dashboard's key (ADR-0030), 2026-10-09
 
 ## Context
 
@@ -22,12 +23,10 @@ and answered checksummed, which a person can check by eye (ADR-0017). Outside
 the sandbox (ADR-0026 §5) a merchant without one cannot publish
 (`no_payout_wallet`). It is changed, never removed: the pause ends sales.
 
-Any key of the merchant's reads it at `/v0/payout-wallet`; a person signed in to
-the dashboard writes it, by a call inside the process the two share (ADR-0030).
-The public door routes no write there, so a copy of a key made for a dashboard
-sets nothing from outside; the gateway refuses a key made for the merchant's own
-code (`not_a_dashboard_key`), first address included, and no terminal command
-writes it, so the gateway sees every change.
+Any key of the merchant's reads it at `GET /v0/payout-wallet`; only a person
+signed in to the dashboard writes it, by a call inside the process the two share
+(ADR-0030). No route writes it, so no key can, the first address included, and
+no terminal command writes it, so the gateway sees every change.
 
 On the live deployment (ADR-0020) the first address, replacing nothing, applies
 at once and is announced afterwards. A replacement is announced first, answered
@@ -40,9 +39,11 @@ The gateway announces through the dashboard's teller in their shared process
 (ADR-0030), never through the scanner's route (ADR-0026), which can end
 sessions. Unless a message to every account naming the merchant is handed to the
 mail provider within twenty seconds, nothing is written: the change is refused
-as `wallet_change_nobody_to_tell`, or as `wallet_change_not_announced`, which
-says some messages may have gone out. A conditional write, not a lock held
-across the mail, refuses one overtaken meanwhile (`wallet_change_raced`). This
+as nobody to tell, or as not announced, whose words say some messages may have
+gone out. A conditional write, not a lock held across the mail, refuses one
+overtaken meanwhile, in words that say whether its own message went out. The
+dashboard words these refusals, on the one screen that asks, and they carry no
+published code. This
 reverses ADR-0013 on purpose: a change nobody was told of is the dangerous
 failure, and a message about one that did not land is the safe one, since every
 message says the change applies only if the wallet screen shows it.
@@ -54,8 +55,7 @@ links to the wallet screen without a token. A cancel there ends every session of
 every account naming the merchant but the one that pressed, and, moving money
 nowhere new, is announced afterwards and never refused. So is a key issued for
 the merchant's own code, its message naming who asked: the account a dashboard
-session was signed in as, or the key a call was made with. A key made for a
-dashboard is never announced.
+session was signed in as, or the key a call was made with.
 
 ## Consequences
 

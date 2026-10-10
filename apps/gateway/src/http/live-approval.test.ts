@@ -21,7 +21,6 @@ import {
   workUntilStopped,
 } from "../testing/harness.js";
 
-const INVITATION = "the-code-from-the-invitation";
 const WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 const LIVE_CHAIN = {
   PAYMENT_NETWORK: "eip155:8453",
@@ -49,11 +48,7 @@ const asyncCard = (merchantItemId: string): Card => ({
 let open: { harnessed: Harness; served: Served } | null = null;
 
 const started = async (overrides: Record<string, string> = {}) => {
-  const harnessed = await harness({
-    REGISTRATION_INVITATION: INVITATION,
-    ...LIVE_CHAIN,
-    ...overrides,
-  });
+  const harnessed = await harness({ ...LIVE_CHAIN, ...overrides });
   const served = await serve(harnessed);
   open = { harnessed, served };
   return open;
@@ -67,12 +62,17 @@ afterEach(async () => {
 
 const bearer = (key: string): Record<string, string> => ({ authorization: `Bearer ${key}` });
 
-const freshMerchant = async (served: Served): Promise<string> => {
-  const made = await served.call("POST", "/v0/merchants", {
-    body: { invitation: INVITATION },
-  });
-  expect(made.status, JSON.stringify(made.body)).toBe(200);
-  return (made.body as { secret: string }).secret;
+/** The session the dashboard calls as, for the calls only it makes. */
+const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
+
+/**
+ * A merchant made the way the dashboard makes one, with a key for their own
+ * code issued from there.
+ */
+const freshMerchant = async (harnessed: Harness): Promise<{ merchantId: string; key: string }> => {
+  const merchantId = await harnessed.gateway.registerMerchant();
+  const issued = await harnessed.gateway.issueMerchantKey(merchantId, "their worker", SIGNED_IN);
+  return { merchantId, key: issued.secret };
 };
 
 const name = async (served: Served, key: string): Promise<void> => {
@@ -83,12 +83,10 @@ const name = async (served: Served, key: string): Promise<void> => {
   expect(named.status, JSON.stringify(named.body)).toBe(200);
 };
 
-const payTo = async (served: Served, key: string): Promise<void> => {
-  const paid = await served.call("POST", "/v0/payout-wallet", {
-    body: { payout_wallet: WALLET },
-    headers: bearer(key),
-  });
-  expect(paid.status, JSON.stringify(paid.body)).toBe(200);
+/** Sets the wallet the way the dashboard's Settings screen does. */
+const payTo = async (harnessed: Harness, merchantId: string): Promise<void> => {
+  const paid = await harnessed.gateway.setPayoutWallet(merchantId, WALLET, SIGNED_IN);
+  expect(typeof paid, JSON.stringify(paid)).toBe("object");
 };
 
 const publish = (served: Served, key: string, body: unknown) =>
@@ -106,15 +104,11 @@ const existingCardWithoutApproval = async (
   served: Served,
   body: Card = card("existing-room"),
 ): Promise<{ readonly itemId: string; readonly key: string; readonly merchantId: string }> => {
-  const key = await freshMerchant(served);
+  const { merchantId, key } = await freshMerchant(harnessed);
   await name(served, key);
-  await payTo(served, key);
-  const opened = await harnessed.gateway.keyBehind(key);
-  if (opened === null) {
-    throw new Error("the key this test just registered opens nothing");
-  }
-  const stored = await harnessed.store.publishCard(opened.merchantId, body, harnessed.now());
-  return { itemId: stored.id, key, merchantId: opened.merchantId };
+  await payTo(harnessed, merchantId);
+  const stored = await harnessed.store.publishCard(merchantId, body, harnessed.now());
+  return { itemId: stored.id, key, merchantId };
 };
 
 /**
@@ -149,10 +143,10 @@ const acceptedOrderWithoutApproval = async (
 
 describe("live publication before operator approval", () => {
   it("refuses an otherwise ready merchant and writes no card", async () => {
-    const { served } = await started();
-    const key = await freshMerchant(served);
+    const { served, harnessed } = await started();
+    const { merchantId, key } = await freshMerchant(harnessed);
     await name(served, key);
-    await payTo(served, key);
+    await payTo(harnessed, merchantId);
 
     const refused = await publish(served, key, card("a-room"));
 

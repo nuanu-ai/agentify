@@ -121,11 +121,9 @@ if (databaseUrl === null) {
       Date.now(),
     );
     if (merchant === null) throw new Error("the merchant was not made");
-    const issued = await issueKey(store, randomIds, merchant.id, "worker", Date.now(), "test");
-    const attached = await identity.attachMerchant(person.id, async () => ({
-      id: merchant.id,
-      key: issued.secret,
-    }));
+    // A key of the merchant's own, so forgetting is seen to take keys too.
+    await issueKey(store, randomIds, merchant.id, "worker", Date.now(), "test");
+    const attached = await identity.attachMerchant(person.id, async () => merchant.id);
     if (attached.status !== "attached") throw new Error(`the merchant was ${attached.status}`);
     for (const item of cards) await store.publishCard(merchant.id, card(item), Date.now());
     return { person, merchantId: merchant.id };
@@ -273,10 +271,7 @@ if (databaseUrl === null) {
     it("refuses a merchant another account also names and removes nothing", async () => {
       const { person, merchantId } = await merchantAccount(EMAIL, ["room-101"]);
       const colleague = await signIn(BYSTANDER);
-      await identity.attachMerchant(colleague.id, async () => ({
-        id: merchantId,
-        key: "c".repeat(40),
-      }));
+      await identity.attachMerchant(colleague.id, async () => merchantId);
 
       const refused = await forget(EMAIL);
 
@@ -332,9 +327,9 @@ if (databaseUrl === null) {
     it("says a merchant the gateway no longer holds was already absent, not removed", async () => {
       await pool.query(
         `insert into dashboard_accounts
-           (id, email, email_verified, name, created_at, updated_at, merchant_id, merchant_key)
-         values ('acc_orphan', $1, true, '', now(), now(), 'mch_gone', $2)`,
-        [EMAIL, "k".repeat(40)],
+           (id, email, email_verified, name, created_at, updated_at, merchant_id)
+         values ('acc_orphan', $1, true, '', now(), now(), 'mch_gone')`,
+        [EMAIL],
       );
 
       const forgotten = await forget(EMAIL);

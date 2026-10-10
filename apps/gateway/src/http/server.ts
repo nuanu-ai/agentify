@@ -50,7 +50,6 @@ import express, { type Express, type Request, type Response } from "express";
 import type { ZodType } from "zod";
 import type { Gateway } from "../app/gateway.js";
 import { checksBeforeSending } from "../app/written.js";
-import type { KeyPurpose } from "../ports/store.js";
 import { bearerIn } from "./auth.js";
 import { GATEWAY_FAILED } from "./merchant-answers.js";
 import { handlersFor } from "./routes.js";
@@ -88,17 +87,6 @@ export interface RouteCall {
    * Null on an open route, exactly as the merchant is, and for the same reason.
    */
   readonly keyId: string | null;
-  /**
-   * What the key that opened this call was made for, from the same lookup.
-   *
-   * Two routes need it and the reason is a rule rather than a convenience: the
-   * calls that make and sweep up the keys a dashboard holds are the dashboard's
-   * own, and made with a key of the merchant's own code the sweep would take
-   * away the credential a dashboard is signed in on.
-   *
-   * Null on an open route, exactly as the two above are.
-   */
-  readonly keyPurpose: KeyPurpose | null;
   readonly request: Request;
   readonly response: Response;
 }
@@ -335,9 +323,6 @@ function mount(
       case "POST":
         app.post(route.path, serve);
         break;
-      case "DELETE":
-        app.delete(route.path, serve);
-        break;
       default: {
         const unmounted: never = method;
         throw new Error(`this gateway mounts no route on ${String(unmounted)}`);
@@ -423,7 +408,6 @@ async function answer(
     query,
     merchantId: caller?.merchantId ?? null,
     keyId: caller?.keyId ?? null,
-    keyPurpose: caller?.keyPurpose ?? null,
     request,
     response,
   });
@@ -465,14 +449,10 @@ const REFUSED = Symbol("the key on this call opens nothing");
  */
 const OTHER_ENVIRONMENT_PREFIX = Symbol("the value begins with the other site's key prefix");
 
-/**
- * Who made a call that came through a door: the merchant, which key, and what
- * that key was made for.
- */
+/** Who made a call that came through a door: the merchant, and which key. */
 interface Caller {
   readonly merchantId: string;
   readonly keyId: string;
-  readonly keyPurpose: KeyPurpose;
 }
 
 /**
@@ -538,9 +518,7 @@ async function callerBehind(
       }
 
       const key = await gateway.keyBehind(presented);
-      return key === null
-        ? REFUSED
-        : { merchantId: key.merchantId, keyId: key.id, keyPurpose: key.purpose };
+      return key === null ? REFUSED : { merchantId: key.merchantId, keyId: key.id };
     }
 
     // Neither of these carries a key, and they are two different reasons for
@@ -649,7 +627,7 @@ export function hold(schema: ZodType, value: unknown): Held {
  * The rule is conservative and deliberately lopsided. True is claimed only
  * where repeating this very call is genuinely the way through — not where a
  * retry might coincide with somebody else fixing something. A merchant putting
- * a paused card back on sale, an invitation being issued, a key being granted:
+ * a paused card back on sale, a key being granted:
  * those all end in a call that works, and none of them is the retry doing it.
  * So they are false, along with everything definitive and everything merely
  * arguable. What that costs is a caller who stops one call early; what the
@@ -685,13 +663,10 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   ship_to_does_not_fit: false,
   call_refused: false,
 
-  // Who the caller is, and what they hold. A key is granted or an invitation
-  // issued by somebody else doing something, never by the call being repeated.
+  // Who the caller is, and what they hold. A key is granted by somebody else
+  // doing something, never by the call being repeated.
   not_authorised: false,
   no_such_key: false,
-  not_invited: false,
-  not_a_dashboard_key: false,
-  key_made_for_a_dashboard: false,
   key_opened_this_call: false,
 
   // What is being asked about, and whether it is there. A route that does not
@@ -720,15 +695,6 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   // the answer; what actually ships is what the layer said.
   payment_not_verified: false,
   payment_not_taken: false,
-
-  // A payout wallet change the gateway would not record (ADR-0019). Each ends
-  // in a call that works once something else has changed — an account made,
-  // mail back, a merchant who has read what is now waiting —
-  // and repeating it blindly sends another message about a change nobody
-  // recorded.
-  wallet_change_nobody_to_tell: false,
-  wallet_change_not_announced: false,
-  wallet_change_raced: false,
 };
 
 /**

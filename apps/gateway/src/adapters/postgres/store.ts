@@ -28,7 +28,6 @@ import type { DrizzleTransactionLike } from "pg-boss";
 import type { Ids } from "../../ports/clock.js";
 import type {
   CatalogEntry,
-  KeyPurpose,
   MerchantScope,
   OrderChange,
   OrderLookup,
@@ -157,55 +156,9 @@ export class PostgresStore implements Store {
       .onConflictDoNothing({ target: merchants.id })
       .returning();
     // Nothing came back: the identifier is taken, and this wrote nothing over
-    // whatever was there. The one caller is a command somebody typed twice.
+    // whatever was there. The sandbox's seed at its second start is one way to
+    // get here; a generated identifier colliding is the other.
     return row === undefined ? null : storedMerchantOf(row);
-  }
-
-  async registerMerchant(
-    merchant: { readonly id: string; readonly name: string },
-    key: { readonly id: string; readonly label: string; readonly digest: string },
-    at: number,
-  ): Promise<{ merchant: StoredMerchant; key: StoredKey } | null> {
-    // One transaction, so the two rows commit together or neither does
-    // (ADR-0014 §1). Written as two statements outside one, a failure between
-    // them leaves a merchant with no key, a generated identifier nobody holds,
-    // and foreign keys on it that stop anything sweeping it away.
-    //
-    // The listing name is left out of the insert rather than set to null, so
-    // that what a merchant is listed under has one default and it is the
-    // column's.
-    return this.#db.transaction(async (tx) => {
-      const [merchantRow] = await tx
-        .insert(merchants)
-        .values({
-          id: merchant.id,
-          name: merchant.name,
-          selling: "open",
-          createdAt: new Date(at),
-          updatedAt: new Date(at),
-        })
-        .onConflictDoNothing({ target: merchants.id })
-        .returning();
-
-      if (merchantRow === undefined) {
-        // The identifier is taken and nothing was written over what is there.
-        // Answered rather than thrown, the way `addMerchant` answers it.
-        return null;
-      }
-
-      // Through the one place a key row is written, so that a digest already
-      // taken is refused here in the same words it is refused in when a key is
-      // issued on its own. It matters more here than there: this call is
-      // reachable by a stranger registering, and the driver's own refusal
-      // carries the digest.
-      const keyRow = await this.#writeKey(tx, {
-        ...key,
-        merchantId: merchant.id,
-        purpose: "dashboard",
-        at,
-      });
-      return { merchant: storedMerchantOf(merchantRow), key: storedKeyOf(keyRow) };
-    });
   }
 
   async merchantById(id: string): Promise<StoredMerchant | null> {
@@ -307,62 +260,36 @@ export class PostgresStore implements Store {
       readonly merchantId: string;
       readonly label: string;
       readonly digest: string;
-      readonly purpose: KeyPurpose;
     },
     at: number,
   ): Promise<StoredKey> {
     // A key naming a merchant that is not there is refused by the foreign key
     // rather than written: a key that opens a door onto nothing is worse than
     // a command that failed.
-    return storedKeyOf(await this.#writeKey(this.#db, { ...key, at }));
-  }
-
-  /**
-   * Writes one key row on whichever handle it is given, and turns the two rules
-   * that can refuse it into sentences the gateway can read.
-   *
-   * One place rather than two, because there are two ways a key is written — on
-   * its own, and beside the merchant it is the first key of — and only one of
-   * them used to say anything a caller could act on. The other handed back the
-   * driver's error, which is where this went wrong: a registration is reachable
-   * by a stranger, and a digest collision there put a merchant's stored secret
-   * into the log.
-   *
-   * The two rules are answered one at a time and by name, because they are two
-   * different things to have gone wrong. An identifier already taken is our own
-   * generator having collided, which is a defect in us. A digest already taken
-   * is the same secret being written twice, which is what the command that
-   * issues keys asks `keyByDigest` about before it writes — and this is the rule
-   * standing behind that check when two writes race.
-   *
-   * Nothing thrown from here carries the digest, and that is the point rather
-   * than a nicety. The driver's own refusal holds it twice — among the bound
-   * parameters of the statement, and in the detail line naming the value that
-   * clashed — so passing that error along, or hanging it on one of ours as a
-   * cause, publishes the secret the first time two writes collide.
-   */
-  async #writeKey(
-    on: Queries,
-    key: {
-      readonly id: string;
-      readonly merchantId: string;
-      readonly label: string;
-      readonly digest: string;
-      readonly purpose: KeyPurpose;
-      readonly at: number;
-    },
-  ): Promise<typeof merchantKeys.$inferSelect> {
+    //
+    // The two uniqueness rules are answered one at a time and by name, because
+    // they are two different things to have gone wrong. An identifier already
+    // taken is our own generator having collided, which is a defect in us. A
+    // digest already taken is the same secret being written twice, which is
+    // what the command that issues keys asks `keyByDigest` about before it
+    // writes — and this is the rule standing behind that check when two writes
+    // race.
+    //
+    // Nothing thrown from here carries the digest, and that is the point rather
+    // than a nicety. The driver's own refusal holds it twice — among the bound
+    // parameters of the statement, and in the detail line naming the value that
+    // clashed — so passing that error along, or hanging it on one of ours as a
+    // cause, publishes the secret the first time two writes collide.
     let row: typeof merchantKeys.$inferSelect | undefined;
     try {
-      [row] = await on
+      [row] = await this.#db
         .insert(merchantKeys)
         .values({
           id: key.id,
           merchantId: key.merchantId,
           label: key.label,
-          purpose: key.purpose,
           digest: key.digest,
-          createdAt: new Date(key.at),
+          createdAt: new Date(at),
         })
         .returning();
     } catch (thrown) {
@@ -382,7 +309,7 @@ export class PostgresStore implements Store {
     if (row === undefined) {
       throw new Error(`writing a key for ${key.merchantId} wrote no row`);
     }
-    return row;
+    return storedKeyOf(row);
   }
 
   async noteKeyUse(id: string, at: number): Promise<void> {
@@ -392,8 +319,8 @@ export class PostgresStore implements Store {
     // window in which the newer instant lands and is then written over by the
     // older one — which is the failure this is for, arrived at more slowly.
     //
-    // A key that is not there matches nothing and that is the answer: the row
-    // was revoked or forgotten between the door reading it and this being sent.
+    // A key that is not there matches nothing and that is the answer: it went
+    // with its merchant between the door reading it and this being sent.
     await this.#db
       .update(merchantKeys)
       .set({ lastUsedAt: new Date(at) })
@@ -441,33 +368,6 @@ export class PostgresStore implements Store {
     return rows.map(storedKeyOf);
   }
 
-  async codeKeysOf(merchantId: string): Promise<readonly StoredKey[]> {
-    // The narrowing is a second column in the predicate rather than a filter
-    // over what the wide read answered, so a merchant with a dashboard signing in
-    // twice a day is not read out of the database to be thrown away here.
-    const rows = await this.#db
-      .select()
-      .from(merchantKeys)
-      .where(
-        and(eq(merchantKeys.merchantId, merchantId), eq(merchantKeys.purpose, "merchant_code")),
-      )
-      .orderBy(merchantKeys.createdAt, merchantKeys.id);
-    return rows.map(storedKeyOf);
-  }
-
-  async forgetDashboardKey(keyId: string): Promise<boolean> {
-    // One row by its own identifier, and the kind carried in the predicate
-    // rather than read first and checked here: a merchant's own key is revoked
-    // and never removed, and a read followed by a delete is a gap where the row
-    // could change kind — which it cannot today, and which nothing about this
-    // statement invites anybody to rely on.
-    const gone = await this.#db
-      .delete(merchantKeys)
-      .where(and(eq(merchantKeys.id, keyId), eq(merchantKeys.purpose, "dashboard")))
-      .returning({ id: merchantKeys.id });
-    return gone.length > 0;
-  }
-
   async disableKey(id: string, at: number): Promise<StoredKey | null> {
     const [row] = await this.#db
       .update(merchantKeys)
@@ -480,41 +380,18 @@ export class PostgresStore implements Store {
     return row === undefined ? null : storedKeyOf(row);
   }
 
-  async disableKeyOf(
-    merchantId: string,
-    id: string,
-    at: number,
-  ): Promise<StoredKey | "made_for_a_dashboard" | null> {
-    // The merchant and the kind are both in the predicate, so a key this call
-    // may not touch is never selected rather than selected and then refused —
-    // which is what makes "not yours" and "not there" one answer from where the
-    // caller stands, and leaves no window between finding out what the key is
-    // and writing to it.
+  async disableKeyOf(merchantId: string, id: string, at: number): Promise<StoredKey | null> {
+    // The merchant is in the predicate, so a key this call may not touch is
+    // never selected rather than selected and then refused — which is what
+    // makes "not yours" and "not there" one answer from where the caller
+    // stands, and leaves no window between finding out whose the key is and
+    // writing to it.
     const [row] = await this.#db
       .update(merchantKeys)
       .set({ disabledAt: revokedAt(at) })
-      .where(
-        and(
-          eq(merchantKeys.id, id),
-          eq(merchantKeys.merchantId, merchantId),
-          eq(merchantKeys.purpose, "merchant_code"),
-        ),
-      )
-      .returning();
-    if (row !== undefined) {
-      return storedKeyOf(row);
-    }
-
-    // Nothing was written, and the two reasons for that are two different
-    // answers. Asked only on this path, so an ordinary revocation is still one
-    // statement; and a key's kind never changes after it is written, so this
-    // cannot come back disagreeing with the predicate above.
-    const [theirs] = await this.#db
-      .select({ id: merchantKeys.id })
-      .from(merchantKeys)
       .where(and(eq(merchantKeys.id, id), eq(merchantKeys.merchantId, merchantId)))
-      .limit(1);
-    return theirs === undefined ? null : "made_for_a_dashboard";
+      .returning();
+    return row === undefined ? null : storedKeyOf(row);
   }
 
   // --- the catalog ----------------------------------------------------------
@@ -1186,7 +1063,6 @@ function storedKeyOf(row: {
   id: string;
   merchantId: string;
   label: string;
-  purpose: string;
   createdAt: Date;
   disabledAt: Date | null;
   lastUsedAt: Date | null;
@@ -1195,27 +1071,10 @@ function storedKeyOf(row: {
     id: row.id,
     merchantId: row.merchantId,
     label: row.label,
-    purpose: keyPurposeOf(row.purpose),
     createdAt: row.createdAt.getTime(),
     disabledAt: row.disabledAt === null ? null : row.disabledAt.getTime(),
     lastUsedAt: row.lastUsedAt === null ? null : row.lastUsedAt.getTime(),
   };
-}
-
-/**
- * What a key was made for, out of a text column, or a refusal.
- *
- * A word the machine does not know reached the column — a hand-edited row, or a
- * value from a version of this code that is not this one. Guessing here would
- * be guessing whether this row belongs in the list a merchant revokes keys
- * from, and both guesses are bad: one hides a key its owner needs to turn off,
- * the other offers them the button that takes their own dashboard down.
- */
-function keyPurposeOf(word: string): KeyPurpose {
-  if (word !== "merchant_code" && word !== "dashboard") {
-    throw new Error(`a key says it was made for ${word}, which is not a thing a key is made for`);
-  }
-  return word;
 }
 
 /**

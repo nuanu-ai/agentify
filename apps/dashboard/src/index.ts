@@ -38,7 +38,6 @@ export {
   type IdentityParts,
   identityFor,
   type LinkRequestResult,
-  type MadeMerchant,
   type Person,
 } from "./identity.js";
 export { keysScreen, newKeyScreen } from "./keys.js";

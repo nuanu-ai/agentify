@@ -32,8 +32,7 @@
  *
  * A key that issued a new one is named the way the merchant's list of keys
  * names it: its label, with its identifier beside it, so the row can be found
- * and disabled. A key made for a dashboard is on no list, so it is named as
- * that.
+ * and disabled.
  *
  * What a message advises has to work in the state it describes. A waiting
  * change can be cancelled, and the cancel signs every other session out. After
@@ -74,9 +73,7 @@ const inert = (label: string): string => label.replace(/[.:/@]/g, (mark) => `${m
  * "was asked for" or "was set".
  */
 const askedIn = (asked: AskedInTheDashboard): string =>
-  asked.kind === "signed_in"
-    ? `in the dashboard, from a session signed in as ${asked.email}`
-    : "with a key made for your dashboard";
+  `in the dashboard, from a session signed in as ${asked.email}`;
 
 /** Who asked for a new key: as above, or a key the reader finds on their list. */
 const askedBy = (asked: AskedWith): string =>

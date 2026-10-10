@@ -179,15 +179,12 @@ const LIVE_GATEWAY_ONLY = {
  * A merchant made the way the dashboard's press makes one, and named or not.
  * Nothing else is set on them.
  */
-const registered = async (
-  application: Gateway,
-  named: boolean,
-): Promise<{ readonly id: string; readonly key: string }> => {
+const registered = async (application: Gateway, named: boolean): Promise<string> => {
   const made = await application.registerMerchant();
   if (named) {
-    await application.setSellerName(made.merchant_id, { seller_name: "Their own shop" });
+    await application.setSellerName(made, { seller_name: "Their own shop" });
   }
-  return { id: made.merchant_id, key: made.secret };
+  return made;
 };
 
 /** The application, with every call it is asked to make waiting for good. */
@@ -232,11 +229,11 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   });
   const merchant =
     standing.fresh === undefined
-      ? { id: harnessed.merchant.id, key: harnessed.merchant.key }
+      ? harnessed.merchant.id
       : await registered(harnessed.gateway, standing.fresh === "named");
   // A key of the merchant's own, for the calls a test makes as their code.
   const ownKey =
-    standing.fresh === undefined ? harnessed.merchant.key : await harnessed.addKey(merchant.id);
+    standing.fresh === undefined ? harnessed.merchant.key : await harnessed.addKey(merchant);
   const person = await identity.make(PERSON, merchant);
   if (person === null) {
     throw new Error("the test account could not be made");
@@ -425,7 +422,7 @@ describe("the shop screens are behind the sign-in", () => {
     const running = await started();
     const seen = await running.get("/woocommerce");
     expect(seen.status).toBe(303);
-    expect(seen.to).toBe("/sign-in");
+    expect(seen.to).toBe("/sign-in?destination=woocommerce");
   });
 });
 
@@ -1659,6 +1656,21 @@ describe("coming back from the shop with no session on the request", () => {
     expect(readable(seen.html)).toContain("Continue to your dashboard");
   });
 
+  it("leads its Continue, through the sign-in, back to the shop screen", async () => {
+    // The merchant this page is for has no session, so Continue meets the gate,
+    // and the sign-in it lands on keeps the shop screen as where the link
+    // returns them, the query the button adds notwithstanding.
+    const running = await started();
+    const stripped = await cameBack(running);
+    const page = (await running.getWithoutCookie(stripped.to ?? "/woocommerce/return")).html;
+    const action = /<form[^>]*action="([^"]+)"/.exec(page)?.[1] ?? "";
+    const from = /name="from" value="([^"]+)"/.exec(page)?.[1] ?? "";
+
+    const pressed = await running.getWithoutCookie(`${action}?from=${from}`);
+
+    expect(pressed.to).toBe("/sign-in?destination=woocommerce");
+  });
+
   it("still takes the state token out of the address bar", async () => {
     // The property the redirect was written for, and the one this change could
     // silently have dropped: with the cookie held back by SameSite, the visit
@@ -1812,12 +1824,9 @@ describe("coming back from the shop with no session on the request", () => {
     ]) {
       const seen = await running.getWithoutCookie(path);
       expect(seen.status, path).toBe(303);
-      // The wallet screen alone keeps where the person was going, because a
-      // message about a payout wallet change links there (ADR-0019); it is as
-      // shut as the rest.
-      expect(seen.to, path).toBe(
-        path === "/settings" ? "/sign-in?destination=settings" : "/sign-in",
-      );
+      // Where the sign-in returns the person afterwards is in its query, and
+      // is not this test's question; that it is the sign-in is.
+      expect(new URL(seen.to ?? "", "http://dashboard.test").pathname, path).toBe("/sign-in");
     }
   });
 });

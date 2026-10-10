@@ -18,7 +18,6 @@ import { grantLiveApproval } from "../app/merchants.js";
 import { SANDBOX_FACILITATOR } from "../config.js";
 import { type Harness, harness, type Served, serve } from "../testing/harness.js";
 
-const INVITATION = "the-code-from-the-invitation";
 const WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 
 /** What each surface is configured with, as the deployment's own variables. */
@@ -59,20 +58,21 @@ interface Holding {
   readonly approval: boolean;
 }
 
+/** The session the dashboard calls as, for the calls only it makes. */
+const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
+
 /**
- * A merchant made through the registration door on this surface, holding what
- * the case says and nothing else, and the key registration hands back. That
- * key is a dashboard's, the one kind that may set a wallet, which is how the
- * wallet is set here: as the dashboard sets it for a person on its Settings
- * screen.
+ * A merchant made on this surface the way the dashboard makes one, holding
+ * what the case says and nothing else, and a key for their own code issued
+ * from there. The wallet is set as the dashboard sets it for a person on its
+ * Settings screen.
  */
 const aMerchant = async (surface: Surface, holding: Holding) => {
-  const harnessed = await harness({ REGISTRATION_INVITATION: INVITATION, ...SURFACES[surface] });
+  const harnessed = await harness(SURFACES[surface]);
   const served = await serve(harnessed);
   open = { harnessed, served };
-  const made = await served.call("POST", "/v0/merchants", { body: { invitation: INVITATION } });
-  expect(made.status, JSON.stringify(made.body)).toBe(200);
-  const { merchant_id: id, secret: key } = made.body as { merchant_id: string; secret: string };
+  const id = await harnessed.gateway.registerMerchant();
+  const key = (await harnessed.gateway.issueMerchantKey(id, "their worker", SIGNED_IN)).secret;
   if (holding.name) {
     const named = await served.call("POST", "/v0/seller-name", {
       body: { seller_name: "Their own shop" },
@@ -81,11 +81,8 @@ const aMerchant = async (surface: Surface, holding: Holding) => {
     expect(named.status, JSON.stringify(named.body)).toBe(200);
   }
   if (holding.wallet) {
-    const paid = await served.call("POST", "/v0/payout-wallet", {
-      body: { payout_wallet: WALLET },
-      headers: bearer(key),
-    });
-    expect(paid.status, JSON.stringify(paid.body)).toBe(200);
+    const paid = await harnessed.gateway.setPayoutWallet(id, WALLET, SIGNED_IN);
+    expect(typeof paid, JSON.stringify(paid)).toBe("object");
   }
   if (holding.approval) {
     await grantLiveApproval(harnessed.store, id, harnessed.now());

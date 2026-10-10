@@ -62,7 +62,7 @@ const telling = async (
   const settings = config();
   const identity = identityFor(settings, { postman });
   for (const [email, merchantId] of people) {
-    await identity.make(email, { id: merchantId, key: `csk_live_key-of-${email}` });
+    await identity.make(email, merchantId);
   }
   return { tell: tellerFor(settings, identity, postman), sent };
 };
@@ -92,8 +92,9 @@ describe("a wallet change", () => {
       expect(text).toContain(FROM);
       expect(text).toContain(TO);
       expect(text).toContain("2026-09-26 12:00:00 UTC");
-      // Only a dashboard's key changes a wallet, so where it was asked for is
-      // the dashboard, and a person who did not ask knows a session did.
+      // Only a session in the dashboard changes a wallet, so where it was
+      // asked for is the dashboard, and a person who did not ask knows a
+      // session did.
       expect(text).toMatch(/asked for in the dashboard/i);
       expect(text).toContain(THE_SETTINGS_SCREEN);
       expect(text).not.toMatch(/token/i);

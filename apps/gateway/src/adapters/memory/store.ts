@@ -31,7 +31,6 @@ import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts
 import type { Clock, Ids } from "../../ports/clock.js";
 import type {
   CatalogEntry,
-  KeyPurpose,
   MerchantScope,
   OrderChange,
   OrderLookup,
@@ -165,44 +164,6 @@ export class MemoryStore implements Store {
     return storedMerchantOf(row);
   }
 
-  async registerMerchant(
-    merchant: { readonly id: string; readonly name: string },
-    key: { readonly id: string; readonly label: string; readonly digest: string },
-    at: number,
-  ): Promise<{ merchant: StoredMerchant; key: StoredKey } | null> {
-    if (this.#merchants.has(merchant.id)) {
-      return null;
-    }
-    // Listed under nothing and paid nowhere, exactly as a merchant made at a
-    // terminal is. Both are chosen afterwards, and until they are, this
-    // merchant publishes nothing.
-    const row: MerchantRow = {
-      id: merchant.id,
-      name: merchant.name,
-      createdAt: at,
-      selling: "open",
-      serviceName: null,
-      sellerSite: null,
-      payoutWallet: NO_WALLET,
-      liveApprovedAt: null,
-    };
-    this.#merchants.set(merchant.id, row);
-
-    // Nothing is awaited between the two writes, so in one process this is what
-    // the database's transaction is over there: no other decision can run in
-    // between and find a merchant with no key. The undo is still needed for the
-    // one thing that can go wrong inside the second write — a digest already
-    // taken — because a merchant left behind by that has a generated identifier
-    // nobody holds and no way in.
-    try {
-      const stored = this.#writeKey({ ...key, merchantId: merchant.id, purpose: "dashboard" }, at);
-      return { merchant: storedMerchantOf(row), key: stored };
-    } catch (thrown) {
-      this.#merchants.delete(merchant.id);
-      throw thrown;
-    }
-  }
-
   async merchantById(id: string): Promise<StoredMerchant | null> {
     const row = this.#merchants.get(id);
     return row === undefined ? null : storedMerchantOf(row);
@@ -273,30 +234,9 @@ export class MemoryStore implements Store {
       readonly merchantId: string;
       readonly label: string;
       readonly digest: string;
-      readonly purpose: KeyPurpose;
     },
     at: number,
   ): Promise<StoredKey> {
-    return this.#writeKey(key, at);
-  }
-
-  /**
-   * The key write itself, without a promise around it.
-   *
-   * It is separate so that registering can write a merchant and a key with
-   * nothing awaited in between, which is what makes the two land together in
-   * one process. Called through `addKey` everywhere else.
-   */
-  #writeKey(
-    key: {
-      readonly id: string;
-      readonly merchantId: string;
-      readonly label: string;
-      readonly digest: string;
-      readonly purpose: KeyPurpose;
-    },
-    at: number,
-  ): StoredKey {
     if (!this.#merchants.has(key.merchantId)) {
       // A key naming a merchant that is not there is a defect in whatever
       // asked for it, and the database refuses the same thing with a foreign
@@ -318,7 +258,6 @@ export class MemoryStore implements Store {
       id: key.id,
       merchantId: key.merchantId,
       label: key.label,
-      purpose: key.purpose,
       createdAt: at,
       disabledAt: null,
       lastUsedAt: null,
@@ -331,7 +270,7 @@ export class MemoryStore implements Store {
   async noteKeyUse(id: string, at: number): Promise<void> {
     const found = this.#keys.get(id);
     if (found === undefined) {
-      // Revoked or forgotten between the door reading it and this being
+      // Gone with its merchant between the door reading it and this being
       // written. Nothing is owed to a row that is not there.
       return;
     }
@@ -366,53 +305,18 @@ export class MemoryStore implements Store {
       .sort((one, other) => one.createdAt - other.createdAt || (one.id < other.id ? -1 : 1));
   }
 
-  async codeKeysOf(merchantId: string): Promise<readonly StoredKey[]> {
-    // Read through the wide list rather than filtering the map again, so the
-    // two answer in one order and a change to that order cannot reach one of
-    // them and not the other.
-    return (await this.keysOf(merchantId)).filter((key) => key.purpose === "merchant_code");
-  }
-
-  async forgetDashboardKey(keyId: string): Promise<boolean> {
-    const going = this.#keys.get(keyId);
-    if (going === undefined || going.purpose !== "dashboard") {
-      return false;
-    }
-    this.#keys.delete(going.id);
-    // The digest goes with it. Left behind, it would be an entry pointing at a
-    // key that is not there — which reads as nothing at the door, but is a
-    // digest nothing can ever write again, since writing one refuses a digest
-    // already taken.
-    for (const [digest, id] of this.#keysByDigest) {
-      if (id === going.id) {
-        this.#keysByDigest.delete(digest);
-      }
-    }
-    return true;
-  }
-
   async disableKey(id: string, at: number): Promise<StoredKey | null> {
     const found = this.#keys.get(id);
     return found === undefined ? null : this.#revoke(found, at);
   }
 
-  async disableKeyOf(
-    merchantId: string,
-    id: string,
-    at: number,
-  ): Promise<StoredKey | "made_for_a_dashboard" | null> {
+  async disableKeyOf(merchantId: string, id: string, at: number): Promise<StoredKey | null> {
     const found = this.#keys.get(id);
     // Another merchant's key is not found rather than refused, which is what
     // makes a refusal say nothing about whose keys exist. Postgres does the same
     // thing with a predicate; here it is this line.
     if (found === undefined || found.merchantId !== merchantId) {
       return null;
-    }
-    // Their own key, and not one they made. Told apart from the null above
-    // because this one is a fact about their own row, and because revoking it
-    // would sign somebody out of the dashboard they are standing in.
-    if (found.purpose !== "merchant_code") {
-      return "made_for_a_dashboard";
     }
     return this.#revoke(found, at);
   }

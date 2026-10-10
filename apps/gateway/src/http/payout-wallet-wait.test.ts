@@ -1,14 +1,15 @@
 /**
  * A payout wallet change on the live deployment: announced first, then waited
- * on (ADR-0019), over the real HTTP surface.
+ * on (ADR-0019).
  *
  * The address a merchant is paid at is the one setting whose change redirects
- * money, and only the dashboard's own key reaches it, so what it guards against
- * is a session: one left signed in on somebody else's device, or one somebody
- * stole. So on the live deployment a replacement is told to every account
- * naming the merchant before anything is written, and it takes effect
- * forty-eight hours after that. Everything here is what a caller holding a key
- * sees, and what an agent is told to pay while the wait runs.
+ * money, and only a session in the dashboard reaches it, inside the process
+ * (ADR-0030), so what it guards against is a session: one left signed in on
+ * somebody else's device, or one somebody stole. So on the live deployment a
+ * replacement is told to every account naming the merchant before anything is
+ * written, and it takes effect forty-eight hours after that. Every change here
+ * is asked for the way the dashboard asks; what a merchant's code reads back
+ * and what an agent is told to pay while the wait runs go through `serve`.
  *
  * The dashboard is not in this file. The harness records what the gateway asked
  * it to say and answers as a test tells it to, so each of the dashboard's answers
@@ -29,7 +30,13 @@ import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
 const HOURS = 60 * 60 * 1_000;
 const THE_WAIT = 48 * HOURS;
 
-const INVITATION = "the-code-from-the-invitation";
+/**
+ * The session every change here is asked from, and what every message names:
+ * the account it is signed in as. Whoever holds a session is not something the
+ * gateway can know, which is why it names the session's account and nobody
+ * behind it.
+ */
+const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
 
 /** What makes a harness live: Base mainnet, its one facilitator, and the dashboard to announce through. */
 const LIVE = {
@@ -46,7 +53,7 @@ const ANOTHER_WALLET = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
 let open: { harnessed: Harness; served: Served } | null = null;
 
 const started = async (overrides: Record<string, string> = LIVE) => {
-  const harnessed = await harness({ REGISTRATION_INVITATION: INVITATION, ...overrides });
+  const harnessed = await harness(overrides);
   const served = await serve(harnessed);
   open = { harnessed, served };
   return open;
@@ -71,27 +78,22 @@ const walletOf = async (served: Served, key: string): Promise<WalletAnswer> => {
   return answered.body as WalletAnswer;
 };
 
-const asking = (served: Served, key: string, wallet: string) =>
-  served.call("POST", "/v0/payout-wallet", {
-    body: { payout_wallet: wallet },
-    headers: bearer(key),
-  });
+/** A change asked for the way the dashboard's Settings screen asks: the answer, or the refusal. */
+const asking = (harnessed: Harness, wallet: string, merchantId = harnessed.merchant.id) =>
+  harnessed.gateway.setPayoutWallet(merchantId, wallet, SIGNED_IN);
 
-const ask = async (served: Served, key: string, wallet: string): Promise<WalletAnswer> => {
-  const answered = await asking(served, key, wallet);
-  expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-  return answered.body as WalletAnswer;
+/** A change that is expected to be taken, and the wallet as it then stands. */
+const ask = async (
+  harnessed: Harness,
+  wallet: string,
+  merchantId = harnessed.merchant.id,
+): Promise<WalletAnswer> => {
+  const answered = await asking(harnessed, wallet, merchantId);
+  if (typeof answered === "string") {
+    throw new Error(`the change was refused: ${answered}`);
+  }
+  return answered;
 };
-
-const refusalOf = (body: unknown) =>
-  (body as { error: { code: string; message: string; retryable: boolean } }).error;
-
-/**
- * Whether a refusal tells its reader a message about the change may be in an
- * inbox. It is a claim about the merchant's own mailbox, so it has to be true
- * when it is made and absent when nothing can have been sent.
- */
-const claimsAMessage = (body: unknown): boolean => /message/i.test(refusalOf(body).message);
 
 const at = (instant: number): string => new Date(instant).toISOString();
 
@@ -131,34 +133,23 @@ const theMerchantsKey = async (harnessed: Harness) => {
 };
 
 describe("the first address a merchant sets", () => {
-  /** A merchant with no address yet, and the dashboard key registering gave it. */
-  const aNewMerchant = async (served: Served): Promise<string> => {
-    const registered = await served.call("POST", "/v0/merchants", {
-      body: { invitation: INVITATION },
-    });
-    return (registered.body as { secret: string }).secret;
-  };
+  /** A merchant with no address yet, made the way the dashboard makes one. */
+  const aNewMerchant = (harnessed: Harness): Promise<string> =>
+    harnessed.gateway.registerMerchant();
 
   it("applies at once, or a new merchant could not start selling, and is announced afterwards", async () => {
     // The message is owed for every address set on the live site, the first
     // included: a session that is not the owner's could set it, and the
     // message is how the owner learns of it.
-    const { served, harnessed } = await started();
-    const key = await aNewMerchant(served);
+    const { harnessed } = await started();
+    const merchantId = await aNewMerchant(harnessed);
 
-    expect(await ask(served, key, A_WALLET)).toStrictEqual({
+    expect(await ask(harnessed, A_WALLET, merchantId)).toStrictEqual({
       payout_wallet: A_WALLET,
       pending: null,
     });
-    // Asked with a key made for a dashboard, it names that kind of key
-    // and nothing more: who holds a key is not something the gateway knows.
     expect(harnessed.announcer.announced).toStrictEqual([
-      {
-        kind: "wallet_set",
-        merchant_id: (await harnessed.gateway.keyBehind(key))?.merchantId,
-        to: A_WALLET,
-        asked_with: { kind: "dashboard" },
-      },
+      { kind: "wallet_set", merchant_id: merchantId, to: A_WALLET, asked_with: SIGNED_IN },
     ]);
   });
 
@@ -166,62 +157,47 @@ describe("the first address a merchant sets", () => {
     ["mail is down", "not_handed_over" as const],
     ["nobody is told", "nobody_to_tell" as const],
   ])("applies all the same when %s, because it replaces nothing", async (_why, outcome) => {
-    const { served, harnessed } = await started();
-    const key = await aNewMerchant(served);
+    const { harnessed } = await started();
+    const merchantId = await aNewMerchant(harnessed);
     harnessed.announcer.answer = outcome;
 
-    expect(await ask(served, key, A_WALLET)).toStrictEqual({
+    expect(await ask(harnessed, A_WALLET, merchantId)).toStrictEqual({
       payout_wallet: A_WALLET,
       pending: null,
     });
   });
 
   it("never waits on its message", async () => {
-    const { served, harnessed } = await started();
-    const key = await aNewMerchant(served);
+    const { harnessed } = await started();
+    const merchantId = await aNewMerchant(harnessed);
     harnessed.announcer.answer = () => new Promise(() => undefined);
 
-    expect((await asking(served, key, A_WALLET)).status).toBe(200);
+    expect(await ask(harnessed, A_WALLET, merchantId)).toStrictEqual({
+      payout_wallet: A_WALLET,
+      pending: null,
+    });
   });
 
   it("is announced to nobody on the test channel", async () => {
-    const { served, harnessed } = await started({
-      PAYMENT_NETWORK: "eip155:84532",
-      REGISTRATION_INVITATION: INVITATION,
-    });
-    const key = await aNewMerchant(served);
+    const { harnessed } = await started({ PAYMENT_NETWORK: "eip155:84532" });
+    const merchantId = await aNewMerchant(harnessed);
 
-    await ask(served, key, A_WALLET);
+    await ask(harnessed, A_WALLET, merchantId);
 
     expect(harnessed.announcer.announced).toStrictEqual([]);
   });
 });
 
 describe("a replacement on the live deployment", () => {
-  it("is refused to a key of the merchant's own code before anybody is told", async () => {
-    // A key that cannot make the change must not be able to send messages
-    // about one either, so the refusal comes before the announcement.
-    const { served, harnessed } = await started();
-    const before = await walletOf(served, harnessed.merchant.key);
-
-    const refused = await asking(served, harnessed.merchant.key, A_WALLET);
-
-    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
-    expect(refusalOf(refused.body).code).toBe("not_a_dashboard_key");
-    expect(harnessed.announcer.announced).toStrictEqual([]);
-    expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(before);
-  });
-
   it("waits forty-eight hours, and payment requests name the address paid now until then", async () => {
     // The promise the whole wait is for: a session that is not the owner's
     // cannot move a merchant's money today. Until the moment is reached, every agent asking
     // to pay is told the old address.
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
     const itemId = await published(served, harnessed.merchant.key);
     const asked = harnessed.now();
 
-    const answered = await ask(served, dashboard, A_WALLET);
+    const answered = await ask(harnessed, A_WALLET);
 
     expect(answered).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
@@ -248,9 +224,8 @@ describe("a replacement on the live deployment", () => {
     // to pay — checked against the old one, the payment layer would refuse a
     // payment made out exactly as the challenge said.
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
     const itemId = await published(served, harnessed.merchant.key);
-    await ask(served, dashboard, A_WALLET);
+    await ask(harnessed, A_WALLET);
     harnessed.advance(THE_WAIT);
 
     const bought = await buyOverHttp(harnessed, served, itemId, {
@@ -264,7 +239,6 @@ describe("a replacement on the live deployment", () => {
 
   it("is announced before it is recorded, saying what changes and when", async () => {
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
     const asked = harnessed.now();
     let recordedWhileAnnouncing: WalletAnswer | null = null;
     harnessed.announcer.answer = async () => {
@@ -274,7 +248,7 @@ describe("a replacement on the live deployment", () => {
       return "handed_over";
     };
 
-    await ask(served, dashboard, A_WALLET);
+    await ask(harnessed, A_WALLET);
 
     expect(recordedWhileAnnouncing).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
@@ -287,7 +261,7 @@ describe("a replacement on the live deployment", () => {
         from: harnessed.merchant.wallet,
         to: A_WALLET,
         not_before: at(asked + THE_WAIT),
-        asked_with: { kind: "dashboard" },
+        asked_with: SIGNED_IN,
       },
     ]);
   });
@@ -296,15 +270,14 @@ describe("a replacement on the live deployment", () => {
     // The message cannot know when it will have been handed over, which is why
     // it says "not before". What is recorded is counted from after, so the
     // change never takes effect earlier than any message said.
-    const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
+    const { harnessed } = await started();
     const asked = harnessed.now();
     harnessed.announcer.answer = async () => {
       harnessed.advance(5 * 60 * 1_000);
       return "handed_over";
     };
 
-    const answered = await ask(served, dashboard, A_WALLET);
+    const answered = await ask(harnessed, A_WALLET);
 
     expect(answered.pending?.takes_effect_at).toBe(at(asked + 5 * 60 * 1_000 + THE_WAIT));
     expect((harnessed.announcer.announced[0] as { not_before: string }).not_before).toBe(
@@ -318,12 +291,11 @@ describe("asking again", () => {
     // A retry after a dropped connection. It has to be safe, and it has to
     // answer with the change that is waiting, or the caller reads the old
     // address back and takes its own write for a failure.
-    const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    const first = await ask(served, dashboard, A_WALLET);
+    const { harnessed } = await started();
+    const first = await ask(harnessed, A_WALLET);
     harnessed.advance(HOURS);
 
-    const again = await ask(served, dashboard, A_WALLET.toLowerCase());
+    const again = await ask(harnessed, A_WALLET.toLowerCase());
 
     expect(again).toStrictEqual(first);
     expect(harnessed.announcer.announced).toHaveLength(1);
@@ -331,12 +303,11 @@ describe("asking again", () => {
 
   it("for a different address replaces the waiting change and starts the wait again", async () => {
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    await ask(served, dashboard, A_WALLET);
+    await ask(harnessed, A_WALLET);
     harnessed.advance(HOURS);
     const replaced = harnessed.now();
 
-    const answered = await ask(served, dashboard, ANOTHER_WALLET);
+    const answered = await ask(harnessed, ANOTHER_WALLET);
 
     expect(answered).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
@@ -359,11 +330,10 @@ describe("asking again", () => {
 
   it("for the address paid now cancels the waiting change, and says so", async () => {
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
     const itemId = await published(served, harnessed.merchant.key);
-    await ask(served, dashboard, A_WALLET);
+    await ask(harnessed, A_WALLET);
 
-    const cancelled = await ask(served, dashboard, harnessed.merchant.wallet);
+    const cancelled = await ask(harnessed, harnessed.merchant.wallet);
 
     expect(cancelled).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
@@ -374,45 +344,27 @@ describe("asking again", () => {
       merchant_id: harnessed.merchant.id,
       kept: harnessed.merchant.wallet,
       cancelled: A_WALLET,
-      asked_with: { kind: "dashboard" },
+      asked_with: SIGNED_IN,
     });
     harnessed.advance(THE_WAIT);
     expect(await payToNow(served, itemId)).toBe(harnessed.merchant.wallet);
   });
 
-  it("is refused to a key of the merchant's own code when it would cancel", async () => {
-    // A cancel moves no money, but it undoes the owner's own replacement:
-    // a key must not reach that either, and nobody is told of a cancel that
-    // did not happen.
-    const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    const waiting = await ask(served, dashboard, A_WALLET);
-
-    const refused = await asking(served, harnessed.merchant.key, harnessed.merchant.wallet);
-
-    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
-    expect(refusalOf(refused.body).code).toBe("not_a_dashboard_key");
-    expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(waiting);
-    expect(harnessed.announcer.announced.map((one) => one.kind)).toStrictEqual(["wallet_change"]);
-  });
-
   it("cancels even while mail is down, because a cancel moves money nowhere new", async () => {
-    const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    await ask(served, dashboard, A_WALLET);
+    const { harnessed } = await started();
+    await ask(harnessed, A_WALLET);
     harnessed.announcer.answer = "not_handed_over";
 
-    expect(await ask(served, dashboard, harnessed.merchant.wallet)).toStrictEqual({
+    expect(await ask(harnessed, harnessed.merchant.wallet)).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
       pending: null,
     });
   });
 
   it("for the address paid now with nothing waiting changes nothing and sends nothing", async () => {
-    const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
+    const { harnessed } = await started();
 
-    expect(await ask(served, dashboard, harnessed.merchant.wallet)).toStrictEqual({
+    expect(await ask(harnessed, harnessed.merchant.wallet)).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
       pending: null,
     });
@@ -421,47 +373,38 @@ describe("asking again", () => {
 });
 
 describe("a change that could not be announced", () => {
-  // Two cases, two codes, and in each nothing is written: the wallet paid now
-  // and whatever was already waiting are exactly as they were.
+  // Two answers, and in each nothing is written: the wallet paid now and
+  // whatever was already waiting are exactly as they were. The words a person
+  // reads for each are the dashboard's, and its own suite holds them.
   it.each([
-    ["nobody_to_tell", 409, "wallet_change_nobody_to_tell"],
-    ["not_handed_over", 503, "wallet_change_not_announced"],
+    ["nobody_to_tell", "nobody_to_tell"],
+    ["not_handed_over", "not_announced"],
   ] as const)(
     "is refused when the dashboard answers %s, and nothing is recorded",
-    async (outcome, status, code) => {
+    async (outcome, refusal) => {
       const { served, harnessed } = await started();
-      const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-      await ask(served, dashboard, A_WALLET);
+      await ask(harnessed, A_WALLET);
       const before = await walletOf(served, harnessed.merchant.key);
       harnessed.announcer.answer = outcome;
 
-      const refused = await asking(served, dashboard, ANOTHER_WALLET);
-
-      expect(refused.status, JSON.stringify(refused.body)).toBe(status);
-      expect(refusalOf(refused.body).code).toBe(code);
-      expect(refusalOf(refused.body).retryable).toBe(false);
+      expect(await asking(harnessed, ANOTHER_WALLET)).toBe(refusal);
       expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(before);
     },
   );
 
-  it("is refused as not announced when telling throws, without saying nothing was sent", async () => {
+  it("is refused as not announced when telling throws", async () => {
     // The dashboard tells in the gateway's own process (ADR-0030), so a
     // failure is a throw from our own code: reading the addresses, or a defect
     // before one message or between two. That is "not every message was handed
-    // over, and some may have been", which is what this refusal already says.
+    // over, and some may have been", which is what this refusal says.
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    await ask(served, dashboard, A_WALLET);
+    await ask(harnessed, A_WALLET);
     const before = await walletOf(served, harnessed.merchant.key);
     harnessed.announcer.answer = async () => {
       throw new Error("the addresses could not be read");
     };
 
-    const refused = await asking(served, dashboard, ANOTHER_WALLET);
-
-    expect(refused.status).toBe(503);
-    expect(refusalOf(refused.body).code).toBe("wallet_change_not_announced");
-    expect(refusalOf(refused.body).message).toMatch(/may still have received it/);
+    expect(await asking(harnessed, ANOTHER_WALLET)).toBe("not_announced");
     expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(before);
   });
   it("is refused as not announced when telling does not finish within twenty seconds, and nothing is recorded", async () => {
@@ -471,17 +414,13 @@ describe("a change that could not be announced", () => {
     // recorded. A telling held up by the mail provider or the database is cut
     // off at twenty seconds, and its messages may still go out after.
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    await ask(served, dashboard, A_WALLET);
+    await ask(harnessed, A_WALLET);
     const before = await walletOf(served, harnessed.merchant.key);
     harnessed.announcer.answer = () => new Promise(() => {});
 
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
-      const asked = harnessed.gateway.setPayoutWallet(harnessed.merchant.id, ANOTHER_WALLET, {
-        kind: "signed_in",
-        email: "owner@example.com",
-      });
+      const asked = asking(harnessed, ANOTHER_WALLET);
       await vi.advanceTimersByTimeAsync(20_000);
       expect(await Promise.race([asked, Promise.resolve("still waiting")])).toBe("not_announced");
     } finally {
@@ -498,24 +437,21 @@ describe("two changes for one merchant at once", () => {
     // would land on top of it and the waiting address would be one whose
     // message went out before the one the merchant just read.
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    // Another session at the same merchant, on a key of its own.
-    const other = await harnessed.addDashboardKey(harnessed.merchant.id);
     let nested = false;
     harnessed.announcer.answer = async () => {
       if (!nested) {
         nested = true;
-        await ask(served, other, ANOTHER_WALLET);
+        // Another session at the same merchant.
+        await harnessed.gateway.setPayoutWallet(harnessed.merchant.id, ANOTHER_WALLET, {
+          kind: "signed_in",
+          email: "partner@example.com",
+        });
       }
       return "handed_over";
     };
 
-    const refused = await asking(served, dashboard, A_WALLET);
-
-    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
-    expect(refusalOf(refused.body).code).toBe("wallet_change_raced");
-    // Its message did go out, and the refusal says so.
-    expect(claimsAMessage(refused.body)).toBe(true);
+    // Its message did go out, and the refusal is the one that says so.
+    expect(await asking(harnessed, A_WALLET)).toBe("raced_after_announcing");
     expect((await walletOf(served, harnessed.merchant.key)).pending?.payout_wallet).toBe(
       ANOTHER_WALLET,
     );
@@ -526,55 +462,49 @@ describe("two changes for one merchant at once", () => {
     // while the gateway was waiting on the dashboard — up to twenty seconds. The
     // retry is announced and recorded first; the first ask then finds the row
     // moved, and what moved it is exactly the change it asked for.
-    const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
+    const { harnessed } = await started();
     const retry: { answered?: Awaited<ReturnType<typeof asking>> } = {};
     let retrying = false;
     harnessed.announcer.answer = async () => {
       if (!retrying) {
         retrying = true;
-        retry.answered = await asking(served, dashboard, A_WALLET);
+        retry.answered = await asking(harnessed, A_WALLET);
       }
       return "handed_over";
     };
 
-    const first = await asking(served, dashboard, A_WALLET);
+    const first = await ask(harnessed, A_WALLET);
 
-    expect(first.status, JSON.stringify(first.body)).toBe(200);
-    expect(retry.answered?.status).toBe(200);
-    expect(first.body).toStrictEqual(retry.answered?.body);
-    expect((first.body as WalletAnswer).pending?.payout_wallet).toBe(A_WALLET);
+    expect(retry.answered).toStrictEqual(first);
+    expect(first.pending?.payout_wallet).toBe(A_WALLET);
   });
 
   it("lets a cancel win over a change still being announced, and refuses the change", async () => {
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    await ask(served, dashboard, A_WALLET);
+    await ask(harnessed, A_WALLET);
     const cancel: { answered?: WalletAnswer } = {};
     let cancelling = false;
     harnessed.announcer.answer = async (announcement) => {
       if (announcement.kind === "wallet_change" && !cancelling) {
         cancelling = true;
-        cancel.answered = await ask(served, dashboard, harnessed.merchant.wallet);
+        cancel.answered = await ask(harnessed, harnessed.merchant.wallet);
       }
       return "handed_over";
     };
 
-    const refused = await asking(served, dashboard, ANOTHER_WALLET);
+    const refused = await asking(harnessed, ANOTHER_WALLET);
 
     expect(cancel.answered).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
       pending: null,
     });
-    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
-    expect(refusalOf(refused.body).code).toBe("wallet_change_raced");
+    expect(refused).toBe("raced_after_announcing");
     expect((await walletOf(served, harnessed.merchant.key)).pending).toBeNull();
   });
 
   it("refuses a cancel that a recorded change overtook, without claiming a message", async () => {
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    await ask(served, dashboard, A_WALLET);
+    await ask(harnessed, A_WALLET);
     const writing = harnessed.store.setPayoutWallet.bind(harnessed.store);
     let overtaken = false;
     harnessed.store.setPayoutWallet = async (id, expected, next, when) => {
@@ -593,11 +523,9 @@ describe("two changes for one merchant at once", () => {
       return await writing(id, expected, next, when);
     };
 
-    const refused = await asking(served, dashboard, harnessed.merchant.wallet);
-
-    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
-    expect(refusalOf(refused.body).code).toBe("wallet_change_raced");
-    expect(claimsAMessage(refused.body)).toBe(false);
+    // A cancel is written before it is announced, so no message about it went
+    // out, and the refusal is the one that claims none.
+    expect(await asking(harnessed, harnessed.merchant.wallet)).toBe("raced");
     expect((await walletOf(served, harnessed.merchant.key)).pending?.payout_wallet).toBe(
       ANOTHER_WALLET,
     );
@@ -607,11 +535,8 @@ describe("two changes for one merchant at once", () => {
     // A first address is written before anything is announced, so when
     // another write lands first there is no message about it anywhere, and a
     // refusal that said there might be would send its reader looking for one.
-    const { served, harnessed } = await started();
-    const registered = await served.call("POST", "/v0/merchants", {
-      body: { invitation: INVITATION },
-    });
-    const key = (registered.body as { secret: string }).secret;
+    const { harnessed } = await started();
+    const merchantId = await harnessed.gateway.registerMerchant();
     const writing = harnessed.store.setPayoutWallet.bind(harnessed.store);
     let overtaken = false;
     harnessed.store.setPayoutWallet = async (id, expected, next, when) => {
@@ -622,12 +547,8 @@ describe("two changes for one merchant at once", () => {
       return await writing(id, expected, next, when);
     };
 
-    const refused = await asking(served, key, A_WALLET);
-
-    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
-    expect(refusalOf(refused.body).code).toBe("wallet_change_raced");
-    expect(claimsAMessage(refused.body)).toBe(false);
-    expect((await walletOf(served, key)).payout_wallet).toBe(ANOTHER_WALLET);
+    expect(await asking(harnessed, A_WALLET, merchantId)).toBe("raced");
+    expect((await harnessed.gateway.payoutWallet(merchantId)).payout_wallet).toBe(ANOTHER_WALLET);
   });
 });
 
@@ -636,10 +557,9 @@ describe("a deployment where no money is real", () => {
     ["the test channel", { PAYMENT_NETWORK: "eip155:84532" }],
     ["a sandbox", { FACILITATOR_URL: "sandbox:scripted" }],
   ])("applies a replacement at once on %s and announces nothing", async (_where, overrides) => {
-    const { served, harnessed } = await started(overrides);
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
+    const { harnessed } = await started(overrides);
 
-    expect(await ask(served, dashboard, A_WALLET)).toStrictEqual({
+    expect(await ask(harnessed, A_WALLET)).toStrictEqual({
       payout_wallet: A_WALLET,
       pending: null,
     });
@@ -749,90 +669,13 @@ describe("a new key on the live deployment", () => {
     expect(label.length).toBeLessThanOrEqual(101);
     expect(label.startsWith("the stock worker kkk")).toBe(true);
   });
-
-  it("is not announced when it is the dashboard's own, renewed at every sign-in", async () => {
-    const { served, harnessed } = await started();
-    const registered = await served.call("POST", "/v0/merchants", {
-      body: { invitation: INVITATION },
-    });
-    const dashboardKey = (registered.body as { secret: string }).secret;
-
-    const renewed = await served.call("POST", "/v0/keys/dashboard", {
-      headers: bearer(dashboardKey),
-    });
-
-    expect(renewed.status).toBe(200);
-    expect(harnessed.announcer.announced).toStrictEqual([]);
-  });
 });
 
-describe("a change asked for from a session in the dashboard", () => {
-  // The dashboard calls the gateway inside the process the two share, as the
-  // merchant on the signed-in account's row (ADR-0030). No key is on such a
-  // call, and what the gateway knows is the account the session is signed in
-  // as, so that is what every message names: an account at the merchant can
-  // tell whose session asked. Whoever holds a session is not something the
-  // gateway can know, which is why it names the session's account and nobody
-  // behind it.
-  const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
-
-  it("names the account a first wallet was set from", async () => {
-    const { harnessed } = await started();
-    const made = await harnessed.gateway.registerMerchant();
-
-    await harnessed.gateway.setPayoutWallet(made.merchant_id, A_WALLET, SIGNED_IN);
-
-    expect(harnessed.announcer.announced).toStrictEqual([
-      { kind: "wallet_set", merchant_id: made.merchant_id, to: A_WALLET, asked_with: SIGNED_IN },
-    ]);
-  });
-
-  it("names the account a replacement was asked from, before it is recorded", async () => {
-    const { harnessed } = await started();
-    const asked = harnessed.now();
-
-    const answered = await harnessed.gateway.setPayoutWallet(
-      harnessed.merchant.id,
-      A_WALLET,
-      SIGNED_IN,
-    );
-
-    expect(answered).toStrictEqual({
-      payout_wallet: harnessed.merchant.wallet,
-      pending: { payout_wallet: A_WALLET, takes_effect_at: at(asked + THE_WAIT) },
-    });
-    expect(harnessed.announcer.announced).toStrictEqual([
-      {
-        kind: "wallet_change",
-        merchant_id: harnessed.merchant.id,
-        from: harnessed.merchant.wallet,
-        to: A_WALLET,
-        not_before: at(asked + THE_WAIT),
-        asked_with: SIGNED_IN,
-      },
-    ]);
-  });
-
-  it("names the account a cancel was asked from", async () => {
-    const { harnessed } = await started();
-    await harnessed.gateway.setPayoutWallet(harnessed.merchant.id, A_WALLET, SIGNED_IN);
-
-    await harnessed.gateway.setPayoutWallet(
-      harnessed.merchant.id,
-      harnessed.merchant.wallet,
-      SIGNED_IN,
-    );
-
-    expect(harnessed.announcer.announced[1]).toStrictEqual({
-      kind: "wallet_change_cancelled",
-      merchant_id: harnessed.merchant.id,
-      kept: harnessed.merchant.wallet,
-      cancelled: A_WALLET,
-      asked_with: SIGNED_IN,
-    });
-  });
-
-  it("names the account a new key was issued from", async () => {
+describe("a new key issued from a session in the dashboard", () => {
+  it("names the account it was issued from", async () => {
+    // No key is on a call from the dashboard, and what the gateway knows of it
+    // is the account the session is signed in as, so that is what the message
+    // names: an account at the merchant can tell whose session asked.
     const { harnessed } = await started();
 
     const issued = await harnessed.gateway.issueMerchantKey(

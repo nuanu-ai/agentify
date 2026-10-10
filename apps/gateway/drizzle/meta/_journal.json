@@ -92,6 +92,13 @@
       "when": 1791375484815,
       "tag": "0012_dashboard_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791553116960,
+      "tag": "0013_delete_dashboard_keys",
+      "breakpoints": true
     }
   ]
 }

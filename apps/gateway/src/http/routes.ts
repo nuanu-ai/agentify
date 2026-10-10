@@ -21,9 +21,7 @@ import { outcomeFor } from "@agentify/core";
 import type {
   IssueKeyRequest,
   OrderListQuery,
-  PayoutWalletRequest,
   PurchaseRequest,
-  RegistrationRequest,
   RouteName,
   Seller,
   SellerNameRequest,
@@ -31,15 +29,11 @@ import type {
 } from "@nuanu-ai/agentify-contracts";
 import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
 import type { Caller, Gateway, PurchaseAttempt } from "../app/gateway.js";
-import { invitationAccepted } from "../app/merchants.js";
 import { agentOrderStatusOf } from "../app/runner.js";
-import type { KeyPurpose } from "../ports/store.js";
 import {
   BAD_REQUEST,
   bodyRefused,
   CONFLICT,
-  FORBIDDEN,
-  KEY_MADE_FOR_A_DASHBOARD,
   merchantDeparted,
   merchantOrderAnswer,
   merchantOrderList,
@@ -50,7 +44,6 @@ import {
   PAYMENT_REQUIRED,
   type Refused,
   UNPROCESSABLE,
-  walletChangeRefused,
 } from "./merchant-answers.js";
 import type { MountedRoute, RouteAnswer, RouteCall } from "./server.js";
 import { hold, refusal } from "./server.js";
@@ -98,67 +91,10 @@ function callersKey({ keyId }: RouteCall): string {
   return keyId;
 }
 
-/**
- * What the key this call was made with was made for.
- *
- * Null cannot arrive here for the reason it cannot arrive above, and on the
- * dashboard's own two routes and the payout wallet the answer decides whether
- * the call happens at all.
- */
-function callersPurpose({ keyPurpose }: RouteCall): KeyPurpose {
-  if (keyPurpose === null) {
-    throw new Error(
-      "this call was served as one of the merchant's and reached its handler with no key behind it",
-    );
-  }
-  return keyPurpose;
-}
-
 /** The key this call was made with, as the caller the gateway's flows take. */
 function keyCaller(call: RouteCall): Caller {
-  return { kind: "key", keyId: callersKey(call), purpose: callersPurpose(call) };
+  return { kind: "key", keyId: callersKey(call) };
 }
-
-/**
- * What a call made with the wrong kind of key is answered with.
- *
- * The two dashboard calls share it, because they are refused for one reason: they
- * are how a dashboard holds and replaces its own credential, and a key of the
- * merchant's own code reaching either of them reaches the sweep — which would
- * take that credential away and leave somebody looking at a dashboard that no
- * longer opens.
- */
-const notTheDashboards = (response: RouteCall["response"]): RouteAnswer =>
-  written(
-    response,
-    FORBIDDEN,
-    refusal(
-      "not_a_dashboard_key",
-      "this call is one a dashboard makes with a key of its own, and the key it was made with is one of the merchant's own code",
-    ),
-  );
-
-/**
- * What a key of the merchant's own code is answered with at the payout wallet.
- *
- * The public door does not route a write to this path at all (ADR-0019), so
- * what meets this is something inside the stack, such as a command somebody
- * runs by hand. It stays as the gateway's own word on the rule rather than the
- * door's alone. The code is the one the calls about a dashboard's key are
- * refused under, because the fact is the same: this call is not one a key of
- * the merchant's own code makes. The words are this route's, because what the
- * caller needs is where the wallet is set and why this key cannot set it. The published list of codes does not move, and
- * no worker of the SDK calls this route (ADR-0006 §2).
- */
-const walletIsSetInTheDashboard = (response: RouteCall["response"]): RouteAnswer =>
-  written(
-    response,
-    FORBIDDEN,
-    refusal(
-      "not_a_dashboard_key",
-      "the payout wallet is set only in the dashboard, on its Settings screen, by a person signed in to it, and the key this call was made with was made for the merchant's own code: a key of that kind operates the shop and cannot change where its money goes. Nothing was changed",
-    ),
-  );
 
 export function handlersFor(gateway: Gateway): Partial<Record<RouteName, MountedRoute>> {
   const { config } = gateway.runtime;
@@ -197,28 +133,6 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
       serve: async (call) => ({ status: OK, document: await gateway.receipts(merchantOf(call)) }),
     },
 
-    register_merchant: {
-      serve: async (call) => {
-        const asked = call.body as RegistrationRequest;
-        if (!invitationAccepted(config.registrationInvitation, asked.invitation)) {
-          // One answer for a wrong code and for a gateway that takes no
-          // registrations. Two answers would make this form a way of asking
-          // which deployment is open, which is what the code in the door exists
-          // to stop being findable (ADR-0014 §3). The words say what is needed
-          // to get in and nothing about whether anything would.
-          return written(
-            call.response,
-            FORBIDDEN,
-            refusal(
-              "not_invited",
-              "registering here needs an invitation this gateway accepts, and this is not one",
-            ),
-          );
-        }
-        return { status: OK, document: await gateway.registerMerchant() };
-      },
-    },
-
     get_seller_name: {
       serve: async (call) => ({
         status: OK,
@@ -245,35 +159,10 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
       }),
     },
 
-    set_payout_wallet: {
-      // An address that is not one never reaches this handler: the mounting
-      // loop holds the body to the contract's own shape and answers 400 with
-      // the schema's words, which say what is wrong with the address and what
-      // the two spellings of one are. That is the same rule the flow below
-      // applies before it writes, and the two are one schema rather than two
-      // copies of a regular expression and a hash.
-      serve: async (call) => {
-        const set = await gateway.setPayoutWallet(
-          merchantOf(call),
-          (call.body as PayoutWalletRequest).payout_wallet,
-          keyCaller(call),
-        );
-        if (set === "not_a_dashboard_key") {
-          return walletIsSetInTheDashboard(call.response);
-        }
-        return typeof set === "string"
-          ? refusedWith(call.response, walletChangeRefused(set))
-          : { status: OK, document: set };
-      },
-    },
-
     list_keys: {
       // The key that opened this call travels through rather than being looked
       // up again: the door resolved it a moment ago, and a second lookup would
-      // be a second chance for the two to disagree. It is not always one of
-      // the keys beside it, since a key made for a dashboard is on no list, and
-      // it is answered all the same, because the field means the same thing on
-      // every call: which key opened this one.
+      // be a second chance for the two to disagree.
       serve: async (call) => ({
         status: OK,
         document: {
@@ -294,27 +183,6 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
       }),
     },
 
-    issue_dashboard_key: {
-      serve: async (call) => {
-        const made = await gateway.issueDashboardKey(merchantOf(call), callersPurpose(call));
-        return made === "not_a_dashboard_key"
-          ? notTheDashboards(call.response)
-          : { status: OK, document: made };
-      },
-    },
-
-    forget_dashboard_key: {
-      serve: async (call) => {
-        // No merchant is passed and none is needed: the only key this can
-        // remove is the one the call was made with, and that key already says
-        // whose it is.
-        const gone = await gateway.forgetDashboardKey(callersKey(call), callersPurpose(call));
-        return gone === "not_a_dashboard_key"
-          ? notTheDashboards(call.response)
-          : { status: OK, document: gone };
-      },
-    },
-
     disable_key: {
       serve: async (call) => {
         const disabled = await gateway.disableMerchantKey(
@@ -325,11 +193,9 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
 
         if (disabled === "locked_out") {
           // A refusal that protects the caller from themselves rather than from
-          // anybody else. A merchant whose dashboard holds this key and disabled
-          // it would meet "the gateway will not take this key" on every page
-          // afterwards, with no terminal to undo it from (ADR-0014 §5). It
-          // reaches only the key on this call; the flow above says what that
-          // leaves open.
+          // anybody else: whoever holds this key would be left calling with
+          // something the gateway no longer takes (ADR-0014 §5). It reaches only
+          // the key on this call; the flow above says what that leaves open.
           return written(
             call.response,
             CONFLICT,
@@ -338,9 +204,6 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
               "this is the key this call was made with, and disabling it would leave the caller with nothing to reach the gateway",
             ),
           );
-        }
-        if (disabled === "made_for_a_dashboard") {
-          return refusedWith(call.response, KEY_MADE_FOR_A_DASHBOARD);
         }
         if (disabled === null) {
           return refusedWith(call.response, NO_SUCH_KEY);
