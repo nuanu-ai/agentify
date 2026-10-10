@@ -1046,13 +1046,13 @@ describe("a parcel's price question", () => {
   });
 
   it("names no price where the shop has no rate for the place, or the shop refused it", async () => {
-    // Not available is all an agent can be told today; the reason goes to the
+    // Not available is all an agent can be told; the reason goes to the
     // merchant's log. The shop that does not ship there and the shop that
-    // refused the place read the same to the agent.
+    // refused the place read the same to the agent. A shop that could not
+    // answer at all is a different case, and says nothing (below).
     for (const read of [
       { ok: true as const, rates: [] },
       { ok: false as const, why: "The shop refused the place.", again: false },
-      { ok: false as const, why: "The shop did not answer.", again: true },
     ]) {
       const shops = memoryWooShops();
 
@@ -1775,13 +1775,16 @@ describe("a parcel the whole way through, against a real gateway", () => {
       itemId,
       {
         // The harness hands the question over as the envelope carried it.
-        onQuote: (question) =>
-          quoteFromTheShop(
+        onQuote: async (question) => {
+          const answer = await quoteFromTheShop(
             connected,
             QuoteRequestSchema.parse(question),
             new Date(harnessed.now()),
             parts,
-          ),
+          );
+          if (answer === null) throw new Error("the shop answered and the worker said nothing");
+          return answer;
+        },
         onOrder: async (order) =>
           (await fillFromTheShop(order, connected, MERCHANT_EMAIL, parts)) ??
           Promise.reject(new Error("the shop was not asked")),
