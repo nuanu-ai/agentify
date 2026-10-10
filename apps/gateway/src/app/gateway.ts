@@ -14,6 +14,7 @@
 import type {
   Environment,
   MerchantSelling,
+  OrderState,
   PaymentVerificationFailure,
   TransitionRejection,
 } from "@agentify/core";
@@ -1244,13 +1245,24 @@ export class Gateway {
       return { step: "no_such_item" };
     }
 
+    // An order that is over with no money taken and no goods held takes no
+    // payment. Checking one would spend the payment layer's round trip and,
+    // were it refused, tell the agent to pay again for a price that is gone,
+    // so the agent is told where the purchase stands and nothing is checked.
+    if (
+      NOTHING_TO_PAY_FOR.includes(before.order.state) ||
+      (before.order.state === "expired" && !before.order.heldFulfillment)
+    ) {
+      return this.#wherePurchaseStands(orderId);
+    }
+
     // A price holds for a fixed time, and a payment that arrives after it pays
     // for a price that no longer holds. The timer that closes such an order can
-    // fire late, so the instant the payment arrived decides rather than the
-    // timer: the order is closed as the timer would have closed it, before
-    // anything is verified or claimed, and the agent is told where its purchase
-    // stands. The arrival and not the verification's answer is the instant,
-    // because the payment layer's round trip is ours and not the agent's.
+    // fire late, so a payment arriving after the price's life closes the order
+    // as the timer would have, before anything is verified or claimed, and the
+    // agent is told where its purchase stands. This covers the payment that
+    // arrives late, not one that arrives in time and is still being checked
+    // when the price runs out: the timer can close that order first.
     const arrivedAt = this.runtime.clock();
     const lapsed = deadlines(before.order).find(
       (deadline) =>
@@ -2335,6 +2347,21 @@ export class Gateway {
   }
 }
 
+/** What an agent whose payment was refused does next, by why it was refused. */
+const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
+  price_stale:
+    "the offer it was made against no longer stands — the price moved, or the seller changed where they are paid — so start a new purchase for a fresh price and pay against that",
+  insufficient_funds: "fund the paying wallet and pay this order again while its price holds",
+  signature: "sign a new payment for this order and present it while its price holds",
+};
+
+/**
+ * The endings in which nothing was taken and nothing is held, so a payment
+ * has nothing left to buy. `expired` is one only without held goods, and is
+ * asked separately.
+ */
+const NOTHING_TO_PAY_FOR: readonly OrderState[] = ["failed", "rejected", "declined", "cancelled"];
+
 /**
  * Why the machine would not take a merchant's call, in words that are true.
  *
@@ -2350,14 +2377,6 @@ export class Gateway {
  * contract allows for — the set is open — and each carries the state it was in,
  * because "this has no meaning here" is only useful alongside where "here" is.
  */
-/** What an agent whose payment was refused does next, by why it was refused. */
-const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
-  price_stale:
-    "the offer it was made against no longer stands — the price moved, or the seller changed where they are paid — so start a new purchase for a fresh price and pay against that",
-  insufficient_funds: "fund the paying wallet and pay this order again while its price holds",
-  signature: "sign a new payment for this order and present it while its price holds",
-};
-
 function refusedCall(rejection: TransitionRejection): CallError {
   const closed = !isOpen(rejection.state);
   return {
