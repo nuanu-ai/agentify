@@ -424,7 +424,7 @@ function TeaserState({
           </strong>
           <span>
             {registrationEnabled
-              ? "The full report requires email, phone, and one secure email confirmation."
+              ? "The full report requires your email and one secure email confirmation. A phone number is optional."
               : "Email verification is not enabled in this deployment yet."}
           </span>
         </div>
