@@ -2082,9 +2082,11 @@ export class Gateway {
    *
    * An order written before it kept a result of its own is held to the card as
    * it stands, which is what held every order then. That reading has an end:
-   * once no open order on either channel lacks the field, it goes, and an
-   * order for goods with no result of its own becomes the impossible case the
-   * missing card below already is.
+   * once no order for goods on either channel is both without a delivery and
+   * without the field — closed ones included, since a late answer still
+   * reaches this check — it goes, and an order for goods with no result of its
+   * own becomes the impossible case the missing card below already is. The
+   * question is kept in `docs/research/00-open-questions.md`.
    */
   async #goodsAgainstTheCard(record: StoredOrder, delivery: Delivery): Promise<CallError | null> {
     const parcel = record.order.mode.parcel === true;
