@@ -2,8 +2,8 @@
 
 Date: 2026-10-10. A working protocol for a person who tests the product by
 hand. It is rewritten freely between runs and is not a decision. The report of
-each run is a separate note beside this one; its template is the last section
-here.
+each run is kept privately, outside this public repository; its template is
+the last section here.
 
 ## What a run answers
 
@@ -668,16 +668,16 @@ browsers is not in scope.
 
 ## How to report
 
-The report of a run is a new note beside this one, named for the day the run
-started, such as `41-manual-test-run-2026-10-14.md`, and written as the run
-goes rather than at the end. Findings are numbered inside the report; nothing
-goes into an issue tracker. The repository is public, so whatever goes into the
-report is published: it never carries a sign-in link, a key, a wallet's private
-key, an authorization header, a buyer's address or a person's email address.
-Cards, orders and receipts are named by their identifiers (`item_…`, `ord_…`),
-which is also what ties the evidence of the three views together. Screenshots
-are cropped of addresses before they are committed beside the report, which
-reaches `main` through a branch and a pull request like every other change.
+The report of a run is not committed to this repository, which is public. It
+is kept in a private folder the product owner names, one per run and named for
+the day the run started, and written as the run goes rather than at the end.
+Findings are numbered inside the report; nothing goes into an issue tracker. A
+finding that becomes a fix is described in the fixing pull request in that
+request's own words. Even privately, the report never carries a sign-in link, a
+key, a wallet's private key or an authorization header, and keeps a buyer's
+address and a person's email address out of its screenshots. Cards, orders and
+receipts are named by their identifiers (`item_…`, `ord_…`), which is also
+what ties the evidence of the three views together.
 
 Every case gets one verdict. **Pass**: the whole case ran and everything in
 "What should happen" held. **Fail**: something that ran did not hold — even if
