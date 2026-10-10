@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       request,
       400,
       "invalid_url",
-      "This address cannot be scanned. Enter a public website's domain name, such as example.com.",
+      "This address cannot be scanned. Enter the public address of a website, such as https://example.com, with no port, sign-in details or private keys in it.",
     );
   }
   try {

@@ -72,7 +72,9 @@ export function PendingScanExperience({
       }
       if (code === "temporarily_busy") {
         setState("busy");
-        setMessage("The scanner is at capacity. No scan was promised; please retry shortly.");
+        setMessage(
+          "The scanner could not take this scan just now. No scan was started; please retry shortly.",
+        );
         return;
       }
 
