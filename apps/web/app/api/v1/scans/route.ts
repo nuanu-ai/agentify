@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       request,
       400,
       "invalid_url",
-      "The URL contains a blocked host, port, or sensitive query key.",
+      "This address cannot be scanned. Enter a public website's domain name, such as example.com.",
     );
   }
   try {
