@@ -604,6 +604,7 @@ describe("P4 dashboard-owned scanner identity", () => {
       (await persistAttribution(post("/api/v1/attribution", campaign, { cookie }))).status,
     ).toBe(204);
     expect((await landingView()).status).toBe(204);
+    const seenAtChoice = (await visitorSession())?.lastSeenAt;
     const accepted = await acceptScan(
       post(
         "/api/v1/scans",
@@ -622,7 +623,15 @@ describe("P4 dashboard-owned scanner identity", () => {
     );
     expect(accepted.status).toBe(202);
     const declined = await visitorSession();
-    expect(declined).toMatchObject({ lastUtmSource: null, lastUtmCampaign: null });
+    // The scan is the visitor's and is kept; which landing they came from and
+    // when they were last seen are measurement, and are not.
+    expect(declined).toMatchObject({
+      lastUtmSource: null,
+      lastUtmCampaign: null,
+      firstLandingVariant: null,
+      lastLandingVariant: null,
+      lastSeenAt: seenAtChoice,
+    });
     expect(await eventsOf(declined?.id ?? "")).toEqual([]);
 
     // Allowing product analytics: from then on the visit is recorded.
