@@ -126,15 +126,6 @@ export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({
   no_payout_wallet: "the wallet address your money arrives at",
 });
 
-/**
- * What a screen says where the door asks for the operator's approval: what
- * this dashboard cannot check, and that it cannot. No route tells it whether a
- * merchant holds one, so "I don't know" is said as that and never as "there is
- * none".
- */
-export const APPROVAL_UNREAD =
-  "Selling live also needs Agentify to approve your merchant, and this page cannot tell whether it has.";
-
 /** What a live merchant still waiting for the operator's approval is told. */
 export const APPROVAL_PENDING =
   "Selling live is waiting for Agentify to approve your merchant; until then your cards are refused on the live channel.";

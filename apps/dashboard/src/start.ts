@@ -118,12 +118,16 @@ function started(
     },
   );
 
-  const worker = startWooWorker({
-    shops: wooShops,
-    identity,
-    clientFor: (acting) => gatewayFor(application, acting),
-    now: () => new Date(),
-  });
+  // Not on the live channel, where the connector is not offered (`buildApp`).
+  const worker =
+    config.surfaceMode === "live"
+      ? { stop: async () => {} }
+      : startWooWorker({
+          shops: wooShops,
+          identity,
+          clientFor: (acting) => gatewayFor(application, acting),
+          now: () => new Date(),
+        });
 
   return {
     async closeListeners() {

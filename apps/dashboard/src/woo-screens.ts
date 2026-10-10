@@ -19,13 +19,12 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
-import { MERCHANT_FINDINGS, type MerchantFinding } from "@nuanu-ai/agentify-contracts";
 import { bare, brandLockup, escaped, page, when } from "./html.js";
 import { refusedForNoName, type Viewer } from "./screens.js";
 import type { SkippedProduct } from "./woo-catalog.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
 import { PRODUCTS_AT_MOST } from "./woo-shop.js";
-import { APPROVAL_UNREAD, UNSET_WORDS, type Unset } from "./words.js";
+import { UNSET_WORDS, type Unset } from "./words.js";
 
 /**
  * A connected shop as a screen may know it.
@@ -104,11 +103,6 @@ export interface WooView {
    * one: what was unset at that moment, before the shop was read.
    */
   readonly refused?: readonly Unset[];
-  /**
-   * What the door asks of this merchant that this page could not read, which
-   * is the operator's approval wherever the door asks for it.
-   */
-  readonly unsure?: readonly MerchantFinding[];
   /** What was wrong with what the merchant just typed, where anything was. */
   readonly problem?: string;
   /** What they typed, so a refusal leaves the box as they left it. */
@@ -367,10 +361,9 @@ const theConnection = (
  * the press is a standing notice, and a screen reader announcing it on every
  * visit would make the one announcement that matters indistinguishable.
  *
- * Where the door also waits for the operator's approval of the merchant, which
- * no route tells this dashboard about, those are not all it asks. So there the
- * line says approval is needed too and that this page cannot see it, and does
- * not send the merchant back to Import as though Settings were the whole of it.
+ * The connector is not offered on the live channel, so the operator's
+ * approval, which only that channel asks for, is never what stands in the way
+ * here.
  */
 const beforeImporting = (base: string, view: WooView): string => {
   const refused = view.refused ?? [];
@@ -380,10 +373,9 @@ const beforeImporting = (base: string, view: WooView): string => {
   }
   const what = unset.map((one) => UNSET_WORDS[one]).join(" and ");
   const settings = `<a href="${escaped(base)}/settings">Settings</a>`;
-  const unread = (view.unsure ?? []).includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
   return refused.length > 0
-    ? `<p class="problem" role="alert">Nothing was imported. Set ${what} in ${settings}${unread ? `. ${APPROVAL_UNREAD}` : ", then import again."}</p>`
-    : `<p class="problem">Import publishes nothing until you set ${what} in ${settings}.${unread ? ` ${APPROVAL_UNREAD}` : ""}</p>`;
+    ? `<p class="problem" role="alert">Nothing was imported. Set ${what} in ${settings}, then import again.</p>`
+    : `<p class="problem">Import publishes nothing until you set ${what} in ${settings}.</p>`;
 };
 
 /** A product an import sent through the publish door, named as the shop names it. */

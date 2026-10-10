@@ -1080,6 +1080,7 @@ describe("importing the catalogue", () => {
     // Offered on the live one, an owner is left to infer the limit from a page
     // that invites them in.
     const running = await started({ channel: "live" });
+    await running.signIn();
 
     const shopScreen = await running.get("/woocommerce");
     const integrations = await running.get("/integrations");
@@ -1324,19 +1325,12 @@ describe("importing the catalogue", () => {
 
   describe("agrees with the publish door about what the merchant lacks", () => {
     // The promise: a merchant is told the same thing by the dashboard as by the
-    // door their cards go through, on every channel. The dashboard stops an
-    // import before the shop is read for exactly the settings the door would
-    // refuse every card for, names them, and names nothing the door would not
-    // ask for. The operator's approval is the one fact the dashboard cannot
-    // read, so it agrees about approval by never claiming it either way. Where
-    // the line is drawn because a setting is missing, it says this page cannot
-    // tell exactly where the door asks for approval. Where no setting is
-    // missing no line is drawn, and on live the import goes ahead and the door
-    // answers card by card: the dashboard saying nothing there is a limit of
-    // what it can read, not a claim that nothing is missing.
-    //
-    // Each merchant here is made through the gateway's registration door and
-    // never approved, so on live the door always asks for the approval as well.
+    // door their cards go through, on every channel the connector is offered
+    // on. The dashboard stops an import before the shop is read for exactly the
+    // settings the door would refuse every card for, names them, and names
+    // nothing the door would not ask for. The live channel is not here: the
+    // connector is not offered there, so the operator's approval, which the
+    // door asks for on live alone, is never a reason this page gives.
     const A_CARD = {
       merchant_item_id: "a-guide",
       title: "A guide",
@@ -1370,7 +1364,7 @@ describe("importing the catalogue", () => {
       ...(/wallet/i.test(line) ? [MERCHANT_FINDINGS.NO_PAYOUT_WALLET] : []),
     ];
 
-    for (const channel of Object.keys(CHANNELS) as Channel[]) {
+    for (const channel of ["sandbox", "test"] as const) {
       for (const [hasName, hasWallet] of [
         [false, false],
         [true, false],
@@ -1394,22 +1388,14 @@ describe("importing the catalogue", () => {
             // The fixture took: a wallet saved is a wallet the door has.
             expect(door).not.toContain(MERCHANT_FINDINGS.NO_PAYOUT_WALLET);
           }
-          const settable = door.filter((code) => code !== MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
-          const approvalAsked = door.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
-
           const before = lineIn((await running.get("/woocommerce")).html);
           const pressed = await running.post("/woocommerce/import");
           const after = lineIn(pressed.html);
 
-          expect(named(before)).toStrictEqual(settable);
-          expect(pressed.status).toBe(settable.length === 0 ? 200 : 409);
-          if (settable.length > 0) {
-            expect(named(after)).toStrictEqual(settable);
-            expect(/approv/i.test(before), before).toBe(approvalAsked);
-            expect(/approv/i.test(after), after).toBe(approvalAsked);
-            if (approvalAsked) {
-              expect(after).toMatch(/cannot tell/i);
-            }
+          expect(named(before)).toStrictEqual(door);
+          expect(pressed.status).toBe(door.length === 0 ? 200 : 409);
+          if (door.length > 0) {
+            expect(named(after)).toStrictEqual(door);
           }
         });
       }

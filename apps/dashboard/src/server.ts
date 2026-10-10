@@ -41,7 +41,6 @@ import {
   type CardInput,
   EvmAddressSchema,
   IssueKeyRequestSchema,
-  type MerchantFinding,
   type PayoutWallet as PayoutWalletDocument,
   type PublishResult,
 } from "@nuanu-ai/agentify-contracts";
@@ -357,6 +356,10 @@ interface Settings {
 export function buildApp(config: DashboardConfig, parts: DashboardParts): Express {
   const app = express();
   const base = config.basePath;
+  // The WooCommerce connector works on the test channel only, and its words
+  // say so; on the live channel none of its screens is mounted, so nothing
+  // invites an owner into what does not work there.
+  const wooShops = config.surfaceMode === "live" ? undefined : parts.wooShops;
   const viewing = (request: Request, pageBase: string, sellerName?: string | null): Viewer =>
     viewingAt(request, pageBase, config.surfaceMode, sellerName);
   /**
@@ -506,7 +509,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    */
   app.post(`${base}/woocommerce/callback`, express.json({ limit: "16kb" }), (request, response) => {
     void (async () => {
-      const shops = parts.wooShops;
+      const shops = wooShops;
       if (shops === undefined) {
         response.status(404).json({ ok: false });
         return;
@@ -594,7 +597,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    * stripping: a redirect to this same address with the query gone, rather
    * than the redirect into the dashboard that a signed-in visitor gets.
    */
-  if (parts.wooShops !== undefined) {
+  if (wooShops !== undefined) {
     const returnPath = `${base}/woocommerce/return`;
     app.get(returnPath, async (request, response) => {
       const signedIn = await identity.whoIs(request.headers.cookie);
@@ -995,7 +998,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    * block at all rather than an empty one.
    */
   const shopStateFor = async (accountId: string): Promise<ShopState | undefined> => {
-    const shops = parts.wooShops;
+    const shops = wooShops;
     if (shops === undefined) {
       return undefined;
     }
@@ -1459,7 +1462,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    * so a deployment whose tables are not there answers "there is no such page"
    * rather than drawing a form whose button loses somebody's keys.
    */
-  const shops = parts.wooShops;
+  const shops = wooShops;
   if (shops !== undefined) {
     /** The address a shop is told to send a merchant back to, and the keys to. */
     const whereWeAre = `${config.publicBaseUrl}${base}`;
@@ -1476,9 +1479,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
      * The rule is the door's own (`readinessOf` in the core), asked with what
      * the gateway answers for this merchant. This dashboard is given the same
      * chain and facilitator as its gateway, so its surface mode is the door's.
-     * The operator's approval goes in as unknown, since no route tells a
-     * merchant's key whether it holds one; where the door asks for it, the
-     * rule says so, and the page says it cannot tell.
+     * The operator's approval goes in as unknown: the connector is not offered
+     * on the live channel, the one place the door asks for it.
      */
     const standingOf = async (
       request: Request,
@@ -1486,7 +1488,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       Answer<{
         readonly sellerName: string | null;
         readonly unset: readonly Unset[];
-        readonly unsure: readonly MerchantFinding[];
       }>
     > => {
       const gateway = gatewayAs(request);
@@ -1510,7 +1511,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         document: {
           sellerName: name.document,
           unset: unsetIn(door),
-          unsure: door.unknown,
         },
       };
     };
@@ -1543,7 +1543,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
             ...view,
             state,
             unset: standing.document.unset,
-            unsure: standing.document.unsure,
           }),
         );
     };
