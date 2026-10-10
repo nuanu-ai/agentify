@@ -14,6 +14,7 @@
 import type { Environment, MerchantSelling, TransitionRejection } from "@agentify/core";
 import {
   createOrder,
+  deadlines,
   fulfillmentDeadline,
   isOpen,
   onTheMerchantsOpenList,
@@ -1236,6 +1237,28 @@ export class Gateway {
     const before = await this.runtime.store.orderById(orderId);
     if (before === null) {
       return { step: "no_such_item" };
+    }
+
+    // A price holds for a fixed time, and a payment that arrives after it pays
+    // for a price that no longer holds. The timer that closes such an order can
+    // fire late, so the instant the payment arrived decides rather than the
+    // timer: the order is closed as the timer would have closed it, before
+    // anything is verified or claimed, and the agent is told where its purchase
+    // stands. The arrival and not the verification's answer is the instant,
+    // because the payment layer's round trip is ours and not the agent's.
+    const arrivedAt = this.runtime.clock();
+    const lapsed = deadlines(before.order).find(
+      (deadline) =>
+        (deadline.kind === "quote_expiry" || deadline.kind === "payment_after_confirmation") &&
+        deadline.at <= arrivedAt,
+    );
+    if (lapsed !== undefined) {
+      await this.runner.apply(orderId, {
+        kind: "deadline_expired",
+        at: lapsed.at,
+        deadline: lapsed.kind,
+      });
+      return this.#wherePurchaseStands(orderId);
     }
 
     // The address a payment is for is the one its order was priced for
