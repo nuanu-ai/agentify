@@ -1,5 +1,62 @@
 # Contracts release history
 
+## 0.8.0
+
+### Minor Changes
+
+- 436e368: The calls that only a merchant's dashboard ever made leave the contract, because the dashboard now calls the gateway inside the process the two share and holds no key: the registration route (`POST /v0/merchants`) with `RegistrationRequestSchema` and `RegisteredMerchantSchema`, the two routes at `/v0/keys/dashboard` with `DashboardKeySchema` and `ForgottenDashboardKeySchema`, and the payout-wallet write (`POST /v0/payout-wallet`) with `PayoutWalletRequestSchema`. Reading the wallet with `GET /v0/payout-wallet` stays. Their codes leave `ERROR_CODES`: `not_invited`, `not_a_dashboard_key`, `key_made_for_a_dashboard`, `wallet_change_nobody_to_tell`, `wallet_change_not_announced` and `wallet_change_raced`. So does `wallet_change_unconfirmed`, which nothing could send once the gateway told the dashboard of a change by a call inside the process rather than over a route. `DELETE` leaves `HTTP_METHODS`, since no route uses it any more. Code that matched any of these by name no longer compiles against this version. Every key is now one the merchant issued, so the `this_call` of a key list is always one of its keys. No SDK worker calls these routes or reads these codes, so `CONTRACT_VERSION` does not move.
+- f17084b: A card can describe a parcel (ADR-0033): `fulfillment: "ship"`, with
+  `ship_within_seconds`, the time to hand the parcel to a carrier counted from the
+  charge, at most thirty days, and a price check answered by the merchant's own
+  handler, whose answer is the whole price with shipping. Such a card declares no
+  `result`, so `result` is optional in the schema and still required, by rule, on
+  every other mode; in TypeScript, `Card["result"]` is optional.
+  
+  Where a parcel goes is a block of its own (ADR-0032): `ShipToSchema`, in the
+  Agentic Commerce Protocol's names, `ShipToLocalitySchema`, the place without the
+  person, `ErasedShipToSchema` and `localityOf(address)`. A purchase request takes
+  `ship_to`; a price question carries its locality; and an order reads the
+  locality before it is paid, the whole address once it is, and only
+  `{ erased_at }` once Agentify has let go of it: the merchant took the order on,
+  or the order ended or came to owe a refund without them. Two error codes join a purchase's
+  refusals: `ship_to_does_not_fit`, for an address on a product that is not
+  shipped or none on one that is, and `ship_to_changed`, for a payment carrying an
+  address other than the one the purchase was priced for.
+  
+  The contract version stays `"2"`: it moves only once a merchant we do not
+  control runs a published SDK (ADR-0006 §2).
+- 5412b71: A parcel's shipment (ADR-0033). On a parcel's order the `deliver` call takes a
+  `ShipmentSchema` document in place of goods: a `carrier`, a `tracking_number`
+  that is null where the parcel has none and never empty, and optionally a
+  `tracking_url`, an https address on a domain name and nothing else, and an
+  `estimated_delivery` window; its words are plain text on one line. What a
+  delivery is checked against comes from the order, so a card republished since
+  the sale changes nothing for it. Agentify records the instant the call arrived
+  as when the parcel shipped. The same shipment sent again succeeds, and a
+  different one is refused with the new call error `shipment_already_recorded`. The order then reads `shipped`, a new word in
+  `ORDER_STATUSES` and in a receipt's outcome. The agent's status document
+  carries the shipment as `RecordedShipmentSchema` under `shipment`, and
+  `ship_by`, the instant the parcel has to be with a carrier by. Both are present
+  on a parcel's order only. `delivered` stays null there, because nothing reached
+  the agent.
+  
+  Publishing a parcel's card asks the merchant for their shop's site and is
+  refused without it, with the new merchant finding `no_seller_site`. On the live
+  channel the card is refused with `not_sold_yet` until the refund of a lost
+  parcel is recorded there. A parcel's discovery listing asks for `ship_to`
+  beside the parameters and shows a recorded shipment as its output. The SDK
+  names the `ShipTo` and `Shipment` types for a merchant's code, and its README
+  says that during the pilot the contract version does not move with every
+  change, so a package older than the gateway can read a newer word as a
+  failure.
+
+### Patch Changes
+
+- d483a58: The description of the agent's order status route no longer says the order's
+  identifier is handed to exactly one party: the merchant and Agentify hold it
+  too, as parties to the sale, and it appears in no catalog or listing
+  (ADR-0011).
+
 ## 0.7.0
 
 ### Minor Changes
