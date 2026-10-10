@@ -775,6 +775,44 @@ describe("a shipment against a card republished since the sale", () => {
     expect(status.status).toBe(200);
     expect((status.body as { status: string }).status).toBe("delivered");
   });
+
+  it("refuses a shipment, in words, for an older order whose card has become a parcel's", async () => {
+    // An order written before orders kept their own result is held to the card
+    // as it stands. When that card now declares no goods, nothing can close
+    // the order with goods or with a shipment, and the refusal says why and
+    // that sending it again will not help.
+    const { harnessed } = await started();
+    const ordinary = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+      merchant_item_id: "voucher-older",
+      title: "A voucher for a kilogram",
+      description: "Collected at the roastery.",
+      price: "18.00 USD",
+      fulfillment: "async",
+      fulfill_deadline_seconds: 3_600,
+      result: { code: "string" },
+    });
+    if (!ordinary.ok) throw new Error("the ordinary card would not publish");
+    const offered = await harnessed.gateway.beginPurchase(ordinary.id, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const { result: _kept, ...older } = offered.order;
+    const orderId = "ord_written_before_orders_kept_a_result";
+    await harnessed.store.addOrder({ ...older, order: { ...older.order, id: orderId } });
+    await harnessed.gateway.payPurchase(orderId, "PAYMENT-OLDER", "PAYMENT-OLDER");
+    await harnessed.store.publishCard(
+      harnessed.merchant.id,
+      { ...parcelCard, merchant_item_id: "voucher-older" },
+      harnessed.now(),
+    );
+
+    const refused = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, shipment);
+
+    if (refused === null || refused.ok) throw new Error("the shipment was taken as goods");
+    expect(refused.error.code).toBe("delivery_does_not_match_card");
+    expect(refused.error.retryable).toBe(false);
+    expect(refused.error.problems?.map((problem) => problem.code)).toStrictEqual([
+      "card_declares_no_goods",
+    ]);
+  });
 });
 
 describe("two shipments at once", () => {

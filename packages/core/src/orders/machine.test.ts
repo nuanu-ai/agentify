@@ -1218,7 +1218,10 @@ describe("delivering twice, and delivering late", () => {
 
   it("ends a late synchronous answer exactly where the timer and then the answer would have", () => {
     // Two arrival orders, one outcome: the answer landing before the overdue
-    // timer and the timer landing first leave the same order behind.
+    // timer and the timer landing first leave the same order behind. From
+    // `dispatched` only: from `paid`, the answer also proves the hand-over our
+    // own record had not yet noted, so it counts one delivery the timer-first
+    // path never makes, and the outcome is checked in the test above instead.
     const dispatched = reach("dispatched");
     const due = (dispatched.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.syncResponseMs;
     const answerFirst = must(dispatched, { kind: "handler_delivered", at: due + 1_500 }).order;
