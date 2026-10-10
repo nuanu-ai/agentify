@@ -271,6 +271,9 @@ describe("when the time runs out", () => {
     expect(collected.step).toBe("settled");
     if (collected.step !== "settled") throw new Error("the repeat did not settle");
     expect(collected.delivery).toStrictEqual({ access_code: "CODE-ONE" });
+    // Collected for the repeat's payment: the goods held for a closed order
+    // are the buyer's only once that payment has gone through.
+    expect((await state(harnessed, orderId))?.state).toBe("delivered");
   });
 
   it("brings the money back when a handler never sends what the card declares", async () => {

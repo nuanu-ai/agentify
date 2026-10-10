@@ -1456,6 +1456,46 @@ describe("a price's life", () => {
     expect(harnessed.facilitator.settles).toHaveLength(0);
   });
 
+  it("checks nothing for a payment on an order its lapsed price already closed", async () => {
+    // Once the order is closed — by its timer, or as here by an earlier late
+    // payment — a payment for it is not checked: the check would spend the
+    // payment layer's round trip and, failing, tell the agent to pay again for
+    // a price that is gone.
+    const harnessed = await started();
+    const itemId = await published(harnessed, asyncCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const orderId = offered.order.order.id;
+    harnessed.advance(harnessed.runtime.config.deadlines.quoteTtlMs);
+    await harnessed.gateway.payPurchase(orderId, "LATE", "LATE");
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("expired");
+
+    const again = await harnessed.gateway.payPurchase(orderId, "LATER", "LATER");
+
+    expect(again.step).toBe("settled");
+    expect(harnessed.facilitator.verifies).toHaveLength(0);
+  });
+
+  it("checks nothing for a payment on an order that ended with nothing taken", async () => {
+    // Here the merchant left while the price still held: the order is over,
+    // nothing was taken and nothing is held, so a payment has nothing to buy.
+    const harnessed = await started();
+    const itemId = await published(harnessed, asyncCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const orderId = offered.order.order.id;
+    await harnessed.gateway.runner.apply(orderId, {
+      kind: "merchant_departed",
+      at: harnessed.now(),
+    });
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("cancelled");
+
+    const paid = await harnessed.gateway.payPurchase(orderId, "AFTER", "AFTER");
+
+    expect(paid.step).toBe("settled");
+    expect(harnessed.facilitator.verifies).toHaveLength(0);
+  });
+
   it("takes a payment that arrives a moment before the price lapses", async () => {
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
