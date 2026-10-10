@@ -971,6 +971,33 @@ describe("the goods against the card that sold them", () => {
     expect((await harnessed.store.orderById(alsoSoldBefore))?.delivery).toBeNull();
   });
 
+  it("tells a synchronous answer past its deadline that the sale is over, timer or no timer", async () => {
+    // The timer that closes an overdue synchronous order can fire late. Goods
+    // that fit find the purchase closed by the instant of the answer; goods
+    // that do not fit must hear the same ending, and not be told to fix the
+    // handler and deliver again to a sale that is already over.
+    const harnessed = await started();
+    const itemId = await published(harnessed, syncCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const orderId = offered.order.order.id;
+    const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 200)).envelopes).toHaveLength(1);
+    harnessed.advance(harnessed.runtime.config.deadlines.syncResponseMs);
+
+    const answered = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
+      delivered: {},
+    });
+
+    if (answered?.ok !== false) throw new Error("an empty handler answer closed the purchase");
+    expect(answered.error.code).toBe("delivery_does_not_match_card");
+    expect(answered.error.retryable).toBe(false);
+    expect(answered.error.message).toContain("expired");
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+    harnessed.advance(harnessed.runtime.config.deadlines.syncBudgetMs);
+    await buying;
+  });
+
   it("does not let a card loosened after the sale excuse goods the order was promised", async () => {
     const harnessed = await started();
     const twoFields: Card = {
