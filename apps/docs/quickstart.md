@@ -53,7 +53,9 @@ That is the only way to get a merchant. Returning merchants reach their
 existing dashboard with the same email-and-link flow.
 
 The test channel settles test USDC on Base Sepolia. Save the Base wallet where
-those payments should arrive in the dashboard's Settings before publishing. The live
+those payments should arrive in the dashboard's Settings before publishing; if
+your business has no wallet yet, [Money](/money#if-you-have-no-wallet-yet) says
+how to get one. The live
 channel is a separate account at `https://agentify.ad`: it uses Base
 mainnet and real USDC, and likewise refuses to publish a card until that
 account has a payout wallet and the operator has approved that merchant for
@@ -129,6 +131,30 @@ The address is the environment you are working in:
 nothing after it; it adds the rest of the path itself. A key made in one
 environment does not open the other, and a key you issued on the test address
 starts with `csk_test_` so you can see at a glance which one you are holding.
+
+The code on this page also runs as plain JavaScript. To try the client above in
+an empty project, put it in a file whose name ends in `.mjs`, such as
+`agentify.mjs`, which lets Node read `import` and `await` at the top of the
+file. Put the key and the address in a file named `.env` beside it, one per
+line:
+
+```sh
+AGENTIFY_API_KEY=csk_test_...
+AGENTIFY_URL=https://test.agentify.ad
+```
+
+and run it with Node 24 or later, which the package declares it needs:
+
+```sh
+node --env-file=.env agentify.mjs
+```
+
+The steps below are pieces you add to that file, not one program to paste
+whole. The synchronous and the asynchronous handler are alternatives: register
+one handler for orders and call `start()` once. `grantAccess`,
+`startProvisioning` and `currentPriceOf` stand for your own code that makes the
+goods and knows the price, and `savedId`, `url` and `order` in the later
+snippets stand for values your code holds at that point.
 
 This step worked if the client was built. Whether the key and address belong
 together is answered by the first call that reaches us, and that call is on the

@@ -30,8 +30,8 @@ import type { SurfaceMode } from "../deployment/environment.js";
 /**
  * A fact the caller did not read.
  *
- * The dashboard reads no approval, since no route tells it whether a merchant
- * holds one, and a screen that did not ask the gateway for the wallet cannot
+ * The dashboard reads the approval on the live channel alone, where the door
+ * asks for it, and a screen that did not ask the gateway for the wallet cannot
  * say anything about it. A symbol rather than `undefined`, so a caller cannot
  * leave a fact out by accident and have it read as unknown, and rather than a
  * word, since a seller could be named "unknown".

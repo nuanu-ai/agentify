@@ -1,4 +1,4 @@
-import { readCurrentConsent } from "@agentify/analytics/browser";
+import { consentAllowsMeasurement, readCurrentConsent } from "@agentify/analytics/browser";
 import {
   PARTNER_CLICK_ID_ALIASES,
   partnerClickIdSchema,
@@ -20,6 +20,10 @@ export function captureLandingAttribution(
     search: window.location.search,
   },
 ): Promise<void> {
+  // Nothing is recorded of a visit before its visitor allows measurement, so
+  // nothing is asked and nothing is kept as done: the capture is made when the
+  // choice is (`AnalyticsRuntime`).
+  if (!measurementAllowed()) return Promise.resolve();
   const partnerClickId = adsMeasurementAllowed() ? readPartnerClickId(source.search) : undefined;
   const key = `${source.pathname}?${source.search}:${landingVariant}:partner=${partnerClickId ? "yes" : "no"}`;
   const existing = captures.get(key);
@@ -41,6 +45,15 @@ export function readPartnerClickId(search: string): string | undefined {
     }
   }
   return undefined;
+}
+
+function measurementAllowed(): boolean {
+  try {
+    const categories = readCurrentConsent(window.localStorage)?.categories;
+    return categories !== undefined && consentAllowsMeasurement(categories);
+  } catch {
+    return false;
+  }
 }
 
 function adsMeasurementAllowed(): boolean {

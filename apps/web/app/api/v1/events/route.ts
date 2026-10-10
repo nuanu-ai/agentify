@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
     return errorResponse(request, 400, "invalid_event_context", "The event context is invalid.");
   }
 
-  let stored: { inserted: boolean; eventId: string };
+  let stored: { inserted: boolean; eventId: string } | undefined;
   try {
     stored = await db.transaction(
       async (tx) =>
@@ -174,6 +174,10 @@ export async function POST(request: NextRequest) {
       5,
     );
   }
+  // The visitor allowed no optional measurement, so nothing was recorded and
+  // there is nothing for the page to deliver anywhere.
+  if (!stored)
+    return new NextResponse(null, { status: 204, headers: { "Cache-Control": "no-store" } });
   return NextResponse.json(
     {
       status: stored.inserted ? "recorded" : "already_recorded",

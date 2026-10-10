@@ -56,15 +56,6 @@ export async function POST(request: NextRequest) {
       status: 204,
       headers: { "Cache-Control": "no-store" },
     });
-    if (result.anonymousToken) {
-      response.cookies.set(ANONYMOUS_COOKIE, result.anonymousToken, {
-        httpOnly: true,
-        secure: getServerConfig().production,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 30 * 86_400,
-      });
-    }
     if (result.partnerClickIdAccepted && parsed.data.partner_click_id) {
       response.cookies.set(PARTNER_CLICK_ID_COOKIE, parsed.data.partner_click_id, {
         httpOnly: true,

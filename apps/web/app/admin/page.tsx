@@ -52,6 +52,12 @@ const dateTime = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 });
 
+/**
+ * Said beside every number read from the analytics events, which hold only the
+ * visitors who allowed product analytics or ads measurement.
+ */
+const MEASURED_ONLY = "Only visitors who allowed measurement";
+
 const ratio = (value: number, denominator: number) =>
   denominator > 0 ? percent.format(value / denominator) : "—";
 
@@ -136,12 +142,17 @@ export default async function AdminPage() {
           <Metric
             label="Visitors"
             value={number.format(overview.visitors30d)}
-            note={`${number.format(overview.landingViews30d)} landing views`}
+            note="Counted once they make a privacy choice or start a scan"
+          />
+          <Metric
+            label="Landing views"
+            value={number.format(overview.landingViews30d)}
+            note={MEASURED_ONLY}
           />
           <Metric
             label="Scans"
             value={number.format(overview.scans30d)}
-            note={`${ratio(overview.scans30d, overview.landingViews30d)} of landing views`}
+            note={`${number.format(overview.scansTotal)} accepted all time`}
           />
           <Metric
             label="Sites checked"
@@ -156,12 +167,7 @@ export default async function AdminPage() {
           <Metric
             label="Reports shared"
             value={number.format(overview.shares30d)}
-            note={`${ratio(overview.shares30d, overview.completedScans30d)} of finished scans`}
-          />
-          <Metric
-            label="Scans all time"
-            value={number.format(overview.scansTotal)}
-            note="Accepted scan jobs"
+            note={MEASURED_ONLY}
           />
         </div>
       </section>
@@ -175,11 +181,11 @@ export default async function AdminPage() {
           <div className={styles.legend}>
             <span>
               <i className={styles.legendLanding} />
-              Landing views
+              Landing views · {MEASURED_ONLY.toLowerCase()}
             </span>
             <span>
               <i className={styles.legendScan} />
-              Scans
+              Scans · every visitor
             </span>
           </div>
         </div>

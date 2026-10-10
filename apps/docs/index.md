@@ -51,7 +51,10 @@ have answered them we have no more questions for you.
    our limit rather than a property of what you sell: we have not chosen how
    money goes back yet, so we sell what we are almost certain we can deliver.
    Once there is a way to send money back, the limit comes off
-   ([Money](/money)).
+   ([Money](/money)). A parcel sent by a carrier is the one exception, and on
+   the test channel only, where the money is not real: it can be tried there
+   end to end, and it is not sold live until a lost parcel's refund can be
+   recorded ([Orders](/orders)).
 4. How the goods are delivered. The working path uses the Agentify SDK: a
    handler runs beside your API, takes paid orders and gives out the goods. A
    WooCommerce connector is experimental and is not required for the SDK path.

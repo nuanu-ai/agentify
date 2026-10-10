@@ -4,6 +4,14 @@ import { captureLandingAttribution, readPartnerClickId } from "./attribution-cli
 
 afterEach(() => vi.unstubAllGlobals());
 
+/** The stored choice of a visitor who allowed product analytics. */
+const measured = JSON.stringify({
+  policyVersion: "test-policy",
+  capturedAt: "2026-10-10T00:00:00.000Z",
+  source: "banner",
+  categories: { essential_processing: true, product_analytics: true },
+});
+
 describe("partner click attribution", () => {
   it.each(["clickid", "click_id", "cid", "sub_id", "subid"])("accepts the %s alias", (alias) => {
     expect(readPartnerClickId(`?${alias}=Xk8sJ2QpR4vN7bL0aZ9wQg`)).toBe("Xk8sJ2QpR4vN7bL0aZ9wQg");
@@ -18,9 +26,7 @@ describe("partner click attribution", () => {
   });
 
   it("retries a transient attribution failure on the next capture", async () => {
-    vi.stubGlobal("window", {
-      localStorage: { getItem: () => null },
-    });
+    vi.stubGlobal("window", { localStorage: { getItem: () => measured } });
     const provider = { attempts: 0, accepted: false };
     const fetcher = async () => {
       provider.attempts += 1;

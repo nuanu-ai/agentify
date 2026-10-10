@@ -36,10 +36,16 @@ export const canonicalizeTarget = (input: string): URL => {
     throw new UrlPolicyError("scheme_blocked");
   if (url.username || url.password) throw new UrlPolicyError("credentials_blocked");
   if (url.hostname.length > 253) throw new UrlPolicyError("hostname_too_long");
-  if (BLOCKED_HOST_SUFFIX.test(url.hostname)) throw new UrlPolicyError("hostname_blocked");
+  // Read without the dot a fully qualified name may end in, which names the
+  // same host: "shop.localhost." is "shop.localhost".
+  if (BLOCKED_HOST_SUFFIX.test(url.hostname.replace(/\.$/, "")))
+    throw new UrlPolicyError("hostname_blocked");
   const numericCandidate = url.hostname.replace(/^\[|\]$/g, "");
   if (isIP(numericCandidate) !== 0 || looksLikeObfuscatedIpv4(numericCandidate))
     throw new UrlPolicyError("numeric_host_blocked");
+  // A name without a dot, such as "shop", is no public website's.
+  if (!url.hostname.replace(/\.$/, "").includes("."))
+    throw new UrlPolicyError("single_label_host_blocked");
   if (url.port && url.port !== "80" && url.port !== "443") throw new UrlPolicyError("port_blocked");
 
   const keys = [...url.searchParams.keys()];

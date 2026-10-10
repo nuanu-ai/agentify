@@ -6,6 +6,7 @@ export {
   type ConsentPolicy,
   type ConsentSnapshot,
   consentAllowsDestination,
+  consentAllowsMeasurement,
   createConsentSnapshot,
   DEFAULT_CONSENT,
 } from "./consent.js";

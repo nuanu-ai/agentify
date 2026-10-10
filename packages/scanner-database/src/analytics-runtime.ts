@@ -6,6 +6,7 @@ import {
   buildPosthogPayload,
   type ConsentCategories,
   type ConsentEnvironment,
+  consentAllowsMeasurement,
   createAnalyticsEvent,
   DEFAULT_CONSENT,
   eventOnceKey,
@@ -36,10 +37,15 @@ const environment = (value: string | undefined): ConsentEnvironment =>
 
 const enabled = (value: string | undefined): boolean => value === "true";
 
+/**
+ * Records one business event of a visit, with the deliveries its consent
+ * allows, once. A visit whose visitor allowed no optional measurement is not
+ * recorded at all, and the answer is undefined.
+ */
 export async function emitStoredBusinessEvent(
   executor: BusinessEventExecutor,
   input: StoredBusinessEventInput,
-): Promise<{ inserted: boolean; eventId: string }> {
+): Promise<{ inserted: boolean; eventId: string } | undefined> {
   const [session, consentRow] = await Promise.all([
     executor
       .select({ anonymousIdHash: sessions.anonymousIdHash })
@@ -64,6 +70,7 @@ export async function emitStoredBusinessEvent(
     ...DEFAULT_CONSENT,
     ...(consentRow.categories as Partial<ConsentCategories>),
   };
+  if (!consentAllowsMeasurement(categories)) return undefined;
   const runtimeEnvironment = environment(process.env.ANALYTICS_RUNTIME_ENV);
   const serverDeliveryEnabled = enabled(process.env.ANALYTICS_SERVER_DELIVERY_ENABLED);
   const posthogConfigured = Boolean(process.env.POSTHOG_API_KEY);

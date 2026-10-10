@@ -127,13 +127,22 @@ export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({
 });
 
 /**
- * What a screen says where the door asks for the operator's approval: what
- * this dashboard cannot check, and that it cannot. No route tells it whether a
- * merchant holds one, so "I don't know" is said as that and never as "there is
- * none".
+ * What an owner who pressed Import is told about a parcel the door held back
+ * for want of the shop's site. The door's own words name the call a
+ * merchant's code makes; the person here sets the site in Settings.
  */
-export const APPROVAL_UNREAD =
-  "Selling live also needs Agentify to approve your merchant, and this page cannot tell whether it has.";
+export const SITE_IN_SETTINGS = "Set your shop's site in Settings, then import again.";
+
+/**
+ * What a live merchant the operator has not approved is told. It says what is
+ * known, that there is no approval, and not that a review is under way, since
+ * nothing records that one is; and it names the one way to ask there is.
+ */
+export const APPROVAL_PENDING =
+  "Agentify has not approved your merchant for live sales yet, so your cards are refused on the live channel. If an Agentify operator is coordinating your pilot, ask them for the approval.";
+
+/** What a live merchant the operator has approved is told. */
+export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sales.";
 
 /**
  * A sum of money as a merchant reads it.

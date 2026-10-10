@@ -23,7 +23,8 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { page } from "./html.js";
-import { ordersScreen, receiptsScreen, type Viewer } from "./screens.js";
+import { cardsScreen, ordersScreen, receiptsScreen, type Viewer } from "./screens.js";
+import { settingsScreen } from "./seller-name.js";
 import { signInScreen } from "./sign-in.js";
 import { readable } from "./testing/html.js";
 
@@ -189,5 +190,60 @@ describe("a list where some of the money was real and some was not", () => {
     expect(onReceipts).not.toContain("test purchase");
     expect(onOrders).not.toContain("test purchase");
     expect(receiptsScreen(SEEN_BY, cards, receipts)).not.toContain(">test<");
+  });
+});
+
+describe("whether a live merchant is approved", () => {
+  // Selling live needs the operator's approval, and the merchant could not see
+  // whether they had it: every screen said it could not tell. The dashboard
+  // reads it now, so a live merchant is told which of the two they are, and a
+  // card off sale for want of it says that is why.
+  const live = (approved: boolean): Viewer => ({
+    ...SEEN_BY,
+    mode: "live",
+    sellerName: "Freeland",
+    sellerSite: "https://freeland.example",
+    payout: { wallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", pending: null },
+    liveApproval: approved,
+  });
+  const offSale = MerchantCardListSchema.parse({
+    ...cards,
+    cards: cards.cards.map((entry) => ({ ...entry, selling: "paused" })),
+  });
+
+  it("says on Settings whether Agentify has approved the merchant for live sales", () => {
+    const approved = readable(settingsScreen(live(true)));
+    const waiting = readable(settingsScreen(live(false)));
+
+    expect(approved).toMatch(/approved your merchant/);
+    expect(waiting).toMatch(/not approved your merchant/);
+    expect(approved).not.toMatch(/not approved your merchant/);
+  });
+
+  it("says nothing about the approval off the live channel, where nobody needs it", () => {
+    for (const mode of ["sandbox", "test"] as const) {
+      const unapproved = { ...live(false), mode };
+
+      expect(readable(settingsScreen(unapproved)), mode).not.toMatch(/approv/i);
+    }
+  });
+
+  it("says on an empty Cards page that publishing waits for the approval", () => {
+    // Without the approval every live publish is refused, so an unapproved
+    // merchant's Cards page is the empty one, and it is where they look for
+    // why nothing they publish appears.
+    const none = MerchantCardListSchema.parse({ ...cards, cards: [] });
+
+    expect(readable(cardsScreen(live(false), none, "https://agentify.ad"))).toMatch(
+      /not approved your merchant/,
+    );
+    expect(readable(cardsScreen(live(true), none, "https://agentify.ad"))).not.toMatch(/approv/);
+  });
+
+  it("says a card is off sale because the approval is still to come", () => {
+    const waiting = readable(cardsScreen(live(false), offSale, "https://agentify.ad"));
+
+    expect(waiting).toMatch(/not approved your merchant/);
+    expect(waiting).not.toMatch(/cannot tell/);
   });
 });

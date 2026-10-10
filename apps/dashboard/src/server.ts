@@ -41,7 +41,7 @@ import {
   type CardInput,
   EvmAddressSchema,
   IssueKeyRequestSchema,
-  type MerchantFinding,
+  MERCHANT_FINDINGS,
   type PayoutWallet as PayoutWalletDocument,
   type PublishResult,
 } from "@nuanu-ai/agentify-contracts";
@@ -126,8 +126,8 @@ import {
   PRODUCTS_AT_MOST,
   type ProductInspection,
 } from "./woo-shop.js";
-import type { WooConnection, WooShops } from "./woo-shops.js";
-import { moment, type Unset } from "./words.js";
+import { type WooConnection, type WooShops, wooOfferedOn } from "./woo-shops.js";
+import { moment, SITE_IN_SETTINGS, type Unset } from "./words.js";
 
 /** Preserves input order while bounding calls into one merchant's shop. */
 const mapAtMost = async <Input, Output>(
@@ -349,14 +349,28 @@ interface Settings {
   readonly sellerName: string | null;
   readonly sellerSite: string | null;
   readonly payoutWallet: PayoutWalletDocument;
+  /** Whether the operator has approved the merchant; read on the live channel alone. */
+  readonly liveApproval?: boolean;
 }
 
 /** The whole dashboard on an express app. */
 export function buildApp(config: DashboardConfig, parts: DashboardParts): Express {
   const app = express();
   const base = config.basePath;
+  // Where the connector is not offered none of its screens is mounted, so
+  // nothing invites an owner into what does not work there.
+  const wooShops = wooOfferedOn(config.surfaceMode) ? parts.wooShops : undefined;
   const viewing = (request: Request, pageBase: string, sellerName?: string | null): Viewer =>
     viewingAt(request, pageBase, config.surfaceMode, sellerName);
+  /**
+   * Whether the operator has approved this merchant, on the live channel, the
+   * one place the door asks for it; elsewhere nothing is read and nothing is
+   * said about it.
+   */
+  const approvalOn = async (gateway: GatewayClient): Promise<Answer<boolean | undefined>> =>
+    config.surfaceMode === "live"
+      ? await gateway.liveApproval()
+      : { ok: true, document: undefined };
   const viewingSettings = (
     request: Request,
     pageBase: string,
@@ -495,7 +509,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    */
   app.post(`${base}/woocommerce/callback`, express.json({ limit: "16kb" }), (request, response) => {
     void (async () => {
-      const shops = parts.wooShops;
+      const shops = wooShops;
       if (shops === undefined) {
         response.status(404).json({ ok: false });
         return;
@@ -583,7 +597,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    * stripping: a redirect to this same address with the query gone, rather
    * than the redirect into the dashboard that a signed-in visitor gets.
    */
-  if (parts.wooShops !== undefined) {
+  if (wooShops !== undefined) {
     const returnPath = `${base}/woocommerce/return`;
     app.get(returnPath, async (request, response) => {
       const signedIn = await identity.whoIs(request.headers.cookie);
@@ -984,7 +998,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    * block at all rather than an empty one.
    */
   const shopStateFor = async (accountId: string): Promise<ShopState | undefined> => {
-    const shops = parts.wooShops;
+    const shops = wooShops;
     if (shops === undefined) {
       return undefined;
     }
@@ -1038,12 +1052,19 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    */
   const settingsOf = async (request: Request): Promise<Answer<Settings>> => {
     const gateway = gatewayAs(request);
-    const [seller, wallet] = await Promise.all([gateway.seller(), gateway.payoutWallet()]);
+    const [seller, wallet, approval] = await Promise.all([
+      gateway.seller(),
+      gateway.payoutWallet(),
+      approvalOn(gateway),
+    ]);
     if (!seller.ok) {
       return seller;
     }
     if (!wallet.ok) {
       return wallet;
+    }
+    if (!approval.ok) {
+      return approval;
     }
     return {
       ok: true,
@@ -1051,6 +1072,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         sellerName: seller.document.name,
         sellerSite: seller.document.site,
         payoutWallet: wallet.document,
+        ...(approval.document === undefined ? {} : { liveApproval: approval.document }),
       },
     };
   };
@@ -1440,7 +1462,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    * so a deployment whose tables are not there answers "there is no such page"
    * rather than drawing a form whose button loses somebody's keys.
    */
-  const shops = parts.wooShops;
+  const shops = wooShops;
   if (shops !== undefined) {
     /** The address a shop is told to send a merchant back to, and the keys to. */
     const whereWeAre = `${config.publicBaseUrl}${base}`;
@@ -1457,9 +1479,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
      * The rule is the door's own (`readinessOf` in the core), asked with what
      * the gateway answers for this merchant. This dashboard is given the same
      * chain and facilitator as its gateway, so its surface mode is the door's.
-     * The operator's approval goes in as unknown, since no route tells a
-     * merchant's key whether it holds one; where the door asks for it, the
-     * rule says so, and the page says it cannot tell.
+     * The operator's approval goes in as unknown: the connector is not offered
+     * on the live channel, the one place the door asks for it.
      */
     const standingOf = async (
       request: Request,
@@ -1467,7 +1488,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       Answer<{
         readonly sellerName: string | null;
         readonly unset: readonly Unset[];
-        readonly unsure: readonly MerchantFinding[];
       }>
     > => {
       const gateway = gatewayAs(request);
@@ -1491,7 +1511,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         document: {
           sellerName: name.document,
           unset: unsetIn(door),
-          unsure: door.unknown,
         },
       };
     };
@@ -1524,7 +1543,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
             ...view,
             state,
             unset: standing.document.unset,
-            unsure: standing.document.unsure,
           }),
         );
     };
@@ -1712,14 +1730,18 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
           continue;
         }
         // The door's own findings, word for word. They are what tells the
-        // merchant which field of which product to change in their shop.
+        // merchant which field of which product to change in their shop. The
+        // one exception is the shop's site, which the door asks a merchant's
+        // code to set through the API and the person here sets in Settings.
         outcomes.push({
           id: one.id,
           title: one.title,
           problems: published.document.error.problems.map((problem) =>
-            problem.path.length === 0
-              ? problem.message
-              : `${problem.path.join(".")}: ${problem.message}`,
+            problem.code === MERCHANT_FINDINGS.NO_SELLER_SITE
+              ? SITE_IN_SETTINGS
+              : problem.path.length === 0
+                ? problem.message
+                : `${problem.path.join(".")}: ${problem.message}`,
           ),
         });
       }
@@ -1751,12 +1773,14 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
 
   app.get(`${base}/cards`, async (request, response) => {
     const gateway = gatewayAs(request);
-    // The wallet as well as the name, because a card can read paused for the
-    // want of either, and the control beside it says which (`cardControl`).
-    const [cards, name, wallet] = await Promise.all([
+    // The wallet and the approval as well as the name, because a card can read
+    // paused for the want of any of them, and the control beside it says which
+    // (`cardControl`).
+    const [cards, name, wallet, approval] = await Promise.all([
       gateway.cards(),
       gateway.sellerName(),
       gateway.payoutWallet(),
+      approvalOn(gateway),
     ]);
     if (!cards.ok) {
       return trouble(response, base, cards);
@@ -1767,11 +1791,15 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     if (!wallet.ok) {
       return trouble(response, base, wallet);
     }
+    if (!approval.ok) {
+      return trouble(response, base, approval);
+    }
     response.type("html").send(
       cardsScreen(
         {
           ...viewing(request, base, name.document),
           payout: { wallet: wallet.document.payout_wallet },
+          ...(approval.document === undefined ? {} : { liveApproval: approval.document }),
         },
         cards.document,
         config.publicBaseUrl,
@@ -2173,6 +2201,7 @@ const viewingSettingsAt = (
 ): Viewer => ({
   ...viewingAt(request, base, mode, settings.sellerName),
   sellerSite: settings.sellerSite,
+  ...(settings.liveApproval === undefined ? {} : { liveApproval: settings.liveApproval }),
   payout: {
     wallet: settings.payoutWallet.payout_wallet,
     pending:
@@ -2340,6 +2369,12 @@ function tooLarge(thrown: unknown): boolean {
   );
 }
 
+/**
+ * What was said, beginning as a sentence does. The gateway writes its refusals
+ * for a program's log, in lower case, and this page is read by a person.
+ */
+const asSentence = (said: string): string => `${said.slice(0, 1).toUpperCase()}${said.slice(1)}`;
+
 function problemPageAt(base: string, mode: DashboardConfig["surfaceMode"], said: string): string {
   return bare(
     base,
@@ -2348,7 +2383,7 @@ function problemPageAt(base: string, mode: DashboardConfig["surfaceMode"], said:
 ${brandLockup("/")}
 <form class="gate-card" method="get" action="${escaped(base)}/cards">
 <h1>Something went wrong</h1>
-<p>${escaped(said)}</p>
+<p>${escaped(asSentence(said))}</p>
 <button class="button button-primary" type="submit">Try again</button>
 </form>
 </div>`,

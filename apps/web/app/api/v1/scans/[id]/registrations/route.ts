@@ -9,6 +9,6 @@ export async function POST(request: NextRequest, _context: { params: Promise<{ i
     request,
     426,
     "registration_contract_upgraded",
-    "Use the version 2 registration endpoint with email and phone.",
+    "Use the version 2 registration endpoint, with an email address and, if you like, a phone number.",
   );
 }

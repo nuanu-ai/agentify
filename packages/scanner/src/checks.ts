@@ -68,6 +68,13 @@ const result = ({
   ...(errorCode ? { errorCode } : {}),
 });
 
+/**
+ * The error code of every check that needed the home page when the site
+ * answered it with a bot challenge or a refusal (401, 403 or 429) in its
+ * place.
+ */
+export const BASE_BLOCKED = "base_blocked";
+
 const inaccessible = (artifact?: FetchArtifact): boolean =>
   !artifact || Boolean(artifact.errorCode) || artifact.status === 0 || artifact.status >= 500;
 const missing = (artifact?: FetchArtifact): boolean =>
@@ -814,8 +821,7 @@ const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
 const ssrCheck = (artifacts: ScanArtifacts): CheckResult => {
   const base = artifacts.base;
   const representative = artifacts.representative;
-  const usableBase =
-    base && !inaccessible(base) && !isChallenge(base.status, base.body) ? base : undefined;
+  const usableBase = base && !inaccessible(base) ? base : undefined;
   const usableRepresentative =
     representative &&
     !inaccessible(representative) &&
@@ -829,7 +835,7 @@ const ssrCheck = (artifacts: ScanArtifacts): CheckResult => {
       earnedWeight: 0,
       summaryCode: "ssr_unavailable",
       userImpactCode: "ssr_not_assessed",
-      errorCode: base?.errorCode ?? (base ? "base_blocked" : "base_unavailable"),
+      errorCode: base?.errorCode ?? "base_unavailable",
     });
   const baseSignals = usableBase ? signalsOf(usableBase) : NO_SIGNALS;
   const representativeSignals = usableRepresentative ? signalsOf(usableRepresentative) : NO_SIGNALS;
@@ -872,7 +878,7 @@ const ssrCheck = (artifacts: ScanArtifacts): CheckResult => {
 
 const agentUaCheck = (artifacts: ScanArtifacts): CheckResult => {
   const base = artifacts.base;
-  if (!base || inaccessible(base) || isChallenge(base.status, base.body))
+  if (!base || inaccessible(base))
     return result({
       id: 13,
       status: "unavailable",
@@ -1217,6 +1223,17 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     representative && (inaccessible(representative) || representative.status >= 400)
       ? (representative.errorCode ?? "product_page_unavailable")
       : undefined;
+  // A home page answered with a bot challenge in its place was not read: no
+  // check measures the challenge as if it were the site, and each that
+  // needed the home page says it was blocked.
+  const challenged =
+    targetContentAllowed &&
+    artifacts.base &&
+    !artifacts.base.errorCode &&
+    isChallenge(artifacts.base.status, artifacts.base.body)
+      ? { ...artifacts.base, errorCode: BASE_BLOCKED }
+      : undefined;
+  const readable = challenged ? { ...artifacts, base: challenged } : artifacts;
   const effective = !targetContentAllowed
     ? {
         ...artifacts,
@@ -1226,8 +1243,8 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
         agentProbes: {},
       }
     : productUnread
-      ? { ...artifacts, representative: undefined }
-      : artifacts;
+      ? { ...readable, representative: undefined }
+      : readable;
   const checks = [
     ...robotsChecks(artifacts),
     sitemapCheck(artifacts),

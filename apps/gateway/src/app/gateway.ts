@@ -702,6 +702,15 @@ export class Gateway {
     return registered.id;
   }
 
+  /** Whether the operator has approved this merchant for live sales. */
+  async liveApproved(merchantId: string): Promise<boolean> {
+    const merchant = await this.runtime.store.merchantById(merchantId);
+    if (merchant === null) {
+      throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
+    }
+    return merchant.liveApprovedAt !== null;
+  }
+
   /**
    * What this merchant's products are sold under, as it stands.
    *
