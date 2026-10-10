@@ -205,6 +205,22 @@ describe("what the checks read from the markup real sites write", () => {
     });
   });
 
+  it("keeps the verdict of a home page that merely says the words a challenge says", () => {
+    // A shop page is the shop page whatever its words: a product named after
+    // a film, a help text about a login form. Only a challenge status or a
+    // vendor's own interstitial marks a page served in the site's place.
+    const ordinary = evaluateScan(makeArtifacts("store"));
+    for (const words of ["Access Denied hacker T-shirt", "Please verify you are human to log in"]) {
+      const evaluation = evaluateScan({
+        ...makeArtifacts("store"),
+        base: artifact("https://example.com/", html.replace("</body>", `<p>${words}</p></body>`)),
+      });
+
+      expect(baseBlocked(evaluation.checks), words).toBe(false);
+      expect(evaluation.score.score, words).toBe(ordinary.score.score);
+    }
+  });
+
   it("does not call a home page that could not be reached a block", () => {
     // A server error is not the site turning the reader away: the scan says
     // what it could read and that the rest was unavailable.
