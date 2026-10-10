@@ -380,7 +380,7 @@ function deliverGoods(order: Order, at: number, extra: readonly Effect[] = []): 
  * where they are in time or the order is not synchronous.
  *
  * A timer closes an overdue order, and a timer can fire late — the gateway's
- * queue looks for due reminders every couple of seconds — so goods answered
+ * queue notices a due reminder only when it next looks — so goods answered
  * in the ninth second could reach the machine before the timer did and be
  * charged for, while the same goods a little later would find the purchase
  * closed. Whether a buyer pays cannot hang on which of the two arrived first.
