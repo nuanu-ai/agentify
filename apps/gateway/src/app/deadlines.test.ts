@@ -117,6 +117,29 @@ describe("when the time runs out", () => {
     expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
   });
 
+  it("tells the agent its synchronous purchase expired when the timer that closes it is late", async () => {
+    // The timer carrying the merchant's deadline comes off a queue that looks
+    // for due reminders every so often, and it can land after the agent's
+    // budget has run out. The agent is then owed how its purchase ended, not
+    // that it is still under way: the deadline passed on the clock.
+    const harnessed = await started({ SYNC_BUDGET_MS: "300" });
+    const orderId = await bought(harnessed, syncCard);
+    // From the payment on, every timer is late: none of them lands inside the
+    // agent's wait.
+    vi.spyOn(harnessed.queue, "remind").mockResolvedValue(undefined);
+
+    const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    // The merchant takes the order and says nothing, and the merchant's
+    // deadline passes on the clock.
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 200)).envelopes).toHaveLength(1);
+    harnessed.advance(Number(brisk.SYNC_RESPONSE_MS));
+    const settled = await buying;
+
+    expect(settled.step).toBe("settled");
+    expect((await state(harnessed, orderId))?.state).toBe("expired");
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+  });
+
   it("does not tell a merchant a closed order still stands", async () => {
     // Goods are weighed against the card before the machine sees the call, and
     // that check does not ask whether the order is still alive. Its refusal
