@@ -2955,6 +2955,19 @@ describe("the keys screen", () => {
     expect(readable(refused.html)).toContain("there is no such key");
   });
 
+  it("shows the gateway's refusal as a sentence, beginning with a capital", async () => {
+    // The gateway writes its refusals for a program's log, starting in lower
+    // case; on a page a person reads they are a sentence.
+    const { browser } = await started();
+    await browser.signIn();
+
+    const refused = await browser.post("/keys/key_nobody_has/disable");
+    const said = /<h1>Something went wrong<\/h1>\s*<p>([^<]*)<\/p>/.exec(refused.html)?.[1] ?? "";
+
+    expect(said).toMatch(/^[A-Z]/);
+    expect(said.toLowerCase()).toContain("there is no such key");
+  });
+
   it("draws a working screen for a merchant who has issued no keys of their own", async () => {
     // The first screen every merchant registered through the form sees. The
     // dashboard does not sign in with a key from this list and never has one
