@@ -17,22 +17,23 @@
  * When. The gateway counts the forty-eight hours from the moment every message
  * was handed over, which is after this one is written, so the message cannot
  * know the exact moment. It says "not before" the moment it can name, which is
- * true of every message sent, and the wallet screen shows the exact one.
+ * true of every message sent, and the wallet section of Settings shows the
+ * exact one.
  *
  * What decides it. A message about a change the gateway then refused to record
  * is possible and safe, but only if the message says the change happens only
- * if the wallet screen shows it — so it says that, and says what to do if the
- * reader did not ask for it.
+ * if the wallet section of Settings shows it — so it says that, and says what
+ * to do if the reader did not ask for it.
  *
- * What it carries. A plain link to the wallet screen and nothing that opens
- * anything: no token, no sign-in link. A person who is signed out signs in the
+ * What it carries. A plain link to Settings and nothing that opens anything:
+ * no token, no sign-in link. A person who is signed out signs in the
  * ordinary way and lands on that screen. A message that could open a session
  * would turn every forwarded or intercepted copy of it into a way into the
  * merchant's dashboard, on the one day somebody is trying to move their money.
  *
  * A key that issued a new one is named the way the merchant's list of keys
  * names it: its label, with its identifier beside it, so the row can be found
- * and disabled.
+ * and revoked.
  *
  * What a message advises has to work in the state it describes. A waiting
  * change can be cancelled, and the cancel signs every other session out. After
@@ -52,7 +53,7 @@ import { moment } from "./words.js";
 export interface Screens {
   /** The settings screen, which carries the payout wallet and its cancel control. */
   readonly wallet: string;
-  /** The screen the merchant's own keys are listed and disabled on. */
+  /** The screen the merchant's own keys are listed and revoked on. */
   readonly keys: string;
 }
 
@@ -69,8 +70,8 @@ export interface Screens {
 const inert = (label: string): string => label.replace(/[.:/@]/g, (mark) => `${mark}\u200B`);
 
 /**
- * Who asked for something the wallet screen does, as a phrase that follows
- * "was asked for" or "was set".
+ * Who asked for something the wallet section of Settings does, as a phrase that
+ * follows "was asked for" or "was set".
  */
 const askedIn = (asked: AskedInTheDashboard): string =>
   `in the dashboard, from a session signed in as ${asked.email}`;
@@ -83,7 +84,7 @@ const askedBy = (asked: AskedWith): string =>
 
 /** What to do about a waiting change, if the reader did not ask for it. */
 const IF_NOT_YOU =
-  "If nobody at your business did this, somebody else may be signed in to your dashboard: cancelling the change on the wallet screen signs every other session out.";
+  "If nobody at your business did this, somebody else may be signed in to your dashboard: cancelling the change in the Payout wallet section of Settings signs every other session out.";
 
 /**
  * What works when nothing waits, in the order it works: the stop, which is
@@ -106,8 +107,8 @@ export function announcementMessage(
         `A change of the wallet your sales are paid into was asked for ${askedIn(announcement.asked_with)}.` +
         ` From ${announcement.from} to ${announcement.to}.`;
       const paragraphs = [
-        `It takes effect not before ${notBefore}, and only if the wallet screen of your dashboard shows it waiting: ${screens.wallet}. Until then every sale is paid into ${announcement.from}.`,
-        `If you did not ask for this, cancel it on that screen. ${IF_NOT_YOU}`,
+        `It takes effect not before ${notBefore}, and only if the Payout wallet section of your dashboard's Settings shows it waiting: ${screens.wallet}. Until then every sale is paid into ${announcement.from}.`,
+        `If you did not ask for this, cancel it there. ${IF_NOT_YOU}`,
         "This message opens nothing by itself: sign in to your dashboard the usual way.",
       ];
       return written(to, {
@@ -115,7 +116,7 @@ export function announcementMessage(
         eyebrow: "Payout wallet",
         title: "Your payout wallet is set to change",
         lead,
-        action: "Open the wallet screen",
+        action: "Open Settings",
         link: screens.wallet,
         paragraphs,
       });
@@ -129,7 +130,7 @@ export function announcementMessage(
         eyebrow: "Payout wallet",
         title: "A payout wallet was set",
         lead,
-        action: "Open the wallet screen",
+        action: "Open Settings",
         link: screens.wallet,
         paragraphs: [
           `If nobody at your business set it, act now. ${PAUSE_THEN_SET(screens.wallet)}`,
@@ -146,7 +147,7 @@ export function announcementMessage(
         eyebrow: "Payout wallet",
         title: "A payout wallet change was cancelled",
         lead,
-        action: "Open the wallet screen",
+        action: "Open Settings",
         link: screens.wallet,
         paragraphs: [
           `If you did not cancel it, the cancel may have signed you out too, with every other session of your merchant, so sign in again. ${PAUSE_THEN_SET(screens.wallet)}`,
@@ -163,10 +164,10 @@ export function announcementMessage(
         eyebrow: "Keys",
         title: "A new key was issued",
         lead,
-        action: "Open the keys screen",
+        action: "Open API keys",
         link: screens.keys,
         paragraphs: [
-          `If nobody at your business issued it, disable it on the keys screen: ${screens.keys}.`,
+          `If nobody at your business issued it, revoke it on the API keys screen: ${screens.keys}.`,
           "This message opens nothing by itself: sign in to your dashboard the usual way.",
         ],
       });

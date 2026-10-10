@@ -257,7 +257,7 @@ const walletRefusedAs = (why: WalletChangeRefusal): Answer<never> => {
       return {
         ok: false,
         status: UNAVAILABLE,
-        why: "the message about this change could not be confirmed as sent to every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the dashboard's wallet screen shows it, which it does not",
+        why: "the message about this change could not be confirmed as sent to every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the Payout wallet section of the dashboard's Settings shows it, which it does not",
       };
     case "raced":
       return {
@@ -269,7 +269,7 @@ const walletRefusedAs = (why: WalletChangeRefusal): Answer<never> => {
       return {
         ok: false,
         status: CONFLICT,
-        why: "another change of this merchant's payout wallet was recorded while this one was being announced, so this one was not recorded; its message went out and says the change takes effect only if the dashboard's wallet screen shows it, which it does not. Read the wallet and ask again if this is still the address wanted",
+        why: "another change of this merchant's payout wallet was recorded while this one was being announced, so this one was not recorded; its message went out and says the change takes effect only if the Payout wallet section of the dashboard's Settings shows it, which it does not. Read the wallet and ask again if this is still the address wanted",
       };
     default: {
       const unanswered: never = why;
