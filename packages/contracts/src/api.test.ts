@@ -587,6 +587,27 @@ describe("the status an agent reads", () => {
     expect(AgentOrderStatusSchema.parse({ ...status, price: null }).price).toBeNull();
   });
 
+  it("says why an order ended where Agentify and not its merchant decided it", () => {
+    // A reason is a word to branch on and a sentence saying what to do next.
+    // Its words are an open set, like the status: a word a reader does not know
+    // falls through to the sentence rather than breaking the read.
+    const priceGone = {
+      ...status,
+      status: "expired",
+      reason: { code: "price_expired", message: "The price ran out; start a new purchase." },
+    };
+    const unknownWord = { ...priceGone, reason: { code: "a_later_word", message: "Ask again." } };
+
+    expect(AgentOrderStatusSchema.parse(priceGone)).toStrictEqual(priceGone);
+    expect(AgentOrderStatusSchema.parse(unknownWord).reason?.code).toBe("a_later_word");
+    expect(
+      AgentOrderStatusSchema.safeParse({
+        ...priceGone,
+        reason: { code: "price_expired", message: " " },
+      }).success,
+    ).toBe(false);
+  });
+
   it("names who sold it, so an agent with a question the order cannot answer knows where to go", () => {
     // ADR-0034: the shop's own site is where a parcel that did not arrive, a
     // return or the terms of the sale are taken, and the order is where an
@@ -708,15 +729,11 @@ describe("the status an agent reads", () => {
     expect(AgentOrderStatusSchema.safeParse({ ...status, refusal: null }).success).toBe(false);
   });
 
-  it("says in the exported document what the pair carries and what it still does not", () => {
+  it("says in the exported document that a missing refusal is not a dropped one", () => {
     // The reader who has only the document is the one who would plan around
-    // the claim, so the claim has to be exact in both directions: the
-    // merchant's own refusal reaches the agent, and the endings nobody worded
-    // still arrive as a bare `rejected`.
+    // the claim: an absent refusal means there was none to quote.
     const description = schemas.agent_order_status.meta()?.description ?? "";
 
-    expect(description).toContain("rejected");
-    expect(description).toContain("refusal");
     expect(description).toContain("no refusal to quote");
   });
 
@@ -887,7 +904,6 @@ describe("the answer a handler returned, on its way back", () => {
     expect(
       verdictOf(body(), { refused: { code: "out_of_stock", message: "Мест на тарифе нет" } }),
     ).toBe("accepted");
-    expect(verdictOf(body(), { accepted: { eta_seconds: 60 } })).toBe("accepted");
     expect(verdictOf(body(), { accepted: {} })).toBe("accepted");
   });
 
@@ -913,11 +929,6 @@ describe("the answer a handler returned, on its way back", () => {
     expect(verdictOf(body(), { refused: { code: "out_of_stock", message: " " } })).not.toBe(
       "accepted",
     );
-  });
-
-  it("refuses an acceptance that promises a delivery in no time at all", () => {
-    expect(verdictOf(body(), { accepted: { eta_seconds: 0 } })).not.toBe("accepted");
-    expect(verdictOf(body(), { accepted: { eta_seconds: -60 } })).not.toBe("accepted");
   });
 
   it("refuses a fourth kind of answer", () => {

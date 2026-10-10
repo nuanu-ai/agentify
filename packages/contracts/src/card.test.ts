@@ -65,6 +65,41 @@ describe("price check", () => {
   });
 });
 
+describe("a card's refusals are in our words, not the validator's", () => {
+  // A merchant fixing a card reads the sentence, and "Invalid input: expected
+  // string, received undefined" makes them translate a library's language
+  // into what to do. Every missing required field, and every word a field does
+  // not take, is refused in a sentence of ours that says what the field is.
+  const validatorSaid = /Invalid input|Invalid option|received undefined/;
+
+  for (const field of ["merchant_item_id", "title", "description", "price"] as const) {
+    it(`says what ${field} is when a card leaves it out`, () => {
+      const { [field]: _gone, ...without } = syncCard;
+      const message = errorOf(CardSchema, without);
+
+      expect(message).toContain(field);
+      expect(message).not.toMatch(validatorSaid);
+    });
+  }
+
+  it("names the modes a card can be published in when it names another", () => {
+    const message = errorOf(CardSchema, { ...syncCard, fulfillment: "later" });
+
+    expect(message).toContain("async");
+    expect(message).not.toMatch(validatorSaid);
+  });
+
+  it("names the types a declared field can have when it names another", () => {
+    const message = errorOf(CardSchema, {
+      ...syncCard,
+      params: { email: { type: "date" } },
+    });
+
+    expect(message).toContain("integer");
+    expect(message).not.toMatch(validatorSaid);
+  });
+});
+
 describe("card", () => {
   it("accepts a synchronous card with everything a purchase needs", () => {
     expect(CardSchema.parse(syncCard)).toStrictEqual(syncCard);

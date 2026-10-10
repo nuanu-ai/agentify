@@ -42,27 +42,17 @@ const verifying = async (...argv: string[]): Promise<{ code: number; said: strin
 };
 
 describe("agentify verify", () => {
-  it("checks the cards it is given and says both passed and did not run apart", async () => {
-    // The fifth gate in one assertion: "I do not know" has to be
-    // distinguishable from "I know that there is none", and a command that
-    // ran one check of two must not report as though it ran both.
+  it("answers zero for cards that are complete, and says what it does not check", async () => {
+    // A build that runs this before publishing reads its exit code, and a
+    // complete card has to read as one. What the command does not check —
+    // whether the handler makes second goods for an order delivered twice —
+    // is said in its output as outside it, not reported as a check that failed.
     const { code, said } = await verifying("verify", fileHolding("card.json", validCard));
 
     expect(said).toMatch(/access-monthly/);
     expect(said).toMatch(/complete/i);
-    expect(said).toMatch(/could not be run/i);
-    expect(code).toBe(3);
-  });
-
-  it("names exactly what is missing for the idempotency run rather than a shrug", async () => {
-    // A merchant told "this check is unavailable" learns nothing. Told which
-    // route and which field are absent, they can read the same table we did
-    // and see it for themselves.
-    const { said } = await verifying("verify", fileHolding("card.json", validCard));
-
-    expect(said).toMatch(/purchase_item/);
-    expect(said).toMatch(/test flag comes to be true/);
-    expect(said).toMatch(/published-but-not-yet-in-catalogs/);
+    expect(said).toMatch(/test purchase/);
+    expect(code).toBe(0);
   });
 
   it("reports every finding of a card, pointing at the fields", async () => {
@@ -113,8 +103,7 @@ describe("agentify verify", () => {
     // work: it takes no key and no address, so nothing that was published is
     // within its reach — and the call that would hand those cards back,
     // list_merchant_cards, returns cards that passed this very check on their
-    // way in. That is a check that did not run — the same answer as the
-    // idempotency half — and not a merchant who typed it wrong.
+    // way in. It is answered as a call the command cannot work from.
     //
     // Every part of the reason is pinned, because the reason is what the
     // merchant is owed here, and this text went stale once already: it named
@@ -135,7 +124,7 @@ describe("agentify verify", () => {
     expect(said).toMatch(/where you keep the cards\s+you\s+publish from/);
     expect(said).not.toMatch(/a merchant/);
     expect(said).toMatch(/Name the card files instead/);
-    expect(code).toBe(3);
+    expect(code).toBe(2);
   });
 
   it("says which file it could not find", async () => {
@@ -152,16 +141,10 @@ describe("agentify verify", () => {
     expect(code).toBe(2);
   });
 
-  it("never answers with success while a check cannot be run", async () => {
-    // The one answer a build must not receive from this command today. Zero
-    // means every check passed; the idempotency run passes nothing because it
-    // never happens, and a merchant wiring `agentify verify` into their
-    // pipeline would take a zero as a green light for both halves.
-    //
-    // Five inputs rather than a proof: one for each way out of runVerify —
-    // nothing to check, cards that passed, cards that did not, a file that is
-    // not there, a word the command does not know. It is those five paths this
-    // pins, not a claim about every possible call.
+  it("answers zero only when every card it was given is complete", async () => {
+    // One input for each way out of runVerify — nothing to check, cards that
+    // passed, cards that did not, a file that is not there, a word the command
+    // does not know — and only the second may read as success to a build.
     const answers = await Promise.all([
       verifying("verify"),
       verifying("verify", fileHolding("good.json", validCard)),
@@ -170,6 +153,6 @@ describe("agentify verify", () => {
       verifying("publish"),
     ]);
 
-    expect(answers.map((answer) => answer.code)).not.toContain(0);
+    expect(answers.map((answer) => answer.code)).toStrictEqual([2, 0, 1, 2, 2]);
   });
 });

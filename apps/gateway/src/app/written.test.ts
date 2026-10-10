@@ -201,6 +201,20 @@ describe("what this gateway checks before it sends a document", () => {
     }
   });
 
+  it("sends our own reason only on an ending the status word blurs, and never beside a refusal", () => {
+    // A reason says why Agentify ended a rejected or expired order. On any
+    // other word it would explain an ending that did not happen, and beside a
+    // merchant's refusal it would speak over the merchant.
+    const reason = { code: "price_expired", message: "The price ran out; start a new purchase." };
+    const ended = { ...unrefused, status: "expired", reason };
+
+    expect(sendable(AgentOrderStatusSchema, ended)).toBe(true);
+    for (const word of ["delivered", "in_progress", "refund_due"]) {
+      expect(sendable(AgentOrderStatusSchema, { ...ended, status: word }), word).toBe(false);
+    }
+    expect(sendable(AgentOrderStatusSchema, { ...status, reason })).toBe(false);
+  });
+
   it("refuses to send goods on an order whose status says there are none", () => {
     // The goods are the buyer's only once the status says delivered; on any
     // other word there is nothing here to hand over, and something in this

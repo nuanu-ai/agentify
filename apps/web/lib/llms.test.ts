@@ -21,6 +21,9 @@ describe("llms.txt", () => {
       ...PUBLIC_PAGE_PATHS.map((path) => `https://agentify.ad${path}`),
       "https://agentify.ad/agentic-shop",
       "https://agentify.ad/docs/",
+      // An agent that came to buy, rather than to read about selling, is
+      // given the catalogue it buys from.
+      "https://agentify.ad/x402/catalog",
     ]);
     expect(body).not.toMatch(/MCP|guarantee|certified/i);
   });

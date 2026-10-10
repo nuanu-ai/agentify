@@ -67,9 +67,12 @@ is what the agent branches on to decide whether to try different parameters or
 go elsewhere, and the message is what it has to show a person. So write the
 message for a stranger rather than for your own logs, and prefer one of the
 common codes where it fits ([the vocabulary](/cards#refusal-codes)). Nothing
-else about the order reaches the agent this way: a deadline that passed, a
-price check that reported the product gone and a payment we would not vouch for
-all close an order without any words behind them, because nobody wrote any.
+else reaches the agent in your words. Where we ended the order and the status
+word alone would leave the agent guessing — a price that ran out, a synchronous
+answer that came too late, a price check that reported the product gone or gave
+no usable answer, a charge that did not go through — the agent is told why in a
+reason of our own, never beside a refusal of yours ([How an order can
+end](/orders)).
 
 This is also how the mode gets chosen: if refusals at delivery happen to you
 regularly, catch them earlier, in the answer to the question about price and
@@ -147,8 +150,7 @@ restarts, after a retry of ours.
 
 Whether your side really holds against repeats is not something we can check
 for you yet: nothing on our surface raises a test order to send twice, and the
-check we ship says so instead of reporting a pass ([Check the
-card](/quickstart)). Proving it is yours, and what has to hold is that a second
+check we ship says it does not check this ([Check the card](/quickstart)). Proving it is yours, and what has to hold is that a second
 order produces no second delivery and no fresh goods: the buyer keeps what the
 first delivery carried, so the repeat has to carry the same thing ([Telling a
 repeat apart](/orders#telling-a-repeat-apart)).

@@ -58,9 +58,12 @@ const SCHEMAS = [
   "pgboss_reminder_retry",
   "pgboss_reminder_bound",
   "pgboss_reminder_delay",
+  "pgboss_reminder_together",
+  "pgboss_reminder_neighbours",
   "pgboss_reminder_expiry",
   "pgboss_envelope_expiry",
   "pgboss_envelope_delay",
+  "pgboss_envelope_left",
   "pgboss_every_day",
   "pgboss_queue_names",
   "pgboss_queue_settings",
@@ -241,6 +244,101 @@ if (databaseUrl === null) {
       expect(seen).toHaveLength(3);
     }, 60_000);
 
+    it("fires reminders that fall due together in one pass, not one poll apart", async () => {
+      // Every order leaves several reminders behind, and they fall due in
+      // clusters. Taken one per poll, the fifth of five due at once waited
+      // four polls behind the others, and a deadline it carried landed seconds
+      // late — long enough to decide whether a synchronous sale went through.
+      const firedAt: number[] = [];
+      const { queue } = await labQueue("pgboss_reminder_together");
+      queue.onReminder(async () => {
+        firedAt.push(Date.now());
+      });
+      await queue.start();
+
+      for (const orderId of ["ord_1", "ord_2", "ord_3", "ord_4", "ord_5"]) {
+        await queue.remind({ kind: "deadline", orderId, deadline: "quote_expiry", at: 1 }, 0);
+      }
+
+      await vi.waitFor(() => expect(firedAt).toHaveLength(5), { timeout: 25_000, interval: 50 });
+      // One poll apart, five would span four polls of two seconds each.
+      expect(Math.max(...firedAt) - Math.min(...firedAt)).toBeLessThan(2_000);
+    }, 40_000);
+
+    it("lets one failing reminder fail alone, without holding back the ones beside it", async () => {
+      // Reminders taken together are settled one by one. A batch settled as a
+      // whole would fail every reminder in it for the one that threw, and spend
+      // their attempts on a defect that is not theirs until their deadlines
+      // were lost.
+      const seen: string[] = [];
+      const schema = "pgboss_reminder_neighbours" satisfies (typeof SCHEMAS)[number];
+      const { queue } = await labQueue(schema, { [REMINDERS]: {} });
+      queue.onReminder(async (reminder) => {
+        seen.push(reminder.orderId);
+        if (reminder.orderId === "ord_broken") {
+          throw new Error("this one never works");
+        }
+      });
+      // All three are waiting before the worker starts, so its first fetch
+      // takes them together, in one batch.
+      for (const orderId of ["ord_broken", "ord_fine_1", "ord_fine_2"]) {
+        await queue.remind({ kind: "deadline", orderId, deadline: "quote_expiry", at: 1 }, 0);
+      }
+      await queue.start();
+
+      // Run until the broken one has spent every attempt it was given and
+      // failed for good; by then a batch settled as a whole would have failed
+      // its neighbours along with it, every time.
+      const states = async () => {
+        const { rows } = await pool.query<{ order_id: string; state: string }>(
+          `select data->>'orderId' as order_id, state from ${schema}.job where name = $1 order by 1`,
+          [REMINDERS],
+        );
+        return Object.fromEntries(rows.map((row) => [row.order_id, row.state]));
+      };
+      await vi.waitFor(async () => expect((await states()).ord_broken).toBe("failed"), {
+        timeout: 30_000,
+        interval: 250,
+      });
+
+      expect(await states()).toStrictEqual({
+        ord_broken: "failed",
+        ord_fine_1: "completed",
+        ord_fine_2: "completed",
+      });
+      expect(seen.filter((orderId) => orderId === "ord_fine_1")).toHaveLength(1);
+      expect(seen.filter((orderId) => orderId === "ord_fine_2")).toHaveLength(1);
+    }, 60_000);
+
+    it("takes nothing for a worker that left while its draw was waiting", async () => {
+      // A worker that stops cuts its poll off. A draw still waiting for it
+      // stops at once, and what is published afterwards stays on the stream
+      // for the next draw: an event is sent once, and one taken for nobody is
+      // gone.
+      const { queue } = await labQueue("pgboss_envelope_left");
+      const left = new AbortController();
+      const waiting = queue.draw(A, 10, 20_000, left.signal);
+      await sleep(300);
+      const startedAt = Date.now();
+      left.abort();
+
+      expect(await waiting).toStrictEqual([]);
+      expect(Date.now() - startedAt).toBeLessThan(1_000);
+
+      await queue.publish(A, {
+        kind: "order_event",
+        id: "env_after_left",
+        sent_at: "2026-08-26T12:00:00.000Z",
+        payload: {
+          type: "order.unpaid_after_confirmation",
+          order_id: "ord_left",
+          at: "2026-08-26T12:00:00.000Z",
+        },
+      });
+      const next = await queue.draw(A, 10, 2_000);
+      expect(next.map((delivery) => delivery.envelope.id)).toStrictEqual(["env_after_left"]);
+    }, 40_000);
+
     it("holds a delayed reminder back until its moment", async () => {
       // Every deadline in the system is armed through this. A reminder that
       // fired the moment it was written would close an order whose merchant is
@@ -259,9 +357,9 @@ if (databaseUrl === null) {
         4_000,
       );
 
-      // pg-boss looks for work about every two seconds, so by now it has looked
-      // at least once and left this alone. Without that, "nothing yet" would
-      // only mean nobody had got round to it.
+      // The reminders are looked for every half second, so by now they have
+      // been looked at several times and this one left alone. Without that,
+      // "nothing yet" would only mean nobody had got round to it.
       await sleep(2_800);
       expect(seen).toStrictEqual([]);
 

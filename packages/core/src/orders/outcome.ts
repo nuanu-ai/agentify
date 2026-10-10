@@ -121,6 +121,62 @@ export function outcomeFor(order: Order): OrderOutcome {
 }
 
 /**
+ * Why an order ended, where its merchant did not say and one status word would
+ * otherwise cover endings that call for different next steps.
+ *
+ * `rejected` is a product that is gone, a price check nobody answered and a
+ * charge that did not go through; `expired` is a price that ran out before the
+ * payment and a merchant who did not answer a synchronous purchase in time. An
+ * agent told only the word either gives up on a seller worth trying again or
+ * keeps trying one that will not sell. The merchant's own refusal is not here:
+ * it travels in their words, and a reason of ours beside it would be speaking
+ * for them. Nor are the endings whose word already says it all — a payment
+ * nobody can account for, a debt, a departure.
+ */
+export const ENDING_REASONS = [
+  /** The merchant's price check said there is none; it did not say why. */
+  "unavailable",
+  /** The merchant's price check gave no price the purchase could use. */
+  "price_check_unanswered",
+  /** The payment layer said the charge did not go through. */
+  "payment_not_settled",
+  /** The price ran out before a payment for it was taken. */
+  "price_expired",
+  /** The merchant did not answer a synchronous purchase in time. */
+  "merchant_timed_out",
+] as const;
+
+export type EndingReason = (typeof ENDING_REASONS)[number];
+
+export function endingReasonFor(order: Order): EndingReason | null {
+  const outcome = outcomeFor(order);
+  if ((outcome !== "rejected" && outcome !== "expired") || order.closure === null) {
+    return null;
+  }
+  const closure = order.closure;
+  switch (closure.cause) {
+    case "unavailable":
+      return "unavailable";
+    case "quote_silent":
+      return "price_check_unanswered";
+    case "payment_not_settled":
+      return "payment_not_settled";
+    case "deadline_expired":
+      if (closure.deadline === "quote_expiry") {
+        return "price_expired";
+      }
+      return closure.deadline === "sync_response" ? "merchant_timed_out" : null;
+    case "payment_not_verified":
+    case "payment_outcome_unknown":
+    case "merchant_refused":
+    case "merchant_departed":
+      return null;
+    default:
+      return assertNever(closure, "closure");
+  }
+}
+
+/**
  * Whether a restarted merchant's open list should carry this order.
  *
  * Machine-open is wider. A price the buyer has not paid, which never reached

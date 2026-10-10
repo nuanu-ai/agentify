@@ -191,6 +191,18 @@ describe("the surface is the table", () => {
     expect(answered.body).toStrictEqual({ ok: true });
   });
 
+  it("leads an agent that asks the storefront's own root to the catalogue", async () => {
+    // An agent given only the site tries the obvious addresses first, and the
+    // storefront's root is one of them. It answered that there was no call
+    // there, which an agent reads as there being nothing to buy.
+    const { served } = await started();
+
+    const answered = await served.call("GET", "/x402");
+
+    expect(answered.status).toBe(200);
+    expect(Array.isArray((answered.body as { items?: unknown }).items)).toBe(true);
+  });
+
   it("has nothing at the versioned addresses the storefront used to answer at", async () => {
     // The storefront moved out from under `/v0` and the old addresses were
     // removed rather than redirected. A redirect would be the expensive
@@ -1242,6 +1254,45 @@ describe("whose purchase it is", () => {
 });
 
 describe("the worker's calls over HTTP", () => {
+  it("hands nothing to a poll whose worker has gone, and keeps it for the next", async () => {
+    // A worker that stops cuts its poll off, and the gateway used to go on
+    // holding it open: whatever arrived in the meantime was taken off the
+    // stream for nobody, and an event, which is sent once, was lost with it.
+    // A poll the worker has left takes nothing, and the next poll has it.
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, {
+      ...syncCard,
+      merchant_item_id: "esim",
+      fulfillment: "async",
+    });
+
+    const leaving = new AbortController();
+    const abandoned = fetch(`${served.url}/v0/worker/poll`, {
+      method: "POST",
+      headers: { ...asMerchant, "content-type": "application/json" },
+      body: JSON.stringify({ wait_seconds: 20 }),
+      signal: leaving.signal,
+    }).catch(() => "left");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    leaving.abort();
+    expect(await abandoned).toBe("left");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+
+    const next = await served.call("POST", "/v0/worker/poll", {
+      body: { wait_seconds: 0 },
+      headers: asMerchant,
+    });
+    const { envelopes } = next.body as { envelopes: { payload: { id: string } }[] };
+
+    expect(envelopes.map((envelope) => envelope.payload.id)).toStrictEqual([
+      offered.order.order.id,
+    ]);
+  });
+
   it("draws the stream and answers an order through the routes the SDK uses", async () => {
     const { served, harnessed } = await started();
     const itemId = await publish(served, {
@@ -1330,7 +1381,7 @@ describe("the worker's calls over HTTP", () => {
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
     const answered = await served.call("POST", `/v0/orders/${orderId}/answer`, {
-      body: { accepted: { eta_seconds: 30 } },
+      body: { accepted: {} },
       headers: asMerchant,
     });
 

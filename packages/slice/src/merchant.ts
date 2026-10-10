@@ -85,7 +85,7 @@ export function startMerchant(baseUrl: string, apiKey: string): MockMerchant {
       // the profile is issued later by an explicit deliver call on this same
       // object.
       acceptedOrders.set(order.id, order);
-      return order.accepted({ eta_seconds: 60 });
+      return order.accepted();
     }
     // A paid order for a product this merchant does not sell is a defect worth
     // surfacing, not a silent refusal.

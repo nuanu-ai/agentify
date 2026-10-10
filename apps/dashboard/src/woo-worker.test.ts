@@ -968,7 +968,8 @@ describe("a parcel's price question", () => {
     asked: Record<string, unknown> = question,
     quoteWithinMs?: number,
   ): Promise<unknown> => {
-    let answer: unknown;
+    // Null until the worker answers: a question it says nothing to stays null.
+    let answer: unknown = null;
     const gateway = {
       pollWorker: async () => ({
         ok: true as const,
@@ -1045,13 +1046,13 @@ describe("a parcel's price question", () => {
   });
 
   it("names no price where the shop has no rate for the place, or the shop refused it", async () => {
-    // Not available is all an agent can be told today; the reason goes to the
+    // Not available is all an agent can be told; the reason goes to the
     // merchant's log. The shop that does not ship there and the shop that
-    // refused the place read the same to the agent.
+    // refused the place read the same to the agent. A shop that could not
+    // answer at all is a different case, and says nothing (below).
     for (const read of [
       { ok: true as const, rates: [] },
       { ok: false as const, why: "The shop refused the place.", again: false },
-      { ok: false as const, why: "The shop did not answer.", again: true },
     ]) {
       const shops = memoryWooShops();
 
@@ -1130,9 +1131,14 @@ describe("a parcel's price question", () => {
     expect(asked).toBe(false);
   });
 
-  it("names no price when the shop is slower than the price check allows", async () => {
+  it("says nothing when the shop is slower than the price check allows", async () => {
     // The gateway waits five seconds for a price. A shop that answers after
-    // that answers nobody, and the worker has other questions waiting.
+    // that answers nobody, and the worker has other questions waiting. Saying
+    // "not available" for it would tell the agent the goods are gone and send
+    // it elsewhere; saying nothing tells it the price check went unanswered,
+    // which is the truth and worth trying again later. A WooCommerce card is
+    // asynchronous or a parcel, where silence refuses the sale rather than
+    // selling at the listed price.
     const started = Date.now();
 
     const answer = await answering(
@@ -1142,8 +1148,18 @@ describe("a parcel's price question", () => {
       50,
     );
 
-    expect(answer).toStrictEqual({ available: false, as_of: NOW });
+    expect(answer).toBeNull();
     expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("says nothing when the shop's cart could not answer just now", async () => {
+    const answer = await answering(memoryWooShops(), async () => ({
+      ok: false,
+      why: "The shop's cart was too busy to answer.",
+      again: true,
+    }));
+
+    expect(answer).toBeNull();
   });
 });
 
@@ -1759,13 +1775,16 @@ describe("a parcel the whole way through, against a real gateway", () => {
       itemId,
       {
         // The harness hands the question over as the envelope carried it.
-        onQuote: (question) =>
-          quoteFromTheShop(
+        onQuote: async (question) => {
+          const answer = await quoteFromTheShop(
             connected,
             QuoteRequestSchema.parse(question),
             new Date(harnessed.now()),
             parts,
-          ),
+          );
+          if (answer === null) throw new Error("the shop answered and the worker said nothing");
+          return answer;
+        },
         onOrder: async (order) =>
           (await fillFromTheShop(order, connected, MERCHANT_EMAIL, parts)) ??
           Promise.reject(new Error("the shop was not asked")),

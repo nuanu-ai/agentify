@@ -71,7 +71,7 @@ import {
   SellerNameSchema,
 } from "./merchant.js";
 import { OrderSchema } from "./order.js";
-import { OrderStatusSchema } from "./order-status.js";
+import { OrderEndingReasonSchema, OrderStatusSchema } from "./order-status.js";
 import {
   FieldSpecSchema,
   ParamNameSchema,
@@ -218,7 +218,12 @@ export {
 export type { Order } from "./order.js";
 export { OrderSchema } from "./order.js";
 export type { OrderStatus } from "./order-status.js";
-export { ORDER_STATUSES, OrderStatusSchema } from "./order-status.js";
+export {
+  ORDER_ENDING_REASONS,
+  ORDER_STATUSES,
+  OrderEndingReasonSchema,
+  OrderStatusSchema,
+} from "./order-status.js";
 export type {
   FieldSpec,
   FieldSpecInput,
@@ -343,6 +348,7 @@ export const schemas = Object.freeze({
   order_list: OrderListSchema,
   order_list_query: OrderListQuerySchema,
   order_status: OrderStatusSchema,
+  order_ending_reason: OrderEndingReasonSchema,
   order_with_status: OrderWithStatusSchema,
   param_name: ParamNameSchema,
   param_spec: ParamSpecSchema,

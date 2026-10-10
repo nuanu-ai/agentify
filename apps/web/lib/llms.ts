@@ -32,6 +32,7 @@ export function buildLlmsText(): string {
     "",
     `- [The sell-to-agents page, for the business owner](${new URL("/agentic-shop", baseUrl).toString()})`,
     `- [Merchant documentation, for the engineer](${new URL("/docs/", baseUrl).toString()})`,
+    `- [The catalogue AI agents buy from, as JSON](${new URL("/x402/catalog", baseUrl).toString()})`,
     "",
   ].join("\n");
 }

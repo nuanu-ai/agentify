@@ -234,7 +234,7 @@ describe("an eSIM plan, whose profile arrives later", () => {
     };
 
     expect(verdictOf(OrderSchema, order)).toBe("accepted");
-    expect(verdictOf(HandlerAnswerSchema, { accepted: { eta_seconds: 120 } })).toBe("accepted");
+    expect(verdictOf(HandlerAnswerSchema, { accepted: {} })).toBe("accepted");
   });
 
   it("leaves a receipt from the moment the money moves, before the profile exists", () => {
@@ -469,7 +469,7 @@ describe("the HTTP surface, carrying this catalog rather than the portal's", () 
       "/v0/orders/ord_88b3c1/deliver",
     );
 
-    expect(verdictOf(AcceptanceSchema, { eta_seconds: 120 })).toBe("accepted");
+    expect(verdictOf(AcceptanceSchema, {})).toBe("accepted");
     expect(verdictOf(OrderAcceptResponseSchema, { ok: true })).toBe("accepted");
 
     const delivered = {

@@ -453,13 +453,9 @@ describe("closing an order the merchant took on", () => {
 
     const held = agentify.orders.forId("order-1");
 
-    expect(await held.accept({ eta_seconds: 60 })).toStrictEqual({ ok: true });
     expect(await held.accept()).toStrictEqual({ ok: true });
 
-    expect(gateway?.callsTo("accept_order").map((call) => call.body)).toStrictEqual([
-      { eta_seconds: 60 },
-      {},
-    ]);
+    expect(gateway?.callsTo("accept_order").map((call) => call.body)).toStrictEqual([{}]);
   });
 });
 

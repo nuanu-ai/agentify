@@ -34,8 +34,20 @@
 
 import type { WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { sql } from "drizzle-orm";
-import { type DrizzleTransactionLike, fromDrizzle, type Job, PgBoss } from "pg-boss";
-import type { DrawnEnvelope, Queue, Reminder, ReminderPatience } from "../../ports/queue.js";
+import {
+  type DrizzleTransactionLike,
+  fromDrizzle,
+  type Job,
+  type JobResult,
+  PgBoss,
+} from "pg-boss";
+import {
+  type DrawnEnvelope,
+  type Queue,
+  REMINDER_POLL_MS,
+  type Reminder,
+  type ReminderPatience,
+} from "../../ports/queue.js";
 import { failingWithoutValues, withoutValues } from "../database-failure.js";
 import type { Envelopes } from "../postgres/store.js";
 
@@ -69,6 +81,17 @@ export const A_NAME_PG_BOSS_ACCEPTS = /^[\w.\-/]+$/;
  */
 export const ENVELOPES = "agentify_envelopes";
 export const REMINDERS = "agentify_reminders";
+
+/**
+ * How often the reminders are looked for, in seconds: the half second that is
+ * pg-boss's floor, and the port's promise. A deadline lands at most this long
+ * after its moment, plus the time to take the reminders ahead of it, which
+ * come in batches.
+ */
+const REMINDER_POLL_SECONDS = REMINDER_POLL_MS / 1_000;
+
+/** How many due reminders one fetch takes. */
+const REMINDER_BATCH = 20;
 
 /**
  * One merchant's stream, which is a pg-boss queue of its own.
@@ -301,8 +324,16 @@ export class PgBossQueue implements Queue {
     };
   }
 
-  async draw(merchantId: string, max: number, waitMs: number): Promise<readonly DrawnEnvelope[]> {
+  async draw(
+    merchantId: string,
+    max: number,
+    waitMs: number,
+    gone?: AbortSignal,
+  ): Promise<readonly DrawnEnvelope[]> {
     const stream = await this.#stream(merchantId);
+    if (gone?.aborted) {
+      return [];
+    }
     const first = await this.#take(stream, max);
     if (first.length > 0 || waitMs <= 0) {
       return first;
@@ -310,7 +341,12 @@ export class PgBossQueue implements Queue {
 
     const until = Date.now() + waitMs;
     while (Date.now() < until) {
-      await this.#park(stream, Math.min(this.#options.pollIntervalMs, until - Date.now()));
+      await this.#park(stream, Math.min(this.#options.pollIntervalMs, until - Date.now()), gone);
+      // A worker that left while this waited takes nothing: what arrives is
+      // kept on the stream for the poll that comes after it.
+      if (gone?.aborted) {
+        return [];
+      }
       const drawn = await this.#take(stream, max);
       if (drawn.length > 0) {
         return drawn;
@@ -438,11 +474,48 @@ export class PgBossQueue implements Queue {
     // installation is `updateQueue`, or a migration.
     await this.#boss.createQueue(REMINDERS);
 
-    await this.#boss.work<Reminder>(REMINDERS, { batchSize: 1 }, async (jobs: Job<Reminder>[]) => {
-      for (const job of jobs) {
-        await fire(job.data);
-      }
-    });
+    // Reminders are where the order's clocks live, so how promptly they are
+    // taken is how promptly a deadline closes. Taken one per poll at the
+    // library's two-second default, the reminders an order leaves behind
+    // queued behind each other and a deadline could land seconds after its
+    // moment. So they are looked for every half second, taken in batches, and
+    // fetched again at once while a batch comes back full. These are options
+    // of this one worker rather than settings of the queue, so unlike the
+    // queue's own settings above they apply on every database.
+    //
+    // A batch is settled one reminder at a time. Settled as a whole, a reminder
+    // that throws would fail every other reminder taken with it and spend
+    // their attempts on a defect that is not theirs; settled one by one, the
+    // one that threw is tried again on its own and its neighbours are done.
+    await this.#boss.work<Reminder>(
+      REMINDERS,
+      {
+        batchSize: REMINDER_BATCH,
+        burstWhenBatchFull: true,
+        pollingIntervalSeconds: REMINDER_POLL_SECONDS,
+        perJobResults: true,
+      },
+      async (jobs: Job<Reminder>[]): Promise<JobResult[]> => {
+        const results: JobResult[] = [];
+        for (const job of jobs) {
+          try {
+            await fire(job.data);
+            results.push({ id: job.id, status: "completed" });
+          } catch (error) {
+            console.error(
+              `[gateway] a ${job.data.kind} reminder for ${job.data.orderId} failed; it is tried again on its own while it has attempts left`,
+              error,
+            );
+            results.push({
+              id: job.id,
+              status: "failed",
+              output: { message: error instanceof Error ? error.message : String(error) },
+            });
+          }
+        }
+        return results;
+      },
+    );
 
     this.#running = true;
   }
@@ -472,17 +545,19 @@ export class PgBossQueue implements Queue {
     return jobs.map((job) => ({ envelope: job.data, handle: job.id }));
   }
 
-  #park(stream: string, waitMs: number): Promise<void> {
+  #park(stream: string, waitMs: number, gone?: AbortSignal): Promise<void> {
     const parked = this.#waiters.get(stream) ?? new Set<() => void>();
     this.#waiters.set(stream, parked);
     return new Promise((resolve) => {
       const wake = () => {
         clearTimeout(timer);
         parked.delete(wake);
+        gone?.removeEventListener("abort", wake);
         resolve();
       };
       const timer = setTimeout(wake, Math.max(waitMs, 0));
       parked.add(wake);
+      gone?.addEventListener("abort", wake, { once: true });
     });
   }
 

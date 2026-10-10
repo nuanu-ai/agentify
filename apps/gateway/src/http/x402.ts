@@ -84,6 +84,13 @@ export function atomicUnits(amount: string, decimals: number): string {
   return written;
 }
 
+/** What a parcel's challenge says before any address is named. */
+const PARCEL_LISTED =
+  "this is a parcel: the price shown is for the goods alone, and a purchase that names an address is priced for it with shipping included";
+
+/** What a parcel's challenge says once the purchase has named an address. */
+const PARCEL_PRICED = "this is a parcel: the amount asked includes shipping to the address named";
+
 export class PaymentEdge {
   readonly #config: PaymentConfig;
   readonly #baseUrl: string;
@@ -207,9 +214,20 @@ export class PaymentEdge {
       serviceName: listed.serviceName,
     });
 
+    // A parcel's card lists the goods alone, and its purchase is priced for the
+    // address it names, shipping included. An agent choosing by the catalogue
+    // number is told which number it is reading, here in our own words rather
+    // than in the merchant's description.
+    const said =
+      listed.card.fulfillment === "ship"
+        ? [why, orderId === null ? PARCEL_LISTED : PARCEL_PRICED]
+            .filter((part) => part !== undefined)
+            .join("; ")
+        : why;
+
     const challenge: PaymentRequired = {
       x402Version: X402_VERSION,
-      ...(why === undefined ? {} : { error: why }),
+      ...(said === undefined ? {} : { error: said }),
       resource: {
         url: declared.resource.url,
         description: declared.resource.description,

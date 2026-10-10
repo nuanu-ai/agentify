@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { isSandboxFacilitator, loadConfig, SANDBOX_FACILITATOR } from "./config.js";
+import {
+  isSandboxFacilitator,
+  loadConfig,
+  SANDBOX_FACILITATOR,
+  secondAttemptProblem,
+} from "./config.js";
+import { nobodyAnnounces } from "./ports/announcer.js";
+import { startGateway } from "./start.js";
 
 const database = "postgres://agentify:secret@localhost:5432/agentify";
 
@@ -493,6 +500,49 @@ describe("loadConfig", () => {
     expect(() =>
       loadConfig({ ...required, SYNC_RESPONSE_MS: "8000", SETTLE_RESPONSE_MS: "2000" }),
     ).not.toThrow();
+  });
+
+  it("refuses a synchronous answer too short to deliver an order a second time", () => {
+    // A handler that throws is the merchant's temporary failure, and the
+    // portal tells them to throw rather than refuse so that the order comes
+    // again. In the synchronous mode it comes again only if a second attempt
+    // fits before the answer's deadline: the wait for the first answer, the
+    // time the queue takes to notice that wait is over, and the delay before
+    // the next attempt. A configuration where those do not fit sends the
+    // advice to throw into a sale that can never recover, so it is refused.
+    const tooLong = loadConfig({
+      ...required,
+      HANDLER_ANSWER_MS: "7000",
+      REDELIVERY_BASE_DELAY_MS: "500",
+    });
+    const refused = secondAttemptProblem(tooLong, 500) ?? "";
+    for (const owed of ["second attempt", "8000ms", "7000ms", "500ms"]) {
+      expect(refused, refused).toContain(owed);
+    }
+
+    const fits = loadConfig({
+      ...required,
+      HANDLER_ANSWER_MS: "6900",
+      REDELIVERY_BASE_DELAY_MS: "500",
+    });
+    expect(secondAttemptProblem(fits, 500)).toBeNull();
+    // And the defaults a deployment runs with leave room for it.
+    expect(secondAttemptProblem(loadConfig(required), 500)).toBeNull();
+  });
+
+  it("will not start the gateway where a synchronous sale has no second attempt", async () => {
+    // The refusal above is only a promise if the process asks it. The
+    // database is one nothing answers at, so a gateway that skipped the check
+    // fails on the connection instead, in other words.
+    const cramped = loadConfig({
+      DATABASE_URL: "postgres://agentify:secret@127.0.0.1:1/agentify",
+      HANDLER_ANSWER_MS: "7000",
+      REDELIVERY_BASE_DELAY_MS: "500",
+    });
+
+    await expect(startGateway(cramped, nobodyAnnounces)).rejects.toThrow(
+      /will not start.*second attempt/,
+    );
   });
 
   it("gives one address for the gateway however the variable was written", () => {

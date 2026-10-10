@@ -118,5 +118,11 @@ export {
   TRANSITION_REJECTION_CODES,
 } from "./orders/model.js";
 export { moneyInvariantViolations } from "./orders/money.js";
-export type { OrderOutcome } from "./orders/outcome.js";
-export { ORDER_OUTCOMES, onTheMerchantsOpenList, outcomeFor } from "./orders/outcome.js";
+export type { EndingReason, OrderOutcome } from "./orders/outcome.js";
+export {
+  ENDING_REASONS,
+  endingReasonFor,
+  ORDER_OUTCOMES,
+  onTheMerchantsOpenList,
+  outcomeFor,
+} from "./orders/outcome.js";

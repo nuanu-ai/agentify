@@ -24,7 +24,9 @@ import { z } from "zod";
  * this list does not carry would promise the agent a validation that nobody
  * performs, which is why the enumeration and the compiler sit in one file.
  */
-export const ParamTypeSchema = z.enum(["string", "number", "integer", "boolean"]);
+export const ParamTypeSchema = z.enum(["string", "number", "integer", "boolean"], {
+  error: "a declared field's type is string, number, integer or boolean",
+});
 
 /**
  * The name of one parameter.

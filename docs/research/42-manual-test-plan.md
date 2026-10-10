@@ -236,7 +236,7 @@ what got them moving again.
 | A-07 | Copy the client code from the quickstart into a file and run it as a newcomer would. | Record every change needed to make the printed example run: a file extension, a `"type": "module"`, a TypeScript runner, the environment variables. Each change the page did not mention is a finding. | DX |
 | A-08 | Publish the smallest card from the quickstart, with the price changed to `0.01 USD`. | `ok: true` and a catalogue `id` beginning `item_`. The card appears on the dashboard's Cards with its product code, price, delivery "immediate" and state published. | DX, State |
 | A-09 | Write the synchronous handler from the quickstart, register `on('problem', …)`, and start it. | The first log line says which gateway it started against and that the money there is not real. The process stays up and the problem handler stays quiet. | DX, Claim |
-| A-10 | Run the card check exactly as the quickstart prints it, on the card from A-08 saved as `card.json`. | The card is reported complete as far as the contract can tell, the idempotency half says it could not be run, and the command exits 3. Record what the newcomer concludes from that exit code and whether a build script would treat it as a failure. | DX, Claim |
+| A-10 | Run the card check exactly as the quickstart prints it, on the card from A-08 saved as `card.json`. | The card is reported complete as far as the contract can tell, the output names what the check does not cover, and the command exits 0. Record what the newcomer concludes from the output about what is still unchecked. | DX, Claim |
 | A-11 | Ask for the first test purchase the way the documentation says. | The quickstart says an operator starts it and that there is no public way to ask. Record how the newcomer found an operator, and what they had to send. | UX |
 | A-12 | The operator buys the card once. Watch the handler, the dashboard and, if the operator shares it, the buyer's output. | One order reaches the handler; the buyer receives the declared goods; Orders shows one delivered order tagged test; Receipts shows one receipt; the order reads `test: true`. Record the order and receipt identifiers. Optionally, find the transfer to the payout wallet on a Base Sepolia block explorer. | State, Claim |
 | A-13 | Publish a second card, asynchronous: a new `merchant_item_id`, `fulfillment: 'async'`, `fulfill_deadline_seconds: 600`. Extend the one handler to tell the two cards apart by `order.merchant_item_id` — one client registers `on('order')` once, and a second process on the same key would split the orders — so that for this card it saves `order.id` and answers `accepted`; a separate step calls `agentify.orders.forId(savedId).deliver(...)` a minute later. The operator buys it once. | The buyer gets an order in progress with an address to read it at, then the goods at that address after the delivery. The receipt appears only after the delivery. | DX, State |
@@ -361,7 +361,7 @@ Synchronous card:
 | C-05 | "Accept, then deliver after the delay" on a synchronous card. | The acceptance is refused as `not_applicable_in_mode`; the order is not sent again for that answer; it ends at its deadline with nothing charged. The handler's problem report says why. | State, Door |
 | C-06 | "Hold it and ask me", then deliver at about the fifth second. | An answer later than the 3-second wait still counts inside the window: the purchase completes once with one receipt. The order arrives once — a worker is handed one order at a time, and a delivered order is not handed out again. Record any second arrival. | State |
 | C-07 | Own handler that throws on every attempt. | Repeated deliveries with growing pauses — about three fit in the window, never more than five — then closed on its time limit with nothing charged. Each throw reaches the problem handler and none reaches the agent. | State, DX |
-| C-08 | Own handler that throws on the first attempt and delivers on the second. | `delivered` once; one receipt; the handler saw the same order twice. | State |
+| C-08 | Own handler that throws on the first attempt and delivers on the second. | Delivered on the second attempt, inside the window; one receipt; the handler saw the same order twice. Record the instant of each arrival. | State |
 | C-09 | Stop the own handler, so nothing is subscribed for the second merchant; buy its card. Then start the handler. | The purchase ends without goods and without a charge within the window. Starting the handler afterwards does not revive that order, and it is never handed to the handler. | State |
 | C-10 | Own handler killed while it holds an order, and restarted within the window. | The order reaches the new process; delivered once. | State |
 | C-11 | With "Answer only after the deadline", let a synchronous purchase expire while the stand's late answer stores the goods. Then pay the same order again with a fresh authorization from the same payer (Block B's hand-written payment, new nonce, same `PAYER`). | The stored goods are released without another call to the handler; the order reads `delivered`; one charge and one receipt. The documentation promises this retry to the same buyer: record what a different payer gets. | State, AX |
@@ -374,7 +374,7 @@ Price question (a card with `price_check: 'handler'`):
 | C-13 | "Say the price is unavailable". | The purchase is refused before any money; no order reaches the merchant's handler; the status has no merchant words. | State |
 | C-14 | Price answer silent, synchronous card. | After 5 seconds the purchase carries on at the card's price. | State |
 | C-15 | Price answer silent, asynchronous card. | The purchase is refused; no order reaches the handler; nothing charged. | State |
-| C-16 | Start a purchase, take the challenge, wait 40 seconds, then sign. | Nothing is charged and nothing reaches the merchant. The documentation says the agent is given a fresh price; record the exact answer, since the code may refuse the payment instead. | State, AX, Claim |
+| C-16 | Start a purchase, take the challenge, wait 40 seconds, then sign. | Nothing is charged and nothing reaches the merchant. The agent is told the price ran out (`reason: price_expired`) and that a new purchase gets a fresh one, as the documentation says. | State, AX, Claim |
 
 Asynchronous card (the stand's asynchronous example has a ten-second deadline):
 
@@ -390,7 +390,7 @@ Asynchronous card (the stand's asynchronous example has a ten-second deadline):
 | C-24 | Own handler that throws on every attempt, on an asynchronous card with a deadline of 600 seconds. | The order goes out again after each attempt, at most five times, then closes as if its deadline had passed — long before the 600 seconds: `refund_due`, since the money was taken. Count the attempts. Record whether the merchant could have foreseen this from the documentation. | State, DX |
 | C-25 | Own handler that answers the first delivery of an order with `accepted` after 4 seconds (slower than the 3-second wait), and throws whenever the same order arrives again. | A repeat that was already on its way may still arrive, but once the acceptance has reached the gateway, failures no longer spend attempts: the order is not closed after five, and waits for its delivery deadline or a delivery. | State |
 | C-26 | Accept an order, kill the handler, restart it, and read `agentify.orders.list({ open: true })`. Deliver with `orders.forId(id)`. | The open order is on the list; the delivery succeeds; no second goods. | State, DX |
-| C-27 | Stop the handler, let an accepted order's deadline pass, restart. | The refund event waits in the merchant's queue and arrives once, on the first poll after the restart; the order is on the open list as refund due. An event is lost only when it went out in a poll whose answer the process never read, which cannot be caused by hand. | State, DX |
+| C-27 | Stop the handler with an awaited `stop()`, let an accepted order's deadline pass, restart. | The refund event is kept for the restarted process and arrives once on its first poll; the order is on the open list as refund due. | State, DX |
 | C-28 | Run two copies of the own handler on one key, with a handler that takes 5 seconds. | One order may reach both copies; the buyer gets one delivery and one receipt. | State |
 
 Pausing:
@@ -439,10 +439,10 @@ exists to find.
 | D-07 | A `result` with no fields; a parameter of a type outside string, number, integer and boolean; a parameter the delivery needs but the card does not declare. | The first two are refused. The third is accepted, by design: no check can see what a delivery needs. Record whether the documentation's warning about it was where the newcomer would have read it. | Door, DX |
 | D-08 | Tags: six of them; one of 33 characters; one with a curly quote; one with a leading space; `eSIM` beside `esim`; an empty list. | The first five refused with the rule named. Record what an empty list does. | Door |
 | D-09 | A card whose price check names an address of yours instead of the handler. | Refused at publication, with a finding at `price_check` saying the price is asked of your own price handler and a hook is not called yet. The card check refuses it the same way. | Door, Claim |
-| D-10 | In an asynchronous handler, answer `order.accepted({ eta_seconds: 60 })`. | Accepted. The documentation says nothing keeps the number and the agent never sees it. Record whether anything in the SDK's types or messages says so. | Door, Extra |
+| D-10 | From JavaScript, answer an asynchronous order with `order.accepted({ eta_seconds: 60 })`, and call `POST /v0/orders/<id>/accept` with that body. | The SDK sends an empty acceptance; the route refuses the field in words saying it was removed and to answer `accepted()` with nothing in it. | Door, Extra |
 | D-11 | Republish a card under the same `merchant_item_id` with a new price while an order against it is open. | The same catalogue `id`, the new price in the catalogue and on the dashboard; the open order keeps the price it was sold at, and so does its receipt. | State, Claim |
 | D-12 | Accept an asynchronous order, republish its card with a different `result`, then deliver the goods the agent was promised when it paid; on a second such order, deliver the new shape. | The promised goods close the order: it is held to the result it was sold with. The new shape is refused for that order with the missing fields named, and is what new orders are sold with. | State, Door |
-| D-13 | Run every card refused in D-02 to D-08 through the card check. Run it also with no file, with an unknown command, on a file that does not exist, and on a file that is not JSON. | The check finds what publication found, and exits 1. No file: refuses and says why, exit 3. Unknown command or unreadable file: exit 2. Not JSON: one finding about the card as a whole. | DX |
+| D-13 | Run every card refused in D-02 to D-08 through the card check. Run it also with no file, with an unknown command, on a file that does not exist, and on a file that is not JSON. | The check finds what publication found, and exits 1. No file, an unknown command or an unreadable file: refuses and says why, exit 2. Not JSON: one finding about the card as a whole, exit 1. | DX |
 | D-14 | Build the client wrong: no `apiKey`; `baseUrl` of `test.agentify.ad` with no scheme; `http://test.agentify.ad`; `https://test.agentify.ad/v0`; no `baseUrl` at all. | No key: a `TypeError` at `createClient` that names the environment variable as the likely cause. No scheme: refused as not an address. No address: the client builds, and the first call fails naming both addresses. Record the other two. | DX, Door |
 | D-15 | Call with a key from the other channel (any string beginning `csk_live_` on the test channel, since the prefix alone is read first), with a revoked key, and with a random string. | `AgentifyError` with code `not_authorised`, `retryable: false` and the call's name. The other channel's key gets a sentence naming the site where it works; the others get the plain refusal. | DX, Door |
 | D-16 | Misuse the subscription: `on('orders', …)`; `on('order', …)` twice; `start()` with nothing registered; `start()` twice. | Each is refused at the line that is wrong, with the right spelling named. | DX |
@@ -582,9 +582,9 @@ each one in the case named beside it, and both outcomes go into the report. A
 candidate refuted is as useful as one confirmed, because it stops the team from
 fixing what is not broken.
 
-1. An agent given only the site's address cannot find the catalogue: nothing at
-   the usual discovery addresses points to it, and an external catalogue may
-   list a product only after a settled sale (B-01).
+1. Nothing answers at `/.well-known/x402`, where some agents look for a catalogue,
+   and an external catalogue may list a product only after a settled sale
+   (B-01).
 2. In the documents an agent reads, the local sandbox cannot be told apart from
    the test channel; only the local dashboard's banner and the stack's log say
    nothing settles (Block B).
@@ -600,33 +600,27 @@ fixing what is not broken.
 7. Messages call things by other names than the screens do: a "wallet screen"
    where Settings has a section, "disable" where the button says "Revoke"
    (E-23, G-05).
-8. The card check never exits 0: a complete card exits 3 because the
-   idempotency half could not run, which a build script reads as failure
-   (A-10, D-13).
-9. The first test sale needs an operator, and there is no public way to ask for
+8. The first test sale needs an operator, and there is no public way to ask for
    one (A-11).
-10. The documentation says a payment at a stale price is answered with a fresh
-    price; the code may refuse the payment instead (C-16).
-11. The dashboard and the agent's vocabulary have a word for a refund paid back,
+9. The dashboard and the agent's vocabulary have a word for a refund paid back,
     but nothing can record a refund, so no order can reach it (Block C).
-12. `eta_seconds` is accepted and kept nowhere (D-10).
-13. A price below the live channel's unmeasured minimum is accepted at
+10. A price below the live channel's unmeasured minimum is accepted at
     publication and may be refused when a buyer pays (D-05).
-14. The catalogue has no paging (E-18).
-15. The seller's name and site are shown as they are now rather than as they
+11. The catalogue has no paging (E-18).
+12. The seller's name and site are shown as they are now rather than as they
     were at the sale, and nothing in the agent's document itself says nobody
     checked them (B-02, E-11).
-16. The documentation's front page says the pilot takes only goods that survive
+13. The documentation's front page says the pilot takes only goods that survive
     being delivered twice, while parcels, which do not, are on sale on the test
     channel (A-02).
-17. The WooCommerce screens say the connector works in test mode only, while
+14. The WooCommerce screens say the connector works in test mode only, while
     they are offered on every channel (H-07).
-18. In the scanner: a raw IP address passes the browser's check, is refused by
+15. In the scanner: a raw IP address passes the browser's check, is refused by
     the server, and is then offered "Retry scan"; the headline saying a site
     blocked the reader appears only through a development fixture; the
     full-report offer mentions a phone number the form marks optional; the
     data-notice checkbox links to no notice (I-02, I-03, I-04).
-19. `/sell` on the test channel shows pricing variants that were never approved,
+16. `/sell` on the test channel shows pricing variants that were never approved,
     with their working notes (I-09).
 
 ## What changed this week, and where it is checked
@@ -694,8 +688,8 @@ than by how hard it is to fix.
 | S3 | Confusion a person recovers from alone: a word only the team understands, a step or an entity the goal did not need, an error that is true but does not say what to do. |
 | S4 | Cosmetics that do not change meaning: spelling, alignment, spacing. |
 
-A gap the documentation already admits — a field nothing keeps, such as
-`eta_seconds` — is still recorded as a finding, marked
+A gap the documentation already admits — a setting accepted and then
+ignored, say — is still recorded as a finding, marked
 "documented", and weighed on the same scale: what it costs a stranger does not
 shrink because we wrote it down.
 

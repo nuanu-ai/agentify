@@ -624,6 +624,11 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
         connection.permissions !== "read_write"
           ? { available: false as const, as_of: parts.now().toISOString() }
           : await quoteFromTheShop(connection, envelope.payload, parts.now(), parts);
+      if (answer === null) {
+        // The shop did not answer, and saying nothing is how the gateway hears
+        // that: the agent is told the price check went unanswered.
+        continue;
+      }
       const said = await gateway.answerQuote(envelope.payload.price_id, answer);
       if (!said.ok) {
         console.error(
@@ -706,7 +711,7 @@ export const quoteFromTheShop = async (
   question: QuoteRequest,
   at: Date,
   parts: Filling,
-): Promise<QuoteResponse> => {
+): Promise<QuoteResponse | null> => {
   const unavailable: QuoteResponse = { available: false, as_of: at.toISOString() };
   /** Not available, with the reason in the merchant's log and no word of the place. */
   const unpriced = (why: string): QuoteResponse => {
@@ -731,9 +736,21 @@ export const quoteFromTheShop = async (
     Promise.all([productInTheShop(connection, question.merchant_item_id, parts), shipping]),
     parts.quoteWithinMs ?? QUOTE_WITHIN_MS,
   );
-  if (read === null) return unpriced("the shop did not answer in time");
+  // A shop that did not answer is not a shop that has none. "Not available"
+  // would tell the agent the goods are gone and send it elsewhere; null says
+  // nothing, so the gateway's wait for a price runs out and the agent is told
+  // the price check went unanswered, which is worth trying again later. A
+  // WooCommerce card is asynchronous or a parcel, where that silence refuses
+  // the sale; on a synchronous card it would sell at the listed price instead.
+  const silent = (why: string): null => {
+    console.error(
+      `[dashboard] ${question.merchant_item_id} is not priced for ${question.price_id}, and nothing is said: ${why}`,
+    );
+    return null;
+  };
+  if (read === null) return silent("the shop did not answer in time");
   const [inspected, rates] = read;
-  if (!inspected.ok) return unavailable;
+  if (!inspected.ok) return inspected.again ? silent(inspected.why) : unavailable;
   const product = inspected.product;
   // A question with a place is a parcel's card, and the goods alone are not a
   // price it can be sold at.
@@ -743,7 +760,7 @@ export const quoteFromTheShop = async (
   let price = product.price;
   if (product.kind === "parcel") {
     if (rates === null) return unpriced("the question carries no place to ship to");
-    if (!rates.ok) return unpriced(rates.why);
+    if (!rates.ok) return rates.again ? silent(rates.why) : unpriced(rates.why);
     const goods = centsOf(product.price.amount);
     const carriage = cheapestCents(rates.rates);
     if (goods === null || carriage === null) {
