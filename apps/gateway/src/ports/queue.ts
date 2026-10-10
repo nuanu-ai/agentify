@@ -39,6 +39,13 @@
 import type { DeadlineKind } from "@agentify/core";
 import type { WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 
+/**
+ * The longest a queue may take to notice a reminder has fallen due, in
+ * milliseconds. The Postgres queue looks for due reminders this often; the
+ * configuration counts it into the arithmetic a synchronous sale has to fit.
+ */
+export const REMINDER_POLL_MS = 500;
+
 /** One delivery of one envelope, with the handle that finishes it. */
 export interface DrawnEnvelope {
   readonly envelope: WorkerEnvelope;

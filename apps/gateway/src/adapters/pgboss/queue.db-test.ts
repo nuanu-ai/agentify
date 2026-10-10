@@ -270,27 +270,44 @@ if (databaseUrl === null) {
       // their attempts on a defect that is not theirs until their deadlines
       // were lost.
       const seen: string[] = [];
-      const { queue } = await labQueue("pgboss_reminder_neighbours");
+      const schema = "pgboss_reminder_neighbours" satisfies (typeof SCHEMAS)[number];
+      const { queue } = await labQueue(schema, { [REMINDERS]: {} });
       queue.onReminder(async (reminder) => {
         seen.push(reminder.orderId);
         if (reminder.orderId === "ord_broken") {
           throw new Error("this one never works");
         }
       });
-      await queue.start();
-
+      // All three are waiting before the worker starts, so its first fetch
+      // takes them together, in one batch.
       for (const orderId of ["ord_broken", "ord_fine_1", "ord_fine_2"]) {
         await queue.remind({ kind: "deadline", orderId, deadline: "quote_expiry", at: 1 }, 0);
       }
+      await queue.start();
 
-      await vi.waitFor(
-        () => expect(seen.filter((orderId) => orderId === "ord_broken")).toHaveLength(2),
-        { timeout: 25_000, interval: 50 },
-      );
-      // The broken one is tried again; its neighbours were dealt with once.
+      // Run until the broken one has spent every attempt it was given and
+      // failed for good; by then a batch settled as a whole would have failed
+      // its neighbours along with it, every time.
+      const states = async () => {
+        const { rows } = await pool.query<{ order_id: string; state: string }>(
+          `select data->>'orderId' as order_id, state from ${schema}.job where name = $1 order by 1`,
+          [REMINDERS],
+        );
+        return Object.fromEntries(rows.map((row) => [row.order_id, row.state]));
+      };
+      await vi.waitFor(async () => expect((await states()).ord_broken).toBe("failed"), {
+        timeout: 30_000,
+        interval: 250,
+      });
+
+      expect(await states()).toStrictEqual({
+        ord_broken: "failed",
+        ord_fine_1: "completed",
+        ord_fine_2: "completed",
+      });
       expect(seen.filter((orderId) => orderId === "ord_fine_1")).toHaveLength(1);
       expect(seen.filter((orderId) => orderId === "ord_fine_2")).toHaveLength(1);
-    }, 40_000);
+    }, 60_000);
 
     it("holds a delayed reminder back until its moment", async () => {
       // Every deadline in the system is armed through this. A reminder that
