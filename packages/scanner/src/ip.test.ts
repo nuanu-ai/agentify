@@ -44,6 +44,8 @@ describe("IP and URL SSRF policy", () => {
     "http://0x7f000001/",
     "http://0177.0.0.1/",
     "http://localhost/",
+    "https://shop/",
+    "shop.",
     "https://example.local/",
     "https://example.com:8080/",
     "https://example.com/?access_token=secret",
