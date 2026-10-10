@@ -163,6 +163,31 @@ describe("what the checks read from the markup real sites write", () => {
         expect(assessed(asEverywhere(page, status))).toEqual([true, true]);
   });
 
+  it("reaches no verdict when the home page was a challenge, and reads nothing off it", () => {
+    // Etsy's DataDome page, as it served it to the scanner in place of the
+    // home page: small and fast, and not the site. Nothing measured on it is
+    // the site's, so no check passes or fails on it and the scan withholds
+    // its score rather than grade a page the site never showed.
+    const challenge = `<html><head><title>etsy.com</title></head><body><script data-cfasync="false">var dd={'rt':'c','host':'geo.captcha-delivery.com'}</script><script data-cfasync="false" src="https://ct.captcha-delivery.com/c.js"></script></body></html>`;
+    for (const status of [200, 403]) {
+      const evaluation = evaluateScan({
+        ...makeArtifacts("store"),
+        base: artifact("https://example.com/", challenge, { status }),
+      });
+      const homePageChecks = [5, 6, 12, 13, 14, 15, 18];
+      expect(
+        evaluation.checks
+          .filter((candidate) => homePageChecks.includes(candidate.id))
+          .map((candidate) => [candidate.id, candidate.status]),
+      ).toEqual(homePageChecks.map((id) => [id, "unavailable"]));
+      expect(evaluation.score).toMatchObject({
+        score: null,
+        level: "incomplete",
+        terminalStatus: "failed",
+      });
+    }
+  });
+
   it("finds a feed a page links to by its type or by its address", () => {
     for (const link of [
       '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/feed/" />',
