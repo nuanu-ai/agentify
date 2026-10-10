@@ -429,6 +429,39 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(rows.find(({ id }) => id === omitted.scan_id)?.submittedWithoutScheme).toBe(true);
   });
 
+  it("calls a database failure before acceptance temporary, not an invalid address", async () => {
+    // The start page offers no retry for an invalid address, so a failure
+    // that a retry can outlast must not be reported as one.
+    const { pool } = getDatabase();
+    await pool.query("alter table scans rename to scans_out_of_reach");
+    try {
+      const response = await acceptScan(
+        new NextRequest("http://localhost:3000/api/v1/scans", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost:3000",
+            cookie: `agentify_anonymous=${anonymousToken}`,
+            "content-type": "application/json",
+            "idempotency-key": `unreachable-${createUuidV7()}`,
+            "x-forwarded-for": "203.0.113.43",
+          },
+          body: JSON.stringify({
+            url: "https://unreachable-database.example/",
+            segment: "owner",
+            landing_variant: "owner-v1",
+            turnstile_token: null,
+          }),
+        }),
+      );
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        error: { code: "temporarily_busy", retryable: true },
+      });
+    } finally {
+      await pool.query("alter table scans_out_of_reach rename to scans");
+    }
+  });
+
   it("keeps attribution neutral and both accepted registration links usable", async () => {
     const { db } = getDatabase();
     const attributionRequest = (campaign: string, fbclidHash: string) =>
