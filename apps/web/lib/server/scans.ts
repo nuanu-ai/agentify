@@ -1,3 +1,4 @@
+import { type ConsentCategories, consentAllowsMeasurement } from "@agentify/analytics";
 import { baseBlocked, canonicalizeTarget, selectFindings } from "@agentify/scanner";
 import {
   BROWSER_OBSERVATION_VERSION,
@@ -147,11 +148,11 @@ export async function createOrReplayScan(
       const sessionId = createUuidV7();
       const consentId = createUuidV7();
       const anonymousHash = hmacHex(config.hmacSecret, "anonymous", newAnonymousToken);
+      // The session the scan belongs to, and nothing of the visit: its
+      // consent, written next, allows no measurement.
       await tx.insert(sessions).values({
         id: sessionId,
         anonymousIdHash: anonymousHash,
-        firstLandingVariant: body.landing_variant,
-        lastLandingVariant: body.landing_variant,
       });
       await tx.insert(consentSnapshots).values({
         id: consentId,
@@ -177,14 +178,25 @@ export async function createOrReplayScan(
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${`${session.id}:${idempotencyHash}`}, 0))`,
     );
-    await tx
-      .update(sessions)
-      .set({
-        firstLandingVariant: session.firstLandingVariant ?? body.landing_variant,
-        lastLandingVariant: body.landing_variant,
-        lastSeenAt: new Date(),
-      })
-      .where(eq(sessions.id, session.id));
+    // Which landing the visitor came from and when they were last seen are
+    // measurement, kept only for a visitor who allowed it.
+    const consent = (
+      await tx
+        .select({ categories: consentSnapshots.categories })
+        .from(consentSnapshots)
+        .where(eq(consentSnapshots.id, session.consentSnapshotId))
+        .limit(1)
+    )[0];
+    if (consent && consentAllowsMeasurement(consent.categories as Partial<ConsentCategories>)) {
+      await tx
+        .update(sessions)
+        .set({
+          firstLandingVariant: session.firstLandingVariant ?? body.landing_variant,
+          lastLandingVariant: body.landing_variant,
+          lastSeenAt: new Date(),
+        })
+        .where(eq(sessions.id, session.id));
+    }
 
     const existing = (
       await tx

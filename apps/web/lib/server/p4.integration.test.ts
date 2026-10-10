@@ -645,6 +645,26 @@ describe("P4 dashboard-owned scanner identity", () => {
       lastUtmCampaign: "autumn",
     });
     expect(await eventsOf(declined?.id ?? "")).toEqual(["landing_view"]);
+    const measured = await acceptScan(
+      post(
+        "/api/v1/scans",
+        {
+          url: "https://allowed.example/",
+          segment: "store",
+          landing_variant: "store-v2",
+          turnstile_token: null,
+        },
+        {
+          cookie,
+          "idempotency-key": `allowed-${createUuidV7()}`,
+          "x-forwarded-for": "203.0.113.44",
+        },
+      ),
+    );
+    expect(measured.status).toBe(202);
+    // A different landing from the one the attribution above recorded, so
+    // this is the scan's own write.
+    expect(await visitorSession()).toMatchObject({ lastLandingVariant: "store-v2" });
   });
 
   it("keeps attribution neutral and both accepted registration links usable", async () => {
