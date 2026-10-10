@@ -220,6 +220,14 @@ describe("whether a live merchant is approved", () => {
     expect(approved).not.toMatch(/not approved your merchant/);
   });
 
+  it("says nothing about the approval off the live channel, where nobody needs it", () => {
+    for (const mode of ["sandbox", "test"] as const) {
+      const unapproved = { ...live(false), mode };
+
+      expect(readable(settingsScreen(unapproved)), mode).not.toMatch(/approv/i);
+    }
+  });
+
   it("says on an empty Cards page that publishing waits for the approval", () => {
     // Without the approval every live publish is refused, so an unapproved
     // merchant's Cards page is the empty one, and it is where they look for

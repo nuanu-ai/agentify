@@ -1115,6 +1115,17 @@ describe("importing the catalogue", () => {
     expect(shopScreen.status).toBe(404);
     expect(integrations.status).toBe(200);
     expect(integrations.html).not.toContain("/woocommerce");
+    // Nor do the addresses a shop sends its keys and its owner back to answer:
+    // nothing on live can have started a grant for them to finish.
+    const keys = await running.postJson("/woocommerce/callback", {
+      key_id: 2,
+      user_id: "a-token-nobody-issued",
+      consumer_key: "ck_a-key-from-the-shop",
+      consumer_secret: "cs_a-secret-from-the-shop",
+      key_permissions: "read_write",
+    });
+    expect(keys.status).toBe(404);
+    expect((await running.get("/woocommerce/return?success=1")).status).toBe(404);
   });
 
   it("says a wallet is needed on the shop screen, before Import is pressed", async () => {

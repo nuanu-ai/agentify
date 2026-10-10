@@ -2248,6 +2248,19 @@ describe("a card held off sale by what its merchant lacks", () => {
     }
   }
 
+  it("on the test channel, says nothing on Settings about an approval nobody needs there", async () => {
+    // The gateway's answer about approval is false for every merchant off live,
+    // since nobody approves anybody there; read and shown, it would tell every
+    // test merchant they are waiting for something that never comes.
+    const running = await started({ gateway: CHANNELS.test, dashboard: CHANNELS.test });
+    await running.browser.signIn(FRESH.email);
+    expect((await running.browser.makeMerchant()).status).toBe(200);
+
+    const settings = readable((await running.browser.get("/settings")).html);
+
+    expect(settings).not.toMatch(/approv/i);
+  });
+
   it("on live, for a merchant Agentify has approved, says so and sells the card", async () => {
     const running = await started({
       gateway: { ...CHANNELS.live, ...LIVE_GATEWAY_ONLY },
