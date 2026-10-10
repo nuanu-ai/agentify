@@ -219,6 +219,14 @@ describe("what the checks read from the markup real sites write", () => {
       expect(baseBlocked(evaluation.checks), words).toBe(false);
       expect(evaluation.score.score, words).toBe(ordinary.score.score);
     }
+    // The same words on an error status are the refusal they say they are.
+    const refused = evaluateScan({
+      ...makeArtifacts("store"),
+      base: artifact("https://example.com/", "<html><body>Access denied</body></html>", {
+        status: 405,
+      }),
+    });
+    expect(baseBlocked(refused.checks)).toBe(true);
   });
 
   it("does not call a home page that could not be reached a block", () => {
