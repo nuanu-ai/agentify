@@ -451,8 +451,11 @@ export interface RunningWorker {
    * Stops the loop and waits for it to finish. Safe to call twice.
    *
    * Two things are abandoned rather than finished, and they are not abandoned
-   * on the same terms. A poll parked at the gateway is dropped, and whatever
-   * it would have carried was never handed to anybody, so it is redelivered.
+   * on the same terms. A poll parked at the gateway is dropped, and the
+   * gateway stops it and keeps whatever arrives for the next poll; only
+   * something taken in the instant before the drop is lost, and that is an
+   * order, which comes again, or an event, which is sent once — the list of
+   * open orders is what finds a refund owed whose event went missing.
    * An answer already on its way — a delivery the handler produced a moment
    * ago — is dropped too, and there the honest thing to say is that nobody on
    * this side knows whether it arrived first: the order may already be closed

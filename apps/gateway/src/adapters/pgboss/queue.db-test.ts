@@ -63,6 +63,7 @@ const SCHEMAS = [
   "pgboss_reminder_expiry",
   "pgboss_envelope_expiry",
   "pgboss_envelope_delay",
+  "pgboss_envelope_left",
   "pgboss_every_day",
   "pgboss_queue_names",
   "pgboss_queue_settings",
@@ -308,6 +309,35 @@ if (databaseUrl === null) {
       expect(seen.filter((orderId) => orderId === "ord_fine_1")).toHaveLength(1);
       expect(seen.filter((orderId) => orderId === "ord_fine_2")).toHaveLength(1);
     }, 60_000);
+
+    it("takes nothing for a worker that left while its draw was waiting", async () => {
+      // A worker that stops cuts its poll off. A draw still waiting for it
+      // stops at once, and what is published afterwards stays on the stream
+      // for the next draw: an event is sent once, and one taken for nobody is
+      // gone.
+      const { queue } = await labQueue("pgboss_envelope_left");
+      const left = new AbortController();
+      const waiting = queue.draw(A, 10, 20_000, left.signal);
+      await sleep(300);
+      const startedAt = Date.now();
+      left.abort();
+
+      expect(await waiting).toStrictEqual([]);
+      expect(Date.now() - startedAt).toBeLessThan(1_000);
+
+      await queue.publish(A, {
+        kind: "order_event",
+        id: "env_after_left",
+        sent_at: "2026-08-26T12:00:00.000Z",
+        payload: {
+          type: "order.unpaid_after_confirmation",
+          order_id: "ord_left",
+          at: "2026-08-26T12:00:00.000Z",
+        },
+      });
+      const next = await queue.draw(A, 10, 2_000);
+      expect(next.map((delivery) => delivery.envelope.id)).toStrictEqual(["env_after_left"]);
+    }, 40_000);
 
     it("holds a delayed reminder back until its moment", async () => {
       // Every deadline in the system is armed through this. A reminder that

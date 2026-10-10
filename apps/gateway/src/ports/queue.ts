@@ -113,7 +113,16 @@ export interface Queue {
    * else's message to look at it, but by drawing from that merchant's stream
    * in the first place.
    */
-  draw(merchantId: string, max: number, waitMs: number): Promise<readonly DrawnEnvelope[]>;
+  draw(
+    merchantId: string,
+    max: number,
+    waitMs: number,
+    /**
+     * The worker who asked has gone: a draw still waiting stops, and takes
+     * nothing off the stream for nobody.
+     */
+    gone?: AbortSignal,
+  ): Promise<readonly DrawnEnvelope[]>;
 
   /**
    * This delivery has been answered; it does not come round again. The merchant

@@ -1608,7 +1608,7 @@ export class Gateway {
    * machine refuses the hand-over, and passing it to a handler anyway would ask
    * a merchant to work on a purchase that is over.
    */
-  async poll(merchantId: string, waitMs: number): Promise<WorkerPollResponse> {
+  async poll(merchantId: string, waitMs: number, gone?: AbortSignal): Promise<WorkerPollResponse> {
     const { config, queue } = this.runtime;
     // The window is real time, as the queue's own wait is: it bounds how long a
     // worker's request is held, and the order clock has nothing to do with it.
@@ -1633,7 +1633,7 @@ export class Gateway {
     // has. Answered empty after its whole window, the SDK's worker does not rest
     // before it polls again.
     for (let passed = 1; ; passed += 1) {
-      const drawn = await queue.draw(merchantId, 1, Math.max(0, until - performance.now()));
+      const drawn = await queue.draw(merchantId, 1, Math.max(0, until - performance.now()), gone);
       if (drawn.length === 0) {
         return nothing;
       }

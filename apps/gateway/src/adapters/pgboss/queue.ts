@@ -324,8 +324,16 @@ export class PgBossQueue implements Queue {
     };
   }
 
-  async draw(merchantId: string, max: number, waitMs: number): Promise<readonly DrawnEnvelope[]> {
+  async draw(
+    merchantId: string,
+    max: number,
+    waitMs: number,
+    gone?: AbortSignal,
+  ): Promise<readonly DrawnEnvelope[]> {
     const stream = await this.#stream(merchantId);
+    if (gone?.aborted) {
+      return [];
+    }
     const first = await this.#take(stream, max);
     if (first.length > 0 || waitMs <= 0) {
       return first;
@@ -333,7 +341,12 @@ export class PgBossQueue implements Queue {
 
     const until = Date.now() + waitMs;
     while (Date.now() < until) {
-      await this.#park(stream, Math.min(this.#options.pollIntervalMs, until - Date.now()));
+      await this.#park(stream, Math.min(this.#options.pollIntervalMs, until - Date.now()), gone);
+      // A worker that left while this waited takes nothing: what arrives is
+      // kept on the stream for the poll that comes after it.
+      if (gone?.aborted) {
+        return [];
+      }
       const drawn = await this.#take(stream, max);
       if (drawn.length > 0) {
         return drawn;
@@ -532,17 +545,19 @@ export class PgBossQueue implements Queue {
     return jobs.map((job) => ({ envelope: job.data, handle: job.id }));
   }
 
-  #park(stream: string, waitMs: number): Promise<void> {
+  #park(stream: string, waitMs: number, gone?: AbortSignal): Promise<void> {
     const parked = this.#waiters.get(stream) ?? new Set<() => void>();
     this.#waiters.set(stream, parked);
     return new Promise((resolve) => {
       const wake = () => {
         clearTimeout(timer);
         parked.delete(wake);
+        gone?.removeEventListener("abort", wake);
         resolve();
       };
       const timer = setTimeout(wake, Math.max(waitMs, 0));
       parked.add(wake);
+      gone?.addEventListener("abort", wake, { once: true });
     });
   }
 
