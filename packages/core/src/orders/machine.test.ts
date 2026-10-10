@@ -1193,38 +1193,41 @@ describe("delivering twice, and delivering late", () => {
     // synchronous deadline find the purchase closed and nothing charged. The
     // timer that closes the order can fire late, so the instant of the answer
     // decides, not the order in which the answer and the timer arrived.
-    const dispatched = reach("dispatched");
-    const due = (dispatched.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.syncResponseMs;
+    // From `paid` as well: the answer can beat our own record of the
+    // hand-over, and the merchant answering is proof enough that it happened.
+    for (const start of [reach("dispatched"), reach("paid")]) {
+      const due = (start.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.syncResponseMs;
 
-    for (const at of [due, due + 1_500]) {
-      const { order, effects } = must(dispatched, { kind: "handler_delivered", at });
+      for (const at of [due, due + 1_500]) {
+        const { order, effects } = must(start, { kind: "handler_delivered", at });
 
-      expect(order.state).toBe("expired");
-      expect(order.closure).toStrictEqual({ cause: "deadline_expired", deadline: "sync_response" });
-      expect(order.heldFulfillment).toBe(true);
-      expect(order.payment).toBe("verified");
-      expect(effects).toStrictEqual([
-        { kind: "hold_fulfillment" },
-        { kind: "answer_merchant", answer: { ok: true, result: "purchase_already_closed" } },
-      ]);
+        expect(order.state).toBe("expired");
+        expect(order.closure).toStrictEqual({
+          cause: "deadline_expired",
+          deadline: "sync_response",
+        });
+        expect(order.heldFulfillment).toBe(true);
+        expect(order.payment).toBe("verified");
+        expect(effects).toStrictEqual([
+          { kind: "hold_fulfillment" },
+          { kind: "answer_merchant", answer: { ok: true, result: "purchase_already_closed" } },
+        ]);
+      }
     }
   });
 
   it("ends a late synchronous answer exactly where the timer and then the answer would have", () => {
     // Two arrival orders, one outcome: the answer landing before the overdue
-    // timer and the timer landing first must leave the same order behind,
-    // including from `paid`, where the answer can beat our own record of the
-    // hand-over.
-    for (const start of [reach("dispatched"), reach("paid")]) {
-      const due = (start.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.syncResponseMs;
-      const answerFirst = must(start, { kind: "handler_delivered", at: due + 1_500 }).order;
-      const timerFirst = walk(start, [
-        { kind: "deadline_expired", at: due, deadline: "sync_response" },
-        { kind: "handler_delivered", at: due + 1_500 },
-      ]);
+    // timer and the timer landing first leave the same order behind.
+    const dispatched = reach("dispatched");
+    const due = (dispatched.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.syncResponseMs;
+    const answerFirst = must(dispatched, { kind: "handler_delivered", at: due + 1_500 }).order;
+    const timerFirst = walk(dispatched, [
+      { kind: "deadline_expired", at: due, deadline: "sync_response" },
+      { kind: "handler_delivered", at: due + 1_500 },
+    ]);
 
-      expect(answerFirst).toStrictEqual(timerFirst);
-    }
+    expect(answerFirst).toStrictEqual(timerFirst);
   });
 
   it("charges for synchronous goods that arrive a moment before the deadline", () => {
@@ -1248,10 +1251,13 @@ describe("delivering twice, and delivering late", () => {
       { kind: "handler_accepted", at: T0 + 4 },
     ]);
     const due = (accepted.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.asyncFulfillmentMs;
-    const { order, effects } = must(accepted, { kind: "deliver_called", at: due + 1_500 });
 
-    expect(order.state).toBe("delivered");
-    expect(kinds(effects)).not.toContain("mark_refund_due");
+    for (const kind of ["deliver_called", "handler_delivered"] as const) {
+      const { order, effects } = must(accepted, { kind, at: due + 1_500 });
+
+      expect(order.state).toBe("delivered");
+      expect(kinds(effects)).not.toContain("mark_refund_due");
+    }
   });
 });
 
