@@ -4,7 +4,7 @@ import { evaluateScan } from "./engine.js";
 import type { FetchArtifact, ScanArtifacts } from "./model.js";
 import { htmlSignals, parseJsonLd, parseSitemap, visibleText } from "./parsers.js";
 import { parseRobots } from "./robots.js";
-import { levelForScore, scoreChecks } from "./scoring.js";
+import { baseBlocked, levelForScore, scoreChecks } from "./scoring.js";
 
 // The readers whose result checks.ts keeps for each page, each counted on its
 // way through and otherwise left exactly as it is: every call reaches the real
@@ -186,6 +186,34 @@ describe("what the checks read from the markup real sites write", () => {
         terminalStatus: "failed",
       });
     }
+  });
+
+  it("gives no level when the product page could be read around a challenged home page", () => {
+    // The product page carries enough for most checks, so coverage alone
+    // would publish a level; the challenge still withholds it.
+    const challenge = `<html><head><title>Just a moment...</title></head><body><script>(function(){window._cf_chl_opt = {cType: 'managed'};}());</script></body></html>`;
+    const evaluation = evaluateScan({
+      ...makeArtifacts("store"),
+      base: artifact("https://example.com/", challenge, { status: 403 }),
+      representative: artifact("https://example.com/product/widget", html),
+    });
+    expect(evaluation.score.coverage).toBeGreaterThanOrEqual(0.7);
+    expect(evaluation.score).toMatchObject({
+      score: null,
+      level: "incomplete",
+      terminalStatus: "failed",
+    });
+  });
+
+  it("does not call a home page that could not be reached a block", () => {
+    // A server error is not the site turning the reader away: the scan says
+    // what it could read and that the rest was unavailable.
+    const evaluation = evaluateScan({
+      ...makeArtifacts("store"),
+      base: artifact("https://example.com/", "Service unavailable", { status: 503 }),
+    });
+    expect(baseBlocked(evaluation.checks)).toBe(false);
+    expect(evaluation.score.terminalStatus).toBe("partial");
   });
 
   it("finds a feed a page links to by its type or by its address", () => {
