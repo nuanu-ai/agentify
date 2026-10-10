@@ -102,6 +102,10 @@ export const scanStatusResponseSchema = z
     checks: z.array(scanProgressCheckSchema).max(18),
     updated_at: z.iso.datetime({ offset: true }),
     target_host: z.string().min(1).optional(),
+    // Present when the site answered the scanner's request for its home page
+    // with a bot challenge or a refusal, which leaves the scan without a
+    // verdict.
+    blocked: z.literal(true).optional(),
     teaser: z
       .object({
         score: z.number().int().min(0).max(100).nullable(),

@@ -179,7 +179,7 @@ export function ScanExperience({
         ) : null}
         {data?.status === "failed" ? (
           <FailedState
-            blocked={fixtureName === "blocked"}
+            blocked={data.blocked === true}
             checks={data.checks}
             onRetry={() => window.location.assign("/")}
           />
@@ -504,7 +504,10 @@ function FailedState({
   const headline = robotsHeadline(checks);
   return (
     <div className={styles.failed}>
-      <h1 data-robots-headline={headline ?? undefined}>
+      <h1
+        data-access-blocked={!headline && blocked ? "" : undefined}
+        data-robots-headline={headline ?? undefined}
+      >
         {headline === "disallowed"
           ? "Your robots.txt kept the scanner out"
           : headline === "unassessed"
@@ -640,6 +643,7 @@ function createDevFixture(name: FixtureName): ScanStatusResponse {
       })),
       updated_at: now,
       target_host: "example.com",
+      ...(name === "blocked" ? { blocked: true as const } : {}),
     };
   }
   if (name === "running") {

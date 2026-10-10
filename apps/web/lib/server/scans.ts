@@ -1,4 +1,4 @@
-import { canonicalizeTarget, selectFindings } from "@agentify/scanner";
+import { baseBlocked, canonicalizeTarget, selectFindings } from "@agentify/scanner";
 import {
   BROWSER_OBSERVATION_VERSION,
   type BrowserObservationStatusResponse,
@@ -342,6 +342,7 @@ async function buildScanStatus(scan: typeof scans.$inferSelect): Promise<ScanSta
       scan.acceptedAt
     ).toISOString(),
     target_host: scan.targetHost,
+    ...(baseBlocked(rows) ? { blocked: true as const } : {}),
     ...(terminal && scan.coverage !== null && scan.level
       ? {
           teaser: {
