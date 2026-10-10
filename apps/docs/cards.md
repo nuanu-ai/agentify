@@ -595,6 +595,12 @@ Updating is the call that created it. Publishing again under the same
 one: the key is yours, and we find what is already published by it. So a card
 can be uploaded from a script without checking first whether we have it.
 
+An update changes what the next sale is made under, never a sale already made.
+An order keeps the result its card declared when the agent asked to buy, so
+after you republish a product with a different result, the orders already
+taken are still delivered with the goods they were sold for, and only the new
+ones with the new shape.
+
 Taking a card off sale is the pause in the dashboard rather than a call. Paused,
 the card stops being visible in the catalogues, and the orders still open
 against it play out in the ordinary way. Nothing removes a card altogether, and
@@ -610,8 +616,7 @@ what that ought to be is not settled.
 - How long a delivery deadline may be, and whether an asynchronous card ought
   to be required to name one at all, rather than fall to a default the buying
   program is never shown.
-- The shape of the field a card declares a price check in and chooses a
-  transport with.
+- The shape of the field a card declares a price check in.
 - Whether the vocabulary of recommended codes grows beyond three: we decide
   that from the refusals the pilot actually turns up.
 - The scheduled refresh of price and availability between purchases. It is

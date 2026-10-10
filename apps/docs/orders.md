@@ -268,12 +268,13 @@ the shape declared in the card, which goes to the agent as it is.
 await order.deliver({ access_url: url, expires_at: until })
 ```
 
-A delivery carries exactly what the card's result declared when the order was
-sold: every field it promised the agent, in the type it names, and nothing it
-does not name ([Delivery result](/cards#delivery-result)). The order keeps that
-promise from the moment it is made, so a card you republish with a different
-result changes what new orders are sold with and nothing about the orders
-already sold: those are still delivered with the goods they were sold for.
+A delivery carries exactly what the card's result declared when the agent
+asked to buy: every field it promised the agent, in the type it names, and
+nothing it does not name ([Delivery result](/cards#delivery-result)). The order
+keeps that promise from the moment it is made, so a card you republish with a
+different result changes what new orders are sold with and nothing about the
+orders already made: those are still delivered with the goods they were sold
+for.
 Goods that do not fit are refused
 with the offending fields named, and the order does not move at all — nothing
 of what you sent is written down, no receipt is issued, and no deadline of
