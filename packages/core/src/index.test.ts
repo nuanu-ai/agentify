@@ -43,6 +43,9 @@ describe("@agentify/core", () => {
       // could still land in time.
       "fulfillmentDeadline",
       "outcomeFor",
+      // Why an order ended where its merchant did not say: the gateway writes
+      // it into the agent's status.
+      "endingReasonFor",
       // The merchant's open list is narrower than the machine's open states.
       "onTheMerchantsOpenList",
       "moneyInvariantViolations",

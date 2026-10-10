@@ -202,7 +202,7 @@ describe("why an order ended, where its merchant did not say", () => {
     const priced = newOrder("sync", { priceCheck: "merchant" });
     const asyncPriced = newOrder("async", { priceCheck: "merchant" });
     const dispatched = reach("dispatched");
-    const due = (dispatched.timestamps.paidAt ?? 0) + (dispatched.policy.deadlines.syncResponseMs);
+    const due = (dispatched.timestamps.paidAt ?? 0) + dispatched.policy.deadlines.syncResponseMs;
 
     const cases = [
       [walk(priced, [{ kind: "quote_answered", at: T0 + 1, available: false }]), "unavailable"],
@@ -216,7 +216,11 @@ describe("why an order ended, where its merchant did not say", () => {
       ],
       [
         walk(newOrder("sync"), [
-          { kind: "deadline_expired", at: T0 + newOrder("sync").policy.deadlines.quoteTtlMs, deadline: "quote_expiry" },
+          {
+            kind: "deadline_expired",
+            at: T0 + newOrder("sync").policy.deadlines.quoteTtlMs,
+            deadline: "quote_expiry",
+          },
         ]),
         "price_expired",
       ],
@@ -235,7 +239,13 @@ describe("why an order ended, where its merchant did not say", () => {
 
   it("gives no reason of ours where the merchant refused, or where the status says it all", () => {
     expect(endingReasonFor(reach("failed"))).toBeNull();
-    for (const state of ["created", "dispatched", "delivered", "refund_due", "delivered_unpaid"] as const) {
+    for (const state of [
+      "created",
+      "dispatched",
+      "delivered",
+      "refund_due",
+      "delivered_unpaid",
+    ] as const) {
       expect(endingReasonFor(reach(state)), state).toBeNull();
     }
   });
