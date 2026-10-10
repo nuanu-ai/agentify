@@ -251,6 +251,11 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
             gone.abort();
           }
         });
+        // The listener is attached only after the key and the body were read,
+        // and a worker that left while they were has already closed.
+        if (call.response.destroyed) {
+          gone.abort();
+        }
         return {
           status: OK,
           // A worker draws its own merchant's stream. It is not a filter over
