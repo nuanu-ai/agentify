@@ -491,19 +491,9 @@ describe("the contract as JSON Schema", () => {
     expect(card.description).toContain("fulfill_deadline_seconds");
 
     // And where a rule can be expressed after all, it is: the card's result
-    // declaration is never empty, and the price hook is https. The pattern is
-    // read back and run, because a pattern that is present and means nothing
-    // would pass a check that only looked for it.
+    // declaration is never empty, and a price check is the handler and
+    // nothing else, so a client generated from the export offers no address.
     expect(card.properties?.result).toMatchObject({ minProperties: 1 });
-
-    const priceCheck = nested(card.properties?.price_check);
-    const address = (priceCheck.anyOf ?? priceCheck.oneOf ?? []).find(
-      (branch) => nested(branch).properties?.url !== undefined,
-    );
-    const pattern = nested(nested(address).properties?.url).pattern;
-
-    expect(pattern).toBeTypeOf("string");
-    expect(new RegExp(pattern ?? "").test("https://api.example.com/quote")).toBe(true);
-    expect(new RegExp(pattern ?? "").test("http://api.example.com/quote")).toBe(false);
+    expect(nested(card.properties?.price_check)).toMatchObject({ const: "handler" });
   });
 });

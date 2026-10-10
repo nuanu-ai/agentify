@@ -42,62 +42,26 @@ describe("fulfillment mode", () => {
 });
 
 describe("price check", () => {
-  // The promise: a card says how its price is asked for, and the two
-  // transports are the two the model has — the handler on the order channel,
-  // or an address of the merchant's own.
+  // The promise: a card says how its price is asked for, and the one way the
+  // gateway asks today is the merchant's own price handler, on the channel the
+  // orders travel. A card naming anything else is refused at the publish,
+  // because a price check we would never make is a setting accepted and then
+  // ignored: a synchronous card would quietly sell at its listed price and an
+  // asynchronous one would quietly refuse every sale.
   it("accepts the handler on the order channel", () => {
     expect(PriceCheckSchema.parse("handler")).toBe("handler");
   });
 
-  it("accepts an address for the merchants who run a pricing service", () => {
-    expect(PriceCheckSchema.parse({ url: "https://api.example.com/quote" })).toStrictEqual({
-      url: "https://api.example.com/quote",
-    });
-  });
+  it("refuses a price hook at an address of the merchant's own, which nothing calls yet", () => {
+    const hook = { url: "https://api.example.com/quote" };
 
-  it("reads the scheme the way a URL scheme is read, without regard to case", () => {
-    // A scheme is case-insensitive, and for a while the two checks behind this
-    // field disagreed about that: one accepted `HTTPS://` and the other
-    // refused it, complaining that an address was not https about an address
-    // that was.
-    expect(PriceCheckSchema.safeParse({ url: "HTTPS://api.example.com/quote" }).success).toBe(true);
-    expect(PriceCheckSchema.safeParse({ url: "HtTpS://api.example.com/quote" }).success).toBe(true);
-    expect(PriceCheckSchema.safeParse({ url: "HTTP://api.example.com/quote" }).success).toBe(false);
-  });
-
-  it("refuses a price hook that is not over https", () => {
-    // The question and the answer carry a merchant's prices. Over plain http
-    // they are readable and rewritable by anyone on the path, and the merchant
-    // would have no way to tell that the price we sold at was not theirs.
-    expect(PriceCheckSchema.safeParse({ url: "http://api.example.com/quote" }).success).toBe(false);
-    expect(PriceCheckSchema.safeParse({ url: "/quote" }).success).toBe(false);
-    expect(PriceCheckSchema.safeParse({ url: "api.example.com/quote" }).success).toBe(false);
-  });
-
-  it("refuses something that begins like an address and is not one", () => {
-    // The scheme rule and the address rule are two checks, and this is the
-    // case that tells them apart: right scheme, no address behind it. A card
-    // carrying one of these would publish, and the price question would fail
-    // at the first purchase instead of at the publish call.
-    for (const url of ["https://", "https://a b", "https://["]) {
-      expect(PriceCheckSchema.safeParse({ url }).success, url).toBe(false);
-    }
-  });
-
-  it("refuses an address that names nowhere", () => {
-    // A card that declares the second transport and gives no address is a card
-    // whose price we would never manage to ask about, and the merchant would
-    // find out from the sales that quietly stopped rather than from publishing.
-    expect(errorOf(PriceCheckSchema, {})).toContain("url");
-    expect(errorOf(PriceCheckSchema, { address: "https://api.example.com/quote" })).toContain(
-      "url",
-    );
+    expect(PriceCheckSchema.safeParse(hook).success).toBe(false);
+    expect(errorOf(PriceCheckSchema, hook)).toContain("handler");
+    expect(errorOf(CardSchema, { ...syncCard, price_check: hook })).toContain("price_check");
   });
 
   it("refuses a transport it does not have", () => {
-    const message = errorOf(PriceCheckSchema, "webhook");
-    expect(message).toContain("handler");
-    expect(message).toContain("url");
+    expect(errorOf(PriceCheckSchema, "webhook")).toContain("handler");
   });
 });
 
@@ -393,20 +357,12 @@ describe("the card an agent reads", () => {
     expect(Object.keys(publicCard)).not.toContain("merchant_item_id");
   });
 
-  it("says the price will be asked again without saying where", () => {
-    // The address of a merchant's pricing service is infrastructure of theirs
-    // that no agent calls and that publishing would expose to everyone. That
-    // the price is asked again is the part an agent acts on: the catalog price
-    // is what it compares, and the sale can go through at another.
-    const atAnAddress = publicCardOf(
-      CardSchema.parse({ ...syncCard, price_check: { url: "https://pricing.internal/quote" } }),
-      issued,
-    );
-
+  it("says the price will be asked again without saying how", () => {
+    // That the price is asked again is the part an agent acts on: the catalog
+    // price is what it compares, and the sale can go through at another. How
+    // the merchant is asked is between the merchant and us.
     expect(publicCard.price_checked_at_purchase).toBe(true);
     expect(Object.keys(publicCard)).not.toContain("price_check");
-    expect(atAnAddress.price_checked_at_purchase).toBe(true);
-    expect(JSON.stringify(atAnAddress)).not.toContain("pricing.internal");
   });
 
   it("says the price is firm when the card has no price check at all", () => {
@@ -584,7 +540,6 @@ describe("the card an agent reads", () => {
       { ...syncCard, params: undefined },
       { ...syncCard, fulfillment: "async" },
       { ...syncCard, fulfillment: "async", fulfill_deadline_seconds: 900 },
-      { ...syncCard, price_check: { url: "https://api.example.com/quote" } },
     ];
 
     for (const card of catalog) {
@@ -1439,9 +1394,6 @@ describe("a card for a parcel", () => {
     const { price_check: _check, ...unpriced } = parcelCard;
 
     expect(errorOf(CardSchema, unpriced)).toContain("price_check");
-    expect(
-      errorOf(CardSchema, { ...parcelCard, price_check: { url: "https://pricing.example/quote" } }),
-    ).toContain("price_check");
   });
 
   it("asks for no address among its parameters, which the mode carries on its own", () => {

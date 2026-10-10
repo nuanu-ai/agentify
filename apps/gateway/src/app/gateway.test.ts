@@ -1912,23 +1912,6 @@ describe("the price question", () => {
     await buying;
   });
 
-  it("treats a price check it cannot make as a merchant who did not answer", async () => {
-    // A card whose price lives at an address of the merchant's own asks over a
-    // transport this stage does not serve. Saying so as a silence is honest —
-    // nobody told us what this costs — and the mode then decides, which for a
-    // synchronous card means the snapshot sells.
-    const harnessed = await started();
-    const itemId = await published(harnessed, {
-      ...syncCard,
-      price_check: { url: "https://merchant.example/price" },
-    });
-
-    const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
-
-    if (offered.step !== "pay") throw new Error("the card did not sell");
-    expect(offered.order.order.quoteSource).toBe("card_snapshot");
-  });
-
   it("carries the merchant's own `as_of` into the sale price, not the gateway's clock", async () => {
     // The fifth gate on price freshness. `as_of` is the moment the price behind
     // the sale was true; on a live-priced card that moment is the merchant's to
