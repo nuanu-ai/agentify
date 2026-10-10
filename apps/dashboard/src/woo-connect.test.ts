@@ -143,10 +143,12 @@ describe("the preflight", () => {
     expect(looked.ok === false && looked.why).toMatch(/permalink/i);
   });
 
-  it("tells an address that is not a WordPress site so, without advice about permalinks", async () => {
+  it("asks first whether the address is the shop where nothing on the page looks like WordPress", async () => {
     // A site on something else answers the authorize address with its own
-    // page or a 404, and a sentence about WordPress settings sends its owner
-    // looking for a setting their site does not have.
+    // page or a 404, and so does a WordPress shop on a server that answers
+    // with its own 404 page when permalinks are Plain. Nothing on such a page
+    // says which of the two it is, so the owner is asked to check the address
+    // first and told the permalink setting is the cause if it is the shop.
     for (const answer of [
       { status: 200, body: "<html><title>A landing page</title><body>Hello</body></html>" },
       { status: 404, body: "<html><body>Not found</body></html>" },
@@ -157,8 +159,30 @@ describe("the preflight", () => {
       shop = null;
 
       expect(looked.ok).toBe(false);
-      expect(looked.ok === false && looked.why).toMatch(/not answer as a WordPress/);
-      expect(looked.ok === false && looked.why).not.toMatch(/permalink/i);
+      expect(looked.ok === false && looked.why).toMatch(/Check that this is the address/);
+      expect(looked.ok === false && looked.why).toMatch(/permalink/i);
+    }
+  });
+
+  it("goes straight to the permalink setting where the page is plainly WordPress", async () => {
+    // A theme's files or WordPress's own: either is the shop answering with
+    // one of its pages, and the address is not in doubt.
+    for (const asset of [
+      "/wp-content/themes/storefront/style.css",
+      "/wp-includes/js/jquery/jquery.min.js",
+    ]) {
+      shop = await shopAnswering(() => ({
+        status: 200,
+        body: `<html><head><script src="${asset}"></script></head><body>Welcome</body></html>`,
+      }));
+      const looked = await isTheGrantScreen(`${shop.url}/wc-auth/v1/authorize?x=1`);
+      await shop.close();
+      shop = null;
+
+      expect(looked.ok === false && looked.why, asset).toMatch(/permalink/i);
+      expect(looked.ok === false && looked.why, asset).not.toMatch(
+        /Check that this is the address/,
+      );
     }
   });
 
