@@ -2,6 +2,7 @@
 
 import {
   type ConsentSnapshot,
+  consentAllowsMeasurement,
   POSTHOG_BROWSER_OPTIONS,
   readCurrentConsent,
 } from "@agentify/analytics/browser";
@@ -55,6 +56,10 @@ export function AnalyticsRuntime({ config }: Readonly<{ config: BrowserAnalytics
   const track = useCallback(
     async (event: PendingEvent) => {
       const snapshot = consent.current;
+      // Nothing is recorded of a visit its visitor has not allowed measuring,
+      // so the routes are not asked; a choice made later tracks the landing
+      // then.
+      if (!snapshot || !consentAllowsMeasurement(snapshot.categories)) return;
       const eventIdKey = `agentify.analytics.event-id.${event.onceKey}`;
       const candidateEventId =
         window.sessionStorage.getItem(eventIdKey) ?? createClientOwnedEventId(event.name);
@@ -117,26 +122,26 @@ export function AnalyticsRuntime({ config }: Readonly<{ config: BrowserAnalytics
     const changed = (event: Event) => {
       const snapshot = (event as CustomEvent<ConsentSnapshot>).detail;
       consent.current = snapshot;
+      // A choice that allows measurement records the landing of the page it
+      // was made on, which went unrecorded before it. The event's once-key
+      // keeps a later visit on the same day from recording it twice.
       const landing = readLandingAnnouncement(document);
-      if (snapshot.categories.ads_measurement && landing) {
-        void captureLandingAttribution(landing.segment, landing.variant);
+      if (landing && consentAllowsMeasurement(snapshot.categories)) {
+        void captureLandingAttribution(landing.segment, landing.variant).then(() =>
+          track(landingView(landing.segment, landing.variant)),
+        );
       }
     };
     window.addEventListener("agentify:consent-changed", changed);
     return () => window.removeEventListener("agentify:consent-changed", changed);
-  }, [pathname]);
+  }, [pathname, track]);
 
   useEffect(() => {
     const landing = readLandingAnnouncement(document);
     if (landing) {
       const { segment, variant: landingVariant } = landing;
       void captureLandingAttribution(segment, landingVariant).then(() =>
-        track({
-          name: "landing_view",
-          onceKey: `landing:${landingVariant}:${new Date().toISOString().slice(0, 10)}`,
-          segment,
-          landingVariant,
-        }),
+        track(landingView(segment, landingVariant)),
       );
     }
     const report = /^\/report\/([^/]+)$/.exec(pathname);
@@ -175,6 +180,14 @@ export function AnalyticsRuntime({ config }: Readonly<{ config: BrowserAnalytics
 
   return null;
 }
+
+/** A landing seen, once a day per variant. */
+const landingView = (segment: Segment, landingVariant: string): PendingEvent => ({
+  name: "landing_view",
+  onceKey: `landing:${landingVariant}:${new Date().toISOString().slice(0, 10)}`,
+  segment,
+  landingVariant,
+});
 
 let posthogPromise: Promise<PostHog> | undefined;
 
