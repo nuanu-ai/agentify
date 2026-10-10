@@ -32,6 +32,7 @@ import {
   CatalogPageSchema,
   type Delivery,
   MoneySchema,
+  OrderEndingReasonSchema,
   OrderStatusSchema,
   ParamNameSchema,
   ParamSpecSchema,
@@ -110,10 +111,34 @@ const WrittenOrderStatusSchema = AgentOrderStatusSchema.extend({
   shipment: RecordedShipmentSchema.nullable().optional(),
   ship_by: TimestampSchema.nullable().optional(),
   refusal: RefusalSchema.optional(),
+  reason: z
+    .strictObject({
+      code: OrderEndingReasonSchema,
+      message: z.string().regex(/\S/),
+    })
+    .optional(),
   seller: SellerSchema,
 })
   .strict()
   .superRefine((written, context) => {
+    // Our own reason is said only where the status word blurs what to do next,
+    // and never in the same breath as a merchant's refusal.
+    if (written.reason !== undefined) {
+      if (written.status !== "rejected" && written.status !== "expired") {
+        context.addIssue({
+          code: "custom",
+          path: ["reason"],
+          message: `an order whose status is "${written.status}" carries no reason`,
+        });
+      }
+      if (written.refusal !== undefined) {
+        context.addIssue({
+          code: "custom",
+          path: ["reason"],
+          message: "a merchant's refusal is the whole answer and carries no reason of ours",
+        });
+      }
+    }
     if (written.delivered !== null && written.status !== "delivered") {
       context.addIssue({
         code: "custom",

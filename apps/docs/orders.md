@@ -603,9 +603,17 @@ Where the refusal was yours, the two words you wrote travel with the status: the
 code the agent branches on and the message it can show. That holds in every
 mode, so an order you refused after the buyer was already charged carries them
 as well as one refused before any money moved. Nothing else on this table
-carries them, and the difference is worth knowing when you read a status back: a
-product the price check reported as gone, a payment that failed its check and a
-deadline that ran out have no words behind them, because nobody wrote any.
+carries your words.
+
+Where we rather than you ended the order, and one status word would leave the
+agent guessing its next step, the status says why in our own words, under
+`reason`: a code to branch on and a sentence. `rejected` comes with
+`unavailable` (your price check said there is none), `price_check_unanswered`
+(it did not answer in time) or `payment_not_settled` (the charge did not go
+through); `expired` comes with `price_expired` (the price ran out before the
+payment) or `merchant_timed_out` (a synchronous answer did not arrive in
+time). A reason never stands beside your refusal: where you refused, your words
+are the whole answer.
 
 ## Time ran out
 
@@ -756,9 +764,10 @@ released; until then you have produced the goods and no payment has arrived.
 
 ## The price changed while the agent was thinking
 
-A payment at a stale price does not go through: the agent is given a fresh
-price and decides again. That is the expected course of events, nothing has
-failed, and your side never hears about it — no order appears at all.
+A payment at a stale price does not go through: nothing is charged, the agent
+is told its price ran out (`reason: price_expired`) and starts a new purchase to
+get a fresh one. That is the expected course of events, nothing has failed, and
+your side never hears about it — no order reaches you.
 
 ## What is not settled yet
 

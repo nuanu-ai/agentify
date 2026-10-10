@@ -68,17 +68,13 @@ export const ORDER_STATUSES = Object.freeze([
    * stays coarse because that is the agent's vocabulary, and the pair beside
    * it is what makes the coarseness affordable.
    *
-   * What it does not carry is the other half of the fold, and an agent
-   * planning around this value needs it said. Two endings reach this word with
-   * nobody's words behind them — a product that was gone, and a payment this
-   * gateway would not vouch for — so they arrive as a bare `rejected` and are
-   * not distinguishable from each other here. The first is not worded because
-   * the price answer that reports it is an availability flag and carries no
-   * reason at all; the second is not worded here because it is refused at the
-   * agent's door in an error envelope that says what the payment layer said,
-   * which is a better place for it than a status read afterwards. Inventing
-   * codes of our own for either would be putting words in a mouth that never
-   * opened.
+   * The rest of the fold is told apart in another voice. Where this gateway
+   * and not the merchant ended the order — a product the price check reported
+   * gone, a price check that did not answer, a charge that did not go through
+   * — the status carries a `reason` of its own (`ORDER_ENDING_REASONS`), and
+   * never beside the merchant's words: inventing a merchant's code for an
+   * ending they never worded would be putting words in a mouth that never
+   * opened, so ours are said as ours.
    */
   "rejected",
   /**
@@ -130,3 +126,30 @@ export const ORDER_STATUSES = Object.freeze([
 export const OrderStatusSchema = z.enum(ORDER_STATUSES);
 
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;
+
+/**
+ * Why an order ended, where Agentify and not its merchant decided it and one
+ * status word would otherwise cover endings that call for different next
+ * steps. These are this gateway's own words about its own decisions; a
+ * merchant's refusal travels in theirs and never gets one of these beside it.
+ */
+export const ORDER_ENDING_REASONS = Object.freeze([
+  /**
+   * `rejected`: the merchant's price check said there is none, and gave no
+   * reason. On a parcel that can also mean the merchant does not ship to the
+   * address given; nothing here can say which.
+   */
+  "unavailable",
+  /** `rejected`: the merchant's price check did not answer in time. */
+  "price_check_unanswered",
+  /** `rejected`: the payment layer said the charge did not go through. */
+  "payment_not_settled",
+  /** `expired`: the price ran out before a payment arrived for it. */
+  "price_expired",
+  /** `expired`: the merchant did not answer a synchronous purchase in time. */
+  "merchant_timed_out",
+] as const);
+
+export const OrderEndingReasonSchema = z.enum(ORDER_ENDING_REASONS);
+
+export type OrderEndingReason = z.infer<typeof OrderEndingReasonSchema>;
