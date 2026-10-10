@@ -1,5 +1,51 @@
 # Merchant SDK release history
 
+## 0.5.0
+
+### Minor Changes
+
+- 4f9bab1: An acceptance carries nothing. `eta_seconds` is gone from `AcceptanceSchema`,
+  from `order.accepted()` and `accept()` in the SDK, and from the `Acceptance`
+  type the SDK re-exported, because nothing kept the number and no agent saw it.
+  A body that still names it is refused with words saying it was removed and to
+  answer `accepted()` with nothing in it. A worker on an earlier SDK that sent it
+  has to move to this one.
+- b5a4c4f: A card's `price_check` is `"handler"` and nothing else. The `{ url }` form,
+  a price hook at an address of the merchant's own, is gone from
+  `PriceCheckSchema`, from the `Card` type and from the JSON Schema export,
+  because the gateway never calls such an address: a card that named one was
+  accepted and then priced as though the merchant had not answered, so a
+  synchronous product quietly sold at its listed price and an asynchronous one
+  quietly refused every sale. Publishing such a card, and `checkCard` on it,
+  now refuse it with a finding at `price_check` that says the price is asked
+  of the merchant's own price handler. The price hook stays designed and
+  uncalled; `CONTRACT_VERSION` does not move, because nothing a worker reads
+  changes.
+- 4f9bab1: `agentify verify` answers `0` when every card it was given is complete as far
+  as the contract can tell, `1` when a card has findings and `2` when it was
+  called with something it cannot work from, the bare command included. It no
+  longer counts a handler's idempotency as a check that "could not be run" and
+  answers `3` for a complete card, which a build read as a failure: whether a
+  handler holds against an order delivered twice is not something a command
+  holding only card files can try, and the output says so and that a test
+  purchase proves it.
+
+### Patch Changes
+
+- 4f9bab1: zod is required at exactly the version the gateway runs, 4.4.3, rather than by
+  a range. A merchant's install could take a newer zod that counts a string's
+  length differently, and then the SDK's offline card check passed a card that
+  publication refused (an emoji in a description of 500 counted once, not twice).
+  The two are one check again.
+- Updated dependencies [4f9bab1]
+- Updated dependencies [4f9bab1]
+- Updated dependencies [b5a4c4f]
+- Updated dependencies [4f9bab1]
+- Updated dependencies [4f9bab1]
+- Updated dependencies [b5a4c4f]
+- Updated dependencies [4f9bab1]
+  - @nuanu-ai/agentify-contracts@0.9.0
+
 ## 0.4.0
 
 ### Minor Changes

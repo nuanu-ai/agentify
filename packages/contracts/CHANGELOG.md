@@ -1,5 +1,55 @@
 # Contracts release history
 
+## 0.9.0
+
+### Minor Changes
+
+- 4f9bab1: An acceptance carries nothing. `eta_seconds` is gone from `AcceptanceSchema`,
+  from `order.accepted()` and `accept()` in the SDK, and from the `Acceptance`
+  type the SDK re-exported, because nothing kept the number and no agent saw it.
+  A body that still names it is refused with words saying it was removed and to
+  answer `accepted()` with nothing in it. A worker on an earlier SDK that sent it
+  has to move to this one.
+- 4f9bab1: The agent's order status carries `reason`, a code and a sentence, where
+  Agentify and not the merchant ended the order and the status word alone would
+  blur the next step: `rejected` with `unavailable`, `price_check_unanswered` or
+  `payment_not_settled`, and `expired` with `price_expired` or
+  `merchant_timed_out`. The codes are an open word whose known values are
+  `ORDER_ENDING_REASONS` (`OrderEndingReasonSchema`). A reason never stands
+  beside a merchant's `refusal`. The field is optional and the storefront's
+  documents are read open (ADR-0006 §5), so `CONTRACT_VERSION` does not move.
+- b5a4c4f: A card's `price_check` is `"handler"` and nothing else. The `{ url }` form,
+  a price hook at an address of the merchant's own, is gone from
+  `PriceCheckSchema`, from the `Card` type and from the JSON Schema export,
+  because the gateway never calls such an address: a card that named one was
+  accepted and then priced as though the merchant had not answered, so a
+  synchronous product quietly sold at its listed price and an asynchronous one
+  quietly refused every sale. Publishing such a card, and `checkCard` on it,
+  now refuse it with a finding at `price_check` that says the price is asked
+  of the merchant's own price handler. The price hook stays designed and
+  uncalled; `CONTRACT_VERSION` does not move, because nothing a worker reads
+  changes.
+
+### Patch Changes
+
+- 4f9bab1: A card that leaves out `merchant_item_id`, `title`, `description` or `price`,
+  or names a `fulfillment` mode or a declared field's `type` that does not exist,
+  is refused in a sentence saying what the field is or which words it takes,
+  rather than in the validation library's "Invalid input: expected string,
+  received undefined" or "Invalid option".
+- b5a4c4f: The description of `delivery_does_not_match_card` says what the gateway now
+  holds a delivery to: the result the order was sold with, which its card
+  declared when the order was made and which a card republished since does not
+  change.
+- 4f9bab1: The description of `ShipToSchema`, which a listing's purchase schema carries,
+  says that the price on a parcel's card is the goods alone and that a purchase
+  is priced for the address it names, with shipping to it included.
+- 4f9bab1: zod is required at exactly the version the gateway runs, 4.4.3, rather than by
+  a range. A merchant's install could take a newer zod that counts a string's
+  length differently, and then the SDK's offline card check passed a card that
+  publication refused (an emoji in a description of 500 counted once, not twice).
+  The two are one check again.
+
 ## 0.8.0
 
 ### Minor Changes
