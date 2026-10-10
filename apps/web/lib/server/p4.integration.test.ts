@@ -462,6 +462,33 @@ describe("P4 dashboard-owned scanner identity", () => {
     }
   });
 
+  it("tells the scan page when the site turned the scanner's reader away", async () => {
+    const { db } = getDatabase();
+    const blocked = await createFreshCompletedScan("blocked-home-page");
+    await db
+      .update(scans)
+      .set({ status: "failed", score: null, level: "incomplete" })
+      .where(eq(scans.id, blocked.scan.id));
+    await db.insert(scanChecks).values({
+      scanId: blocked.scan.id,
+      checkId: 14,
+      status: "unavailable",
+      nominalWeight: "4",
+      applicableWeight: "4",
+      earnedWeight: "0",
+      summaryCode: "page_performance_unavailable",
+      userImpactCode: "page_performance_not_assessed",
+      errorCode: "base_blocked",
+    });
+    await expect(getScanStatus(blocked.scan.id, blocked.accessToken)).resolves.toMatchObject({
+      status: "failed",
+      blocked: true,
+    });
+    // A scan nothing turned away does not say that something did.
+    const plain = await createFreshCompletedScan("open-home-page");
+    expect(await getScanStatus(plain.scan.id, plain.accessToken)).not.toHaveProperty("blocked");
+  });
+
   it("keeps attribution neutral and both accepted registration links usable", async () => {
     const { db } = getDatabase();
     const attributionRequest = (campaign: string, fbclidHash: string) =>
