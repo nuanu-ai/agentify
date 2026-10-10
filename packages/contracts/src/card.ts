@@ -52,10 +52,15 @@ import { ShipmentSchema } from "./shipment.js";
  * the moment of purchase, as in `async`, and the order carries the buyer's
  * address until the merchant takes it on, or it ends without them.
  */
-export const FulfillmentSchema = z.enum(["sync", "async", "confirm", "ship"]).meta({
-  description:
-    'When the product reaches the agent, and so when the money moves. "sync" — in the answer to the purchase, payment last. "async" — later, by a separate call, payment at the moment of purchase. "confirm" — the merchant is asked first and the payment follows their yes. "ship" — a parcel the merchant hands to a carrier, payment at the moment of purchase; the purchase carries the address it goes to. A card cannot be published as "confirm" during the pilot: the confirmation request has no shape on the wire yet, so a handler could not tell one from a paid order.',
-});
+export const FulfillmentSchema = z
+  .enum(["sync", "async", "confirm", "ship"], {
+    error:
+      'fulfillment is "sync", "async" or "ship" — or left out, which is "sync"; "confirm" is not open during the pilot',
+  })
+  .meta({
+    description:
+      'When the product reaches the agent, and so when the money moves. "sync" — in the answer to the purchase, payment last. "async" — later, by a separate call, payment at the moment of purchase. "confirm" — the merchant is asked first and the payment follows their yes. "ship" — a parcel the merchant hands to a carrier, payment at the moment of purchase; the purchase carries the address it goes to. A card cannot be published as "confirm" during the pilot: the confirmation request has no shape on the wire yet, so a handler could not tell one from a paid order.',
+  });
 
 /** The longest a parcel's card may give its merchant to hand it to a carrier: thirty days. */
 const SHIP_WITHIN_AT_MOST_SECONDS = 2_592_000;
@@ -76,8 +81,36 @@ export const PriceCheckSchema = z.literal("handler", {
     "price_check is \"handler\": the price is asked of your own price handler, registered with on('quote') in the process that answers your orders. A price hook at an address of yours is not called yet, so a card cannot name one",
 });
 
+/**
+ * The words for a required field a card left out, in place of the validation
+ * library's: a merchant fixing a card reads the sentence, and "expected string,
+ * received undefined" makes them translate it into what the field is for.
+ */
+const leftOut =
+  (sentence: string) =>
+  (issue: { readonly input?: unknown }): string | undefined =>
+    issue.input === undefined ? sentence : undefined;
+
+/**
+ * The merchant's own key for the product, the one their database uses. The
+ * identifier's own rule, with words of ours for a card that left it out.
+ */
+const MerchantItemIdSchema = z.preprocess((value, ctx) => {
+  if (value === undefined) {
+    ctx.addIssue({
+      code: "custom",
+      message:
+        "a card names its merchant_item_id: your own key for the product, the one your database uses",
+    });
+    return z.NEVER;
+  }
+  return value;
+}, IdentifierSchema);
+
 /** The short line a catalog shows; how the card differs from its neighbours. */
-const TitleSchema = z.string().regex(/\S/, "a title must not be empty or blank");
+const TitleSchema = z
+  .string({ error: leftOut("a card names its title: the short line a catalog shows") })
+  .regex(/\S/, "a title must not be empty or blank");
 
 /**
  * The longest a word may be before the discovery channel stops carrying it, and
@@ -262,7 +295,11 @@ const LISTED_DESCRIPTION_MAX = 500;
  * disagrees with the rule it is explaining.
  */
 const DescriptionSchema = z
-  .string()
+  .string({
+    error: leftOut(
+      "a card names its description: what the buyer gets, what it is good for, and what is not included",
+    ),
+  })
   .regex(/\S/, "a description must not be empty or blank")
   .max(LISTED_DESCRIPTION_MAX, {
     // `input` is the string this check ran against: zod reaches a length check
@@ -366,6 +403,10 @@ const PRICE_WRITTEN_SHORT = /^(\S+) (\S+)$/;
  * is the short form with the amount left off, and what helps in either case is
  * seeing a whole price written each way.
  */
+/** What a card that names no price is told. */
+const PRICE_LEFT_OUT =
+  'a card names its price, the one an agent compares while choosing: the amount and the currency, as "5.00 USD" or { amount: "5.00", currency: "USD" }';
+
 const PRICE_EXPECTED =
   'a price is either the amount and the currency as one string, "5.00 USD", or the two written out, { amount: "5.00", currency: "USD" }';
 
@@ -382,6 +423,10 @@ const PRICE_EXPECTED =
  * names the currency, which is the half of it that is wrong.
  */
 const CardPriceSchema = z.preprocess((value, ctx) => {
+  if (value === undefined) {
+    ctx.addIssue({ code: "custom", message: PRICE_LEFT_OUT });
+    return z.NEVER;
+  }
   if (typeof value !== "string") return value;
 
   const written = PRICE_WRITTEN_SHORT.exec(value);
@@ -439,7 +484,7 @@ const writtenShort = <Declaration extends z.ZodType>(declaration: Declaration) =
 
 const CardFieldsSchema = z.strictObject({
   /** The merchant's own key for this product, the one their database uses. */
-  merchant_item_id: IdentifierSchema,
+  merchant_item_id: MerchantItemIdSchema,
 
   title: TitleSchema,
 
