@@ -1405,6 +1405,36 @@ describe("the goods against the card that sold them", () => {
   });
 });
 
+describe("a payment the payment layer would not vouch for", () => {
+  // The agent's next step differs by why the payment failed, and the refusal
+  // is the only place it learns which: a payment against a stale offer — a
+  // price that moved, a seller who changed where they are paid — needs a new
+  // purchase, an empty wallet needs funding, a bad signature needs signing
+  // again. Each refusal says nothing was charged and which of these to do.
+  const cases = [
+    ["price_stale", "the payment was made out to a different address", "start a new purchase"],
+    ["insufficient_funds", "the wallet is empty", "fund the paying wallet"],
+    ["signature", "the signature does not check out", "sign a new payment"],
+  ] as const;
+
+  for (const [reason, said, next] of cases) {
+    it(`tells the agent what to do next when the reason is ${reason}`, async () => {
+      const harnessed = await started();
+      const itemId = await published(harnessed, asyncCard);
+      harnessed.facilitator.willRefuseVerification(reason, said);
+      const offered = await harnessed.gateway.beginPurchase(itemId, {});
+      if (offered.step !== "pay") throw new Error("no price was offered");
+
+      const bought = await harnessed.gateway.payPurchase(offered.order.order.id, "P", "P");
+
+      if (bought.step !== "payment_not_verified") throw new Error("a bad payment was taken");
+      expect(bought.why).toContain(said);
+      expect(bought.why).toContain("nothing was charged");
+      expect(bought.why).toContain(next);
+    });
+  }
+});
+
 describe("a price's life", () => {
   // A price holds for a fixed time, and the timer that closes an order whose
   // price has lapsed can fire late. A payment that arrives after the price's
