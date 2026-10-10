@@ -628,4 +628,19 @@ describe("the operator page", () => {
     expect(dashboard.overview.scansTotal).toBeGreaterThan(0);
     expect(dashboard.recentScans.length).toBeLessThanOrEqual(50);
   });
+
+  it("counts a registration from its record, whether or not an event was kept for it", async () => {
+    // A visitor who allowed no measurement registers and leaves the record of
+    // the registration and no event; the operator still counts them.
+    const registrations = (dashboard: Awaited<ReturnType<typeof getOperatorDashboard>>) => [
+      dashboard.overview.verifiedRegistrations30d,
+      dashboard.daily.reduce((sum, day) => sum + day.verifiedRegistrations, 0),
+    ];
+    const [overviewBefore, dailyBefore] = registrations(await getOperatorDashboard());
+    await createLeadFixture("operator-counted-registration");
+    expect(registrations(await getOperatorDashboard())).toEqual([
+      (overviewBefore ?? 0) + 1,
+      (dailyBefore ?? 0) + 1,
+    ]);
+  });
 });
