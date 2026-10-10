@@ -2320,7 +2320,7 @@ describe("a merchant who has left", () => {
 
     expect(refused.status).toBe(409);
     const text = readable(refused.html);
-    expect(text).toContain("this merchant has left");
+    expect(text).toMatch(/this merchant has left/i);
     expect(text).not.toContain("did not answer");
   });
 });
@@ -2952,7 +2952,7 @@ describe("the keys screen", () => {
     const refused = await browser.post("/keys/key_nobody_has/disable");
 
     expect(refused.status).toBe(404);
-    expect(readable(refused.html)).toContain("there is no such key");
+    expect(readable(refused.html)).toMatch(/there is no such key/i);
   });
 
   it("shows the gateway's refusal as a sentence, beginning with a capital", async () => {

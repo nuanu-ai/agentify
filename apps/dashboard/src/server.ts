@@ -2370,6 +2370,12 @@ function tooLarge(thrown: unknown): boolean {
   );
 }
 
+/**
+ * What was said, beginning as a sentence does. The gateway writes its refusals
+ * for a program's log, in lower case, and this page is read by a person.
+ */
+const asSentence = (said: string): string => `${said.slice(0, 1).toUpperCase()}${said.slice(1)}`;
+
 function problemPageAt(base: string, mode: DashboardConfig["surfaceMode"], said: string): string {
   return bare(
     base,
@@ -2378,7 +2384,7 @@ function problemPageAt(base: string, mode: DashboardConfig["surfaceMode"], said:
 ${brandLockup("/")}
 <form class="gate-card" method="get" action="${escaped(base)}/cards">
 <h1>Something went wrong</h1>
-<p>${escaped(said)}</p>
+<p>${escaped(asSentence(said))}</p>
 <button class="button button-primary" type="submit">Try again</button>
 </form>
 </div>`,
