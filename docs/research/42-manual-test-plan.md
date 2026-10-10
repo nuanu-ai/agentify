@@ -438,10 +438,10 @@ exists to find.
 | D-06 | Modes: `fulfillment: 'confirm'`; an unknown word; `fulfill_deadline_seconds` on a synchronous card. | Each refused with a reason. The confirmation mode's refusal says it is not open during the pilot. | Door |
 | D-07 | A `result` with no fields; a parameter of a type outside string, number, integer and boolean; a parameter the delivery needs but the card does not declare. | The first two are refused. The third is accepted, by design: no check can see what a delivery needs. Record whether the documentation's warning about it was where the newcomer would have read it. | Door, DX |
 | D-08 | Tags: six of them; one of 33 characters; one with a curly quote; one with a leading space; `eSIM` beside `esim`; an empty list. | The first five refused with the rule named. Record what an empty list does. | Door |
-| D-09 | A card whose price check names an address of yours instead of the handler. Then buy it. | Record what publication says. The documentation says such a card is priced as though nobody answered, every time. Accepted and then never called is the outcome this block is looking for: say whether anything told the merchant. | Door, Claim |
+| D-09 | A card whose price check names an address of yours instead of the handler. | Refused at publication, with a finding at `price_check` saying the price is asked of your own price handler and a hook is not called yet. The card check refuses it the same way. | Door, Claim |
 | D-10 | In an asynchronous handler, answer `order.accepted({ eta_seconds: 60 })`. | Accepted. The documentation says nothing keeps the number and the agent never sees it. Record whether anything in the SDK's types or messages says so. | Door, Extra |
 | D-11 | Republish a card under the same `merchant_item_id` with a new price while an order against it is open. | The same catalogue `id`, the new price in the catalogue and on the dashboard; the open order keeps the price it was sold at, and so does its receipt. | State, Claim |
-| D-12 | Accept an asynchronous order, republish its card with a different `result`, then deliver the goods the agent was promised when it paid. | Record what happens. Goods are checked against the card as it stands now rather than as it was sold, so the delivery may be refused and the paid order run on to a refund owed. If so, nothing warned the merchant at the republish that an open order was sold against the old shape — a money finding. | State, Door |
+| D-12 | Accept an asynchronous order, republish its card with a different `result`, then deliver the goods the agent was promised when it paid; on a second such order, deliver the new shape. | The promised goods close the order: it is held to the result it was sold with. The new shape is refused for that order with the missing fields named, and is what new orders are sold with. | State, Door |
 | D-13 | Run every card refused in D-02 to D-08 through the card check. Run it also with no file, with an unknown command, on a file that does not exist, and on a file that is not JSON. | The check finds what publication found, and exits 1. No file: refuses and says why, exit 3. Unknown command or unreadable file: exit 2. Not JSON: one finding about the card as a whole. | DX |
 | D-14 | Build the client wrong: no `apiKey`; `baseUrl` of `test.agentify.ad` with no scheme; `http://test.agentify.ad`; `https://test.agentify.ad/v0`; no `baseUrl` at all. | No key: a `TypeError` at `createClient` that names the environment variable as the likely cause. No scheme: refused as not an address. No address: the client builds, and the first call fails naming both addresses. Record the other two. | DX, Door |
 | D-15 | Call with a key from the other channel (any string beginning `csk_live_` on the test channel, since the prefix alone is read first), with a revoked key, and with a random string. | `AgentifyError` with code `not_authorised`, `retryable: false` and the call's name. The other channel's key gets a sentence naming the site where it works; the others get the plain refusal. | DX, Door |
@@ -609,9 +609,7 @@ fixing what is not broken.
     price; the code may refuse the payment instead (C-16).
 11. The dashboard and the agent's vocabulary have a word for a refund paid back,
     but nothing can record a refund, so no order can reach it (Block C).
-12. A card that names a price-hook address is accepted and then priced as
-    silence on every purchase, and `eta_seconds` is accepted and kept nowhere
-    (D-09, D-10).
+12. `eta_seconds` is accepted and kept nowhere (D-10).
 13. A price below the live channel's unmeasured minimum is accepted at
     publication and may be refused when a buyer pays (D-05).
 14. The catalogue has no paging (E-18).
@@ -630,10 +628,6 @@ fixing what is not broken.
     data-notice checkbox links to no notice (I-02, I-03, I-04).
 19. `/sell` on the test channel shows pricing variants that were never approved,
     with their working notes (I-09).
-20. A delivery is checked against the card as it stands now, not as it was
-    sold, so republishing a card with another `result` while a paid order is
-    open can leave that order unable to be delivered and owing a refund
-    (D-12).
 
 ## What changed this week, and where it is checked
 
@@ -700,8 +694,8 @@ than by how hard it is to fix.
 | S3 | Confusion a person recovers from alone: a word only the team understands, a step or an entity the goal did not need, an error that is true but does not say what to do. |
 | S4 | Cosmetics that do not change meaning: spelling, alignment, spacing. |
 
-A gap the documentation already admits — a price-hook address that is never
-called, a field nothing keeps — is still recorded as a finding, marked
+A gap the documentation already admits — a field nothing keeps, such as
+`eta_seconds` — is still recorded as a finding, marked
 "documented", and weighed on the same scale: what it costs a stranger does not
 shrink because we wrote it down.
 

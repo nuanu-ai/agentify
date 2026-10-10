@@ -828,10 +828,9 @@ export const deliveryCheckFor = (card: Card): z.ZodType =>
  * only inside one merchant's catalog and means nothing outside it. An agent
  * handed both would use the wrong one some of the time, for no gain.
  *
- * `price_check` is gone and one fact out of it stays. The address of a
- * merchant's pricing service is infrastructure of theirs, no agent ever calls
- * it, and publishing it would put it in front of everyone. What an agent does
- * act on is that the price will be asked again: the number in the catalog is
+ * `price_check` is gone and one fact out of it stays. How the merchant is
+ * asked is between the merchant and us. What an agent does act on is that the
+ * price will be asked again: the number in the catalog is
  * what it compares when choosing, and the sale can go through at another. So
  * the projection carries `price_checked_at_purchase` and nothing else about
  * how the asking is done. The flag says we ask, not that we get an answer —
