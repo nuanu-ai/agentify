@@ -12,14 +12,15 @@ python:3.12-slim-bookworm the first time.
 import os
 from pathlib import Path
 import shutil
-import subprocess
-import tempfile
+import sys
 import textwrap
 import unittest
 
+sys.path.insert(0, str(Path(__file__).parent))
+from scratch_container import ScratchContainer  # noqa: E402
+
 
 HERE = Path(__file__).parent
-IMAGE = "python:3.12-slim-bookworm"
 RESTIC_PASSWORD, S3_SECRET = "restic-repository-secret", "s3-secret-access-key"
 BACKUP_ENV = f"RESTIC_REPOSITORY=s3:https://example/bucket\nRESTIC_PASSWORD={RESTIC_PASSWORD}\nAWS_ACCESS_KEY_ID=KEY\nAWS_SECRET_ACCESS_KEY={S3_SECRET}\n"
 LIVE = {
@@ -88,29 +89,22 @@ exec /usr/bin/flock "${arguments[@]}"
 """
 
 
-def container_available():
-    try:
-        return subprocess.run(["docker", "image", "inspect", IMAGE], capture_output=True).returncode == 0 or (
-            subprocess.run(["docker", "pull", "-q", IMAGE], capture_output=True).returncode == 0
-        )
-    except FileNotFoundError:
-        return False
-
-
 class Backups(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if not container_available():
-            raise RuntimeError(f"these tests run the backup scripts in a {IMAGE} container, and Docker is not available here")
+        cls.scratch = ScratchContainer("the backup scripts")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.scratch.stop()
 
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        self.root = self.scratch.fresh()
         self.world = self.root / "world"
         for directory in ("tree/deploy", "bin", "world", "etc", "state"):
             (self.root / directory).mkdir(parents=True)
         for path in HERE.iterdir():
-            if path.is_file() and not path.name.startswith("test_"):
+            if path.is_file() and not path.name.endswith(".py"):
                 shutil.copy(path, self.root / "tree/deploy" / path.name)
         fakes = {"docker": DOCKER, "restic": RESTIC, "flock": FLOCK, "systemctl": 'echo "systemctl $*" >> /h/world/calls',
                  "chage": "echo 'Password expires : never'", "curl": "", "git": ""}
@@ -120,10 +114,6 @@ class Backups(unittest.TestCase):
         (self.root / "etc/production.env").write_text("AGENTIFY_DB_PASSWORD=production-database-secret\n")
         (self.root / "etc/backup.env").write_text(BACKUP_ENV)
         self.server({**LIVE, **SCRATCH})
-
-    def tearDown(self):
-        subprocess.run(["docker", "run", "--rm", "-v", f"{self.root}:/h", IMAGE, "chown", "-R", self.owner, "/h"], capture_output=True)
-        self.temp.cleanup()
 
     @property
     def owner(self):
@@ -151,12 +141,7 @@ class Backups(unittest.TestCase):
             backup() { /h/tree/deploy/backup.sh; echo "backup exit $?"; }
             check() { /h/tree/deploy/backup-check.sh; echo "check exit $?"; }
             """)
-        options = [f"--env={key}={value}" for key, value in {"OWNER": self.owner, **environment}.items()]
-        result = subprocess.run(
-            ["docker", "run", "--rm", "--network", "none", "-v", f"{self.root}:/h", *options, IMAGE, "bash", "-c", prelude + script],
-            capture_output=True, text=True, timeout=240,
-        )
-        return result.stdout + result.stderr
+        return self.scratch.run(prelude + script, {"OWNER": self.owner, **environment})
 
     def snapshots(self):
         order = self.world / "repo/order"
