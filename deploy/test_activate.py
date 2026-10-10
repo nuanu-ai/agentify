@@ -29,14 +29,15 @@ import json
 import os
 from pathlib import Path
 import shutil
-import subprocess
-import tempfile
+import sys
 import textwrap
 import unittest
 
+sys.path.insert(0, str(Path(__file__).parent))
+from scratch_container import ScratchContainer  # noqa: E402
+
 
 HERE = Path(__file__).parent
-IMAGE = "python:3.12-slim-bookworm"
 NEW, OLD, OTHER = "a" * 40, "b" * 40, "c" * 40
 APPLICATIONS = ("app", "scanner", "scanner-worker")
 INIT = {"01-test-databases.sql": "CREATE DATABASE agentify_test;\n"}
@@ -174,24 +175,17 @@ esac
 """
 
 
-def container_available():
-    try:
-        return subprocess.run(["docker", "image", "inspect", IMAGE], capture_output=True).returncode == 0 or (
-            subprocess.run(["docker", "pull", "-q", IMAGE], capture_output=True).returncode == 0
-        )
-    except FileNotFoundError:
-        return False
-
-
 class Activation(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if not container_available():
-            raise RuntimeError(f"these tests run activate.sh in a {IMAGE} container, and Docker is not available here")
+        cls.scratch = ScratchContainer("activate.sh")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.scratch.stop()
 
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        self.root = self.scratch.fresh()
         self.world = self.root / "world"
         for directory in ("tree/deploy/postgres-init", "bin", "world/db", "world/containers", "state/test", "backups", "etc"):
             (self.root / directory).mkdir(parents=True)
@@ -218,11 +212,6 @@ class Activation(unittest.TestCase):
         (self.world / "network").write_text("eip155:84532")
         (self.root / "state/test/current").write_text(OLD + "\n")
 
-    def tearDown(self):
-        # Every run already gives the tree back; this is for one cut short.
-        subprocess.run(["docker", "run", "--rm", "-v", f"{self.root}:/h", IMAGE, "chown", "-R", self.owner, "/h"], capture_output=True)
-        self.temp.cleanup()
-
     @property
     def owner(self):
         return f"{os.getuid()}:{os.getgid()}"
@@ -247,12 +236,7 @@ class Activation(unittest.TestCase):
             restore() { /h/tree/deploy/restore.sh "$1"; echo "restore exit $?"; }
             privacy() { bash -c "$(sed -n 's/^23 4 \\* \\* \\* root //p' /etc/cron.d/agentify-release)"; }
             """)
-        options = [f"--env={key}={value}" for key, value in {"NEW": NEW, "OLD": OLD, "OWNER": self.owner, **digests, **environment}.items()]
-        result = subprocess.run(
-            ["docker", "run", "--rm", "--network", "none", "-v", f"{self.root}:/h", *options, IMAGE, "bash", "-c", prelude + script],
-            capture_output=True, text=True, timeout=240,
-        )
-        return result.stdout + result.stderr
+        return self.scratch.run(prelude + script, {"NEW": NEW, "OLD": OLD, "OWNER": self.owner, **digests, **environment})
 
     def databases(self):
         return {name: (self.world / "db" / name).read_text().strip() for name in ORIGINAL}
@@ -779,24 +763,24 @@ class TheEnvironmentFile(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        if not container_available():
-            raise RuntimeError(f"these tests run stack.sh in a {IMAGE} container, and Docker is not available here")
+        cls.scratch = ScratchContainer("stack.sh")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.scratch.stop()
 
     def check(self, content):
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            (root / "deploy").mkdir()
-            shutil.copy(HERE / "stack.sh", root / "deploy/stack.sh")
-            (root / "deploy/images.env").write_text("")
-            (root / "test.env").write_text(content)
-            (root / "docker").write_text("#!/bin/sh\necho compose would run\n")
-            (root / "docker").chmod(0o755)
-            result = subprocess.run(
-                ["docker", "run", "--rm", "--network", "none", "-v", f"{root}:/h", IMAGE, "bash", "-c",
-                 "mkdir -p /etc/agentify && cp /h/test.env /etc/agentify/ && PATH=/h:$PATH /h/deploy/stack.sh test ps; echo \"exit $?\""],
-                capture_output=True, text=True, timeout=60,
-            )
-        return result.stdout + result.stderr
+        root = self.scratch.fresh()
+        (root / "deploy").mkdir()
+        shutil.copy(HERE / "stack.sh", root / "deploy/stack.sh")
+        (root / "deploy/images.env").write_text("")
+        (root / "test.env").write_text(content)
+        (root / "docker").write_text("#!/bin/sh\necho compose would run\n")
+        (root / "docker").chmod(0o755)
+        return self.scratch.run(
+            "mkdir -p /etc/agentify && cp /h/test.env /etc/agentify/ && PATH=/h:$PATH /h/deploy/stack.sh test ps; echo \"exit $?\"",
+            timeout=60,
+        )
 
     def test_refuses_an_unquoted_or_double_quoted_dollar_and_names_only_the_key(self):
         said = self.check("A=plain\nAGENTIFY_AUTH_SECRET=aaaa$bbbb$cccc\nB=\"x$y\"\n")
