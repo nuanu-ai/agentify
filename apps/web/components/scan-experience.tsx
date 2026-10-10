@@ -520,7 +520,7 @@ function FailedState({
       {headline ? null : (
         <p>
           {blocked
-            ? "Public requests were blocked before enough checks could reach a verdict. No score or registration gate is shown."
+            ? "The site answered the scanner's request for its home page with a bot challenge or a refusal. What could be read around it is what the site shows a reader it turns away, so no score is given."
             : "Coverage stayed below the minimum for an honest result. This can happen after a timeout, access block, or scanner failure."}
         </p>
       )}
