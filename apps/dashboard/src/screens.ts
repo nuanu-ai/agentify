@@ -137,10 +137,9 @@ export interface Viewer {
  *
  * The rule is the door's own, `readinessOf` in the core, so no screen holds an
  * opinion of its own about which setting publishing needs where. What the
- * screen did not ask the gateway for goes in as unknown, and so does the
- * operator's approval on every screen, because no route tells the dashboard
- * whether a merchant holds it: a page that did not read something must not say
- * anything either way about it.
+ * screen did not ask the gateway for goes in as unknown, the operator's
+ * approval included, which the routes read on the live channel alone: a page
+ * that did not read something must not say anything either way about it.
  */
 export const readinessSeenBy = (viewer: Viewer): Readiness =>
   readinessOf(
@@ -253,11 +252,10 @@ const cardAside = (entry: MerchantCard): string => {
  * merchant is selling and which nobody paused reads paused for that reason
  * alone, so there the control says what the rule says is missing, in the
  * words and with the link the other screens use, and never that selling was
- * stopped — a claim about a switch nobody pressed. Where the rule finds
- * nothing this page can read, which is the operator's approval on live, it
- * says that it cannot tell; and a card that reads paused where the rule finds
- * nothing at all, which only a change landing between two reads can make, is
- * said to be off sale and no more.
+ * stopped — a claim about a switch nobody pressed. Where the operator's
+ * approval is missing on live, it says so; and a card that reads paused where
+ * the rule finds nothing missing, which only a change landing between two
+ * reads can make, is said to be off sale and no more.
  */
 const cardControl = (
   base: string,

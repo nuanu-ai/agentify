@@ -17,7 +17,8 @@
  * connected a WooCommerce shop wrote no code of their own, so their paid orders
  * are filled here — drawn off their own stream by the same calls a merchant's
  * worker makes over the API. A dashboard with no connected shop does nothing
- * at all in it.
+ * at all in it, and on the live channel, where the connector is not offered,
+ * it does not start.
  *
  * There is nothing to migrate here. `pnpm --filter @agentify/dashboard db:migrate`
  * is a step somebody takes before this starts, because a process that migrates
@@ -35,7 +36,7 @@ import { isSandboxMail, postmanFor } from "./mail.js";
 import { startReportIdentityServer } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
 import { type Teller, tellerFor } from "./teller.js";
-import { postgresWooShops } from "./woo-shops.js";
+import { postgresWooShops, wooOfferedOn } from "./woo-shops.js";
 import { startWooWorker } from "./woo-worker.js";
 
 /**
@@ -77,8 +78,8 @@ export interface Dashboard {
    */
   readonly tell: Teller;
   /**
-   * Opens its doors and starts the WooCommerce worker, calling the gateway's
-   * application inside the process.
+   * Opens its doors and, where the connector is offered, starts the
+   * WooCommerce worker, calling the gateway's application inside the process.
    */
   start(application: Gateway): RunningDashboard;
 }
@@ -118,16 +119,14 @@ function started(
     },
   );
 
-  // Not on the live channel, where the connector is not offered (`buildApp`).
-  const worker =
-    config.surfaceMode === "live"
-      ? { stop: async () => {} }
-      : startWooWorker({
-          shops: wooShops,
-          identity,
-          clientFor: (acting) => gatewayFor(application, acting),
-          now: () => new Date(),
-        });
+  const worker = !wooOfferedOn(config.surfaceMode)
+    ? { stop: async () => {} }
+    : startWooWorker({
+        shops: wooShops,
+        identity,
+        clientFor: (acting) => gatewayFor(application, acting),
+        now: () => new Date(),
+      });
 
   return {
     async closeListeners() {

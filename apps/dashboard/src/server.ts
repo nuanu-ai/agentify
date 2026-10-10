@@ -126,7 +126,7 @@ import {
   PRODUCTS_AT_MOST,
   type ProductInspection,
 } from "./woo-shop.js";
-import type { WooConnection, WooShops } from "./woo-shops.js";
+import { type WooConnection, type WooShops, wooOfferedOn } from "./woo-shops.js";
 import { moment, SITE_IN_SETTINGS, type Unset } from "./words.js";
 
 /** Preserves input order while bounding calls into one merchant's shop. */
@@ -357,10 +357,9 @@ interface Settings {
 export function buildApp(config: DashboardConfig, parts: DashboardParts): Express {
   const app = express();
   const base = config.basePath;
-  // The WooCommerce connector works on the test channel only, and its words
-  // say so; on the live channel none of its screens is mounted, so nothing
-  // invites an owner into what does not work there.
-  const wooShops = config.surfaceMode === "live" ? undefined : parts.wooShops;
+  // Where the connector is not offered none of its screens is mounted, so
+  // nothing invites an owner into what does not work there.
+  const wooShops = wooOfferedOn(config.surfaceMode) ? parts.wooShops : undefined;
   const viewing = (request: Request, pageBase: string, sellerName?: string | null): Viewer =>
     viewingAt(request, pageBase, config.surfaceMode, sellerName);
   /**

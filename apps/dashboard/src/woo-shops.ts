@@ -14,10 +14,18 @@
  * carries the part that is different here: the secret belongs to a third party.
  */
 
+import type { SurfaceMode } from "@agentify/core";
 import { and, asc, desc, eq, gt, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { accounts, wooGrants, wooOrders, wooQuotes, wooShops } from "./schema.js";
+
+/**
+ * Whether the connector is offered on this channel: everywhere but live. Its
+ * own words say it works in test mode only, and a live parcel cannot be sold
+ * (ADR-0033). One rule, asked by the pages and by the worker alike.
+ */
+export const wooOfferedOn = (surface: SurfaceMode): boolean => surface !== "live";
 
 /** A Connect a merchant started, waiting for their shop to answer. */
 export interface WooGrant {

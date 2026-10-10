@@ -702,6 +702,15 @@ export class Gateway {
     return registered.id;
   }
 
+  /** Whether the operator has approved this merchant for live sales. */
+  async liveApproved(merchantId: string): Promise<boolean> {
+    const merchant = await this.runtime.store.merchantById(merchantId);
+    if (merchant === null) {
+      throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
+    }
+    return merchant.liveApprovedAt !== null;
+  }
+
   /**
    * What this merchant's products are sold under, as it stands.
    *
@@ -712,15 +721,6 @@ export class Gateway {
    * moment ago, so a merchant missing here is this gateway disagreeing with
    * itself rather than anything the caller did.
    */
-  /** Whether the operator has approved this merchant for live sales. */
-  async liveApproved(merchantId: string): Promise<boolean> {
-    const merchant = await this.runtime.store.merchantById(merchantId);
-    if (merchant === null) {
-      throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
-    }
-    return merchant.liveApprovedAt !== null;
-  }
-
   async sellerName(merchantId: string): Promise<SellerName> {
     const merchant = await this.runtime.store.merchantById(merchantId);
     if (merchant === null) {

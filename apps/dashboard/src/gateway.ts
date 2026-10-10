@@ -429,14 +429,14 @@ export const gatewayFor = (
         const held = answered(API_ROUTES.disable_key, disabled);
         return held.ok ? done(held.document.key) : held;
       }),
-    // Unwrapped for the same reason: a screen that reaches through the wrapper
-    // is a screen to edit the day it grows. Null is a real answer and not an
-    // absence — it is the merchant who has not chosen a name yet, which is the
-    // whole state these screens exist to get somebody out of.
     liveApproval: () =>
       call("reading the live approval", async () =>
         done(await application.liveApproved(merchantId)),
       ),
+    // Unwrapped for the same reason: a screen that reaches through the wrapper
+    // is a screen to edit the day it grows. Null is a real answer and not an
+    // absence — it is the merchant who has not chosen a name yet, which is the
+    // whole state these screens exist to get somebody out of.
     sellerName: () =>
       call("reading the seller's name", async () => {
         const held = answered(API_ROUTES.get_seller_name, await application.sellerName(merchantId));
