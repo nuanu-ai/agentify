@@ -264,8 +264,11 @@ export const isTheGrantScreen = async (
 
 /**
  * The traces a WordPress page leaves: its theme and core files, served from
- * `/wp-content/` and `/wp-includes/`. A page with neither is not from a site
- * whose permalink setting could be the cause.
+ * `/wp-content/` and `/wp-includes/`. A page with them is the shop answering
+ * with one of its own pages. A page without them may be another site, or a
+ * WordPress shop whose server answers with its own 404 page when permalinks are
+ * Plain; nothing on it says which, so the owner is asked to check the address
+ * first, and the setting is named as the cause if it is the shop.
  */
 const WORDPRESS_TRACES = /\/wp-(?:content|includes)\//;
 
@@ -273,9 +276,11 @@ const WORDPRESS_TRACES = /\/wp-(?:content|includes)\//;
 const notTheGrantScreen = (shop: URL, body: string): string =>
   WORDPRESS_TRACES.test(body)
     ? whatAPlainPermalinkShopLooksLike(shop)
-    : `The site at ${shop.origin} does not answer as a WordPress shop with WooCommerce, so` +
-      " nothing was connected and your browser was not sent anywhere. Check that this is the" +
-      " address of your WooCommerce shop itself.";
+    : `The site at ${shop.origin} did not answer with the screen that grants access, and the page` +
+      " it answered with does not look like WordPress, so nothing was connected and your browser" +
+      " was not sent anywhere. Check that this is the address of your WooCommerce shop itself." +
+      " If it is, the usual cause is the shop's permalink setting: set Settings → Permalinks to" +
+      " anything other than Plain, save, and press Connect again.";
 
 /**
  * What a merchant is told when the authorize address served something that is
