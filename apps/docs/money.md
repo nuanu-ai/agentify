@@ -23,7 +23,7 @@ will be as many lines here as there were sales.
 
 Your wallet is an address on Base, the network these payments run on: `0x`
 followed by forty letters and digits. If your business has none, a wallet app
-that supports Base creates one, MetaMask and Coinbase Wallet among them. The app
+that supports the Base network, such as MetaMask, creates one. The app
 shows the address, which is what you enter in the dashboard's Settings, and a
 recovery phrase, which stays with you and is never entered anywhere at
 Agentify: whoever holds the phrase holds the money. On the test channel the
@@ -125,10 +125,10 @@ payment time (`paid_at`, "Paid" in the dashboard) is when the payment went
 through. The price's `at` ("Price set") is when we fixed the price for this
 sale. The price's `as_of` ("Price as of") is when that price was true: the
 moment your price check said it held from, or, for a card sold at its own price,
-when the card was published with it. On a card whose price is checked at the
-purchase, the agent may take its time between the price and the payment, and in
-the synchronous mode the charge comes after the goods, so the three can be
-minutes apart.
+when the card was published with it. The three are seldom the same moment: in
+the synchronous mode the charge comes seconds after the goods, and on a card
+whose price is checked at the purchase the agent may take minutes between the
+price and the payment.
 
 An order paid for and never delivered leaves no receipt, because no goods went
 out. What you have for that case is the order itself and the event telling you

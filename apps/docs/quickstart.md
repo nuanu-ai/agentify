@@ -132,25 +132,29 @@ nothing after it; it adds the rest of the path itself. A key made in one
 environment does not open the other, and a key you issued on the test address
 starts with `csk_test_` so you can see at a glance which one you are holding.
 
-The code on this page is plain JavaScript, so in an empty project it runs as
-it is. Put it in a file whose name ends in `.mjs`, such as `agentify.mjs`, which
-lets Node read `import` and `await` at the top of the file. Put the key and the
-address in a file named `.env` beside it, one per line:
+The code on this page also runs as plain JavaScript. To try the client above in
+an empty project, put it in a file whose name ends in `.mjs`, such as
+`agentify.mjs`, which lets Node read `import` and `await` at the top of the
+file. Put the key and the address in a file named `.env` beside it, one per
+line:
 
 ```sh
 AGENTIFY_API_KEY=csk_test_...
 AGENTIFY_URL=https://test.agentify.ad
 ```
 
-and run it with Node 24 or later, which the package needs:
+and run it with Node 24 or later, which the package declares it needs:
 
 ```sh
 node --env-file=.env agentify.mjs
 ```
 
-`grantAccess`, `startProvisioning` and `currentPriceOf` in the steps below are
-not ours: they stand for the code of yours that makes the goods and knows the
-price.
+The steps below are pieces you add to that file, not one program to paste
+whole. The synchronous and the asynchronous handler are alternatives: register
+one handler for orders and call `start()` once. `grantAccess`,
+`startProvisioning` and `currentPriceOf` stand for your own code that makes the
+goods and knows the price, and `savedId`, `url` and `order` in the later
+snippets stand for values your code holds at that point.
 
 This step worked if the client was built. Whether the key and address belong
 together is answered by the first call that reaches us, and that call is on the
