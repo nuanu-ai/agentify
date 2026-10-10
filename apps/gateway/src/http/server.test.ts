@@ -191,6 +191,18 @@ describe("the surface is the table", () => {
     expect(answered.body).toStrictEqual({ ok: true });
   });
 
+  it("leads an agent that asks the storefront's own root to the catalogue", async () => {
+    // An agent given only the site tries the obvious addresses first, and the
+    // storefront's root is one of them. It answered that there was no call
+    // there, which an agent reads as there being nothing to buy.
+    const { served } = await started();
+
+    const answered = await served.call("GET", "/x402");
+
+    expect(answered.status).toBe(200);
+    expect(Array.isArray((answered.body as { items?: unknown }).items)).toBe(true);
+  });
+
   it("has nothing at the versioned addresses the storefront used to answer at", async () => {
     // The storefront moved out from under `/v0` and the old addresses were
     // removed rather than redirected. A redirect would be the expensive
