@@ -216,8 +216,8 @@ describe("whether a live merchant is approved", () => {
     const waiting = readable(settingsScreen(live(false)));
 
     expect(approved).toMatch(/approved your merchant/);
-    expect(waiting).toMatch(/waiting for Agentify to approve/);
-    expect(approved).not.toMatch(/waiting for Agentify to approve/);
+    expect(waiting).toMatch(/not approved your merchant/);
+    expect(approved).not.toMatch(/not approved your merchant/);
   });
 
   it("says on an empty Cards page that publishing waits for the approval", () => {
@@ -235,7 +235,7 @@ describe("whether a live merchant is approved", () => {
   it("says a card is off sale because the approval is still to come", () => {
     const waiting = readable(cardsScreen(live(false), offSale, "https://agentify.ad"));
 
-    expect(waiting).toMatch(/waiting for Agentify to approve/);
+    expect(waiting).toMatch(/not approved your merchant/);
     expect(waiting).not.toMatch(/cannot tell/);
   });
 });

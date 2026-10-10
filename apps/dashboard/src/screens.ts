@@ -339,7 +339,9 @@ const wrappable = (address: string): string => {
 const emptyCatalogue = (viewer: Viewer, wooAvailable: boolean): string => {
   const why = refusedForNoName(viewer)
     ? "You haven't published any cards yet. Choose your seller name in Settings first. Cards can't be published without it."
-    : "You haven't published any cards yet. Your code publishes them through the SDK, and each card it publishes appears here.";
+    : readinessSeenBy(viewer).missing.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL)
+      ? `You haven't published any cards yet. ${APPROVAL_PENDING}`
+      : "You haven't published any cards yet. Your code publishes them through the SDK, and each card it publishes appears here.";
   return `<div class="empty-start">
     <p>${escaped(why)}</p>
     <div class="connect-actions">

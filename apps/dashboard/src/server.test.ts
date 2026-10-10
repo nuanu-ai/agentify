@@ -2242,7 +2242,7 @@ describe("a card held off sale by what its merchant lacks", () => {
         const approvalAsked = door.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
         expect(/approv/i.test(control), control).toBe(approvalAsked);
         if (approvalAsked) {
-          expect(control).toMatch(/waiting for Agentify to approve/i);
+          expect(control).toMatch(/not approved your merchant/i);
         }
       });
     }
@@ -2275,7 +2275,7 @@ describe("a card held off sale by what its merchant lacks", () => {
     const cell = /<td class="control"[^>]*>([\s\S]*?)<\/td>/.exec(screen.html)?.[1] ?? "";
 
     expect(settings).toMatch(/approved your merchant/);
-    expect(settings).not.toMatch(/waiting for Agentify to approve/);
+    expect(settings).not.toMatch(/not approved your merchant/);
     expect(readable(cell)).toBe("Pause");
   });
 });
