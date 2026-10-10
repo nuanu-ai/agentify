@@ -110,7 +110,7 @@ importers:
         specifier: 8.23.0
         version: 8.23.0
       zod:
-        specifier: ^4.4.3
+        specifier: 4.4.3
         version: 4.4.3
     devDependencies:
       '@types/express':
@@ -180,7 +180,7 @@ importers:
         specifier: 12.28.0
         version: 12.28.0
       zod:
-        specifier: ^4.4.3
+        specifier: 4.4.3
         version: 4.4.3
     devDependencies:
       '@types/express':
@@ -367,7 +367,7 @@ importers:
   packages/contracts:
     dependencies:
       zod:
-        specifier: ^4.4.3
+        specifier: 4.4.3
         version: 4.4.3
     devDependencies:
       vitest:
