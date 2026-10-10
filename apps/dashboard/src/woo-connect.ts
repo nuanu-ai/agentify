@@ -237,7 +237,7 @@ export const isTheGrantScreen = async (
     if (answered.status >= 300 && answered.status < 400) {
       const next = answered.headers.get("location");
       if (next === null || !URL.canParse(next, at)) {
-        return { ok: false, why: whatAPlainPermalinkShopLooksLike(started) };
+        return { ok: false, why: notTheGrantScreen(started, body) };
       }
       const to = new URL(next, at);
       if (to.host !== started.host) {
@@ -256,11 +256,26 @@ export const isTheGrantScreen = async (
       return { ok: true };
     }
 
-    return { ok: false, why: whatAPlainPermalinkShopLooksLike(started) };
+    return { ok: false, why: notTheGrantScreen(started, body) };
   }
 
   return { ok: false, why: whatAPlainPermalinkShopLooksLike(started) };
 };
+
+/**
+ * The traces a WordPress page leaves: its theme and core files, served from
+ * `/wp-content/` and `/wp-includes/`. A page with neither is not from a site
+ * whose permalink setting could be the cause.
+ */
+const WORDPRESS_TRACES = /\/wp-(?:content|includes)\//;
+
+/** What a merchant is told when the authorize address served something else. */
+const notTheGrantScreen = (shop: URL, body: string): string =>
+  WORDPRESS_TRACES.test(body)
+    ? whatAPlainPermalinkShopLooksLike(shop)
+    : `The site at ${shop.origin} does not answer as a WordPress shop with WooCommerce, so` +
+      " nothing was connected and your browser was not sent anywhere. Check that this is the" +
+      " address of your WooCommerce shop itself.";
 
 /**
  * What a merchant is told when the authorize address served something that is
