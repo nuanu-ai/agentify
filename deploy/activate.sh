@@ -263,6 +263,24 @@ if [[ $mode == release || $mode == resume ]]; then
       from_tags="$(transition tags "$from")" to_tags="$(transition tags "$revision")"
   fi
   stack stop --timeout 60 app scanner scanner-worker
+  # A service this revision no longer defines, renamed or merged into
+  # another, is stopped by no step below and started by none, and left
+  # running it keeps the old release's code on the database and its queues
+  # while they are migrated under it. It goes with the old applications.
+  # Every profile is asked for, so that a job's service is not taken for one,
+  # and an answer without the application in it is a failure: read as it
+  # stands, it would name every container, the database's among them.
+  at "removing the services this revision no longer defines"
+  defined=" $(stack --profile "*" config --services | tr '\n' ' ') "
+  [[ $defined == *" app "* ]]
+  for id in $(docker ps -aq --filter "label=com.docker.compose.project=$project" --filter label=com.docker.compose.oneoff=False); do
+    service="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$id")"
+    if [[ $defined != *" $service "* ]]; then
+      at "removing $service, which this revision no longer defines"
+      docker stop --time 60 "$id" >/dev/null
+      docker rm "$id" >/dev/null
+    fi
+  done
   at "starting the database"
   stack up -d --wait --no-deps postgres
   if [[ -d $backup ]]; then
