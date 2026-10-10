@@ -130,7 +130,10 @@ describe("the preflight", () => {
     // redirect ceiling rather than from reading what the shop served.
     shop = await shopAnswering((url) =>
       new URL(url, "http://shop").pathname.endsWith("/")
-        ? { status: 200, body: "<html><title>My lovely shop</title><body>Welcome</body></html>" }
+        ? {
+            status: 200,
+            body: '<html><title>My lovely shop</title><link rel="stylesheet" href="/wp-content/themes/storefront/style.css"><body>Welcome</body></html>',
+          }
         : { status: 301, location: `${url.split("?")[0]}/?x=1` },
     );
     const looked = await isTheGrantScreen(`${shop.url}/wc-auth/v1/authorize?x=1`);
@@ -138,6 +141,25 @@ describe("the preflight", () => {
     // The merchant can only act on this if it names the setting, in the words
     // WordPress uses for it.
     expect(looked.ok === false && looked.why).toMatch(/permalink/i);
+  });
+
+  it("tells an address that is not a WordPress site so, without advice about permalinks", async () => {
+    // A site on something else answers the authorize address with its own
+    // page or a 404, and a sentence about WordPress settings sends its owner
+    // looking for a setting their site does not have.
+    for (const answer of [
+      { status: 200, body: "<html><title>A landing page</title><body>Hello</body></html>" },
+      { status: 404, body: "<html><body>Not found</body></html>" },
+    ]) {
+      shop = await shopAnswering(() => answer);
+      const looked = await isTheGrantScreen(`${shop.url}/wc-auth/v1/authorize?x=1`);
+      await shop.close();
+      shop = null;
+
+      expect(looked.ok).toBe(false);
+      expect(looked.ok === false && looked.why).toMatch(/not answer as a WordPress/);
+      expect(looked.ok === false && looked.why).not.toMatch(/permalink/i);
+    }
   });
 
   it("refuses a front page that happens to quote the address we asked for", async () => {
