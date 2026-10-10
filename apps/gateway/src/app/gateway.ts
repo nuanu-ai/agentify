@@ -11,7 +11,12 @@
  * mode, exactly as ADR-0002 §3 says.
  */
 
-import type { Environment, MerchantSelling, TransitionRejection } from "@agentify/core";
+import type {
+  Environment,
+  MerchantSelling,
+  PaymentVerificationFailure,
+  TransitionRejection,
+} from "@agentify/core";
 import {
   createOrder,
   deadlines,
@@ -1327,8 +1332,15 @@ export class Gateway {
     if (verified.verified !== true) {
       // Both ways a verification can fail carry their own message, and the
       // agent is told it whichever it was. What the two are told apart by is
-      // the retryable flag below, not by the words.
-      const why = verified.message;
+      // the retryable flag below. A refusal also says what to do next, because
+      // that differs by why the payment failed and nothing else tells the
+      // agent: a payment against a stale offer needs a new purchase, an empty
+      // wallet needs funding, a signature that does not check out needs
+      // signing again. In every case nothing was charged, and it says so.
+      const why =
+        verified.verified === false
+          ? `${verified.message}; nothing was charged: ${NEXT_STEP_AFTER[verified.reason]}`
+          : verified.message;
       console.warn(`[gateway] a payment for ${orderId} did not verify: ${why}`);
       return {
         step: "payment_not_verified",
@@ -2338,6 +2350,14 @@ export class Gateway {
  * contract allows for — the set is open — and each carries the state it was in,
  * because "this has no meaning here" is only useful alongside where "here" is.
  */
+/** What an agent whose payment was refused does next, by why it was refused. */
+const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
+  price_stale:
+    "the offer it was made against no longer stands — the price moved, or the seller changed where they are paid — so start a new purchase for a fresh price and pay against that",
+  insufficient_funds: "fund the paying wallet and pay this order again while its price holds",
+  signature: "sign a new payment for this order and present it while its price holds",
+};
+
 function refusedCall(rejection: TransitionRejection): CallError {
   const closed = !isOpen(rejection.state);
   return {
