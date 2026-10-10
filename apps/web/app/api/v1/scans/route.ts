@@ -67,6 +67,20 @@ export async function POST(request: NextRequest) {
   const submittedWithoutScheme = scanUrlWasSubmittedWithoutScheme(
     rawBody && typeof rawBody === "object" && "url" in rawBody ? rawBody.url : undefined,
   );
+  // The address is judged before anything is read, so that a failure to read
+  // is never reported as an address the scanner refuses.
+  let targetHost: string;
+  try {
+    const { canonicalizeTarget } = await import("@agentify/scanner");
+    targetHost = canonicalizeTarget(parsed.data.url).hostname;
+  } catch {
+    return errorResponse(
+      request,
+      400,
+      "invalid_url",
+      "The URL contains a blocked host, port, or sensitive query key.",
+    );
+  }
   try {
     const replay = await lookupScanReplay(
       parsed.data,
@@ -115,26 +129,16 @@ export async function POST(request: NextRequest) {
   } catch {
     return errorResponse(
       request,
-      400,
-      "invalid_url",
-      "The URL contains a blocked host, port, or sensitive query key.",
+      503,
+      "temporarily_busy",
+      "The scanner could not read its records just now.",
+      true,
+      30,
     );
   }
 
   const remoteIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const ipKey = hmacHex(config.hmacSecret, "rate-ip", remoteIp);
-  let targetHost: string;
-  try {
-    const { canonicalizeTarget } = await import("@agentify/scanner");
-    targetHost = canonicalizeTarget(parsed.data.url).hostname;
-  } catch {
-    return errorResponse(
-      request,
-      400,
-      "invalid_url",
-      "The URL contains a blocked host, port, or sensitive query key.",
-    );
-  }
   const targetKey = hmacHex(config.hmacSecret, "rate-target", targetHost);
   const challengePassed = await verifyTurnstile(parsed.data.turnstile_token, remoteIp);
   const rateResult = await consumeScanRateLimits({
