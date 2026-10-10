@@ -244,7 +244,7 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
     <div>
       <h2>Payout wallet</h2>
       <p>${purpose} <a href="/docs/money#where-the-money-arrives">How and when you get paid</a>.</p>
-      <p class="quiet">Enter only the public address. Never enter a private key or recovery phrase; Agentify will never ask for either.</p>
+      <p class="quiet">Enter only the public address. Never enter a private key or recovery phrase; Agentify will never ask for either. <a href="/docs/money#if-you-have-no-wallet-yet">No wallet yet?</a></p>
     </div>
   </div>${wallet === null ? "" : savedAddress(wallet)}${pending === undefined || pending === null ? "" : pendingAddress(base, wallet, pending)}${
     notice === undefined
