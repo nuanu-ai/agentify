@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isSandboxFacilitator, loadConfig, SANDBOX_FACILITATOR } from "./config.js";
+import {
+  isSandboxFacilitator,
+  loadConfig,
+  SANDBOX_FACILITATOR,
+  secondAttemptProblem,
+} from "./config.js";
 
 const database = "postgres://agentify:secret@localhost:5432/agentify";
 
@@ -503,14 +508,24 @@ describe("loadConfig", () => {
     // time the queue takes to notice that wait is over, and the delay before
     // the next attempt. A configuration where those do not fit sends the
     // advice to throw into a sale that can never recover, so it is refused.
-    const refused = refusalFor({ HANDLER_ANSWER_MS: "7000", REDELIVERY_BASE_DELAY_MS: "500" });
-    for (const owed of ["second attempt", "8000ms", "7000ms", "500ms"]) {
+    const tooLong = loadConfig({
+      ...required,
+      HANDLER_ANSWER_MS: "7000",
+      REDELIVERY_BASE_DELAY_MS: "500",
+    });
+    const refused = secondAttemptProblem(tooLong, 500) ?? "";
+    for (const owed of ["second attempt", "8000ms", "7000ms", "500ms", "8000ms"]) {
       expect(refused, refused).toContain(owed);
     }
 
-    expect(() =>
-      loadConfig({ ...required, HANDLER_ANSWER_MS: "6900", REDELIVERY_BASE_DELAY_MS: "500" }),
-    ).not.toThrow();
+    const fits = loadConfig({
+      ...required,
+      HANDLER_ANSWER_MS: "6900",
+      REDELIVERY_BASE_DELAY_MS: "500",
+    });
+    expect(secondAttemptProblem(fits, 500)).toBeNull();
+    // And the defaults a deployment runs with leave room for it.
+    expect(secondAttemptProblem(loadConfig(required), 500)).toBeNull();
   });
 
   it("gives one address for the gateway however the variable was written", () => {

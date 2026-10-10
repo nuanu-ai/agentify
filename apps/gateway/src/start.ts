@@ -24,12 +24,13 @@ import { X402Facilitator } from "./adapters/x402/facilitator.js";
 import { Gateway } from "./app/gateway.js";
 import { seedSandboxKey } from "./app/merchants.js";
 import type { Runtime } from "./app/runtime.js";
-import { type GatewayConfig, isSandboxFacilitator } from "./config.js";
+import { type GatewayConfig, isSandboxFacilitator, secondAttemptProblem } from "./config.js";
 import { buildApp } from "./http/server.js";
 import { PaymentEdge } from "./http/x402.js";
 import type { Announcer } from "./ports/announcer.js";
 import { randomIds, systemClock } from "./ports/clock.js";
 import type { Facilitator } from "./ports/facilitator.js";
+import { REMINDER_POLL_MS } from "./ports/queue.js";
 
 /**
  * The port the gateway's surface answers on: `/v0`, `/x402` and `/healthz`.
@@ -224,6 +225,12 @@ export async function startGateway(
   config: GatewayConfig,
   announcer: Announcer,
 ): Promise<RunningGateway> {
+  // The Postgres queue notices a due reminder up to half a second late, and a
+  // synchronous sale has to have room for a second attempt all the same.
+  const cramped = secondAttemptProblem(config, REMINDER_POLL_MS);
+  if (cramped !== null) {
+    throw new Error(`the gateway will not start: ${cramped}`);
+  }
   const { db, pool } = connect(config.databaseUrl);
   const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.payment.timeoutSeconds);
   const queue = queueOn(config.databaseUrl, {
