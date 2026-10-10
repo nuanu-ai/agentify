@@ -639,6 +639,58 @@ describe("the discovery declaration a challenge carries", () => {
   });
 });
 
+describe("a parcel's challenge", () => {
+  // The price on a parcel's card is the goods alone, and the purchase is priced
+  // for the address it names, shipping included. An agent choosing by the
+  // catalogue number would otherwise be surprised by the sum it is asked for,
+  // so the challenge says which it is reading, in this gateway's own words and
+  // not in the merchant's description.
+  const parcel = CardSchema.parse({
+    merchant_item_id: "coffee-1kg",
+    title: "Coffee beans, one kilogram",
+    description: "Single-origin beans, roasted to order.",
+    price: { amount: "18.00", currency: "USD" },
+    fulfillment: "ship",
+    ship_within_seconds: 172_800,
+    price_check: "handler",
+  });
+  const edge = new PaymentEdge(
+    {
+      facilitatorUrl: "https://x402.org/facilitator",
+      network: "eip155:84532",
+      timeoutSeconds: 300,
+      payTo: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      cdpApiKeyId: null,
+      cdpApiKeySecret: null,
+    },
+    "https://agentify.example",
+    300,
+  );
+  const listed = {
+    itemId: "itm_parcel",
+    card: parcel,
+    serviceName: null,
+    payoutWallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  };
+
+  it("says the listed price is the goods alone before any address is named", () => {
+    const { error, resource } = decodePaymentRequiredHeader(
+      edge.challengeFor({ amount: "18.00", currency: "USD" }, null, listed, "payment required"),
+    );
+
+    expect(error).toContain("goods alone");
+    expect(resource.description).toBe(parcel.description);
+  });
+
+  it("says the amount asked includes shipping once the purchase names an address", () => {
+    const { error } = decodePaymentRequiredHeader(
+      edge.challengeFor({ amount: "21.00", currency: "USD" }, "ord_1", listed, "payment required"),
+    );
+
+    expect(error).toContain("includes shipping");
+  });
+});
+
 describe("the shape a live validation once accepted", () => {
   /**
    * What this test is, said plainly, because it would be easy to read it as
