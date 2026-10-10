@@ -791,6 +791,33 @@ describe("importing the catalogue", () => {
     expect(listed[0]?.card.result).toBeUndefined();
   });
 
+  it("tells an owner whose parcel is held for want of the shop's site to set it in Settings", async () => {
+    // The door's own words for a missing site name the call a merchant's code
+    // makes. The person who pressed Import sets the site in Settings, and an
+    // instruction to call the API is one they cannot follow from here.
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [aProduct({ virtual: false, downloadable: false, downloads: [] })],
+      }),
+      inspectProduct: async () => ({
+        ok: true,
+        product: {
+          kind: "parcel",
+          productId: "11",
+          price: { amount: "25.00", currency: "USD" },
+          fingerprint: "accepted-parcel-fingerprint",
+        },
+      }),
+    });
+    await connected(running);
+
+    const held = readable((await running.post("/woocommerce/import")).html);
+
+    expect(held).toMatch(/shop's site in Settings/);
+    expect(held).not.toMatch(/\/v0\//);
+  });
+
   it("keeps imported cards when the merchant forgets the shop", async () => {
     const running = await started({
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
