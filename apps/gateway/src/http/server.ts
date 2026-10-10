@@ -139,6 +139,15 @@ export function buildApp(
     response.json({ ok: true });
   });
 
+  // An agent given only the site tries the storefront's root before anything
+  // else, and "there is no call here" reads as there being nothing to buy. It
+  // is pointed at the catalogue instead. The catalogue is not a paid resource,
+  // so no discovery listing keys on this address and the redirect adds no
+  // second identity to anything listed.
+  app.get("/x402", (_request, response) => {
+    response.redirect(302, "/x402/catalog");
+  });
+
   for (const [name, route] of routes) {
     // The contract's own list already leaves these out, and that is one filter
     // away from not doing so. Refusing them here as well puts the guard at the
