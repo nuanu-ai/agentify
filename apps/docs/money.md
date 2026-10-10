@@ -19,6 +19,17 @@ Every payment arrives as its own transfer. A hundred sales are a hundred
 incoming transfers: if your accounting is used to one line per period, there
 will be as many lines here as there were sales.
 
+### If you have no wallet yet
+
+Your wallet is an address on Base, the network these payments run on: `0x`
+followed by forty letters and digits. If your business has none, a wallet app
+that supports the Base network, such as MetaMask, creates one. The app
+shows the address, which is what you enter in the dashboard's Settings, and a
+recovery phrase, which stays with you and is never entered anywhere at
+Agentify: whoever holds the phrase holds the money. On the test channel the
+address only receives test USDC, so it needs no money of its own and nothing is
+paid out of it.
+
 ## What they pay in
 
 Buyers pay in USDC, a digital dollar whose rate is pegged to the dollar. A card
@@ -108,6 +119,16 @@ the moment the goods are released. It shows what was bought and for how much;
 to the buyer it is proof of payment, to you it is the record a dispute is
 settled from. The price the sale went through at goes into the receipt and
 stays there unchanged even after your price has moved.
+
+A receipt carries three moments, and they are three different things. The
+payment time (`paid_at`, "Paid" in the dashboard) is when the payment went
+through. The price's `at` ("Price set") is when we fixed the price for this
+sale. The price's `as_of` ("Price as of") is when that price was true: the
+moment your price check said it held from, or, for a card sold at its own price,
+when the card was published with it. The three are seldom the same moment: in
+the synchronous mode the charge comes seconds after the goods, and on a card
+whose price is checked at the purchase the agent may take minutes between the
+price and the payment.
 
 An order paid for and never delivered leaves no receipt, because no goods went
 out. What you have for that case is the order itself and the event telling you

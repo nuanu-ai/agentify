@@ -343,14 +343,20 @@ export const htmlSignals = (html: string, text = visibleText(html)) => {
 // 429; one served with another status is known by what its vendor's
 // interstitial carries and an ordinary page does not: PerimeterX's
 // px-captcha, DataDome's captcha-delivery.com and Cloudflare's _cf_chl_opt.
-// A page merely naming a captcha, as every Shopify page does for its forms,
-// or loading Cloudflare's background detection from
-// /cdn-cgi/challenge-platform/scripts/, is the page itself.
-export const isChallenge = (status: number, body: string): boolean =>
-  [401, 403, 429].includes(status) ||
-  /px-captcha|captcha-delivery\.com|_cf_chl_opt|access denied|verify you are human/i.test(
-    body.slice(0, 64_000),
+// The words such a page says, "access denied" or "verify you are human",
+// count only on an error status: on a page that answered 200 they are a
+// product's name or a help text as often as a challenge. A page merely naming
+// a captcha, as every Shopify page does for its forms, or loading Cloudflare's
+// background detection from /cdn-cgi/challenge-platform/scripts/, is the page
+// itself.
+export const isChallenge = (status: number, body: string): boolean => {
+  const head = body.slice(0, 64_000);
+  return (
+    [401, 403, 429].includes(status) ||
+    /px-captcha|captcha-delivery\.com|_cf_chl_opt/i.test(head) ||
+    (status >= 400 && /access denied|verify you are human/i.test(head))
   );
+};
 
 // Whether two pages say much the same, given their visible text.
 export const comparableTexts = (left: string, right: string): boolean => {

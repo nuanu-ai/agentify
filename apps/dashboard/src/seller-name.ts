@@ -21,6 +21,7 @@ import { bare, brandLockup, escaped, page } from "./html.js";
 import { payoutWalletBlock } from "./payout-wallet.js";
 import { refusedForNoName, type Viewer } from "./screens.js";
 import { wooSettingsBlock } from "./woo-screens.js";
+import { APPROVAL_GIVEN, APPROVAL_PENDING } from "./words.js";
 
 /**
  * What a name has to be, said in words a person can act on.
@@ -220,6 +221,14 @@ export const settingsScreen = (
           ? `You have not set a seller name yet.${refusedForNoName(viewer) ? " Until you do, cards cannot be published." : ""}`
           : `Your products are sold under ${name}.`,
       )}</p>
+      ${
+        // Live alone, where the door asks for the operator's approval, and
+        // only where the route read it: a screen that did not ask says nothing
+        // rather than a guess.
+        viewer.mode === "live" && viewer.liveApproval !== undefined
+          ? `<p>${escaped(viewer.liveApproval ? APPROVAL_GIVEN : APPROVAL_PENDING)}</p>`
+          : ""
+      }
     </div>
   </div>
   <div class="settings-grid">

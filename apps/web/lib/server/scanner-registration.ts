@@ -453,6 +453,7 @@ async function finishIntentInTransaction(
       ? (previousConsent.categories as Record<string, unknown>)
       : {};
   if (
+    registrationEvent &&
     config.PARTNER_POSTBACK_ENABLED &&
     firstVerification &&
     previousCategories.ads_measurement === true &&

@@ -33,8 +33,19 @@ export function validateSubmittedUrl(value: string): UrlSyntaxResult {
       message: "Remove the username or password from this URL.",
     };
   }
-  if (!parsed.hostname || parsed.hostname === "localhost" || parsed.hostname.endsWith(".local")) {
+  if (!parsed.hostname || parsed.hostname.endsWith(".local")) {
     return { ok: false, message: "Enter a public website domain." };
+  }
+  // The URL parser has already turned every spelling of an IPv4 address into
+  // four dotted numbers and wrapped an IPv6 one in brackets.
+  if (parsed.hostname.startsWith("[") || /^\d+\.\d+\.\d+\.\d+$/.test(parsed.hostname)) {
+    return {
+      ok: false,
+      message: "Enter the site's domain name, such as example.com, rather than its IP address.",
+    };
+  }
+  if (!parsed.hostname.replace(/\.$/, "").includes(".")) {
+    return { ok: false, message: "Enter the site's full domain name, such as example.com." };
   }
   if (parsed.port && !["80", "443"].includes(parsed.port)) {
     return {

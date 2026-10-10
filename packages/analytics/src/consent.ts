@@ -52,6 +52,16 @@ export const createConsentSnapshot = (input: {
   };
 };
 
+/**
+ * Whether anything of a visit may be recorded: its visit and funnel events and
+ * the campaign that brought it. Product analytics and ads measurement are the
+ * two optional measurements a visitor can allow; with neither allowed, the
+ * visit leaves nothing behind but the choice itself and what the scan the
+ * visitor asked for needs.
+ */
+export const consentAllowsMeasurement = (categories: Partial<ConsentCategories>): boolean =>
+  categories.product_analytics === true || categories.ads_measurement === true;
+
 export const consentAllowsDestination = (
   snapshot: ConsentSnapshot,
   destination: "posthog" | "meta",

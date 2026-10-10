@@ -103,6 +103,8 @@ export interface GatewayClient {
   disableKey(keyId: string): Promise<Answer<MerchantKey>>;
   /** The name buyers read beside this merchant's products, or null for none. */
   sellerName(): Promise<Answer<string | null>>;
+  /** Whether the operator has approved this merchant for live sales. */
+  liveApproval(): Promise<Answer<boolean>>;
   setSellerName(name: string): Promise<Answer<string | null>>;
   /**
    * The name and the shop's site together, as one read, for the screen that
@@ -255,7 +257,7 @@ const walletRefusedAs = (why: WalletChangeRefusal): Answer<never> => {
       return {
         ok: false,
         status: UNAVAILABLE,
-        why: "the message about this change could not be confirmed as sent to every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the dashboard's wallet screen shows it, which it does not",
+        why: "the message about this change could not be confirmed as sent to every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the Payout wallet section of the dashboard's Settings shows it, which it does not",
       };
     case "raced":
       return {
@@ -267,7 +269,7 @@ const walletRefusedAs = (why: WalletChangeRefusal): Answer<never> => {
       return {
         ok: false,
         status: CONFLICT,
-        why: "another change of this merchant's payout wallet was recorded while this one was being announced, so this one was not recorded; its message went out and says the change takes effect only if the dashboard's wallet screen shows it, which it does not. Read the wallet and ask again if this is still the address wanted",
+        why: "another change of this merchant's payout wallet was recorded while this one was being announced, so this one was not recorded; its message went out and says the change takes effect only if the Payout wallet section of the dashboard's Settings shows it, which it does not. Read the wallet and ask again if this is still the address wanted",
       };
     default: {
       const unanswered: never = why;
@@ -427,6 +429,10 @@ export const gatewayFor = (
         const held = answered(API_ROUTES.disable_key, disabled);
         return held.ok ? done(held.document.key) : held;
       }),
+    liveApproval: () =>
+      call("reading the live approval", async () =>
+        done(await application.liveApproved(merchantId)),
+      ),
     // Unwrapped for the same reason: a screen that reaches through the wrapper
     // is a screen to edit the day it grows. Null is a real answer and not an
     // absence — it is the merchant who has not chosen a name yet, which is the

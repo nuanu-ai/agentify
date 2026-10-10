@@ -177,8 +177,11 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
         <input name="site_is_mine" type="checkbox" /> I own or manage this site.
       </label>
       <label className={styles.check}>
-        <input name="dataset_reuse_acknowledged" type="checkbox" required /> I acknowledge the
-        scanner data notice.
+        <input name="dataset_reuse_acknowledged" type="checkbox" required /> I acknowledge the{" "}
+        <a href="/privacy" rel="noopener" target="_blank">
+          scanner data notice
+        </a>
+        .
       </label>
       <label className={styles.check}>
         <input name="marketing_email_opt_in" type="checkbox" /> Send optional product research

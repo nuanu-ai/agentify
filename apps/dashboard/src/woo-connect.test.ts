@@ -130,7 +130,10 @@ describe("the preflight", () => {
     // redirect ceiling rather than from reading what the shop served.
     shop = await shopAnswering((url) =>
       new URL(url, "http://shop").pathname.endsWith("/")
-        ? { status: 200, body: "<html><title>My lovely shop</title><body>Welcome</body></html>" }
+        ? {
+            status: 200,
+            body: '<html><title>My lovely shop</title><link rel="stylesheet" href="/wp-content/themes/storefront/style.css"><body>Welcome</body></html>',
+          }
         : { status: 301, location: `${url.split("?")[0]}/?x=1` },
     );
     const looked = await isTheGrantScreen(`${shop.url}/wc-auth/v1/authorize?x=1`);
@@ -138,6 +141,49 @@ describe("the preflight", () => {
     // The merchant can only act on this if it names the setting, in the words
     // WordPress uses for it.
     expect(looked.ok === false && looked.why).toMatch(/permalink/i);
+  });
+
+  it("asks first whether the address is the shop where nothing on the page looks like WordPress", async () => {
+    // A site on something else answers the authorize address with its own
+    // page or a 404, and so does a WordPress shop on a server that answers
+    // with its own 404 page when permalinks are Plain. Nothing on such a page
+    // says which of the two it is, so the owner is asked to check the address
+    // first and told the permalink setting is the cause if it is the shop.
+    for (const answer of [
+      { status: 200, body: "<html><title>A landing page</title><body>Hello</body></html>" },
+      { status: 404, body: "<html><body>Not found</body></html>" },
+    ]) {
+      shop = await shopAnswering(() => answer);
+      const looked = await isTheGrantScreen(`${shop.url}/wc-auth/v1/authorize?x=1`);
+      await shop.close();
+      shop = null;
+
+      expect(looked.ok).toBe(false);
+      expect(looked.ok === false && looked.why).toMatch(/Check that this is the address/);
+      expect(looked.ok === false && looked.why).toMatch(/permalink/i);
+    }
+  });
+
+  it("goes straight to the permalink setting where the page is plainly WordPress", async () => {
+    // A theme's files or WordPress's own: either is the shop answering with
+    // one of its pages, and the address is not in doubt.
+    for (const asset of [
+      "/wp-content/themes/storefront/style.css",
+      "/wp-includes/js/jquery/jquery.min.js",
+    ]) {
+      shop = await shopAnswering(() => ({
+        status: 200,
+        body: `<html><head><script src="${asset}"></script></head><body>Welcome</body></html>`,
+      }));
+      const looked = await isTheGrantScreen(`${shop.url}/wc-auth/v1/authorize?x=1`);
+      await shop.close();
+      shop = null;
+
+      expect(looked.ok === false && looked.why, asset).toMatch(/permalink/i);
+      expect(looked.ok === false && looked.why, asset).not.toMatch(
+        /Check that this is the address/,
+      );
+    }
   });
 
   it("refuses a front page that happens to quote the address we asked for", async () => {

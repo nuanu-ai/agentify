@@ -1233,6 +1233,53 @@ describe("delivering twice, and delivering late", () => {
     expect(answerFirst).toStrictEqual(timerFirst);
   });
 
+  it("closes a synchronous order on its deadline when the refusal arrives after it", () => {
+    // A refusal is the merchant's word that the purchase does not happen, and
+    // past the deadline the purchase has already not happened, on the clock.
+    // Whether the timer landed first or the refusal did, the order ends the
+    // same way, expired, and the merchant hears that it was already closed.
+    const dispatched = reach("dispatched");
+    const due = (dispatched.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.syncResponseMs;
+    const refusal = {
+      kind: "handler_refused",
+      at: due + 1_500,
+      code: "out_of_stock",
+      message: "none left",
+    } as const;
+
+    const { order, effects } = must(dispatched, refusal);
+    const timerFirst = walk(dispatched, [
+      { kind: "deadline_expired", at: due, deadline: "sync_response" },
+    ]);
+    const thenRefused = transition(timerFirst, refusal);
+
+    expect(order).toStrictEqual(timerFirst);
+    expect(effects).toStrictEqual([
+      {
+        kind: "answer_merchant",
+        answer: { ok: false, error: "order_already_closed", retryable: false },
+      },
+    ]);
+    expect(thenRefused.ok).toBe(false);
+  });
+
+  it("takes a synchronous refusal that arrives a moment before the deadline as the merchant's", () => {
+    const dispatched = reach("dispatched");
+    const due = (dispatched.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.syncResponseMs;
+    const { order } = must(dispatched, {
+      kind: "handler_refused",
+      at: due - 1,
+      code: "out_of_stock",
+      message: "none left",
+    });
+
+    expect(order.closure).toStrictEqual({
+      cause: "merchant_refused",
+      code: "out_of_stock",
+      message: "none left",
+    });
+  });
+
   it("charges for synchronous goods that arrive a moment before the deadline", () => {
     const dispatched = reach("dispatched");
     const due = (dispatched.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.syncResponseMs;

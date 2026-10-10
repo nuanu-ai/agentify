@@ -26,8 +26,9 @@ The answer is `agentOrderStatusOf` in `apps/gateway/src/app/runner.ts`, the same
 document the purchase itself returns, built field by field so that nothing
 reaches it until someone writes it there. It carries the order's state and
 price, the goods once delivered, a parcel's shipment once shipped, whether the
-sale was a test, who sold it, and the merchant's own words where the merchant
-refused it. It leaves out the merchant's product key, the parameters and address
+sale was a test, who sold it, the merchant's own words where the merchant
+refused it, and Agentify's own reason where Agentify ended it and the status
+alone would blur the next step. It leaves out the merchant's product key, the parameters and address
 the buyer sent, and every other order. Every identifier that names no order gets
 the same `no_such_order`, so probing learns nothing about which strings were
 ever orders.

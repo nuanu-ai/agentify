@@ -43,6 +43,7 @@
 import type {
   Deadline,
   Effect,
+  EndingReason,
   MerchantAnswer,
   Order,
   OrderEvent,
@@ -54,6 +55,7 @@ import type {
 import {
   assertNever,
   deadlines,
+  endingReasonFor,
   fulfillmentDeadline,
   holdsShipTo,
   moneyInvariantViolations,
@@ -1304,18 +1306,45 @@ export function agentOrderStatusOf(
     // in all three. Keying on the word would have withheld the merchant's own
     // sentence from two of them for no reason a buyer could be told.
     //
-    // Nothing else fills it, and the omissions are deliberate rather than
-    // unfinished. `unavailable` is a price answer with no words in it at all;
-    // `quote_silent` is a merchant who said nothing; `payment_not_verified`
-    // and `payment_not_settled` are the payment layer's business and reach the
-    // agent at the purchase door in an error envelope that quotes it. A code
-    // invented here for any of those would be this gateway speaking in a
-    // merchant's voice about something the merchant never said.
+    // Nothing else fills it: a code invented here for an ending the merchant
+    // never worded would be this gateway speaking in the merchant's voice.
+    // Where the ending was this gateway's to decide, it says so in its own
+    // voice instead, under `reason`, and never beside a merchant's refusal.
     ...(closure?.cause === "merchant_refused"
       ? { refusal: { code: closure.code, message: closure.message } }
       : {}),
+    ...reasonOf(record.order),
   };
 }
+
+/**
+ * Why an order ended, in this gateway's own words, where it and not the
+ * merchant decided it: a code to branch on and a sentence saying what to do
+ * next. Each sentence says that nothing was charged where that is so, because
+ * that is the first thing an agent holding a closed purchase needs to know.
+ */
+function reasonOf(order: Order): { reason?: { code: EndingReason; message: string } } {
+  const code = endingReasonFor(order);
+  if (code === null) {
+    return {};
+  }
+  return { reason: { code, message: REASON_WORDS[code](order) } };
+}
+
+const REASON_WORDS: Readonly<Record<EndingReason, (order: Order) => string>> = {
+  unavailable: () =>
+    "The seller's price check said this is not available, and gave no reason; nothing was charged. Buy it elsewhere, or ask the seller at their site.",
+  price_check_unanswered: () =>
+    "The seller's price check gave no price this purchase could use: it did not answer in time, or its answer could not be accepted. Nothing was charged. Trying again later may work if the seller's price check recovers.",
+  payment_not_settled: () =>
+    "The charge did not go through, and nothing was taken. Check the paying wallet before buying again.",
+  price_expired: () =>
+    "The price ran out before the payment was taken; nothing was charged. Start a new purchase to get a fresh price.",
+  merchant_timed_out: (order) =>
+    order.heldFulfillment
+      ? "The seller's goods arrived after the purchase had closed; nothing was charged. Pay this same order again, from the same wallet, to collect them."
+      : "The seller did not deliver within the time a synchronous purchase allows; nothing was charged. Trying again later may find the seller answering.",
+};
 
 /** The order as the merchant's worker reads it. */
 export function orderDocumentOf(record: StoredOrder): OrderDocument {

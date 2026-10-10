@@ -155,14 +155,24 @@ export class MemoryQueue implements Queue {
     );
   }
 
-  async draw(merchantId: string, max: number, waitMs: number): Promise<readonly DrawnEnvelope[]> {
+  async draw(
+    merchantId: string,
+    max: number,
+    waitMs: number,
+    gone?: AbortSignal,
+  ): Promise<readonly DrawnEnvelope[]> {
+    if (gone?.aborted) {
+      return [];
+    }
     const first = this.#take(merchantId, max);
     if (first.length > 0 || waitMs <= 0) {
       return first;
     }
 
-    await this.#park(merchantId, waitMs);
-    return this.#take(merchantId, max);
+    await this.#park(merchantId, waitMs, gone);
+    // A worker that left while this waited takes nothing: what arrived is kept
+    // on the stream for the poll that comes after it.
+    return gone?.aborted ? [] : this.#take(merchantId, max);
   }
 
   async finish(merchantId: string, handle: string): Promise<void> {
@@ -272,18 +282,20 @@ export class MemoryQueue implements Queue {
     });
   }
 
-  #park(merchantId: string, waitMs: number): Promise<void> {
+  #park(merchantId: string, waitMs: number, gone?: AbortSignal): Promise<void> {
     const stream = this.#streamOf(merchantId);
     return new Promise((resolve) => {
       const wake: Waiter = () => {
         clearTimeout(timer);
         this.#timers.delete(timer);
         stream.waiters.delete(wake);
+        gone?.removeEventListener("abort", wake);
         resolve();
       };
       const timer = setTimeout(wake, waitMs);
       this.#timers.add(timer);
       stream.waiters.add(wake);
+      gone?.addEventListener("abort", wake, { once: true });
     });
   }
 

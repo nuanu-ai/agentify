@@ -2136,8 +2136,8 @@ describe("a card held off sale by what its merchant lacks", () => {
   // "All selling is stopped" there is a claim about a switch nobody pressed,
   // and it sends the merchant looking for a control that changes nothing. The
   // settings the merchant sets are named and the page that sets them is
-  // linked; the operator's approval, which this dashboard cannot read, is said
-  // to be unread exactly where the door asks for it.
+  // linked; the operator's approval, which nobody sets in Settings, is said to
+  // be still to come exactly where the door asks for it.
   //
   // Each merchant is registered through the dashboard's own press and never
   // approved, and its card is written straight into the gateway's store: the
@@ -2242,11 +2242,55 @@ describe("a card held off sale by what its merchant lacks", () => {
         const approvalAsked = door.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
         expect(/approv/i.test(control), control).toBe(approvalAsked);
         if (approvalAsked) {
-          expect(control).toMatch(/cannot tell/i);
+          expect(control).toMatch(/not approved your merchant/i);
         }
       });
     }
   }
+
+  it("on the test channel, says nothing on Settings about an approval nobody needs there", async () => {
+    // The gateway's answer about approval is false for every merchant off live,
+    // since nobody approves anybody there; read and shown, it would tell every
+    // test merchant they are waiting for something that never comes.
+    const running = await started({ gateway: CHANNELS.test, dashboard: CHANNELS.test });
+    await running.browser.signIn(FRESH.email);
+    expect((await running.browser.makeMerchant()).status).toBe(200);
+
+    const settings = readable((await running.browser.get("/settings")).html);
+
+    expect(settings).not.toMatch(/approv/i);
+  });
+
+  it("on live, for a merchant Agentify has approved, says so and sells the card", async () => {
+    const running = await started({
+      gateway: { ...CHANNELS.live, ...LIVE_GATEWAY_ONLY },
+      dashboard: CHANNELS.live,
+    });
+    await running.browser.signIn(FRESH.email);
+    expect((await running.browser.makeMerchant()).status).toBe(200);
+    const merchant = (await running.identity.byEmail(FRESH.email))?.merchant;
+    if (merchant == null) throw new Error("the press made no merchant");
+    const key = await running.harnessed.addKey(merchant.id);
+    const listed = await running.gateway.call("POST", "/v0/seller-name", {
+      body: { seller_name: "Their own shop" },
+      headers: { authorization: `Bearer ${key}` },
+    });
+    expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+    const saved = await running.browser.post("/settings/payout-wallet", {
+      payout_wallet: A_WALLET,
+    });
+    expect(saved.status, saved.html).toBe(303);
+    await running.harnessed.store.grantLiveApproval(merchant.id, running.harnessed.now());
+    expect(await theDoorSays(running.gateway, key)).toStrictEqual([]);
+
+    const settings = readable((await running.browser.get("/settings")).html);
+    const screen = await running.browser.get("/cards");
+    const cell = /<td class="control"[^>]*>([\s\S]*?)<\/td>/.exec(screen.html)?.[1] ?? "";
+
+    expect(settings).toMatch(/approved your merchant/);
+    expect(settings).not.toMatch(/not approved your merchant/);
+    expect(readable(cell)).toBe("Pause");
+  });
 });
 
 describe("a merchant who has left", () => {
@@ -2289,7 +2333,7 @@ describe("a merchant who has left", () => {
 
     expect(refused.status).toBe(409);
     const text = readable(refused.html);
-    expect(text).toContain("this merchant has left");
+    expect(text).toMatch(/this merchant has left/i);
     expect(text).not.toContain("did not answer");
   });
 });
@@ -2921,7 +2965,20 @@ describe("the keys screen", () => {
     const refused = await browser.post("/keys/key_nobody_has/disable");
 
     expect(refused.status).toBe(404);
-    expect(readable(refused.html)).toContain("there is no such key");
+    expect(readable(refused.html)).toMatch(/there is no such key/i);
+  });
+
+  it("shows the gateway's refusal as a sentence, beginning with a capital", async () => {
+    // The gateway writes its refusals for a program's log, starting in lower
+    // case; on a page a person reads they are a sentence.
+    const { browser } = await started();
+    await browser.signIn();
+
+    const refused = await browser.post("/keys/key_nobody_has/disable");
+    const said = /<h1>Something went wrong<\/h1>\s*<p>([^<]*)<\/p>/.exec(refused.html)?.[1] ?? "";
+
+    expect(said).toMatch(/^[A-Z]/);
+    expect(said.toLowerCase()).toContain("there is no such key");
   });
 
   it("draws a working screen for a merchant who has issued no keys of their own", async () => {

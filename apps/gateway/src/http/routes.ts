@@ -238,6 +238,24 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
     poll_worker: {
       serve: async (call) => {
         const asked = call.body as WorkerPollRequest;
+        // A worker that stops cuts its poll off. Held open regardless, the poll
+        // would take whatever arrived next off the stream for nobody, and an
+        // event, which is sent once, would be lost with it. So the draw stops
+        // when the connection closes before an answer, and what arrives is kept
+        // for the poll that comes after. A close in the instant between the
+        // draw and the answer is still a loss, which the contract's
+        // at-most-once events accept (ADR-0004 §3).
+        const gone = new AbortController();
+        call.response.once("close", () => {
+          if (!call.response.writableEnded) {
+            gone.abort();
+          }
+        });
+        // The listener is attached only after the key and the body were read,
+        // and a worker that left while they were has already closed.
+        if (call.response.destroyed) {
+          gone.abort();
+        }
         return {
           status: OK,
           // A worker draws its own merchant's stream. It is not a filter over
@@ -251,6 +269,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
             asked.wait_seconds === undefined
               ? gateway.runtime.config.worker.pollWaitMs
               : asked.wait_seconds * 1_000,
+            gone.signal,
           ),
         };
       },

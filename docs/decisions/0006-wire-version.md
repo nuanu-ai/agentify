@@ -66,8 +66,9 @@ storefront's reader is different: a stranger's agent that no handshake reaches.
    reader that ignores the unknown cannot refuse a field that leaked. A word
    inside a part, the type of a declared field, stays a closed list: a card
    with a type an agent does not know cannot be filled in and is passed over.
-   The merchant's schemas stay closed. ADR-0033's `ship` and `shipped` and
-   ADR-0034's seller name and site are added under this rule.
+   The merchant's schemas stay closed. ADR-0033's `ship` and `shipped`,
+   ADR-0034's seller name and site, and an order status's `reason` are added
+   under this rule.
 
 ## Consequences
 

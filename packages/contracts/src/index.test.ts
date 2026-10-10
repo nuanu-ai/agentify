@@ -142,6 +142,25 @@ describe("@nuanu-ai/agentify-contracts", () => {
     // the merchant got something extra when installing.
     expect(Object.keys(manifest.dependencies ?? {})).toStrictEqual(["zod"]);
   });
+
+  it("validates with the very version of zod the gateway does", () => {
+    // A merchant's offline card check and our publication are meant to be one
+    // check. A range let a merchant's install take a newer zod than the
+    // gateway runs, and one release of it counted a string's length
+    // differently, so a card the merchant's check passed was refused at
+    // publication. One exact version, the same on both sides (ADR-0003 §8).
+    const zodOf = (path: string): string | undefined =>
+      (
+        JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as {
+          dependencies?: Record<string, string>;
+        }
+      ).dependencies?.zod;
+    const ours = manifest.dependencies?.zod ?? "";
+
+    expect(ours).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(zodOf("../../../apps/gateway/package.json")).toBe(ours);
+    expect(zodOf("../../../apps/dashboard/package.json")).toBe(ours);
+  });
 });
 
 describe("the registry of schemas", () => {

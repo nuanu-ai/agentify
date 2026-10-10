@@ -179,7 +179,7 @@ export function ScanExperience({
         ) : null}
         {data?.status === "failed" ? (
           <FailedState
-            blocked={fixtureName === "blocked"}
+            blocked={data.blocked === true}
             checks={data.checks}
             onRetry={() => window.location.assign("/")}
           />
@@ -424,7 +424,7 @@ function TeaserState({
           </strong>
           <span>
             {registrationEnabled
-              ? "The full report requires email, phone, and one secure email confirmation."
+              ? "The full report requires your email and one secure email confirmation. A phone number is optional."
               : "Email verification is not enabled in this deployment yet."}
           </span>
         </div>
@@ -504,7 +504,10 @@ function FailedState({
   const headline = robotsHeadline(checks);
   return (
     <div className={styles.failed}>
-      <h1 data-robots-headline={headline ?? undefined}>
+      <h1
+        data-access-blocked={!headline && blocked ? "" : undefined}
+        data-robots-headline={headline ?? undefined}
+      >
         {headline === "disallowed"
           ? "Your robots.txt kept the scanner out"
           : headline === "unassessed"
@@ -517,7 +520,7 @@ function FailedState({
       {headline ? null : (
         <p>
           {blocked
-            ? "Public requests were blocked before enough checks could reach a verdict. No score or registration gate is shown."
+            ? "The site answered the scanner's request for its home page with a bot challenge or a refusal. What could be read around it is what the site shows a reader it turns away, so no score is given."
             : "Coverage stayed below the minimum for an honest result. This can happen after a timeout, access block, or scanner failure."}
         </p>
       )}
@@ -640,6 +643,7 @@ function createDevFixture(name: FixtureName): ScanStatusResponse {
       })),
       updated_at: now,
       target_host: "example.com",
+      ...(name === "blocked" ? { blocked: true as const } : {}),
     };
   }
   if (name === "running") {

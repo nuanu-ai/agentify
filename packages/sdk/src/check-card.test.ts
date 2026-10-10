@@ -42,7 +42,8 @@ describe("checking a card before it is published", () => {
       expect(ProblemSchema.safeParse(problem).success).toBe(true);
     }
     expect(problems[0]?.path).toStrictEqual(["title"]);
-    expect(problems[0]?.message).toMatch(/string/);
+    // In our words, saying what the field is, rather than the validator's.
+    expect(problems[0]?.message).not.toMatch(/received undefined/);
   });
 
   it("reports every problem of one pass at once rather than the first", () => {

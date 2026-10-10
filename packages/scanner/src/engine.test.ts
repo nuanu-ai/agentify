@@ -4,7 +4,7 @@ import { evaluateScan } from "./engine.js";
 import type { FetchArtifact, ScanArtifacts } from "./model.js";
 import { htmlSignals, parseJsonLd, parseSitemap, visibleText } from "./parsers.js";
 import { parseRobots } from "./robots.js";
-import { levelForScore, scoreChecks } from "./scoring.js";
+import { baseBlocked, levelForScore, scoreChecks } from "./scoring.js";
 
 // The readers whose result checks.ts keeps for each page, each counted on its
 // way through and otherwise left exactly as it is: every call reaches the real
@@ -161,6 +161,83 @@ describe("what the checks read from the markup real sites write", () => {
     ])
       for (const status of [200, 403])
         expect(assessed(asEverywhere(page, status))).toEqual([true, true]);
+  });
+
+  it("reaches no verdict when the home page was a challenge, and reads nothing off it", () => {
+    // Etsy's DataDome page, as it served it to the scanner in place of the
+    // home page: small and fast, and not the site. Nothing measured on it is
+    // the site's, so no check passes or fails on it and the scan withholds
+    // its score rather than grade a page the site never showed.
+    const challenge = `<html><head><title>etsy.com</title></head><body><script data-cfasync="false">var dd={'rt':'c','host':'geo.captcha-delivery.com'}</script><script data-cfasync="false" src="https://ct.captcha-delivery.com/c.js"></script></body></html>`;
+    for (const status of [200, 403]) {
+      const evaluation = evaluateScan({
+        ...makeArtifacts("store"),
+        base: artifact("https://example.com/", challenge, { status }),
+      });
+      const homePageChecks = [5, 6, 12, 13, 14, 15, 18];
+      expect(
+        evaluation.checks
+          .filter((candidate) => homePageChecks.includes(candidate.id))
+          .map((candidate) => [candidate.id, candidate.status]),
+      ).toEqual(homePageChecks.map((id) => [id, "unavailable"]));
+      expect(evaluation.score).toMatchObject({
+        score: null,
+        level: "incomplete",
+        terminalStatus: "failed",
+      });
+    }
+  });
+
+  it("gives no level when the product page could be read around a challenged home page", () => {
+    // The product page carries enough for most checks, so coverage alone
+    // would publish a level; the challenge still withholds it.
+    const challenge = `<html><head><title>Just a moment...</title></head><body><script>(function(){window._cf_chl_opt = {cType: 'managed'};}());</script></body></html>`;
+    const evaluation = evaluateScan({
+      ...makeArtifacts("store"),
+      base: artifact("https://example.com/", challenge, { status: 403 }),
+      representative: artifact("https://example.com/product/widget", html),
+    });
+    expect(evaluation.score.coverage).toBeGreaterThanOrEqual(0.7);
+    expect(evaluation.score).toMatchObject({
+      score: null,
+      level: "incomplete",
+      terminalStatus: "failed",
+    });
+  });
+
+  it("keeps the verdict of a home page that merely says the words a challenge says", () => {
+    // A shop page is the shop page whatever its words: a product named after
+    // a film, a help text about a login form. Only a challenge status or a
+    // vendor's own interstitial marks a page served in the site's place.
+    const ordinary = evaluateScan(makeArtifacts("store"));
+    for (const words of ["Access Denied hacker T-shirt", "Please verify you are human to log in"]) {
+      const evaluation = evaluateScan({
+        ...makeArtifacts("store"),
+        base: artifact("https://example.com/", html.replace("</body>", `<p>${words}</p></body>`)),
+      });
+
+      expect(baseBlocked(evaluation.checks), words).toBe(false);
+      expect(evaluation.score.score, words).toBe(ordinary.score.score);
+    }
+    // The same words on an error status are the refusal they say they are.
+    const refused = evaluateScan({
+      ...makeArtifacts("store"),
+      base: artifact("https://example.com/", "<html><body>Access denied</body></html>", {
+        status: 405,
+      }),
+    });
+    expect(baseBlocked(refused.checks)).toBe(true);
+  });
+
+  it("does not call a home page that could not be reached a block", () => {
+    // A server error is not the site turning the reader away: the scan says
+    // what it could read and that the rest was unavailable.
+    const evaluation = evaluateScan({
+      ...makeArtifacts("store"),
+      base: artifact("https://example.com/", "Service unavailable", { status: 503 }),
+    });
+    expect(baseBlocked(evaluation.checks)).toBe(false);
+    expect(evaluation.score.terminalStatus).toBe("partial");
   });
 
   it("finds a feed a page links to by its type or by its address", () => {

@@ -40,7 +40,7 @@ import type { PayoutWallet } from "./payout-wallet.js";
 // screen that draws a shop, and the viewer that carries it belongs here.
 import type { ShopTile } from "./woo-screens.js";
 import {
-  APPROVAL_UNREAD,
+  APPROVAL_PENDING,
   FULFILLMENT_WORDS,
   money,
   needsAttention,
@@ -100,6 +100,12 @@ export interface Viewer {
    */
   readonly payout?: PayoutWallet;
   /**
+   * Whether the operator has approved this merchant for live sales, where the
+   * screen asked. It matters on the live channel alone, where publishing waits
+   * for it.
+   */
+  readonly liveApproval?: boolean;
+  /**
    * Where this account's WooCommerce channel has got to, where the screen
    * asked.
    *
@@ -131,17 +137,16 @@ export interface Viewer {
  *
  * The rule is the door's own, `readinessOf` in the core, so no screen holds an
  * opinion of its own about which setting publishing needs where. What the
- * screen did not ask the gateway for goes in as unknown, and so does the
- * operator's approval on every screen, because no route tells the dashboard
- * whether a merchant holds it: a page that did not read something must not say
- * anything either way about it.
+ * screen did not ask the gateway for goes in as unknown, the operator's
+ * approval included, which the routes read on the live channel alone: a page
+ * that did not read something must not say anything either way about it.
  */
 export const readinessSeenBy = (viewer: Viewer): Readiness =>
   readinessOf(
     {
       sellerName: viewer.sellerName === undefined ? UNKNOWN : viewer.sellerName,
       payoutWallet: viewer.payout === undefined ? UNKNOWN : viewer.payout.wallet,
-      liveApproval: UNKNOWN,
+      liveApproval: viewer.liveApproval === undefined ? UNKNOWN : viewer.liveApproval,
     },
     viewer.mode,
   );
@@ -247,11 +252,10 @@ const cardAside = (entry: MerchantCard): string => {
  * merchant is selling and which nobody paused reads paused for that reason
  * alone, so there the control says what the rule says is missing, in the
  * words and with the link the other screens use, and never that selling was
- * stopped — a claim about a switch nobody pressed. Where the rule finds
- * nothing this page can read, which is the operator's approval on live, it
- * says that it cannot tell; and a card that reads paused where the rule finds
- * nothing at all, which only a change landing between two reads can make, is
- * said to be off sale and no more.
+ * stopped — a claim about a switch nobody pressed. Where the operator's
+ * approval is missing on live, it says so; and a card that reads paused where
+ * the rule finds nothing missing, which only a change landing between two
+ * reads can make, is said to be off sale and no more.
  */
 const cardControl = (
   base: string,
@@ -271,14 +275,14 @@ const cardControl = (
     return '<span class="quiet">All selling is stopped</span>';
   }
   const unset = unsetIn(door);
-  const unread = door.unknown.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL)
-    ? ` ${APPROVAL_UNREAD}`
+  const waiting = door.missing.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL)
+    ? ` ${APPROVAL_PENDING}`
     : "";
   if (unset.length > 0) {
     const what = unset.map((one) => UNSET_WORDS[one]).join(" and ");
-    return `<span class="quiet">Not on sale until you set ${escaped(what)} in <a href="${escaped(base)}/settings">Settings</a>.${escaped(unread)}</span>`;
+    return `<span class="quiet">Not on sale until you set ${escaped(what)} in <a href="${escaped(base)}/settings">Settings</a>.${escaped(waiting)}</span>`;
   }
-  return `<span class="quiet">Not on sale.${escaped(unread)}</span>`;
+  return `<span class="quiet">Not on sale.${escaped(waiting)}</span>`;
 };
 
 /**
@@ -333,7 +337,9 @@ const wrappable = (address: string): string => {
 const emptyCatalogue = (viewer: Viewer, wooAvailable: boolean): string => {
   const why = refusedForNoName(viewer)
     ? "You haven't published any cards yet. Choose your seller name in Settings first. Cards can't be published without it."
-    : "You haven't published any cards yet. Your code publishes them through the SDK, and each card it publishes appears here.";
+    : readinessSeenBy(viewer).missing.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL)
+      ? `You haven't published any cards yet. ${APPROVAL_PENDING}`
+      : "You haven't published any cards yet. Your code publishes them through the SDK, and each card it publishes appears here.";
   return `<div class="empty-start">
     <p>${escaped(why)}</p>
     <div class="connect-actions">
@@ -627,7 +633,7 @@ export const receiptsScreen = (
     </div>
   </div>
   <div class="summary-text">
-    <p>A receipt appears when the product is released to the buyer, or a parcel is handed to a carrier. It shows the amount and three times: Paid, Price set, and Price as of. When the price is checked at the purchase, these times can be a few minutes apart.${restOf(
+    <p>A receipt appears when the product is released to the buyer, or a parcel is handed to a carrier. It shows the amount and three times. Paid is when the payment went through. Price set is when Agentify fixed the price for this sale. Price as of is when that price was true: the moment your price check said it held from, or, for a card sold at its own price, when the card was published with it. When the price is checked at the purchase, these times can be minutes apart.${restOf(
       "/docs/money#what-proves-a-sale-happened",
       "What a receipt records, and which moment each column is",
     )}</p>

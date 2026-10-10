@@ -59,10 +59,11 @@ const asyncCard: Card = {
  * the wrong way roughly once in eighty runs, always on the first test in the
  * file: the park gave up first, and the agent was told `under_way` about a
  * purchase whose deadline was a microtask away from closing it. A deployment
- * cannot invert the two — there the clock moves, and the park and the deadline
- * are both anchored to the order's own creation, with the gateway refusing to
- * start at all unless the answer fits inside the budget — so the margin is
- * bought here rather than in the gateway.
+ * can invert the two as well, because its timer comes off a queue that looks
+ * for due reminders every so often; the gateway then closes the order itself
+ * when the wait runs out, which one test below pins with every timer late.
+ * Here, with the clock frozen, that cannot help, so the margin is bought in
+ * the number rather than in the gateway.
  */
 const brisk = {
   QUOTE_RESPONSE_MS: "20",
@@ -115,6 +116,32 @@ describe("when the time runs out", () => {
     });
     expect(harnessed.facilitator.settles).toHaveLength(0);
     expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+  });
+
+  it("tells the agent its synchronous purchase expired when the timer that closes it is late", async () => {
+    // The timer carrying the merchant's deadline comes off a queue that looks
+    // for due reminders every so often, and it can land after the agent's
+    // budget has run out. The agent is then owed how its purchase ended, not
+    // that it is still under way: the deadline passed on the clock.
+    // The agent's wait runs on the real clock while the poll below takes the
+    // order, so it is a second rather than a hair over the merchant's answer:
+    // a loaded machine must not end the wait before the clock is moved.
+    const harnessed = await started({ SYNC_BUDGET_MS: "1000" });
+    const orderId = await bought(harnessed, syncCard);
+    // From the payment on, every timer is late: none of them lands inside the
+    // agent's wait.
+    vi.spyOn(harnessed.queue, "remind").mockResolvedValue(undefined);
+
+    const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    // The merchant takes the order and says nothing, and the merchant's
+    // deadline passes on the clock.
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 200)).envelopes).toHaveLength(1);
+    harnessed.advance(Number(brisk.SYNC_RESPONSE_MS));
+    const settled = await buying;
+
+    expect(settled.step).toBe("settled");
+    expect((await state(harnessed, orderId))?.state).toBe("expired");
+    expect(harnessed.facilitator.settles).toHaveLength(0);
   });
 
   it("does not tell a merchant a closed order still stands", async () => {
@@ -247,6 +274,9 @@ describe("when the time runs out", () => {
     expect(collected.step).toBe("settled");
     if (collected.step !== "settled") throw new Error("the repeat did not settle");
     expect(collected.delivery).toStrictEqual({ access_code: "CODE-ONE" });
+    // Collected for the repeat's payment: the goods held for a closed order
+    // are the buyer's only once that payment has gone through.
+    expect((await state(harnessed, orderId))?.state).toBe("delivered");
   });
 
   it("brings the money back when a handler never sends what the card declares", async () => {
@@ -449,7 +479,7 @@ describe("when a delivery goes unanswered", () => {
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
     const taking = workUntilStopped(harnessed, {
-      onOrder: () => ({ accepted: { eta_seconds: 60 } }),
+      onOrder: () => ({ accepted: {} }),
     });
 
     // The wait is for the order's own deadline to expire, and not for a stretch

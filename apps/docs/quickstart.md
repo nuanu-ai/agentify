@@ -53,7 +53,9 @@ That is the only way to get a merchant. Returning merchants reach their
 existing dashboard with the same email-and-link flow.
 
 The test channel settles test USDC on Base Sepolia. Save the Base wallet where
-those payments should arrive in the dashboard's Settings before publishing. The live
+those payments should arrive in the dashboard's Settings before publishing; if
+your business has no wallet yet, [Money](/money#if-you-have-no-wallet-yet) says
+how to get one. The live
 channel is a separate account at `https://agentify.ad`: it uses Base
 mainnet and real USDC, and likewise refuses to publish a card until that
 account has a payout wallet and the operator has approved that merchant for
@@ -129,6 +131,30 @@ The address is the environment you are working in:
 nothing after it; it adds the rest of the path itself. A key made in one
 environment does not open the other, and a key you issued on the test address
 starts with `csk_test_` so you can see at a glance which one you are holding.
+
+The code on this page also runs as plain JavaScript. To try the client above in
+an empty project, put it in a file whose name ends in `.mjs`, such as
+`agentify.mjs`, which lets Node read `import` and `await` at the top of the
+file. Put the key and the address in a file named `.env` beside it, one per
+line:
+
+```sh
+AGENTIFY_API_KEY=csk_test_...
+AGENTIFY_URL=https://test.agentify.ad
+```
+
+and run it with Node 24 or later, which the package declares it needs:
+
+```sh
+node --env-file=.env agentify.mjs
+```
+
+The steps below are pieces you add to that file, not one program to paste
+whole. The synchronous and the asynchronous handler are alternatives: register
+one handler for orders and call `start()` once. `grantAccess`,
+`startProvisioning` and `currentPriceOf` stand for your own code that makes the
+goods and knows the price, and `savedId`, `url` and `order` in the later
+snippets stand for values your code holds at that point.
 
 This step worked if the client was built. Whether the key and address belong
 together is answered by the first call that reaches us, and that call is on the
@@ -332,9 +358,7 @@ handler's answer: a handler still working after that has the order sent again
 starts when we hand the order to your worker, which is handed one at a time, so
 it covers your handler and the trip there and back, and nothing else. That is
 why the handler starts the work and answers, and the delivery happens outside
-it. `accepted` also takes `eta_seconds`, the time you expect the delivery to
-take, but nothing keeps that number today and the agent does not see it; an
-empty `accepted` is the complete answer. Until `deliver` is called the order
+it. `accepted()` takes nothing. Until `deliver` is called the order
 counts as accepted, and the delivery deadline named in your card is running on
 it — it started when the buyer was charged, at the moment of purchase, before
 the order reached you. A card that names none is held to a day.
@@ -514,15 +538,19 @@ card as a whole. A card whose shape is wrong is not then checked against the
 rules that compare one field with another, so a short list of findings is not a
 promise that one round of fixes is enough.
 
-The other half of checking yourself is missing, and it is the half worth more.
-Whether your handler holds against repeats — whether a second delivery appears
-when the same order arrives twice — cannot be checked from here, because
-nothing on our surface raises a test order to try it against. The check says so
-in its own output instead of reporting a pass, and it claims nothing about your
-side. Until that changes, holding against repeats is yours to prove against
-your own delivery system, and what has to hold is that a second order produces
-no second delivery and no fresh goods — the buyer keeps what the first delivery
-carried ([Telling a repeat apart](/orders#telling-a-repeat-apart)).
+The command answers `0` when every card it was given is complete as far as the
+contract can tell, `1` when a card has findings, and `2` when it was called with
+something it cannot work from, so a build script can stop on anything but `0`.
+
+The other half of checking yourself is not this command's, and it is the half
+worth more. Whether your handler holds against repeats — whether a second
+delivery appears when the same order arrives twice — cannot be checked from a
+card file, because nothing on our surface raises a test order to try it
+against. The check says so in its own output and claims nothing about your
+side. Holding against repeats is yours to prove against your own delivery
+system, with a test purchase, and what has to hold is that a second order
+produces no second delivery and no fresh goods — the buyer keeps what the first
+delivery carried ([Telling a repeat apart](/orders#telling-a-repeat-apart)).
 
 ## 6. Walk a test purchase
 

@@ -380,7 +380,7 @@ function deliverGoods(order: Order, at: number, extra: readonly Effect[] = []): 
  * where they are in time or the order is not synchronous.
  *
  * A timer closes an overdue order, and a timer can fire late — the gateway's
- * queue looks for due reminders every couple of seconds — so goods answered
+ * queue notices a due reminder only when it next looks — so goods answered
  * in the ninth second could reach the machine before the timer did and be
  * charged for, while the same goods a little later would find the purchase
  * closed. Whether a buyer pays cannot hang on which of the two arrived first.
@@ -398,11 +398,38 @@ function overdueSynchronousGoods(
   order: Order,
   event: Extract<StateEvent, { kind: "handler_delivered" }>,
 ): TransitionResult | null {
+  return closedOnTheClock(order, event.at, (closed) => fromExpired(closed, event));
+}
+
+/**
+ * A synchronous refusal that arrives once the order's deadline has passed, or
+ * null where it is in time or the order is not synchronous.
+ *
+ * Past the deadline the purchase has already not happened, on the clock, so a
+ * refusal there has nothing left to refuse: the order is closed as the timer
+ * would have closed it, and the merchant hears what he would have heard had
+ * the timer landed first — that it was already closed.
+ */
+function overdueSynchronousRefusal(order: Order, at: number): TransitionResult | null {
+  return closedOnTheClock(order, at, closedToMerchant);
+}
+
+/**
+ * Closes a synchronous order whose deadline has passed by `at`, as its timer
+ * would, and then takes what arrived with `then`; null where the order is not
+ * synchronous or is still in time. The two results' effects are kept in the
+ * order they would have happened in.
+ */
+function closedOnTheClock(
+  order: Order,
+  at: number,
+  then: (closed: Order) => TransitionResult,
+): TransitionResult | null {
   if (order.mode.settle !== "after_fulfillment") {
     return null;
   }
   const due = fulfillmentDeadline(order)[0];
-  if (due === undefined || event.at < due.at) {
+  if (due === undefined || at < due.at) {
     return null;
   }
 
@@ -410,7 +437,7 @@ function overdueSynchronousGoods(
   if (!closed.ok) {
     return closed;
   }
-  const late = fromExpired(closed.order, event);
+  const late = then(closed.order);
   if (!late.ok) {
     return late;
   }
@@ -938,11 +965,14 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
     case "handler_delivered":
       return overdueSynchronousGoods(order, event) ?? deliverGoods(order, event.at);
     case "handler_refused":
-      return resolveFulfillmentFailure(order, {
-        cause: "merchant_refused",
-        code: event.code,
-        message: event.message,
-      });
+      return (
+        overdueSynchronousRefusal(order, event.at) ??
+        resolveFulfillmentFailure(order, {
+          cause: "merchant_refused",
+          code: event.code,
+          message: event.message,
+        })
+      );
     case "handler_undelivered": {
       // A silence noticed about an order already taken on is not a delivery
       // that failed: the merchant answered, only later than we waited.

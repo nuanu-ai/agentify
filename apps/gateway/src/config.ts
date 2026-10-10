@@ -686,6 +686,34 @@ function arithmeticProblems(deadlines: DeadlineConfig): string[] {
 }
 
 /**
+ * Why a synchronous sale could not survive a handler that throws once, or null
+ * where it can.
+ *
+ * A handler that throws is the merchant's temporary failure, and the portal
+ * tells him to throw rather than refuse so that the order comes again. In the
+ * synchronous mode it comes again only if a second attempt fits before the
+ * answer's deadline: the wait for the first answer, the time the queue takes
+ * to notice that wait is over, and the delay before the next attempt. That
+ * middle number belongs to the queue, so this is asked where the queue is
+ * chosen rather than when the configuration is read; a queue that fires its
+ * reminders at their moment passes zero.
+ */
+export function secondAttemptProblem(config: GatewayConfig, reminderPollMs: number): string | null {
+  const { syncResponseMs, handlerAnswerMs } = config.deadlines;
+  const firstRedeliveryMs = config.redelivery.baseDelayMs;
+  const secondAttempt = handlerAnswerMs + reminderPollMs + firstRedeliveryMs;
+  if (secondAttempt < syncResponseMs) {
+    return null;
+  }
+  return (
+    `a synchronous answer has ${syncResponseMs}ms and leaves no room for a second attempt: ` +
+    `the wait for the first answer (${handlerAnswerMs}ms), the queue noticing it ` +
+    `(${reminderPollMs}ms) and the delay before the next (${firstRedeliveryMs}ms) come to ` +
+    `${secondAttempt}ms`
+  );
+}
+
+/**
  * Reads the configuration from the environment and names every problem at
  * once rather than the first one it runs into: the engineer bringing the
  * gateway up learns the whole list in one go, not one variable per restart.

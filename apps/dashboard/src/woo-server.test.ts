@@ -753,8 +753,8 @@ describe("importing the catalogue", () => {
   it("publishes a physical product as a parcel, once the merchant has given the shop's site", async () => {
     // The door holds a parcel's card back from a merchant with no site
     // (ADR-0034), because the site is where a buyer asks about a parcel that
-    // did not come. The import says so in the door's words; it never fills
-    // the site in on the merchant's behalf.
+    // did not come. The import says so; it never fills the site in on the
+    // merchant's behalf.
     const running = await started({
       catalogue: async () => ({
         ok: true,
@@ -789,6 +789,33 @@ describe("importing the catalogue", () => {
     expect(listed).toHaveLength(1);
     expect(listed[0]?.card).toMatchObject({ fulfillment: "ship", ship_within_seconds: 604_800 });
     expect(listed[0]?.card.result).toBeUndefined();
+  });
+
+  it("tells an owner whose parcel is held for want of the shop's site to set it in Settings", async () => {
+    // The door's own words for a missing site name the call a merchant's code
+    // makes. The person who pressed Import sets the site in Settings, and an
+    // instruction to call the API is one they cannot follow from here.
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [aProduct({ virtual: false, downloadable: false, downloads: [] })],
+      }),
+      inspectProduct: async () => ({
+        ok: true,
+        product: {
+          kind: "parcel",
+          productId: "11",
+          price: { amount: "25.00", currency: "USD" },
+          fingerprint: "accepted-parcel-fingerprint",
+        },
+      }),
+    });
+    await connected(running);
+
+    const held = readable((await running.post("/woocommerce/import")).html);
+
+    expect(held).toMatch(/shop's site in Settings/);
+    expect(held).not.toMatch(/\/v0\//);
   });
 
   it("keeps imported cards when the merchant forgets the shop", async () => {
@@ -1075,6 +1102,32 @@ describe("importing the catalogue", () => {
     expect(running.read).toEqual([]);
   });
 
+  it("is not offered on the live channel, where it does not work", async () => {
+    // The connector works on the test channel only, and its own words say so.
+    // Offered on the live one, an owner is left to infer the limit from a page
+    // that invites them in.
+    const running = await started({ channel: "live" });
+    await running.signIn();
+
+    const shopScreen = await running.get("/woocommerce");
+    const integrations = await running.get("/integrations");
+
+    expect(shopScreen.status).toBe(404);
+    expect(integrations.status).toBe(200);
+    expect(integrations.html).not.toContain("/woocommerce");
+    // Nor do the addresses a shop sends its keys and its owner back to answer:
+    // nothing on live can have started a grant for them to finish.
+    const keys = await running.postJson("/woocommerce/callback", {
+      key_id: 2,
+      user_id: "a-token-nobody-issued",
+      consumer_key: "ck_a-key-from-the-shop",
+      consumer_secret: "cs_a-secret-from-the-shop",
+      key_permissions: "read_write",
+    });
+    expect(keys.status).toBe(404);
+    expect((await running.get("/woocommerce/return?success=1")).status).toBe(404);
+  });
+
   it("says a wallet is needed on the shop screen, before Import is pressed", async () => {
     const running = await started({ channel: "test", fresh: "named" });
     await connected(running);
@@ -1310,19 +1363,12 @@ describe("importing the catalogue", () => {
 
   describe("agrees with the publish door about what the merchant lacks", () => {
     // The promise: a merchant is told the same thing by the dashboard as by the
-    // door their cards go through, on every channel. The dashboard stops an
-    // import before the shop is read for exactly the settings the door would
-    // refuse every card for, names them, and names nothing the door would not
-    // ask for. The operator's approval is the one fact the dashboard cannot
-    // read, so it agrees about approval by never claiming it either way. Where
-    // the line is drawn because a setting is missing, it says this page cannot
-    // tell exactly where the door asks for approval. Where no setting is
-    // missing no line is drawn, and on live the import goes ahead and the door
-    // answers card by card: the dashboard saying nothing there is a limit of
-    // what it can read, not a claim that nothing is missing.
-    //
-    // Each merchant here is made through the gateway's registration door and
-    // never approved, so on live the door always asks for the approval as well.
+    // door their cards go through, on every channel the connector is offered
+    // on. The dashboard stops an import before the shop is read for exactly the
+    // settings the door would refuse every card for, names them, and names
+    // nothing the door would not ask for. The live channel is not here: the
+    // connector is not offered there, so the operator's approval, which the
+    // door asks for on live alone, is never a reason this page gives.
     const A_CARD = {
       merchant_item_id: "a-guide",
       title: "A guide",
@@ -1356,7 +1402,7 @@ describe("importing the catalogue", () => {
       ...(/wallet/i.test(line) ? [MERCHANT_FINDINGS.NO_PAYOUT_WALLET] : []),
     ];
 
-    for (const channel of Object.keys(CHANNELS) as Channel[]) {
+    for (const channel of ["sandbox", "test"] as const) {
       for (const [hasName, hasWallet] of [
         [false, false],
         [true, false],
@@ -1380,22 +1426,14 @@ describe("importing the catalogue", () => {
             // The fixture took: a wallet saved is a wallet the door has.
             expect(door).not.toContain(MERCHANT_FINDINGS.NO_PAYOUT_WALLET);
           }
-          const settable = door.filter((code) => code !== MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
-          const approvalAsked = door.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
-
           const before = lineIn((await running.get("/woocommerce")).html);
           const pressed = await running.post("/woocommerce/import");
           const after = lineIn(pressed.html);
 
-          expect(named(before)).toStrictEqual(settable);
-          expect(pressed.status).toBe(settable.length === 0 ? 200 : 409);
-          if (settable.length > 0) {
-            expect(named(after)).toStrictEqual(settable);
-            expect(/approv/i.test(before), before).toBe(approvalAsked);
-            expect(/approv/i.test(after), after).toBe(approvalAsked);
-            if (approvalAsked) {
-              expect(after).toMatch(/cannot tell/i);
-            }
+          expect(named(before)).toStrictEqual(door);
+          expect(pressed.status).toBe(door.length === 0 ? 200 : 409);
+          if (door.length > 0) {
+            expect(named(after)).toStrictEqual(door);
           }
         });
       }

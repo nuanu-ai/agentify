@@ -55,7 +55,7 @@ export const ShipToSchema = z
   })
   .meta({
     description:
-      "Where a parcel goes, in the Agentic Commerce Protocol's names. A name, a first line, a city, a country and a phone are required; the country is ISO 3166-1 alpha-2 and a state, where given, is its subdivision code without the country in front. Whether a state or a postal code is needed here, and whether the merchant ships to this place, is the merchant's to answer. The address passes through Agentify: the merchant's price question receives only its locality, the merchant receives the whole of it once the order is paid, and Agentify erases its copy once the merchant takes the order on, or the order ends without them.",
+      "Where a parcel goes, in the Agentic Commerce Protocol's names. A name, a first line, a city, a country and a phone are required; the country is ISO 3166-1 alpha-2 and a state, where given, is its subdivision code without the country in front. Whether a state or a postal code is needed here, and whether the merchant ships to this place, is the merchant's to answer. The price on a parcel's card is the goods alone; a purchase is priced for the address it names, with shipping to it included. The address passes through Agentify: the merchant's price question receives only its locality, the merchant receives the whole of it once the order is paid, and Agentify erases its copy once the merchant takes the order on, or the order ends without them.",
   });
 
 /** Where a parcel goes as its price is asked: the place, not the person. */

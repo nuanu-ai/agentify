@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { newOrder, reach, T0, walk } from "./fixtures.js";
 import type { OrderState } from "./model.js";
 import { ORDER_STATES } from "./model.js";
-import { ORDER_OUTCOMES, onTheMerchantsOpenList, outcomeFor } from "./outcome.js";
+import {
+  ENDING_REASONS,
+  endingReasonFor,
+  ORDER_OUTCOMES,
+  onTheMerchantsOpenList,
+  outcomeFor,
+} from "./outcome.js";
 
 /**
  * The projection an agent reads. The promise it carries is the fifth gate: the
@@ -180,5 +186,67 @@ describe("what the agent is told an order came to", () => {
     const closed = walk(reach("refund_due"), [{ kind: "deliver_called", at: T0 + 999 }]);
 
     expect(outcomeFor(closed)).toBe("delivered");
+  });
+});
+
+/**
+ * Why an order ended, where its merchant did not say. One status word can
+ * cover endings that call for different next steps — a product that is gone,
+ * a price check nobody answered, a charge that did not go through — and an
+ * agent that cannot tell them apart either gives up on a seller worth trying
+ * again or keeps trying one that will never sell. The merchant's own words
+ * stay in the refusal and are never given a reason of ours.
+ */
+describe("why an order ended, where its merchant did not say", () => {
+  it("names the endings that one status word would otherwise blur", () => {
+    const priced = newOrder("sync", { priceCheck: "merchant" });
+    const asyncPriced = newOrder("async", { priceCheck: "merchant" });
+    const dispatched = reach("dispatched");
+    const due = (dispatched.timestamps.paidAt ?? 0) + dispatched.policy.deadlines.syncResponseMs;
+
+    const cases = [
+      [walk(priced, [{ kind: "quote_answered", at: T0 + 1, available: false }]), "unavailable"],
+      [walk(asyncPriced, [{ kind: "quote_silent", at: T0 + 1 }]), "price_check_unanswered"],
+      [
+        walk(newOrder("async"), [
+          { kind: "payment_verified", at: T0 + 1 },
+          { kind: "payment_settle_failed", at: T0 + 2 },
+        ]),
+        "payment_not_settled",
+      ],
+      [
+        walk(newOrder("sync"), [
+          {
+            kind: "deadline_expired",
+            at: T0 + newOrder("sync").policy.deadlines.quoteTtlMs,
+            deadline: "quote_expiry",
+          },
+        ]),
+        "price_expired",
+      ],
+      [
+        walk(dispatched, [{ kind: "deadline_expired", at: due, deadline: "sync_response" }]),
+        "merchant_timed_out",
+      ],
+    ] as const;
+
+    for (const [order, reason] of cases) {
+      expect(endingReasonFor(order), reason).toBe(reason);
+      expect(["rejected", "expired"]).toContain(outcomeFor(order));
+    }
+    expect(new Set(cases.map(([, reason]) => reason))).toStrictEqual(new Set(ENDING_REASONS));
+  });
+
+  it("gives no reason of ours where the merchant refused, or where the status says it all", () => {
+    expect(endingReasonFor(reach("failed"))).toBeNull();
+    for (const state of [
+      "created",
+      "dispatched",
+      "delivered",
+      "refund_due",
+      "delivered_unpaid",
+    ] as const) {
+      expect(endingReasonFor(reach(state)), state).toBeNull();
+    }
   });
 });

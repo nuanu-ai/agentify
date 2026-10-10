@@ -358,7 +358,7 @@ describe("a purchase from the outside", () => {
       const accepted = await gateway.call(
         "POST",
         `/v0/orders/${encodeURIComponent(orderId)}/accept`,
-        { body: { eta_seconds: 120 }, headers: { authorization: `Bearer ${MERCHANT_KEY}` } },
+        { body: {}, headers: { authorization: `Bearer ${MERCHANT_KEY}` } },
       );
       expect(accepted.status).toBe(200);
       expect(accepted.body).toStrictEqual({ ok: true });

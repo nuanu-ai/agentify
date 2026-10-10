@@ -11,9 +11,16 @@
  * mode, exactly as ADR-0002 §3 says.
  */
 
-import type { Environment, MerchantSelling, TransitionRejection } from "@agentify/core";
+import type {
+  Environment,
+  MerchantSelling,
+  OrderState,
+  PaymentVerificationFailure,
+  TransitionRejection,
+} from "@agentify/core";
 import {
   createOrder,
+  deadlines,
   fulfillmentDeadline,
   isOpen,
   onTheMerchantsOpenList,
@@ -695,6 +702,15 @@ export class Gateway {
     return registered.id;
   }
 
+  /** Whether the operator has approved this merchant for live sales. */
+  async liveApproved(merchantId: string): Promise<boolean> {
+    const merchant = await this.runtime.store.merchantById(merchantId);
+    if (merchant === null) {
+      throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
+    }
+    return merchant.liveApprovedAt !== null;
+  }
+
   /**
    * What this merchant's products are sold under, as it stands.
    *
@@ -1238,6 +1254,39 @@ export class Gateway {
       return { step: "no_such_item" };
     }
 
+    // An order that is over with no money taken and no goods held takes no
+    // payment. Checking one would spend the payment layer's round trip and,
+    // were it refused, tell the agent to pay again for a price that is gone,
+    // so the agent is told where the purchase stands and nothing is checked.
+    if (
+      NOTHING_TO_PAY_FOR.includes(before.order.state) ||
+      (before.order.state === "expired" && !before.order.heldFulfillment)
+    ) {
+      return this.#wherePurchaseStands(orderId);
+    }
+
+    // A price holds for a fixed time, and a payment that arrives after it pays
+    // for a price that no longer holds. The timer that closes such an order can
+    // fire late, so a payment arriving after the price's life closes the order
+    // as the timer would have, before anything is verified or claimed, and the
+    // agent is told where its purchase stands. This covers the payment that
+    // arrives late, not one that arrives in time and is still being checked
+    // when the price runs out: the timer can close that order first.
+    const arrivedAt = this.runtime.clock();
+    const lapsed = deadlines(before.order).find(
+      (deadline) =>
+        (deadline.kind === "quote_expiry" || deadline.kind === "payment_after_confirmation") &&
+        deadline.at <= arrivedAt,
+    );
+    if (lapsed !== undefined) {
+      await this.runner.apply(orderId, {
+        kind: "deadline_expired",
+        at: lapsed.at,
+        deadline: lapsed.kind,
+      });
+      return this.#wherePurchaseStands(orderId);
+    }
+
     // The address a payment is for is the one its order was priced for
     // (ADR-0032), and it is settled here, before anything is verified: a
     // payment that names another is a different purchase, and the agent starts
@@ -1304,8 +1353,15 @@ export class Gateway {
     if (verified.verified !== true) {
       // Both ways a verification can fail carry their own message, and the
       // agent is told it whichever it was. What the two are told apart by is
-      // the retryable flag below, not by the words.
-      const why = verified.message;
+      // the retryable flag below. A refusal also says what to do next, because
+      // that differs by why the payment failed and nothing else tells the
+      // agent: a payment against a stale offer needs a new purchase, an empty
+      // wallet needs funding, a signature that does not check out needs
+      // signing again. In every case nothing was charged, and it says so.
+      const why =
+        verified.verified === false
+          ? `${verified.message}; nothing was charged: ${NEXT_STEP_AFTER[verified.reason]}`
+          : verified.message;
       console.warn(`[gateway] a payment for ${orderId} did not verify: ${why}`);
       return {
         step: "payment_not_verified",
@@ -1433,9 +1489,34 @@ export class Gateway {
         this.runner.purchases.giveUp(key);
       }
       await parked;
+      await this.#closeOverdueSynchronously(orderId);
     }
 
     return this.#wherePurchaseStands(orderId);
+  }
+
+  /**
+   * Closes a synchronous order whose merchant's deadline has passed on the
+   * clock, where the timer that closes it has not landed yet.
+   *
+   * The agent's wait ends on its budget, and the timer carrying the merchant's
+   * deadline comes off a queue that looks for due reminders every so often, so
+   * it can still be on its way when the wait is over. The agent is owed how its
+   * purchase ended rather than that it is still under way, so the order is
+   * closed here as that timer would close it. Only the merchant's deadline is
+   * applied: the charge has a clock of its own, the payment layer's, and an
+   * answer from it after that clock is ordinary rather than an ending.
+   */
+  async #closeOverdueSynchronously(orderId: string): Promise<void> {
+    const record = await this.runtime.store.orderById(orderId);
+    if (record === null || record.order.mode.settle !== "after_fulfillment") {
+      return;
+    }
+    const due = deadlines(record.order).find((deadline) => deadline.kind === "sync_response");
+    if (due === undefined || due.at > this.runtime.clock()) {
+      return;
+    }
+    await this.runner.apply(orderId, { kind: "deadline_expired", at: due.at, deadline: due.kind });
   }
 
   /**
@@ -1548,7 +1629,7 @@ export class Gateway {
    * machine refuses the hand-over, and passing it to a handler anyway would ask
    * a merchant to work on a purchase that is over.
    */
-  async poll(merchantId: string, waitMs: number): Promise<WorkerPollResponse> {
+  async poll(merchantId: string, waitMs: number, gone?: AbortSignal): Promise<WorkerPollResponse> {
     const { config, queue } = this.runtime;
     // The window is real time, as the queue's own wait is: it bounds how long a
     // worker's request is held, and the order clock has nothing to do with it.
@@ -1573,7 +1654,7 @@ export class Gateway {
     // has. Answered empty after its whole window, the SDK's worker does not rest
     // before it polls again.
     for (let passed = 1; ; passed += 1) {
-      const drawn = await queue.draw(merchantId, 1, Math.max(0, until - performance.now()));
+      const drawn = await queue.draw(merchantId, 1, Math.max(0, until - performance.now()), gone);
       if (drawn.length === 0) {
         return nothing;
       }
@@ -2274,6 +2355,21 @@ export class Gateway {
     return orderCallResponseOf(applied.answer);
   }
 }
+
+/** What an agent whose payment was refused does next, by why it was refused. */
+const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
+  price_stale:
+    "the offer it was made against no longer stands — the price moved, or the seller changed where they are paid — so start a new purchase for a fresh price and pay against that",
+  insufficient_funds: "fund the paying wallet and pay this order again while its price holds",
+  signature: "sign a new payment for this order and present it while its price holds",
+};
+
+/**
+ * The endings in which nothing was taken and nothing is held, so a payment
+ * has nothing left to buy. `expired` is one only without held goods, and is
+ * asked separately.
+ */
+const NOTHING_TO_PAY_FOR: readonly OrderState[] = ["failed", "rejected", "declined", "cancelled"];
 
 /**
  * Why the machine would not take a merchant's call, in words that are true.

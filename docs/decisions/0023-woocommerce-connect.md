@@ -1,9 +1,12 @@
 # 0023. A connected WooCommerce shop is a merchant credential we hold and fill orders with
 
 Date: 2026-09-14
-Status: accepted; the connector is experimental. Parcels were added on the
-product owner's word on 2026-10-09 and sell on the test channel only, as every
-parcel does (ADR-0033).
+Status: accepted; the connector is experimental and offered off the live
+channel only: there the dashboard mounts none of its screens and runs no
+worker, so a connection made there earlier stays unused and its cards' price
+questions go unanswered, refusing every sale before payment. Parcels were added
+on the product owner's word on 2026-10-09 and sell on the test channel only, as
+every parcel does (ADR-0033).
 
 ## Context
 

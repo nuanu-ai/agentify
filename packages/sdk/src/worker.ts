@@ -82,7 +82,7 @@ import { callRoute, type Gateway, REACH, type TransportFailure, whatIsKnown } fr
  */
 const andSoTheOrder = (failure: TransportFailure): string =>
   failure.reach === REACH.NOT_RECEIVED
-    ? ", so the order will be delivered again"
+    ? ", so the order counts as undelivered: it is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered"
     : ", so whether the order is delivered again is not something this side can say";
 
 /**
@@ -451,8 +451,11 @@ export interface RunningWorker {
    * Stops the loop and waits for it to finish. Safe to call twice.
    *
    * Two things are abandoned rather than finished, and they are not abandoned
-   * on the same terms. A poll parked at the gateway is dropped, and whatever
-   * it would have carried was never handed to anybody, so it is redelivered.
+   * on the same terms. A poll parked at the gateway is dropped, and the
+   * gateway stops it and keeps whatever arrives for the next poll; only
+   * something taken in the instant before the drop is lost, and that is an
+   * order, which comes again, or an event, which is sent once — the list of
+   * open orders is what finds a refund owed whose event went missing.
    * An answer already on its way — a delivery the handler produced a moment
    * ago — is dropped too, and there the honest thing to say is that nobody on
    * this side knows whether it arrived first: the order may already be closed
@@ -550,7 +553,7 @@ export const startWorker = (
         kind: WORKER_PROBLEM_KINDS.NO_HANDLER,
         fatal: false,
         subject: order.id,
-        message: `order ${order.id} arrived and no handler was registered with on('${REGISTERED_AS.order}'), so it was left unanswered and will be delivered again`,
+        message: `order ${order.id} arrived and no handler was registered with on('${REGISTERED_AS.order}'), so it was left unanswered: it is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered`,
       });
       return;
     }
@@ -565,7 +568,7 @@ export const startWorker = (
         fatal: false,
         cause,
         subject: order.id,
-        message: `the handler threw on order ${order.id}, so nothing was answered and the order will be delivered again: ${String(cause)}`,
+        message: `the handler threw on order ${order.id}, so nothing was answered and the order counts as undelivered — it is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered: ${String(cause)}`,
       });
       return;
     }
@@ -577,7 +580,7 @@ export const startWorker = (
         kind: WORKER_PROBLEM_KINDS.HANDLER_ANSWER_REFUSED,
         fatal: false,
         subject: order.id,
-        message: `the handler's answer for order ${order.id} is not one the contract carries, so nothing was sent and the order will be delivered again:\n${describeProblems(problemsOf(checked.error.issues))}`,
+        message: `the handler's answer for order ${order.id} is not one the contract carries, so nothing was sent and the order counts as undelivered — it is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered:\n${describeProblems(problemsOf(checked.error.issues))}`,
       });
       return;
     }
@@ -761,11 +764,20 @@ export const startWorker = (
             ? ` — what answered names contract version ${spoken} while this SDK speaks ${contractVersion}, which may mean the gateway is of another version`
             : "";
 
+        // A refusal that says waiting will not change it — a key revoked or
+        // never accepted is the case that matters — is still not taken as the
+        // end: one such answer from a proxy must not stop a merchant's worker
+        // for good. But it is said for what it is, because "asking again"
+        // alone reads as something that will pass, and a revoked key takes no
+        // new orders until it is replaced.
+        const settled = answer.failure.refusal?.retryable === false;
         failures += 1;
         report({
           kind: WORKER_PROBLEM_KINDS.POLL_FAILED,
           fatal: false,
-          message: `${answer.failure.reason}${remark} — asking again after a wait`,
+          message: settled
+            ? `${answer.failure.reason}${remark} — the gateway says asking again will not change this, and no new orders arrive until it is fixed (a revoked key has to be replaced); asking again after a wait in case it was not the gateway that answered`
+            : `${answer.failure.reason}${remark} — asking again after a wait`,
         });
         await rest(retryDelayMs(failures, clock.random()));
         continue;

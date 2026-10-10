@@ -744,7 +744,7 @@ const GATEWAY_BY_DEFAULT = `https://${SITES.test}`;
 
 const KEY_WORDS: Readonly<Record<Environment, string>> = {
   live: "You connected with a live key. A purchase from this console signs a payment with real money behind it.",
-  test: "You connected with a test key: payments settle with test funds, and every order and receipt is marked as a test.",
+  test: "You connected with a test key, and every order and receipt is marked as a test. On the test channel payments settle in test USDC on Base Sepolia; a local sandbox settles nothing at all, and only its log and its dashboard say so.",
 };
 
 const TAB_LINKS: readonly { readonly tab: Tab; readonly at: string; readonly label: string }[] = [

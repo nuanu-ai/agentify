@@ -39,6 +39,15 @@
 import type { DeadlineKind } from "@agentify/core";
 import type { WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 
+/**
+ * How often the Postgres queue looks for reminders that have fallen due, in
+ * milliseconds, and so the least a reminder can be late by. The configuration
+ * counts it into the arithmetic a synchronous sale has to fit; reminders due
+ * together are then taken in batches, and a full batch adds the time the one
+ * before it took.
+ */
+export const REMINDER_POLL_MS = 500;
+
 /** One delivery of one envelope, with the handle that finishes it. */
 export interface DrawnEnvelope {
   readonly envelope: WorkerEnvelope;
@@ -106,7 +115,16 @@ export interface Queue {
    * else's message to look at it, but by drawing from that merchant's stream
    * in the first place.
    */
-  draw(merchantId: string, max: number, waitMs: number): Promise<readonly DrawnEnvelope[]>;
+  draw(
+    merchantId: string,
+    max: number,
+    waitMs: number,
+    /**
+     * The worker who asked has gone: a draw still waiting stops, and takes
+     * nothing off the stream for nobody.
+     */
+    gone?: AbortSignal,
+  ): Promise<readonly DrawnEnvelope[]>;
 
   /**
    * This delivery has been answered; it does not come round again. The merchant
