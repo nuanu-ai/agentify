@@ -78,7 +78,7 @@ const methodologyPage = (): PublicEditorialPageModel => ({
         {
           kind: "notice",
           content:
-            "Coverage below 70% produces an incomplete, provisional result. Coverage below 30% produces no public score. Benchmarks stay hidden until at least thirty scans of the same segment have finished with coverage of 70% or more.",
+            "Coverage below 70% produces an incomplete, provisional result. Coverage below 30% produces no public score, and neither does a home page the site answers with a bot challenge or a refusal (401, 403 or 429), whatever the coverage. Benchmarks stay hidden until at least thirty scans of the same segment have finished with coverage of 70% or more.",
         },
         {
           kind: "list",
