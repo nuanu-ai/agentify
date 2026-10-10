@@ -77,7 +77,7 @@ statement() {
 }
 case "$args" in
   "config --no-interpolate") echo "name: agentify" ;;
-  '--profile * config --services') printf '%s\n' postgres migrate app scanner-migrate scanner scanner-worker web ;;
+  '--profile * config --services') [[ -n ${NO_SERVICES:-} ]] || printf '%s\n' postgres migrate app scanner-migrate scanner scanner-worker web ;;
   "--profile jobs config --format json") echo '{"services": {"scanner": {"environment": {"A": "1"}}}, "volumes": {"agentify-postgres": {"name": "agentify-postgres"}}}' ;;
   "config --images postgres") echo "postgres@sha256:pinned" ;;
   "stop --timeout 60 app scanner scanner-worker")
@@ -321,6 +321,14 @@ class Activation(unittest.TestCase):
         calls = self.calls()
         self.assertLess(calls.index("docker rm gateway"), calls.index("stack run --rm --no-deps -T migrate"))
         # Everything the revision defines is left to the steps that own it.
+        self.assertEqual(self.containers()["postgres"], "old running")
+
+    def test_an_empty_list_of_services_removes_nothing_and_puts_the_old_release_back(self):
+        # Read as it stands, an empty answer names every container as one the
+        # revision no longer defines, the database's among them.
+        said = self.run_script("activate", NO_SERVICES="1")
+        self.assertNotIn("exit 0", said)
+        self.assert_old_release_runs_on_old_data(said)
         self.assertEqual(self.containers()["postgres"], "old running")
 
     def test_the_record_is_written_before_the_dump_and_says_started_before_the_new_release_starts(self):
