@@ -587,6 +587,27 @@ describe("the status an agent reads", () => {
     expect(AgentOrderStatusSchema.parse({ ...status, price: null }).price).toBeNull();
   });
 
+  it("says why an order ended where Agentify and not its merchant decided it", () => {
+    // A reason is a word to branch on and a sentence saying what to do next.
+    // Its words are an open set, like the status: a word a reader does not know
+    // falls through to the sentence rather than breaking the read.
+    const priceGone = {
+      ...status,
+      status: "expired",
+      reason: { code: "price_expired", message: "The price ran out; start a new purchase." },
+    };
+    const unknownWord = { ...priceGone, reason: { code: "a_later_word", message: "Ask again." } };
+
+    expect(AgentOrderStatusSchema.parse(priceGone)).toStrictEqual(priceGone);
+    expect(AgentOrderStatusSchema.parse(unknownWord).reason?.code).toBe("a_later_word");
+    expect(
+      AgentOrderStatusSchema.safeParse({
+        ...priceGone,
+        reason: { code: "price_expired", message: " " },
+      }).success,
+    ).toBe(false);
+  });
+
   it("names who sold it, so an agent with a question the order cannot answer knows where to go", () => {
     // ADR-0034: the shop's own site is where a parcel that did not arrive, a
     // return or the terms of the sale are taken, and the order is where an

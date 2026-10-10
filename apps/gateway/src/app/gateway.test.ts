@@ -1788,6 +1788,54 @@ describe("the price question", () => {
     expect(offered.order.order.closure).toStrictEqual({ cause: "unavailable" });
   });
 
+  it("tells the agent why, where the merchant's price check said there is none", async () => {
+    // A bare "rejected" is a product that is gone, a price check that went
+    // unanswered and a charge that failed, and the agent's next step differs
+    // between them. Where the ending was ours to name, the status names it,
+    // in a code to branch on and a sentence that says what to do next.
+    const harnessed = await started();
+    const itemId = await published(harnessed, livePriced(syncCard));
+    const worker = workUntilStopped(harnessed, {
+      onQuote: () => ({ available: false, as_of: "2026-08-26T12:00:00.000Z" }),
+    });
+    const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
+    await worker.stop();
+    if (offered.step !== "settled") throw new Error("the order was not closed");
+
+    const status = agentOrderStatusOf(
+      offered.order,
+      { name: null, site: null },
+      harnessed.runtime.config,
+    );
+
+    expect(status.status).toBe("rejected");
+    expect(status.reason?.code).toBe("unavailable");
+    expect(status.reason?.message).toMatch(/\S/);
+    expect(status.refusal).toBeUndefined();
+  });
+
+  it("gives a merchant's own refusal no reason of ours beside it", async () => {
+    const harnessed = await started();
+    const itemId = await published(harnessed, syncCard);
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ refused: { code: "out_of_stock", message: "No rooms left" } }),
+    });
+    const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const paid = await harnessed.gateway.payPurchase(offered.order.order.id, "P", "P");
+    await worker.stop();
+    if (paid.step !== "settled") throw new Error("the purchase did not end");
+
+    const status = agentOrderStatusOf(
+      paid.order,
+      { name: null, site: null },
+      harnessed.runtime.config,
+    );
+
+    expect(status.refusal).toStrictEqual({ code: "out_of_stock", message: "No rooms left" });
+    expect(status.reason).toBeUndefined();
+  });
+
   it("sells a silent synchronous card off its own snapshot", async () => {
     // ADR-0002 §3: where the merchant's live answer still stands between the
     // price and the charge, his silence is an open failure and the card's own

@@ -21,6 +21,7 @@ import {
   FulfillmentSchema,
   ORDER_CALL_ERROR_CODES,
   ORDER_CALL_RESULTS,
+  ORDER_ENDING_REASONS,
   ORDER_EVENT_TYPES,
   ORDER_STATUSES,
   SELLING_STATES,
@@ -36,13 +37,17 @@ import {
   MERCHANT_EVENTS,
   RECOMMENDED_REFUSAL_CODES,
 } from "./model.js";
-import { ORDER_OUTCOMES } from "./outcome.js";
+import { ENDING_REASONS, ORDER_OUTCOMES } from "./outcome.js";
 
 const asSet = (values: readonly string[]): ReadonlySet<string> => new Set(values);
 
 describe("the wire vocabulary and the machine speak one language", () => {
   it("agent-visible outcomes are the wire's order statuses, exactly", () => {
     expect(asSet(ORDER_OUTCOMES)).toStrictEqual(asSet(ORDER_STATUSES));
+  });
+
+  it("the reasons an order ended are the wire's known reasons, exactly", () => {
+    expect(asSet(ENDING_REASONS)).toStrictEqual(asSet(ORDER_ENDING_REASONS));
   });
 
   it("merchant events carry the wire's event names, exactly", () => {
