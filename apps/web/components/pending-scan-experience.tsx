@@ -19,12 +19,14 @@ export function PendingScanExperience({
   const [request, setRequest] = useState<PendingScanRequest | null>(null);
   const [state, setState] = useState<StartState>("starting");
   const [message, setMessage] = useState("Starting as soon as it is accepted.");
+  const [retryable, setRetryable] = useState(true);
   const started = useRef(false);
   const challengeRetried = useRef(false);
 
   const startScan = useCallback(async (pending: PendingScanRequest, turnstileToken?: string) => {
     setState("starting");
     setMessage("Starting as soon as it is accepted.");
+    setRetryable(true);
     try {
       await captureLandingAttribution(pending.segment, pending.variant, {
         pathname: pending.landingPath,
@@ -75,6 +77,7 @@ export function PendingScanExperience({
       }
 
       setState("error");
+      setRetryable(readRetryable(payload));
       setMessage(readErrorMessage(payload) ?? "The scan could not be accepted. Please retry.");
     } catch {
       setState("busy");
@@ -134,7 +137,7 @@ export function PendingScanExperience({
           ) : null}
           {!starting && state !== "challenge" ? (
             <div className={styles.actions}>
-              {request && state !== "hard-limit" ? (
+              {request && state !== "hard-limit" && retryable ? (
                 <button
                   className="button button-primary"
                   onClick={() => void startScan(request)}
@@ -162,6 +165,14 @@ export function PendingScanExperience({
 function readErrorCode(payload: unknown): string | null {
   const parsed = apiErrorEnvelopeSchema.safeParse(payload);
   return parsed.success ? parsed.data.error.code : null;
+}
+
+// A refusal says whether the same request could succeed later; an address the
+// scanner refuses never will. An answer that is not a refusal of ours, such as
+// a proxy's error page, says nothing either way, and a retry is left open.
+function readRetryable(payload: unknown): boolean {
+  const parsed = apiErrorEnvelopeSchema.safeParse(payload);
+  return parsed.success ? parsed.data.error.retryable : true;
 }
 
 function readErrorMessage(payload: unknown): string | null {
