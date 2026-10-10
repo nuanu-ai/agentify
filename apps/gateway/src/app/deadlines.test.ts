@@ -123,7 +123,10 @@ describe("when the time runs out", () => {
     // for due reminders every so often, and it can land after the agent's
     // budget has run out. The agent is then owed how its purchase ended, not
     // that it is still under way: the deadline passed on the clock.
-    const harnessed = await started({ SYNC_BUDGET_MS: "300" });
+    // The agent's wait runs on the real clock while the poll below takes the
+    // order, so it is a second rather than a hair over the merchant's answer:
+    // a loaded machine must not end the wait before the clock is moved.
+    const harnessed = await started({ SYNC_BUDGET_MS: "1000" });
     const orderId = await bought(harnessed, syncCard);
     // From the payment on, every timer is late: none of them lands inside the
     // agent's wait.

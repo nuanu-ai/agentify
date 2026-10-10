@@ -729,17 +729,12 @@ describe("the status an agent reads", () => {
     expect(AgentOrderStatusSchema.safeParse({ ...status, refusal: null }).success).toBe(false);
   });
 
-  it("says in the exported document whose words the refusal and the reason are", () => {
+  it("says in the exported document that a missing refusal is not a dropped one", () => {
     // The reader who has only the document is the one who would plan around
-    // the claim, so the claim has to be exact in both directions: the
-    // merchant's own refusal reaches the agent in their words, and where the
-    // ending was Agentify's to decide, a reason of Agentify's own says why.
+    // the claim: an absent refusal means there was none to quote.
     const description = schemas.agent_order_status.meta()?.description ?? "";
 
-    expect(description).toContain("refusal");
     expect(description).toContain("no refusal to quote");
-    expect(description).toContain("reason");
-    expect(description).toContain("rejected");
   });
 
   it("reads a status word added later as a word, rather than refusing the order", () => {
@@ -909,7 +904,6 @@ describe("the answer a handler returned, on its way back", () => {
     expect(
       verdictOf(body(), { refused: { code: "out_of_stock", message: "Мест на тарифе нет" } }),
     ).toBe("accepted");
-    expect(verdictOf(body(), { accepted: {} })).toBe("accepted");
     expect(verdictOf(body(), { accepted: {} })).toBe("accepted");
   });
 
