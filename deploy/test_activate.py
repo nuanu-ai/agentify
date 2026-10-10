@@ -77,6 +77,7 @@ statement() {
 }
 case "$args" in
   "config --no-interpolate") echo "name: agentify" ;;
+  '--profile * config --services') printf '%s\n' postgres migrate app scanner-migrate scanner scanner-worker web ;;
   "--profile jobs config --format json") echo '{"services": {"scanner": {"environment": {"A": "1"}}}, "volumes": {"agentify-postgres": {"name": "agentify-postgres"}}}' ;;
   "config --images postgres") echo "postgres@sha256:pinned" ;;
   "stop --timeout 60 app scanner scanner-worker")
@@ -137,6 +138,9 @@ case "$args" in
       [[ -f $W/containers/$c ]] || { echo "Error: No such object: $c" >&2; exit 1; }
       if [[ $c == postgres ]]; then echo "${POSTGRES_IMAGE:-sha256:pinned}"; else echo "sha256:$(cut -d' ' -f1 $W/containers/$c)-$c"; fi
     done ;;
+  "inspect -f {{index .Config.Labels \"com.docker.compose.service\"}} "*) echo "${args##* }" ;;
+  "stop --time 60 "*) sed -i 's/running/exited/' "$W/containers/${args##* }" ;;
+  "rm "*) rm -f "$W/containers/${args##* }" ;;
   "image inspect -f {{index .Config.Labels \"org.opencontainers.image.revision\"}} "*) echo "${REV:-$NEW}" ;;
   "image inspect -f {{.Id}} postgres@sha256:pinned") echo "sha256:pinned" ;;
   "image inspect -f {{.Id}} ghcr.io/nuanu-ai/agentify-app@"*) echo "sha256:new-app" ;;
@@ -303,6 +307,21 @@ class Activation(unittest.TestCase):
         self.assertTrue(point.endswith(f"-{OLD}-before-{NEW}"), point)
         self.assertEqual((self.root / "backups/test" / point / "agentify.dump").read_text().strip(), ORIGINAL["agentify"])
         self.assertEqual((self.record(), self.current()), (None, NEW))
+
+    def test_a_service_the_revision_no_longer_defines_is_removed_before_the_migrations(self):
+        # A service renamed or merged into another is no container the new
+        # revision starts or stops, and left running it keeps the old release's
+        # code on the database and its queues while the new release migrates
+        # them. The gateway and the dashboard became `app` and ran on beside it,
+        # on both channels, until a person removed them.
+        (self.world / "containers" / "gateway").write_text("old running\n")
+        said = self.run_script("activate")
+        self.assertIn("exit 0", said)
+        self.assertNotIn("gateway", self.containers())
+        calls = self.calls()
+        self.assertLess(calls.index("docker rm gateway"), calls.index("stack run --rm --no-deps -T migrate"))
+        # Everything the revision defines is left to the steps that own it.
+        self.assertEqual(self.containers()["postgres"], "old running")
 
     def test_the_record_is_written_before_the_dump_and_says_started_before_the_new_release_starts(self):
         said = self.run_script("activate")
