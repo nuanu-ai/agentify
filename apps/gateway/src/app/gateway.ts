@@ -2120,10 +2120,20 @@ export class Gateway {
     // uses for the machine's own refusals, and the fields that did not fit are
     // still named: what he sent is his to know either way, and it is the
     // ending rather than the misfit that decides what he can do next.
-    if (!isOpen(record.order.state)) {
+    //
+    // A synchronous order past its deadline has ended whether or not the timer
+    // that closes it has fired yet: the machine decides its goods by the
+    // instant they arrive, and this has to say the same about goods that do
+    // not fit, or a sale already over is called worth delivering to again.
+    const ending = isOpen(record.order.state)
+      ? this.#overdueSynchronously(record)
+        ? "expired"
+        : null
+      : record.order.state;
+    if (ending !== null) {
       return {
         code: "delivery_does_not_match_card",
-        message: `${goods} — and this order ended as ${record.order.state}, so there is nothing left to deliver against — ${misfits}`,
+        message: `${goods} — and this order ended as ${ending}, so there is nothing left to deliver against — ${misfits}`,
         retryable: false,
         problems,
       };
@@ -2139,6 +2149,15 @@ export class Gateway {
       retryable: true,
       problems,
     };
+  }
+
+  /** Whether a synchronous order's deadline has passed, fired or not. */
+  #overdueSynchronously(record: StoredOrder): boolean {
+    if (record.order.mode.settle !== "after_fulfillment") {
+      return false;
+    }
+    const due = fulfillmentDeadline(record.order)[0];
+    return due !== undefined && this.runtime.clock() >= due.at;
   }
 
   /**
