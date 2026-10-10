@@ -780,7 +780,7 @@ describe("initial database migration", () => {
         payload: string;
       }>(
         "select count(*)::text as count, string_agg(payload::text, '') as payload from delivery_outbox where event_id = $1",
-        [runtimeAllowed.eventId],
+        [runtimeAllowed?.eventId],
       );
       expect(runtimeAllowedOutbox.rows[0]?.count).toBe("2");
       expect(runtimeAllowedOutbox.rows[0]?.payload).not.toMatch(/example\.com|token=nope/i);
@@ -801,6 +801,8 @@ describe("initial database migration", () => {
           }),
         ],
       );
+      // A visitor who allowed no optional measurement leaves no event behind,
+      // for the dashboard to count or for any destination to receive.
       const denied = await emitStoredBusinessEvent(db, {
         name: "landing_view",
         identifiers: {
@@ -813,11 +815,48 @@ describe("initial database migration", () => {
         segment: "store",
         landingVariant: "store-denied-v1",
       });
-      const deniedOutbox = await pool.query<{ count: string }>(
-        "select count(*)::text as count from delivery_outbox where event_id = $1",
-        [denied.eventId],
+      expect(denied).toBeUndefined();
+      const deniedEvents = await pool.query<{ count: string }>(
+        "select count(*)::text as count from analytics_events where consent_snapshot_id = $1",
+        [deniedConsentId],
       );
-      expect(deniedOutbox.rows[0]?.count).toBe("0");
+      expect(deniedEvents.rows[0]?.count).toBe("0");
+
+      // Ads measurement alone is a choice to be measured: the event is kept,
+      // and only the destination that choice allows receives it.
+      const adsOnlyConsentId = createUuidV7();
+      await pool.query(
+        "insert into consent_snapshots (id, session_id, policy_version, categories, source) values ($1, $2, 'consent-v1.0.0', $3, 'api')",
+        [
+          adsOnlyConsentId,
+          sessionId,
+          JSON.stringify({
+            essential_processing: true,
+            product_analytics: false,
+            ads_measurement: true,
+            marketing_email: false,
+            dataset_reuse: false,
+            card_signal: false,
+          }),
+        ],
+      );
+      const adsOnly = await emitStoredBusinessEvent(db, {
+        name: "landing_view",
+        identifiers: {
+          session_id: sessionId,
+          variant: "store-ads-only-v1",
+          day: "2026-07-12",
+        },
+        sessionId,
+        consentSnapshotId: adsOnlyConsentId,
+        segment: "store",
+        landingVariant: "store-ads-only-v1",
+      });
+      const adsOnlyOutbox = await pool.query<{ destination: string }>(
+        "select destination from delivery_outbox where event_id = $1",
+        [adsOnly?.eventId],
+      );
+      expect(adsOnlyOutbox.rows).toEqual([{ destination: "meta" }]);
 
       process.env.ANALYTICS_RUNTIME_ENV = "preview";
       process.env.POSTHOG_DESTINATION_ENV = "production";

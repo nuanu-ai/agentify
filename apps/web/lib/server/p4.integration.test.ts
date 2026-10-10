@@ -199,10 +199,14 @@ async function reportFor(id: string, cookie: string | undefined) {
   return await getFullReport(id, await visitorOf(cookie));
 }
 
-async function registrationEventsFor(id: string) {
+/**
+ * How many registrations a scan has, read from the record of them, which is
+ * kept whatever the visitor chose about measurement.
+ */
+async function registrationsFor(id: string) {
   return (
     await getDatabase().pool.query<{ count: string }>(
-      "select count(*)::text as count from analytics_events where scan_id = $1 and name = 'registration_completed'",
+      "select count(*)::text as count from waitlist_entries where scan_id = $1",
       [id],
     )
   ).rows[0]?.count;
@@ -243,11 +247,14 @@ beforeAll(async () => {
     id: sessionId,
     anonymousIdHash: hmacHex(tokenHmacSecret, "anonymous", anonymousToken),
   });
+  // The visitor these tests follow allowed product analytics, so the funnel
+  // events their steps leave can be counted; a visitor who allowed nothing
+  // optional has a test of their own.
   await db.insert(consentSnapshots).values({
     id: consentId,
     sessionId,
     policyVersion: "phase-a-v1",
-    categories: { essential_processing: true },
+    categories: { essential_processing: true, product_analytics: true },
     source: "test",
   });
   await db.update(sessions).set({ consentSnapshotId: consentId }).where(eq(sessions.id, sessionId));
@@ -489,6 +496,133 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(await getScanStatus(plain.scan.id, plain.accessToken)).not.toHaveProperty("blocked");
   });
 
+  it("records nothing of a visit until its visitor allows optional measurement", async () => {
+    const { db, pool } = getDatabase();
+    // The browser's cookie, as the consent route sets it when the visitor
+    // first makes a choice.
+    let cookie = "";
+    const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
+      new NextRequest(`http://localhost:3000${path}`, {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+          ...headers,
+        },
+        body: JSON.stringify(body),
+      });
+    const campaign = {
+      segment: "store",
+      landing_variant: "store-v1",
+      touch: { utm_source: "newsletter", utm_campaign: "autumn" },
+    };
+    const choose = (productAnalytics: boolean) =>
+      persistConsent(
+        post(
+          "/api/v1/consent",
+          {
+            policy_version: CONSENT_POLICY_VERSION,
+            categories: {
+              essential_processing: true,
+              product_analytics: productAnalytics,
+              ads_measurement: false,
+              marketing_email: false,
+              dataset_reuse: false,
+              card_signal: false,
+            },
+          },
+          { cookie },
+        ),
+      );
+    const landingView = () =>
+      persistClientEvent(
+        post(
+          "/api/v1/events",
+          {
+            event_id: createUuidV7(),
+            name: "landing_view",
+            segment: "store",
+            landing_variant: "store-v1",
+            properties: {},
+          },
+          { cookie },
+        ),
+      );
+    const sessionCount = async () =>
+      (await pool.query<{ count: string }>("select count(*)::text as count from sessions")).rows[0]
+        ?.count;
+    const visitorSession = async () =>
+      (
+        await db
+          .select()
+          .from(sessions)
+          .where(
+            eq(
+              sessions.anonymousIdHash,
+              hmacHex(tokenHmacSecret, "anonymous", cookie.split("=")[1] ?? ""),
+            ),
+          )
+      )[0];
+    const eventsOf = async (sessionId: string) =>
+      (
+        await pool.query<{ name: string }>(
+          "select name from analytics_events where session_id = $1 order by name",
+          [sessionId],
+        )
+      ).rows.map(({ name }) => name);
+
+    // A first visit, before any choice: no session is opened for it and no
+    // cookie is set to follow it.
+    const sessionsBefore = await sessionCount();
+    const firstVisit = await persistAttribution(post("/api/v1/attribution", campaign));
+    expect(firstVisit.status).toBe(204);
+    expect(firstVisit.headers.get("set-cookie")).toBeNull();
+    expect(await sessionCount()).toBe(sessionsBefore);
+
+    // "Essential only": the choice itself is kept, and nothing of the visit.
+    const essentialOnly = await choose(false);
+    expect(essentialOnly.status).toBe(201);
+    cookie =
+      /agentify_anonymous=[^;]+/.exec(essentialOnly.headers.get("set-cookie") ?? "")?.[0] ?? "";
+    expect(cookie).not.toBe("");
+    expect(
+      (await persistAttribution(post("/api/v1/attribution", campaign, { cookie }))).status,
+    ).toBe(204);
+    expect((await landingView()).status).toBe(204);
+    const accepted = await acceptScan(
+      post(
+        "/api/v1/scans",
+        {
+          url: "https://essential-only.example/",
+          segment: "store",
+          landing_variant: "store-v1",
+          turnstile_token: null,
+        },
+        {
+          cookie,
+          "idempotency-key": `essential-only-${createUuidV7()}`,
+          "x-forwarded-for": "203.0.113.44",
+        },
+      ),
+    );
+    expect(accepted.status).toBe(202);
+    const declined = await visitorSession();
+    expect(declined).toMatchObject({ lastUtmSource: null, lastUtmCampaign: null });
+    expect(await eventsOf(declined?.id ?? "")).toEqual([]);
+
+    // Allowing product analytics: from then on the visit is recorded.
+    expect((await choose(true)).status).toBe(201);
+    expect(
+      (await persistAttribution(post("/api/v1/attribution", campaign, { cookie }))).status,
+    ).toBe(204);
+    expect((await landingView()).status).toBe(200);
+    expect(await visitorSession()).toMatchObject({
+      lastUtmSource: "newsletter",
+      lastUtmCampaign: "autumn",
+    });
+    expect(await eventsOf(declined?.id ?? "")).toEqual(["landing_view"]);
+  });
+
   it("keeps attribution neutral and both accepted registration links usable", async () => {
     const { db } = getDatabase();
     const attributionRequest = (campaign: string, fbclidHash: string) =>
@@ -561,7 +695,7 @@ describe("P4 dashboard-owned scanner identity", () => {
           policy_version: CONSENT_POLICY_VERSION,
           categories: {
             essential_processing: true,
-            product_analytics: false,
+            product_analytics: true,
             ads_measurement: adsMeasurement,
             marketing_email: false,
             dataset_reuse: false,
@@ -658,7 +792,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(
       await db.select().from(leadScans).where(eq(leadScans.leadId, ownerLead.id)),
     ).toHaveLength(1);
-    expect(await registrationEventsFor(scanId)).toBe("1");
+    expect(await registrationsFor(scanId)).toBe("1");
   });
 
   it("finishes the request its own link was asked for at the session's first visit, once across tabs", async () => {
@@ -682,7 +816,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(report?.checks).toHaveLength(18);
     expect(other).toMatchObject({ kind: "person", email });
     expect(header).toMatchObject({ kind: "person", email });
-    expect(await registrationEventsFor(scan.id)).toBe("1");
+    expect(await registrationsFor(scan.id)).toBe("1");
     const formConsents = async () =>
       (
         await db
@@ -712,7 +846,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     ).toHaveLength(1);
     // A later visit finds it finished and does nothing more.
     await visitorOf(cookie);
-    expect(await registrationEventsFor(scan.id)).toBe("1");
+    expect(await registrationsFor(scan.id)).toBe("1");
     expect(await formConsents()).toBe(1);
   });
 
@@ -733,7 +867,7 @@ describe("P4 dashboard-owned scanner identity", () => {
         await db.select().from(registrationIntents).where(eq(registrationIntents.id, link.request)),
       ).consumedAt,
     ).toBeNull();
-    expect(await registrationEventsFor(scan.id)).toBe("0");
+    expect(await registrationsFor(scan.id)).toBe("0");
   });
 
   it("leaves a request that has waited past its hour to expire", async () => {
@@ -752,7 +886,7 @@ describe("P4 dashboard-owned scanner identity", () => {
       leadId: null,
     });
 
-    expect(await registrationEventsFor(scan.id)).toBe("0");
+    expect(await registrationsFor(scan.id)).toBe("0");
     expect(await reportFor(scan.id, pressLink(link))).toBeUndefined();
   });
 
