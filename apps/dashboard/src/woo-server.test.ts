@@ -1075,6 +1075,20 @@ describe("importing the catalogue", () => {
     expect(running.read).toEqual([]);
   });
 
+  it("is not offered on the live channel, where it does not work", async () => {
+    // The connector works on the test channel only, and its own words say so.
+    // Offered on the live one, an owner is left to infer the limit from a page
+    // that invites them in.
+    const running = await started({ channel: "live" });
+
+    const shopScreen = await running.get("/woocommerce");
+    const integrations = await running.get("/integrations");
+
+    expect(shopScreen.status).toBe(404);
+    expect(integrations.status).toBe(200);
+    expect(integrations.html).not.toContain("/woocommerce");
+  });
+
   it("says a wallet is needed on the shop screen, before Import is pressed", async () => {
     const running = await started({ channel: "test", fresh: "named" });
     await connected(running);
