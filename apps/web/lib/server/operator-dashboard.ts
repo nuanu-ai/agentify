@@ -7,6 +7,10 @@ import { getDatabase } from "./database";
  * field, token or raw browser evidence does. They are queries here rather
  * than views in the database, because a database built from the migrations
  * alone has to answer this page too.
+ *
+ * The analytics events hold only visitors who allowed optional measurement,
+ * so a number read from them counts those visitors and no others, and the page
+ * says so beside it. Scans and registrations are read from their own records.
  */
 const OVERVIEW = `
   select
@@ -17,7 +21,7 @@ const OVERVIEW = `
     (select count(*)::bigint from public.scans where accepted_at >= now() - interval '30 days') as scans_30d,
     (select count(*)::bigint from public.scans where accepted_at >= now() - interval '30 days' and status in ('completed', 'partial')) as completed_scans_30d,
     (select count(distinct target_hash)::bigint from public.scans where accepted_at >= now() - interval '30 days') as unique_sites_30d,
-    (select count(*)::bigint from public.analytics_events where name = 'registration_completed' and occurred_at >= now() - interval '30 days') as verified_registrations_30d,
+    (select count(*)::bigint from public.waitlist_entries where created_at >= now() - interval '30 days') as verified_registrations_30d,
     (select count(*)::bigint from public.analytics_events where name = 'result_shared' and occurred_at >= now() - interval '30 days') as shares_30d,
     (select count(*)::bigint from public.scans where accepted_at >= now() - interval '24 hours') as accepted_requests_24h,
     (select count(*)::bigint from public.rate_limit_events where kind = 'scan_ip_hour' and challenge_passed and occurred_at >= now() - interval '1 hour') as challenge_passes_24h,
@@ -45,9 +49,9 @@ const DAILY_FUNNEL = `
     where accepted_at >= current_date - interval '29 days'
     group by 1
   ), registrations as (
-    select occurred_at::date as day, count(*)::bigint as verified_registrations
-    from public.analytics_events
-    where name = 'registration_completed' and occurred_at >= current_date - interval '29 days'
+    select created_at::date as day, count(*)::bigint as verified_registrations
+    from public.waitlist_entries
+    where created_at >= current_date - interval '29 days'
     group by 1
   ), shares as (
     select occurred_at::date as day, count(*)::bigint as shares
