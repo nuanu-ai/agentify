@@ -2136,8 +2136,8 @@ describe("a card held off sale by what its merchant lacks", () => {
   // "All selling is stopped" there is a claim about a switch nobody pressed,
   // and it sends the merchant looking for a control that changes nothing. The
   // settings the merchant sets are named and the page that sets them is
-  // linked; the operator's approval, which this dashboard cannot read, is said
-  // to be unread exactly where the door asks for it.
+  // linked; the operator's approval, which nobody sets in Settings, is said to
+  // be still to come exactly where the door asks for it.
   //
   // Each merchant is registered through the dashboard's own press and never
   // approved, and its card is written straight into the gateway's store: the
@@ -2242,11 +2242,42 @@ describe("a card held off sale by what its merchant lacks", () => {
         const approvalAsked = door.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
         expect(/approv/i.test(control), control).toBe(approvalAsked);
         if (approvalAsked) {
-          expect(control).toMatch(/cannot tell/i);
+          expect(control).toMatch(/waiting for Agentify to approve/i);
         }
       });
     }
   }
+
+  it("on live, for a merchant Agentify has approved, says so and sells the card", async () => {
+    const running = await started({
+      gateway: { ...CHANNELS.live, ...LIVE_GATEWAY_ONLY },
+      dashboard: CHANNELS.live,
+    });
+    await running.browser.signIn(FRESH.email);
+    expect((await running.browser.makeMerchant()).status).toBe(200);
+    const merchant = (await running.identity.byEmail(FRESH.email))?.merchant;
+    if (merchant == null) throw new Error("the press made no merchant");
+    const key = await running.harnessed.addKey(merchant.id);
+    const listed = await running.gateway.call("POST", "/v0/seller-name", {
+      body: { seller_name: "Their own shop" },
+      headers: { authorization: `Bearer ${key}` },
+    });
+    expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+    const saved = await running.browser.post("/settings/payout-wallet", {
+      payout_wallet: A_WALLET,
+    });
+    expect(saved.status, saved.html).toBe(303);
+    await running.harnessed.store.grantLiveApproval(merchant.id, running.harnessed.now());
+    expect(await theDoorSays(running.gateway, key)).toStrictEqual([]);
+
+    const settings = readable((await running.browser.get("/settings")).html);
+    const screen = await running.browser.get("/cards");
+    const cell = /<td class="control"[^>]*>([\s\S]*?)<\/td>/.exec(screen.html)?.[1] ?? "";
+
+    expect(settings).toMatch(/approved your merchant/);
+    expect(settings).not.toMatch(/waiting for Agentify to approve/);
+    expect(readable(cell)).toBe("Pause");
+  });
 });
 
 describe("a merchant who has left", () => {

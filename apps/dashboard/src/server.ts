@@ -349,6 +349,8 @@ interface Settings {
   readonly sellerName: string | null;
   readonly sellerSite: string | null;
   readonly payoutWallet: PayoutWalletDocument;
+  /** Whether the operator has approved the merchant; read on the live channel alone. */
+  readonly liveApproval?: boolean;
 }
 
 /** The whole dashboard on an express app. */
@@ -357,6 +359,15 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   const base = config.basePath;
   const viewing = (request: Request, pageBase: string, sellerName?: string | null): Viewer =>
     viewingAt(request, pageBase, config.surfaceMode, sellerName);
+  /**
+   * Whether the operator has approved this merchant, on the live channel, the
+   * one place the door asks for it; elsewhere nothing is read and nothing is
+   * said about it.
+   */
+  const approvalOn = async (gateway: GatewayClient): Promise<Answer<boolean | undefined>> =>
+    config.surfaceMode === "live"
+      ? await gateway.liveApproval()
+      : { ok: true, document: undefined };
   const viewingSettings = (
     request: Request,
     pageBase: string,
@@ -1038,12 +1049,19 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    */
   const settingsOf = async (request: Request): Promise<Answer<Settings>> => {
     const gateway = gatewayAs(request);
-    const [seller, wallet] = await Promise.all([gateway.seller(), gateway.payoutWallet()]);
+    const [seller, wallet, approval] = await Promise.all([
+      gateway.seller(),
+      gateway.payoutWallet(),
+      approvalOn(gateway),
+    ]);
     if (!seller.ok) {
       return seller;
     }
     if (!wallet.ok) {
       return wallet;
+    }
+    if (!approval.ok) {
+      return approval;
     }
     return {
       ok: true,
@@ -1051,6 +1069,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         sellerName: seller.document.name,
         sellerSite: seller.document.site,
         payoutWallet: wallet.document,
+        ...(approval.document === undefined ? {} : { liveApproval: approval.document }),
       },
     };
   };
@@ -1751,12 +1770,14 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
 
   app.get(`${base}/cards`, async (request, response) => {
     const gateway = gatewayAs(request);
-    // The wallet as well as the name, because a card can read paused for the
-    // want of either, and the control beside it says which (`cardControl`).
-    const [cards, name, wallet] = await Promise.all([
+    // The wallet and the approval as well as the name, because a card can read
+    // paused for the want of any of them, and the control beside it says which
+    // (`cardControl`).
+    const [cards, name, wallet, approval] = await Promise.all([
       gateway.cards(),
       gateway.sellerName(),
       gateway.payoutWallet(),
+      approvalOn(gateway),
     ]);
     if (!cards.ok) {
       return trouble(response, base, cards);
@@ -1767,11 +1788,15 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     if (!wallet.ok) {
       return trouble(response, base, wallet);
     }
+    if (!approval.ok) {
+      return trouble(response, base, approval);
+    }
     response.type("html").send(
       cardsScreen(
         {
           ...viewing(request, base, name.document),
           payout: { wallet: wallet.document.payout_wallet },
+          ...(approval.document === undefined ? {} : { liveApproval: approval.document }),
         },
         cards.document,
         config.publicBaseUrl,
@@ -2173,6 +2198,7 @@ const viewingSettingsAt = (
 ): Viewer => ({
   ...viewingAt(request, base, mode, settings.sellerName),
   sellerSite: settings.sellerSite,
+  ...(settings.liveApproval === undefined ? {} : { liveApproval: settings.liveApproval }),
   payout: {
     wallet: settings.payoutWallet.payout_wallet,
     pending:

@@ -40,7 +40,7 @@ import type { PayoutWallet } from "./payout-wallet.js";
 // screen that draws a shop, and the viewer that carries it belongs here.
 import type { ShopTile } from "./woo-screens.js";
 import {
-  APPROVAL_UNREAD,
+  APPROVAL_PENDING,
   FULFILLMENT_WORDS,
   money,
   needsAttention,
@@ -100,6 +100,12 @@ export interface Viewer {
    */
   readonly payout?: PayoutWallet;
   /**
+   * Whether the operator has approved this merchant for live sales, where the
+   * screen asked. It matters on the live channel alone, where publishing waits
+   * for it.
+   */
+  readonly liveApproval?: boolean;
+  /**
    * Where this account's WooCommerce channel has got to, where the screen
    * asked.
    *
@@ -141,7 +147,7 @@ export const readinessSeenBy = (viewer: Viewer): Readiness =>
     {
       sellerName: viewer.sellerName === undefined ? UNKNOWN : viewer.sellerName,
       payoutWallet: viewer.payout === undefined ? UNKNOWN : viewer.payout.wallet,
-      liveApproval: UNKNOWN,
+      liveApproval: viewer.liveApproval === undefined ? UNKNOWN : viewer.liveApproval,
     },
     viewer.mode,
   );
@@ -271,14 +277,14 @@ const cardControl = (
     return '<span class="quiet">All selling is stopped</span>';
   }
   const unset = unsetIn(door);
-  const unread = door.unknown.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL)
-    ? ` ${APPROVAL_UNREAD}`
+  const waiting = door.missing.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL)
+    ? ` ${APPROVAL_PENDING}`
     : "";
   if (unset.length > 0) {
     const what = unset.map((one) => UNSET_WORDS[one]).join(" and ");
-    return `<span class="quiet">Not on sale until you set ${escaped(what)} in <a href="${escaped(base)}/settings">Settings</a>.${escaped(unread)}</span>`;
+    return `<span class="quiet">Not on sale until you set ${escaped(what)} in <a href="${escaped(base)}/settings">Settings</a>.${escaped(waiting)}</span>`;
   }
-  return `<span class="quiet">Not on sale.${escaped(unread)}</span>`;
+  return `<span class="quiet">Not on sale.${escaped(waiting)}</span>`;
 };
 
 /**

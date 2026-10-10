@@ -103,6 +103,8 @@ export interface GatewayClient {
   disableKey(keyId: string): Promise<Answer<MerchantKey>>;
   /** The name buyers read beside this merchant's products, or null for none. */
   sellerName(): Promise<Answer<string | null>>;
+  /** Whether the operator has approved this merchant for live sales. */
+  liveApproval(): Promise<Answer<boolean>>;
   setSellerName(name: string): Promise<Answer<string | null>>;
   /**
    * The name and the shop's site together, as one read, for the screen that
@@ -431,6 +433,10 @@ export const gatewayFor = (
     // is a screen to edit the day it grows. Null is a real answer and not an
     // absence — it is the merchant who has not chosen a name yet, which is the
     // whole state these screens exist to get somebody out of.
+    liveApproval: () =>
+      call("reading the live approval", async () =>
+        done(await application.liveApproved(merchantId)),
+      ),
     sellerName: () =>
       call("reading the seller's name", async () => {
         const held = answered(API_ROUTES.get_seller_name, await application.sellerName(merchantId));

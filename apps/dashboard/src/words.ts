@@ -135,6 +135,13 @@ export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({
 export const APPROVAL_UNREAD =
   "Selling live also needs Agentify to approve your merchant, and this page cannot tell whether it has.";
 
+/** What a live merchant still waiting for the operator's approval is told. */
+export const APPROVAL_PENDING =
+  "Selling live is waiting for Agentify to approve your merchant; until then your cards are refused on the live channel.";
+
+/** What a live merchant the operator has approved is told. */
+export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sales.";
+
 /**
  * A sum of money as a merchant reads it.
  *
