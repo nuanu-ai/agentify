@@ -375,7 +375,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             "When passive browser observation is enabled: sanitized finding codes and aggregate counts/timings. Raw page content, screenshots, cookies, console messages, accessibility trees, and provider run IDs are not retained in reports.",
             "Hashed network rate keys; raw IP addresses are not stored.",
             "Email, international phone, role, and registration choices only when the contact form is submitted. Email and phone are encrypted with separate lookup HMAC domains; phone is contact data and is not treated as verified.",
-            "Consent snapshots and allowlisted acquisition fields when the relevant implementation is enabled.",
+            "Your privacy choices. Visit and funnel events, such as a page view, a scan or a registration, and the campaign tags of the link you arrived by, only if you allow product analytics or ads measurement.",
           ],
         },
       ],
@@ -387,7 +387,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
         {
           kind: "paragraph",
           content:
-            "Essential processing is used to perform the requested scan, prevent abuse, and keep the private result available. Product analytics, ads measurement, dataset reuse, marketing email, and card signal are independent choices. Declining an optional category does not turn it into essential processing.",
+            "Essential processing is used to perform the requested scan, prevent abuse, and keep the private result available. Product analytics, ads measurement, dataset reuse, marketing email, and card signal are independent choices. Declining an optional category does not turn it into essential processing. If you allow neither product analytics nor ads measurement, no visit or funnel events and no campaign tags are recorded for you.",
         },
       ],
     },
