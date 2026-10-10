@@ -357,8 +357,7 @@ there.
 - [`docs/decisions/`](docs/decisions/) — what is expensive to reverse, and why
   it was decided that way.
 - [`AGENTS.md`](AGENTS.md) — the working discipline: how decisions are
-  recorded, what a test has to answer for, why a check that did not run never
-  reports success.
+  recorded, and what a test has to answer for.
 
 Engineering artifacts are written in English; research and product documents in
 the language of their readers, which is why some of the above is in Russian.

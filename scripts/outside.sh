@@ -262,15 +262,15 @@ run() {
 run verify card.json
 echo "--- agentify verify card.json (exit $code) ---"
 echo "$out"
-check "a complete card answers 3, because idempotency never ran" "3" "$code"
+check "a complete card answers 0" "0" "$code"
 contains "it says the card is complete" "complete as far as the contract can tell" "$out"
-contains "it claims nothing about the check that did not run" \
-  "Nothing is claimed about idempotency" "$out"
+contains "it says what it does not check, and where that is proved" \
+  "with a test purchase" "$out"
 
 run verify short-card.json
 echo "--- agentify verify short-card.json (exit $code) ---"
 echo "$out"
-check "a card written short answers 3, the same as one written out" "3" "$code"
+check "a card written short answers 0, the same as one written out" "0" "$code"
 contains "it says the short card is complete too" \
   "complete as far as the contract can tell" "$out"
 
@@ -289,7 +289,7 @@ contains "it names the half of the price that is wrong" "price.currency:" "$out"
 run verify
 echo "--- agentify verify (exit $code) ---"
 echo "$out"
-check "the bare command answers 3 and refuses" "3" "$code"
+check "the bare command answers 2 and refuses" "2" "$code"
 contains "it explains itself to whoever typed it" \
   "where you keep the cards you" "$out"
 

@@ -514,15 +514,19 @@ card as a whole. A card whose shape is wrong is not then checked against the
 rules that compare one field with another, so a short list of findings is not a
 promise that one round of fixes is enough.
 
-The other half of checking yourself is missing, and it is the half worth more.
-Whether your handler holds against repeats — whether a second delivery appears
-when the same order arrives twice — cannot be checked from here, because
-nothing on our surface raises a test order to try it against. The check says so
-in its own output instead of reporting a pass, and it claims nothing about your
-side. Until that changes, holding against repeats is yours to prove against
-your own delivery system, and what has to hold is that a second order produces
-no second delivery and no fresh goods — the buyer keeps what the first delivery
-carried ([Telling a repeat apart](/orders#telling-a-repeat-apart)).
+The command answers `0` when every card it was given is complete as far as the
+contract can tell, `1` when a card has findings, and `2` when it was called with
+something it cannot work from, so a build script can stop on anything but `0`.
+
+The other half of checking yourself is not this command's, and it is the half
+worth more. Whether your handler holds against repeats — whether a second
+delivery appears when the same order arrives twice — cannot be checked from a
+card file, because nothing on our surface raises a test order to try it
+against. The check says so in its own output and claims nothing about your
+side. Holding against repeats is yours to prove against your own delivery
+system, with a test purchase, and what has to hold is that a second order
+produces no second delivery and no fresh goods — the buyer keeps what the first
+delivery carried ([Telling a repeat apart](/orders#telling-a-repeat-apart)).
 
 ## 6. Walk a test purchase
 

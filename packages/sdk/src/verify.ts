@@ -1,17 +1,16 @@
 /**
- * `agentify verify` — the check a merchant runs on themselves before they
- * ask us to look.
+ * `agentify verify` — the check a merchant runs on their cards before they
+ * publish them.
  *
- * The portal describes two checks. Is the card enough for an agent to assemble
- * a correct purchase, and does the merchant's handler hold idempotency — that
- * is, does a second delivery appear when one and the same order arrives twice.
- *
- * The first is here in full. The second is not, and this file refuses to
- * pretend otherwise: it names what is missing, in the same words anyone can
- * check against the route table, and answers with a code of its own that says
- * "did not run" rather than "passed" or "failed". The reasons are written out
- * in `IDEMPOTENCY_IS_NOT_BUILDABLE` below and are worth reading before anybody
- * tries to add the check, because the gap is not in this package.
+ * It checks one thing, in full: whether a card is enough for an agent to
+ * assemble a correct purchase, read the way publication reads it. Whether the
+ * merchant's handler holds against one order delivered twice is not something
+ * a command holding only card files can try — no route raises an order for a
+ * merchant's own card — so it is not one of this command's checks, and the
+ * output says so and where it is proved instead: with a test purchase against
+ * the merchant's own delivery system. Counted here as a check that "did not
+ * run", it made every complete card answer as something short of success, and
+ * a build reading the exit code took a good card for a failure.
  *
  * Which cards are checked is asked for rather than discovered. Nothing in this
  * package, in the contract or in any decision says where a merchant keeps
@@ -26,69 +25,22 @@ import type { Problem } from "@nuanu-ai/agentify-contracts";
 import { checkCard } from "./check-card.js";
 import { describeProblems } from "./schema.js";
 
-/**
- * What the command answers with.
- *
- * Four and not two, because a build that branches on this needs to tell a
- * check that failed from a check that never ran. Collapsing the two would make
- * a missing check look like a passing one on the day somebody decides that
- * anything non-zero is a failure and anything else is fine.
- */
+/** What the command answers with. */
 export const VERIFY_EXIT = Object.freeze({
-  /** Every check ran and every check passed. */
+  /** Every card it was given is complete as far as the contract can tell. */
   PASSED: 0,
-  /** A check ran and found something. */
+  /** A card has findings. */
   PROBLEMS: 1,
   /** The command was called with something it cannot work from. */
   USAGE: 2,
-  /** A check could not be run at all, so nothing is claimed about it. */
-  COULD_NOT_RUN: 3,
 });
 
-/**
- * Why the idempotency run is not in this version, stated so it can be checked
- * rather than taken on trust.
- *
- * The run the portal describes needs a test order to exist: the same order
- * delivered twice through the live subscription, marked `test`, against a card
- * that is published but not yet in any catalog. Four things it needs are
- * absent, and none of them is ours to add here.
- *
- * There is no route that asks for one. The only way an order comes into being
- * on this surface is `purchase_item`, and that is the payment exchange itself
- * — an agent buying — not a request a merchant can make about their own card.
- *
- * `PurchaseRequestSchema` is closed and carries the purchase parameters and
- * nothing else, so there is nowhere in a purchase to say "this one is a test".
- *
- * Nothing says how an order's `test` flag comes to be true. The order carries
- * it, the handler is told to branch on it, and no document in the contract
- * describes who sets it or from what.
- *
- * And a card carries no marker for "published, not yet in catalogs", which is
- * the state the portal says these orders are raised against.
- *
- * What is missing is not an environment to run it in. There are two sites, the
- * test one settles against test funds, and a key says which it belongs to
- * (ADR-0020) — so a merchant already has somewhere to try their integration
- * without spending anything. What is missing is a way to make an order happen
- * there: no route raises one, and the four absences above are the whole of what
- * would have to exist first. Inventing a route or a field here would be
- * designing that, and this is not the place where it is designed.
- */
-export const IDEMPOTENCY_IS_NOT_BUILDABLE = [
-  "The idempotency run needs a test order, and nothing on the surface can ask for one:",
-  "  - no route raises an order for a merchant's own card; the only way an order",
-  "    comes into being is purchase_item, which is an agent's payment exchange",
-  "  - purchase_item's body carries the purchase parameters and nothing else, so",
-  "    there is nowhere in it to say that a purchase is a test",
-  "  - nothing in the contract says how an order's test flag comes to be true",
-  "  - a card carries no marker for published-but-not-yet-in-catalogs, which is",
-  "    the state the documentation raises these orders against",
-  "The test site is not what is missing: it exists, it settles against test",
-  "funds, and a csk_test_ key belongs to it. What is missing is a way to make",
-  "an order happen there, and inventing a route or a field here would be",
-  "designing one.",
+/** What this command does not check, and where that is proved instead. */
+const NOT_CHECKED_HERE = [
+  "Repeats of one order: not checked by this command.",
+  "  Whether a second delivery of the same order makes second goods is proved",
+  "  against your own delivery system, with a test purchase: the buyer has to",
+  "  keep what the first delivery carried.",
 ].join("\n");
 
 /** The code a finding carries when the file held no card to check at all. */
@@ -123,10 +75,9 @@ const USAGE = [
   "",
   "Checks each card against the published contract before it is published.",
   "",
-  "Answers: 1 a check found something, 2 called with something it cannot work",
-  "from, 3 a check could not be run. Zero, which means every check passed, is",
-  "not reachable today: the idempotency run cannot be built, and this command",
-  "will not report success for a check that never happened.",
+  "Answers: 0 every card is complete as far as the contract can tell, 1 a card",
+  "has findings, 2 called with something it cannot work from. Whether your",
+  "handler holds against an order delivered twice is not checked here.",
 ].join("\n");
 
 /**
@@ -163,8 +114,8 @@ const USAGE = [
  * dry run of publishing, which can refuse for reasons no schema carries; there
  * is no such route (`docs/research/00-open-questions.md`).
  *
- * So this is a stop and not a scolding, and it is answered with the code that
- * means "did not run". The way through it is to name the card files, which are
+ * So this is a stop and not a scolding, and it is answered as a call the
+ * command cannot work from. The way through it is to name the card files, which are
  * the copy the merchant can still change — the file is what the next publish
  * carries, whether the card is new or an edit to one already out.
  */
@@ -229,7 +180,7 @@ export const runVerify = async (argv: readonly string[], say: Say): Promise<numb
     say(NOTHING_TO_CHECK);
     say("");
     say(USAGE);
-    return VERIFY_EXIT.COULD_NOT_RUN;
+    return VERIFY_EXIT.USAGE;
   }
 
   const checked: CardFile[] = [];
@@ -268,15 +219,13 @@ export const runVerify = async (argv: readonly string[], say: Say): Promise<numb
   }
 
   say("");
-  say("Idempotency");
-  say("  could not be run.");
-  say(IDEMPOTENCY_IS_NOT_BUILDABLE);
+  say(NOT_CHECKED_HERE);
   say("");
   say(
     faulted.length > 0
-      ? "Verdict: the cards have findings, and the idempotency run did not happen."
-      : "Verdict: the cards are complete. Nothing is claimed about idempotency — that check did not run.",
+      ? "Verdict: the cards have findings."
+      : "Verdict: the cards are complete as far as the contract can tell.",
   );
 
-  return faulted.length > 0 ? VERIFY_EXIT.PROBLEMS : VERIFY_EXIT.COULD_NOT_RUN;
+  return faulted.length > 0 ? VERIFY_EXIT.PROBLEMS : VERIFY_EXIT.PASSED;
 };
