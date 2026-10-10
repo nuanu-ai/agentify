@@ -318,13 +318,11 @@ ordinary price of the product there rather than a zero or a placeholder: the
 agent decides from it whether to look any further.
 
 The check answers one question: what the product costs and whether it is there
-right now. We ask it at the moment of purchase. The SDK price handler below is
-the transport currently served. A price hook is designed but is not called.
+right now. We ask it at the moment of purchase, of your price handler.
 
 The question travels the same channel as the orders: you put a price handler —
 the one you register under `on('quote', …)` — beside the order handler, in the
-same process. Nothing of yours faces outward — no address, no open ports. This
-is the transport we serve.
+same process. Nothing of yours faces outward — no address, no open ports.
 
 ```ts
 agentify.on('quote', async (q) => {
@@ -341,22 +339,18 @@ agentify.on('quote', async (q) => {
 The subscription channel is authenticated when it connects, so your side does
 not have to check that a price question really came from us.
 
-A second transport is designed for a business whose price is worked out by a
-separate pricing service the order handler cannot reach: the price hook, an
-https address declared in the card, carrying the same question and the same
-answer.
+So a card's price check is always `price_check: 'handler'`. A second way of
+asking is designed for a business whose price is worked out by a separate
+pricing service the order handler cannot reach — a price hook, an https address
+of yours that we would call instead — and we do not call it yet. A card that
+names an address is therefore refused at publication: accepted, it would be a
+setting nothing acts on, and you would find out from a synchronous product
+quietly selling at its listed price or an asynchronous one quietly refusing
+every sale.
 
-We do not call it yet. A card that names an address is priced as though nobody
-had answered, which costs different things in different modes — a synchronous
-product sells at the price in its card, every time, with your pricing service
-never once consulted, and an asynchronous one does not sell at all. So until
-the transport is served, a card whose price moves belongs behind a price
-handler.
+The question your price handler receives looks like this:
 
-The question the hook receives is the body of a `POST` to the address the card
-names:
-
-<<< @/examples/quote-request/price-hook.json
+<<< @/examples/quote-request/purchase.json
 
 The field `purpose` says why we are asking. Today it always reads `"purchase"`:
 there is an agent behind the question, buying right now. Its other value,
@@ -539,7 +533,7 @@ required fields first.
 | `fulfillment` | `'sync'`, `'async'` or `'ship'`; `'confirm'` is not published during the pilot | optional; a card that names no mode is `'sync'` | `'sync'` |
 | `fulfill_deadline_seconds` | how long you may take to deliver | optional, and only on an asynchronous card | `86400` |
 | `ship_within_seconds` | how long you have to hand a parcel to a carrier, from the charge, at most thirty days | required on a parcel's card, and only there | `172800` |
-| `price_check` | what to ask the price and availability with: a handler, or an address we do not call yet | optional | `'handler'` |
+| `price_check` | `'handler'`: your price handler is asked the price and availability at the moment of purchase | optional | `'handler'` |
 | `tags` | words describing the product for an agent's search, at most five | optional | `['esim', 'telecom']` |
 
 ## Refusal codes
@@ -601,6 +595,12 @@ Updating is the call that created it. Publishing again under the same
 one: the key is yours, and we find what is already published by it. So a card
 can be uploaded from a script without checking first whether we have it.
 
+An update changes what the next sale is made under, never a sale already made.
+An order keeps the result its card declared when the agent asked to buy, so
+after you republish a product with a different result, the orders already
+taken are still delivered with the goods they were sold for, and only the new
+ones with the new shape.
+
 Taking a card off sale is the pause in the dashboard rather than a call. Paused,
 the card stops being visible in the catalogues, and the orders still open
 against it play out in the ordinary way. Nothing removes a card altogether, and
@@ -616,8 +616,7 @@ what that ought to be is not settled.
 - How long a delivery deadline may be, and whether an asynchronous card ought
   to be required to name one at all, rather than fall to a default the buying
   program is never shown.
-- The shape of the field a card declares a price check in and chooses a
-  transport with.
+- The shape of the field a card declares a price check in.
 - Whether the vocabulary of recommended codes grows beyond three: we decide
   that from the refusals the pilot actually turns up.
 - The scheduled refresh of price and availability between purchases. It is
@@ -628,10 +627,11 @@ what that ought to be is not settled.
 - The thresholds that limit how often price questions go out.
 - Whether an answer whose `as_of` is too old is refused rather than honoured,
   what counts as too old, and what a sale does when one arrives.
-- The price hook. We do not call the address a card names, and when we do, your
-  side will need something to check a request against to know that it came from
-  us. A price handler has neither question — the subscription channel is
-  authenticated when it connects.
+- The price hook, an address of yours that we would call instead of your price
+  handler. A card cannot name one yet, and when one can, your side will need
+  something to check a request against to know that it came from us. A price
+  handler has neither question — the subscription channel is authenticated when
+  it connects.
 - How a card is removed altogether rather than paused, and how long that takes.
 - The smallest price the live channel can charge. Its payment service documents
   a minimum below which it does not settle a payment and does not publish the

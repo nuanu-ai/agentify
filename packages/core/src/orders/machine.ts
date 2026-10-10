@@ -375,6 +375,48 @@ function deliverGoods(order: Order, at: number, extra: readonly Effect[] = []): 
   ]);
 }
 
+/**
+ * Synchronous goods that arrive once the order's deadline has passed, or null
+ * where they are in time or the order is not synchronous.
+ *
+ * A timer closes an overdue order, and a timer can fire late — the gateway's
+ * queue looks for due reminders every couple of seconds — so goods answered
+ * in the ninth second could reach the machine before the timer did and be
+ * charged for, while the same goods a little later would find the purchase
+ * closed. Whether a buyer pays cannot hang on which of the two arrived first.
+ * The instant of the answer decides: at or after the deadline the order is
+ * closed as the timer would have closed it, nothing charged, and the goods are
+ * then taken as every late synchronous answer is, held for a repeat that
+ * brings its own payment.
+ *
+ * Only the synchronous mode is weighed this way. Its charge comes after the
+ * goods, so settling a late answer would charge for a purchase the agent has
+ * already been told did not happen. An asynchronous buyer paid at the
+ * purchase, and late goods are what they are owed whichever arrives first.
+ */
+function overdueSynchronousGoods(
+  order: Order,
+  event: Extract<StateEvent, { kind: "handler_delivered" }>,
+): TransitionResult | null {
+  if (order.mode.settle !== "after_fulfillment") {
+    return null;
+  }
+  const due = fulfillmentDeadline(order)[0];
+  if (due === undefined || event.at < due.at) {
+    return null;
+  }
+
+  const closed = onDeadline(order, { kind: "deadline_expired", at: due.at, deadline: due.kind });
+  if (!closed.ok) {
+    return closed;
+  }
+  const late = fromExpired(closed.order, event);
+  if (!late.ok) {
+    return late;
+  }
+  return ok(late.order, [...closed.effects, ...late.effects]);
+}
+
 /** The merchant left. A charged order that never got its goods stays a debt. */
 function onDeparture(order: Order): TransitionResult {
   const closure: Closure = { cause: "merchant_departed" };
@@ -894,7 +936,7 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
       // this acceptance, and `transition` refuses to hand it over empty.
       return ok({ ...order, dispatch: { ...order.dispatch, accepted: true } }, [ACCEPTANCE_LANDED]);
     case "handler_delivered":
-      return deliverGoods(order, event.at);
+      return overdueSynchronousGoods(order, event) ?? deliverGoods(order, event.at);
     case "handler_refused":
       return resolveFulfillmentFailure(order, {
         cause: "merchant_refused",

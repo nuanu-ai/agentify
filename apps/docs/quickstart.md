@@ -30,8 +30,7 @@ owner of the business.
 - Price check — the question of how much a product costs and whether it is
   there, which we ask at the moment of purchase about products whose price
   moves. A price handler answers it, standing in your process beside the order
-  handler. A second transport is designed — a price hook, an address of your
-  own — and is not called yet.
+  handler.
 - Delivery result — what the agent receives once the delivery has gone through:
   a link, a key, a set of fields. Its shape is declared in the card.
 
@@ -468,14 +467,11 @@ is none: an `as_of` left out is the moment of the answer itself. So if you take
 the price from a cache, name the moment that cache was filled; left to the
 default, the answer claims more freshness than you have.
 
-This is the path we serve: the same channel the orders use, and nothing of
-yours facing outward. A second transport is designed for a business whose price
-is worked out by a separate pricing service — the price hook, an https address
-of your own that we would call instead. We do not call it yet, and a card that
-names one is priced as though nobody had answered, so during the pilot the
-price handler is the price check that works. The fields of the question and of
-the answer are the same for both and are described in the [card
-reference](/cards).
+This is the one way the price is asked: the same channel the orders use, and
+nothing of yours facing outward. A price hook — an https address of yours that
+we would call instead — is designed and not called yet, so a card that names an
+address is refused at publication. The fields of the question and of the answer
+are described in the [card reference](/cards).
 
 Success here is modest: the process starts, holds the connection, and your
 problem handler stays quiet. The first order reaches it on step 6.
@@ -567,10 +563,11 @@ separate from that SDK path and carry no promise of automatic listing.
 
 ## What is not settled yet
 
-- The price hook. We do not call the address a card names, and when we do, your
-  side will need something to check a request against to know that it came from
-  us. A price handler has neither question — the subscription channel is
-  authenticated when it connects.
+- The price hook, an address of yours that we would call instead of your price
+  handler. A card cannot name one yet, and when one can, your side will need
+  something to check a request against to know that it came from us. A price
+  handler has neither question — the subscription channel is authenticated when
+  it connects.
 - The exact names of an order's fields, and of the two fields a handler's
   refusal carries. Their shapes are settled and described on these pages. A
   change to the published spelling requires a new package version.

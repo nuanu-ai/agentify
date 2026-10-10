@@ -63,38 +63,18 @@ const SHIP_WITHIN_AT_MOST_SECONDS = 2_592_000;
 /**
  * How the price and availability of this card are asked for, if they are.
  *
- * `"handler"` is the default path: the question travels the same outgoing
- * channel as the orders, and the merchant hosts nothing. The other form names
- * an address, for merchants whose price is computed by a separate service that
- * the order handler cannot reach.
- *
- * The address has to be https. The question and the answer carry a merchant's
- * prices; over plain http they are readable and rewritable by anyone on the
- * path, and a sale that went through at someone else's price would be
- * indistinguishable from an honest one.
+ * `"handler"` is the one way there is: the question travels the same outgoing
+ * channel as the orders, to the merchant's price handler, and the merchant
+ * hosts nothing. A price hook at an address of the merchant's own is designed
+ * and not called, so a card cannot name one: accepted, it would be a setting
+ * nothing acts on, and the merchant would learn of it from a synchronous card
+ * quietly selling at its listed price or an asynchronous one quietly refusing
+ * every sale. The refusal says so at the publish instead.
  */
-export const PriceCheckSchema = z.union(
-  [
-    z.literal("handler"),
-    z.strictObject({
-      // Two checks, and each earns its place. `z.url()` says this is a URL at
-      // all; the pattern says the scheme is https. The scheme is a pattern
-      // rather than zod's own `protocol` option because a pattern is what
-      // survives into the JSON Schema export — zod renders a url as
-      // `format: "uri"` and drops the rest, so a generated client would
-      // otherwise happily post a merchant's prices over http. Written both
-      // ways, the protocol option was doing nothing the pattern did not, and
-      // no test could tell the difference.
-      //
-      // Case-insensitive because a URL scheme is (RFC 3986 §3.1). Written
-      // case-sensitively alongside zod's own check, the two disagreed:
-      // `HTTPS://` passed one and failed the other, with a message saying an
-      // address was not https about an address that was.
-      url: z.url().regex(/^https:\/\//i, "a price hook is https"),
-    }),
-  ],
-  { error: 'a price check is either "handler" or { url } naming an https address' },
-);
+export const PriceCheckSchema = z.literal("handler", {
+  error:
+    "price_check is \"handler\": the price is asked of your own price handler, registered with on('quote') in the process that answers your orders. A price hook at an address of yours is not called yet, so a card cannot name one",
+});
 
 /** The short line a catalog shows; how the card differs from its neighbours. */
 const TitleSchema = z.string().regex(/\S/, "a title must not be empty or blank");
@@ -848,10 +828,9 @@ export const deliveryCheckFor = (card: Card): z.ZodType =>
  * only inside one merchant's catalog and means nothing outside it. An agent
  * handed both would use the wrong one some of the time, for no gain.
  *
- * `price_check` is gone and one fact out of it stays. The address of a
- * merchant's pricing service is infrastructure of theirs, no agent ever calls
- * it, and publishing it would put it in front of everyone. What an agent does
- * act on is that the price will be asked again: the number in the catalog is
+ * `price_check` is gone and one fact out of it stays. How the merchant is
+ * asked is between the merchant and us. What an agent does act on is that the
+ * price will be asked again: the number in the catalog is
  * what it compares when choosing, and the sale can go through at another. So
  * the projection carries `price_checked_at_purchase` and nothing else about
  * how the asking is done. The flag says we ask, not that we get an answer —

@@ -79,10 +79,10 @@ sentences, a link to the full page. The FAQ routes; it does not answer.
 ## Vocabulary
 
 Canon: handler (not worker, not receiver); card; order; idempotency key;
-receipt; the price in the card (not a snapshot); the price check, with two
-transports — the price handler (in the same process as the order handler, and
-the default path) and the price hook (the HTTP alternative for a separate
-pricing service; not an endpoint); how long a price holds (not a quote); agent
+receipt; the price in the card (not a snapshot); the price check, answered by
+the price handler (in the same process as the order handler), with the price
+hook (the HTTP alternative for a separate pricing service; not an endpoint)
+named only as designed and not called; how long a price holds (not a quote); agent
 on the engineer's pages, buyer on the owner's (with "it is a program" said
 once, at the first use on that page).
 

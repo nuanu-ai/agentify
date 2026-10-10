@@ -37,10 +37,7 @@ a network failure in place of an answer; and an answer that did not parse
 against the declared shape. That wait is ours, and five seconds is what the
 system you are connecting to allows. The timestamp inside an answer is not a
 fourth thing: we carry that mark and do not yet weigh it, so an answer stamped a
-year ago is honoured exactly as long as one stamped a second ago. Those
-boundaries are a price handler's. A card that names a price hook instead counts
-as silent every time, because we do not call that address yet ([the card
-reference](/cards)).
+year ago is honoured exactly as long as one stamped a second ago.
 
 Silence like this does not stop your selling. The automatic stop described
 below goes by deliveries: silence about a price is not silence about the goods.

@@ -430,10 +430,10 @@ export const AgentOrderStatusSchema = z
      * all the same, because a gateway on a developer's own machine answers on
      * it; a deployment's address is https because its configuration is.
      *
-     * The scheme is a pattern rather than zod's own protocol option for the
-     * reason the price hook's is (`PriceCheckSchema` in `card.ts`): a pattern
-     * is what survives into the JSON Schema export, so a client generated from
-     * that document refuses a bare path as well. It is case-sensitive because
+     * The scheme is a pattern rather than zod's own protocol option because a
+     * pattern is what survives into the JSON Schema export — zod renders a URL
+     * as `format: "uri"` and drops the rest — so a client generated from that
+     * document refuses a bare path as well. It is case-sensitive because
      * a flag on a pattern does not survive that export, and a schema that read
      * the scheme without regard to case would accept what the exported
      * document refuses. Nothing is lost by it: the gateway's configuration

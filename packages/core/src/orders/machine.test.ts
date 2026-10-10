@@ -1187,6 +1187,81 @@ describe("delivering twice, and delivering late", () => {
     expect(order.state).toBe("expired");
     expect(effects).toStrictEqual([]);
   });
+
+  it("holds synchronous goods that arrive once the deadline has passed, whether or not its timer has fired", () => {
+    // Portal, "You did not deliver in time": goods finished after the
+    // synchronous deadline find the purchase closed and nothing charged. The
+    // timer that closes the order can fire late, so the instant of the answer
+    // decides, not the order in which the answer and the timer arrived.
+    // From `paid` as well: the answer can beat our own record of the
+    // hand-over, and the merchant answering is proof enough that it happened.
+    for (const start of [reach("dispatched"), reach("paid")]) {
+      const due = (start.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.syncResponseMs;
+
+      for (const at of [due, due + 1_500]) {
+        const { order, effects } = must(start, { kind: "handler_delivered", at });
+
+        expect(order.state).toBe("expired");
+        expect(order.closure).toStrictEqual({
+          cause: "deadline_expired",
+          deadline: "sync_response",
+        });
+        expect(order.heldFulfillment).toBe(true);
+        expect(order.payment).toBe("verified");
+        expect(effects).toStrictEqual([
+          { kind: "hold_fulfillment" },
+          { kind: "answer_merchant", answer: { ok: true, result: "purchase_already_closed" } },
+        ]);
+      }
+    }
+  });
+
+  it("ends a late synchronous answer exactly where the timer and then the answer would have", () => {
+    // Two arrival orders, one outcome: the answer landing before the overdue
+    // timer and the timer landing first leave the same order behind. From
+    // `dispatched` only: from `paid`, the answer also proves the hand-over our
+    // own record had not yet noted, so it counts one delivery the timer-first
+    // path never makes, and the outcome is checked in the test above instead.
+    const dispatched = reach("dispatched");
+    const due = (dispatched.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.syncResponseMs;
+    const answerFirst = must(dispatched, { kind: "handler_delivered", at: due + 1_500 }).order;
+    const timerFirst = walk(dispatched, [
+      { kind: "deadline_expired", at: due, deadline: "sync_response" },
+      { kind: "handler_delivered", at: due + 1_500 },
+    ]);
+
+    expect(answerFirst).toStrictEqual(timerFirst);
+  });
+
+  it("charges for synchronous goods that arrive a moment before the deadline", () => {
+    const dispatched = reach("dispatched");
+    const due = (dispatched.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.syncResponseMs;
+    const { order, effects } = must(dispatched, { kind: "handler_delivered", at: due - 1 });
+
+    expect(order.state).toBe("fulfilled");
+    expect(kinds(effects)).toStrictEqual(["execute_payment"]);
+  });
+
+  it("delivers asynchronous goods that arrive after the deadline its timer has not yet closed", () => {
+    // The asynchronous buyer has already paid, and late goods are what they
+    // were owed: whether the overdue timer landed first changes only whether a
+    // debt was briefly recorded, not where the order ends. So the instant of
+    // the answer is not weighed here the way it is for a synchronous one.
+    const accepted = walk(newOrder("async"), [
+      { kind: "payment_verified", at: T0 + 1 },
+      { kind: "payment_settled", at: T0 + 2 },
+      { kind: "order_dispatched", at: T0 + 3 },
+      { kind: "handler_accepted", at: T0 + 4 },
+    ]);
+    const due = (accepted.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.asyncFulfillmentMs;
+
+    for (const kind of ["deliver_called", "handler_delivered"] as const) {
+      const { order, effects } = must(accepted, { kind, at: due + 1_500 });
+
+      expect(order.state).toBe("delivered");
+      expect(kinds(effects)).not.toContain("mark_refund_due");
+    }
+  });
 });
 
 describe("the same order delivered to the handler twice", () => {

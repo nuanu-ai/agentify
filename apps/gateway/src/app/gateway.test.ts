@@ -936,6 +936,109 @@ describe("the goods against the card that sold them", () => {
   // nothing behind it answered "delivered", and goods quietly replaced by a
   // later call answered "already_delivered" exactly as they should have.
 
+  /** An order paid for under the card as it stands, its identifier returned. */
+  const paidOrder = async (harnessed: Harness, itemId: string, payment: string) => {
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    await harnessed.gateway.payPurchase(offered.order.order.id, payment, payment);
+    return offered.order.order.id;
+  };
+
+  it("holds the goods to what the order was sold with, whatever the card says since", async () => {
+    // The agent paid for an activation code. The merchant then republished the
+    // product to deliver a licence key instead. The order already sold is
+    // still owed what it was sold with, and the new shape is not that.
+    const harnessed = await started();
+    const itemId = await published(harnessed, asyncCard);
+    const soldBefore = await paidOrder(harnessed, itemId, "ONE");
+    const alsoSoldBefore = await paidOrder(harnessed, itemId, "TWO");
+    await published(harnessed, { ...asyncCard, result: { license_key: { type: "string" } } });
+
+    const promised = await harnessed.gateway.deliverOrder(harnessed.merchant.id, soldBefore, {
+      activation_code: "A",
+    });
+    const reshaped = await harnessed.gateway.deliverOrder(harnessed.merchant.id, alsoSoldBefore, {
+      license_key: "K",
+    });
+
+    expect(promised?.ok).toBe(true);
+    expect((await harnessed.store.orderById(soldBefore))?.order.state).toBe("delivered");
+    if (reshaped?.ok !== false) throw new Error("goods the order was not sold with closed it");
+    expect(reshaped.error.code).toBe("delivery_does_not_match_card");
+    expect(reshaped.error.problems?.map((problem) => problem.path.join("."))).toContain(
+      "activation_code",
+    );
+    expect((await harnessed.store.orderById(alsoSoldBefore))?.delivery).toBeNull();
+  });
+
+  it("tells a synchronous answer past its deadline that the sale is over, timer or no timer", async () => {
+    // The timer that closes an overdue synchronous order can fire late. Goods
+    // that fit find the purchase closed by the instant of the answer; goods
+    // that do not fit must hear the same ending, and not be told to fix the
+    // handler and deliver again to a sale that is already over.
+    const harnessed = await started();
+    const itemId = await published(harnessed, syncCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const orderId = offered.order.order.id;
+    const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 200)).envelopes).toHaveLength(1);
+    harnessed.advance(harnessed.runtime.config.deadlines.syncResponseMs);
+
+    const answered = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
+      delivered: {},
+    });
+
+    if (answered?.ok !== false) throw new Error("an empty handler answer closed the purchase");
+    expect(answered.error.code).toBe("delivery_does_not_match_card");
+    expect(answered.error.retryable).toBe(false);
+    expect(answered.error.message).toContain("expired");
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+    harnessed.advance(harnessed.runtime.config.deadlines.syncBudgetMs);
+    await buying;
+  });
+
+  it("does not let a card loosened after the sale excuse goods the order was promised", async () => {
+    const harnessed = await started();
+    const twoFields: Card = {
+      ...asyncCard,
+      result: { activation_code: { type: "string" }, iccid: { type: "string" } },
+    };
+    const itemId = await published(harnessed, twoFields);
+    const orderId = await paidOrder(harnessed, itemId, "ONE");
+    await published(harnessed, asyncCard);
+
+    const short = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
+      activation_code: "A",
+    });
+
+    if (short?.ok !== false) throw new Error("goods short of the promise closed the order");
+    expect(short.error.problems?.map((problem) => problem.path.join("."))).toStrictEqual(["iccid"]);
+    expect((await harnessed.store.orderById(orderId))?.delivery).toBeNull();
+  });
+
+  it("holds an order written before it kept its own promise to the card as it stands", async () => {
+    // Orders already in flight when this rule arrived carry no promise of
+    // their own. They are held to the card as it stands, which is what held
+    // every order before, so a delivery to the current card closes them.
+    const harnessed = await started();
+    const itemId = await published(harnessed, asyncCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const { result: _kept, ...older } = offered.order;
+    const oldId = "ord_written_before_the_promise";
+    await harnessed.store.addOrder({ ...older, order: { ...older.order, id: oldId } });
+    await harnessed.gateway.payPurchase(oldId, "OLD", "OLD");
+    await published(harnessed, { ...asyncCard, result: { license_key: { type: "string" } } });
+
+    const current = await harnessed.gateway.deliverOrder(harnessed.merchant.id, oldId, {
+      license_key: "K",
+    });
+
+    expect(current?.ok).toBe(true);
+    expect((await harnessed.store.orderById(oldId))?.order.state).toBe("delivered");
+  });
+
   it("does not close an order on goods the card never promised", async () => {
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
@@ -1834,23 +1937,6 @@ describe("the price question", () => {
     expect(acknowledged).toStrictEqual({ used: false });
     expect((await harnessed.store.orderById(orderId))?.order.state).toBe("rejected");
     await buying;
-  });
-
-  it("treats a price check it cannot make as a merchant who did not answer", async () => {
-    // A card whose price lives at an address of the merchant's own asks over a
-    // transport this stage does not serve. Saying so as a silence is honest —
-    // nobody told us what this costs — and the mode then decides, which for a
-    // synchronous card means the snapshot sells.
-    const harnessed = await started();
-    const itemId = await published(harnessed, {
-      ...syncCard,
-      price_check: { url: "https://merchant.example/price" },
-    });
-
-    const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
-
-    if (offered.step !== "pay") throw new Error("the card did not sell");
-    expect(offered.order.order.quoteSource).toBe("card_snapshot");
   });
 
   it("carries the merchant's own `as_of` into the sale price, not the gateway's clock", async () => {

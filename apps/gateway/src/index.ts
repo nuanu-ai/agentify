@@ -45,7 +45,6 @@ export {
   modeForCard,
   policyFor,
   priceCheckOf,
-  quoteReachesTheMerchant,
   type Runtime,
 } from "./app/runtime.js";
 export { Waiting } from "./app/waiting.js";
