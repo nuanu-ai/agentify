@@ -1456,9 +1456,34 @@ export class Gateway {
         this.runner.purchases.giveUp(key);
       }
       await parked;
+      await this.#closeOverdueSynchronously(orderId);
     }
 
     return this.#wherePurchaseStands(orderId);
+  }
+
+  /**
+   * Closes a synchronous order whose merchant's deadline has passed on the
+   * clock, where the timer that closes it has not landed yet.
+   *
+   * The agent's wait ends on its budget, and the timer carrying the merchant's
+   * deadline comes off a queue that looks for due reminders every so often, so
+   * it can still be on its way when the wait is over. The agent is owed how its
+   * purchase ended rather than that it is still under way, so the order is
+   * closed here as that timer would close it. Only the merchant's deadline is
+   * applied: the charge has a clock of its own, the payment layer's, and an
+   * answer from it after that clock is ordinary rather than an ending.
+   */
+  async #closeOverdueSynchronously(orderId: string): Promise<void> {
+    const record = await this.runtime.store.orderById(orderId);
+    if (record === null || record.order.mode.settle !== "after_fulfillment") {
+      return;
+    }
+    const due = deadlines(record.order).find((deadline) => deadline.kind === "sync_response");
+    if (due === undefined || due.at > this.runtime.clock()) {
+      return;
+    }
+    await this.runner.apply(orderId, { kind: "deadline_expired", at: due.at, deadline: due.kind });
   }
 
   /**

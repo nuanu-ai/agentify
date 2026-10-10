@@ -59,10 +59,11 @@ const asyncCard: Card = {
  * the wrong way roughly once in eighty runs, always on the first test in the
  * file: the park gave up first, and the agent was told `under_way` about a
  * purchase whose deadline was a microtask away from closing it. A deployment
- * cannot invert the two — there the clock moves, and the park and the deadline
- * are both anchored to the order's own creation, with the gateway refusing to
- * start at all unless the answer fits inside the budget — so the margin is
- * bought here rather than in the gateway.
+ * can invert the two as well, because its timer comes off a queue that looks
+ * for due reminders every so often; the gateway then closes the order itself
+ * when the wait runs out, which one test below pins with every timer late.
+ * Here, with the clock frozen, that cannot help, so the margin is bought in
+ * the number rather than in the gateway.
  */
 const brisk = {
   QUOTE_RESPONSE_MS: "20",
