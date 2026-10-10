@@ -17,8 +17,12 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { buyOverHttp, type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
-import type { AgentOrderStatus, Order } from "@nuanu-ai/agentify-contracts";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  type AgentOrderStatus,
+  type Order,
+  QuoteRequestSchema,
+} from "@nuanu-ai/agentify-contracts";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { gatewayFor } from "./gateway.js";
 import { cardsFromTheShop, merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
 import {
@@ -26,12 +30,23 @@ import {
   type EligibleWooProduct,
   inspectProductInTheShop,
   type OrderMade,
+  type ParcelMade,
+  type ParcelSold,
   type ProductInspection,
+  type RatesRead,
+  type ShipmentRead,
   type ShopKeys,
   type SoldItem,
 } from "./woo-shop.js";
 import { memoryWooShops, type WooConnection, type WooShops } from "./woo-shops.js";
-import { fillFromTheShop, startWooWorker, turnOnce } from "./woo-worker.js";
+import {
+  type Filling,
+  fillFromTheShop,
+  followShipments,
+  quoteFromTheShop,
+  startWooWorker,
+  turnOnce,
+} from "./woo-worker.js";
 
 /** The shop showing this product as the one download it sells. */
 const showing = (product: EligibleWooProduct): ProductInspection => ({ ok: true, product });
@@ -121,6 +136,7 @@ const filling = (
   placeOrder: place,
   inspectProduct: async (_connection: WooConnection, merchantItemId: string) =>
     showing({
+      kind: "download",
       productId: merchantItemId.split("_").at(-1) ?? "",
       downloadId: "dl_guide",
       fileName: "Guide",
@@ -358,6 +374,7 @@ describe("one paid order, in the merchant's own shop", () => {
         quotedProduct: async () => "quoted-download-fingerprint",
         inspectProduct: async () =>
           showing({
+            kind: "download",
             productId: "11",
             downloadId: "dl_replaced",
             fileName: "Replacement",
@@ -383,6 +400,7 @@ describe("one paid order, in the merchant's own shop", () => {
       inspectProduct: async () =>
         supported
           ? showing({
+              kind: "download",
               productId: "11",
               downloadId: "dl_guide",
               fileName: "Guide",
@@ -503,6 +521,7 @@ describe("the whole way through, against a real gateway", () => {
       ) => createTheOrderInTheShop(keys, sold, fetch),
       inspectProduct: async () =>
         showing({
+          kind: "download",
           productId: "11",
           downloadId: "dl_guide",
           fileName: "Guide",
@@ -567,6 +586,7 @@ describe("the whole way through, against a real gateway", () => {
       ) => createTheOrderInTheShop(keys, sold, fetch),
       inspectProduct: async () =>
         showing({
+          kind: "download",
           productId: "11",
           downloadId: "dl_guide",
           fileName: "Guide",
@@ -739,6 +759,7 @@ describe("a price question off the merchant's stream", () => {
   };
   const NOW = "2026-09-14T12:00:00.000Z";
   const inTheShop = {
+    kind: "download" as const,
     productId: "11",
     downloadId: "dl_guide",
     fileName: "Guide",
@@ -911,6 +932,886 @@ describe("a price question off the merchant's stream", () => {
   });
 });
 
+describe("a parcel's price question", () => {
+  // The price of a parcel is the goods and the shop's own rate to the buyer's
+  // place together (ADR-0033): the product read the way every price question
+  // reads it, and the rate asked of the shop's cart for the place the
+  // question carries, which is the locality and nothing about who.
+  const place = { country: "ID", state: "JK", city: "Jakarta", postal_code: "10110" };
+  const question = {
+    merchant_item_id: merchantItemIdFor("https://shop.example.com", "28"),
+    price_id: "prc_parcel",
+    purpose: "purchase" as const,
+    expires_at: "2026-09-14T12:01:00.000Z",
+    ship_to: place,
+  };
+  const NOW = "2026-09-14T12:00:00.000Z";
+  const theTote: ProductInspection = {
+    ok: true,
+    product: {
+      kind: "parcel",
+      productId: "28",
+      price: { amount: "20.00", currency: "USD" },
+      fingerprint: "accepted-parcel-fingerprint",
+    },
+  };
+  const rate = (title: string, cost: string, instanceId = "3") => ({
+    methodId: "flat_rate",
+    instanceId,
+    title,
+    cost,
+  });
+
+  const answering = async (
+    shops: WooShops,
+    rates: (place: unknown) => Promise<RatesRead>,
+    asked: Record<string, unknown> = question,
+    quoteWithinMs?: number,
+  ): Promise<unknown> => {
+    let answer: unknown;
+    const gateway = {
+      pollWorker: async () => ({
+        ok: true as const,
+        document: {
+          envelopes: [
+            { id: "env_quote", kind: "quote_request" as const, sent_at: NOW, payload: asked },
+          ],
+        },
+      }),
+      answerQuote: async (_priceId: string, said: unknown) => {
+        answer = said;
+        return { ok: true as const, document: { used: true } };
+      },
+      answerOrder: async () => {
+        throw new Error("no order was drawn, so none is answered");
+      },
+    } as never;
+    await turnOnce(connection(), {
+      shops,
+      identity: {
+        byId: async () => ({
+          id: "p",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1" },
+        }),
+      },
+      clientFor: () => gateway,
+      now: () => new Date(NOW),
+      inspectProduct: async () => theTote,
+      shippingRates: async (_connection, productId, where) =>
+        productId === "28" ? rates(where) : { ok: false, why: "another product", again: false },
+      ...(quoteWithinMs === undefined ? {} : { quoteWithinMs }),
+    });
+    return answer;
+  };
+
+  it("answers the goods and the cheapest rate together, and binds the price to the product", async () => {
+    const shops = memoryWooShops();
+    let asked: unknown;
+
+    const answer = await answering(shops, async (where) => {
+      asked = where;
+      return {
+        ok: true,
+        rates: [
+          rate("Express", "12.00", "4"),
+          rate("Standard", "5.00"),
+          rate("Courier", "5.00", "9"),
+        ],
+      };
+    });
+
+    expect(answer).toStrictEqual({
+      available: true,
+      price: { amount: "25.00", currency: "USD" },
+      as_of: NOW,
+    });
+    expect(asked).toStrictEqual(place);
+    expect(await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id)).toBe(
+      "accepted-parcel-fingerprint",
+    );
+  });
+
+  it("adds the rate to the goods in cents, not in floating point", async () => {
+    const shops = memoryWooShops();
+
+    const answer = await answering(shops, async () => ({
+      ok: true,
+      rates: [rate("Standard", "0.10")],
+    }));
+
+    expect(answer).toMatchObject({ available: true, price: { amount: "20.10" } });
+  });
+
+  it("names no price where the shop has no rate for the place, or the shop refused it", async () => {
+    // Not available is all an agent can be told today; the reason goes to the
+    // merchant's log. The shop that does not ship there and the shop that
+    // refused the place read the same to the agent.
+    for (const read of [
+      { ok: true as const, rates: [] },
+      { ok: false as const, why: "The shop refused the place.", again: false },
+      { ok: false as const, why: "The shop did not answer.", again: true },
+    ]) {
+      const shops = memoryWooShops();
+
+      expect(await answering(shops, async () => read), JSON.stringify(read)).toStrictEqual({
+        available: false,
+        as_of: NOW,
+      });
+      expect(
+        await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id),
+      ).toBeNull();
+    }
+  });
+
+  it("names no price where the product in the shop is no longer a parcel", async () => {
+    // The card ships, and a price of the goods alone would be paid for a
+    // parcel the shop now sells as something else.
+    const shops = memoryWooShops();
+    let answer: unknown;
+    const gateway = {
+      pollWorker: async () => ({
+        ok: true as const,
+        document: {
+          envelopes: [
+            { id: "env_quote", kind: "quote_request" as const, sent_at: NOW, payload: question },
+          ],
+        },
+      }),
+      answerQuote: async (_priceId: string, said: unknown) => {
+        answer = said;
+        return { ok: true as const, document: { used: true } };
+      },
+    } as never;
+
+    await turnOnce(connection(), {
+      shops,
+      identity: {
+        byId: async () => ({
+          id: "p",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1" },
+        }),
+      },
+      clientFor: () => gateway,
+      now: () => new Date(NOW),
+      inspectProduct: async () =>
+        showing({
+          kind: "download",
+          productId: "28",
+          downloadId: "dl_guide",
+          fileName: "Guide",
+          price: { amount: "20.00", currency: "USD" },
+          fingerprint: "a-download-now",
+        }),
+      shippingRates: async () => ({ ok: true, rates: [rate("Standard", "5.00")] }),
+    });
+
+    expect(answer).toStrictEqual({ available: false, as_of: NOW });
+    expect(await shops.quotedProduct("acc_1", "prc_parcel", question.merchant_item_id)).toBeNull();
+  });
+
+  it("names no price for a parcel's question that carries no place", async () => {
+    const { ship_to: _left, ...noPlace } = question;
+    let asked = false;
+
+    const answer = await answering(
+      memoryWooShops(),
+      async () => {
+        asked = true;
+        return { ok: true, rates: [rate("Standard", "5.00")] };
+      },
+      noPlace,
+    );
+
+    expect(answer).toStrictEqual({ available: false, as_of: NOW });
+    expect(asked).toBe(false);
+  });
+
+  it("names no price when the shop is slower than the price check allows", async () => {
+    // The gateway waits five seconds for a price. A shop that answers after
+    // that answers nobody, and the worker has other questions waiting.
+    const started = Date.now();
+
+    const answer = await answering(
+      memoryWooShops(),
+      () => new Promise<RatesRead>(() => undefined),
+      question,
+      50,
+    );
+
+    expect(answer).toStrictEqual({ available: false, as_of: NOW });
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+});
+
+describe("a parcel's paid order", () => {
+  // The office the discovery listing's example ships to: a real place and
+  // nobody's home.
+  const ADDRESS = {
+    name: "Nuanu Reception",
+    line_one: "Jl. Raya Kediri, Beraban",
+    line_two: "Nuanu Creative City",
+    city: "Tabanan",
+    state: "BA",
+    postal_code: "82121",
+    country: "ID",
+    phone_number: "+62 000 0000 0000",
+  };
+  const ADDRESS_WORDS = ["Reception", "Kediri", "Beraban", "Creative City", "Tabanan", "82121"];
+  const parcelOrder = (overrides: Partial<Order> = {}): Order =>
+    anOrder({
+      merchant_item_id: merchantItemIdFor("https://shop.example.com", "28"),
+      price: {
+        amount: "25.00",
+        currency: "USD",
+        at: "2026-09-14T12:00:00.000Z",
+        as_of: "2026-09-14T12:00:00.000Z",
+      },
+      price_id: "prc_parcel",
+      ship_to: ADDRESS,
+      ...overrides,
+    });
+  const THE_TOTE: ProductInspection = {
+    ok: true,
+    product: {
+      kind: "parcel",
+      productId: "28",
+      price: { amount: "20.00", currency: "USD" },
+      fingerprint: "accepted-parcel-fingerprint",
+    },
+  };
+  const rate = (title: string, cost: string, instanceId: string) => ({
+    methodId: "flat_rate",
+    instanceId,
+    title,
+    cost,
+  });
+  const TODAY: RatesRead = {
+    ok: true,
+    rates: [rate("Express", "12.00", "4"), rate("Standard", "5.00", "3")],
+  };
+
+  /** A shop that takes every parcel's order, remembering what it was sent. */
+  const aParcelShop = () => {
+    const placed: ParcelSold[] = [];
+    return {
+      placed,
+      place: async (_keys: ShopKeys, sold: ParcelSold): Promise<ParcelMade> => {
+        placed.push(sold);
+        return { ok: true, id: String(29 + placed.length), number: String(29 + placed.length) };
+      },
+    };
+  };
+
+  const parcelParts = (
+    shops: WooShops,
+    place: (keys: ShopKeys, sold: ParcelSold) => Promise<ParcelMade>,
+    overrides: Partial<Filling> = {},
+  ): Filling => ({
+    shops,
+    now: () => new Date("2026-09-14T12:00:00.000Z"),
+    placeParcel: place,
+    inspectProduct: async () => THE_TOTE,
+    shippingRates: async () => TODAY,
+    quotedProduct: async () => "accepted-parcel-fingerprint",
+    ...overrides,
+  });
+
+  it("places it with the address and the rate it was paid at, and takes it on", async () => {
+    const shops = memoryWooShops();
+    const shop = aParcelShop();
+    let asked: unknown;
+
+    const answer = await fillFromTheShop(
+      parcelOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      parcelParts(shops, shop.place, {
+        shippingRates: async (_connection, _productId, where) => {
+          asked = where;
+          return TODAY;
+        },
+      }),
+    );
+
+    expect(answer).toStrictEqual({ accepted: {} });
+    // The shop is asked for rates to the place, not the person.
+    expect(asked).toStrictEqual({
+      country: "ID",
+      state: "BA",
+      city: "Tabanan",
+      postal_code: "82121",
+    });
+    expect(shop.placed).toHaveLength(1);
+    expect(shop.placed[0]).toMatchObject({
+      orderId: "ord_1",
+      productId: "28",
+      email: MERCHANT_EMAIL,
+      paid: { amount: "25.00", currency: "USD" },
+      goods: "20.00",
+      rate: rate("Standard", "5.00", "3"),
+      address: ADDRESS,
+    });
+    expect(await shops.knownOrder("ord_1")).toStrictEqual({
+      kind: "placed_parcel",
+      id: "30",
+      number: "30",
+    });
+    // The ledger keeps the sale as a parcel's, which recovery will not try to
+    // make again, with the shop's order and nothing of where it goes.
+    const kept = await shops.recoveryOrder("ord_1");
+    expect(kept?.facts.kind).toBe("parcel");
+    for (const word of ADDRESS_WORDS) expect(JSON.stringify(kept)).not.toContain(word);
+  });
+
+  it("chooses the rate the price was paid at, not the cheapest of today", async () => {
+    // The agent was quoted the cheapest rate, and a cheaper one the shop added
+    // since must not make the paid price look wrong: the rate costing what was
+    // paid above the goods is the rate that was sold.
+    const shop = aParcelShop();
+
+    const answer = await fillFromTheShop(
+      parcelOrder({
+        price: {
+          amount: "32.00",
+          currency: "USD",
+          at: "2026-09-14T12:00:00.000Z",
+          as_of: "2026-09-14T12:00:00.000Z",
+        },
+      }),
+      connection(),
+      MERCHANT_EMAIL,
+      parcelParts(memoryWooShops(), shop.place),
+    );
+
+    expect(answer).toStrictEqual({ accepted: {} });
+    expect(shop.placed[0]?.rate).toStrictEqual(rate("Express", "12.00", "4"));
+  });
+
+  it("refuses an order whose shipping no longer costs what was paid, and posts nothing", async () => {
+    const shops = memoryWooShops();
+    const shop = aParcelShop();
+
+    const answer = await fillFromTheShop(
+      parcelOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      parcelParts(shops, shop.place, {
+        shippingRates: async () => ({ ok: true, rates: [rate("Standard", "6.00", "3")] }),
+      }),
+    );
+
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(shop.placed).toHaveLength(0);
+    expect(await shops.knownOrder("ord_1")).toStrictEqual({ kind: "precreate_refused" });
+  });
+
+  it("refuses an order whose product changed since its price, and posts nothing", async () => {
+    for (const changed of [
+      { quotedProduct: async () => "an-earlier-parcel" },
+      { inspectProduct: async () => RULED_OUT },
+      {
+        inspectProduct: async (): Promise<ProductInspection> => ({
+          ok: true,
+          product: {
+            kind: "download",
+            productId: "28",
+            downloadId: "dl",
+            fileName: "Tote.pdf",
+            price: { amount: "20.00", currency: "USD" },
+            fingerprint: "accepted-parcel-fingerprint",
+          },
+        }),
+      },
+    ]) {
+      const shops = memoryWooShops();
+      const shop = aParcelShop();
+
+      const answer = await fillFromTheShop(
+        parcelOrder(),
+        connection(),
+        MERCHANT_EMAIL,
+        parcelParts(shops, shop.place, changed),
+      );
+
+      expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+      expect(shop.placed).toHaveLength(0);
+    }
+  });
+
+  it("answers nothing and writes nothing while the shop does not answer", async () => {
+    // A parcel has days to ship, so a shop that is down for a minute is asked
+    // again on the next hand-over rather than refused for good.
+    for (const silent of [
+      {
+        inspectProduct: async (): Promise<ProductInspection> => ({
+          ok: false,
+          why: "The shop did not answer the protected product check.",
+          again: true,
+        }),
+      },
+      {
+        shippingRates: async (): Promise<RatesRead> => ({
+          ok: false,
+          why: "The shop's cart did not answer.",
+          again: true,
+        }),
+      },
+    ]) {
+      const shops = memoryWooShops();
+      const shop = aParcelShop();
+
+      const answer = await fillFromTheShop(
+        parcelOrder(),
+        connection(),
+        MERCHANT_EMAIL,
+        parcelParts(shops, shop.place, silent),
+      );
+
+      expect(answer).toBeNull();
+      expect(shop.placed).toHaveLength(0);
+      expect(await shops.knownOrder("ord_1")).toBeNull();
+    }
+  });
+
+  it("takes a parcel handed over twice on again, with one order in the shop", async () => {
+    const shops = memoryWooShops();
+    const shop = aParcelShop();
+    const parts = parcelParts(shops, shop.place);
+
+    await fillFromTheShop(parcelOrder(), connection(), MERCHANT_EMAIL, parts);
+    const again = await fillFromTheShop(parcelOrder(), connection(), MERCHANT_EMAIL, parts);
+
+    expect(again).toStrictEqual({ accepted: {} });
+    expect(shop.placed).toHaveLength(1);
+  });
+
+  it("refuses a paid parcel order that carries no address to ship to", async () => {
+    const shop = aParcelShop();
+
+    const answer = await fillFromTheShop(
+      parcelOrder({ ship_to: { erased_at: "2026-09-14T12:00:00.000Z" } }),
+      connection(),
+      MERCHANT_EMAIL,
+      parcelParts(memoryWooShops(), shop.place),
+    );
+
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(shop.placed).toHaveLength(0);
+  });
+
+  it("writes none of the address into the merchant's log, whatever happens", async () => {
+    const logged: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...said: unknown[]) => {
+      logged.push(
+        said
+          .map((one) => (one instanceof Error ? one.stack : (JSON.stringify(one) ?? String(one))))
+          .join(" "),
+      );
+    });
+    try {
+      for (const overrides of [
+        { shippingRates: async () => ({ ok: true as const, rates: [] }) },
+        {
+          placeParcel: async () => ({
+            ok: false as const,
+            why: "The shop did not answer.",
+            again: true,
+          }),
+        },
+        {
+          placeParcel: async () => ({ ok: false as const, why: "The shop refused.", again: false }),
+        },
+        {
+          placeParcel: async () => {
+            throw new Error("the socket closed");
+          },
+        },
+        { inspectProduct: async () => RULED_OUT },
+      ]) {
+        await fillFromTheShop(
+          parcelOrder(),
+          connection(),
+          MERCHANT_EMAIL,
+          parcelParts(memoryWooShops(), aParcelShop().place, overrides),
+        ).catch(() => null);
+      }
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(logged.length).toBeGreaterThan(0);
+    for (const word of ADDRESS_WORDS) expect(logged.join("\n")).not.toContain(word);
+  });
+});
+
+describe("following a parcel to the carrier", () => {
+  const SHIPPED = {
+    kind: "shipped" as const,
+    shipment: { carrier: "Bali courier", tracking_number: null },
+  };
+
+  /** A ledger holding one parcel the shop has, on a connected shop. */
+  const withAParcel = async (soldFrom = "https://shop.example.com"): Promise<WooShops> => {
+    const shops = memoryWooShops();
+    await shops.connect(connection());
+    const facts = {
+      kind: "parcel" as const,
+      shopOrigin: soldFrom,
+      connectionRevision: "grant_1",
+      merchantItemId: merchantItemIdFor("https://shop.example.com", "28"),
+      priceId: "prc_parcel",
+      productId: "28",
+      productFingerprint: "accepted-parcel-fingerprint",
+      amount: "25.00",
+      currency: "USD",
+    };
+    await shops.claimOrder("acc_1", "ord_1", facts, new Date("2026-09-14T12:00:00.000Z"));
+    await shops.recordOrder(
+      "ord_1",
+      { id: "30", number: "30", permission: null },
+      new Date("2026-09-14T12:00:00.000Z"),
+    );
+    return shops;
+  };
+
+  /** The gateway's deliver call, answering what it is told to and remembering what it was sent. */
+  const aGateway = (answer: () => unknown = () => ({ ok: true, document: { ok: true } })) => {
+    const delivered: { orderId: string; shipment: unknown }[] = [];
+    return {
+      delivered,
+      client: {
+        deliverOrder: async (orderId: string, shipment: unknown) => {
+          delivered.push({ orderId, shipment });
+          return answer();
+        },
+      } as never,
+    };
+  };
+
+  const following = (
+    shops: WooShops,
+    gateway: unknown,
+    read: () => Promise<ShipmentRead>,
+    now = "2026-09-15T12:00:00.000Z",
+  ) =>
+    followShipments({
+      shops,
+      identity: {
+        byId: async () => ({
+          id: "p",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1" },
+        }),
+      },
+      clientFor: () => gateway as never,
+      now: () => new Date(now),
+      readShipment: async (_keys, wooOrderId, orderId) => {
+        if (wooOrderId !== "30" || orderId !== "ord_1") {
+          throw new Error(`asked about ${wooOrderId} for ${orderId}`);
+        }
+        return await read();
+      },
+    });
+
+  it("records the shipment once the shop completes the order, and follows it no further", async () => {
+    const shops = await withAParcel();
+    const gateway = aGateway();
+
+    await following(shops, gateway.client, async () => SHIPPED);
+    await following(shops, gateway.client, async () => SHIPPED);
+
+    expect(gateway.delivered).toStrictEqual([{ orderId: "ord_1", shipment: SHIPPED.shipment }]);
+    expect(await shops.parcelsToFollow("acc_1")).toStrictEqual([]);
+  });
+
+  it("keeps following an order the shop has not completed, or could not say about", async () => {
+    for (const read of [
+      { kind: "waiting" as const },
+      { kind: "unknown" as const, why: "The shop did not answer." },
+    ]) {
+      const shops = await withAParcel();
+      const gateway = aGateway();
+
+      await following(shops, gateway.client, async () => read);
+
+      expect(gateway.delivered).toStrictEqual([]);
+      expect(await shops.parcelsToFollow("acc_1")).toHaveLength(1);
+    }
+  });
+
+  it("lets go of an order the shop ended, and does not say it shipped", async () => {
+    // A cancelled order never shipped. Nothing is told to the gateway, and the
+    // order becomes a refund owed when its time to ship runs out.
+    const shops = await withAParcel();
+    const gateway = aGateway();
+
+    await following(shops, gateway.client, async () => ({ kind: "ended", status: "cancelled" }));
+
+    expect(gateway.delivered).toStrictEqual([]);
+    expect(await shops.parcelsToFollow("acc_1")).toStrictEqual([]);
+  });
+
+  it("asks again after a gateway that did not answer, and stops after one that refused", async () => {
+    const silent = await withAParcel();
+    await following(
+      silent,
+      aGateway(() => ({ ok: false, status: 0, why: "no answer" })).client,
+      async () => SHIPPED,
+    );
+    expect(await silent.parcelsToFollow("acc_1")).toHaveLength(1);
+
+    // Settling the payment is a moment the gateway asks to be called again after.
+    const settling = await withAParcel();
+    await following(
+      settling,
+      aGateway(() => ({ ok: false, status: 409, why: "settling", code: "settle_in_flight" }))
+        .client,
+      async () => SHIPPED,
+    );
+    expect(await settling.parcelsToFollow("acc_1")).toHaveLength(1);
+
+    for (const code of ["order_already_closed", "shipment_already_recorded"]) {
+      const refused = await withAParcel();
+      const gateway = aGateway(() => ({ ok: false, status: 409, why: "refused", code }));
+
+      await following(refused, gateway.client, async () => SHIPPED);
+      await following(refused, gateway.client, async () => SHIPPED);
+
+      expect(gateway.delivered, code).toHaveLength(1);
+      expect(await refused.parcelsToFollow("acc_1")).toStrictEqual([]);
+    }
+  });
+
+  it("does not read a parcel sold from a shop the account no longer connects", async () => {
+    // The order's number belongs to the shop it was placed in. Read in the
+    // shop connected now, it would be somebody else's order.
+    const shops = await withAParcel("https://old-shop.example.com");
+    const gateway = aGateway();
+    let read = 0;
+
+    await following(shops, gateway.client, async () => {
+      read += 1;
+      return SHIPPED;
+    });
+
+    expect(read).toBe(0);
+    expect(gateway.delivered).toStrictEqual([]);
+  });
+
+  it("still reads a parcel past its seven days, whose late shipment closes the refund owed", async () => {
+    // A shipment recorded after the time to ship still reaches the agent and
+    // closes the debt until a refund is recorded (ADR-0028), so the shop is
+    // read for it well past the seven days.
+    const shops = await withAParcel();
+    const gateway = aGateway();
+
+    await following(shops, gateway.client, async () => SHIPPED, "2026-10-13T12:00:00.000Z");
+
+    expect(gateway.delivered).toStrictEqual([{ orderId: "ord_1", shipment: SHIPPED.shipment }]);
+  });
+
+  it("lets go of a parcel not completed within thirty days of being placed", async () => {
+    // Thirty days is the longest any card may give to ship (ADR-0033), and
+    // this connector's seven are long past by then: the order is a refund
+    // owed, and the shop is not read for it again.
+    const shops = await withAParcel();
+    const gateway = aGateway();
+    let read = 0;
+
+    await following(
+      shops,
+      gateway.client,
+      async () => {
+        read += 1;
+        return { kind: "waiting" };
+      },
+      "2026-10-14T12:00:01.000Z",
+    );
+
+    expect(read).toBe(0);
+    expect(gateway.delivered).toStrictEqual([]);
+    expect(await shops.parcelsToFollow("acc_1")).toStrictEqual([]);
+  });
+
+  it("follows nothing of a download, whose order is already delivered", async () => {
+    const shops = memoryWooShops();
+    await shops.connect(connection());
+    await shops.claimOrder(
+      "acc_1",
+      "ord_2",
+      {
+        shopOrigin: "https://shop.example.com",
+        connectionRevision: "grant_1",
+        merchantItemId: merchantItemIdFor("https://shop.example.com", "11"),
+        priceId: "prc_1",
+        productId: "11",
+        productFingerprint: "accepted-download-fingerprint",
+        amount: "25.00",
+        currency: "USD",
+      },
+      new Date("2026-09-14T12:00:00.000Z"),
+    );
+    await shops.recordOrder(
+      "ord_2",
+      {
+        id: "13",
+        number: "13",
+        permission: {
+          shopOrigin: "https://shop.example.com",
+          productId: "11",
+          orderKey: "wc_order_13",
+          downloadId: "dl_guide",
+          fileName: "Guide",
+          emailUid: "uid",
+          orderNumber: "13",
+        },
+      },
+      new Date("2026-09-14T12:00:00.000Z"),
+    );
+
+    expect(await shops.parcelsToFollow("acc_1")).toStrictEqual([]);
+  });
+});
+
+describe("a parcel the whole way through, against a real gateway", () => {
+  let open: Harness | null = null;
+  let served: Served | null = null;
+
+  afterEach(async () => {
+    await served?.close();
+    await open?.stop();
+    open = null;
+    served = null;
+  });
+
+  // The office the discovery listing's example ships to: a real place and
+  // nobody's home.
+  const ADDRESS = {
+    name: "Nuanu Reception",
+    line_one: "Jl. Raya Kediri, Beraban",
+    city: "Tabanan",
+    state: "BA",
+    postal_code: "82121",
+    country: "ID",
+    phone_number: "+62 000 0000 0000",
+  };
+
+  it("is priced with shipping, placed in the shop, taken on, and read as shipped", async () => {
+    open = await harness();
+    served = await serve(open);
+    const harnessed = open;
+    const acting = { merchantId: harnessed.merchant.id, email: MERCHANT_EMAIL };
+    const gateway = gatewayFor(harnessed.gateway, acting);
+    await harnessed.gateway.setSellerName(harnessed.merchant.id, {
+      seller_site: "https://shop.example.com",
+    });
+
+    const { cards } = cardsFromTheShop(
+      [
+        aProduct({
+          id: 28,
+          virtual: false,
+          downloadable: false,
+          downloads: [],
+          prices: { price: "2000", currency_code: "USD", currency_minor_unit: 2 },
+        }),
+      ],
+      "https://shop.example.com",
+    );
+    const published = await gateway.publishCard(cards[0]?.card ?? ({} as never));
+    const itemId = published.ok && published.document.ok ? published.document.id : "";
+    expect(itemId).not.toBe("");
+
+    const shops = memoryWooShops();
+    const connected = connection();
+    await shops.connect(connected);
+    const placed: ParcelSold[] = [];
+    const parts: Filling = {
+      shops,
+      now: () => new Date(harnessed.now()),
+      inspectProduct: async () => ({
+        ok: true,
+        product: {
+          kind: "parcel",
+          productId: "28",
+          price: { amount: "20.00", currency: "USD" },
+          fingerprint: "accepted-parcel-fingerprint",
+        },
+      }),
+      shippingRates: async () => ({
+        ok: true,
+        rates: [{ methodId: "flat_rate", instanceId: "1", title: "Bali courier", cost: "3.00" }],
+      }),
+      placeParcel: async (_keys, sold) => {
+        placed.push(sold);
+        return { ok: true, id: "30", number: "30" };
+      },
+    };
+
+    const bought = await buyOverHttp(
+      harnessed,
+      served,
+      itemId,
+      {
+        // The harness hands the question over as the envelope carried it.
+        onQuote: (question) =>
+          quoteFromTheShop(
+            connected,
+            QuoteRequestSchema.parse(question),
+            new Date(harnessed.now()),
+            parts,
+          ),
+        onOrder: async (order) =>
+          (await fillFromTheShop(order, connected, MERCHANT_EMAIL, parts)) ??
+          Promise.reject(new Error("the shop was not asked")),
+      },
+      { priced: { params: {}, ship_to: ADDRESS }, paid: { params: {}, ship_to: ADDRESS } },
+    );
+
+    // The agent paid the goods and the shop's rate together, the shop holds a
+    // paid order shipping there, and Agentify holds the address no longer.
+    expect(bought.status).toBe(200);
+    const orderId = (bought.body as AgentOrderStatus).order_id;
+    const paidFor = await gateway.getOrder(orderId);
+    expect(paidFor.ok && paidFor.document.price.amount).toBe("23.00");
+    expect(paidFor.ok && paidFor.document.ship_to).toMatchObject({ erased_at: expect.any(String) });
+    expect(placed).toHaveLength(1);
+    expect(placed[0]?.address).toStrictEqual(ADDRESS);
+    const waiting = await served.call("GET", `/x402/orders/${orderId}/status`);
+    expect((waiting.body as AgentOrderStatus).status).toBe("in_progress");
+
+    // The merchant marks it Completed in their shop.
+    await followShipments({
+      shops,
+      identity: {
+        byId: async () => ({
+          id: "p",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: harnessed.merchant.id },
+        }),
+      },
+      clientFor: (who) => gatewayFor(harnessed.gateway, who),
+      now: () => new Date(harnessed.now()),
+      readShipment: async () => ({
+        kind: "shipped",
+        shipment: { carrier: "Bali courier", tracking_number: null },
+      }),
+    });
+
+    const read = await served.call("GET", `/x402/orders/${orderId}/status`);
+    const status = read.body as Record<string, unknown>;
+    expect(status.status).toBe("shipped");
+    expect(status.shipment).toMatchObject({ carrier: "Bali courier", tracking_number: null });
+    expect(status.delivered).toBeNull();
+  });
+});
+
 describe("the worker that keeps every connected shop served", () => {
   /**
    * A gateway that answers a poll with nothing and counts who asked.
@@ -1009,6 +1910,62 @@ describe("the worker that keeps every connected shop served", () => {
     await new Promise((resolve) => setTimeout(resolve, 60));
     await worker.stop();
     expect(gateway.polls()).toBe(0);
+  });
+
+  it("stops at once when it is stopped while parcels are being read", async () => {
+    // A dashboard being shut down waits for this, and the next pass is
+    // minutes away: a stop that waited for it would be killed instead.
+    const shops = memoryWooShops();
+    await shops.connect(connection());
+    await shops.claimOrder(
+      "acc_1",
+      "ord_1",
+      {
+        kind: "parcel",
+        shopOrigin: "https://shop.example.com",
+        connectionRevision: "grant_1",
+        merchantItemId: merchantItemIdFor("https://shop.example.com", "28"),
+        priceId: "prc_parcel",
+        productId: "28",
+        productFingerprint: "accepted-parcel-fingerprint",
+        amount: "25.00",
+        currency: "USD",
+      },
+      new Date(),
+    );
+    await shops.recordOrder("ord_1", { id: "30", number: "30", permission: null }, new Date());
+    let reading = false;
+    const worker = startWooWorker({
+      shops,
+      now: () => new Date(),
+      identity: {
+        byId: async () => ({
+          id: "acc_1",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1" },
+        }),
+      },
+      clientFor: () => countingGateway().client as never,
+      waitSeconds: 0,
+      betweenTurnsMs: 5,
+      shipmentsEveryMs: 60_000,
+      readShipment: async () => {
+        reading = true;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return { kind: "waiting" };
+      },
+    });
+    const until = Date.now() + 2_000;
+    while (!reading && Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(reading).toBe(true);
+
+    const started = Date.now();
+    await worker.stop();
+
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 });
 

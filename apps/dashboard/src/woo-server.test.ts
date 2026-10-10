@@ -291,6 +291,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
         (async (_keys, merchantItemId) => ({
           ok: true,
           product: {
+            kind: "download",
             productId: merchantItemId.split("_").at(-1) ?? "",
             downloadId: "dl_guide",
             fileName: "Guide",
@@ -749,6 +750,47 @@ describe("importing the catalogue", () => {
     expect(listed[0]?.card.price.amount).toBe("25.00");
   });
 
+  it("publishes a physical product as a parcel, once the merchant has given the shop's site", async () => {
+    // The door holds a parcel's card back from a merchant with no site
+    // (ADR-0034), because the site is where a buyer asks about a parcel that
+    // did not come. The import says so in the door's words; it never fills
+    // the site in on the merchant's behalf.
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [aProduct({ virtual: false, downloadable: false, downloads: [] })],
+      }),
+      inspectProduct: async () => ({
+        ok: true,
+        product: {
+          kind: "parcel",
+          productId: "11",
+          price: { amount: "25.00", currency: "USD" },
+          fingerprint: "accepted-parcel-fingerprint",
+        },
+      }),
+    });
+    await connected(running);
+
+    const held = await running.post("/woocommerce/import");
+
+    expect(held.status).toBe(200);
+    expect(await cardsOf(running)).toHaveLength(0);
+    expect(readable(held.html)).toContain("site");
+
+    await running.harnessed.gateway.setSellerName(running.harnessed.merchant.id, {
+      seller_site: SHOP,
+    });
+    await running.post("/woocommerce/import");
+
+    const listed = (await cardsOf(running)) as unknown as readonly {
+      card: { fulfillment: string; ship_within_seconds?: number; result?: unknown };
+    }[];
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.card).toMatchObject({ fulfillment: "ship", ship_within_seconds: 604_800 });
+    expect(listed[0]?.card.result).toBeUndefined();
+  });
+
   it("keeps imported cards when the merchant forgets the shop", async () => {
     const running = await started({
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
@@ -777,6 +819,7 @@ describe("importing the catalogue", () => {
         return {
           ok: true,
           product: {
+            kind: "download",
             productId: merchantItemId.split("_").at(-1) ?? "",
             downloadId: "dl_guide",
             fileName: "Guide",

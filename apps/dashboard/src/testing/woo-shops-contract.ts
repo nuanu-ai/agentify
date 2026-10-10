@@ -418,6 +418,60 @@ export const wooShopsContract = (
       });
     });
 
+    it("hands a repeat of a parcel's sale the shop's order, with nothing to deliver", async () => {
+      // A parcel's order in the shop is the whole result: there is no
+      // permission to keep, and the address is never kept. A repeat is the
+      // order taken on again, never a second order.
+      await using(async (shops, accounts) => {
+        const parcel = { ...FACTS, kind: "parcel" as const };
+        await shops.claimOrder(accounts.one, "ord_1", parcel, NOW);
+        expect(
+          await shops.recordOrder("ord_1", { id: "30", number: "30", permission: null }, NOW),
+        ).toBe(true);
+        const placed = { kind: "placed_parcel", id: "30", number: "30" };
+        expect(await shops.claimOrder(accounts.one, "ord_1", parcel, LATER)).toEqual(placed);
+        expect(await shops.knownOrder("ord_1")).toEqual(placed);
+        expect((await shops.recoveryOrder("ord_1"))?.facts.kind).toBe("parcel");
+      });
+    });
+
+    it("follows a placed parcel until it ships or the shop ends it, and then lets go", async () => {
+      await using(async (shops, accounts) => {
+        const parcel = { ...FACTS, kind: "parcel" as const };
+        for (const orderId of ["ord_1", "ord_2"]) {
+          await shops.claimOrder(accounts.one, orderId, parcel, NOW);
+          await shops.recordOrder(
+            orderId,
+            { id: `w_${orderId}`, number: "30", permission: null },
+            NOW,
+          );
+        }
+        await shops.claimOrder(accounts.other, "ord_3", parcel, NOW);
+        await shops.recordOrder("ord_3", { id: "w_ord_3", number: "31", permission: null }, NOW);
+
+        // With where it was sold and when, which is what decides whether it
+        // is still read: in the shop connected now, and not for ever.
+        expect(await shops.parcelsToFollow(accounts.one)).toEqual([
+          { orderId: "ord_1", wooOrderId: "w_ord_1", shopOrigin: FACTS.shopOrigin, placedAt: NOW },
+          { orderId: "ord_2", wooOrderId: "w_ord_2", shopOrigin: FACTS.shopOrigin, placedAt: NOW },
+        ]);
+        expect(await shops.endParcel("ord_1", "shipped", LATER)).toBe(true);
+        expect(await shops.endParcel("ord_2", "closed", LATER)).toBe(true);
+        // Ended once: a second ending of either kind changes nothing.
+        expect(await shops.endParcel("ord_1", "closed", LATER)).toBe(false);
+        expect(await shops.parcelsToFollow(accounts.one)).toEqual([]);
+        // An ended parcel is still a sale the shop holds, and is never placed again.
+        expect(await shops.knownOrder("ord_1")).toEqual({
+          kind: "placed_parcel",
+          id: "w_ord_1",
+          number: "30",
+        });
+        expect((await shops.parcelsToFollow(accounts.other)).map((one) => one.orderId)).toEqual([
+          "ord_3",
+        ]);
+      });
+    });
+
     it("says it does not know, for an attempt that never came back", async () => {
       await using(async (shops, accounts) => {
         await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);

@@ -14,7 +14,7 @@
  * carries the part that is different here: the secret belongs to a third party.
  */
 
-import { and, desc, eq, gt, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { accounts, wooGrants, wooOrders, wooQuotes, wooShops } from "./schema.js";
@@ -50,6 +50,11 @@ export interface WooConnection {
 }
 
 export interface WooOrderFacts extends Readonly<Record<string, unknown>> {
+  /**
+   * `parcel` for a parcel's sale; absent for a download's, which is every sale
+   * written before parcels were sold. Nothing of where a parcel goes is here.
+   */
+  readonly kind?: "parcel";
   readonly shopOrigin: string;
   readonly connectionRevision: string;
   readonly merchantItemId: string;
@@ -70,6 +75,16 @@ export interface WooPermission extends Readonly<Record<string, unknown>> {
   readonly orderNumber: string;
 }
 
+/** A parcel's sale, and the shop's order to read for whether it shipped. */
+export interface ParcelToFollow {
+  readonly orderId: string;
+  readonly wooOrderId: string;
+  /** The shop it was sold from, whose order the id is. */
+  readonly shopOrigin: string;
+  /** When the shop's order was bound to the sale. */
+  readonly placedAt: Date;
+}
+
 export interface WooRecoveryOrder {
   readonly orderId: string;
   readonly accountId: string;
@@ -78,7 +93,8 @@ export interface WooRecoveryOrder {
   readonly placed: {
     readonly id: string;
     readonly number: string;
-    readonly permission: WooPermission;
+    /** The download's permission; null for a parcel, whose shop order is the whole result. */
+    readonly permission: WooPermission | null;
   } | null;
 }
 
@@ -103,12 +119,16 @@ export type OrderClaim =
       readonly number: string;
       readonly permission: WooPermission;
     }
+  /** A parcel's order the shop holds, which is answered by taking it on again. */
+  | { readonly kind: "placed_parcel"; readonly id: string; readonly number: string }
   | { readonly kind: "unknown"; readonly attemptedAt: Date };
 
 // The ledger is monotone: absent may become precreate_refused or
 // create_unknown; explicit recovery alone moves precreate_refused to
-// create_unknown; validated binding alone moves create_unknown to placed; and
-// placed never changes. The store methods below are the transition boundary.
+// create_unknown; validated binding alone moves create_unknown to placed; a
+// placed download never changes, and a placed parcel moves once more, to
+// shipped or closed, when it is followed no further. The store methods below
+// are the transition boundary.
 
 export interface WooShops {
   /** Writes down a Connect that is under way. */
@@ -201,24 +221,72 @@ export interface WooShops {
     facts: WooOrderFacts,
     now: Date,
   ): Promise<void>;
-  /** Completes a claim with what the shop answered. */
+  /**
+   * Completes a claim with what the shop answered: a download's permission,
+   * or null for a parcel, whose order in the shop is all there is to keep.
+   */
   recordOrder(
     orderId: string,
     placed: {
       id: string;
       number: string;
-      permission: WooPermission;
+      permission: WooPermission | null;
     },
     now: Date,
   ): Promise<boolean>;
   /** Exact private recovery state; absent or legacy rows are not recoverable. */
   recoveryOrder(orderId: string): Promise<WooRecoveryOrder | null>;
+  /** This account's parcels the shop holds that have neither shipped nor ended. */
+  parcelsToFollow(accountId: string): Promise<readonly ParcelToFollow[]>;
+  /**
+   * Stops following a placed parcel: `shipped` once its shipment is recorded
+   * with the gateway, `closed` once it can no longer be — the shop ended the
+   * order, or the gateway refused the shipment. Once only: a parcel already
+   * ended is left as it is, and the answer says whether this call ended it.
+   */
+  endParcel(orderId: string, phase: "shipped" | "closed", now: Date): Promise<boolean>;
   /**
    * Reopens only a definite pre-create refusal under a different grant.
    * The compare-and-set is what keeps two operator commands to one POST.
    */
   beginPrecreateRecovery(orderId: string, revision: string, now: Date): Promise<boolean>;
 }
+
+/** The phases of a parcel the shop holds: still followed, shipped, or let go. */
+const PARCEL_PLACED = new Set(["placed", "shipped", "closed"]);
+
+/**
+ * What a ledger row says about its sale, read the same way by both stores.
+ *
+ * A row holding the shop's order and a permission is a download placed, in
+ * whatever phase it was written: rows from before the ledger had phases read
+ * `create_unknown` and were placed all the same. A row placed with no
+ * permission is a parcel's: its order in the shop is the whole of what was
+ * made, and redelivery answers it by taking the order on again.
+ */
+const claimOf = (row: {
+  readonly phase: string;
+  readonly wooOrderId: string | null;
+  readonly wooOrderNumber: string | null;
+  readonly result: unknown;
+  readonly attemptedAt: Date;
+}): Exclude<OrderClaim, { kind: "ours" }> => {
+  if (row.phase === "precreate_refused") return { kind: "precreate_refused" };
+  if (row.wooOrderId !== null && row.wooOrderNumber !== null) {
+    if (row.result !== null) {
+      return {
+        kind: "placed",
+        id: row.wooOrderId,
+        number: row.wooOrderNumber,
+        permission: row.result as WooPermission,
+      };
+    }
+    if (PARCEL_PLACED.has(row.phase)) {
+      return { kind: "placed_parcel", id: row.wooOrderId, number: row.wooOrderNumber };
+    }
+  }
+  return { kind: "unknown", attemptedAt: row.attemptedAt };
+};
 
 /** The store a deployment runs on. */
 export const postgresWooShops = (pool: Pool): WooShops => {
@@ -415,33 +483,12 @@ export const postgresWooShops = (pool: Pool): WooShops => {
         // later hand-over place it again.
         throw new Error(`the durable Woo order claim for ${orderId} disappeared`);
       }
-      if (row.phase === "precreate_refused") {
-        return { kind: "precreate_refused" };
-      }
-      if (row.wooOrderId !== null && row.wooOrderNumber !== null && row.result !== null) {
-        return {
-          kind: "placed",
-          id: row.wooOrderId,
-          number: row.wooOrderNumber,
-          permission: row.result as unknown as WooPermission,
-        };
-      }
-      return { kind: "unknown", attemptedAt: row.attemptedAt };
+      return claimOf(row);
     },
 
     async knownOrder(orderId) {
       const [row] = await db.select().from(wooOrders).where(eq(wooOrders.orderId, orderId));
-      if (row === undefined) return null;
-      if (row.phase === "precreate_refused") return { kind: "precreate_refused" };
-      if (row.wooOrderId !== null && row.wooOrderNumber !== null && row.result !== null) {
-        return {
-          kind: "placed",
-          id: row.wooOrderId,
-          number: row.wooOrderNumber,
-          permission: row.result as unknown as WooPermission,
-        };
-      }
-      return { kind: "unknown", attemptedAt: row.attemptedAt };
+      return row === undefined ? null : claimOf(row);
     },
 
     async recordPrecreateRefusal(accountId, orderId, facts, now) {
@@ -488,14 +535,65 @@ export const postgresWooShops = (pool: Pool): WooShops => {
         phase: row.phase,
         facts: row.facts as WooOrderFacts,
         placed:
-          row.wooOrderId === null || row.wooOrderNumber === null || row.result === null
+          row.wooOrderId === null ||
+          row.wooOrderNumber === null ||
+          (row.result === null && row.phase !== "placed")
             ? null
             : {
                 id: row.wooOrderId,
                 number: row.wooOrderNumber,
-                permission: row.result as WooPermission,
+                permission: row.result === null ? null : (row.result as WooPermission),
               },
       };
+    },
+
+    async parcelsToFollow(accountId) {
+      return await db
+        .select({
+          orderId: wooOrders.orderId,
+          wooOrderId: wooOrders.wooOrderId,
+          shopOrigin: sql<string | null>`${wooOrders.facts}->>'shopOrigin'`,
+          placedAt: wooOrders.placedAt,
+        })
+        .from(wooOrders)
+        .where(
+          and(
+            eq(wooOrders.accountId, accountId),
+            eq(wooOrders.phase, "placed"),
+            isNull(wooOrders.result),
+            isNotNull(wooOrders.wooOrderId),
+          ),
+        )
+        .orderBy(asc(wooOrders.placedAt), asc(wooOrders.orderId))
+        .then((rows) =>
+          rows.flatMap((row) =>
+            row.wooOrderId === null || row.shopOrigin === null || row.placedAt === null
+              ? []
+              : [
+                  {
+                    orderId: row.orderId,
+                    wooOrderId: row.wooOrderId,
+                    shopOrigin: row.shopOrigin,
+                    placedAt: row.placedAt,
+                  },
+                ],
+          ),
+        );
+    },
+
+    async endParcel(orderId, phase, _now) {
+      const ended = await db
+        .update(wooOrders)
+        .set({ phase })
+        .where(
+          and(
+            eq(wooOrders.orderId, orderId),
+            eq(wooOrders.phase, "placed"),
+            isNull(wooOrders.result),
+          ),
+        )
+        .returning({ orderId: wooOrders.orderId });
+      return ended.length === 1;
     },
 
     async beginPrecreateRecovery(orderId, revision, now) {
@@ -540,15 +638,29 @@ export const memoryWooShops = (): WooShops => {
     {
       accountId: string;
       attemptedAt: Date;
-      phase: "precreate_refused" | "create_unknown" | "placed";
+      phase: "precreate_refused" | "create_unknown" | "placed" | "shipped" | "closed";
       facts: WooOrderFacts;
+      placedAt?: Date;
       placed: {
         id: string;
         number: string;
-        permission: WooPermission;
+        permission: WooPermission | null;
       } | null;
     }
   >();
+
+  /** A memory entry as the row the Postgres store would read. */
+  const rowOf = (found: {
+    phase: string;
+    attemptedAt: Date;
+    placed: { id: string; number: string; permission: WooPermission | null } | null;
+  }) => ({
+    phase: found.phase,
+    wooOrderId: found.placed?.id ?? null,
+    wooOrderNumber: found.placed?.number ?? null,
+    result: found.placed?.permission ?? null,
+    attemptedAt: found.attemptedAt,
+  });
 
   return {
     async beginGrant(grant) {
@@ -646,33 +758,12 @@ export const memoryWooShops = (): WooShops => {
         });
         return { kind: "ours" };
       }
-      if (found.phase === "precreate_refused") {
-        return { kind: "precreate_refused" };
-      }
-      if (found.placed !== null) {
-        return {
-          kind: "placed",
-          id: found.placed.id,
-          number: found.placed.number,
-          permission: found.placed.permission,
-        };
-      }
-      return { kind: "unknown", attemptedAt: found.attemptedAt };
+      return claimOf(rowOf(found));
     },
 
     async knownOrder(orderId) {
       const found = orders.get(orderId);
-      if (found === undefined) return null;
-      if (found.phase === "precreate_refused") return { kind: "precreate_refused" };
-      if (found.placed !== null) {
-        return {
-          kind: "placed",
-          id: found.placed.id,
-          number: found.placed.number,
-          permission: found.placed.permission,
-        };
-      }
-      return { kind: "unknown", attemptedAt: found.attemptedAt };
+      return found === undefined ? null : claimOf(rowOf(found));
     },
 
     async recordPrecreateRefusal(accountId, orderId, facts, now) {
@@ -688,10 +779,10 @@ export const memoryWooShops = (): WooShops => {
       }
     },
 
-    async recordOrder(orderId, placed) {
+    async recordOrder(orderId, placed, now) {
       const found = orders.get(orderId);
       if (found !== undefined && found.phase === "create_unknown" && found.placed === null) {
-        orders.set(orderId, { ...found, phase: "placed", placed });
+        orders.set(orderId, { ...found, phase: "placed", placed, placedAt: now });
         return true;
       }
       return false;
@@ -699,7 +790,37 @@ export const memoryWooShops = (): WooShops => {
 
     async recoveryOrder(orderId) {
       const found = orders.get(orderId);
-      return found === undefined ? null : { orderId, ...found };
+      // As the Postgres store reads it: a parcel followed no further is no
+      // phase recovery knows.
+      if (found === undefined || found.phase === "shipped" || found.phase === "closed") return null;
+      const { placedAt: _placedAt, ...kept } = found;
+      return { orderId, ...kept, phase: found.phase };
+    },
+
+    async parcelsToFollow(accountId) {
+      return [...orders.entries()].flatMap(([orderId, found]) =>
+        found.accountId === accountId &&
+        found.phase === "placed" &&
+        found.placed !== null &&
+        found.placed.permission === null &&
+        found.placedAt !== undefined
+          ? [
+              {
+                orderId,
+                wooOrderId: found.placed.id,
+                shopOrigin: found.facts.shopOrigin,
+                placedAt: found.placedAt,
+              },
+            ]
+          : [],
+      );
+    },
+
+    async endParcel(orderId, phase) {
+      const found = orders.get(orderId);
+      if (found?.phase !== "placed" || found.placed?.permission !== null) return false;
+      orders.set(orderId, { ...found, phase });
+      return true;
     },
 
     async beginPrecreateRecovery(orderId, revision, now) {

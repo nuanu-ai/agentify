@@ -1,0 +1,53 @@
+run at 2026-10-09T14:54:43Z from a laptop in the operator's network
+== P2 Bali: product 28, {"country":"ID","state":"BA","city":"Denpasar","postcode":"80361"}
+  GET /cart -> 200 1.270090, cart token: yes, nonce header: yes
+  POST /cart/add-item (no nonce) -> 201 0.911988
+  items: [28] needs_shipping: True
+  package 0 rates: 0
+  POST /cart/update-customer -> 200 1.975270
+  items: [28] needs_shipping: True
+  package 0 rates: 1
+    {'rate_id': 'flat_rate:1', 'method_id': 'flat_rate', 'instance_id': 1, 'name': 'Bali courier', 'price': '300', 'taxes': '0', 'currency_code': 'USD', 'currency_minor_unit': 2}
+== P2 Jakarta: product 28, {"country":"ID","state":"JK","city":"Jakarta","postcode":"10110"}
+  GET /cart -> 200 0.886944, cart token: yes, nonce header: yes
+  POST /cart/add-item (no nonce) -> 201 0.941429
+  items: [28] needs_shipping: True
+  package 0 rates: 0
+  POST /cart/update-customer -> 200 0.912490
+  items: [28] needs_shipping: True
+  package 0 rates: 2
+    {'rate_id': 'flat_rate:3', 'method_id': 'flat_rate', 'instance_id': 3, 'name': 'Standard', 'price': '500', 'taxes': '0', 'currency_code': 'USD', 'currency_minor_unit': 2}
+    {'rate_id': 'flat_rate:4', 'method_id': 'flat_rate', 'instance_id': 4, 'name': 'Express', 'price': '1200', 'taxes': '0', 'currency_code': 'USD', 'currency_minor_unit': 2}
+== P2 San Francisco: product 28, {"country":"US","state":"CA","city":"San Francisco","postcode":"94105"}
+  GET /cart -> 200 0.917704, cart token: yes, nonce header: yes
+  POST /cart/add-item (no nonce) -> 201 2.796958
+  items: [28] needs_shipping: True
+  package 0 rates: 0
+  POST /cart/update-customer -> 200 0.922698
+  items: [28] needs_shipping: True
+  package 0 rates: 1
+    {'rate_id': 'flat_rate:2', 'method_id': 'flat_rate', 'instance_id': 2, 'name': 'Standard', 'price': '750', 'taxes': '0', 'currency_code': 'USD', 'currency_minor_unit': 2}
+== P2 New York: product 28, {"country":"US","state":"NY","city":"New York","postcode":"10001"}
+  GET /cart -> 200 1.681895, cart token: yes, nonce header: yes
+  POST /cart/add-item (no nonce) -> 201 1.340917
+  items: [28] needs_shipping: True
+  package 0 rates: 0
+  POST /cart/update-customer -> 200 0.919018
+  items: [28] needs_shipping: True
+  package 0 rates: 0
+== P3 Berlin: product 28, {"country":"DE","city":"Berlin","postcode":"10115"}
+  GET /cart -> 200 0.894561, cart token: yes, nonce header: yes
+  POST /cart/add-item (no nonce) -> 201 0.921697
+  items: [28] needs_shipping: True
+  package 0 rates: 0
+  POST /cart/update-customer -> 400 1.199192
+  error code: rest_invalid_param
+== Negative control: a virtual gift card: product 12, {"country":"ID","state":"JK","city":"Jakarta","postcode":"10110"}
+  GET /cart -> 200 0.913225, cart token: yes, nonce header: yes
+  POST /cart/add-item (no nonce) -> 201 0.917001
+  items: [12] needs_shipping: False
+  POST /cart/update-customer -> 200 1.434345
+  items: [12] needs_shipping: False
+== P3 contrast: a product that does not exist
+  POST /cart/add-item id 999999 -> 400 0.910678
+  error code: woocommerce_rest_cart_invalid_product

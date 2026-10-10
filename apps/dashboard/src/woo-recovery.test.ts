@@ -17,6 +17,7 @@ const FACTS: WooOrderFacts = {
   currency: "USD",
 };
 const PRODUCT: EligibleWooProduct = {
+  kind: "download",
   productId: "22",
   downloadId: "download_owned",
   fileName: "agentify-test.txt",
@@ -284,5 +285,38 @@ describe("exact Woo order recovery", () => {
       phase: "create_unknown",
       placed: null,
     });
+  });
+});
+
+describe("a parcel's order", () => {
+  it("is not recovered: its address was erased when it became a refund owed", async () => {
+    // Recovery creates or binds an order from what was kept, and of a parcel
+    // nothing of where it goes is kept (ADR-0032).
+    const shops = memoryWooShops();
+    await shops.recordPrecreateRefusal("acc_1", "ord_1", { ...FACTS, kind: "parcel" }, NOW);
+
+    const outcome = await recoverWooOrder({ orderId: "ord_1" }, parts(shops).value);
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      state: "refused",
+      why: expect.stringContaining("parcel"),
+    });
+  });
+});
+
+describe("a parcel's order the shop holds", () => {
+  it("is not recovered, and the operator is not told to withhold it", async () => {
+    // A placed parcel is a sale taken on, followed in the shop until it is
+    // completed. Recovery has nothing to do with it, and must not read as a
+    // reason not to ship it.
+    const shops = memoryWooShops();
+    await shops.claimOrder("acc_1", "ord_1", { ...FACTS, kind: "parcel" }, NOW);
+    await shops.recordOrder("ord_1", { id: "30", number: "30", permission: null }, NOW);
+
+    const outcome = await recoverWooOrder({ orderId: "ord_1" }, parts(shops).value);
+
+    expect(outcome).toMatchObject({ ok: false, state: "refused" });
+    expect(outcome.ok === false && outcome.why).not.toContain("do not ship");
   });
 });

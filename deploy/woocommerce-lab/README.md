@@ -32,6 +32,25 @@ connector reads before it imports or sells anything: prices in US dollars, tax
 calculation off, Force Downloads, no redirect fallback, no login required to
 download, and access granted once an order is paid.
 
+A third group is one physical product, a tote bag, and the shipping zones that
+price it, which `seed/parcel.php` adds. It is the second class the connector
+imports: a published, in-stock simple product in US dollars that is neither
+virtual nor downloadable, whose shipping is WooCommerce's own rate for the
+buyer's locality. The zones are keyed one each by a state (Bali), by a postcode
+pattern (San Francisco) and by a country (the rest of Indonesia, at two
+rates), and every other place has no rate, so the shop does not ship there.
+The script can be run on its own against a shop that already holds the rest
+of the seed, and running it again changes nothing:
+
+```sh
+sudo -n env WOO_LAB_LISTEN_ADDRESS=<address the lab Caddy binds on> \
+  docker compose run --rm -T cli wp eval-file - < seed/parcel.php
+```
+
+It is not part of the baseline, so a reset removes it and the script is run
+again afterwards. `./verify.sh` checks the seeded catalogue alone and counts the
+tote bag as one product too many.
+
 The shop runs as an isolated Compose project on the fixture host. Its
 WordPress, MariaDB and Caddy data live under the directory named by
 `WOOCOMMERCE_DATA_ROOT`, on that host's large data disk. Only Caddy is

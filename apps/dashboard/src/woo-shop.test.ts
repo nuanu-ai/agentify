@@ -23,18 +23,33 @@ const inspectProduct = (keys: Parameters<typeof inspectProductInTheShop>[0], ite
   inspectProductInTheShop(keys, itemId, fetch);
 const readOrder = (keys: Parameters<typeof readTheOrderInTheShop>[0], orderId: string) =>
   readTheOrderInTheShop(keys, orderId, fetch);
+const ratesFor = (url: string, productId: string, place: ShipToLocality) =>
+  shippingRatesInTheShop(url, productId, place, fetch);
+const shipmentOf = (keys: Parameters<typeof shipmentInTheShop>[0], wooOrderId: string) =>
+  shipmentInTheShop(keys, wooOrderId, "ord_9", fetch);
+const createParcel = (
+  keys: Parameters<typeof createTheParcelInTheShop>[0],
+  sold: Parameters<typeof createTheParcelInTheShop>[1],
+) => createTheParcelInTheShop(keys, sold, fetch);
 
+import type { ShipToLocality } from "@nuanu-ai/agentify-contracts";
 import {
   catalogueOf,
   createTheOrderInTheShop,
+  createTheParcelInTheShop,
   inspectProductInTheShop,
   readTheOrderInTheShop,
+  shipmentInTheShop,
+  shippingRatesInTheShop,
 } from "./woo-shop.js";
 
 interface Asked {
   readonly method: string;
   readonly url: string;
   readonly authorization: string | undefined;
+  /** The Store API's cart headers, which a client with no browser sends or not. */
+  readonly cartToken: string | undefined;
+  readonly nonce: string | undefined;
   readonly body: string;
 }
 
@@ -45,7 +60,11 @@ interface Stand {
 }
 
 const shopAnswering = async (
-  answer: (asked: Asked) => { status: number; body: unknown },
+  answer: (asked: Asked) => {
+    status: number;
+    body: unknown;
+    headers?: Readonly<Record<string, string>>;
+  },
 ): Promise<Stand> => {
   const asked: Asked[] = [];
   const server: Server = createServer((request, response) => {
@@ -56,11 +75,13 @@ const shopAnswering = async (
         method: request.method ?? "GET",
         url: request.url ?? "/",
         authorization: request.headers.authorization,
+        cartToken: request.headers["cart-token"] as string | undefined,
+        nonce: request.headers.nonce as string | undefined,
         body: Buffer.concat(chunks).toString("utf8"),
       };
       asked.push(call);
       const said = answer(call);
-      response.writeHead(said.status, { "content-type": "application/json" });
+      response.writeHead(said.status, { "content-type": "application/json", ...said.headers });
       response.end(JSON.stringify(said.body));
     });
   });
@@ -433,6 +454,121 @@ describe("the protected product check", () => {
     return "no";
   };
 
+  /** A physical simple product as `wc/v3` writes one: no file and nothing virtual. */
+  const parcelDocument = (overrides: Record<string, unknown> = {}) =>
+    productDocument({
+      id: 28,
+      virtual: false,
+      downloadable: false,
+      downloads: [],
+      price: "20.00",
+      ...overrides,
+    });
+
+  /** The settings a parcel is sold under, with shipping to the shipping address. */
+  const parcelSettingFor = (url: string): string => {
+    if (url.includes("woocommerce_ship_to_countries")) return "";
+    if (url.includes("woocommerce_ship_to_destination")) return "shipping";
+    return settingFor(url);
+  };
+
+  it("accepts a physical simple product as a parcel, judged by the shop's shipping settings", async () => {
+    // The download settings are the ones a download is sold under. A shop
+    // whose download settings would refuse every file, and one that will not
+    // even show them, still sells a parcel, and no file is asked for.
+    stand = await shopAnswering((asked) => {
+      if (asked.url.includes("woocommerce_file_download_method")) {
+        return { status: 401, body: { code: "woocommerce_rest_cannot_view" } };
+      }
+      if (asked.url.includes("woocommerce_downloads_require_login")) {
+        return { status: 200, body: { value: "yes" } };
+      }
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: { value: parcelSettingFor(asked.url) } };
+      }
+      return { status: 200, body: parcelDocument() };
+    });
+
+    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "28"));
+
+    expect(read).toMatchObject({
+      ok: true,
+      product: {
+        kind: "parcel",
+        productId: "28",
+        price: { amount: "20.00", currency: "USD" },
+        fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+    });
+    expect(stand.asked.every((asked) => asked.url.startsWith("/wp-json/wc/v3/"))).toBe(true);
+  });
+
+  it("refuses a parcel from a shop that ships nowhere, or only to the billing address", async () => {
+    // A shop with shipping switched off has no rate to give, and one that
+    // forces the billing address keeps no shipping address of its own: the
+    // address the agent sent would vanish from the merchant's order screen.
+    for (const [setting, value, named] of [
+      ["woocommerce_ship_to_countries", "disabled", "Shipping location"],
+      ["woocommerce_ship_to_destination", "billing_only", "billing address"],
+    ] as const) {
+      stand = await shopAnswering((asked) => {
+        if (asked.url.includes(setting)) return { status: 200, body: { value } };
+        if (asked.url.includes("/settings/")) {
+          return { status: 200, body: { value: parcelSettingFor(asked.url) } };
+        }
+        return { status: 200, body: parcelDocument() };
+      });
+
+      const read = await inspectProduct(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, "28"),
+      );
+
+      expect(read, setting).toMatchObject({
+        ok: false,
+        again: false,
+        why: expect.stringContaining(named),
+      });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("still sells a download from a shop that will not show its shipping settings", async () => {
+    // The split runs both ways: shipping settings are a parcel's, and a shop
+    // that keeps them from us still sells its files.
+    stand = await shopAnswering((asked) => {
+      if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+      if (asked.url.includes("woocommerce_ship_to")) {
+        return { status: 401, body: { code: "woocommerce_rest_cannot_view" } };
+      }
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: { value: settingFor(asked.url) } };
+      }
+      return { status: 200, body: productDocument() };
+    });
+
+    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
+
+    expect(read).toMatchObject({ ok: true, product: { kind: "download" } });
+  });
+
+  it("refuses a parcel whose shipping settings the shop will not show", async () => {
+    stand = await shopAnswering((asked) => {
+      if (asked.url.includes("woocommerce_ship_to_destination")) {
+        return { status: 401, body: { code: "woocommerce_rest_cannot_view" } };
+      }
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: { value: parcelSettingFor(asked.url) } };
+      }
+      return { status: 200, body: parcelDocument() };
+    });
+
+    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "28"));
+
+    expect(read).toMatchObject({ ok: false, again: false });
+  });
+
   it("says a shop that would not answer the product check is worth asking again", async () => {
     // The order this check stands in front of is still live while the shop is
     // down or busy, and a refusal read off a timeout would close it for good
@@ -491,7 +627,11 @@ describe("the protected product check", () => {
         fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
       },
     });
-    expect(stand.asked.filter((asked) => asked.authorization !== undefined)).toHaveLength(8);
+    // The key goes with every question to the shop's API and with nothing
+    // else: the raw file is asked for as a stranger would ask for it.
+    const api = stand.asked.filter((asked) => asked.url.startsWith("/wp-json/"));
+    expect(api.length).toBeGreaterThan(0);
+    expect(api.every((asked) => asked.authorization !== undefined)).toBe(true);
     expect(
       stand.asked.find((asked) => asked.url === "/protected/guide.txt")?.authorization,
     ).toBeUndefined();
@@ -847,6 +987,7 @@ describe("the protected product check", () => {
     const keys = connectionTo(stand.url);
     const read = await inspectProduct(keys, merchantItemIdFor(stand.url, "11"));
     if (!read.ok) throw new Error(`the product check refused: ${read.why}`);
+    if (read.product.kind !== "download") throw new Error("the product check found a parcel");
 
     const made = await createOrder(keys, {
       orderId: "ord_7",
@@ -857,5 +998,541 @@ describe("the protected product check", () => {
     });
 
     expect(made).toMatchObject({ ok: true, id: "13", orderKey: "wc_order_13" });
+  });
+});
+
+describe("the shop's own shipping rate for a parcel's place", () => {
+  // The exchange is the one the probe ran against a live WooCommerce
+  // (`docs/research/41-woo-parcel-probe.md`): a fresh cart, its token in
+  // place of a browser's nonce, the product added, the place set, and the
+  // rates read off the answer. The shapes below are what that shop answered.
+  const TOKEN = "cart-token-1";
+  const rate = (overrides: Record<string, unknown> = {}) => ({
+    rate_id: "flat_rate:3",
+    name: "Standard",
+    method_id: "flat_rate",
+    instance_id: 3,
+    price: "500",
+    taxes: "0",
+    currency_code: "USD",
+    currency_minor_unit: 2,
+    selected: true,
+    ...overrides,
+  });
+  const cart = (rates: unknown[], overrides: Record<string, unknown> = {}) => ({
+    items: [{ id: 28, quantity: 1 }],
+    needs_shipping: true,
+    shipping_rates: [{ package_id: 0, name: "Shipment 1", shipping_rates: rates }],
+    ...overrides,
+  });
+  /** A cart that hands out a token and answers the place with these rates. */
+  const shopWithRates = (answered: () => { status: number; body: unknown }) =>
+    shopAnswering((asked) => {
+      if (asked.method === "GET" && asked.url === "/wp-json/wc/store/v1/cart") {
+        return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+      }
+      if (asked.url === "/wp-json/wc/store/v1/cart/add-item") {
+        return { status: 201, body: cart([]) };
+      }
+      return answered();
+    });
+  const JAKARTA: ShipToLocality = { country: "ID", city: "Jakarta" };
+
+  it("asks a fresh cart with its token and no nonce, and sends every field of the place", async () => {
+    // A field left out of the place is not cleared: the cart keeps the shop's
+    // own base location, and a German address without a state was checked as
+    // a German address in California. Every field goes, empty where the
+    // address has none.
+    stand = await shopWithRates(() => ({ status: 200, body: cart([rate()]) }));
+
+    const read = await ratesFor(stand.url, "28", JAKARTA);
+
+    expect(read).toStrictEqual({
+      ok: true,
+      rates: [{ methodId: "flat_rate", instanceId: "3", title: "Standard", cost: "5.00" }],
+    });
+    expect(stand.asked.map((asked) => `${asked.method} ${asked.url}`)).toStrictEqual([
+      "GET /wp-json/wc/store/v1/cart",
+      "POST /wp-json/wc/store/v1/cart/add-item",
+      "POST /wp-json/wc/store/v1/cart/update-customer",
+    ]);
+    expect(JSON.parse(stand.asked[1]?.body ?? "")).toStrictEqual({ id: 28, quantity: 1 });
+    expect(JSON.parse(stand.asked[2]?.body ?? "")).toStrictEqual({
+      shipping_address: { country: "ID", state: "", city: "Jakarta", postcode: "" },
+    });
+    expect(stand.asked.slice(1).every((asked) => asked.cartToken === TOKEN)).toBe(true);
+    // The cart is the public half of WooCommerce: no key, and no nonce.
+    expect(stand.asked.every((asked) => asked.authorization === undefined)).toBe(true);
+    expect(stand.asked.every((asked) => asked.nonce === undefined)).toBe(true);
+  });
+
+  it("keeps every rate in the shop's own order, and leaves pickup out", async () => {
+    // Pickup is not shipping: a parcel nobody collects is a parcel that never
+    // leaves, and it is usually the cheapest rate on offer.
+    stand = await shopWithRates(() => ({
+      status: 200,
+      body: cart([
+        rate({ rate_id: "local_pickup:5", method_id: "local_pickup", instance_id: 5, price: "0" }),
+        rate({
+          rate_id: "pickup_location:0",
+          method_id: "pickup_location",
+          instance_id: 0,
+          price: "0",
+        }),
+        rate({ name: "Express", instance_id: 4, price: "1200" }),
+        rate(),
+      ]),
+    }));
+
+    const read = await ratesFor(stand.url, "28", JAKARTA);
+
+    expect(read).toStrictEqual({
+      ok: true,
+      rates: [
+        { methodId: "flat_rate", instanceId: "4", title: "Express", cost: "12.00" },
+        { methodId: "flat_rate", instanceId: "3", title: "Standard", cost: "5.00" },
+      ],
+    });
+  });
+
+  it("tells a place the shop does not ship to from a shop that refused or did not answer", async () => {
+    stand = await shopWithRates(() => ({ status: 200, body: cart([]) }));
+    expect(await ratesFor(stand.url, "28", JAKARTA)).toStrictEqual({ ok: true, rates: [] });
+    await stand.close();
+
+    // The shop's own refusal names the place it refused, so none of it is
+    // carried into what this says.
+    stand = await shopWithRates(() => ({
+      status: 400,
+      body: {
+        code: "rest_invalid_param",
+        message: "The provided state (BE) is not valid in Jakarta.",
+      },
+    }));
+    const refused = await ratesFor(stand.url, "28", JAKARTA);
+    expect(refused).toMatchObject({ ok: false, again: false });
+    expect(JSON.stringify(refused)).not.toContain("Jakarta");
+    expect(JSON.stringify(refused)).not.toContain("BE");
+    await stand.close();
+
+    stand = await shopWithRates(() => ({ status: 503, body: {} }));
+    expect(await ratesFor(stand.url, "28", JAKARTA)).toMatchObject({ ok: false, again: true });
+    await stand.close();
+
+    // A cart with no token cannot be asked anything without a browser's nonce.
+    stand = await shopAnswering(() => ({ status: 200, body: cart([]) }));
+    expect(await ratesFor(stand.url, "28", JAKARTA)).toMatchObject({ ok: false, again: false });
+  });
+
+  it("refuses rates it could not sell at, rather than choosing among them", async () => {
+    // Another currency, another scale, a tax the shop added, or two packages
+    // for one product: each is a shop whose rate is not the price of shipping
+    // this parcel in dollars, and a choice made among them would be a guess.
+    for (const body of [
+      cart([rate({ currency_code: "EUR" })]),
+      cart([rate({ currency_minor_unit: 0, price: "5" })]),
+      cart([rate({ taxes: "50" })]),
+      cart([rate({ price: "five" })]),
+      cart([rate()], {
+        shipping_rates: [
+          { package_id: 0, shipping_rates: [rate()] },
+          { package_id: 1, shipping_rates: [rate()] },
+        ],
+      }),
+      cart([rate()], { needs_shipping: false }),
+    ]) {
+      stand = await shopWithRates(() => ({ status: 200, body }));
+
+      expect(await ratesFor(stand.url, "28", JAKARTA), JSON.stringify(body)).toMatchObject({
+        ok: false,
+        again: false,
+      });
+      await stand.close();
+      stand = null;
+    }
+  });
+});
+
+describe("creating a parcel's order", () => {
+  // What a live WooCommerce 11.1 answered to an order like this one, with the
+  // address read back as it was sent (`docs/research/41-woo-parcel-probe.md`).
+  // The address is Agentify's own office, the one the discovery listing's
+  // example ships to: a real place and nobody's home.
+  const ADDRESS = {
+    name: "Nuanu Reception",
+    line_one: "Jl. Raya Kediri, Beraban",
+    line_two: "Nuanu Creative City",
+    city: "Tabanan",
+    state: "BA",
+    postal_code: "82121",
+    country: "ID",
+    phone_number: "+62 000 0000 0000",
+  };
+  const sold = {
+    orderId: "ord_9",
+    productId: "28",
+    email: "merchant@example.com",
+    paid: { amount: "23.00", currency: "USD" },
+    goods: "20.00",
+    rate: { methodId: "flat_rate", instanceId: "1", title: "Bali courier", cost: "3.00" },
+    address: ADDRESS,
+  };
+  const shipping = {
+    first_name: "Nuanu Reception",
+    last_name: "",
+    company: "",
+    address_1: "Jl. Raya Kediri, Beraban",
+    address_2: "Nuanu Creative City",
+    city: "Tabanan",
+    state: "BA",
+    postcode: "82121",
+    country: "ID",
+    phone: "+62 000 0000 0000",
+  };
+  const madeParcel = (overrides: Record<string, unknown> = {}) => ({
+    id: 30,
+    number: "30",
+    order_key: "wc_order_30",
+    status: "processing",
+    currency: "USD",
+    total: "23.00",
+    total_tax: "0.00",
+    shipping_total: "3.00",
+    payment_method: "agentify",
+    transaction_id: "ord_9",
+    billing: { email: "merchant@example.com" },
+    shipping,
+    meta_data: [{ id: 13, key: "agentify_order_id", value: "ord_9" }],
+    line_items: [
+      { product_id: 28, quantity: 1, subtotal: "20.00", total: "20.00", total_tax: "0.00" },
+    ],
+    shipping_lines: [
+      {
+        id: 6,
+        method_title: "Bali courier",
+        method_id: "flat_rate",
+        instance_id: "1",
+        total: "3.00",
+        total_tax: "0.00",
+      },
+    ],
+    ...overrides,
+  });
+  /** Every word of the address, none of which any answer here may carry. */
+  const ADDRESS_WORDS = [
+    "Reception",
+    "Kediri",
+    "Beraban",
+    "Creative City",
+    "Tabanan",
+    "82121",
+    "0000 0000",
+  ];
+
+  it("sends a paid order shipping to the buyer, with the rate the price was paid at", async () => {
+    stand = await shopAnswering(() => ({ status: 201, body: madeParcel() }));
+
+    const made = await createParcel(connectionTo(stand.url), sold);
+
+    expect(made).toStrictEqual({ ok: true, id: "30", number: "30" });
+    const asked = stand.asked[0];
+    expect(asked?.method).toBe("POST");
+    expect(asked?.authorization).toMatch(/^Basic /);
+    // The answer is read with the fields this needs, the address among them so
+    // that it can be checked, and nothing else the shop would echo.
+    expect(new URL(asked?.url ?? "", stand.url).searchParams.get("_fields")?.split(",")).toContain(
+      "shipping",
+    );
+    const body = JSON.parse(asked?.body ?? "{}");
+    expect(body).toMatchObject({
+      set_paid: true,
+      transaction_id: "ord_9",
+      billing: { email: "merchant@example.com" },
+      // One name goes whole into the first name: splitting it would be a guess.
+      shipping: {
+        first_name: "Nuanu Reception",
+        address_1: "Jl. Raya Kediri, Beraban",
+        address_2: "Nuanu Creative City",
+        city: "Tabanan",
+        state: "BA",
+        postcode: "82121",
+        country: "ID",
+        phone: "+62 000 0000 0000",
+      },
+      line_items: [{ product_id: 28, quantity: 1, subtotal: "20.00", total: "20.00" }],
+      shipping_lines: [
+        { method_id: "flat_rate", instance_id: "1", method_title: "Bali courier", total: "3.00" },
+      ],
+    });
+    expect(body.shipping.last_name).toBeUndefined();
+  });
+
+  it("does not call an order placed whose answer does not carry the address it was sent", async () => {
+    // Taking the order on erases Agentify's copy of the address (ADR-0032), so
+    // the shop has to be seen holding it first. An answer that holds another,
+    // or none, is an order that may exist without it: unknown, never placed,
+    // and never posted again.
+    for (const changed of [
+      { shipping: { ...shipping, address_1: "Jl. Raya Kediri" } },
+      { shipping: { ...shipping, phone: "" } },
+      { shipping: undefined },
+    ]) {
+      stand = await shopAnswering(() => ({ status: 201, body: madeParcel(changed) }));
+
+      const made = await createParcel(connectionTo(stand.url), sold);
+
+      expect(made, JSON.stringify(changed)).toMatchObject({ ok: false, again: true });
+      for (const word of ADDRESS_WORDS) expect(JSON.stringify(made)).not.toContain(word);
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("does not call an order placed whose totals or shipping line are not the sale", async () => {
+    for (const changed of [
+      { total: "20.00" },
+      { shipping_lines: [] },
+      { shipping_lines: [{ ...madeParcel().shipping_lines[0], method_id: "free_shipping" }] },
+      { shipping_lines: [{ ...madeParcel().shipping_lines[0], total: "5.00" }] },
+      {
+        line_items: [
+          { product_id: 28, quantity: 1, subtotal: "23.00", total: "23.00", total_tax: "0.00" },
+        ],
+      },
+      { meta_data: [] },
+    ]) {
+      stand = await shopAnswering(() => ({ status: 201, body: madeParcel(changed) }));
+
+      const made = await createParcel(connectionTo(stand.url), sold);
+
+      expect(made, JSON.stringify(changed)).toMatchObject({ ok: false, again: true });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("carries none of the address into a refusal, and says whether to ask again", async () => {
+    stand = await shopAnswering(() => ({
+      status: 400,
+      body: {
+        code: "rest_invalid_param",
+        message: "Invalid shipping: Jl. Raya Kediri, Beraban, Tabanan",
+      },
+    }));
+    const refused = await createParcel(connectionTo(stand.url), sold);
+    expect(refused).toMatchObject({ ok: false, again: false });
+    for (const word of ADDRESS_WORDS) expect(JSON.stringify(refused)).not.toContain(word);
+    await stand.close();
+
+    stand = await shopAnswering(() => ({ status: 503, body: {} }));
+    expect(await createParcel(connectionTo(stand.url), sold)).toMatchObject({
+      ok: false,
+      again: true,
+    });
+  });
+});
+
+describe("reading whether a parcel has shipped", () => {
+  // WooCommerce has no "shipped". Completed is the merchant's word that the
+  // order needs nothing more, and it is the one this reads; tracking, where
+  // there is any, is read from WooCommerce's own fulfilments, in the shape a
+  // live 11.1 answered (`docs/research/41-woo-parcel-probe.md`).
+  const order = (status: string, lines: unknown[] = [{ method_title: "Bali courier" }]) => ({
+    id: 30,
+    status,
+    transaction_id: "ord_9",
+    shipping_lines: lines,
+  });
+  const fulfilment = (overrides: Record<string, unknown> = {}, meta: unknown[] = []) => ({
+    id: 1,
+    entity_type: "WC_Order",
+    entity_id: "30",
+    status: "fulfilled",
+    is_fulfilled: "1",
+    meta_data: [
+      { id: 1, key: "_items", value: [{ item_id: 5, qty: 1 }] },
+      { id: 2, key: "_tracking_number", value: "PROBE123" },
+      { id: 3, key: "_shipment_provider", value: "jne" },
+      { id: 4, key: "_tracking_url", value: "https://example.com/track/PROBE123" },
+      ...meta,
+    ],
+    ...overrides,
+  });
+  const NO_ROUTE = {
+    status: 404,
+    body: { code: "rest_no_route", message: "No route was found matching the URL." },
+  };
+  const shopShowing = (
+    theOrder: { status: number; body: unknown },
+    fulfilments: { status: number; body: unknown } = NO_ROUTE,
+  ) =>
+    shopAnswering((asked) =>
+      asked.url.startsWith("/wp-json/wc/v3/orders/30/fulfillments") ? fulfilments : theOrder,
+    );
+
+  it("reads a completed order's tracking from the shop's own fulfilment, and not its address", async () => {
+    stand = await shopShowing(
+      { status: 200, body: order("completed") },
+      { status: 200, body: [fulfilment()] },
+    );
+
+    const read = await shipmentOf(connectionTo(stand.url), "30");
+
+    expect(read).toStrictEqual({
+      kind: "shipped",
+      shipment: {
+        carrier: "jne",
+        tracking_number: "PROBE123",
+        tracking_url: "https://example.com/track/PROBE123",
+      },
+    });
+    const fields = new URL(stand.asked[0]?.url ?? "", stand.url).searchParams.get("_fields");
+    expect(fields?.split(",")).not.toContain("shipping");
+    expect(fields?.split(",")).not.toContain("billing");
+    expect(stand.asked.every((asked) => asked.authorization !== undefined)).toBe(true);
+  });
+
+  it("names the shop's shipping method as the carrier, with no number, where nothing else is said", async () => {
+    // Fulfilments are switched off in WooCommerce by default, so this is the
+    // ordinary case: the method the parcel was paid to go by is what the
+    // agent is told carries it, and that it has no number we know.
+    for (const fulfilments of [
+      NO_ROUTE,
+      { status: 200, body: [] },
+      { status: 200, body: [fulfilment({ status: "unfulfilled", is_fulfilled: "" })] },
+    ]) {
+      stand = await shopShowing({ status: 200, body: order("completed") }, fulfilments);
+
+      expect(await shipmentOf(connectionTo(stand.url), "30")).toStrictEqual({
+        kind: "shipped",
+        shipment: { carrier: "Bali courier", tracking_number: null },
+      });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("leaves out a tracking address that is not one, and records nothing worded otherwise", async () => {
+    // A tracking address an agent cannot take as an address is left out, never
+    // cleaned up; a carrier or a number that is not plain text is not a
+    // shipment to record, and the order waits for the merchant to correct it.
+    stand = await shopShowing(
+      { status: 200, body: order("completed") },
+      {
+        status: 200,
+        body: [
+          fulfilment({
+            meta_data: [
+              { key: "_tracking_number", value: "PROBE123" },
+              { key: "_shipment_provider", value: "jne" },
+              { key: "_tracking_url", value: "http://example.com/track/PROBE123" },
+            ],
+          }),
+        ],
+      },
+    );
+    expect(await shipmentOf(connectionTo(stand.url), "30")).toStrictEqual({
+      kind: "shipped",
+      shipment: { carrier: "jne", tracking_number: "PROBE123" },
+    });
+    await stand.close();
+
+    for (const [carrier, number] of [
+      ["<b>jne</b>", "PROBE123"],
+      ["jne", "PROBE &amp; 123"],
+    ]) {
+      stand = await shopShowing(
+        { status: 200, body: order("completed") },
+        {
+          status: 200,
+          body: [
+            fulfilment({
+              meta_data: [
+                { key: "_tracking_number", value: number },
+                { key: "_shipment_provider", value: carrier },
+              ],
+            }),
+          ],
+        },
+      );
+      expect(await shipmentOf(connectionTo(stand.url), "30"), `${carrier} ${number}`).toMatchObject(
+        {
+          kind: "unknown",
+        },
+      );
+      await stand.close();
+    }
+    stand = await shopShowing({
+      status: 200,
+      body: order("completed", [{ method_title: "Flat &amp; fast" }]),
+    });
+    expect(await shipmentOf(connectionTo(stand.url), "30")).toMatchObject({ kind: "unknown" });
+  });
+
+  it("does not choose among several fulfilments or several shipping lines", async () => {
+    stand = await shopShowing(
+      { status: 200, body: order("completed") },
+      { status: 200, body: [fulfilment(), fulfilment({ id: 2 })] },
+    );
+    expect(await shipmentOf(connectionTo(stand.url), "30")).toMatchObject({ kind: "unknown" });
+    await stand.close();
+
+    stand = await shopShowing({
+      status: 200,
+      body: order("completed", [{ method_title: "Bali courier" }, { method_title: "Express" }]),
+    });
+    expect(await shipmentOf(connectionTo(stand.url), "30")).toMatchObject({ kind: "unknown" });
+  });
+
+  it("does not take another sale's order for this one", async () => {
+    // The order id is the shop's, and the shop can change under it: a merchant
+    // who connects another shop, or a shop rebuilt and numbering its orders
+    // from the start again. Only an order carrying this sale's identifier is
+    // this sale's, and anything else says nothing about whether it shipped.
+    stand = await shopShowing({
+      status: 200,
+      body: { ...order("completed"), transaction_id: "ord_somebody_else" },
+    });
+
+    expect(await shipmentOf(connectionTo(stand.url), "30")).toMatchObject({ kind: "unknown" });
+    const fields = new URL(stand.asked[0]?.url ?? "", stand.url).searchParams.get("_fields");
+    expect(fields?.split(",")).toContain("transaction_id");
+  });
+
+  it("waits for an order not completed, and lets go of one the shop ended", async () => {
+    for (const status of ["processing", "on-hold", "pending"]) {
+      stand = await shopShowing({ status: 200, body: order(status) });
+      expect(await shipmentOf(connectionTo(stand.url), "30"), status).toStrictEqual({
+        kind: "waiting",
+      });
+      await stand.close();
+      stand = null;
+    }
+    for (const status of ["cancelled", "refunded", "failed", "trash"]) {
+      stand = await shopShowing({ status: 200, body: order(status) });
+      expect(await shipmentOf(connectionTo(stand.url), "30"), status).toStrictEqual({
+        kind: "ended",
+        status,
+      });
+      await stand.close();
+      stand = null;
+    }
+    // The shop saying it has no such order is an ending; a 404 from anything
+    // else in front of it is not the shop saying so.
+    stand = await shopShowing({
+      status: 404,
+      body: { code: "woocommerce_rest_shop_order_invalid_id", message: "Invalid ID." },
+    });
+    expect(await shipmentOf(connectionTo(stand.url), "30")).toStrictEqual({
+      kind: "ended",
+      status: "deleted",
+    });
+    await stand.close();
+    for (const unclear of [NO_ROUTE, { status: 503, body: {} }, { status: 200, body: {} }]) {
+      stand = await shopShowing(unclear);
+      expect(await shipmentOf(connectionTo(stand.url), "30")).toMatchObject({ kind: "unknown" });
+      await stand.close();
+      stand = null;
+    }
   });
 });
