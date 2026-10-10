@@ -268,9 +268,13 @@ the shape declared in the card, which goes to the agent as it is.
 await order.deliver({ access_url: url, expires_at: until })
 ```
 
-A delivery carries exactly what the card's result declares: every field it
-promises the agent, in the type it names, and nothing it does not name
-([Delivery result](/cards#delivery-result)). Goods that do not fit are refused
+A delivery carries exactly what the card's result declared when the order was
+sold: every field it promised the agent, in the type it names, and nothing it
+does not name ([Delivery result](/cards#delivery-result)). The order keeps that
+promise from the moment it is made, so a card you republish with a different
+result changes what new orders are sold with and nothing about the orders
+already sold: those are still delivered with the goods they were sold for.
+Goods that do not fit are refused
 with the offending fields named, and the order does not move at all — nothing
 of what you sent is written down, no receipt is issued, and no deadline of
 yours moves. Fix what the refusal names and deliver again.
@@ -322,7 +326,7 @@ own words instead of being flattened into the nearest of these.
 | `refund_already_settled` | the buyer has their money back for this order, so there is nothing left to deliver against | no |
 | `order_already_closed` | the order reached an ending that no call reopens | no |
 | `not_applicable_in_mode` | the call or the answer does not exist for this card's mode: in the synchronous one the handler's own answer is the delivery or the refusal, so there is no delivering or refusing separately and no taking the order on | no |
-| `delivery_does_not_match_card` | the goods are not the ones the card declares, so nothing was written down | while the order still stands, yes — with different goods; once it has ended, no |
+| `delivery_does_not_match_card` | the goods are not the ones the order was sold with, so nothing was written down | while the order still stands, yes — with different goods; once it has ended, no |
 | `shipment_already_recorded` | a parcel's shipment is already recorded on this order, and a recorded shipment cannot be changed; the same shipment sent again succeeds | no |
 | `call_did_not_reach_us` | the call never got to us, so it did nothing | yes |
 | `answer_not_understood` | it reached us and came back in words these tools cannot read, so it may well have done its work | yes |
@@ -336,7 +340,7 @@ both is yes: send the call again and nothing is delivered or charged twice.
 with `get` before it is sent a second time. And `delivery_does_not_match_card`
 means a third thing by the flag: that call arrived and was understood, so the
 same goods sent again get the same refusal, and the retry that helps is the one
-carrying what the card declares.
+carrying what the order was sold with.
 
 A code outside those eight is the ordinary case rather than the exception, and
 the commonest one is us refusing the call at the door: a key we will not take,

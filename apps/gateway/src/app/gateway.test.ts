@@ -986,9 +986,7 @@ describe("the goods against the card that sold them", () => {
     });
 
     if (short?.ok !== false) throw new Error("goods short of the promise closed the order");
-    expect(short.error.problems?.map((problem) => problem.path.join("."))).toStrictEqual([
-      "iccid",
-    ]);
+    expect(short.error.problems?.map((problem) => problem.path.join("."))).toStrictEqual(["iccid"]);
     expect((await harnessed.store.orderById(orderId))?.delivery).toBeNull();
   });
 

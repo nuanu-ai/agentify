@@ -44,6 +44,7 @@ import {
   type Problem,
   type ProjectedCard,
   type PublishResult,
+  paramSpecToValidator,
   priceProblemsOf,
   publicCardOf,
   purchaseCheckFor,
@@ -1192,6 +1193,10 @@ export class Gateway {
       merchantId: stored.merchantId,
       itemId: stored.id,
       merchantItemId: stored.card.merchant_item_id,
+      // What the agent was promised, kept with the order so a card republished
+      // since cannot change what this sale is held to. A parcel's card declares
+      // none: its order is held to a shipment.
+      ...(stored.card.result === undefined ? {} : { result: stored.card.result }),
       params: { ...params },
       ...(shipTo === undefined ? {} : { shipTo }),
       ...(shipTo === undefined || priceQuestion === null ? {} : { priceQuestion }),
@@ -2087,73 +2092,39 @@ export class Gateway {
   }
 
   /**
-   * What is wrong with these goods against this order's card, or null where
-   * nothing is.
+   * What is wrong with these goods against what this order was sold with, or
+   * null where nothing is.
    *
-   * The card is read by the order's own catalog identifier, which is what the
-   * order carries. There is a window in that, it runs both ways, and both are
-   * written down here rather than left to be discovered.
+   * The order is held to its own promise, never to the card as it stands. A
+   * merchant may republish under the same key while an order of his is still
+   * in flight — the catalog keeps one version per key — and holding the goods
+   * to the newer card went wrong both ways: a result loosened after the sale
+   * let through goods the agent was not promised, and for an order paid for
+   * under the old card, delivering exactly what the agent read was refused,
+   * so the sale could not be closed at all and ran to a refund. So the order
+   * keeps what it was sold with from the moment it is made: a parcel's that it
+   * is a parcel (ADR-0033), and everybody else's the result its card declared.
    *
-   * A merchant may republish under the same key while an order of his is still
-   * in flight — the catalog keeps one version per key and republishing
-   * overwrites it — and the goods are then held to the card as it now stands
-   * rather than to the one the agent read before it paid. One way, a result
-   * loosened after the sale lets through goods the agent was not promised. The
-   * other way is the expensive one: for an order already paid for under the
-   * old card, delivering exactly what the agent read is refused, the merchant
-   * cannot close that sale at all, and it runs to its deadline and becomes a
-   * refund. Nothing here can tell the two apart, because nothing anywhere
-   * remembers what the older card said.
-   *
-   * So this is narrower than it should be rather than merely imperfect, and
-   * what it wants is versioned cards — an order naming the version it was sold
-   * under, and that version still being readable. That is a change to the
-   * catalog and not to this check, and it is somebody's decision to take.
-   * Until then: every case this gets wrong needs the merchant to have
-   * republished mid-sale, and every case it gets right is one the gateway used
-   * not to look at at all.
+   * An order written before it kept a result of its own is held to the card as
+   * it stands, which is what held every order then. That reading has an end:
+   * once no open order on either channel lacks the field, it goes, and an
+   * order for goods with no result of its own becomes the impossible case the
+   * missing card below already is.
    */
   async #goodsAgainstTheCard(record: StoredOrder, delivery: Delivery): Promise<CallError | null> {
-    const stored = await this.runtime.store.cardById(record.itemId);
-    if (stored === null) {
-      // Our own catalog has lost the card an order of ours was made against.
-      // Nothing removes a card, so this cannot be reached by anything a
-      // merchant does; if it ever is, the honest thing is to stop rather than
-      // to wave through goods nothing can be compared with.
-      throw new Error(
-        `the order ${record.order.id} was sold against ${record.itemId}, and there is no such card to hold its goods to`,
-      );
-    }
-
-    // What the delivery is held to comes from the order, which recorded at
-    // purchase whether it is a parcel (ADR-0033), and not from the card as it
-    // stands: a card republished under the same key since the sale would
-    // otherwise hold a parcel's order to goods, or an order for goods to a
-    // shipment, and write down something its status could never be read
-    // from. A card that no longer declares the goods this order was sold
-    // with cannot hold them to anything, and says so.
     const parcel = record.order.mode.parcel === true;
-    if (!parcel && stored.card.result === undefined) {
-      // Nothing sent again can clear this, so it is not marked as worth
-      // sending again: the card declares no goods any more, and only putting
-      // them back on it, or refusing the order, moves this sale.
-      const why =
-        "this order was sold for goods, and its card has since been republished as a parcel's, which declares no goods to hold these to";
-      return {
-        code: "delivery_does_not_match_card",
-        message: `${why}: nothing was written down, and no delivery can be taken for it until the card declares the goods again or the order is refused`,
-        retryable: false,
-        problems: [{ path: [], code: "card_declares_no_goods", message: why }],
-      };
+    const promised = parcel ? ShipmentSchema : await this.#promiseOf(record);
+    if ("code" in promised) {
+      return promised;
     }
-    const fit = (parcel ? ShipmentSchema : deliveryCheckFor(stored.card)).safeParse(delivery);
+    const fit = promised.safeParse(delivery);
     if (fit.success) {
       return null;
     }
 
     const goods = parcel
       ? "this is not a parcel's shipment, so nothing was written down"
-      : `these goods are not what the card "${cutShort(stored.card.merchant_item_id)}" declares it delivers, so nothing was written down`;
+      : `these goods are not what this order for "${cutShort(record.merchantItemId)}" was sold with, so nothing was written down`;
     // The findings travel twice over, and on purpose. `problems` is the list a
     // handler can walk field by field and fix; the sentence is what a person
     // reads in a log, where nothing is going to walk anything. The sentence
@@ -2193,6 +2164,41 @@ export class Gateway {
       retryable: true,
       problems,
     };
+  }
+
+  /**
+   * The goods an order for goods is held to: the result it was sold with, or,
+   * for an order written before it kept one, the result its card declares now.
+   */
+  async #promiseOf(record: StoredOrder): Promise<ReturnType<typeof deliveryCheckFor> | CallError> {
+    if (record.result !== undefined) {
+      return paramSpecToValidator(record.result, "delivery");
+    }
+
+    const stored = await this.runtime.store.cardById(record.itemId);
+    if (stored === null) {
+      // Our own catalog has lost the card an order of ours was made against.
+      // Nothing removes a card, so this cannot be reached by anything a
+      // merchant does; if it ever is, the honest thing is to stop rather than
+      // to wave through goods nothing can be compared with.
+      throw new Error(
+        `the order ${record.order.id} was sold against ${record.itemId}, and there is no such card to hold its goods to`,
+      );
+    }
+    if (stored.card.result === undefined) {
+      // Nothing sent again can clear this, so it is not marked as worth
+      // sending again: the card declares no goods any more, and only putting
+      // them back on it, or refusing the order, moves this sale.
+      const why =
+        "this order was sold for goods, and its card has since been republished as a parcel's, which declares no goods to hold these to";
+      return {
+        code: "delivery_does_not_match_card",
+        message: `${why}: nothing was written down, and no delivery can be taken for it until the card declares the goods again or the order is refused`,
+        retryable: false,
+        problems: [{ path: [], code: "card_declares_no_goods", message: why }],
+      };
+    }
+    return deliveryCheckFor(stored.card);
   }
 
   /**

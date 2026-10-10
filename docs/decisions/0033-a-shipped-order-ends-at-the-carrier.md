@@ -17,7 +17,8 @@ it, and the pilot pays in advance only for goods that survive a second delivery
 
 A card for shipped goods says `fulfillment: "ship"`, and money moves as in the
 asynchronous mode until the parcel ships. The order records at purchase that it
-is a parcel, so a republished card changes no order in flight, and the state
+is a parcel, or the result it was sold with where it is not, so a republished
+card changes no order in flight, and the state
 machine gains no state. The card names `ship_within_seconds`, the time to hand
 the parcel to a carrier from the charge, capped at thirty days in the contract,
 which the agent reads on the card and as the absolute `ship_by` on the order.

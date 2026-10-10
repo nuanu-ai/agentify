@@ -40,7 +40,14 @@
  */
 
 import type { MerchantSelling, Order } from "@agentify/core";
-import type { Card, Delivery, Receipt, ShipTo, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
+import type {
+  Card,
+  Delivery,
+  ParamSpec,
+  Receipt,
+  ShipTo,
+  WorkerEnvelope,
+} from "@nuanu-ai/agentify-contracts";
 
 /** A card as its merchant published it, under the catalog identifier we issued. */
 export interface StoredCard {
@@ -90,6 +97,14 @@ export interface StoredOrder {
   readonly itemId: string;
   /** The merchant's own identifier for it, so they need no mapping table. */
   readonly merchantItemId: string;
+  /**
+   * The goods this order was sold with: the result its card declared at the
+   * instant the order was made, which is what a delivery against it is held
+   * to, so that a card republished since changes nothing for it. Absent on a
+   * parcel's order, which is held to a shipment instead, and on an order
+   * written before this was kept, which is held to the card as it stands.
+   */
+  readonly result?: ParamSpec;
   readonly params: Readonly<Record<string, unknown>>;
   /**
    * Where a parcel goes, on a parcel's order and on no other (ADR-0032): the
