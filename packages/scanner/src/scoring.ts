@@ -1,5 +1,5 @@
 import type { CheckResult } from "@agentify/scanner-contracts";
-import { CHECK_WEIGHTS } from "./checks.js";
+import { BASE_BLOCKED, CHECK_WEIGHTS } from "./checks.js";
 import type { ScanScore } from "./model.js";
 
 const ASSESSED = new Set(["pass", "partial", "fail"]);
@@ -17,6 +17,14 @@ export const levelForScore = (score: number, coverage: number): ScanScore["level
   return "ahead_of_market";
 };
 
+/**
+ * Whether the site answered the home page with a bot challenge or a refusal.
+ * What the scan could still read around it is what the site shows a bot it
+ * has turned away, not what it shows a visitor, so no verdict is given.
+ */
+export const baseBlocked = (checks: readonly { errorCode?: string | null }[]): boolean =>
+  checks.some((check) => check.errorCode === BASE_BLOCKED);
+
 export const scoreChecks = (checks: readonly CheckResult[]): ScanScore => {
   assertRubric();
   const nominalWeight = CHECK_WEIGHTS.reduce((total, weight) => total + weight, 0);
@@ -29,13 +37,15 @@ export const scoreChecks = (checks: readonly CheckResult[]): ScanScore => {
   const coverage = applicableWeight === 0 ? 0 : assessedWeight / applicableWeight;
   const calculatedScore =
     assessedWeight === 0 ? 0 : Math.round((100 * earnedWeight) / assessedWeight);
-  const score = coverage < 0.3 ? null : Math.max(0, Math.min(100, calculatedScore));
+  const blocked = baseBlocked(checks);
+  const withheld = blocked || coverage < 0.3;
+  const score = withheld ? null : Math.max(0, Math.min(100, calculatedScore));
   return {
     rubricVersion: "gtm-v1.0.0",
     score,
     coverage,
-    level: levelForScore(calculatedScore, coverage),
-    terminalStatus: coverage < 0.3 ? "failed" : coverage < 1 ? "partial" : "completed",
+    level: blocked ? "incomplete" : levelForScore(calculatedScore, coverage),
+    terminalStatus: withheld ? "failed" : coverage < 1 ? "partial" : "completed",
     nominalWeight,
     applicableWeight,
     assessedWeight,
