@@ -109,6 +109,16 @@ to the buyer it is proof of payment, to you it is the record a dispute is
 settled from. The price the sale went through at goes into the receipt and
 stays there unchanged even after your price has moved.
 
+A receipt carries three moments, and they are three different things. The
+payment time (`paid_at`, "Paid" in the dashboard) is when the payment
+went through. The price's `at` ("Price set") is when we fixed the price for this sale.
+The price's `as_of` ("Price as of") is when that price was true: the moment your
+price check said it held from, or, for a card sold at its own price, when the
+card was published with it. On a card whose price is checked at the purchase,
+the agent may take its time between the price and the payment, and in the
+synchronous mode the charge comes after the goods, so the three can be minutes
+apart.
+
 An order paid for and never delivered leaves no receipt, because no goods went
 out. What you have for that case is the order itself and the event telling you
 a refund is owed.

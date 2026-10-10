@@ -633,7 +633,7 @@ export const receiptsScreen = (
     </div>
   </div>
   <div class="summary-text">
-    <p>A receipt appears when the product is released to the buyer, or a parcel is handed to a carrier. It shows the amount and three times: Paid, Price set, and Price as of. When the price is checked at the purchase, these times can be a few minutes apart.${restOf(
+    <p>A receipt appears when the product is released to the buyer, or a parcel is handed to a carrier. It shows the amount and three times. Paid is when the payment went through. Price set is when Agentify fixed the price for this sale. Price as of is when that price was true: the moment your price check said it held from, or, for a card sold at its own price, when the card was published with it. When the price is checked at the purchase, these times can be minutes apart.${restOf(
       "/docs/money#what-proves-a-sale-happened",
       "What a receipt records, and which moment each column is",
     )}</p>
