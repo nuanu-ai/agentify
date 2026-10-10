@@ -126,6 +126,13 @@ export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({
   no_payout_wallet: "the wallet address your money arrives at",
 });
 
+/**
+ * What an owner who pressed Import is told about a parcel the door held back
+ * for want of the shop's site. The door's own words name the call a
+ * merchant's code makes; the person here sets the site in Settings.
+ */
+export const SITE_IN_SETTINGS = "Set your shop's site in Settings, then import again.";
+
 /** What a live merchant still waiting for the operator's approval is told. */
 export const APPROVAL_PENDING =
   "Selling live is waiting for Agentify to approve your merchant; until then your cards are refused on the live channel.";

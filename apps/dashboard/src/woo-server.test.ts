@@ -753,8 +753,8 @@ describe("importing the catalogue", () => {
   it("publishes a physical product as a parcel, once the merchant has given the shop's site", async () => {
     // The door holds a parcel's card back from a merchant with no site
     // (ADR-0034), because the site is where a buyer asks about a parcel that
-    // did not come. The import says so in the door's words; it never fills
-    // the site in on the merchant's behalf.
+    // did not come. The import says so; it never fills the site in on the
+    // merchant's behalf.
     const running = await started({
       catalogue: async () => ({
         ok: true,

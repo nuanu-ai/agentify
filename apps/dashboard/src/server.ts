@@ -41,6 +41,7 @@ import {
   type CardInput,
   EvmAddressSchema,
   IssueKeyRequestSchema,
+  MERCHANT_FINDINGS,
   type PayoutWallet as PayoutWalletDocument,
   type PublishResult,
 } from "@nuanu-ai/agentify-contracts";
@@ -126,7 +127,7 @@ import {
   type ProductInspection,
 } from "./woo-shop.js";
 import type { WooConnection, WooShops } from "./woo-shops.js";
-import { moment, type Unset } from "./words.js";
+import { moment, SITE_IN_SETTINGS, type Unset } from "./words.js";
 
 /** Preserves input order while bounding calls into one merchant's shop. */
 const mapAtMost = async <Input, Output>(
@@ -1730,14 +1731,18 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
           continue;
         }
         // The door's own findings, word for word. They are what tells the
-        // merchant which field of which product to change in their shop.
+        // merchant which field of which product to change in their shop. The
+        // one exception is the shop's site, which the door asks a merchant's
+        // code to set through the API and the person here sets in Settings.
         outcomes.push({
           id: one.id,
           title: one.title,
           problems: published.document.error.problems.map((problem) =>
-            problem.path.length === 0
-              ? problem.message
-              : `${problem.path.join(".")}: ${problem.message}`,
+            problem.code === MERCHANT_FINDINGS.NO_SELLER_SITE
+              ? SITE_IN_SETTINGS
+              : problem.path.length === 0
+                ? problem.message
+                : `${problem.path.join(".")}: ${problem.message}`,
           ),
         });
       }
