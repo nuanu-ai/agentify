@@ -93,6 +93,16 @@ describe("pending scan acceptance", () => {
     );
   });
 
+  it("keeps the retry when the answer is not a refusal of ours", async () => {
+    // A proxy's error page says nothing about whether the address is good.
+    savePendingScan(window.sessionStorage, pending("proxy"));
+    installNetwork(new Response("<html>Bad gateway</html>", { status: 502 }));
+
+    render(<PendingScanExperience turnstileSiteKey={null} />);
+
+    expect(await screen.findByRole("button", { name: "Retry scan" })).toBeTruthy();
+  });
+
   it("removes the pending request once the server accepts it", async () => {
     window.history.replaceState({}, "", "/scan/018f3f56-2ec8-7b16-8f66-5b8f93f3251f?segment=owner");
     savePendingScan(window.sessionStorage, pending("accepted"));
