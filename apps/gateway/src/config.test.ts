@@ -495,6 +495,24 @@ describe("loadConfig", () => {
     ).not.toThrow();
   });
 
+  it("refuses a synchronous answer too short to deliver an order a second time", () => {
+    // A handler that throws is the merchant's temporary failure, and the
+    // portal tells him to throw rather than refuse so that the order comes
+    // again. In the synchronous mode it comes again only if a second attempt
+    // fits before the answer's deadline: the wait for the first answer, the
+    // time the queue takes to notice that wait is over, and the delay before
+    // the next attempt. A configuration where those do not fit sends the
+    // advice to throw into a sale that can never recover, so it is refused.
+    const refused = refusalFor({ HANDLER_ANSWER_MS: "7000", REDELIVERY_BASE_DELAY_MS: "500" });
+    for (const owed of ["second attempt", "8000ms", "7000ms", "500ms"]) {
+      expect(refused, refused).toContain(owed);
+    }
+
+    expect(() =>
+      loadConfig({ ...required, HANDLER_ANSWER_MS: "6900", REDELIVERY_BASE_DELAY_MS: "500" }),
+    ).not.toThrow();
+  });
+
   it("gives one address for the gateway however the variable was written", () => {
     // A path is joined onto this string. Written with a trailing slash it
     // produced an address with two slashes in the middle — a second spelling of
