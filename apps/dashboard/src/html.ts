@@ -11,6 +11,7 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import type { DashboardDestination } from "./dashboard-entry.js";
 import { moment } from "./words.js";
 
 /** Text on its way into a page, with the five characters that are not text. */
@@ -54,8 +55,13 @@ const drawnFor = (who: string, html: string): string =>
       : tag,
   );
 
-/** Which of the screens with navigation on them is being looked at. */
-export type Tab = "cards" | "orders" | "receipts" | "integrations" | "keys" | "settings";
+/**
+ * Which of the screens with navigation on them is being looked at.
+ *
+ * Each is a section a signed-out person is returned to after the sign-in, the
+ * cards being the start, so a tab cannot be added that the sign-in forgets.
+ */
+export type Tab = "cards" | Exclude<DashboardDestination, "default" | "woocommerce">;
 
 export interface Chrome {
   /** Which of the three things this stack is, so every page names it. */

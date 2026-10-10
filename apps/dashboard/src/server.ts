@@ -20,10 +20,11 @@
  *
  * Who is allowed in is one middleware and not a check per handler, and that is
  * ADR-0026 §7. The gate sits above every route below it, so a page added later
- * is guarded because it is a page rather than because somebody remembered — and
- * a visitor with no session is answered identically at every address, including
- * the ones that do not exist, so the dashboard's inventory of pages is not
- * something a stranger can read off it.
+ * is guarded because it is a page rather than because somebody remembered. A
+ * visitor with no session is sent to the sign-in from every address, including
+ * the ones that do not exist; the sign-in names the section the address belongs
+ * to, so the person can be returned there, which tells a stranger the names of
+ * the sections and nothing that is not already in the open repository.
  *
  * What stands above the gate is written out in that decision and is short: the
  * sign-in and the sign-out, the page a mailed link lands on, the stylesheet,
@@ -46,11 +47,12 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import express, { type Express, type Request, type Response } from "express";
 import type { DashboardConfig } from "./config.js";
-import type {
-  DashboardDestination,
-  DashboardIdentity,
-  LinkDestination,
-  Person,
+import {
+  type DashboardDestination,
+  type DashboardIdentity,
+  dashboardDestinationIn,
+  type LinkDestination,
+  type Person,
 } from "./dashboard-entry.js";
 import {
   type Acting,
@@ -190,9 +192,6 @@ const SESSION_ENDED =
  */
 const UNSAVED = "You are not signed in, so the change you submitted was not saved.";
 
-const dashboardDestinationIn = (value: unknown): DashboardDestination =>
-  value === "settings" || value === "woocommerce" ? value : "default";
-
 /**
  * Where a person who owns no merchant starts (ADR-0026 §1).
  *
@@ -205,11 +204,7 @@ const dashboardDestinationIn = (value: unknown): DashboardDestination =>
 export const LATEST_REPORT = "/report/latest";
 
 const dashboardPathFor = (base: string, destination: DashboardDestination): string =>
-  destination === "settings"
-    ? `${base}/settings`
-    : destination === "woocommerce"
-      ? `${base}/woocommerce`
-      : `${base}/cards`;
+  `${base}/${destination === "default" ? "cards" : destination}`;
 
 /**
  * The stylesheet the dashboard serves: the shared visual language, then the
@@ -606,16 +601,18 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   }
 
   app.get(`${base}/sign-in`, async (request, response) => {
+    const destination = dashboardDestinationIn(request.query.destination);
     const signedIn = await identity.whoIs(request.headers.cookie);
     if (signedIn !== null) {
       carryCookies(response, signedIn.setCookies);
       response.redirect(
         303,
-        signedIn.person.merchant === null ? `${base}/merchant` : `${base}/cards`,
+        signedIn.person.merchant === null
+          ? `${base}/merchant`
+          : dashboardPathFor(base, destination),
       );
       return;
     }
-    const destination = dashboardDestinationIn(request.query.destination);
     // A session that ran its course is why the person is here, not something
     // they got wrong, so it is the page's first line rather than a refusal.
     // A change lost with it is a refusal: something they did was not kept.
@@ -799,10 +796,12 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    * the health probe, the shop's callback and the address a shop sends a
    * browser back to — ADR-0026 §7's list, which a test holds.
    *
-   * A visitor without one is answered the same way at every address, which is
+   * A visitor without one is sent to the sign-in from every address, which is
    * why this is a middleware and not a check inside each handler: a page added
-   * below is guarded by being below, and a stranger cannot tell which addresses
-   * this dashboard serves from which it does not.
+   * below is guarded by being below. The sign-in names the section they were
+   * going to, so a stranger can tell the sections from other addresses; their
+   * names are no secret, being in the open repository and on every signed-in
+   * page.
    */
   app.use((request, response, next) => {
     void (async () => {
@@ -816,26 +815,25 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
           const hadIdentityCookie = carriesIdentityCookie(request.headers.cookie);
           forget(response);
           const reason = reading ? "session-ended" : "session-ended-unsaved";
-          const destination =
-            hadIdentityCookie && reading && request.path === `${base}/woocommerce`
-              ? "&destination=woocommerce"
-              : "";
-          // The wallet screen is where a message about a payout wallet change
-          // sends a person, with no token in it (ADR-0019), so a signed-out
-          // visit there comes back there after an ordinary sign-in, cookie or
-          // none.
-          const toTheWallet = reading && request.path === `${base}/settings`;
-          // A form sent without a cookie is told it was not kept. Every
-          // address below answers it alike, so the words tell a stranger
-          // nothing about which addresses this dashboard serves.
-          response.redirect(
-            303,
-            hadIdentityCookie
-              ? `${base}/sign-in?reason=${reason}${destination}${toTheWallet ? "&destination=settings" : ""}`
-              : !reading
-                ? `${base}/sign-in?reason=unsaved`
-                : `${base}/sign-in${toTheWallet ? "?destination=settings" : ""}`,
+          // The section an address belongs to is where the person was going —
+          // a bookmark, the screen a message links to with no token in it (the
+          // wallet after a payout wallet change, ADR-0019), or the section a
+          // form that was not saved belongs to, the wallet change posted under
+          // the settings among them — so the sign-in carries it and the link
+          // it mails returns them there. An address outside the sections leads
+          // to the start.
+          const going = dashboardDestinationIn(
+            request.path.slice(`${base}/`.length).split("/", 1)[0],
           );
+          // A form sent without a cookie is told it was not kept, at every
+          // address below alike.
+          const query = [
+            hadIdentityCookie ? `reason=${reason}` : reading ? "" : "reason=unsaved",
+            going === "default" ? "" : `destination=${going}`,
+          ]
+            .filter((part) => part !== "")
+            .join("&");
+          response.redirect(303, `${base}/sign-in${query === "" ? "" : `?${query}`}`);
           return;
         }
         // Once a day the reading moves the session's end, and the browser has

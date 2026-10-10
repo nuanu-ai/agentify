@@ -4165,25 +4165,129 @@ describe("signing out every other device", () => {
   });
 });
 
-describe("the wallet screen a message links to", () => {
-  it("is where an ordinary sign-in lands a person who arrived signed out", async () => {
-    // The message links plainly to the wallet screen and carries no token, so
-    // a person reading it on a device with no session signs in the ordinary
-    // way — and has to land on the screen the message sent them to.
+describe("the screen a signed-out person was going to", () => {
+  // A merchant whose session ran out opens a bookmark — their orders, say —
+  // and signs in again from the mail. Landed on the cards instead, they have
+  // to find their way back to a screen they had already named. The same holds
+  // for the screens a message links to with no token in it: the wallet screen
+  // after a payout wallet change (ADR-0019) and the keys after a key change,
+  // read on a device with no session. The section travels to the sign-in in
+  // the address and is kept with the link's token (ADR-0026 §1); the cards are
+  // where a link with no section lands anyway.
+  const SECTIONS = ["orders", "receipts", "integrations", "keys", "settings", "woocommerce"];
+
+  it.each(SECTIONS)("is %s after the link, for a visitor with no session", async (section) => {
+    // Mounted with the shop screens, as every deployment mounts them, so the
+    // WooCommerce section is a page and not the dashboard's "no such page".
+    const running = await started({ wooShops: memoryWooShops() });
+
+    const arrived = await running.browser.get(`/${section}`);
+    expect(arrived.to).toBe(`/sign-in?destination=${section}`);
+    const form = await running.browser.get(arrived.to ?? "");
+    expect(form.html).toContain(`name="destination" value="${section}"`);
+
+    await running.browser.post("/sign-in", { email: PERSON, destination: section });
+    const action = actionIn(running.mails.at(-1));
+    const opened = await running.browser.from(running.url).post("/sign-in/open", {
+      token: action.searchParams.get("token") ?? "",
+    });
+
+    expect(opened.to).toBe(`/${section}`);
+    expect((await running.browser.get(opened.to ?? "")).status).toBe(200);
+  });
+
+  it("is kept for a session that ran out, beside the word that it did", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    await running.identity.endEverySessionFor(PERSON);
+
+    const arrived = await running.browser.get("/orders");
+
+    expect(arrived.to).toBe("/sign-in?reason=session-ended&destination=orders");
+  });
+
+  it("is kept for a form sent there with no session, so what was not saved can be done again", async () => {
     const running = await started();
 
-    const arrived = await running.browser.get("/settings");
-    expect(arrived.to).toBe("/sign-in?destination=settings");
+    const sent = await running.browser.post("/keys", { label: "the stock worker" });
 
-    const requested = await running.browser.post("/sign-in", {
-      email: PERSON,
-      destination: "settings",
+    expect(sent.to).toBe("/sign-in?reason=unsaved&destination=keys");
+  });
+
+  it("is the section an address below it belongs to: a screen inside it, or a form sent from it", async () => {
+    // The form a merchant is most likely to have lost is the payout wallet
+    // change (ADR-0019), and it is posted to an address under the settings,
+    // not to the settings. The new key form is a screen of the keys.
+    const running = await started();
+
+    const wallet = await running.browser.post("/settings/payout-wallet", {
+      payout_wallet: "0x1111111111111111111111111111111111111111",
     });
-    expect(requested.status).toBe(202);
-    const found = /(https?:\/\/\S+)/.exec(running.mails.at(-1)?.body ?? "")?.[1] ?? "";
-    const opened = await running.browser.post(new URL(found).pathname, {
-      token: new URL(found).searchParams.get("token") ?? "",
-    });
-    expect(opened.to).toBe("/settings");
+    const newKey = await running.browser.get("/keys/new");
+    const disable = await running.browser.post("/keys/some-key/disable");
+
+    expect(wallet.to).toBe("/sign-in?reason=unsaved&destination=settings");
+    expect(newKey.to).toBe("/sign-in?destination=keys");
+    expect(disable.to).toBe("/sign-in?reason=unsaved&destination=keys");
+  });
+
+  it("is kept for a form sent there after the session ended, beside the word that it was not saved", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    await running.identity.endEverySessionFor(PERSON);
+
+    const sent = await running.browser.post("/keys", { label: "the stock worker" });
+
+    expect(sent.to).toBe("/sign-in?reason=session-ended-unsaved&destination=keys");
+  });
+
+  it("is where a person already signed in goes from the sign-in that names it", async () => {
+    const running = await started();
+    await running.browser.signIn();
+
+    const seen = await running.browser.get("/sign-in?destination=receipts");
+
+    expect(seen.to).toBe("/receipts");
+  });
+
+  it("is the start for a person already signed in whose sign-in names something else", async () => {
+    // The value is the browser's to send, so nothing in it may become the
+    // address a person is sent to: another site's least of all.
+    const running = await started();
+    await running.browser.signIn();
+
+    for (const named of ["//evil.example", "/evil.example", "https://evil.example", "ORDERS", ""]) {
+      const seen = await running.browser.get(`/sign-in?destination=${encodeURIComponent(named)}`);
+      expect(seen.to, named).toBe("/cards");
+    }
+    const twice = await running.browser.get("/sign-in?destination=keys&destination=orders");
+    expect(twice.to).toBe("/cards");
+  });
+
+  it("is under the mount point where the dashboard is mounted under one", async () => {
+    // Production serves the dashboard under /dashboard (deploy/Caddyfile), and
+    // a section read or written without it is an address nothing answers.
+    const running = await started({ base: "/dashboard" });
+
+    const arrived = await running.browser.get("/dashboard/orders");
+    expect(arrived.to).toBe("/dashboard/sign-in?destination=orders");
+
+    await running.browser.post("/dashboard/sign-in", { email: PERSON, destination: "orders" });
+    const action = actionIn(running.mails.at(-1));
+    const opened = await running.browser
+      .from(running.url)
+      .post("/dashboard/sign-in/open", { token: action.searchParams.get("token") ?? "" });
+    expect(opened.to).toBe("/dashboard/orders");
+
+    const again = await running.browser.get("/dashboard/sign-in?destination=keys");
+    expect(again.to).toBe("/dashboard/keys");
+  });
+
+  it("is not named for an address outside the sections", async () => {
+    const running = await started();
+
+    for (const path of ["/no-such-page", "/cards", "/keysmith"]) {
+      expect((await running.browser.get(path)).to, path).toBe("/sign-in");
+    }
   });
 });

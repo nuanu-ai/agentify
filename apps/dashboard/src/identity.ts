@@ -28,18 +28,19 @@ import { and, asc, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import type { DashboardConfig } from "./config.js";
-import type {
-  AttachMerchantResult,
-  DashboardDestination,
-  DashboardIdentity,
-  DashboardLinkResult,
-  LinkDestination,
-  LinkRequestResult,
-  LinkWall,
-  LiveSession,
-  MerchantPerson,
-  Person,
-  UnattachedPerson,
+import {
+  type AttachMerchantResult,
+  DASHBOARD_DESTINATIONS,
+  type DashboardDestination,
+  type DashboardIdentity,
+  type DashboardLinkResult,
+  type LinkDestination,
+  type LinkRequestResult,
+  type LinkWall,
+  type LiveSession,
+  type MerchantPerson,
+  type Person,
+  type UnattachedPerson,
 } from "./dashboard-entry.js";
 import { type Message, type Postman, postmanFor } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
@@ -963,17 +964,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /**
  * A claim read back, held to the closed set it was written from.
  *
- * A destination is one of the dashboard's three screens or the report of one
- * named scan, and a request is the scanner's identifier or nothing. A row
- * holding anything else was not written by this file and opens nothing.
+ * A destination is one of the dashboard's sections, its start among them, or
+ * the report of one named scan, and a request is the scanner's identifier or
+ * nothing. A row holding anything else was not written by this file and opens
+ * nothing.
  */
 function claimOf(value: Record<string, unknown>): LinkClaim | null {
   if (typeof value.email !== "string" || value.email !== emailAs(value.email)) return null;
   const request = value.request ?? null;
   if (request !== null && (typeof request !== "string" || !UUID.test(request))) return null;
   const destination = value.destination;
-  if (destination === "default" || destination === "settings" || destination === "woocommerce") {
-    return { email: value.email, destination, request };
+  if (typeof destination === "string") {
+    const known = DASHBOARD_DESTINATIONS.find((one) => one === destination);
+    return known === undefined ? null : { email: value.email, destination: known, request };
   }
   if (typeof destination !== "object" || destination === null) return null;
   const keys = Object.keys(destination);
