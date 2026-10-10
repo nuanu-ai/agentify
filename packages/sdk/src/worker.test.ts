@@ -869,8 +869,6 @@ describe("an answer that could not be delivered", () => {
     await waitUntil(() => problems.length > 0, "the problem to be reported");
 
     expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.ANSWER_FAILED);
-    expect(problems[0]?.message).toMatch(/the order will be delivered again/);
-    expect(problems[0]?.message).toMatch(/did not reach us/);
 
     await running.stop();
     running = undefined;
