@@ -78,6 +78,21 @@ describe("pending scan acceptance", () => {
     },
   );
 
+  it("offers another address and no retry when the refusal says retrying cannot help", async () => {
+    // An address the scanner refuses is refused again on every retry: the
+    // only way on is a different address.
+    savePendingScan(window.sessionStorage, pending("refused"));
+    installNetwork(response(errorEnvelope("invalid_url", false), 400));
+
+    render(<PendingScanExperience turnstileSiteKey={null} />);
+
+    await screen.findByText("public-invalid_url");
+    expect(screen.queryByRole("button", { name: "Retry scan" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Enter another website" }).getAttribute("href")).toBe(
+      "/",
+    );
+  });
+
   it("removes the pending request once the server accepts it", async () => {
     window.history.replaceState({}, "", "/scan/018f3f56-2ec8-7b16-8f66-5b8f93f3251f?segment=owner");
     savePendingScan(window.sessionStorage, pending("accepted"));
