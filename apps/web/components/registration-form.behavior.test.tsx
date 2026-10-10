@@ -118,6 +118,17 @@ describe("asking the scanner for a verification link", () => {
     expect(sent.dataset_reuse_acknowledged).toBe(true);
   });
 
+  it("links the data notice from the box that acknowledges it", async () => {
+    // The visitor is asked to acknowledge a notice, so the notice is one
+    // press away from the box, and the same page the footer calls Privacy.
+    answerWith(202, { status: "verification_sent" });
+    render(<RegistrationForm scanId={scanId} />);
+
+    const acknowledgement = await screen.findByLabelText(/acknowledge the scanner data notice/i);
+    const notice = acknowledgement.closest("label")?.querySelector("a");
+    expect(notice?.getAttribute("href")).toBe("/privacy");
+  });
+
   it("says it cannot tell who is visiting when the dashboard does not answer, and offers no ask", async () => {
     // Not knowing who somebody is must not look like knowing they are nobody:
     // a stranger's form here would send a link to whatever address is typed
