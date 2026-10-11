@@ -2342,7 +2342,7 @@ function troubleAt(
     response
       .status(504)
       .type("html")
-      .send(problemPageAt(base, mode, answer.why));
+      .send(problemPageAt(base, mode, answer.why, again(response)));
     return;
   }
   // A refusal. Its own sentence, under its own status: nothing is claimed about
@@ -2350,7 +2350,7 @@ function troubleAt(
   response
     .status(answer.status)
     .type("html")
-    .send(problemPageAt(base, mode, answer.why));
+    .send(problemPageAt(base, mode, answer.why, again(response)));
 }
 
 /**
@@ -2375,17 +2375,41 @@ function tooLarge(thrown: unknown): boolean {
  */
 const asSentence = (said: string): string => `${said.slice(0, 1).toUpperCase()}${said.slice(1)}`;
 
-function problemPageAt(base: string, mode: DashboardConfig["surfaceMode"], said: string): string {
+/**
+ * The address to try again at: the page itself where it was a page that
+ * failed, and only as a path of this site, never one a browser would read as
+ * another host's.
+ */
+const again = (response: Response): string | undefined => {
+  const url = response.req.originalUrl;
+  return response.req.method === "GET" && url.startsWith("/") && !url.startsWith("//")
+    ? url
+    : undefined;
+};
+
+function problemPageAt(
+  base: string,
+  mode: DashboardConfig["surfaceMode"],
+  said: string,
+  again?: string,
+): string {
+  // A page that failed to draw is tried again at its own address, so the
+  // merchant keeps their place; a form that failed cannot be sent again from
+  // here, so its way on is the dashboard's first screen, named as that.
+  const onward =
+    again === undefined
+      ? `<a class="button button-primary" href="${escaped(base)}/cards">Back to Cards</a>`
+      : `<a class="button button-primary" href="${escaped(again)}">Try again</a>`;
   return bare(
     base,
     "Something went wrong",
     `<div class="gate">
 ${brandLockup("/")}
-<form class="gate-card" method="get" action="${escaped(base)}/cards">
+<div class="gate-card">
 <h1>Something went wrong</h1>
 <p>${escaped(asSentence(said))}</p>
-<button class="button button-primary" type="submit">Try again</button>
-</form>
+${onward}
+</div>
 </div>`,
     mode,
     null,
