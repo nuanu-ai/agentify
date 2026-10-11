@@ -3446,6 +3446,24 @@ describe("when the gateway will not answer", () => {
   });
 });
 
+describe("the page that says a call to the gateway failed", () => {
+  it("tries the page the merchant was on again, not another one", async () => {
+    // A merchant reading Receipts who presses "Try again" wants Receipts
+    // again; sent to Cards, they lose their place and press their way back.
+    const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
+    await browser.signIn();
+    silenceGateway();
+
+    const failed = await browser.get("/receipts");
+    const again = /<(?:a|form)\b[^>]*\b(?:href|action)="([^"]*)"[^>]*>(?:(?!<\/(?:a|form)>)[\s\S])*?Try again/.exec(
+      failed.html,
+    )?.[1];
+
+    expect(failed.status).toBe(504);
+    expect(again).toMatch(/\/receipts$/);
+  });
+});
+
 describe("a session that is ended while somebody is looking at a page", () => {
   it("stops the open tab from doing anything, and does not do what it asked", async () => {
     // The reason a session is a row at all (ADR-0026 §2). Before this, ending
