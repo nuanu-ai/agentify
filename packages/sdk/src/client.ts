@@ -80,6 +80,7 @@ import {
   whatIsKnown,
 } from "./transport.js";
 import {
+  acceptanceArgumentWarning,
   droppedFieldWarning,
   type EventHandler,
   type HandlerRegistry,
@@ -752,10 +753,16 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
   const callsFor = (orderId: string): OrderCalls => ({
     delivered: (delivery) => ({ delivered: delivery }),
     refused: (refusal) => ({ refused: refusal }),
-    accepted: () => ({ accepted: {} }),
+    accepted: (...given: unknown[]) => {
+      if (given.length > 0) reportSafely(registry.problem, acceptanceArgumentWarning(orderId));
+      return { accepted: {} };
+    },
     deliver: (delivery) => orderCall("deliver_order", orderId, delivery),
     refuse: (refusal) => orderCall("refuse_order", orderId, refusal),
-    accept: () => acceptCall(orderId),
+    accept: (...given: unknown[]) => {
+      if (given.length > 0) reportSafely(registry.problem, acceptanceArgumentWarning(orderId));
+      return acceptCall(orderId);
+    },
   });
 
   const withCalls = <Shape extends Order>(order: Shape): Shape & OrderCalls =>

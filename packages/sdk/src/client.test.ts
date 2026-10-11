@@ -262,10 +262,12 @@ describe("closing an order the merchant took on", () => {
     expect(answered).toStrictEqual({ accepted: {} });
     expect(called).toStrictEqual({ ok: true });
     expect(gateway?.callsTo("accept_order")[0]?.body).toStrictEqual({});
-    expect(problems.map((problem) => [problem.kind, problem.subject, problem.fatal])).toStrictEqual([
-      [WORKER_PROBLEM_KINDS.ACCEPTANCE_ARGUMENT_IGNORED, "order-1", false],
-      [WORKER_PROBLEM_KINDS.ACCEPTANCE_ARGUMENT_IGNORED, "order-1", false],
-    ]);
+    expect(problems.map((problem) => [problem.kind, problem.subject, problem.fatal])).toStrictEqual(
+      [
+        [WORKER_PROBLEM_KINDS.ACCEPTANCE_ARGUMENT_IGNORED, "order-1", false],
+        [WORKER_PROBLEM_KINDS.ACCEPTANCE_ARGUMENT_IGNORED, "order-1", false],
+      ],
+    );
     // An acceptance with nothing in it, the ordinary one, says nothing.
     (agentify.orders.forId("order-2") as unknown as { accepted: () => unknown }).accepted();
     expect(problems).toHaveLength(2);
