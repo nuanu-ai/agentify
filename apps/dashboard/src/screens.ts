@@ -493,7 +493,9 @@ ${table(
   // merchant reconciling money against a minute nothing happened in.
   ["Order", "Product", "Amount", "State", "Price set"],
   rows,
-  open ? "Nothing is open. Every order you have is finished." : "No orders yet.",
+  open
+    ? "Nothing is open: no order is waiting on you or owed money. A price a buyer has asked for and not paid is not listed here; All shows it."
+    : "No orders yet.",
 )}
   <p class="note">${escaped(
     "Purchases that closed before they had a price do not appear here: for example, you said the product was out of stock, or you did not answer a price request. No money was charged for them.",
