@@ -1435,6 +1435,29 @@ describe("a payment the payment layer would not vouch for", () => {
   }
 });
 
+describe("a refused payment's words, when the payment layer says a great deal", () => {
+  it("leads with what was charged and what to do, and says the rest was shortened", async () => {
+    // A facilitator's refusal can carry a contract call's whole diagnostic:
+    // the function, its arguments, the authorisation's fields. Put first, it
+    // buries the two things the agent needs, and those come first instead.
+    const harnessed = await started();
+    const itemId = await published(harnessed, asyncCard);
+    const diagnostic = `ContractFunctionExecutionError: transfer amount exceeds balance\n${"  args: 0x00\n".repeat(80)}`;
+    harnessed.facilitator.willRefuseVerification("insufficient_funds", diagnostic);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+
+    const bought = await harnessed.gateway.payPurchase(offered.order.order.id, "P", "P");
+
+    if (bought.step !== "payment_not_verified") throw new Error("a bad payment was taken");
+    expect(bought.why.indexOf("nothing was charged")).toBe(0);
+    expect(bought.why.indexOf("fund the paying wallet")).toBeLessThan(80);
+    expect(bought.why).toContain("transfer amount exceeds balance");
+    expect(bought.why.length).toBeLessThan(400);
+    expect(bought.why).toMatch(/shortened/);
+  });
+});
+
 describe("a price's life", () => {
   // A price holds for a fixed time, and the timer that closes an order whose
   // price has lapsed can fire late. A payment that arrives after the price's
