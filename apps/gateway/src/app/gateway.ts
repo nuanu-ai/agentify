@@ -1360,7 +1360,7 @@ export class Gateway {
       // signing again. In every case nothing was charged, and it says so.
       const why =
         verified.verified === false
-          ? `${verified.message}; nothing was charged: ${NEXT_STEP_AFTER[verified.reason]}`
+          ? `nothing was charged: ${NEXT_STEP_AFTER[verified.reason]}; the payment layer said: ${briefly(verified.message)}`
           : verified.message;
       console.warn(`[gateway] a payment for ${orderId} did not verify: ${why}`);
       return {
@@ -2354,6 +2354,18 @@ export class Gateway {
     }
     return orderCallResponseOf(applied.answer);
   }
+}
+
+/**
+ * The payment layer's own words, as many as an agent reads at a glance: its
+ * first line, cut at a sentence's length and said to be cut. A refusal can
+ * carry a contract call's whole diagnostic, and none of it changes what the
+ * agent does next.
+ */
+function briefly(said: string): string {
+  const line = said.split("\n")[0]?.trim() ?? "";
+  const cut = line.length > 200 ? `${line.slice(0, 200)}…` : line;
+  return cut === said.trim() ? cut : `${cut} (shortened)`;
 }
 
 /** What an agent whose payment was refused does next, by why it was refused. */
