@@ -2372,7 +2372,24 @@ describe("the orders screen", () => {
     // The sale is over, so it is not in the open list — and the empty list says
     // so rather than looking like a screen that failed to load.
     expect(openOnly).toContain("Nothing is open");
-    expect(openOnly).toContain("Every order you have is finished");
+  });
+
+  it("does not call every order finished while a buyer's price is still unpaid", async () => {
+    // A price a buyer asked for and has not paid is an order under way, and it
+    // is left off the open list on purpose; the empty list must not then say
+    // that everything is finished, while All shows that order in progress.
+    const { browser, gateway, harnessed } = await started();
+    const itemId = await publish(gateway, roomCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    await browser.signIn();
+
+    const all = readable((await browser.get("/orders")).html);
+    const openOnly = readable((await browser.get("/orders?open=true")).html);
+
+    expect(all).toContain("in progress");
+    expect(openOnly).toContain("Nothing is open");
+    expect(openOnly).not.toMatch(/finished/i);
   });
 
   it("does not tell a merchant nothing is owed while an order is still running", async () => {
