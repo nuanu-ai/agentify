@@ -758,6 +758,58 @@ h2 {
   margin: 0;
 }
 
+/* A row whose box is a `Field`: the field's own label, box and line are laid
+   out in the row, so the button stands beside the box rather than beside the
+   line under it, and the label and the line span the row. On a phone the
+   button goes under the box. */
+.issue:has(> .field) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  align-items: end;
+}
+.issue > .field {
+  display: contents;
+}
+.issue > .field > .field-label {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  margin: 0 0 var(--space-tight);
+}
+.issue > .field > .field-input {
+  grid-column: 1;
+  grid-row: 2;
+}
+.issue:has(> .field) > button {
+  grid-column: 2;
+  grid-row: 2;
+}
+.issue > .field > .field-hint,
+.issue > .field > .field-error {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  margin-top: var(--space-block);
+}
+.issue:has(> .field) > p {
+  grid-column: 1 / -1;
+  margin-top: var(--space-control);
+}
+@media (max-width: 560px) {
+  .issue:has(> .field) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .issue:has(> .field) > button {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
+    margin-top: var(--space-control);
+  }
+  .issue > .field > .field-hint,
+  .issue > .field > .field-error {
+    grid-row: 4;
+  }
+}
+
 /* On its own line in the monospaced family, so it selects in one gesture and
    reads back character by character; it is copied by hand at least once. */
 .secret {

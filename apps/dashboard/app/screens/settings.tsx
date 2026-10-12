@@ -1,4 +1,4 @@
-import { Button } from "@agentify/ui";
+import { Button, Field } from "@agentify/ui";
 import { Form } from "react-router";
 import type { SettingsView, WalletView } from "../../src/settings-view.js";
 import { Moment } from "../components/moment.js";
@@ -58,50 +58,44 @@ function NameAndSite({ view }: Readonly<{ view: SettingsView }>) {
       <PostForm document action="/settings" className="issue">
         {(pending) => (
           <>
-            <div>
-              <label htmlFor="seller_name">Your seller name</label>
-              <input
-                id="seller_name"
-                name="seller_name"
-                type="text"
-                autoComplete="organization"
-                maxLength={32}
-                defaultValue={name.value}
-                required
-              />
-            </div>
+            <Field
+              label="Your seller name"
+              id="seller_name"
+              name="seller_name"
+              type="text"
+              autoComplete="organization"
+              maxLength={32}
+              defaultValue={name.value}
+              required
+              {...(name.problem === null ? {} : { error: name.problem })}
+            />
             <Button pending={pending}>Save</Button>
           </>
         )}
       </PostForm>
-      {/* The site sits in the third row the name panel shares with the
-          wallet's, under the name's refusal. */}
       <div className="panel-messages">
-        {name.problem === null ? null : <p className="problem">{name.problem}</p>}
         <div className="panel-follow">
           <h2>Your shop's site</h2>
           <p className="quiet">{site.rule}</p>
           <PostForm document action="/settings/site" className="issue">
             {(pending) => (
               <>
-                <div>
-                  <label htmlFor="seller_site">Your shop's site</label>
-                  <input
-                    id="seller_site"
-                    name="seller_site"
-                    type="url"
-                    autoComplete="url"
-                    inputMode="url"
-                    placeholder="https://yourshop.com"
-                    defaultValue={site.value}
-                    required
-                  />
-                </div>
+                <Field
+                  label="Your shop's site"
+                  id="seller_site"
+                  name="seller_site"
+                  type="url"
+                  autoComplete="url"
+                  inputMode="url"
+                  placeholder="https://yourshop.com"
+                  defaultValue={site.value}
+                  required
+                  {...(site.problem === null ? {} : { error: site.problem })}
+                />
                 <Button pending={pending}>Save</Button>
               </>
             )}
           </PostForm>
-          {site.problem === null ? null : <p className="problem">{site.problem}</p>}
         </div>
       </div>
     </>
@@ -182,29 +176,25 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
         {(pressed) => (
           <>
             {pending === null ? null : <Shown pending={pending} saved={saved} />}
-            <div className="wallet-box">
-              <label htmlFor="payout_wallet">
-                {saved === null ? "Payout wallet address" : "New payout wallet address"}
-              </label>
-              <input
-                id="payout_wallet"
-                name="payout_wallet"
-                type="text"
-                autoComplete="off"
-                spellCheck={false}
-                maxLength={42}
-                size={42}
-                defaultValue={typed}
-                required
-              />
-            </div>
+            <Field
+              label={saved === null ? "Payout wallet address" : "New payout wallet address"}
+              id="payout_wallet"
+              name="payout_wallet"
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              maxLength={42}
+              size={42}
+              defaultValue={typed}
+              required
+              {...(problem === null ? {} : { error: problem })}
+            />
             <Button pending={pressed}>{saved === null ? "Save" : "Change the address"}</Button>
             {pressed && wallet.onItsWay !== null ? <p role="status">{wallet.onItsWay}</p> : null}
           </>
         )}
       </PostForm>
       <div className="panel-messages">
-        {problem === null ? null : <p className="problem">{problem}</p>}
         {problem === null || typed === "" ? null : (
           <p className="address">
             <Address address={typed} />

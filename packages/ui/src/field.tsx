@@ -1,4 +1,4 @@
-import { type InputHTMLAttributes, useId } from "react";
+import { type InputHTMLAttributes, useEffect, useId, useRef } from "react";
 
 export interface FieldProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, "className" | "id" | "children"> {
@@ -15,13 +15,19 @@ export interface FieldProps
  * A labelled box with at most one line under it. The box names that line as
  * its description and is marked invalid while the line is a refusal, so a
  * screen reader reads the reason out with the box rather than leaving it to be
- * found.
+ * found. A refused box takes the focus, so what was typed can be corrected at
+ * once: a page drawn refused asks the browser for it, and a refusal arriving
+ * while the page is open moves it there.
  */
-export function Field({ label, hint, error, id, ...input }: FieldProps) {
+export function Field({ label, hint, error, id, autoFocus, ...input }: FieldProps) {
   const own = useId();
   const box = id ?? own;
   const line = `${box}-line`;
   const said = error ?? hint;
+  const typed = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (error !== undefined) typed.current?.focus();
+  }, [error]);
   return (
     <div className="field">
       <label className="field-label" htmlFor={box}>
@@ -29,6 +35,8 @@ export function Field({ label, hint, error, id, ...input }: FieldProps) {
       </label>
       <input
         {...input}
+        ref={typed}
+        autoFocus={autoFocus === true || error !== undefined}
         className="field-input"
         id={box}
         aria-invalid={error === undefined ? undefined : true}
