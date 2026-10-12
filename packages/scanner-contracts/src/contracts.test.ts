@@ -329,8 +329,8 @@ describe("canonical contracts", () => {
   });
 
   it("refuses an input in the previous browser contract by the version it names", () => {
-    // browser-public-v1.0.0 carried a signals object. An Actor build of this
-    // version handed an input of that one is told so at its version.
+    // An Actor build of this version handed an input of the previous one is
+    // told so at its version.
     const previous = "browser-public-v1.0.0";
     const operationId = "019b41a0-7c51-7d63-84bd-a5a20faef497";
     const input = browserObservationInputV1Schema.safeParse({

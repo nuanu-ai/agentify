@@ -1,15 +1,8 @@
 /**
- * Who is visiting a scanner page, asked of the dashboard.
- *
- * The scanner keeps no session of its own (ADR-0026 §2). The dashboard holds the
- * one session the site has, and the scanner asks it over the internal route
- * whose session a request's cookies are, then reads its own tables for what
- * that address owns: a report opens for a session whose address owns it,
- * meaning the lead with that address is linked to the scan.
- *
- * Three answers and not two. A dashboard that cannot be reached is not a
- * stranger: a page that cannot tell who is visiting says so, because not
- * knowing who somebody is must not look like knowing they are nobody.
+ * Who is visiting a scanner page. The scanner keeps no session of its own;
+ * it asks the dashboard, which holds the site's only session. A dashboard
+ * that cannot be reached yields "unknown" rather than "stranger": not
+ * knowing who someone is must not look like knowing they are nobody.
  */
 
 import { createLogger, safeErrorType } from "@agentify/observability";
@@ -31,7 +24,7 @@ export type Visitor =
   | Readonly<{
       kind: "person";
       email: string;
-      /** Whether this person's account carries the operator flag (ADR-0026 §6). */
+      /** Whether this person's account carries the operator flag. */
       operator: boolean;
       /** The lead this address owns reports through, or null for an address with none. */
       leadId: string | null;
@@ -44,28 +37,18 @@ export type Visitor =
 /**
  * Who a cookie header belongs to.
  *
- * `renew` is for the one answer that can hand the browser a renewed cookie:
- * a page drawn on the server cannot set one, so everything else reads the
- * session without moving its end, and the header's own call is what renews
- * it once a day and passes the cookie on.
- *
- * When the session names the request its link was asked for, that request is
- * finished here, at whichever page is the session's first visit. A finishing
- * that fails is logged and the visit goes on: the request keeps waiting and the
- * next visit finishes it, which is better than a page that does not draw.
- *
- * A page reads this once and passes it down, so that everything it draws is
- * about one answer: a dashboard that stops answering between two questions could
- * otherwise turn a report's owner into somebody it is not filed under.
+ * Pass `renew` only from a caller that can hand the browser the renewed cookie;
+ * a page drawn on the server cannot set one. A waiting request the session
+ * names is finished here; if that fails it is logged and the next visit
+ * finishes it. A page reads this once and passes it down, so a dashboard that
+ * stops answering mid-page cannot give one page two different visitors.
  */
 export async function visitorOf(
   cookieHeader: string | undefined | null,
   options: Readonly<{ renew?: boolean }> = {},
 ): Promise<Visitor> {
-  // Only the session's cookie goes to the dashboard: it is told whose session
-  // this is and nothing about the visitor's other cookies. None at all is
-  // nobody's session, and asking the dashboard about it would put a call to it
-  // in front of every first visit to the site.
+  // Only the session cookie is forwarded. With none, skip the call: every first
+  // visit to the site would otherwise wait on the dashboard.
   const cookie = sessionCookiePairs(cookieHeader ?? "");
   if (cookie === "") return { kind: "stranger" };
   let answer: Awaited<
@@ -97,10 +80,9 @@ export async function visitorOf(
 }
 
 /**
- * The lead a visitor already read owns reports through, and, when a scan is
- * named, only if that lead is linked to it: undefined for a stranger and for a
- * person whose address owns nothing here. A visitor the dashboard could not name
- * never reaches this; whoever read it answers that it cannot tell.
+ * The visitor's lead, and when a scan is named only if that lead owns it.
+ * Answer an "unknown" visitor before calling this: undefined here means the
+ * visitor owns nothing.
  */
 export async function ownedLead(visitor: Visitor, scanId?: string): Promise<string | undefined> {
   if (visitor.kind !== "person" || visitor.leadId === null) return undefined;
@@ -122,7 +104,7 @@ export async function owns(leadId: string, scanId: string): Promise<boolean> {
 
 /**
  * The latest report this lead owns, which is where a person with reports and
- * no merchant starts (ADR-0026 §1), or undefined for a lead that owns none.
+ * no merchant starts, or undefined for a lead that owns none.
  */
 export async function latestReportOf(leadId: string): Promise<string | undefined> {
   const latest = (
@@ -142,9 +124,8 @@ export async function latestReportOf(leadId: string): Promise<string | undefined
 }
 
 /**
- * The lead for an address, unless its deletion has been asked for: the moment
- * somebody asks for their data to go, their reports stop opening, whether or
- * not the dashboard has answered yet.
+ * The lead for an address, unless its deletion has been asked for: reports stop
+ * opening the moment deletion is requested, before the dashboard has answered.
  */
 async function leadOf(email: string): Promise<string | null> {
   const lead = (

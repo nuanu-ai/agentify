@@ -176,7 +176,7 @@ describe("dashboard report identity client", () => {
   it("gives up on a session question sooner, because a page is waiting on it", async () => {
     // Every scanner page that shows who is visiting asks this, and a dashboard
     // that hangs must turn into "we cannot tell who is visiting" in seconds,
-    // not into a page that never draws (ADR-0026 §2).
+    // not into a page that never draws.
     vi.useFakeTimers();
     let requestSignal: AbortSignal | null | undefined;
     const fetchImpl = (_input: string | URL | Request, init?: RequestInit) =>

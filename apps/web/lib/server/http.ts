@@ -82,25 +82,15 @@ export function errorResponse(
   );
 }
 
-/**
- * A moment as the seconds a caller must wait, rounded up so nobody is sent
- * back before the wall has gone, and never below one.
- */
+/** Rounded up and at least one, so a caller never comes back before `retryAt`. */
 export function waitSeconds(retryAt: Date, now = new Date()): number {
   return Math.max(1, Math.ceil((retryAt.getTime() - now.getTime()) / 1000));
 }
 
 /**
- * A refusal a machine may act on by waiting, with the wait in the header.
- *
- * `Retry-After` is an instruction, not a hint: whatever reads it comes back
- * when it says to, and comes back again. So it belongs only where the number
- * is a wait that actually ends — a wall that falls at a known moment. A
- * status that may never change (a scan that failed) and a refusal that
- * waiting does not clear (a challenge) carry their number in the envelope as
- * a hint and no header, because an agent obeying a header there would poll a
- * dead thing forever. The envelope and the header are one claim about one
- * wait, so both carry the same number.
+ * A refusal that waiting clears, with the same wait in the envelope and in
+ * `Retry-After`. Use it only where the wait really ends at a known moment: a
+ * client obeying the header on a failed scan or a challenge would poll forever.
  */
 export function waitResponse(
   request: Request,
@@ -130,9 +120,9 @@ export function bearerToken(request: Request): string | null {
 }
 
 /**
- * The answer to a request whose outcome depends on who is asking, when the
- * dashboard that knows did not answer: not "there is nothing here for you",
- * which would be a claim about somebody the scanner could not identify.
+ * The answer when the outcome depends on who is asking and the dashboard did
+ * not answer. "Nothing here for you" would be a claim about a visitor the
+ * scanner could not identify.
  */
 export function visitorUnknownResponse(request: Request) {
   return errorResponse(
@@ -146,15 +136,11 @@ export function visitorUnknownResponse(request: Request) {
 }
 
 /**
- * The refusal for a press whose page was loaded for another address than the
- * one signed in now, or null when the two match.
- *
- * People sign out to come back as another address (ADR-0026 §3), so a page
- * loaded for the first can still be open when the second signs in, and its
- * press arrives with the second one's cookie. The page sends the address it
- * showed; a press naming another, or none, is refused with nothing changed.
- * The words name only the address signed in now, because the other is
- * whatever the request said about itself.
+ * The refusal for a press from a page loaded for another address than the one
+ * signed in now, or null when they match. A page left open across a sign-out
+ * and a sign-in as someone else sends the new cookie, so the page sends the
+ * address it showed and a mismatch or none changes nothing. The message names
+ * only the signed-in address; the other is whatever the request claimed.
  */
 export function pageNotMatched(request: Request, sent: unknown, email: string) {
   const named =

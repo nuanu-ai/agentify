@@ -99,7 +99,7 @@ describe("initial database migration", () => {
       );
       expect(tableRows.rows.map(({ tablename }) => tablename)).toEqual([...TABLES].sort());
       expect(tableRows.rows.every(({ rowsecurity }) => rowsecurity)).toBe(true);
-      // What the product decided to stop keeping is gone, not only unread.
+      // Data the product does not keep is dropped, not only left unread.
       const deletedColumns = await pool.query(
         `select table_name, column_name from information_schema.columns
          where table_schema = 'public'
@@ -899,10 +899,8 @@ describe("initial database migration", () => {
 /**
  * The one database holds three migration sets, and drizzle's migrator applies
  * every file dated after the newest entry of the history it reads and compares
- * nothing else. So each set keeps a history of its own: sharing one, a set
- * would skip the other's older files as though they had run. The gateway's
- * and the dashboard's are applied the way their own commands apply them
- * (apps/gateway/src/migrate.ts, apps/dashboard/src/database.ts).
+ * nothing else, so each set keeps a history of its own. The gateway's and the
+ * dashboard's are applied here the way their own commands apply them.
  */
 describe("the scanner's migrations in the one database", () => {
   const gatewayMigrations = fileURLToPath(
@@ -956,13 +954,11 @@ describe("the scanner's migrations in the one database", () => {
       await gateway(gatewayMigrations);
       await dashboard();
       await migrateDatabase(db, migrationsFolder);
-      // The scanner's newest migration has to be dated after the gateway's
-      // newest for the case below to exist at all, and the real files say
-      // nothing either way: each side adds migrations on its own calendar, and
-      // a gateway migration newer than the scanner's newest once made the case
-      // impossible to build, so the gateway skipped the migration by its own
-      // rule and the test read that as the scanner's doing. So the scanner is
-      // given one more migration of its own, dated after both sides' newest.
+      // The case below needs the scanner's newest migration dated after the
+      // gateway's newest, which the real files do not guarantee: each side adds
+      // migrations on its own calendar, and otherwise the gateway skips the
+      // migration by its own rule and the test blames the scanner. So the
+      // scanner is given one more migration, dated after both sides' newest.
       const newestOf = async (folder: string): Promise<number> =>
         JSON.parse(await readFile(join(folder, "meta", "_journal.json"), "utf8")).entries.at(-1)
           .when;

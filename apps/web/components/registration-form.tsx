@@ -9,11 +9,7 @@ import styles from "./registration-form.module.css";
 
 type RegistrationState = "idle" | "sending" | "sent" | "opening" | "error";
 
-/**
- * The wait is the server's to name. This button used to count sixty seconds
- * of its own after a send, which was a guess at the dashboard's minute and told
- * a person nothing about the wall actually in front of them.
- */
+/** The wait is the server's to name; the button never counts down a guess of its own. */
 export function registrationSubmitLabel(state: RegistrationState, resendWait: number) {
   if (state === "sending" || state === "opening") return "Sending…";
   if (resendWait > 0) return `Try again in ${waitLabel(resendWait)}`;
@@ -29,14 +25,11 @@ export function sentConfirmationCopy(email: string) {
 }
 
 /**
- * The ask for the full report.
- *
- * Who is visiting decides its shape (ADR-0026 §2). A stranger types an address
- * and gets a link. A signed-in person is told the address the report will be
- * filed under before the press, and their own ask carries their choices and no
- * address, is filed at once and sends nothing. A page that cannot tell who is
- * visiting says so and offers no ask, rather than taking an address over a
- * session it could not see.
+ * The ask for the full report. A stranger types an address and gets a link. A
+ * signed-in person is shown the address the report will be filed under before
+ * the press, and their ask carries no address, is filed at once and sends
+ * nothing. A page that cannot tell who is visiting offers no ask rather than
+ * take an address over a session it could not see.
  */
 export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
   const visitor = useVisitor();

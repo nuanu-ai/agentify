@@ -1,40 +1,25 @@
 /**
- * Reading the text a scanned site writes, in time that grows with its length
- * and no faster.
+ * Readers of the text a scanned site writes, in time linear in its length.
  *
- * The checks once read HTML, JSON-LD, sitemaps and llms.txt with regular
- * expressions shaped like `<link\b[^>]*rel=…[^>]*hreflang=…`. A backtracking
- * engine retries such a pattern from every `<link` it meets, and when no `>`
- * follows, each retry walks the rest of the page. 20,000 bytes of unclosed
- * `<link rel="alternate" ` took seconds and the cost grew with the cube of
- * the size; the other expressions grew with its square, which at the 2 MiB of
- * a page and the 5 MiB of a sitemap the fetch admits comes to minutes or an
- * hour. The evaluation is synchronous, so while it ran the scan's deadline
- * timer could not fire and every other scan in the worker waited.
+ * Evaluation is synchronous: while it runs, the scan's deadline timer cannot
+ * fire and every other scan in the worker waits. A backtracking expression
+ * such as `<link\b[^>]*rel=…` retries from every opening it meets, which on a
+ * 2 MiB page of unclosed tags runs for minutes. So a reader walks the text
+ * with indexOf, left to right, and stops when an opening finds no closer,
+ * since nothing after it can close either. A regular expression is safe on
+ * site text only where its attempts cannot add up past the text's length: a
+ * fixed word, one repeated class followed by nothing the class could also
+ * match, such as `\s+`, a pattern a few characters long, or one whose attempt
+ * stops where the next would begin.
  *
- * What is read here is found with indexOf, from left to right. A reader looks
- * for an opening and then for what closes it. When nothing closes it, nothing
- * after it can be closed either, and the reader stops. When an opening leads
- * nowhere, the reader moves past the text that attempt covered instead of
- * retrying inside it. A regular expression is still used on site text where
- * its attempts cannot add up past the text's length: a fixed word; one
- * repeated character class followed by nothing the class could also match,
- * such as `\s+`; a pattern whose every attempt is a few characters long, as
- * the price pattern's is; or one whose attempt stops where the next attempt
- * would begin, as the Adyen pattern's does at the next `checkoutshopper-`.
- *
- * The readers find what those expressions found. One of their details is
- * kept on purpose: a quoted value the expressions read, such as an href, runs
- * to its closing quote even past a `>`. Pages do write that, in templates
- * such as `<a href='<#=item.url #>'>` on Amazon's home page.
+ * A quoted value, such as an href, runs to its closing quote even past a `>`
+ * on purpose: templates such as `<a href='<#=item.url #>'>` on Amazon's home
+ * page write that.
  */
 
 /**
  * The text with A to Z lowered and nothing else changed, so it keeps its
- * length and every index into it is an index into the text. A pattern with
- * the i flag and without the u flag matches an ASCII letter only against the
- * same ASCII letter in either case, so looking for a lower-case word in this
- * copy finds what that pattern found.
+ * length and every index into it is an index into the text.
  */
 export const asciiLower = (text: string): string =>
   text.replace(/[A-Z]+/g, (run) => run.toLowerCase());
@@ -79,16 +64,11 @@ export const nextTag = (lower: string, name: string, from: number): Span | undef
 };
 
 /**
- * Each value written right after `prefix` between quotes, where the prefix
- * and its opening quote lie within `within`, a span that ends at a `>` or at
- * the end of the text: a quote of either kind, and everything up to the next
- * quote of either kind wherever it is, as `["'][^"']*["']` reads it. A value
- * with no closing quote is left out. `at` is where the prefix begins; the
- * value is the span, the index of its closing quote being its end.
- *
- * A value ends at the first quote after its opening one, so the values of
- * different opening quotes never share a character, and no stretch of the
- * text is walked for two of them.
+ * Each value written right after `prefix` between quotes, where the prefix and
+ * its opening quote lie within `within`. A value runs from a quote of either
+ * kind to the next quote of either kind, even past `within`; one with no
+ * closing quote is left out. `at` is where the prefix begins. Values never
+ * share a character, so no stretch of the text is walked twice.
  */
 export const quotedValues = (
   lower: string,

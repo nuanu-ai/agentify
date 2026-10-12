@@ -4,15 +4,12 @@ import { useVisitor } from "../lib/visitor";
 import styles from "./site-chrome.module.css";
 
 /**
- * Who this browser is signed in as, and the way to stop being them.
+ * Who this browser is signed in as, and the way to sign out.
  *
- * Drawn in the browser from the site's one session, so the page it sits on
- * stays the same page for everybody and may be cached as one (ADR-0026 §3). A
- * browser that runs no script sees the doors beside it and no address. The
- * sign-out is the dashboard's own same-origin form, which ends this browser's
- * session everywhere on the site and opens the sign-in with an empty field.
- * An operator also finds the dashboard here: the flag arrives on the same
- * answer as the address, and it is theirs to know (ADR-0026 §6).
+ * Drawn in the browser so the page it sits on stays the same for everybody and
+ * may be cached as one; a browser that runs no script sees no address. The
+ * sign-out is the dashboard's own same-origin form, which ends the session
+ * everywhere on the site.
  */
 export function VisitorDoor() {
   const visitor = useVisitor();

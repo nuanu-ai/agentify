@@ -359,17 +359,13 @@ sourced from New Zealand.</p><table><tr><td>Size:\t10</td></tr></table>`;
 });
 
 describe("a robots.txt as large as the fetch admits", () => {
-  // The worker and the browser observer stop reading robots.txt at 512 KiB
-  // (apps/scanner-worker/src/scan-runner.ts, apps/browser-observer-actor/src/runner.ts).
-  // Parsing is synchronous: while it runs, the scan's deadline timer cannot
-  // fire and every other scan in the process waits. Each case below is a
-  // shape that once stalled the decision without bound or threw instead of
-  // deciding; each is now decided, correctly, well inside the budget.
-  //
-  // A rule with a wildcard is searched for along the whole path, so many of
-  // them against a long path cost time no matter how they are matched; past a
-  // budget the decision is left open, and the scanner says robots.txt could
-  // not be assessed rather than guess.
+  // The worker and the browser observer read robots.txt up to 512 KiB, and
+  // parsing is synchronous: while it runs, the scan's deadline timer cannot
+  // fire and every other scan in the process waits. Each case is a shape that
+  // can stall the decision without bound or throw. Many wildcard rules against
+  // a long path cost time however they are matched, so past a budget the
+  // decision is left open and the scanner says robots.txt could not be
+  // assessed rather than guess.
   const fetchCap = 512 * 1024;
   const budgetMs = 500;
   const decide = (body: string, path: string): { allowed?: boolean; ms: number } => {
@@ -447,13 +443,12 @@ describe("a robots.txt as large as the fetch admits", () => {
 });
 
 describe("a page or a sitemap as large as the fetch admits", () => {
-  // The worker reads up to 2 MiB of a page and 5 MiB of a sitemap
-  // (apps/scanner-worker/src/scan-runner.ts). Reading them is synchronous:
-  // while it runs, the scan's deadline timer cannot fire and every other scan
-  // in the process waits. Each case fills that much with a shape the site
-  // controls, one that makes a reader retry from every opening it sees, and
-  // asks for what the page says around it, so a reader that gives up on a
-  // large page does not pass either.
+  // The worker reads up to 2 MiB of a page and 5 MiB of a sitemap, and reading
+  // is synchronous: while it runs, the scan's deadline timer cannot fire and
+  // every other scan in the process waits. Each case fills that much with a
+  // shape the site controls, one that makes a reader retry from every opening
+  // it sees, and asks for what the page says around it, so a reader that gives
+  // up on a large page does not pass either.
   const pageCap = 2 * 1024 * 1024;
   const sitemapCap = 5 * 1024 * 1024;
   const budgetMs = 500;

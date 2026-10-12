@@ -63,9 +63,8 @@ describe("the internal route between the scanner and the dashboard", () => {
   });
 
   it("names a destination only from the closed set: the report of one scan", () => {
-    // Where a link leads is recorded with its token when it is asked for, and
-    // nothing in the link is ever read as one (ADR-0026 §1). A destination the
-    // set does not hold is refused at the door rather than carried into mail.
+    // Nothing in a link is ever read as a destination, so one the set does not
+    // hold is refused at the door rather than carried into mail.
     for (const destination of [
       { report: "not-a-scan" },
       { report: scanId, next: "/dashboard/settings" },
@@ -115,8 +114,8 @@ describe("the internal route between the scanner and the dashboard", () => {
     };
     expect(readSessionResponseSchema.safeParse(signedIn).success).toBe(true);
     expect(readSessionResponseSchema.safeParse({ ...signedIn, operator: true }).success).toBe(true);
-    // The flag opens the operator's dashboard (ADR-0026 §6), so only a stored
-    // yes or no is an answer; anything else is a seller dashboard the scanner cannot read.
+    // The flag opens the operator's dashboard, so only a stored yes or no is an
+    // answer; anything else is a seller dashboard the scanner cannot read.
     for (const operator of ["true", 1, null])
       expect(
         readSessionResponseSchema.safeParse({ ...signedIn, operator }).success,

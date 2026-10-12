@@ -11,14 +11,11 @@ import type { z } from "zod";
 import { getServerConfig } from "./config";
 
 const REPORT_IDENTITY_PATH = "/internal/report-identity";
-/** A link and a deletion are worth waiting for; nobody is looking at a page. */
+/** A link and a deletion are worth waiting for; no page is waiting on them. */
 const REPORT_IDENTITY_TIMEOUT_MS = 15_000;
 /**
- * Whose session a cookie is, asked while a page waits on the answer.
- *
- * Every scanner page that shows who is visiting asks this, so a dashboard that
- * hangs has to become "we cannot tell who is visiting" in seconds rather than
- * a page that never draws (ADR-0026 §2).
+ * Every scanner page that shows who is visiting waits on this question, so a
+ * hanging dashboard must turn into "we cannot tell who is visiting" in seconds.
  */
 const SESSION_QUESTION_TIMEOUT_MS = 3_000;
 
@@ -37,10 +34,7 @@ type ClientOptions = Readonly<{
   fetchImpl?: Fetch;
 }>;
 
-/**
- * The three things the scanner asks the dashboard over the internal route
- * (ADR-0026 §2). The scanner never handles a token and mints no session.
- */
+/** The scanner never handles a sign-in token and mints no session; it asks the dashboard. */
 type Client = Readonly<{
   /** Send a link for this address, leading to this scan's report, for this request. */
   sendReportLink(input: {

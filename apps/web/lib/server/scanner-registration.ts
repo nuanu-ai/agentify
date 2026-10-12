@@ -1,14 +1,11 @@
 /**
  * A request for the full report of one scan, from asking to finished.
  *
- * A stranger's request waits for its own link: the scanner writes it down, asks
- * the dashboard to send a link for the address to the report of this scan, and
- * names the request, which the dashboard records with the token and then with
- * the session the link opens. The scanner finishes it at that session's first
- * visit, whichever page it is (ADR-0026 §2). A signed-in person's own ask is
- * made and finished at once, under the session's address, with no message.
- * Finishing is what links the lead to the scan, and it is the only way a
- * report comes to belong to an address.
+ * A stranger's request is written down and the dashboard is asked to email a
+ * link that names it; the request is finished at the first visit of the session
+ * that link opens, whichever page that is. A signed-in person's own ask is made
+ * and finished at once under the session's address. Finishing links the lead to
+ * the scan, and it is the only way a report comes to belong to an address.
  */
 
 import { partnerClickIdSchema, type RegistrationRequest } from "@agentify/scanner-contracts";
@@ -47,7 +44,6 @@ type RegistrationIntentOptions = Readonly<{
   sendReportLink?: (email: string, request: string) => Promise<SendReportLinkResponse>;
 }>;
 
-/** What a request is made of, written down before anything is sent or finished. */
 function intentValues(
   scan: typeof scans.$inferSelect,
   body: RegistrationRequest,
@@ -93,9 +89,8 @@ async function refuseDeletingAddress(tx: DatabaseTransaction, emailLookupHash: s
 }
 
 /**
- * A stranger's request: written down, then a link asked of the dashboard.
- *
- * The request is inactive until the dashboard says the link went out, so a
+ * A stranger's request: written down inactive, then a link asked of the
+ * dashboard. It is activated only once the dashboard accepts the send, so a
  * request whose message never left cannot be finished by anybody.
  */
 export async function createScannerRegistrationIntent(
@@ -158,10 +153,8 @@ export async function createScannerRegistrationIntent(
   } catch {
     throw new Error("dashboard_identity_unavailable");
   }
-  // The dashboard's walls are the ones that know when they fall; `retry_at` is
-  // that moment, and it reaches the caller instead of being thrown away. No
-  // letter went out, so the address gets its link back — see the refund in
-  // `rate-limit.ts` for why the session's hour does not.
+  // No letter went out, so the address's hour is refunded and the session's hour
+  // stays spent. The dashboard's `retry_at` is passed on to the caller.
   if (handover.status === "cooldown") {
     const letter = limits.spent.find(({ kind }) => kind === "registration_email_hour");
     if (letter) await refundRateLimitEvent(letter.eventId);
@@ -189,10 +182,9 @@ export async function createScannerRegistrationIntent(
 /**
  * A signed-in person's own ask: made and finished at once, with no message.
  *
- * The address is the session's and never the form's, and the request is a new
- * one carrying this person's own choices. A request somebody else made with
- * this address is left waiting until it expires, because it carries what its
- * form said, a marketing choice included (ADR-0026 §2).
+ * The address is the session's and never the form's. A request somebody else
+ * made with this address is left waiting until it expires, because it carries
+ * that form's choices, a marketing choice included.
  */
 export async function askAsSignedIn(
   scan: typeof scans.$inferSelect,
@@ -204,9 +196,8 @@ export async function askAsSignedIn(
   const partnerClickId = partnerClickIdSchema.safeParse(options.partnerClickId);
   const normalizedEmail = normalizeEmail(sessionEmail);
   const emailLookupHash = hmacHex(config.hmacSecret, "email", normalizedEmail);
-  // No message goes out, so the address's hour is not spent; the scan's hour
-  // still counts asks, which is what keeps one session from filing a report
-  // under its address over and over.
+  // No message goes out, so the address's hour is not spent; the session's hour
+  // still keeps one session from filing reports under its address over and over.
   const limits = await consumeRateLimitsAtomically([
     {
       keyHash: hmacHex(config.hmacSecret, "registration-session", scan.sessionId),
@@ -239,11 +230,10 @@ export async function askAsSignedIn(
 /**
  * Finishes the request a session names, at that session's first visit.
  *
- * Idempotent across tabs: every page a session opens may be the first, the
- * address's lock puts them in a line, and only the first finds the request
- * still waiting. A request for another address, one already finished, and one
- * that has waited past its hour are left as they are. A scan that can no
- * longer carry a report finishes nothing and is not an error of the visit.
+ * Idempotent across tabs: the address's lock serialises them and only the first
+ * finds the request waiting. A request for another address, already finished
+ * or past its hour is left alone, and a scan that can no longer carry a report
+ * finishes nothing without failing the visit.
  */
 export async function finishWaitingRequest(requestId: string, email: string): Promise<boolean> {
   return await getDatabase().db.transaction(async (tx) => {
@@ -282,11 +272,7 @@ async function currentRegistrationScan(
   );
 }
 
-/**
- * The finishing itself, inside a transaction that already holds the address's
- * lock: the lead, its link to the scan, the consent the form gave, the record
- * that this lead registered for this scan, and the event.
- */
+/** The transaction must already hold the address's lock. */
 async function finishIntentInTransaction(
   tx: DatabaseTransaction,
   requestId: string,

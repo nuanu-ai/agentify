@@ -1,11 +1,9 @@
 /**
- * The report's way into the dashboard: an ordinary link.
- *
- * The session that opened this report is the dashboard's too (ADR-0026 §2), so
- * the link needs nothing but itself. It makes nothing: under Lax a link from
- * another site arrives signed in, so the merchant is made only by the one
- * control the dashboard offers, and a POST from here would be a request a page
- * elsewhere could forge (§4).
+ * The report's way into the dashboard: an ordinary link, because the session
+ * that opened this report is the dashboard's too. It makes nothing: under
+ * SameSite=Lax a link from another site arrives signed in, so only the
+ * dashboard's own control makes a merchant, and a POST from here would be a
+ * request a page elsewhere could forge.
  */
 export function ReportDashboardControl() {
   return (

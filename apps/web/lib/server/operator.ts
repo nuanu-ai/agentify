@@ -1,17 +1,9 @@
 /**
- * Whether the operator's dashboard opens for a request (ADR-0026 §6).
- *
- * Being an operator is a flag on the person's account in the seller dashboard,
- * which holds the site's one session. The scanner learns it on the question it
- * already asks about every visitor, whose session this cookie is, and keeps
- * nothing of its own about it: every request asks afresh, so a flag cleared
- * at the terminal shuts the operator's dashboard on the person's next request.
- *
- * Anything short of the seller dashboard saying yes is no. A browser with no
- * session is not asked about at all, and a seller dashboard that cannot be
- * reached, answers an error or says something this cannot read leaves the
- * operator's dashboard shut: not
- * knowing whether somebody is an operator is not knowing that they are one.
+ * Whether the operator's dashboard opens for a request. The operator flag lives
+ * on the person's account in the seller dashboard and is asked afresh on every
+ * request, so a cleared flag shuts the operator's dashboard on the next one.
+ * Anything short of a clear yes is no: not knowing whether somebody is an
+ * operator is not knowing that they are one.
  */
 
 import { sessionCookiePairs } from "@agentify/scanner-contracts/report-identity";
@@ -19,9 +11,8 @@ import { sessionCookiePairs } from "@agentify/scanner-contracts/report-identity"
 import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 
 export async function isOperator(cookieHeader: string | null | undefined): Promise<boolean> {
-  // Only the session's cookie goes to the seller dashboard, and the reading moves
-  // nothing: a page drawn on the server cannot pass a renewed cookie on, and
-  // the header's own call already does (ADR-0026 §2).
+  // Only the session cookie is forwarded, and the session is not renewed: a page
+  // drawn on the server cannot pass a renewed cookie on.
   const cookie = sessionCookiePairs(cookieHeader ?? "");
   if (cookie === "") return false;
   try {

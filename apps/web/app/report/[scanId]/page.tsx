@@ -32,10 +32,7 @@ export const metadata: Metadata = {
   referrer: "strict-origin",
 };
 
-/**
- * The top of every report page: the brand, and the header's doors with who is
- * signed in beside them (ADR-0026 §3).
- */
+/** The top of every report page: the brand, and the header's doors with who is signed in. */
 function Top() {
   return (
     <div className={styles.top}>
@@ -47,11 +44,9 @@ function Top() {
 
 export default async function ReportPage({ params }: { params: Promise<{ scanId: string }> }) {
   const { scanId } = await params;
-  // One reading of who is visiting decides the whole page, and it does not
-  // renew: a page drawn here cannot set a cookie, and the header's own call
-  // renews the session and passes the cookie on. A session whose link was
-  // asked for this report finishes its request right here, at its first visit
-  // (ADR-0026 §2).
+  // Read once and not renewed: a page drawn here cannot set a cookie, so the
+  // header's own call renews the session. A session that arrived through the
+  // link asked for this report completes that ask here, on its first visit.
   const page = await loadReportPage(scanId, (await headers()).get("cookie"));
   if (page.kind !== "report") {
     return (

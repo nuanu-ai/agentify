@@ -251,7 +251,7 @@ export const scans = pgTable(
 /**
  * A request for the full report of one scan, from the form until it is
  * finished. A stranger's waits for its own link, whose session names it by
- * this id; a signed-in person's own is finished as it is written (ADR-0026 §2).
+ * this id; a signed-in person's own is finished as it is written.
  */
 export const registrationIntents = pgTable(
   "registration_intents",
@@ -484,9 +484,8 @@ export const scannerIdentityDeletionOperations = pgTable(
 /**
  * The record that a lead registered for a scan: registration writes one row
  * per lead and scan, the report opens only for a lead with one, and a person's
- * latest report is read through it. The name is the former product's, where the row was also
- * a place in a queue and carried a survey answer; those columns are gone
- * (docs/research/31-user-journey.md §3), and the rename is a step of its own.
+ * latest report is read through it. Despite the table's name, no row is a
+ * place in a queue.
  */
 export const waitlistEntries = pgTable(
   "waitlist_entries",

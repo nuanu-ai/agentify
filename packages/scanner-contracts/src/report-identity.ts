@@ -1,12 +1,11 @@
 /**
- * The internal route between the scanner and the dashboard (ADR-0026 §2).
- *
- * The dashboard holds every identity and every session on the site, and the
- * scanner never handles a token or mints a session. Over this route, reachable
- * only on the compose network and authenticated by a secret the two processes
- * share, the scanner asks three things: send a link for this address with this
- * destination; whose session is this cookie, and is its account an operator;
- * and, for a privacy deletion, remove this person if they own no merchant.
+ * The internal route between the scanner and the dashboard. The dashboard holds
+ * every identity and every session on the site, and the scanner never handles
+ * a token or mints a session. Over this route, reachable only on the compose
+ * network and authenticated by a secret the two processes share, the scanner
+ * asks three things: send a link for this address with this destination; whose
+ * session is this cookie, and is its account an operator; and, for a privacy
+ * deletion, remove this person if they own no merchant.
  */
 
 import { z } from "zod";
@@ -31,19 +30,15 @@ const reportRequestSchema = z.uuid();
 
 /**
  * Where a link the scanner asks for leads: the full report of one named scan.
- *
- * A closed set of one, recorded with the token when the link is asked for;
- * nothing in the link is ever read as a destination (ADR-0026 §1).
+ * It is recorded with the token when the link is asked for; nothing in the
+ * link is ever read as a destination.
  */
 const reportDestinationSchema = z.object({ report: z.uuid() }).strict();
 
 /**
- * The name the site's one session cookie travels under (ADR-0026 §2).
- *
- * With the `__Host-` prefix wherever the site is served over https and without
- * it on the plain-http local origin, because the prefix requires `Secure` and
- * a Secure cookie is never sent back over http. The dashboard sets it; the
- * scanner reads the names to pass on the session's cookie and no other.
+ * The name the site's one session cookie travels under: with the `__Host-`
+ * prefix over https and without it on the plain-http local origin, because the
+ * prefix requires `Secure` and a Secure cookie is never sent back over http.
  */
 export const sessionCookieName = (secure: boolean): string =>
   `${secure ? "__Host-" : ""}agentify.session_token`;
@@ -51,10 +46,9 @@ export const sessionCookieName = (secure: boolean): string =>
 const SESSION_COOKIE_NAMES = new Set([sessionCookieName(true), sessionCookieName(false)]);
 
 /**
- * The pairs of a cookie header that are the site's session cookie, and none of
- * the others: the dashboard is told whose session this is and nothing about the
- * visitor's other cookies, and a browser carrying many of them cannot push the
- * question past the size this route reads.
+ * Only the session cookie's pairs of a cookie header: the dashboard learns
+ * nothing about the visitor's other cookies, and a browser carrying many of
+ * them cannot push the header past the size this route reads.
  */
 export const sessionCookiePairs = (header: string): string =>
   header
@@ -82,14 +76,11 @@ export const sendReportLinkResponseSchema = z.union([
 ]);
 
 /**
- * Whose session this cookie is.
- *
- * `renew` says whether the scanner can pass a renewed cookie on to the browser
- * from the answer it is about to make. A reading the component makes may move
- * the session's end, at most once a day, and the line that tells the browser
- * so has to reach it or the cookie runs out thirty days after sign-in however
- * often its person came back. A page drawn on the server cannot set a cookie,
- * so what it asks is a reading that moves nothing.
+ * Whose session this cookie is. `renew` is true only when the scanner can pass
+ * a renewed cookie on to the browser: a reading may move the session's end,
+ * and unless the renewed cookie reaches the browser it runs out thirty days
+ * after sign-in however often its person came back. A page drawn on the server
+ * cannot set a cookie, so it asks for a reading that moves nothing.
  */
 export const readSessionRequestSchema = z
   .object({
@@ -106,7 +97,7 @@ export const readSessionResponseSchema = z.union([
       email: normalizedEmailSchema,
       /**
        * Whether this session's account may read the operator's dashboard, as
-       * the flag stands at this question (ADR-0026 §6).
+       * the flag stands at this question.
        */
       operator: z.boolean(),
       /** The request the link that opened this session was asked for, if any. */

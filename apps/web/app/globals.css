@@ -1,10 +1,7 @@
 /*
- * What the scanner needs on top of the shared visual language.
- *
- * The tokens, the base element rules, the focus ring and the primitives — the
- * container, the button, the eyebrow, the mark — come from
- * `@agentify/visual/tokens.css`, imported ahead of this file in app/layout.tsx
- * as every surface does. Nothing here declares a colour, a family or a radius.
+ * What the scanner needs on top of `@agentify/visual/tokens.css`, which
+ * app/layout.tsx imports ahead of this file. Colours, font families and radii
+ * belong there, not here.
  */
 
 html {
@@ -12,9 +9,8 @@ html {
   overflow-x: clip;
 }
 
-/* Form controls do not inherit the page's face on their own, and the shared
-   base does not set this because the console surfaces style their controls
-   themselves. */
+/* Form controls do not inherit the page's font on their own, and the shared
+   base leaves that to each surface. */
 button,
 input,
 select,
@@ -27,10 +23,9 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* The consent banner is fixed over the bottom of the window and, while it is
-   up, sets its height on the root element (components/consent-banner.tsx).
-   Without the padding a page that fits the window has nothing to scroll, and
-   the bar sits over its last control until the visitor answers it. */
+/* While the fixed consent banner is up it sets its height here
+   (components/consent-banner.tsx), so a page that fits the window can still
+   scroll its last control out from under the bar. */
 :root {
   --consent-banner-height: 0px;
 }
@@ -40,14 +35,9 @@ body {
 }
 
 /*
- * The scanner's links are chrome and editorial text rather than links in prose:
- * the header nav, the footer groups and the report rows all take their colour
- * and their underline from the block they sit in. The shared base gives a link
- * the accent with an underline on hover, which is the commerce surfaces'
- * convention and would repaint most of this site's navigation; `revert` hands
- * the decoration back to the browser, which is what the scanner drew before
- * there was a shared base to inherit from. Which of the two conventions the
- * origin should settle on has not been decided.
+ * The scanner's links are navigation and editorial rows that take their colour
+ * and underline from the block they sit in. The shared base's accent with an
+ * underline on hover would repaint most of this site's navigation.
  */
 a {
   color: inherit;

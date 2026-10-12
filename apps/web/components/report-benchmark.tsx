@@ -1,12 +1,11 @@
 import type { ReportResponse } from "@agentify/scanner-contracts";
 
 /**
- * The segment average beside the score. It renders only once the sample
- * gate is met: at least thirty scans of the same segment that finished,
- * completed or partial, with coverage of 70% or more, which is what the
- * methodology page promises. Before that there is nothing here rather than a
- * number that does not exist. The cohort is the segment the scan was started
- * from, and the front page has been the owner segment since it existed.
+ * The segment average beside the score. The server sends it only once the
+ * sample gate the methodology page promises is met: at least thirty finished
+ * scans (completed or partial) of the same segment with coverage of 70% or
+ * more. The cohort is the segment the scan was started from; the front page is
+ * the owner segment.
  */
 export function ReportBenchmark({
   benchmark,

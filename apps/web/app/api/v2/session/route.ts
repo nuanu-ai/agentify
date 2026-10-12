@@ -5,17 +5,14 @@ import { visitorOf } from "../../../../lib/server/auth";
 export const runtime = "nodejs";
 
 /**
- * Who is visiting, for the header of every scanner page.
+ * Who is visiting, with their operator flag, for the header of every scanner
+ * page.
  *
- * A small same-origin call rather than an address drawn into the page, so the
- * public pages stay what a shared cache may keep (`proxy.ts` marks them
- * `s-maxage=3600`) and the one answer that carries an address is this one,
- * which no shared cache stores. The address comes with the person's own
- * operator flag, which is how the header shows an operator the way to the
- * operator's dashboard (ADR-0026 §6). It is also the one scanner answer that asks the
- * seller dashboard to renew the session and passes the renewed cookie on, since a page
- * drawn on the server cannot set a cookie: every visit to a page with a header
- * counts toward the thirty days (ADR-0026 §2, §3).
+ * A separate same-origin call rather than an address drawn into the page, so
+ * the public pages stay cacheable by a shared cache (`proxy.ts` marks them
+ * `s-maxage=3600`) and only this uncached answer carries an address. It is also
+ * the one scanner answer that renews the session and passes the renewed cookie
+ * on, because a page drawn on the server cannot set a cookie.
  */
 export async function GET(request: NextRequest) {
   const visitor = await visitorOf(request.headers.get("cookie"), { renew: true });

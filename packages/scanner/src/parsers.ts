@@ -241,9 +241,9 @@ const withoutTags = (text: string): string => {
   return kept.join("");
 };
 
-// Every run of whitespace becomes one space. A run that is already one space
-// is left alone rather than replaced by itself: on a page made of single
-// spaces between words, replacing each one cost forty times as much.
+// Every run of whitespace becomes one space. A single space is left alone
+// rather than replaced by itself, which on a page of single-spaced words is
+// many times cheaper.
 export const visibleText = (html: string): string =>
   withoutTags(withoutElements(withoutElements(withoutElements(html, "script"), "style"), "nav"))
     .replace(/&(?:nbsp|amp|quot|apos|lt|gt);/gi, " ")
@@ -339,16 +339,11 @@ export const htmlSignals = (html: string, text = visibleText(html)) => {
   };
 };
 
-// A bot challenge served in place of the page. Most come with 401, 403 or
-// 429; one served with another status is known by what its vendor's
-// interstitial carries and an ordinary page does not: PerimeterX's
-// px-captcha, DataDome's captcha-delivery.com and Cloudflare's _cf_chl_opt.
-// The words such a page says, "access denied" or "verify you are human",
-// count only on an error status: on a page that answered 200 they are a
-// product's name or a help text as often as a challenge. A page merely naming
-// a captcha, as every Shopify page does for its forms, or loading Cloudflare's
-// background detection from /cdn-cgi/challenge-platform/scripts/, is the page
-// itself.
+// A bot challenge served in place of the page: a 401, 403 or 429, or a
+// vendor's interstitial mark on any status. Words such as "access denied"
+// count only on an error status, since on a 200 they are as often a product's
+// name or a help text. A page merely naming a captcha, as every Shopify page
+// does, or loading Cloudflare's background detection, is the page itself.
 export const isChallenge = (status: number, body: string): boolean => {
   const head = body.slice(0, 64_000);
   return (

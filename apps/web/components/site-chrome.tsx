@@ -10,17 +10,10 @@ import { VisitorDoor } from "./visitor-door";
  * The two doors out of the scanner, the documentation and the dashboard, and
  * who is signed in.
  *
- * Both destinations are other processes on the same origin (ADR-0005 §1),
- * not routes of this application, so they are plain anchors and not the
- * router's links. The words are the ones the destinations use of themselves:
- * the portal says "Docs" in its own corner, and the dashboard's sign-in page
- * says what one link does before anybody presses it. Every scanner header
- * renders this element, so a merchant who typed the site's name into a
- * browser has a way in that is not memory (docs/research/31-user-journey.md),
- * and a person signed in anywhere on the site sees their address and a
- * sign-out beside the doors (ADR-0026 §3). When the bar runs out of room it
- * is the section links that go, never these: the stylesheet hides the nav by
- * steps and lets the doors wrap at every width down to 320px.
+ * Both destinations are other processes on the same origin, not routes of this
+ * application, so they are plain anchors rather than the router's links. When
+ * the bar runs out of room the section links go, never these: the stylesheet
+ * hides the nav by steps and lets the doors wrap down to 320px.
  */
 export function SiteDoors() {
   return (

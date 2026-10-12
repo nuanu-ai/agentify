@@ -1,12 +1,11 @@
 /**
  * A deterministic local report for the browser smoke, and a way to sign in to it.
  *
- * The scanner keeps no session (ADR-0026 §2), so the smoke signs in the way a
- * person does: through the dashboard's page with one control. What this plants
- * in the dashboard's database is exactly what the dashboard writes when the scanner
- * asks it for a link, a hashed one-time token with its address and
- * destination, because the message itself goes to the dashboard's log and a
- * browser script cannot read that. Local databases only.
+ * The scanner keeps no session, so the smoke signs in through the dashboard's
+ * link page. This plants in the dashboard's database exactly the hashed
+ * one-time token the dashboard writes for a link, because the message itself
+ * goes to the dashboard's log, which a browser script cannot read. Local
+ * databases only.
  */
 
 import { createHash, randomBytes, randomUUID } from "node:crypto";

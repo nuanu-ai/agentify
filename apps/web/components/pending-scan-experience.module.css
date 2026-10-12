@@ -7,9 +7,6 @@
   background: var(--raised);
 }
 
-/* The brand and the header's doors on one row, as wide as the card below, the
-   way every scanner header carries them; the doors wrap under the brand before
-   they run off a phone. */
 .brandWrap {
   width: min(100%, 700px);
   display: flex;
@@ -63,13 +60,12 @@
   animation: pulse 1.4s ease-in-out infinite;
 }
 
-/* Only a scan that is being started pulses in the accent. Every other state
-   has stopped and takes one of the report's verdict colours. "error" and
-   "hard limit" mean the scanner answered this request with a failure or a
-   refusal, and they are a fail. "busy", "challenge" and "missing" mean the
-   request has had no such answer: the scanner is full or out of reach, it
-   asks for a challenge first, or this tab holds no request to send. They are
-   a partial. Whether a retry button is offered does not decide the colour. */
+/* Only a scan being started pulses in the accent; every stopped state takes a
+   report verdict colour. "error" and "hard limit" are a failure or a refusal
+   from the scanner, so a fail. "busy", "challenge" and "missing" have had no
+   such answer (the scanner is full or out of reach, a challenge comes first,
+   or this tab holds no request), so a partial. Whether a retry is offered does
+   not decide the colour. */
 .status:not([data-state="starting"]) {
   color: var(--partial);
 }

@@ -132,11 +132,9 @@ export const phoneE164Schema = z
   .pipe(z.string().regex(/^\+[1-9]\d{7,14}$/));
 
 /**
- * A request for the full report of one scan.
- *
- * The address is absent from a signed-in person's own ask, which is filed
- * under the session's address and sends no message (ADR-0026 §2); the route
- * refuses a stranger's ask without one.
+ * A request for the full report of one scan. The address is absent from a
+ * signed-in person's own ask, which is filed under the session's address and
+ * sends no message; the route refuses a stranger's ask without one.
  */
 export const registrationRequestSchema = z
   .object({
@@ -249,12 +247,10 @@ export const sharePreviewResponseSchema = publicShareSnapshotSchema
 export type SharePreviewResponse = z.infer<typeof sharePreviewResponseSchema>;
 
 /**
- * The address the page making an account request was loaded for.
- *
- * People sign out to come back as another address (ADR-0026 §3), so a page
- * loaded for the first can still be open when the second signs in, and its
- * press arrives with the second one's cookie. The route acts only when this
- * names the address signed in now.
+ * The address the page making an account request was loaded for. A page
+ * loaded for one address can still be open after its person signs out and
+ * back in as another, and its press then arrives with the second one's
+ * cookie, so the route acts only when this names the address signed in now.
  */
 const signedInAsSchema = z.string().min(3);
 

@@ -95,8 +95,6 @@ function respondJson(response: ServerResponse, status: number, body: object) {
   response.end(JSON.stringify(body));
 }
 
-// A fixture query that must find its row: an empty result is a broken test, and
-// it should say so here rather than fail later on a property of undefined.
 function onlyRow<T>(rows: readonly T[]): T {
   const [row] = rows;
   if (!row) throw new Error("a query that must return one row returned none");

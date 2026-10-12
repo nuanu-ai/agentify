@@ -10,12 +10,10 @@ const NOTHING_CHANGED = "Nothing was changed, because the site did not answer. T
 /**
  * The account requests a person makes about their own address.
  *
- * They say which address they act for and send it with every press, because
- * people sign out to come back as another address (ADR-0026 §3): this page,
- * loaded for the first, can still be open when the second signs in, and its
- * press would otherwise act on whoever the cookie names now. The routes refuse
- * a press that names another address, or none. With nobody signed in, or
- * nobody able to tell, there is nothing here to press.
+ * Every press names the address the page was loaded for: a person can sign out
+ * and back in as another address while this page stays open, and the press
+ * would otherwise act on whoever the cookie names now. The routes refuse a
+ * press that names another address, or none.
  */
 export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
   const visitor = useVisitor();

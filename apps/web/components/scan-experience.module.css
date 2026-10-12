@@ -7,9 +7,6 @@
   background: var(--raised);
 }
 
-/* The brand and the header's doors on one row, as wide as the card below, the
-   way every scanner header carries them; the doors wrap under the brand before
-   they run off a phone. */
 .brandWrap {
   width: min(100%, 700px);
   display: flex;
