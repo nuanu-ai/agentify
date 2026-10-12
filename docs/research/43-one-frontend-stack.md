@@ -405,3 +405,44 @@ P3, P4 and P6. Rule 3 as written chooses the stack that meets more of them, so
 the outcome is Astro. The rule names the choice and nothing further; the order
 of the migration in rule 2 was written for React Router 7, and whether it
 carries over to Astro is not in this registration.
+
+## The decision
+
+On 2026-10-12 the product owner chose React Router 7 as the one stack for
+every surface a person uses, over the outcome of the registered rule. The
+rule was executed as written and its outcome stands above as the record of
+what was measured; the choice departs from it for two reasons that lie
+outside what the rule counted.
+
+The first is that the rule scored speed alone and priced nothing of what a
+stack costs to own. The second is that the one prediction separating the two
+stacks, P2, was decided by 11.6 KB under the zstd the local Caddy happened to
+serve: under brotli the same React Router scripts are 93.2 KB and meet it,
+which would have made the count a tie, and a tie goes to React Router 7.
+Read as a person would feel them, the measurements put the two stacks level:
+the front page paints within 20 ms of each other, both answer a press well
+under the 100 ms at which a delay is noticed, and React Router moves between
+pages faster, because its navigation stays inside the page.
+
+What decides it is the cost. With React Router 7 the pages and every
+interactive part are written in one component language, so the shared
+button, field and header exist once; with Astro the pages are `.astro`
+components and anything interactive — the card payment, the scan's progress,
+the consent banner — remains a React island, so the shared components would
+exist twice. React Router gives pending states, optimistic updates and
+revalidation as part of the framework, where the Astro screens reached their
+16 ms with a script written by hand for each control, which does not scale to
+a dashboard that grows. And the scanner's sixteen interactive React components
+move into React Router largely as they are, where Astro would have its pages
+rewritten around them.
+
+The cost accepted is about 110 KB of script, compressed, on every page that
+hydrates. Two measures take most of it back: the built assets are compressed
+with brotli at build time and served precompressed, and the landing and
+methodology pages are rendered without any client script, which React Router
+allows route by route.
+
+The migration follows rule 2's order: the dashboard first, then the
+scanner's pages, then the landings, and the Next.js application is removed in
+the change that moves its last page. A future registration prices the cost of
+ownership in its rule, not only the speed.
