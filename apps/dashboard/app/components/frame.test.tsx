@@ -4,13 +4,21 @@
  * What a merchant sees between the click and the next page, where the page's
  * script runs: the section or filter they chose is marked at once, and a page
  * that takes longer than a moment to arrive says it is on its way. The next
- * page's data is held until the test lets it go, as a slow gateway would.
+ * page's data is held until the test lets it go, as a slow gateway would. Run
+ * at the root of an origin and under the prefix the stack deploys at, where
+ * every address React Router holds carries the prefix.
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
 import { MerchantCardListSchema, OrderListSchema } from "@nuanu-ai/agentify-contracts";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { createRoutesStub, Outlet, useLoaderData } from "react-router";
+import {
+  createMemoryRouter,
+  UNSAFE_FrameworkContext as FrameworkContext,
+  Outlet,
+  RouterProvider,
+  useLoaderData,
+} from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Viewer } from "../../src/viewer.js";
 import { type OrdersView, ordersView } from "../../src/views.js";
@@ -34,18 +42,31 @@ const held = () => {
 };
 
 /**
- * The dashboard opened at `path`. Every load of the orders after the one the
- * page opened with is held until let go.
+ * What the build gives every page in a browser, which a link that fetches its
+ * page ahead reads; nothing in it is asked for here.
  */
-const dashboardAt = (path: string) => {
+const FRAMEWORK = {
+  future: {},
+  manifest: { routes: {}, entry: { imports: [], module: "" }, url: "", version: "" },
+  routeModules: {},
+  ssr: false,
+  isSpaMode: false,
+  routeDiscovery: { mode: "lazy", manifestPath: "/__manifest" },
+} as never;
+
+/**
+ * The dashboard under `base` opened at `path`. Every load of the orders after
+ * the one the page opened with is held until let go.
+ */
+const dashboardAt = (base: string, path: string) => {
   let ordersAsked = 0;
   const loads: ReturnType<typeof held>[] = [];
-  const Stub = createRoutesStub([
+  const routes = [
     {
       id: "root",
       path: "/",
       loader: () => ({
-        base: "",
+        base,
         surface: {
           attribute: SURFACE_MARKER_ATTRIBUTE,
           mode: "sandbox",
@@ -92,8 +113,16 @@ const dashboardAt = (path: string) => {
         },
       ],
     },
-  ]);
-  render(<Stub initialEntries={[path]} />);
+  ];
+  const router = createMemoryRouter(routes, {
+    basename: base === "" ? "/" : base,
+    initialEntries: [`${base}${path}`],
+  });
+  render(
+    <FrameworkContext.Provider value={FRAMEWORK}>
+      <RouterProvider router={router} />
+    </FrameworkContext.Provider>,
+  );
   return {
     releaseAll: () => {
       for (const load of loads.splice(0)) load.release();
@@ -110,9 +139,12 @@ const sections = (): HTMLElement => {
 const progress = () => screen.getByRole("progressbar", { hidden: true });
 const aMoment = (ms: number) => act(() => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
-describe("between a click and the next page", () => {
+describe.each([
+  ["at the root of its origin", ""],
+  ["under its prefix", "/dashboard"],
+])("between a click and the next page, %s", (_where, base) => {
   it("marks the section chosen at once, and says the page is coming once it takes a moment", async () => {
-    const dashboard = dashboardAt("/cards");
+    const dashboard = dashboardAt(base, "/cards");
     await screen.findByText("The cards");
 
     fireEvent.click(within(sections()).getByText("Orders"));
@@ -132,7 +164,7 @@ describe("between a click and the next page", () => {
   });
 
   it("marks the orders' filter chosen at once", async () => {
-    const dashboard = dashboardAt("/orders");
+    const dashboard = dashboardAt(base, "/orders");
     await screen.findByText("Orders", { selector: "h1" });
 
     fireEvent.click(screen.getByText("Open", { selector: "a" }));
