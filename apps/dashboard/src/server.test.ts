@@ -2761,9 +2761,10 @@ describe("the keys screen", () => {
 
   it("hands the secret only to the press that issued it, in an answer no cache keeps", async () => {
     // Where script runs, React Router sends the press as a data request and
-    // draws the page from its answer. A reload, a prefetch, Back and the data
-    // a page asks for after a press ask again, and a browser may keep a page's
-    // data for a moment: none of those answers may carry the secret.
+    // draws the page from its answer. Whatever a reload, a prefetch, Back or
+    // the page itself asks the server for afterwards is answered without it;
+    // what the browser does with the press's answer is held where the page
+    // runs, in the route's own tests.
     const keys = withKeys();
     const { browser } = await started({ client: keys.client });
     await browser.signIn();
