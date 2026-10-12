@@ -6,19 +6,10 @@
  * the end, goes through.
  */
 
-import { type MiddlewareFunction, Outlet, redirectDocument } from "react-router";
-import { services } from "../services.js";
+import { Outlet } from "react-router";
+import { readsLeadTo } from "../answer.js";
 
-export const middleware: MiddlewareFunction<Response>[] = [
-  ({ request, url, context }, next) => {
-    const reading = request.method === "GET" || request.method === "HEAD";
-    if (reading && new URL(request.url).pathname === url.pathname) {
-      // Sent as it is, prefix and all, as the gate's redirects are.
-      throw redirectDocument(`${context.get(services).base}/woocommerce`, 303);
-    }
-    return next();
-  },
-];
+export const middleware = readsLeadTo("/woocommerce");
 
 export default function Presses() {
   return <Outlet />;

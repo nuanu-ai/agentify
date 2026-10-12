@@ -8,6 +8,7 @@
 import {
   data,
   type HeadersFunction,
+  type MiddlewareFunction,
   type RouterContextProvider,
   redirect,
   redirectDocument,
@@ -83,6 +84,24 @@ export function sendTo(location: string, url: URL, base: string, headers?: Heade
     ? redirect(within, init)
     : redirectDocument(within ?? `//${url.host}${location}`, init);
 }
+
+/**
+ * For a route that answers a press: a read of its own address, from history or
+ * the address bar, leads to the page the press's form lives on, since a page
+ * drawn there without a press would say nothing happened. The data a page
+ * drawn there after a press asks for, at the same address with `.data` on the
+ * end, goes through.
+ */
+export const readsLeadTo = (page: string): MiddlewareFunction<Response>[] => [
+  ({ request, url, context }, next) => {
+    const reading = request.method === "GET" || request.method === "HEAD";
+    if (reading && new URL(request.url).pathname === url.pathname) {
+      // Sent as it is, prefix and all, as the gate's redirects are.
+      throw redirectDocument(`${context.get(services).base}${page}`, 303);
+    }
+    return next();
+  },
+];
 
 /**
  * What a loader or an action is handed. `url` is the page's address with React

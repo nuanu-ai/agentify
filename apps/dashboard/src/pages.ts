@@ -128,10 +128,11 @@ export async function pagesFromSource({ live }: { readonly live: boolean }): Pro
 }
 
 /**
- * Which methods a route answers: a read where it loads data or draws a page,
- * and a post where it acts. A route that only draws the answer to its own post
- * sends a read of its address on to the page its form lives on. No other
- * method reaches an action, because the origin check reads posts alone.
+ * Which methods a route answers: a read where it loads data, draws a page, or
+ * runs middleware of its own, which is how a route that only answers a press
+ * sends a read of its address on to the page its form lives on; and a post
+ * where it acts. No other method reaches an action, because the origin check
+ * reads posts alone.
  */
 type Answers = (method: string) => boolean;
 
@@ -161,6 +162,7 @@ const routesOf = (build: ServerBuild, wooOffered: boolean): RouteObject[] => {
         default?: unknown;
         loader?: unknown;
         action?: unknown;
+        middleware?: unknown;
         handle?: { script?: boolean; keepsData?: boolean; woocommerce?: boolean };
       };
       // A layout with no path of its own, the root among them, is a frame
@@ -172,7 +174,9 @@ const routesOf = (build: ServerBuild, wooOffered: boolean): RouteObject[] => {
         answers: (method) =>
           page &&
           (method === "GET" || method === "HEAD"
-            ? module.loader !== undefined || module.default !== undefined
+            ? module.loader !== undefined ||
+              module.default !== undefined ||
+              module.middleware !== undefined
             : method === "POST" && module.action !== undefined),
         keepsData: module.handle?.script !== false && module.handle?.keepsData !== false,
       };

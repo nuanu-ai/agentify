@@ -1,17 +1,17 @@
 /**
  * Revoking one key, at once and for good. It draws no page and answers only
- * the press, so an address with nothing to read is answered as any unknown one
- * is.
+ * the press; a read of its address leads to the keys.
  */
 
 import type { ActionFunctionArgs } from "react-router";
-import { acted } from "../answer.js";
+import { acted, readsLeadTo } from "../answer.js";
 import { services, signedIn } from "../services.js";
 
+export const middleware = readsLeadTo("/keys");
+
 /**
- * A refusal is drawn as the pages' own. A route with neither a page nor a
- * boundary is one React Router sends its refusals from as data, which a
- * browser would show as text.
+ * A refusal or a failure is drawn as the pages' own. A route with neither a
+ * page nor a boundary is one React Router answers them from as bare text.
  */
 export { ErrorBoundary } from "../root.js";
 
