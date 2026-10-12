@@ -1,19 +1,14 @@
 /**
  * The vocabulary of the order state machine: what an order can be, what can
- * happen to it, and what the gateway is asked to do about it.
- *
- * The design this file implements is `docs/research/16-order-state-machine.md`
- * together with all three of its addition sections, and the two portal pages
- * that speak the same model to the merchant — `apps/docs/orders.md` and
- * `apps/docs/failures.md`. Where the two disagreed, the choice and the reason are
- * written down at the state or the field that carries it.
+ * happen to it, and what the gateway is asked to do about it. The merchant
+ * reads the same model on the portal, in `apps/docs/orders.md` and
+ * `apps/docs/failures.md`.
  *
  * Two rules hold everywhere in this package. Time is a value: every event
- * carries the instant it happened at, and nothing here reads a clock, so the
+ * carries the instant it happened at and nothing here reads a clock, so the
  * same inputs always produce the same order. And the deadlines are a policy,
- * not a constant: the numbers live in the gateway's configuration, where the
- * portal publishes them as that deployment's settings, so one baked in here
- * would be one deployment's choice frozen into everybody's machine.
+ * not constants: the numbers are each deployment's configuration, published by
+ * the portal as that deployment's settings.
  */
 
 import { assertNever } from "../index.js";
@@ -45,9 +40,9 @@ import { assertNever } from "../index.js";
  * - `delivered_unpaid` — the merchant produced the goods after a synchronous
  *   purchase whose settle then failed. Rare, open, and closed by the agent
  *   repeating the purchase; no second fulfillment is ever asked for.
- * - `refund_due` — the money was taken and the goods were not delivered. Open
- *   by design: the refund mechanism itself is an open question, and the
- *   machine only records the debt.
+ * - `refund_due` — the money was taken and the goods were not delivered. It
+ *   stays open: the machine records the debt and knows nothing about how a
+ *   refund is made.
  * - `refunded` — the debt was closed by a refund. The machine learns of it as
  *   a fact and knows nothing about how it was executed.
  * - `failed` — the merchant's handler refused a purchase whose money had not
@@ -135,20 +130,18 @@ export const SETTLE_TIMINGS = ["on_purchase", "after_fulfillment"] as const;
 export type SettleTiming = (typeof SETTLE_TIMINGS)[number];
 
 /**
- * The two switches of a card. The fourth combination — confirmation with the
- * settle after fulfillment — is not forbidden by the machine and is not
+ * The two switches of a card. The fourth combination, confirmation with the
+ * settle after fulfillment, is not forbidden by the machine and is not
  * published either, because no product has been found that needs it.
  *
- * A parcel the merchant hands to a carrier (ADR-0033) is a third switch,
- * recorded at purchase so a card republished in another mode changes no order
- * in flight. What it adds is the buyer's address, which the order holds only
- * until the merchant has it (`holdsShipTo`). Its money moves as the
- * asynchronous mode's does, and the type allows it nowhere else: a
- * synchronous order keeps finished goods for a repeat of the purchase, and
- * that repeat would bring an erased address back to an order that had let it
- * go. The field is present only on a parcel. An order stored before the switch
- * existed has no such field, and reading its absence as "not a parcel" is true
- * of every one of them, so no stored order has to be rewritten for it.
+ * A parcel the merchant hands to a carrier is a third switch, recorded at
+ * purchase so a card republished in another mode changes no order in flight. It
+ * adds the buyer's address, which the order holds only until the merchant has
+ * it (`holdsShipTo`). Its money moves as the asynchronous mode's does, and the
+ * type allows it nowhere else: a synchronous order keeps finished goods for a
+ * repeat of the purchase, and that repeat would bring an erased address back to
+ * an order that had let it go. The field is present only on a parcel, so a
+ * stored order without it reads as not a parcel.
  */
 export type OrderMode =
   | {
@@ -176,9 +169,9 @@ export function modeOf(fulfillment: FulfillmentMode): OrderMode {
     case "confirm":
       return { needsConfirmation: true, settle: "on_purchase" };
     case "ship":
-      // Goods handed to a carrier (ADR-0033): the money moves as the
-      // asynchronous mode's does, and the order holds the buyer's address
-      // until the merchant has it.
+      // Goods handed to a carrier: the money moves as the asynchronous mode's
+      // does, and the order holds the buyer's address until the merchant has
+      // it.
       return { needsConfirmation: false, settle: "on_purchase", parcel: true };
     default:
       return assertNever(fulfillment, "fulfillment mode");
@@ -285,24 +278,23 @@ export type DeadlineKind = (typeof DEADLINE_KINDS)[number];
 export type DeadlinePolicy = {
   /**
    * Ours: how long we wait for the merchant to answer what the goods cost and
-   * whether they exist. Running out of it is the silence of `apps/docs/failures.md`
-   * and is answered by the per-mode policy of ADR-0002 §3, not by closing the
-   * order — which is why it is a different number from `quoteTtlMs` and a
-   * different deadline from `quote_expiry`.
+   * whether they exist. Running out of it is the merchant's silence, answered
+   * per mode rather than by closing the order, which is why it is a different
+   * number from `quoteTtlMs` and a different deadline from `quote_expiry`.
    */
   readonly quoteResponseMs: number;
   /** Ours: how long a price that has been answered stays good. */
   readonly quoteTtlMs: number;
   /**
    * Ours: how long the machine waits to be told whether the charge went
-   * through. ADR-0002 §3 makes a silent decision about the charge a closed
-   * failure, and a closed failure needs a moment at which it is declared.
+   * through. A silent charge is a closed failure, and a closed failure needs a
+   * moment at which it is declared.
    *
-   * The composition matters and the gateway has to check it: in the
-   * synchronous mode the agent's real worst case is `syncResponseMs +
-   * settleResponseMs`, because the goods come back on the first clock and the
-   * money moves on the second. The portal promises the agent one ceiling, so
-   * the two numbers together must fit inside it.
+   * The gateway has to check the composition: in the synchronous mode the
+   * agent's real worst case is `syncResponseMs + settleResponseMs`, because the
+   * goods come back on the first clock and the money moves on the second. The
+   * portal promises the agent one ceiling, so the two numbers together must fit
+   * inside it.
    */
   readonly settleResponseMs: number;
   /**
@@ -350,10 +342,9 @@ export type Closure =
   | { readonly cause: "payment_not_settled" }
   /**
    * The payment layer never said anything at all. The purchase is closed
-   * because a silent decision about the charge is a closed failure (ADR-0002
-   * §3), but that is a guess that the money did not move — and it has to be a
-   * different word from the case where the money is known not to have moved.
-   * The two carry very different odds, and a dispute, an error text and the
+   * because a silent charge is a closed failure, but that is a guess that the
+   * money did not move, and it must be a different word from the case where the
+   * money is known not to have moved: a dispute, an error text and the
    * merchant's reconciliation all read this field.
    */
   | { readonly cause: "payment_outcome_unknown" }
@@ -362,9 +353,8 @@ export type Closure =
   | { readonly cause: "merchant_departed" };
 
 /**
- * The minimal catalogue of what the merchant is told about without having
- * asked. The catalogue grows as cases are found that his side would otherwise
- * only learn about by reconciling by hand.
+ * What the merchant is told about without having asked: the cases his side
+ * would otherwise learn about only by reconciling by hand.
  */
 export const MERCHANT_EVENTS = [
   "order.refund_due",
@@ -376,14 +366,13 @@ export type MerchantEvent = (typeof MERCHANT_EVENTS)[number];
 
 /**
  * What the merchant's own call gets back. Errors here are returned, never
- * thrown, and they say whether repeating the call could change anything.
+ * thrown, and say whether repeating the call could change anything.
  *
  * These are the wire's words, and `wire-alignment.test.ts` holds the two lists
- * to each other so the gateway can hand one straight across as the other. An
- * acceptance is among them because it is one of the three things a handler can
- * answer, and the one whose answer used to have no word: taking an order on is
- * a success, and anything short of saying so reaches the merchant as a fault
- * in an order that is going through.
+ * to each other so the gateway can hand one straight across as the other.
+ * Taking an order on is a success with its own word, `accepted`: anything short
+ * of saying so reaches the merchant as a fault in an order that is going
+ * through.
  */
 export const MERCHANT_ANSWER_RESULTS = [
   "accepted",
@@ -429,22 +418,22 @@ export type Effect =
   | { readonly kind: "answer_merchant"; readonly answer: MerchantAnswer }
   /**
    * The buyer's address is no longer needed from us: erase it from the order
-   * and from every envelope that carries it (ADR-0032). Said once per parcel,
-   * on the transition where `holdsShipTo` stops being true.
+   * and from every envelope that carries it. Said once per parcel, on the
+   * transition where `holdsShipTo` stops being true.
    */
   | { readonly kind: "erase_ship_to" };
 
 /**
- * Whether this order still holds a buyer's address (ADR-0032).
+ * Whether this order still holds a buyer's address.
  *
  * Only a parcel ever holds one, and it holds it from the priced request until
  * the first of four moments: the merchant takes the order on (they store the
- * address before answering `accepted`), its shipment is recorded, it closes,
- * or it becomes a refund owed without having been taken on. Every one of
- * those leaves the order closed, owing a refund or taken on, so the rule is
- * read off the order rather than kept beside it. It only ever goes from true
- * to false because a parcel's money moves first (`OrderMode`): no repeat of the
- * purchase reopens such an order, and an acceptance, once given, stays.
+ * address before answering `accepted`), its shipment is recorded, it closes, or
+ * it becomes a refund owed without having been taken on. Each of those leaves
+ * the order closed, owing a refund or taken on, so the rule is read off the
+ * order rather than kept beside it. It only ever goes from true to false
+ * because a parcel's money moves first (`OrderMode`): no repeat of the purchase
+ * reopens such an order, and an acceptance, once given, stays.
  */
 export function holdsShipTo(order: Order): boolean {
   return (
@@ -590,24 +579,19 @@ export type Order = {
    * How many times the order has been handed to its merchant, and whether one
    * of those hand-overs was taken on.
    *
-   * `attempts` is what the backoff and the attempt cap are both counted off.
-   * `accepted` says a handler answered that it took the order on: `dispatched`
-   * covers both an order handed over and one already taken on, and this is
-   * how the two are told apart. Once it is true a silence noticed about the
-   * order spends no delivery, because the merchant has answered — later,
-   * perhaps, than we waited for him. A repeat already on his stream by then is
-   * still handed over and counted, as every hand-over is, except on a parcel,
-   * whose address went with the acceptance; it is only the silence after it
-   * that no longer costs him anything.
+   * `attempts` is what the backoff and the attempt cap count off. `accepted`
+   * tells an order handed over from one already taken on, since `dispatched`
+   * covers both. Once it is true, a silence noticed about the order spends no
+   * delivery: the merchant has answered, perhaps later than we waited. A repeat
+   * already on his stream is still handed over and counted, except on a parcel,
+   * whose address went with the acceptance.
    *
-   * Taking an order on is the asynchronous mode's answer, where the goods
-   * follow through the `deliver` call. A synchronous handler that gives it is
-   * refused for its mode, so the flag is never set on a synchronous order.
-   *
-   * It is written false on the way into each round — the confirmation, the
-   * order once paid, the order once handed over from `paid` — and set only by
-   * an acceptance in `dispatched`, so it stays true for the rest of the
-   * order's life there.
+   * Only the asynchronous mode takes an order on, with the goods following
+   * through the `deliver` call; a synchronous handler that does is refused for
+   * its mode, so the flag is never set on a synchronous order. It is written
+   * false on the way into each round (the confirmation, the order once paid,
+   * the order once handed over from `paid`) and set only by an acceptance in
+   * `dispatched`, so it stays true for the rest of the order's life there.
    */
   readonly dispatch: { readonly attempts: number; readonly accepted: boolean };
   /**

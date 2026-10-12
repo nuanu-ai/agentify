@@ -17,33 +17,22 @@ import { moneyInvariantViolations } from "./money.js";
 import { ORDER_OUTCOMES, outcomeFor } from "./outcome.js";
 
 /**
- * A long walk over the machine, driven by a generator that is random enough to
- * find pairings a person would not write down and completely reproducible from
- * its seed. There is no real randomness anywhere in this package: a failure
- * here has to be reproducible from the seed printed in the message, or it is
- * not a finding, it is a rumour.
+ * A long walk over the machine, driven by a seeded generator: random enough to
+ * find pairings nobody would write down, and reproducible from the seed printed
+ * in a failure.
  *
- * What the walk checks at every single step is the money — in the order and in
- * the effects both. The gateway will feed this machine events off a queue that
- * delivers at least once, in an order nobody chose, and the promise is that no
- * sequence of them can put an order into a state where somebody's money is
- * gone with nothing recording it, nor ask the gateway to spend that money or
- * hand over the goods twice.
- *
- * The effects half of that is not optional. Money moves through effects, so a
- * walk that only looked at the order would be blind to the double charge and
- * the double fulfillment, which are the two mistakes a buyer would notice
- * first.
+ * At every step the walk checks the money, in the order and in the effects.
+ * Events arrive off an at-least-once queue in an order nobody chose, and no
+ * sequence of them may lose somebody's money without a record or ask the
+ * gateway to charge or hand over the goods twice. Money moves through effects,
+ * so a walk reading only the order would miss the double charge and the double
+ * fulfillment.
  */
 
 /**
- * A small deterministic generator. Seeded, integer-only, no clock.
- *
- * The seed is mixed and the state stirred a few times before anything is
- * handed out. Without that, small seeds spend their first outputs down near
- * zero and every walk starts with the same choice — which is how the first
- * version of this file managed to test one fulfillment mode two hundred times
- * over and call it coverage.
+ * A small deterministic generator: seeded, integer-only, no clock. The seed is
+ * mixed and the state stirred before anything is handed out; otherwise small
+ * seeds start near zero and every walk makes the same first choice.
  */
 function generator(seed: number): () => number {
   let state = (Math.imul(seed >>> 0, 2_654_435_761) ^ 0x9e37_79b9) >>> 0;
@@ -68,21 +57,18 @@ function pick<T>(next: () => number, items: readonly T[]): T {
 const WALK_STARTS_AT = 500_000;
 
 /**
- * How far the walk's clock moves between two events. Unevenly, and sometimes
- * by a lot — real time does not arrive in equal ticks either, and a walk whose
- * clock crept forward at a fixed rate could never leave a wait standing long
- * enough for it to come due. Every deadline in the policy below fits inside
- * the longest of these jumps.
+ * How far the walk's clock moves between two events: unevenly and sometimes by
+ * a lot, or no wait would ever stand long enough to come due. Every deadline in
+ * the policy below fits inside the longest jump.
  */
 function tick(next: () => number, at: number): number {
   return at + 1_000 + Math.floor(next() * 4) * 10_000;
 }
 
 /**
- * Short enough that a walk of a couple of hundred steps runs past all of them
- * and every expiry is a real choice rather than an event that is always
- * refused as not yet due. They are test values and say nothing about the
- * pilot's numbers.
+ * Short enough that a walk of a couple of hundred steps runs past all of them,
+ * so every expiry is a real choice rather than an event always refused as not
+ * yet due. Test values only.
  */
 const POLICY: OrderPolicy = {
   deadlines: {
@@ -100,12 +86,9 @@ const POLICY: OrderPolicy = {
 const PRICE: Price = { amount: "12.00", currency: "USD", asOf: 500_000 };
 
 /**
- * Every shape each event can arrive in, so the walk can choose among them.
- *
- * The deadlines are the machine's own list rather than a copy of it. Copied,
- * an eighth deadline added to the model would never once be walked, and the
- * walk would go on reporting full coverage of a machine it had stopped
- * covering.
+ * Every shape each event can arrive in, so the walk can choose among them. The
+ * deadlines are the machine's own list rather than a copy, so a deadline added
+ * to the model is walked too.
  */
 function everyEvent(at: number): readonly OrderEvent[] {
   return ORDER_EVENT_KINDS.flatMap((kind): OrderEvent[] => {
@@ -138,32 +121,20 @@ function everyEvent(at: number): readonly OrderEvent[] {
 }
 
 /**
- * What a step of the walk did, in the terms the coverage below counts in: the
- * kind of the event, and — on the one kind where that is a choice — which
- * deadline ran out. One expiry is not another. A price going stale and a
- * settle going unanswered are different questions put to the machine, so
- * `deadline_expired` on its own is too coarse a name to count.
+ * A step's move as the coverage below counts it: the event kind and, for an
+ * expiry, which deadline ran out. A price going stale and a settle going
+ * unanswered are different questions to the machine, so `deadline_expired`
+ * alone is too coarse to count.
  */
 function moveOf(kind: OrderEventKind, deadline?: DeadlineKind): string {
   return deadline === undefined ? kind : `${kind}/${deadline}`;
 }
 
 /**
- * Every move the walk owes the machine, built out of the model's own two
- * lists.
- *
- * Not out of `everyEvent` above, and that is the whole of the point. An
- * expectation read off the generator narrows the instant the generator
- * narrows, and would go on reporting full coverage of a machine it had stopped
- * covering — the same failure `everyEvent` avoids by mapping the model's
- * deadlines rather than a copy of them.
- *
- * There are twenty-four of these moves. Twelve of them were measured to be
- * removable from the generator one at a time with every other check in this
- * file still green: eight event kinds, among them the repeat of a purchase and
- * the merchant's own call to deliver, and four of the seven deadlines, among
- * them the one on the settle that the double-charge accounting is written
- * about. That is what this list is for.
+ * Every move the walk owes the machine, built from the model's two lists and
+ * not from `everyEvent`: an expectation read off the generator narrows when the
+ * generator narrows, and would go on reporting full coverage of a machine it
+ * had stopped covering.
  */
 const EVERY_MOVE: readonly string[] = ORDER_EVENT_KINDS.flatMap((kind) =>
   kind === "deadline_expired"
@@ -183,53 +154,41 @@ const EFFECTS_WORTH_REACHING: readonly Effect["kind"][] = [
 ];
 
 /**
- * The next event of the walk, chosen out of five pools in order of preference,
- * each of which exists because the walk without it was measured to be blind to
- * something.
+ * The next event of the walk, chosen from pools in order of preference; without
+ * any one of them the walk is blind to something.
  *
- * Most of the time it is an event that both moves the order and leaves it
- * open: an order dies easily, and a walk that took a departure as readily as
- * anything else would spend its life in the first three states and call that
- * coverage. Some of the time it is one that spends money or hands goods over,
- * because those are what the effect checks are written about. Some of the time
- * it is a wait, because otherwise no clock in the machine is ever left running
- * long enough to come due. And a small share of the time it is any event
- * whatsoever, which is what turns up the pairings nobody would have thought to
- * write down.
+ * Mostly it is an event that moves the order and leaves it open, since an order
+ * dies easily and the walk would otherwise never leave the first few states.
+ * Sometimes it is one that spends money or hands goods over, which the effect
+ * checks are about. Sometimes it is a wait, so that clocks come due. And a
+ * small share of the time it is any event at all, which turns up the pairings
+ * nobody would write down.
  *
- * "Moves the order" means the machine changed something, not merely that the
- * name of the state changed: the settle of a purchase whose money moves first
- * leaves the order in `quoted`, and a walk that only chased new state names
- * would never get past it.
+ * "Moves the order" means the machine changed something, not only the state's
+ * name: the settle of a purchase whose money moves first leaves the order in
+ * `quoted`.
  */
 function anEvent(next: () => number, order: Order, at: number): OrderEvent {
   const all = everyEvent(at);
   const advancing: OrderEvent[] = [];
   const keepsItOpen: OrderEvent[] = [];
-  // Preferring events that keep an order alive is what gets the walk to the
-  // far side of the machine, but on its own it starves exactly the paying and
-  // closing events the effect checks below are written about — measured over
-  // six seeds, the goods went out once and a debt was written once.
+  // Preferring events that keep an order alive gets the walk to the far side of
+  // the machine, but on its own it starves the paying and closing events the
+  // effect checks are about.
   const spendsOrHandsOver: OrderEvent[] = [];
-  // And preferring those in turn starved every clock in the machine. In a
-  // settling state the only events that move the order at all are the settle's
-  // own two outcomes, so a walk that reaches for them takes them at once and
-  // no deadline is ever left long enough to come due: measured, zero accepted
-  // expiries across the seeds that carry the money assertions, and the
-  // double-charge check those assertions are for could not be reached from any
-  // of them. A walk that never lets time pass is only testing half the machine.
+  // Preferring those in turn starves every clock. In a settling state only the
+  // settle's two outcomes move the order, so a walk reaching for them never
+  // lets a deadline come due, and the double charge the money checks guard is
+  // reachable only through an expiry.
   const timeDriven: OrderEvent[] = [];
   // Waiting is a move too, and the only one that gets a deadline anywhere near
   // coming due. These are the events the machine will refuse: taking one costs
   // the order nothing and lets its clock run.
   const idles: OrderEvent[] = [];
 
-  // One question per event, asked once, with every pool reading that same
-  // answer. The machine is a function of the order and the event, so a pool
-  // that asked again would be buying an answer it already had — and these
-  // questions are the whole cost of the walk, thirty-one of them at every
-  // step. So the sorting happens here, where the answers arrive, rather than
-  // in a filter per pool.
+  // One question per event, asked once, with every pool reading the same
+  // answer: the machine is a function of the order and the event, and these
+  // questions are the whole cost of the walk.
   for (const event of all) {
     const result = transition(order, event);
     if (!result.ok) {
@@ -270,36 +229,18 @@ type Step = {
 };
 
 /**
- * The accounting every walk is held to, at every step it accepted.
+ * The accounting every walk is held to, at every step it accepted, run over
+ * both the named seeds and the four hundred.
  *
- * Written once and run over both the nine named seeds and the four hundred,
- * because it was written twice and the two copies were not equal. The nine
- * carried the money invariants and the four hundred carried the counters, and
- * the double charge this file exists to catch was reachable only from a seed
- * in the second group — so the check that would have caught it was running
- * where it could not be reached.
+ * Money moves through effects, so the counters catch the second charge and the
+ * second fulfillment that a walk reading only the order would miss. The floor
+ * of zero under the charges matters as much as the ceiling of one: a counter
+ * driven negative by settle outcomes on a closed order would leave room for a
+ * genuine second charge.
  *
- * The counters are what the effects half is for. Money moves through effects,
- * so a walk that read only the order would be blind to the second charge and
- * the second fulfillment, which are the two mistakes a buyer notices first.
- * The floor of nought under the charges matters as much as the ceiling of one:
- * a counter driven negative by a run of settle outcomes on a closed order
- * would leave room underneath it for a genuine second charge.
- *
- * Each check is a condition, and `expect` is called on the step where one of
- * them is broken rather than on every step. Over the four hundred walks of two
- * hundred steps that is most of a million assertions otherwise, and the
- * assertion machinery — not the machine under test — was all but a fraction of
- * what the walk cost: the coverage test took 4.1s, 4.9s and 6.1s on an idle
- * machine against the suite's five-second default, and takes 0.24s, 0.25s and
- * 0.48s now. It was failing that default about a third of the time on an idle
- * machine and most of the time beside another suite, which made a green
- * `pnpm test` a matter of what else the machine was doing.
- *
- * A broken check still fails through `expect`, with the value and the message
- * it always had, so a red run reads exactly as it did before. Two mutations
- * say so: a second `execute_payment` on the settle, and a money invariant made
- * to fire on every delivered order.
+ * Each check is a plain condition, and `expect` is called only on the step that
+ * breaks one. Calling it on every step makes the assertion machinery, not the
+ * machine, the cost of the walk, enough to break the suite's default timeout.
  */
 function accountFor(seed: number, trace: readonly Step[]): void {
   // What the gateway would have been told to do, so far.
@@ -400,10 +341,9 @@ function takeAWalk(seed: number, steps: number): { order: Order; trace: readonly
 
 describe("a long walk over the machine", () => {
   /**
-   * Three of these are here because they were measured to get somewhere the
-   * others do not: 3 hands the goods over and writes a receipt, 8 and 10 write
-   * a debt down. Without them the effect counters below run over walks that
-   * never produce the effects they count, which is a check that cannot fail.
+   * Seeds 3, 8 and 10 reach what the others do not: 3 hands the goods over and
+   * writes a receipt, 8 and 10 write a debt down. Without them the effect
+   * counters below would count nothing and could not fail.
    */
   const seeds = [1, 3, 7, 8, 10, 42, 1_337, 20_260_826, 999_983];
 
@@ -415,8 +355,8 @@ describe("a long walk over the machine", () => {
 
   it("actually reaches the effects those checks are written about", () => {
     // The counters above are worth nothing if the walk never produces the
-    // effects they count. Measured over the same seeds and the same lengths as
-    // the checks themselves, so this number is the one they ran against.
+    // effects they count, so this is measured over the same seeds and lengths
+    // as the checks.
     const reachedAcrossSeeds = new Set<string>();
     let sawAChargeInFlight = 0;
 
@@ -442,11 +382,9 @@ describe("a long walk over the machine", () => {
   });
 
   it("lets time pass, which is half of what the machine does", () => {
-    // A generator steered toward events that move an order will resolve every
-    // wait the instant it can, and then no clock in the machine is ever
-    // reached. The money assertions above ran over four hundred and sixty
-    // accepted steps without a single accepted expiry among them, and the
-    // double-charge they guard was only reachable through one.
+    // A generator steered toward events that move an order resolves every wait
+    // at once, and then no clock is ever reached. The double charge the money
+    // checks guard is reachable only through an expiry.
     const takenFrom = new Map<string, number>();
 
     for (const seed of seeds) {
@@ -511,84 +449,32 @@ describe("a long walk over the machine", () => {
   });
 
   /**
-   * The timeout is measured, and the measurement is written down here because
-   * the next person to see this test go red on a busy machine deserves to know
-   * whether the number was reasoned about or guessed.
+   * The work is four hundred walks of two hundred steps, each step costing
+   * thirty-two transitions, so the cost is linear in the seed count. Alone it
+   * runs in well under a second, but inside `pnpm test` it is the longest
+   * CPU-bound stretch among files run one worker per core, and under contention
+   * it has taken up to about twenty-five seconds.
    *
-   * The work is four hundred orders of two hundred steps each. Choosing one
-   * step's event asks the machine what every event would do — thirty-one of
-   * them, since several kinds have more than one shape — and the step then
-   * takes the one it chose, so a step costs exactly thirty-two transitions
-   * whatever state it is in and the walk runs two and a half million of them.
-   * The accounting makes roughly a hundred and forty thousand assertions over
-   * the twenty thousand steps the machine accepted. The cost is linear in the
-   * seed count, at six thousand four hundred transitions per seed. Nothing
-   * here grows faster than the coverage does.
-   *
-   * Measured on an M4: the body itself costs about 775ms, of which 147ms is
-   * the walk and 630ms is vitest's `expect` machinery — the same accounting
-   * written as plain conditions runs in 2ms. Run as the only file, the test
-   * lands between 762 and 788ms over eight runs.
-   *
-   * The accounting has since been rewritten into exactly those plain
-   * conditions (expect is called where one breaks), so the figures above are
-   * the pre-rewrite measurement and the body now lands well under half a
-   * second alone. The budget below has not been re-derived yet; until it is,
-   * it stands on the old, larger cost, which errs in the only safe direction.
-   *
-   * The move coverage added since asks the machine nothing new — it reads the
-   * trace the walk was already keeping — and costs one string and two map
-   * writes per step. Measured in one process, the two shapes of the loop
-   * alternating and six rounds of each: the four hundred walks go from a
-   * median of 130ms to 135ms. Five milliseconds on a body of several hundred
-   * is under the spread between two runs of this file on an idle machine, so
-   * neither the derivation above nor the budget below moves.
-   *
-   * What it costs inside `pnpm test` is another matter. The suite forks a
-   * worker per core and hands them seventy-odd CPU-bound files, and this is
-   * the longest single stretch of computation among them, so it collects
-   * whatever contention the machine has: 1,494ms on a quiet one, 6,683 to
-   * 12,812ms alongside two other suites — seven full-suite runs in ten failed
-   * the 5,000ms default in that condition — and 14,494 to 24,763ms once the
-   * load average passed a hundred, where all ten of ten failed. Those figures
-   * were taken while the body cost 877ms rather than the 775ms it costs now,
-   * and they have not been taken again since: they bound what this test costs
-   * under contention, they no longer describe it. The failure is not a hang:
-   * the body is synchronous, so the timer cannot fire inside it and the
-   * duration vitest prints on a timeout is the true cost of the work, not the
-   * point at which it was cut off.
-   *
-   * Fifty seconds is twice the worst of those measurements. It is a bet on how
-   * oversubscribed a machine can get rather than a statement about the test,
-   * which is why it is so far above the 775ms the work actually takes; a
-   * wall-clock limit is a poor instrument for a CPU-bound test, and the only
-   * honest thing to do is set it above the contention we have seen and say so.
-   * It still catches what a timeout is for: this test does not loop, and a
-   * change that made it loop would sit here for fifty seconds and then say so.
-   * Re-derive it if the seed count moves.
+   * Fifty seconds sits above that contention rather than near the work's own
+   * cost. The body is synchronous, so a timeout reports the true cost of the
+   * work rather than a hang. Re-derive the limit if the seed count moves.
    */
   it("visits every state of the machine and takes every move for the walk to mean anything", () => {
     // A walk that never left `created` would pass every check above while
-    // testing nothing at all. A single order's life is short — most of these
-    // walks fall into a closed state early — so the coverage is counted over
-    // four hundred orders rather than over one.
+    // testing nothing. Most walks close early, so coverage is counted over four
+    // hundred orders.
     //
-    // Visiting the states is not taking the moves, and it took a mutation to
-    // show how far apart the two are. Half the moves a walk can make can be
-    // dropped out of the generator without a single check in this file going
-    // red, this one included: the states an event leads to are reachable by
-    // other events, so nothing here noticed that a whole kind had stopped
-    // being walked. What the walk actually exercised was never written down,
-    // and a check nobody wrote down is one an edit can quietly take away.
+    // Visiting every state is not taking every move: the states an event leads
+    // to are reachable by other events, so a whole kind could stop being walked
+    // with nothing noticing. That is why the moves are counted too.
     const seedCount = 400;
     const visited = new Set<string>();
     const taken = new Set<string>();
     const offered = new Map<string, number>();
     for (let seed = 1; seed <= seedCount; seed += 1) {
       const walked = takeAWalk(seed, 200);
-      // The same accounting the nine named seeds carry, over four hundred
-      // more. Nine orders is not many to look for a double charge in, and the
-      // one this file failed to reach was found by hand instead.
+      // The same accounting as the named seeds, over four hundred more: nine
+      // orders is not many to look for a double charge in.
       accountFor(seed, walked.trace);
       for (const step of walked.trace) {
         visited.add(step.order.state);
@@ -598,22 +484,16 @@ describe("a long walk over the machine", () => {
       }
     }
 
-    // Offered is not taken: an event the machine refuses in every state it was
-    // ever put into has been walked past, not walked. So the count is of what
-    // the machine accepted, and the message separates the two, because they
-    // are different faults with different homes — nothing offered is a
-    // generator that stopped asking, offered and never accepted is a machine
-    // that stopped answering.
+    // Offered is not taken: an event refused in every state it was offered in
+    // was walked past, not walked. The count is of what the machine accepted,
+    // and the message separates the two faults: nothing offered is a generator
+    // that stopped asking, offered and never accepted is a machine that stopped
+    // answering.
     //
-    // What this does not catch, said plainly: a move still offered but no
-    // longer preferred. The any-event pool reaches everything eventually, so a
-    // kind skipped in the sorting pass and left in that pool goes on being
-    // taken — measured, `handler_delivered` skipped there was still accepted
-    // two thousand two hundred times over these four hundred seeds, and every
-    // check in this file stayed green, this one with it. Only a digest of the
-    // whole trace sees a walk grow lopsided, and a digest pins the generator
-    // we happen to have rather than the promise it is here to keep. This is a
-    // floor, not a distribution.
+    // This is a floor, not a distribution. A move no longer preferred but still
+    // offered through the any-event pool goes on being taken, and only a digest
+    // of the whole trace could see that, at the price of pinning this
+    // particular generator.
     const missing = EVERY_MOVE.filter((move) => !taken.has(move)).map((move) => {
       const offers = offered.get(move) ?? 0;
       return offers === 0

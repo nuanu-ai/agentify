@@ -1,15 +1,10 @@
 /**
- * What the agent is told an order came to.
- *
- * The vocabulary here is the portal's table of how an order can end, read from
- * the buyer's side: nine endings, plus the word for an order that has not
- * ended yet, plus the one for a debt that has been paid back. The projection is
- * separate from the state on purpose — the machine keeps distinctions the
- * merchant's own accounting needs, and the agent is told only what is true of
- * his purchase.
- *
- * The fifth gate is the whole point of `in_progress`. An order whose answer has
- * not arrived says so, and the agent does not read silence as a refusal.
+ * What the agent is told an order came to: the portal's table of endings read
+ * from the buyer's side, plus a word for an order that has not ended and one
+ * for a debt paid back. It is kept apart from the state because the machine
+ * keeps distinctions the merchant's accounting needs, and the agent is told
+ * only what is true of his purchase. An order whose answer has not arrived says
+ * so as `in_progress`, so the agent never reads silence as a refusal.
  */
 
 import { assertNever } from "../index.js";
@@ -22,11 +17,10 @@ export const ORDER_OUTCOMES = [
   /** The goods are the agent's and the receipt is written. */
   "delivered",
   /**
-   * A parcel is with the carrier and the money with the merchant (ADR-0033).
-   * The machine's state is `delivered`, and the agent is told something
-   * narrower, because nothing reached the agent: this is the last word anybody
-   * here has about the parcel, and whether it arrives is between the buyer and
-   * the merchant.
+   * A parcel is with the carrier and the money with the merchant. The machine's
+   * state is `delivered`, but the agent is told something narrower because
+   * nothing reached the agent: this is the last word anybody here has about the
+   * parcel, and whether it arrives is between the buyer and the merchant.
    */
   "shipped",
   /**
@@ -38,12 +32,12 @@ export const ORDER_OUTCOMES = [
    */
   "rejected",
   /**
-   * Nobody can say whether the buyer was charged: the payment network was
-   * asked and never answered. It is deliberately not `rejected`, and it does
-   * not say the order is closed. An agent told his purchase did not happen
-   * goes and buys the same thing elsewhere without looking at his wallet, and
-   * that is a claim this machine has no evidence for. A later read can still
-   * move, where a fact about the charge arrives after this one.
+   * Nobody can say whether the buyer was charged: the payment network was asked
+   * and never answered. It is deliberately neither `rejected` nor a claim that
+   * the order is closed: an agent told his purchase did not happen buys the
+   * same thing elsewhere without looking at his wallet, and the machine has no
+   * evidence for that. A later read can move when a fact about the charge
+   * arrives.
    */
   "payment_unresolved",
   /** The merchant answered a confirmation request with "I will not". */
@@ -67,20 +61,16 @@ export const ORDER_OUTCOMES = [
 export type OrderOutcome = (typeof ORDER_OUTCOMES)[number];
 
 export function outcomeFor(order: Order): OrderOutcome {
-  // A charge the payment network never answered about outranks whatever the
-  // state would otherwise say, because it is the one thing the agent most
-  // needs to hear and the one thing the machine most easily overstates. Open
-  // or closed, the word is the same: nobody knows. The interpreter asks once;
-  // a silence is not a question still in flight, and `in_progress` is what a
-  // merchant's restart treats as an order waiting on him. A later fact can
-  // still move the order — the state stays open where the goods are already
-  // made — and a later read says which way it moved.
+  // A charge the payment network never answered about outranks the state: it is
+  // what the agent most needs to hear and what the machine most easily
+  // overstates. Open or closed, the word is the same, nobody knows. It is not
+  // `in_progress`, because the interpreter asks only once and a merchant's
+  // restart treats `in_progress` as an order waiting on him.
   //
-  // The test is the payment stage and not the closure. An order closed on the
-  // silence keeps that closure after the charge finally reports in and the
-  // order becomes a debt, because the closure records why the order stopped
-  // where it stopped; reading it here would go on claiming nobody knows about
-  // an order the machine has just written a refund against.
+  // The test reads the payment stage, not the closure. An order closed on the
+  // silence keeps that closure after the charge reports in and the order
+  // becomes a debt, and reading the closure would go on claiming nobody knows
+  // about an order that now owes a refund.
   if (order.payment === "outcome_unknown") {
     return "payment_unresolved";
   }
@@ -121,17 +111,15 @@ export function outcomeFor(order: Order): OrderOutcome {
 }
 
 /**
- * Why an order ended, where its merchant did not say and one status word would
- * otherwise cover endings that call for different next steps.
+ * Why an order ended, where its merchant did not say and one status word covers
+ * endings that call for different next steps. `rejected` covers a product that
+ * is gone, a price check nobody answered and a charge that did not go through;
+ * `expired` covers a price that ran out before the payment and a merchant who
+ * did not answer a synchronous purchase in time.
  *
- * `rejected` is a product that is gone, a price check nobody answered and a
- * charge that did not go through; `expired` is a price that ran out before the
- * payment and a merchant who did not answer a synchronous purchase in time. An
- * agent told only the word either gives up on a seller worth trying again or
- * keeps trying one that will not sell. The merchant's own refusal is not here:
- * it travels in their words, and a reason of ours beside it would be speaking
- * for them. Nor are the endings whose word already says it all — a payment
- * nobody can account for, a debt, a departure.
+ * The merchant's own refusal has no reason here: it travels in their words, and
+ * a reason of ours beside it would speak for them. Endings whose word already
+ * says it all have none either.
  */
 export const ENDING_REASONS = [
   /** The merchant's price check said there is none; it did not say why. */
@@ -177,21 +165,13 @@ export function endingReasonFor(order: Order): EndingReason | null {
 }
 
 /**
- * Whether a restarted merchant's open list should carry this order.
- *
- * Machine-open is wider. A price the buyer has not paid, which never reached
- * the handler, is open in the machine and is not this merchant's to finish.
- * Putting it on the list they walk after a restart is how goods get made for
- * a purchase that never happened. The buyer's own status of that order stays
- * `in_progress`; this predicate is only the list.
- *
- * A charge nobody heard back from is on the list even so. Hiding it is how it
- * gets read as an order still waiting on the merchant. Its status says the
- * outcome is unknown, which is the word the list is for.
- *
- * Confirmation is not a fulfillment the merchant was handed an order for, and
- * that mode is not on the wire. An order waiting on the buyer's payment after
- * a confirmation is not on this list either: nothing there is his to deliver.
+ * Whether a restarted merchant's open list carries this order. It is narrower
+ * than machine-open: an unpaid price never reached the handler and is not the
+ * merchant's to finish, and listing it is how goods get made for a purchase
+ * that never happened (the buyer still reads `in_progress`). A charge nobody
+ * heard back from is listed even so, with a status saying the outcome is
+ * unknown. An order waiting on the buyer's payment after a confirmation is not
+ * listed: nothing there is the merchant's to deliver.
  */
 export function onTheMerchantsOpenList(order: Order): boolean {
   if (order.payment === "outcome_unknown" && isOpen(order.state)) {

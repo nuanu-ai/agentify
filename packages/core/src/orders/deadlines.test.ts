@@ -6,9 +6,8 @@ import type { Order } from "./model.js";
 import { moneyInvariantViolations } from "./money.js";
 
 /**
- * Deadlines are what keeps an order from hanging in the unknown. Every test
- * here answers the same question: if it failed, an order could wait forever,
- * or a timer could fire on an order that is no longer waiting for that thing.
+ * If a test here failed, an order could wait forever, or a timer could fire on
+ * an order no longer waiting for that thing.
  */
 
 function at(order: Order, kind: string): number | undefined {
@@ -17,11 +16,10 @@ function at(order: Order, kind: string): number | undefined {
 
 describe("the deadlines of an order", () => {
   it("bounds the wait for the merchant to name a price, on its own budget", () => {
-    // Two different waitings and two different numbers. This one is how long
-    // we wait for him to answer at all, and running out of it is his silence;
-    // the life of a price he did name is `quote_expiry` and is longer. Using
-    // one number for both would let the price's life end a wait that ADR-0002
-    // §3 says must go on to a sale.
+    // Two waits and two numbers. This one is how long we wait for him to answer
+    // at all, and running out of it is his silence; the life of a price he did
+    // name is `quote_expiry` and is longer. One number for both would let the
+    // price's life end a wait whose silence should go on to a sale.
     const order = newOrder("sync", { priceCheck: "merchant" });
 
     expect(deadlines(order)).toStrictEqual([
@@ -31,11 +29,10 @@ describe("the deadlines of an order", () => {
   });
 
   it("keeps a settling order on a clock even when it has lost its start time", () => {
-    // Such an order cannot come out of this package, but it can come out of a
-    // store — and it is the one order that must never lose its clock, because
-    // nothing but the settle's own outcome can move it and no clock means no
-    // outcome. Frozen and invisible is the combination to avoid; this makes it
-    // overdue and says so out loud.
+    // Such an order cannot come out of this package but can come out of a
+    // store. Nothing but the settle's own outcome can move it, so it must never
+    // lose its clock: frozen and invisible is the combination to avoid, so it
+    // is made overdue.
     const base = newOrder("async");
     const stranded: Order = {
       ...base,
@@ -56,8 +53,8 @@ describe("the deadlines of an order", () => {
   });
 
   it("gives a quoted price a life of its own", () => {
-    // Portal, "Время вышло": the agent got a price and is thinking; when the
-    // time runs out the price no longer holds.
+    // The agent got a price and is thinking; when the time runs out the price
+    // no longer holds.
     const order = newOrder("sync");
 
     expect(at(order, "quote_expiry")).toBe(T0 + TEST_POLICY.deadlines.quoteTtlMs);
@@ -105,18 +102,15 @@ describe("the deadlines of an order", () => {
   });
 
   it("starts the synchronous answer from the payment, not from the opening of the order", () => {
-    // This one was shipped and seen. An agent that reads the requirements,
-    // decides, and pays twenty seconds later is inside the life of its price
-    // and buys legitimately — and every synchronous clock used to be anchored
-    // on the unpaid call that opened the order, so the merchant's whole answer
-    // had already run out before there was an order to hand him. He delivered,
-    // the money moved, and the agent was told its purchase was still in
-    // progress and given nothing.
+    // An agent that reads the requirements, decides and pays twenty seconds
+    // later is inside the life of its price and buys legitimately. A clock
+    // anchored on the unpaid call that opened the order would have run out
+    // before there was an order to hand the merchant, and he would deliver to
+    // an agent told its purchase was still in progress.
     //
-    // Before the payment the order is held by the life of its price and by
-    // nothing else; the merchant's clock cannot begin before there is a paid
-    // order to give him. The dispatch is three seconds later again, so that
-    // measuring from the wrong one of the two is visible here.
+    // Before the payment the order is held by the life of its price and nothing
+    // else. The dispatch is three seconds later again, so measuring from the
+    // wrong one of the two is visible here.
     const paid = must(newOrder("sync"), { kind: "payment_verified", at: T0 + 20_000 }).order;
     const dispatched: Order = {
       ...paid,
@@ -130,9 +124,9 @@ describe("the deadlines of an order", () => {
     expect(at(dispatched, "sync_response")).toBe(due);
     expect(at(dispatched, "async_fulfillment")).toBeUndefined();
 
-    // And the instant the old anchor named is refused as premature, so a timer
-    // left over from it closes nothing: the merchant is still honestly inside
-    // his deadline there.
+    // An expiry at the instant the opening of the order would give is refused
+    // as premature, so such a timer closes nothing: the merchant is still
+    // inside his deadline there.
     const early = transition(paid, {
       kind: "deadline_expired",
       at: T0 + TEST_POLICY.deadlines.syncResponseMs,
@@ -186,14 +180,13 @@ describe("the deadlines of an order", () => {
   });
 
   it("runs no clock on goods that went out unpaid, whether the charge failed or said nothing", () => {
-    // Portal, the two orders that stay open: the goods are made and the money
-    // did not come. The merchant is owed nothing more and the buyer is not
-    // late; what closes the order is the buyer's repeat, and a deadline cannot
-    // settle a debt. This list is what the runner arms its timers off and what
-    // the machine honours when one fires, so an entry here would be a timer
-    // nobody asked for on an order nobody is waiting for. The charge that said
-    // nothing is the same case: it waits for the payment layer to speak, and
-    // no clock can speak for it.
+    // The goods are made and the money did not come: the merchant is owed
+    // nothing more, the buyer is not late, and what closes the order is the
+    // buyer's repeat, which a deadline cannot settle. This list is what the
+    // runner arms its timers off and what the machine honours when one fires,
+    // so an entry here would be a timer on an order nobody is waiting for. The
+    // charge that said nothing waits for the payment layer, and no clock can
+    // speak for it.
     const failed = reach("delivered_unpaid");
     const silent = must(reach("fulfilled"), {
       kind: "deadline_expired",
@@ -223,13 +216,11 @@ describe("the deadlines of an order", () => {
 
   it("runs no clock on a fulfilled order whose charge is no longer in flight", () => {
     // Both entrances to `fulfilled` go through the settle, so a legal order
-    // here is always mid-charge and the clock that runs is the settle's. A
-    // store can still hand back this state with the charge already failed,
-    // and that shape must not acquire a fulfillment clock: the merchant has
-    // already produced the goods. Sharing the empty return with
-    // `delivered_unpaid` is not a test of both labels — a filled array on
-    // this one alone would otherwise go unnoticed, and the scheduler would
-    // arm a timer nobody asked for.
+    // here is always mid-charge and the settle's clock runs. A store can still
+    // hand back this state with the charge already failed, and that shape must
+    // not acquire a fulfillment clock: the merchant has already produced the
+    // goods. This is tested apart from `delivered_unpaid` so a filled array on
+    // this state alone cannot go unnoticed.
     const stranded: Order = { ...reach("fulfilled"), payment: "settle_failed" };
 
     expect(stranded.state).toBe("fulfilled");
@@ -248,15 +239,13 @@ describe("the deadlines of an order", () => {
   });
 
   it("invents no clock for a paid order that has no record of when it was paid", () => {
-    // Such an order cannot come out of this package, but it can come out of a
-    // store. Both clocks on the goods run from the paid instant and from
-    // nothing else — the header of `deadlines.ts` is the lesson of what a
-    // guessed anchor cost — and with that instant gone there is no honest
-    // number to hand the runner. The alternative is `null` added to a
-    // duration: a deadline in 1970, a timer that fires at once, and an order
-    // expired under a merchant who may be honestly at work. Unlike the
-    // stranded settle above, the merchant's own answer can still move this
-    // order, so it is left to him rather than declared overdue.
+    // Such an order cannot come out of this package but can come out of a
+    // store. Both clocks on the goods run from the paid instant and nothing
+    // else, so with it gone there is no honest number to hand the runner:
+    // `null` added to a duration would be a deadline in 1970, a timer that
+    // fires at once, and an order expired under a merchant who may be at work.
+    // Unlike the stranded settle above, the merchant's own answer can still
+    // move this order, so it is left to him rather than declared overdue.
     const paidSync = reach("dispatched");
     const paidAsync = walk(newOrder("async"), [
       { kind: "payment_verified", at: T0 + 1 },
@@ -288,8 +277,8 @@ describe("the deadlines of an order", () => {
   });
 
   it("uses the order's own policy and invents no numbers of its own", () => {
-    // The pilot's numbers are not chosen yet. If the core ever grew a default,
-    // an order would quietly acquire a deadline nobody agreed to.
+    // If the core grew a default, an order would quietly acquire a deadline
+    // nobody agreed to.
     const base = newOrder("sync");
     const order: Order = {
       ...base,

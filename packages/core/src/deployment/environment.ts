@@ -1,30 +1,24 @@
 /**
  * Which environment a deployment is, derived from the chain it settles on.
  *
- * There is no `AGENTIFY_ENV`. The chain is a field the gateway already takes,
- * it holds one value, and a single field cannot disagree with itself — which
- * is the argument ADR-0020 makes for the sandbox, made for the chain as well.
- * A flag beside the chain is a second field that survives a copied `.env`, can
- * be left set from yesterday, and enables the one mistake worth designing
- * against: a gateway that believes it is testing while it moves real money.
+ * There is deliberately no separate environment flag. A flag beside the chain
+ * can disagree with it, survive a copied `.env` or be left set from yesterday,
+ * and makes possible a gateway that believes it is testing while it moves real
+ * money.
  *
- * This module is private to the workspace and deliberately not in
- * `@nuanu-ai/agentify-contracts`. Its subject is our deployment policy, not
- * the wire: an integrator would gain a chain allowlist they can neither act on
- * nor rely on, and we would gain a public commitment to a list that should
- * stay easy to revisit. The wire's own answer travels where it always has, in
- * the `test` field of an order and a receipt.
+ * This is deployment policy, not wire contract, so it stays out of
+ * `@nuanu-ai/agentify-contracts`: an integrator could neither act on the chain
+ * lists nor rely on them. The wire's answer is the `test` field of an order and
+ * a receipt.
  */
 
 /** What a deployment is, for the keys it issues and the mark it writes. */
 export type Environment = "test" | "live";
 
 /**
- * What a page is allowed to say, which is a three-way question where the two
- * above are two-way ones. The laptop is the third thing: its chain is Base
- * Sepolia and its facilitator settles against nothing, so a page reading the
- * chain alone would tell a developer their payments settle on Base Sepolia,
- * which is the sandbox's one distinguishing untruth.
+ * What a page is allowed to say. The laptop sandbox is the third case: its
+ * chain is Base Sepolia but its facilitator settles against nothing, so a page
+ * reading the chain alone would claim payments settle on Base Sepolia.
  */
 export type SurfaceMode = "sandbox" | "test" | "live";
 
@@ -36,24 +30,19 @@ export const TESTNET_CHAINS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The chains where the money is real — one of them.
- *
- * Ethereum mainnet and Polygon mainnet are deliberately absent. They are
- * chains we do not sell on, and a chain we do not sell on is refused like any
- * other we have not written down; adding one is a decision, not a value
- * somebody types into a file.
+ * The chains where the money is real. Ethereum and Polygon mainnet are
+ * deliberately absent: a chain we do not sell on is refused like any other
+ * unlisted one, and adding one is a decision, not a value somebody types into a
+ * file.
  */
 export const LIVE_CHAINS: ReadonlySet<string> = new Set([
   "eip155:8453", // Base mainnet
 ]);
 
 /**
- * The address that selects the scripted facilitator: verify and settle against
- * nothing, and every payment accepted is pretend (ADR-0020).
- *
- * It lives here rather than in the gateway because the dashboard needs the same
- * answer about the same string, and two spellings of one distinguished value
- * is exactly the disagreement this module exists to remove.
+ * The address that selects the scripted facilitator, which verifies and settles
+ * against nothing: every payment it accepts is pretend. It lives here so the
+ * gateway and the dashboard spell this one value the same way.
  */
 export const SANDBOX_FACILITATOR = "sandbox:scripted";
 
@@ -68,29 +57,22 @@ export const isSandboxFacilitator = (facilitatorUrl: string): boolean =>
   facilitatorUrl === SANDBOX_FACILITATOR;
 
 /**
- * Whether a chain's money is play money — total, and answering for every
- * string.
- *
- * The spending gates in the smoke commands need an answer about a chain
- * nobody wrote down, and their answer is "not a testnet, so say
- * SMOKE_ALLOW_MAINNET=1 out loud". A derivation that threw there would turn a
- * refusal somebody can read into a stack trace.
+ * Whether a chain's money is play money, answering for any string without
+ * throwing. The smoke commands' spending gates need an answer about an unlisted
+ * chain ("not a testnet, so set SMOKE_ALLOW_MAINNET=1"), and a throw there
+ * would turn a readable refusal into a stack trace.
  */
 export const isTestnetChain = (network: string): boolean => TESTNET_CHAINS.has(network);
 
 const written = (chains: ReadonlySet<string>): string => [...chains].join(", ");
 
 /**
- * Which environment this chain makes, or a refusal.
- *
- * Guessing is wrong in both directions, which is why there is no default side
- * to fall to. Treating an unknown chain as live is the safe reading for
- * spending and the wrong one for the wire: an unlisted test network would
- * issue `csk_live_` keys, drop the banner, and write `test: false` onto every
- * order and receipt — our claim, on somebody else's document, that money moved
- * when it did not. Treating one as a test is worse the other way. So a chain
- * we have not written down is refused, where the difference between "I don't
- * know" and "I know there is none" is still visible to a person.
+ * Which environment this chain makes, or a refusal. There is no default side.
+ * An unlisted test network read as live would issue `csk_live_` keys, drop the
+ * banner and write `test: false` onto every order and receipt, claiming on
+ * somebody else's document that money moved when it did not; read as test, the
+ * same mistake runs the other way. So an unlisted chain is refused, where "I
+ * don't know" is still visible to a person.
  */
 export function environmentOf(network: string): Environment {
   if (TESTNET_CHAINS.has(network)) {
@@ -138,12 +120,9 @@ const KEY_PREFIXES: Readonly<Record<Environment, string>> = {
 export const keyPrefixFor = (environment: Environment): string => KEY_PREFIXES[environment];
 
 /**
- * Which environment a key was issued by, or nothing at all.
- *
- * Nothing is the answer for the bare `csk_` prefix this change removed, and
- * for anything else. The door turns both away; only a key that names the other
- * environment gets the sentence naming the other site, because only that one
- * is a key somebody holds that works somewhere.
+ * Which environment a key was issued by, or null for a key with neither prefix.
+ * Only a key that names the other environment gets the sentence naming the
+ * other site, because only that key works somewhere.
  */
 export function environmentOfKeyPrefix(secret: string): Environment | null {
   for (const environment of ["test", "live"] as const) {
@@ -159,17 +138,9 @@ export const SURFACE_MARKER_ATTRIBUTE = "data-agentify-surface";
 
 /**
  * What each mode says to a reader, and nothing where there is nothing to warn
- * about.
- *
- * The test wording is the design's own, clause by clause: it claims what the
- * payment was made with and stops there. An earlier draft ended it with "and
- * neither is anything you buy", which this system does not enforce and cannot
- * — a test chain proves what a payment was made with, not what a merchant's
- * worker does when the order reaches it, and the merchants here are real
- * integrators running their own code.
- *
- * The sandbox wording says what ADR-0020 says of the sandbox — nothing it
- * accepts is real — to a reader instead of to a log.
+ * about. The test wording claims only what the payment was made with: a test
+ * chain proves nothing about what a merchant's worker does with the order, and
+ * the merchants here run their own code.
  */
 export const SURFACE_WORDS: Readonly<Record<SurfaceMode, string | null>> = {
   sandbox:

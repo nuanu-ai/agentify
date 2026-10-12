@@ -1,10 +1,7 @@
 /**
- * The birth of an order, and the one guard that stands in front of it.
- *
- * Pausing is not leaving. A paused merchant sells nothing new, and his orders
- * that are already open play out in the ordinary way — which is why the guard
- * lives here, at creation, and the transition function never asks whether the
- * merchant is selling at all.
+ * Pausing is not leaving: a paused merchant takes no new order, and his open
+ * orders play out as usual. That is why the selling guard lives here at
+ * creation and the transition function never asks about it.
  */
 
 import { assertNever } from "../index.js";
@@ -53,16 +50,11 @@ export function createOrder(input: CreateOrderInput): CreateOrderResult {
         ok: false,
         rejection: {
           code: "selling_paused",
-          // The sentence names the product and not the merchant, because
-          // "paused" arrives here with three different causes folded into it
-          // and the caller does the folding: one card taken off sale, the whole
-          // catalog stopped, or a merchant who cannot be paid at all. It used
-          // to say the merchant's cards were paused, and a buyer refused at a
-          // single paused card was told something false about a merchant who
-          // was selling everything else. What is true in all three is the only
-          // thing the agent can act on anyway — this product cannot be bought
-          // right now — and it is the same sentence the challenge is refused
-          // with a step earlier, so the two doors agree.
+          // The sentence names the product, not the merchant: the caller folds
+          // three causes into "paused" (one card off sale, the whole catalog
+          // stopped, a merchant who cannot be paid), and only this is true of
+          // all three. It is the same sentence the payment challenge is refused
+          // with a step earlier.
           message: "this product is not on sale at the moment, so no new order is taken",
         },
       };

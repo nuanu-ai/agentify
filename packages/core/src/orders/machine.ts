@@ -2,49 +2,35 @@
  * The order state machine: one machine for all three fulfillment modes, with
  * the modes as guards.
  *
- * The rules that shaped the code below, each of them from
- * `docs/research/16-order-state-machine.md` and the two portal pages that say
- * the same things to the merchant:
- *
  * Money decides the shape of every failure. Where the merchant's live answer
  * still stands between the price and the charge, a failure costs the buyer
- * nothing; where the money moved first, the same failure leaves a debt that
- * has to be recorded rather than swept into a terminal claiming nobody owes
- * anything.
+ * nothing; where the money moved first, the same failure leaves a debt that is
+ * recorded rather than swept into a terminal claiming nobody owes anything.
  *
  * An answer is a fulfillment, a refusal or an acceptance, and nothing else. An
  * exception, a dead process and a broken connection are not answers: the order
- * is delivered again until the mode's deadline, because a refusal is
- * understood as a final "this cannot be fulfilled".
+ * is delivered again until the mode's deadline, because a refusal means a final
+ * "this cannot be fulfilled".
  *
  * Work that was done is not thrown away. A merchant who started before the
  * deadline and finished after it gets a typed "the purchase is already closed"
- * rather than an exception, and the goods he produced wait for a repeat of the
- * purchase — which brings the payment with it and asks for no second
- * fulfillment.
+ * rather than an exception, and his goods wait for a repeat of the purchase,
+ * which brings the payment with it and asks for no second fulfillment.
  *
- * Two shapes of "no" come out of this file and they mean different things. A
- * typed answer to the merchant (`answer_merchant`) is the machine talking to
- * somebody who legitimately holds this order: the call was understood and
- * could not be honoured. A rejection of the transition is the machine saying
- * that this event has no meaning in this state at all — a stale message off
- * the queue, or a bug. Neither is ever thrown.
+ * Two shapes of "no" come out of this file. A typed answer to the merchant
+ * (`answer_merchant`) speaks to somebody who legitimately holds this order: the
+ * call was understood and could not be honoured. A rejected transition says the
+ * event has no meaning in this state at all: a stale message off the queue, or
+ * a bug. Neither is ever thrown.
  *
- * A no-op is not free, and this is the lesson the delivered state was taught
- * on the stand. Taking an event and changing nothing looks harmless from in
- * here, but what a state takes is read outside as permission to act: the
- * worker's poll hands a merchant exactly those orders whose `order_dispatched`
- * the machine accepts, so a closed state that took the hand-over quietly had
- * the gateway sending an order it had already settled and closed back to a
- * handler, minutes after the buyer had the goods. Deliveries stay at least
- * once and a repeat can still reach a merchant through a genuine race, so
- * nothing about his duty to recognise one changes; what changed is that we no
- * longer cause one knowingly. Where an event has nothing to do here, the
- * honest answer is that it has no meaning here. The one closed state that
- * still takes a hand-over is `refund_due`, and there it is not a no-op at all:
- * late goods close the debt, so the order is worth putting in front of the
- * merchant again — unless it is a parcel, whose buyer's address is gone by
- * then (`transition`).
+ * A no-op is not free. What a state accepts is read outside as permission to
+ * act: the worker's poll hands a merchant exactly those orders whose
+ * `order_dispatched` the machine accepts, so a closed state that quietly took
+ * the hand-over would send a settled order back to a handler. Where an event
+ * has nothing to do, the answer is that it has no meaning here. The one closed
+ * state that still takes a hand-over is `refund_due`, where late goods close
+ * the debt, unless it is a parcel whose buyer's address is already gone
+ * (`transition`).
  */
 
 import { assertNever } from "../index.js";
@@ -98,12 +84,12 @@ export function transition(order: Order, event: OrderEvent): TransitionResult {
     return transitionIn(order, event);
   }
 
-  // A parcel whose address is gone is never handed to a handler again
-  // (ADR-0032): the handler would be handed a parcel with nowhere to send it.
-  // That covers a repeat already on the merchant's stream when they took the
-  // order on, and an order owing a refund, which an ordinary order is handed
-  // over again for; a merchant who ships late from their own copy of the
-  // address still closes the debt with the `deliver` call.
+  // A parcel whose address is gone is never handed to a handler again: the
+  // handler would get a parcel with nowhere to send it. That covers a repeat
+  // already on the merchant's stream when they took the order on, and an order
+  // owing a refund, which an ordinary order is handed over again for; a
+  // merchant who ships late from their own copy of the address still closes the
+  // debt with the `deliver` call.
   if (event.kind === "order_dispatched" && !holdsShipTo(order)) {
     return reject(
       order,
@@ -227,21 +213,16 @@ function answer(order: Order, merchantAnswer: MerchantAnswer): TransitionResult 
 /**
  * The merchant is told his acceptance landed.
  *
- * Written once and used from two arms — dispatched, and the confirmation the
- * same event answers — because those are the same fact about him and a
- * merchant reading two different answers to his one answer would be reading a
- * difference that is not there. Arms, not states: an acceptance arriving while
- * our record still says `paid` is routed into the dispatched arm, so three
- * states reach this effect and five in all can handle the event.
- * It rides alongside the other effects rather than through `answer`, which
- * replaces them.
+ * Used from two arms, the dispatched one and the confirmation the same event
+ * answers, because those are the same fact about him and two different answers
+ * would describe a difference that is not there. An acceptance arriving while
+ * our record still says `paid` is routed into the dispatched arm. It rides
+ * alongside the other effects rather than through `answer`, which replaces
+ * them.
  *
- * The two states where an acceptance arrives for an order that has moved on
- * are answered elsewhere and not with this. A delivered order says so in its
- * own arm below, because the goods are not owed and telling him otherwise
- * would send him looking for them. An order owed a refund says this word, but
- * through the gateway rather than from here — there the machine has nothing to
- * do about the event, and the answer is what his own call amounted to.
+ * A delivered order answers an acceptance in its own arm, because the goods are
+ * not owed and saying otherwise would send him looking for them. An order owed
+ * a refund gets this word from the gateway rather than from here.
  */
 const ACCEPTANCE_LANDED: Effect = {
   kind: "answer_merchant",
@@ -269,7 +250,7 @@ function closedToMerchant(order: Order): TransitionResult {
  * A silent price check is an open failure only where the merchant's own answer
  * still stands between the price and the charge. Where the money moves at the
  * purchase, selling at an unknown stock level would manufacture debts to
- * buyers, and a lost sale is cheaper than a debt (ADR-0002 §3).
+ * buyers, and a lost sale is cheaper than a debt.
  */
 function sellsOnSilentQuote(mode: OrderMode): boolean {
   return mode.needsConfirmation || mode.settle === "after_fulfillment";
@@ -277,11 +258,10 @@ function sellsOnSilentQuote(mode: OrderMode): boolean {
 
 /**
  * The merchant did not say what the goods cost. It reaches the machine either
- * as the gateway's own `quote_silent` — a timeout, a server error, an answer
- * that did not parse — or as the `quote_response` deadline running out on our
- * side. Both are the same fact
- * and get the same answer, which is the per-mode policy and never a closure of
- * its own.
+ * as the gateway's own `quote_silent` (a timeout, a server error, an answer
+ * that did not parse) or as the `quote_response` deadline running out on our
+ * side. Both are the same fact and get the same answer, which is the per-mode
+ * policy and never a closure of its own.
  */
 function onQuoteSilence(order: Order, at: number): TransitionResult {
   return sellsOnSilentQuote(order.mode)
@@ -545,18 +525,17 @@ function onDeadline(
 }
 
 /**
- * The execution of the payment never reported back. ADR-0002 §3 settles what
- * to do about it: a silent decision about the charge is always a closed
- * failure, the purchase is refused rather than carried on with.
+ * The execution of the payment never reported back. A silent charge is always a
+ * closed failure: the purchase is refused rather than carried on with.
  *
  * That is a guess that the money did not move, and the machine says so rather
- * than pretending to know: a charge that reports in afterwards is turned into
- * a debt by `fromClosedWithoutMoney`, not thrown away.
+ * than pretending to know: a charge that reports in afterwards is turned into a
+ * debt by `fromClosedWithoutMoney`, not thrown away.
  */
 function onSilentSettle(order: Order): TransitionResult {
-  // Not "the charge failed". The charge said nothing, and writing down the
-  // stronger of the two is what let a repeat of the purchase send a second
-  // charge on top of a first one nobody had heard from.
+  // Not "the charge failed": the charge said nothing, and recording the
+  // stronger claim would let a repeat of the purchase send a second charge on
+  // top of a first one nobody has heard from.
   const silent: Order = { ...order, payment: "outcome_unknown" };
 
   if (order.state === "fulfilled") {
@@ -703,13 +682,11 @@ function fromAwaitingConfirmation(order: Order, event: StateEvent): TransitionRe
           state: "confirmed",
           timestamps: { ...order.timestamps, confirmedAt: event.at },
         },
-        // The agent is invited to pay, and the answer says his "I will"
-        // landed — the same word the asynchronous mode uses, because what an
-        // answer names is which of the three things he said, not what the
-        // machine did about it. Nobody reads it yet: the confirmation mode has
-        // no shape on the wire, and the gateway throws on `invite_payment`
-        // rather than invent one. The machine still says it, because the day
-        // that mode is wired up the merchant's answer is already answered.
+        // The agent is invited to pay, and the answer says the merchant's "I
+        // will" landed: the same word the asynchronous mode uses, because an
+        // answer names which of the three things he said, not what the machine
+        // did about it. The confirmation mode has no shape on the wire, and the
+        // gateway throws on `invite_payment` rather than invent one.
         [{ kind: "invite_payment" }, ACCEPTANCE_LANDED],
       );
     case "handler_refused":
@@ -945,22 +922,20 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
         return answer(order, NOT_IN_THIS_MODE);
       }
       // The order is his, and he is told so. The same acceptance can land more
-      // than once — an answer posted again after a dropped connection, the
-      // `accept` call made beside the handler's own — and is answered the same
-      // way each time; there is nothing here for a repeat to get wrong.
+      // than once (an answer posted again after a dropped connection, the
+      // `accept` call made beside the handler's own) and is answered the same
+      // way each time.
       //
-      // From here on the order is held, and the flag set here is what says so:
-      // a silence noticed after it spends no delivery (the arm for
-      // `handler_undelivered` below). The gateway also clears the hand-over it
-      // was waiting on when it applies this event (`openDeliveryId`, held by
-      // the runner against the reminder that names it), and that alone is not
-      // enough. Our wait for an answer is a few seconds and a handler can take
-      // longer to give this one, so a repeat decided on in the meantime is
-      // already on the merchant's stream when it lands. That repeat is still
-      // handed over — delivery is at least once, and the merchant tells it
-      // apart by the order's identifier — but the silence after it must not
-      // count. A parcel's repeat is the exception: its address was let go with
-      // this acceptance, and `transition` refuses to hand it over empty.
+      // From here the order is held, and this flag says so: a silence noticed
+      // after it spends no delivery (the `handler_undelivered` arm below). The
+      // gateway also clears the hand-over it was waiting on, but that is not
+      // enough: a handler can take longer than our wait to accept, so a repeat
+      // decided on in the meantime is already on the merchant's stream when
+      // this lands. That repeat is still handed over, since delivery is at
+      // least once and the merchant tells it apart by the order's identifier,
+      // but the silence after it must not count. A parcel's repeat is the
+      // exception: its address went with this acceptance, and `transition`
+      // refuses to hand it over empty.
       return ok({ ...order, dispatch: { ...order.dispatch, accepted: true } }, [ACCEPTANCE_LANDED]);
     case "handler_delivered":
       return overdueSynchronousGoods(order, event) ?? deliverGoods(order, event.at);
@@ -1106,23 +1081,20 @@ function fromDelivered(order: Order, event: StateEvent): TransitionResult {
     case "handler_accepted":
       // A worker taking on an order that is already delivered. Deliveries are
       // at least once, so this is ordinary rather than a fault, and the answer
-      // is the state he is in: told his acceptance landed he would write the
-      // order down as under way — which is what that word means here — and go
-      // looking for goods he has already handed over.
+      // is the state the order is in: told his acceptance landed, he would
+      // write the order down as under way and go looking for goods he has
+      // already handed over.
       //
-      // Where the line falls, since the same at-least-once argument reaches
-      // further than this arm: a redelivered acceptance is answered as
-      // ordinary only where the order still stands and nothing failed. On an
-      // order that ran out its deadline or closed with a departed merchant the
-      // refusal stays, and the entry it writes in his log is one he wants —
-      // there the order genuinely did fail, and `order_already_closed` is
-      // exactly true of it rather than merely safe to say.
+      // Only an order that still stands and where nothing failed is answered as
+      // ordinary this way. On an order that ran out its deadline or closed with
+      // a departed merchant the refusal stays, because `order_already_closed`
+      // is exactly true there.
       return answer(order, { ok: true, result: "already_delivered" });
     case "order_dispatched":
       // A hand-over of an order that is closed. The gateway gives a worker
-      // exactly what this arm takes, so accepting it — even with nothing to
-      // do — is the machine telling the gateway to send a finished purchase
-      // back to a handler. The header says what that cost on the stand.
+      // exactly what this arm accepts, so accepting it, even with nothing to
+      // do, would tell the gateway to send a finished purchase back to a
+      // handler.
       return notApplicable(order, event);
     case "refuse_called":
       return closedToMerchant(order);
@@ -1181,9 +1153,9 @@ function fromDeliveredUnpaid(order: Order, event: StateEvent): TransitionResult 
         : notApplicable(order, event);
     case "payment_verification_failed":
       // A payment that did not check out never became a charge, so there is
-      // nothing here to write down. In particular it does not clear the record
-      // of a charge that IS out there unaccounted for: doing that let a repeat
-      // walk straight past the guard above and send a second one.
+      // nothing to write down. In particular it must not clear the record of a
+      // charge that is out there unaccounted for, or a repeat would walk past
+      // the guard above and send a second one.
       return ok(order);
     case "deliver_called":
     case "handler_delivered":
@@ -1215,15 +1187,14 @@ function fromRefundDue(order: Order, event: StateEvent): TransitionResult {
   switch (event.kind) {
     case "deliver_called":
       // The money for the goods has been paid, and to the buyer late goods are
-      // better than a refund — as long as the refund has not gone through yet.
+      // better than a refund, as long as the refund has not gone through yet.
       // The reason the order was marked for a refund goes with it: an order
       // that ended in success may not carry "the merchant refused" as the
       // record of how it ended.
       //
-      // Known and open: a refund that is already on its way but has not
-      // reported back is invisible here, and this delivery races it. ADR-0028
-      // takes that race as the price of the pilot: a refund ends the debt only
-      // once it is recorded, and one paid but not reported loses to goods.
+      // A known race: a refund already on its way but not yet reported is
+      // invisible here and loses to this delivery, because a refund ends the
+      // debt only once it is recorded.
       return ok({ ...order, state: "delivered", closure: null }, [
         { kind: "release_goods_to_agent" },
         { kind: "issue_receipt" },

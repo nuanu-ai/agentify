@@ -1,40 +1,28 @@
 /**
- * What a merchant must have before their cards are sold, on each surface.
+ * What a merchant must have before their cards are sold, on each surface. Every
+ * path that decides or says whether a merchant can sell asks this one rule: the
+ * gateway's publish door and its check at every sale, the dashboard's screens
+ * and its WooCommerce import, and any shop connector. It lives here because the
+ * gateway and the dashboard need the same answer about the same merchant.
  *
- * One rule, asked by every path that decides or says whether a merchant can
- * sell: the gateway's publish door and its check at every later sale, the
- * dashboard's screens and its WooCommerce import, and any shop connector after
- * them. Two copies of a rule are two rules the day one of them is edited, and
- * that has happened here: the door refused a missing name on every surface
- * while a decision and two public pages said the name was asked for live
- * publication alone. The rule lives in this package rather than in the gateway
- * because the dashboard needs the same answer about the same merchant, the reason
- * `deployment/environment.ts` gives for itself, and it is pure, which is what
- * this package is for.
+ * A seller name is asked on every surface, because a payment request names its
+ * seller in the sandbox as anywhere else. A payout wallet is asked wherever a
+ * payment settles, which is the test and the live surface but not the sandbox,
+ * where nothing settles. The operator's approval is asked on the live surface
+ * alone.
  *
- * The rule (ADR-0026 §5): a seller name on every surface, because a payment
- * request names its seller in the sandbox exactly as it does anywhere else; a
- * payout wallet wherever a payment settles, which is the test and the live
- * surface and not the sandbox, where nothing settles and there is no money to
- * send (ADR-0020); and the operator's approval on the live surface alone.
- *
- * What comes out is the three codes a refused publish already carries on the
- * wire, so the door, a screen and a merchant's own program name one missing
- * thing with one word. The codes are the contract's; this module imports only
- * their type, so the package keeps no runtime dependency (ADR-0003 §2).
+ * The answer is the codes a refused publish carries on the wire, so every
+ * surface names one missing thing with one word. Only their type is imported,
+ * so the package keeps no runtime dependency.
  */
 
 import type { MerchantFinding } from "@nuanu-ai/agentify-contracts";
 import type { SurfaceMode } from "../deployment/environment.js";
 
 /**
- * A fact the caller did not read.
- *
- * The dashboard reads the approval on the live channel alone, where the door
- * asks for it, and a screen that did not ask the gateway for the wallet cannot
- * say anything about it. A symbol rather than `undefined`, so a caller cannot
- * leave a fact out by accident and have it read as unknown, and rather than a
- * word, since a seller could be named "unknown".
+ * A fact the caller did not read. A symbol rather than `undefined`, so a caller
+ * cannot leave a fact out by accident and have it read as unknown, and rather
+ * than a word, since a seller could be named "unknown".
  */
 export const UNKNOWN: unique symbol = Symbol("unknown");
 export type Unknown = typeof UNKNOWN;
@@ -78,10 +66,9 @@ const isSet = (value: string | null | Unknown): boolean | Unknown =>
 /** What this merchant lacks on this surface, and what the caller could not tell. */
 export function readinessOf(facts: MerchantFacts, surface: SurfaceMode): Readiness {
   // Keyed by every code there is, so a code added to the contract does not
-  // compile until somebody says which fact answers it. One is answered
-  // elsewhere on purpose: a shop's site is asked of a parcel's card alone
-  // (ADR-0033), never of a merchant on a surface, so the publish door asks it
-  // with the card in hand and this rule does not hold it.
+  // compile until somebody says which fact answers it. A shop's site is asked
+  // of a parcel's card alone, never of a merchant on a surface, so the publish
+  // door asks it with the card in hand and this rule does not hold it.
   const held: Readonly<Record<Exclude<MerchantFinding, "no_seller_site">, boolean | Unknown>> = {
     no_seller_name: isSet(facts.sellerName),
     no_payout_wallet: isSet(facts.payoutWallet),

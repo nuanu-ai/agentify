@@ -1,10 +1,7 @@
 /**
- * Which environment a chain is, and what the surfaces are allowed to say
- * about it.
- *
- * The refusal is the test that matters. `test: false` on a receipt is a claim
- * we make to somebody else's agent about somebody else's money, and a chain
- * nobody wrote down must not be sorted into a side to produce one.
+ * `test: false` on a receipt is a claim to somebody else's agent about somebody
+ * else's money, so a chain nobody wrote down is refused rather than sorted into
+ * a side.
  */
 
 import { describe, expect, it } from "vitest";
@@ -95,9 +92,6 @@ describe("key prefixes", () => {
   });
 
   it("reads nothing off a key that carries neither prefix", () => {
-    // The bare prefix this change removed. Every key issued before it stops
-    // working, which is correct: they were issued by a gateway that settled
-    // against nothing.
     expect(environmentOfKeyPrefix("csk_abc")).toBeNull();
     expect(environmentOfKeyPrefix("")).toBeNull();
   });

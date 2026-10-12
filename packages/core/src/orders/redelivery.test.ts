@@ -5,10 +5,10 @@ import { nextRedelivery } from "./redelivery.js";
 const policy = TEST_POLICY.redelivery;
 
 /**
- * An exception in the handler, a dead process and a broken connection are all
- * one thing: the answer never came back. The promise these tests guard is that
- * such an order is delivered again rather than closed, and that the repeating
- * stops before the mode's deadline instead of running past it.
+ * A handler exception, a dead process and a broken connection are one thing:
+ * the answer never came back. Such an order is delivered again rather than
+ * closed, and the repeating stops before the mode's deadline instead of running
+ * past it.
  */
 describe("deciding whether to deliver an order again", () => {
   it("backs off further with every attempt", () => {
@@ -23,10 +23,9 @@ describe("deciding whether to deliver an order again", () => {
 
   it("never backs off further than the policy's ceiling", () => {
     // Doubling from a thousand passes a minute at the eighth attempt: the
-    // seventh is still under it at thirty-two seconds, the eighth would be
-    // sixty-four. The wait is what an agent's buyer sits through, so the
-    // ceiling is the promise, and the growth is pinned on both sides of the
-    // attempt that crosses it and once well past.
+    // seventh waits thirty-two seconds, the eighth would wait sixty-four. The
+    // buyer sits through the wait, so the ceiling is the promise; the growth is
+    // pinned on both sides of the attempt that crosses it and once well past.
     const patient = { ...policy, maxAttempts: 100 };
     const madeSoFar = (attempts: number) =>
       nextRedelivery({ attempts, now: 0, deadlineAt: null, policy: patient });
@@ -64,11 +63,10 @@ describe("deciding whether to deliver an order again", () => {
   });
 
   it("does not attempt a delivery that would land exactly on the deadline", () => {
-    // The instant of the deadline belongs to the expiry, not to the delivery:
-    // the machine treats an expiry claiming that same instant as due, so a
-    // handler started there is started on an order already out of time. One
-    // millisecond earlier the attempt is worth making, and that is the whole
-    // width of this decision.
+    // The deadline's instant belongs to the expiry: the machine treats an
+    // expiry claiming that same instant as due, so a handler started there
+    // starts on an order already out of time. One millisecond earlier the
+    // attempt is worth making.
     const onTheDot = nextRedelivery({ attempts: 1, now: 0, deadlineAt: 1_000, policy });
     const justInside = nextRedelivery({ attempts: 1, now: 0, deadlineAt: 1_001, policy });
 

@@ -1,15 +1,12 @@
 /**
  * The one rule about what a merchant must have before their cards are sold.
+ * Each caller is tested through its own surface; what is here is what only this
+ * function decides: the table of what each surface asks for, and the difference
+ * between a fact that is absent and one the caller could not read.
  *
- * The publish door, the sale-time check and the dashboard each ask it, and each
- * is tested through its own surface: the door over HTTP in the gateway, the
- * screens over HTTP in the dashboard. What is here is what only this function
- * decides, and which no single caller shows whole: the table of what each
- * surface asks for, and the difference between a fact that is absent and a
- * fact the caller could not read. The dashboard reads no approval, and a rule
- * that turned its "I don't know" into "there is none" would tell a merchant
- * they are refused for something they may hold, while one that turned it into
- * "there is one" would send them to press a button that fails.
+ * The dashboard reads no approval. Turning its "I don't know" into "there is
+ * none" would tell a merchant they are refused for something they may hold, and
+ * turning it into "there is one" would send them to press a button that fails.
  */
 
 import { describe, expect, it } from "vitest";
@@ -32,10 +29,10 @@ const SURFACES: readonly SurfaceMode[] = ["sandbox", "test", "live"];
 
 describe("what a surface asks of a merchant", () => {
   it("asks for a name everywhere, a wallet where a payment settles, and approval on live alone", () => {
-    // The sandbox settles against nothing, so there is no money to send and no
-    // address to be missing; a payment request names its seller there as
-    // anywhere; and the operator admits merchants to the live catalog only.
-    // The order is the order a refusal names them in.
+    // The sandbox settles against nothing, so no wallet is asked for there; a
+    // payment request names its seller on every surface; the operator admits
+    // merchants to the live catalog only. The expected order is the order a
+    // refusal names them in.
     expect(readinessOf(NOTHING_SET, "sandbox").missing).toStrictEqual(["no_seller_name"]);
     expect(readinessOf(NOTHING_SET, "test").missing).toStrictEqual([
       "no_seller_name",
