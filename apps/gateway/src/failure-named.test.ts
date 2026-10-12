@@ -137,18 +137,25 @@ describe("where a failure was thrown, as a log line names it", () => {
     expect(named).not.toContain(SECRET);
   });
 
-  it("keeps no frame from a function whose name was given a newline", () => {
+  it("keeps no frame from a function whose name was given a newline or a control character", () => {
     // Code can name a function after data, by a computed key or by redefining
-    // its name, and the name is written into the frame as it is.
-    const renamed = function renamed(): never {
-      throw new Error("renamed");
-    };
-    Object.defineProperty(renamed, "name", { value: `split\n${SECRET}` });
+    // its name, and the name is written into the frame as it is: a newline
+    // there can put a line shaped like a frame after it, and an escape can
+    // rewrite what a terminal shows.
+    for (const given of [
+      `split\n    at /srv/${SECRET}/forged.ts:1:1\nrest`,
+      `\u001b[2K${SECRET}`,
+    ]) {
+      const renamed = function renamed(): never {
+        throw new Error("renamed");
+      };
+      Object.defineProperty(renamed, "name", { value: given });
 
-    const named = failureNamed(caught(renamed));
+      const named = failureNamed(caught(renamed));
 
-    expect(named).not.toContain(SECRET);
-    expect(named).not.toContain("\n");
+      expect(named, JSON.stringify(given)).not.toContain(SECRET);
+      expect(named, JSON.stringify(given)).not.toContain("\n");
+    }
   });
 
   it("is the first eight frames, however deep the failure", () => {
@@ -161,11 +168,14 @@ describe("where a failure was thrown, as a log line names it", () => {
 
   it("is left out where the stack does not begin with the failure's own message", () => {
     // A message changed after its stack was written no longer says where the
-    // stack's own lines end, so none of them is trusted.
-    const changed = new Error(`${SECRET}\n    at /srv/${SECRET}/forged.ts:1:1`);
-    void changed.stack;
-    changed.message = "another message";
+    // stack's own lines end, so none of them is trusted: whether it was
+    // replaced, or cut in the middle of its first line.
+    for (const changedTo of ["another message", "cut"]) {
+      const changed = new Error(`cut${SECRET}\n    at /srv/${SECRET}/forged.ts:1:1`);
+      void changed.stack;
+      changed.message = changedTo;
 
-    expect(failureNamed(changed)).toBe("Error");
+      expect(failureNamed(changed), changedTo).toBe("Error");
+    }
   });
 });
