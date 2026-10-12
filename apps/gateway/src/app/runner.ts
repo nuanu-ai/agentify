@@ -1,43 +1,19 @@
 /**
- * The interpreter.
+ * Runs the order machine: load the order, hand it and one event to
+ * `transition`, write down what comes back, and carry out the effects it asked
+ * for. Every decision is taken in `@agentify/core`; one taken here would be a
+ * second machine disagreeing with the first about somebody's money.
  *
- * Everything this file does is the same four steps: load the order, hand it and
- * one event to `transition`, write down what comes back, and carry out the
- * effects it asked for. It decides nothing. Every branch that looks like a
- * decision — whether a silence sells, whether an order is charged, whether
- * there is another delivery and how long the wait before it is — was taken in
- * `@agentify/core`, and the reason it was taken there is that it is the
- * product. A gateway that answered any of those questions itself would be a
- * second machine disagreeing with the first, and the two would disagree about
- * somebody's money.
- *
- * Three rules hold everywhere below.
- *
- * The money invariants are checked on every order about to be written down and
- * a violation is thrown, not handled. `moneyInvariantViolations` is a list of
- * things a person would notice — a buyer whose money is gone with nothing
- * recording it, a debt with no charge behind it — and if one of them is true
- * the safe thing is to stop, because the alternative is to write it down and
- * carry on selling.
- *
- * The effects fall in two halves and the split is ADR-0013. The ones that must
- * not be lost — the envelope that hands the order to the merchant, the receipt
- * — are written down inside the same hold that writes the state implying them,
- * so a process that dies mid-flight either did both or did neither. There is no
- * repair for the other way round: an order that says the merchant was handed
- * the work has already moved past the transition that emits the dispatch, and
- * nothing re-emits it. Everything else runs after the order is written and
- * outside the hold, because it does real work — a network call to the
- * facilitator — and produces the next event about the same order; run under the
- * hold, it would wait for a hold that only it could release.
- *
- * None of this makes delivery exactly-once and none of it tries to. Everything
- * here is at least once, which is what the contract already promises a merchant
- * and what their handler is already told to survive.
- *
- * And time is a value. Every event carries the instant it happened at, taken
- * from the clock once at the edge, so the same purchase replayed produces the
- * same order.
+ * A money invariant violation on an order about to be written is thrown, not
+ * handled: stopping is safer than writing it down and selling on. Effects that
+ * nothing re-emits once the order has moved on, such as the dispatch envelope
+ * and the receipt, are written in the same hold as the state that implies them;
+ * the rest run after the write and outside the hold, because they call the
+ * network and feed the next event about the same order, which under the hold
+ * would wait for itself. Everything here is at least once, as the contract
+ * promises merchants, never exactly once. Every event carries its instant, read
+ * from the clock once at the edge, so a replayed purchase produces the same
+ * order.
  */
 
 import type {
@@ -93,22 +69,18 @@ import type { WrittenOrderStatus } from "./written.js";
 export const SWEEP_EFFECTS = "agentify_sweep_effects";
 
 /**
- * The mark on a settle word that means this gateway did not observe the
- * charge. The operator command writes it; the sweep reads it and does not
- * invent a receipt for it. A phrase rather than a flag, because the word is
- * already the record and a second field would be a second place for the two
- * to disagree.
+ * The mark on a settle word meaning this gateway did not observe the charge:
+ * the operator command writes it, and the sweep does not invent a receipt for
+ * it. It is a phrase in the word rather than a separate flag, so there is one
+ * record and not two that can disagree.
  */
 export const UNOBSERVED_SETTLE = "the facilitator was not asked";
 
 /**
- * What is written down about the purchase alongside the machine's own order.
- * Every one of these lands in the same write as the order the event moved, so
- * a fact and the event it is about are never stored one without the other.
- *
- * The goods are the one fact with a condition on them, and it lives in
- * `goodsToKeep` below rather than here because part of it is about what became
- * of the event, which is not known until the machine has seen it.
+ * What is written about the purchase alongside the order. Every fact lands in
+ * the same write as the order the event moved, so neither is stored without the
+ * other; whether the goods are kept depends on what became of the event, which
+ * `goodsToKeep` decides once the machine has seen it.
  */
 export interface OrderFacts {
   readonly delivery?: Delivery;
@@ -120,13 +92,12 @@ export interface OrderFacts {
 }
 
 /**
- * What presenting a verified payment came to.
- *
- * `took` is ownership settled by this payment — the order moved and its effects
- * ran. `already_yours` is the same owner asking again about a purchase already
- * under way. `not_owner` is somebody else's payment turned away without a mark
- * on the order. `refused` is the machine declining the event the payment would
- * have driven — a repeat on an order whose charge is still unaccounted for.
+ * What presenting a verified payment came to. `took`: this payment settled
+ * ownership, the order moved and its effects ran. `already_yours`: the same
+ * owner asking again about a purchase under way. `not_owner`: somebody else's
+ * payment, turned away without a mark on the order. `refused`: the machine
+ * declined the event, as for a repeat on an order whose charge is still
+ * unaccounted for.
  */
 export type PresentResult =
   | { readonly kind: "took"; readonly order: StoredOrder; readonly answer: MerchantAnswer | null }
@@ -183,28 +154,20 @@ export interface Swept {
   receipted: number;
   /** Clocks that had run out with nothing waiting on them, started again. */
   rearmed: number;
-  /** Orders the sweep could not repair, each of which was said out loud. */
+  /** Orders the sweep could not repair, each one logged. */
   refused: number;
 }
 
 /**
- * Whether this effect is carried out after the order is written, rather than
- * written down with it (ADR-0013).
+ * Whether this effect runs after the order is written rather than being
+ * written with it. An effect belongs with the write when nothing can re-drive
+ * it once the order has moved past the transition that asked for it; the
+ * switch is exhaustive so a new effect cannot fall on the wrong side unnoticed.
  *
- * The list is exhaustive rather than a set of names, so an effect added to the
- * machine cannot quietly fall into the wrong half: the compiler asks for it
- * here. What belongs on the written-down side is an effect that cannot be
- * re-driven once the order has moved past the transition that asked for it —
- * that, and nothing else, is what this line decides.
- *
- * Whether the sweep may write one again is a second question with a different
- * answer, and the two are easy to run together. Of the five written down
- * here, three have receivers that are promised a repeat and two do not: a
- * merchant event is delivered at most once, so it is written where the state
- * is and is never re-sent, and a parcel's erasure deletes rather than sends,
- * so there is nobody to repeat it to. `sweep` carries that distinction, and no
- * arm may be added there for an effect whose receiver was not promised a
- * repeat.
+ * Whether the sweep may issue one again is a separate question: a merchant
+ * event is delivered at most once, and a parcel's erasure deletes rather than
+ * sends, so `sweep` re-issues neither, and no arm may be added there for an
+ * effect whose receiver was not promised a repeat.
  */
 function carriedOutAfterwards(effect: Effect): boolean {
   switch (effect.kind) {
@@ -212,9 +175,8 @@ function carriedOutAfterwards(effect: Effect): boolean {
     case "redeliver_order":
     case "emit_merchant_event":
     case "issue_receipt":
-    // A parcel's address leaving us changes the order itself, which from then
-    // on says only when it was erased, and the envelopes that carry it
-    // (ADR-0032), so it is written where the state is.
+    // Erasing a parcel's address changes the order itself and the envelopes
+    // that carry it, so it is written with the state.
     case "erase_ship_to":
       return false;
     case "request_quote":
@@ -234,7 +196,6 @@ function carriedOutAfterwards(effect: Effect): boolean {
 
 export class OrderRunner {
   readonly #runtime: Runtime;
-  /** Agents parked on a purchase, by order identifier. */
   readonly purchases = new Waiting<PurchaseSettled>();
 
   constructor(runtime: Runtime) {
@@ -242,27 +203,19 @@ export class OrderRunner {
   }
 
   /**
-   * Writes down an order that does not exist yet and carries out the effects
-   * its creation asked for. The machine has already decided whether there is an
-   * order at all; this is the part that makes it real.
+   * Writes down a new order and carries out the effects its creation asked
+   * for; the machine has already decided that the order exists.
    */
   async create(record: StoredOrder, effects: readonly Effect[], at: number): Promise<StoredOrder> {
     refuseToWriteAnImpossibleOrder(record.order);
     refuseToKeepAnAddressPastItsTime(record);
-    // The clock is started before the order is written and not after it. Of the
-    // two ways that can go wrong, one is harmless and the other is not: a
-    // reminder for an order that was never written finds nothing and says so,
-    // while an order written with no clock on it is one nothing will ever close.
+    // The clock is started before the order is written: a reminder for an order
+    // never written finds nothing, while an order written with no clock on it is
+    // one nothing will ever close.
     await this.#arm([], deadlines(record.order), record.order.id);
 
-    // Nothing the birth of an order asks for has to be written down with it:
-    // the machine's effects here are a price question and a request to verify a
-    // payment, and neither leaves a record. That is checked rather than
-    // assumed, and checked here rather than after the order is written, because
-    // this is the one path with no unit of work to put such an effect in —
-    // `addOrder` takes no writes to go alongside. An effect that must not be
-    // lost reaching creation is a change nobody has thought through, and it
-    // stops before the order exists rather than after.
+    // `addOrder` takes nothing to write alongside the order, so an effect that
+    // must be written with it is refused here, before the order exists.
     const written = this.#writesWithTheOrder(record, record.order, effects, at);
     if (written.length > 0) {
       throw new Error(
@@ -278,23 +231,16 @@ export class OrderRunner {
   /**
    * Feeds one event to the machine and carries out whatever comes back.
    *
-   * `scope` is how a merchant's own call is held to their own orders. Given
-   * one, the store finds nothing where the order belongs to somebody else, and
-   * the ownership is read under the same hold as the order itself — so there is
-   * no window between learning whose it is and acting on it, and the caller
-   * cannot tell "not yours" from "not there". It is left out where the caller
-   * has no merchant to be held to: a reminder of ours running out, and a
-   * payment presented by an agent that carries no key.
+   * With `scope`, the store finds nothing where the order belongs to another
+   * merchant, and ownership is read under the same hold as the order, so the
+   * caller cannot tell "not yours" from "not there". It is left out where there
+   * is no merchant to hold the caller to: our own reminder, or an agent's
+   * payment.
    *
-   * `whileWaitingOn` is the hand-over the caller decided about, and it is read
-   * here rather than by the caller for the reason the hold exists at all. A
-   * caller that read the order first and then asked for a change has a window
-   * between the two, and everything that can happen in that window is a change
-   * to the very thing it was checking: the merchant's answer landing, a worker
-   * drawing the order and recording a hand-over of its own, another delivery of
-   * the same reminder doing all of it once already. Given one, the event and
-   * the facts are applied only while the order is still waiting on that
-   * hand-over, and the caller is told the order moved on.
+   * With `whileWaitingOn`, the event and facts apply only while the order still
+   * waits on that hand-over, checked under the hold; otherwise the caller is
+   * told the order moved on. Checked by the caller beforehand, it would race the
+   * merchant's answer, a worker's own hand-over or a repeated reminder.
    */
   async apply(
     orderId: string,
@@ -307,10 +253,9 @@ export class OrderRunner {
       orderId,
       async (found): Promise<OrderChange<Decided>> => {
         if (whileWaitingOn !== undefined && found.openDeliveryId !== whileWaitingOn) {
-          // Somebody else got here first. Nothing is written — not the event
-          // and not the facts, the cleared hand-over included, because writing
-          // that one would take away whatever hand-over the order is waiting on
-          // now and leave the silence on it unnoticed by anybody.
+          // Somebody else got here first. Nothing is written, not even the
+          // cleared hand-over: it would erase the hand-over the order now waits
+          // on and leave its silence unnoticed.
           return { result: { kind: "moved_on" } };
         }
 
@@ -324,9 +269,8 @@ export class OrderRunner {
 
         const moved = transition(known.order, event);
         if (!moved.ok) {
-          // Nothing is written for a refused event, not even the facts that
-          // came with it: an event the machine says has no meaning here should
-          // leave no trace of having been believed.
+          // Nothing is written for a refused event, not even its facts: an
+          // event with no meaning here leaves no trace of having been believed.
           return { result: { kind: "decided", moved, known } };
         }
 
@@ -339,20 +283,15 @@ export class OrderRunner {
         };
         refuseToKeepAnAddressPastItsTime(next);
 
-        // The clocks the order will be waiting on are started before the change
-        // to it is committed, because of which way the two failures fall.
-        // Arming first and failing writes nothing, and the event comes back;
-        // arming first and having the write fail afterwards leaves a reminder
-        // for a change that did not happen, which the machine refuses as a
-        // deadline that is not running. Arming after the write and failing is
-        // the one that cannot be repaired: the order has moved, no clock is on
-        // it, the event comes back to a machine that says it no longer applies,
-        // and the order hangs with nobody waiting on anything.
+        // The clocks are started before the change is committed. A reminder
+        // left by a write that then fails is refused by the machine as a
+        // deadline not running; arming after the write and failing would leave
+        // a moved order with no clock on it, hanging with nothing to close it.
         await this.#arm(deadlines(known.order), deadlines(next.order), orderId);
 
         return {
           save: next,
-          // The effects that must not be lost go in with the order (ADR-0013).
+          // The effects that must not be lost go in with the order.
           alongside: this.#writesWithTheOrder(next, known.order, moved.effects, event.at),
           result: { kind: "decided", moved, known: next },
         };
@@ -379,31 +318,22 @@ export class OrderRunner {
   }
 
   /**
-   * A payment the payment layer has already vouched for, presented for an
-   * order. The ownership decision and the state change both happen here, inside
-   * the store's hold on the order, and that is the whole point of the method.
+   * Presents a payment the payment layer has already verified, deciding
+   * ownership and changing the order inside the store's hold. Two verified
+   * payments for one order can both reach here, and deciding from a copy read
+   * before the hold would let both take it, with goods handed over against a
+   * charge that fails. So the guard reads `found.paidBy` under the lock: the
+   * first becomes the owner and the second is turned away without a mark on
+   * the order.
    *
-   * Ownership cannot be decided from a copy of the order read before the hold:
-   * two verified payments for one order both pass verification, both reach this
-   * method, and if each read a stale "nobody owns it yet" they would both take
-   * it — two buyers, two merchants asked to deliver, one charge that succeeds
-   * and one that fails on a merchant who handed over goods for nothing. So the
-   * guard reads `found.paidBy` under the lock: the first to arrive becomes the
-   * owner, and the second finds an owner that is not it and is turned away
-   * without a mark on the order.
+   * Verification happens before the lock, since a network round-trip must not
+   * hold a row, so the machine's own `verify_payment` effect is dropped here as
+   * already answered.
    *
-   * The payment is verified before the lock — a network round-trip must not
-   * hold a row — so the events driven here are `payment_verified` and, on an
-   * order a repeat reopens, the `purchase_repeated` before it. The machine's
-   * own request to verify (its `verify_payment` effect) is already answered and
-   * is dropped when the effects run.
-   *
-   * The `owner` arrives already reduced to one spelling — `walletThatPaid` in
-   * `gateway.ts` does it, on the way out of the payment layer — and this is the
-   * only place that writes `paidBy`. That is what lets the guard below compare
-   * exactly: both sides of it came through that one seam. A caller that passed
-   * an address as a facilitator happened to spell it would make one wallet into
-   * two buyers here, and nothing in this method could tell.
+   * `owner` must arrive in the one spelling `walletThatPaid` in `gateway.ts`
+   * produces, and this is the only writer of `paidBy`, so the guard compares
+   * exactly; an address spelled the way a facilitator happened to spell it would
+   * make one wallet into two buyers, and nothing here could tell.
    */
   async presentVerifiedPayment(
     orderId: string,
@@ -447,19 +377,17 @@ export class OrderRunner {
           ...found,
           order,
           payment,
-          // The address this payment was checked against, kept with it. The
-          // charge is executed later — after the merchant has fulfilled, in the
-          // synchronous mode — and reading the merchant again then would send
-          // it to whatever their wallet says at that moment rather than to what
-          // the payer signed for.
+          // The address this payment was checked against. The charge runs
+          // later, after fulfilment in the synchronous mode, and reading the
+          // merchant's wallet then could send the money somewhere other than
+          // where the payer signed for.
           payTo,
           paidBy: owner,
           ...this.#alsoSaid(found, word),
         };
-        // A verified payment never ends a parcel's need for its address — its
-        // money moves first and the order stays open — so nothing here erases
-        // it. Were the machine to change that, this stops the write rather than
-        // keep an address past its time.
+        // A verified payment never ends a parcel's need for its address, so
+        // nothing here erases it; should the machine change that, this stops
+        // the write rather than keep an address past its time.
         refuseToKeepAnAddressPastItsTime(next);
 
         // The clocks are armed before the change is committed, for the same
@@ -493,62 +421,30 @@ export class OrderRunner {
   }
 
   /**
-   * What the orders are still owed, asked of the orders themselves (ADR-0013).
+   * Repairs what the orders are still owed, read from the orders themselves
+   * with no second record of intent: a paid order that reached nobody is put on
+   * its merchant's stream, a delivered order with no receipt gets one, and an
+   * open order whose clock ran out has it started again so the machine can end
+   * it. Each repair is a no-op on a second run because the world has changed,
+   * not because a run was remembered.
    *
-   * It keeps no second book of what was meant to happen. Each of its three
-   * questions is a fact about an order and is answered by doing the missing
-   * thing: an order paid for that has reached nobody is put on its merchant's
-   * stream, a delivered order with no receipt gets one, and an open order whose
-   * clock ran out has the clock started again so that the machine can end it.
+   * Two runs at once are not safe: both would find an envelope missing and send
+   * it, spending one of that order's deliveries. One process never overlaps
+   * runs, but with two gateways a run outliving the job's expiry is retried on
+   * the other, so the work is taken under a named lock and a run that finds it
+   * held does nothing. The lock lasts only as long as the holding session's
+   * connection; a run whose connection died carries on without it.
    *
-   * It is safe to run twice because it will be, and each of the three is a
-   * no-op on a second run for a reason that is in the world rather than in a
-   * memory of having run: the receipt is there, so the order is no longer one
-   * without a receipt; the reminder ended the order, so the order is no longer
-   * open; the envelope the first run wrote is still on the stream, so the order
-   * is no longer one that has reached nobody.
+   * The orders are a snapshot, so an order that finished mid-sweep is acted on
+   * as it stood, and the receipt arm can overwrite a receipt the ordinary path
+   * wrote after the snapshot with one under a different identifier, built from
+   * the older reading, which matters because merchants reconcile against it.
    *
-   * That argument covers one run after another and it does not cover two at
-   * once, which is why only one runs at a time. Every arm reads the world and
-   * then acts on what it read, so two runs beside each other both find the
-   * envelope missing and both send it — the double hand-over the dispatch arm
-   * exists to prevent, and one of that order's deliveries spent.
-   *
-   * The overlap that makes that reachable is a second gateway, and only a
-   * second gateway: inside one process the queue's worker waits for this to
-   * return before it fetches anything else. What hands the same run to two
-   * processes is the queue's expiry. A run that takes longer than the job's
-   * expiry is failed by the library for having taken too long, and a failed job
-   * with retries left goes back on the queue — where the other process's idle
-   * worker fetches it, while this one is still going. So the work is taken
-   * under a name, and a run that finds the name held does nothing at all and
-   * says so.
-   *
-   * Nothing is written down about having run, and a run that skipped is not a
-   * run that failed — the work it wanted is already being done. What the name
-   * actually holds is one run per live connection: a lock goes when the session
-   * holding it goes, and a run whose connection died carries on without it. The
-   * port says more about that where the lock is defined.
-   *
-   * Two things this does not make safe, and both are about reading the world
-   * once and acting on it for the length of a run. The orders are a snapshot,
-   * so an order that finished while the sweep was working through the list is
-   * still acted on as it stood; only the stream is asked again, fresh, for each
-   * order. And the receipt arm can write over a receipt the ordinary path wrote
-   * after the snapshot was taken — same order, same outcome, a different
-   * identifier and a document built from the older reading. A receipt is what a
-   * merchant reconciles a wallet against, which is what makes that one worth
-   * knowing about rather than shrugging at.
-   *
-   * What may not be swept, which is the part ADR-0013 asks every future effect
-   * to be measured against. An arm here may only re-drive an effect whose
-   * receiver is promised it can arrive more than once. The order is: a merchant
-   * is told his handler will see the same order again, so a hand-over may be
-   * re-driven. The receipt is: it is one row keyed by its order, so writing it
-   * again writes the same row. The merchant events are not, and the contract is
-   * explicit about it — an order is delivered at least once and an event at
-   * most once — so there is no arm for them here and there must not be one. A
-   * debt announced twice is a second refund somebody may act on.
+   * An arm may only re-drive an effect whose receiver is promised it can arrive
+   * more than once: a hand-over, which the merchant's handler expects to see
+   * again, and a receipt, one row keyed by its order. A merchant event is
+   * delivered at most once, so there is no arm for it and must not be: a debt
+   * announced twice is a second refund somebody may act on.
    */
   async sweep(): Promise<Swept | null> {
     const ran = await this.#runtime.store.runAlone(SWEEP_EFFECTS, () => this.#sweepAlone());
@@ -559,7 +455,6 @@ export class OrderRunner {
     return ran.result;
   }
 
-  /** The sweep itself, with nothing else in the gateway running it. */
   async #sweepAlone(): Promise<Swept> {
     const now = this.#runtime.clock();
     const swept: Swept = { dispatched: 0, receipted: 0, rearmed: 0, refused: 0 };
@@ -569,24 +464,18 @@ export class OrderRunner {
         swept.dispatched += await this.#sweepTheDispatch(record, now);
         swept.rearmed += await this.#sweepTheClocks(record, now);
       } catch (thrown) {
-        // One order that cannot be repaired does not stop the others being
-        // repaired, which is the whole reason there is a sweep. It is said out
-        // loud because a sweep that quietly gave up on an order would leave
-        // nobody looking at it at all.
+        // One order that cannot be repaired does not stop the rest, and it is
+        // logged so that nobody is left unaware of it.
         swept.refused += 1;
         console.error(`[gateway] the sweep could not repair ${record.order.id}`, thrown);
       }
     }
 
     for (const record of await this.#runtime.store.deliveredWithoutReceipt()) {
-      // An operator-recorded settlement has no observed execution time, so
-      // the apply path wrote no receipt. Repairing that absence would date
-      // a proof from the moment this sweep happened to run. The phrase in the
-      // word is what says which settlement this was: the command writes it
-      // where the payment layer said nothing, and a late answer from the
-      // facilitator carries its own transaction instead and is receipted on
-      // the spot. A delivered order from an older defect has no such word and
-      // is still receipted below.
+      // A settlement the operator recorded has no observed execution time, so
+      // it has no receipt, and writing one now would date a proof from
+      // whenever the sweep ran. A late answer from the facilitator carries its
+      // own transaction and is receipted on arrival, without this phrase.
       const asserted = record.paymentWords.some(
         (word) => word.about === "settle" && word.said.includes(UNOBSERVED_SETTLE),
       );
@@ -614,38 +503,17 @@ export class OrderRunner {
   }
 
   /**
-   * An order that is paid for and has reached nobody, put on its merchant's
-   * stream again.
+   * Puts a paid order that has reached nobody on its merchant's stream again.
    *
-   * Two guards, and they cover different halves of the same question, because
-   * "the merchant has not taken it" and "there is nothing for him to take" are
-   * not the same fact and only the second one is a lost envelope.
-   *
-   * The stream is asked first, and it is the one that matters. A second
-   * envelope for one order is ordinary on the wire — the merchant's handler is
-   * told to expect exactly that — but it is not ordinary for the order. The
-   * machine counts every hand-over, the count is what its attempt cap reads,
-   * and the closure at the cap is a refund. So an order whose envelope is still
-   * sitting there unclaimed is left alone: sending it again would spend a
-   * delivery the merchant never failed.
-   *
-   * The patience covers part of what the stream cannot answer, and it is worth
-   * being exact about which part. An envelope somebody has already drawn is on
-   * no stream, and from out here that is indistinguishable from one that was
-   * never written — the order stays `paid` until the hand-over is recorded
-   * either way. The patience runs from the moment the money landed, not from
-   * the moment the envelope was drawn, so what it actually covers is a worker
-   * who drew the order promptly and is still working on it. A merchant
-   * whose worker polls once an hour draws long after the patience has run out,
-   * and this sends the order again while he is holding it: two hand-overs, one
-   * of which he never failed. That is a real cost and it is bounded — one extra
-   * per sweep, and the sweep runs daily — and the number that decides it is
-   * `sweepDispatchGraceMs`, which is where somebody with a slow-polling
-   * merchant should look first.
-   *
-   * What is left after both is an order that has been paid for longer than the
-   * patience allows, with nothing on the stream for it. That one really does
-   * look like an envelope that went nowhere, and it goes out again.
+   * The stream is asked first: every hand-over counts toward the machine's
+   * attempt cap, whose closure is a refund, so an envelope still sitting
+   * unclaimed is left alone rather than spend a delivery the merchant never
+   * failed. An envelope already drawn is on no stream and looks the same as one
+   * never written, since the order stays `paid` until the hand-over is
+   * recorded; `sweepDispatchGraceMs`, counted from when the money landed, covers
+   * a worker that drew promptly and is still working. A worker that polls less
+   * often than that gets a second hand-over, at most one per daily sweep, so the
+   * grace is the number to raise for a slow-polling merchant.
    */
   async #sweepTheDispatch(record: StoredOrder, now: number): Promise<number> {
     const paidAt = record.order.timestamps.paidAt;
@@ -663,10 +531,10 @@ export class OrderRunner {
       await this.#runtime.queue.publish(record.merchantId, this.#orderEnvelope(record, now));
       return 1;
     }
-    // A parcel's hand-over carries its buyer's address, and the order was read
-    // at the start of the sweep: taken on since, its address is gone. So it is
-    // built from the order as it stands, under the hold, and only while it is
-    // still paid and still holds the address.
+    // A parcel's hand-over carries its buyer's address, and this order was read
+    // at the start of the sweep; taken on since, its address is gone. So it is
+    // built under the hold from the order as it stands, only while it is still
+    // paid and still holds the address.
     const sent = await this.sendWhileTheAddressIsHeld(record.order.id, (found) =>
       found.order.state === "paid" ? this.#orderEnvelope(found, now) : null,
     );
@@ -675,20 +543,12 @@ export class OrderRunner {
 
   /**
    * Puts an envelope carrying a parcel's address on its merchant's stream
-   * outside a transition — the sweep sending a hand-over that went nowhere, a
-   * poll putting back one it drew and handed to nobody, the price question —
-   * under the hold on the order, and only while the order still holds the
-   * address (ADR-0032).
-   *
-   * The erasure deletes what is on the stream under that same hold. Written
-   * outside it, from a copy read earlier, an envelope can land after the
-   * deletion and keep the address for as long as the queue keeps a job. Under
-   * it, the envelope is either written before the erasure, which then deletes
-   * it, or not written at all.
-   *
-   * `envelopeOf` builds the envelope from the order as it stands, and answers
-   * null where the caller's own reason for sending has gone. What comes back
-   * is whether anything was written.
+   * outside a transition, under the hold on the order and only while the order
+   * still holds the address. The erasure deletes what is on the stream under
+   * that same hold; an envelope written outside it from an earlier copy could
+   * land after the deletion and keep the address as long as the queue keeps the
+   * job. `envelopeOf` answers null when the caller's reason for sending has
+   * gone, and the result says whether anything was written.
    */
   async sendWhileTheAddressIsHeld(
     orderId: string,
@@ -716,18 +576,11 @@ export class OrderRunner {
   }
 
   /**
-   * The clocks an order is waiting on that have already run out, started again.
-   *
-   * A reminder is the only thing that ever declares an order overdue, and one
-   * that was armed and then lost — a handler that threw past the queue's
-   * patience is the way that happens — is an order nothing will ever close and
-   * a buyer nothing will ever refund. A clock that has run out on an order
-   * still sitting in the state it belongs to is the fact that says so.
-   *
-   * Repeating it is safe in the machine rather than here: an expiry for a
-   * deadline that is not running is refused, and so is one claiming an instant
-   * the deadline has not reached. So a second reminder for an order the first
-   * one already moved finds nothing to do.
+   * Starts again the clocks an order is waiting on that have already run out.
+   * Only a reminder declares an order overdue, so one armed and then lost, as
+   * by a handler that threw past the queue's patience, leaves an order nothing
+   * will close and a buyer nothing will refund. Repeating is safe because the
+   * machine refuses an expiry for a deadline not running or not yet reached.
    */
   async #sweepTheClocks(record: StoredOrder, now: number): Promise<number> {
     let rearmed = 0;
@@ -750,14 +603,11 @@ export class OrderRunner {
   }
 
   /**
-   * Arms the clocks that are running now and were not before.
-   *
-   * A reminder that should not have been left is harmless — the machine
-   * refuses an expiry for a deadline that is not running, and one that claims
-   * an instant the deadline has not reached — so the only mistake worth
-   * guarding against is the other one: a clock that nobody started. Comparing
-   * kind and instant together means a deadline that moved gets a new reminder
-   * rather than keeping a stale one.
+   * Arms the clocks that are running now and were not before. A stray reminder
+   * is harmless, since the machine refuses an expiry for a deadline not running
+   * or not yet reached, so the mistake to guard against is a clock nobody
+   * started. Kind and instant are compared together so that a deadline that
+   * moved gets a new reminder.
    */
   async #arm(
     before: readonly Deadline[],
@@ -784,23 +634,10 @@ export class OrderRunner {
 
   /**
    * The writes that go into the same hold as the order, out of the effects one
-   * transition asked for.
-   *
-   * What every one of these has in common is that it cannot be re-driven once
-   * the order has moved past the transition that asked for it, which is why it
-   * is written where the state is.
-   *
-   * What they do not have in common is whether the sweep may write one again
-   * afterwards, and the difference is a promise on the wire rather than a
-   * detail here. A merchant's handler is told the same order can reach it more
-   * than once, and a receipt is one row keyed by its order, so those two may be
-   * re-driven. A merchant event may not: an order is delivered at least once
-   * and an event at most once, and re-sending a debt is a second refund
-   * somebody may act on. So the sweep has an arm for the first two and none for
-   * the third, and an effect added here has to be placed in one of those two
-   * groups before it has an arm. A parcel's erasure is in neither: it deletes
-   * what carries the address and sends nothing, and it lands with the order
-   * that says so.
+   * transition asked for; none of them can be re-driven once the order has moved
+   * past that transition. Being written here does not make an effect one the
+   * sweep may repeat: a hand-over and a receipt may be, a merchant event may not
+   * since it is delivered at most once, and a parcel's erasure sends nothing.
    */
   #writesWithTheOrder(
     record: StoredOrder,
@@ -812,10 +649,9 @@ export class OrderRunner {
 
     for (const effect of effects) {
       switch (effect.kind) {
-        // Which stream an envelope goes on comes off the order and is never
-        // guessed at: the merchant on it was settled when the order was made,
-        // from the card it was made against, so a redelivery an hour later
-        // reaches the same worker as the first hand-over did.
+        // The stream comes off the order and is never guessed: its merchant was
+        // settled when the order was made, so a redelivery reaches the same
+        // worker as the first hand-over did.
         case "dispatch_order":
           writes.push({
             kind: "envelope",
@@ -842,18 +678,11 @@ export class OrderRunner {
           break;
 
         case "issue_receipt":
-          // A receipt's paid_at is when the payment executed, and there is one
-          // way out of a silence with no such instant behind it: an operator
-          // recording a fact he read somewhere else. What tells the two apart
-          // is the settlement. The facilitator's own answer carries the
-          // transaction it executed, however late it arrives — the settle
-          // deadline is shorter than the client's patience, so an answer after
-          // the silence is ordinary — and that is a charge this gateway
-          // observed and owes a receipt for. The operator's assertion
-          // deliberately writes no settlement, because the payment layer said
-          // nothing, and a receipt for it would be proof of a payment nobody
-          // here saw. The sweep must not repair that absence — see the
-          // settlement check there.
+          // A receipt's paid_at is when the payment executed. A late answer
+          // from the facilitator carries its transaction and is owed a receipt;
+          // an operator settling an unknown outcome writes no settlement, and a
+          // receipt for it would prove a payment nobody here saw, so neither
+          // this nor the sweep writes one.
           if (before.payment === "outcome_unknown" && record.settlement === null) {
             break;
           }
@@ -865,9 +694,9 @@ export class OrderRunner {
           break;
 
         case "erase_ship_to":
-          // The order itself already says only when (`addressToKeep`); what is
+          // The order itself already keeps only when (`addressToKeep`); what is
           // left is everything on the merchant's stream that carries any of
-          // the address, deleted in the same unit as that order (ADR-0032).
+          // the address, deleted in the same unit as the order.
           writes.push({
             kind: "forget",
             merchantId: record.merchantId,
@@ -877,13 +706,10 @@ export class OrderRunner {
           break;
 
         default:
-          // Everything else is carried out after the order is written, and
-          // `carriedOutAfterwards` is asked rather than assumed. The two lists
-          // have to name the same effects, and the way they could come apart is
-          // silent in the direction that costs the most: an effect taken out of
-          // what runs afterwards but never added here would be filtered out of
-          // one half and never written by the other, and a merchant would
-          // simply never be handed the work.
+          // Everything else runs after the write, and `carriedOutAfterwards` is
+          // asked rather than assumed: an effect it does not run that is missing
+          // here would be written by neither half, and a merchant would never be
+          // handed the work.
           if (!carriedOutAfterwards(effect)) {
             throw new Error(
               `${effect.kind} on ${record.order.id} is written down with the order and this does not know how to write it`,
@@ -907,21 +733,16 @@ export class OrderRunner {
     for (const effect of effects) {
       switch (effect.kind) {
         case "request_quote":
-          // The question itself is put by the purchase flow, which is the one
-          // that has to wait for the answer. What is guaranteed here is that
-          // the clock on it is already running: the machine arms
-          // `quote_response` the moment the order is created, so a merchant who
-          // never answers is answered by the reminder rather than by nobody.
+          // The purchase flow puts the question, since it waits for the answer.
+          // The machine armed `quote_response` when the order was created, so a
+          // merchant who never answers is answered by the reminder.
           break;
 
         case "verify_payment":
-          // The machine asks for a payment to be verified — at quote time, when
-          // there is no payment yet, and again when a repeat reopens an order.
-          // The gateway verifies eagerly instead, before it takes the order's
-          // lock and before it applies the payment: a network round-trip must
-          // not hold a row, and the ownership decision needs the verified payer
-          // in hand. So by the time any transition runs, the payment this
-          // effect names is already checked, and there is nothing to do here.
+          // The gateway verifies a payment before taking the order's lock,
+          // since a network round-trip must not hold a row and deciding
+          // ownership needs the verified payer, so by the time any transition
+          // runs the payment this names is already checked.
           break;
 
         case "execute_payment":
@@ -933,26 +754,20 @@ export class OrderRunner {
         case "emit_merchant_event":
         case "issue_receipt":
         case "erase_ship_to":
-          // These were written down with the state that implies them and are
-          // not carried out again here (ADR-0013). Reaching this means a caller
-          // handed them over without taking them out first, and doing them a
-          // second time would put a duplicate on a merchant's stream while
-          // looking exactly like the code working.
+          // These were written with the state that implies them. Reaching here
+          // means a caller did not filter them out, and doing them again would
+          // put a duplicate on a merchant's stream while looking like the code
+          // working.
           throw new Error(
             `${effect.kind} on ${record.order.id} was written down with the order and must not be carried out again`,
           );
 
         case "mark_refund_due":
-          // The order's own state is the record of the debt, and the merchant
-          // is told about it by the event the machine asked for alongside this.
-          // There is nothing else to write down.
-          //
-          // Worth knowing, because it is a gap rather than a decision: a
-          // receipt can say "refund due" and none ever does. Receipts are
-          // issued when goods are released, and an order reaches this effect
-          // without ever having released any, so there is no receipt here to
-          // bring into line. A merchant reconciling money that came in and went
-          // back out has the order and the event and no receipt for it.
+          // The order's state is the record of the debt, and the merchant hears
+          // of it through the event the machine asked for alongside this. No
+          // receipt ever says "refund due", although one could: receipts are
+          // issued when goods are released and this order released none, so a
+          // merchant reconciling the refund has the order and the event only.
           break;
 
         case "answer_merchant":
@@ -960,26 +775,23 @@ export class OrderRunner {
           break;
 
         case "release_goods_to_agent":
-          // The goods were written down when the merchant's answer arrived, and
-          // handing them to the agent is waking whoever is parked on the
-          // purchase. That happens once, after every effect has run, so the
-          // agent is never woken to an order that is still half-decided.
+          // Handing the goods over is waking whoever is parked on the purchase,
+          // which happens once after every effect has run, so the agent never
+          // wakes to an order still half-decided.
           break;
 
         case "hold_fulfillment":
-          // What the merchant produced is already on the order and nothing here
-          // throws it away, which is the whole of what holding it means. The
-          // machine's own flag is what a repeat of the purchase reads.
+          // Holding is keeping what the merchant produced on the order, which
+          // nothing here throws away; a repeat of the purchase reads the
+          // machine's own flag.
           break;
 
         case "invite_payment":
         case "dispatch_confirmation_request":
-          // Both belong to the mode where the merchant is asked before the
-          // money moves, and that mode has no shape on the wire yet — which is
-          // why a card cannot be published as "confirm" at all. Reaching here
-          // means something published one anyway, and inventing a message for
-          // it would put a document on the merchant's stream that no contract
-          // describes.
+          // Both belong to the mode that asks the merchant before the money
+          // moves, which has no shape on the wire, so no card can be published
+          // in it; inventing a message here would put a document on the
+          // merchant's stream that no contract describes.
           throw new Error(
             `${effect.kind} belongs to the confirmation mode, which has no shape on the wire yet`,
           );
@@ -1006,12 +818,9 @@ export class OrderRunner {
       amount: price.amount,
       currency: price.currency,
       payment,
-      // The address this payment was verified against, carried on the order
-      // since that moment rather than read from the merchant again here. It is
-      // this sale's own merchant's — that is what the verification checked —
-      // and it is what the buyer's authorisation names, so a merchant who has
-      // moved their wallet since is paid at the new one on their next sale and
-      // not on this one, which would be refused after the goods went out.
+      // The address this payment was verified against, not the merchant's
+      // current one: it is what the buyer's authorisation names, so a charge to
+      // a wallet moved since would be refused after the goods went out.
       payTo: record.payTo,
     });
 
@@ -1035,18 +844,12 @@ export class OrderRunner {
       return;
     }
 
-    // The charge was asked for and nothing came back. No event, and above all
-    // no second charge: the machine's clock on the settle is already running
-    // and it is the thing entitled to declare a silence, in the words that keep
-    // "nobody knows" apart from "it did not go through".
-    //
-    // Nothing here will ever ask again, and that is a limitation rather than an
-    // oversight. The facilitator offers verifying a payment, executing one, and
-    // a list of what it supports — and no way at all to ask what became of a
-    // charge already sent. Asking by sending it again is the one thing the
-    // machine forbids. A later fact, read elsewhere and recorded by the
-    // operator command, is a different speaker and does not come through here.
-    // The words below are what that person has to go on.
+    // The charge was asked for and nothing came back. No event and above all no
+    // second charge: the machine's settle clock is already running and only it
+    // declares the silence, in words that keep "nobody knows" apart from "it
+    // did not go through". Nothing asks again, because the facilitator offers
+    // no way to ask what became of a sent charge; the words written here are
+    // what the operator who later records the outcome has to go on.
     await this.#writeDown(record.order.id, { at, about: "settle", said: outcome.reason });
   }
 
@@ -1059,16 +862,11 @@ export class OrderRunner {
   }
 
   /**
-   * One more thing the payment layer said, kept alongside the last few, with a
-   * count of what fell off.
-   *
-   * Bounded because the route that fills it takes no key: an order's identifier
-   * is enough to present a payment against it, and every presentation appends
-   * here — into a document every later decision about that order has to read
-   * and write back under a lock. Unbounded, one order could be made too
-   * expensive to decide anything about. What is dropped is counted, because a
-   * reader of the last twenty needs to know whether there were twenty or two
-   * hundred.
+   * Appends one more thing the payment layer said, keeping the last few and
+   * counting what fell off. Bounded because anyone with an order's identifier
+   * can present a payment and append here, and every later decision about the
+   * order rewrites this under a lock; the count tells a reader of what is kept
+   * how much more there was.
    */
   #alsoSaid(
     record: StoredOrder,
@@ -1085,12 +883,9 @@ export class OrderRunner {
   }
 
   /**
-   * The receipt for one order, as it should stand.
-   *
-   * It builds rather than writes, because writing it is the store's to do
-   * inside the same hold as the order (ADR-0013). The sweep asks for the same
-   * receipt and writes it on its own, which is why this takes the instants it
-   * needs rather than reading a clock.
+   * Builds rather than writes the receipt, because the store writes it inside
+   * the same hold as the order; the sweep builds the same receipt on its own,
+   * which is why this takes its instants rather than reading a clock.
    */
   #receiptFor(record: StoredOrder, before: Order, at: number): Receipt {
     const price = record.order.price;
@@ -1098,17 +893,15 @@ export class OrderRunner {
       throw new Error(`a receipt was asked for on ${record.order.id}, which has no price`);
     }
 
-    // When the money moved. Where it moved on this very transition that is now;
-    // everywhere else the order already carries the instant, and a receipt
-    // stamped with the moment somebody happened to ask for it would be a claim
-    // about a payment nobody made then.
+    // When the money moved: now if it moved on this transition, otherwise the
+    // instant the order carries. Stamping the moment somebody asked would be a
+    // claim about a payment nobody made then.
     const moneyMovedNow = before.payment !== "settled" && record.order.payment === "settled";
     const paidAt = moneyMovedNow ? at : (record.order.timestamps.paidAt ?? at);
 
-    // The receipt belongs to the merchant the sale did, which is on the order
-    // rather than looked up through the card: a card can be republished or
-    // taken off sale, and a receipt names who made the sale whatever became of
-    // the catalog afterwards.
+    // The merchant comes from the order, not through the card: a card can be
+    // republished or taken off sale, and a receipt names who made the sale
+    // whatever became of the catalog.
     return {
       id: this.#runtime.ids("rcp"),
       order_id: record.order.id,
@@ -1140,10 +933,10 @@ export class OrderRunner {
 
     switch (event) {
       case "order.refund_due": {
-        // The sum owed is the sum that was taken, and there is no fallback to
-        // the card's list price — there was one, and a debt is money that
-        // actually moved, so a guess at how much would be the wrong number in
-        // the one message whose whole purpose is naming it.
+        // The sum owed is the sum that was taken, with no fallback to the
+        // card's list price: a debt is money that actually moved, and a guess
+        // would be the wrong number in the one message whose purpose is naming
+        // it.
         const price = record.order.price;
         if (price === null) {
           throw new Error(
@@ -1176,9 +969,9 @@ export class OrderRunner {
   }
 
   /**
-   * Wakes an agent parked on this purchase, once the order has an answer for
-   * him. "In progress" is not an answer, and waking him with it would turn a
-   * purchase that is still going through into one he reads as finished.
+   * Wakes an agent parked on this purchase once the order has an answer for
+   * him. "In progress" is not one: woken with it, he would read a purchase still
+   * going through as finished.
    */
   #wakeTheAgent(record: StoredOrder): void {
     if (record.paidBy !== null && outcomeFor(record.order) !== "in_progress") {
@@ -1188,13 +981,9 @@ export class OrderRunner {
 }
 
 /**
- * What this order sold for, or nothing where nobody ever named a price.
- *
- * Two readers ask: the merchant, through the order they are handed, and the
- * buyer, through the status of their own purchase. It is one function because
- * they have to be told the same number — a sale priced twice is a sale the two
- * sides can disagree about, and neither of them would have any way to tell
- * which figure was the real one.
+ * What this order sold for, or nothing where nobody ever named a price. The
+ * merchant's order and the buyer's status both read it here, so the two sides
+ * are always told the same number.
  */
 export function salePriceOf(record: StoredOrder): SalePrice | null {
   const price = record.order.price;
@@ -1211,26 +1000,13 @@ export function salePriceOf(record: StoredOrder): SalePrice | null {
 }
 
 /**
- * Where one order stands, as the agent that bought it reads it.
- *
- * Two doors ask, and they are the same question at two moments: the purchase
- * itself, and the read the agent comes back with later on the identifier alone
- * (ADR-0011). It is one function because they have to answer alike — two
- * builders for one document is two places for the same sale to be described
- * two ways, and the agent has no way of telling which of them was right. The
- * purchase used to answer with the merchant's own document instead, which
- * carried their key for the product and the parameters the buyer sent.
- *
- * It is built field by field rather than taken from the order and trimmed, and
- * that is the whole of the protection. Whoever holds an order's identifier can
- * read it, so assembled by subtraction a field added to the merchant's record
- * later would arrive here too and nobody would be told; assembled by addition,
- * the same field arrives nowhere until somebody writes it down.
- *
- * The configuration is asked for because one field is an address, and the
- * address has to be the one this gateway is published at. It takes the
- * configuration itself rather than a string so that the base cannot quietly
- * become one read off a request somewhere up the call.
+ * Where one order stands, as the agent that bought it reads it, both from the
+ * purchase and from a later read by identifier alone; one builder keeps the two
+ * answers alike. It is built field by field rather than trimmed from the order,
+ * because anyone holding the identifier can read it and a field later added to
+ * the merchant's record would otherwise leak here unnoticed. `config` is taken
+ * whole rather than as a base string, so that the address cannot quietly become
+ * one read off a request.
  */
 export function agentOrderStatusOf(
   record: StoredOrder,
@@ -1242,74 +1018,50 @@ export function agentOrderStatusOf(
 
   return {
     order_id: record.order.id,
-    // Where the agent comes back for this order, and the one place that
-    // address is written. It is the configured base and not the request's
-    // own, for the reason `PaymentEdge.resourceUrlFor` gives about the
-    // product's address: behind the proxy that ends an agent's TLS connection
-    // the request says plain http, and its host and its forwarding headers are
-    // whatever the proxy or the caller wrote — an address built from them
-    // would send a paid order's identifier wherever they pointed. The
-    // identifier goes through the route table's substitution rather than being
-    // pasted in, because one may hold a character that would split the path.
+    // The configured base, not the request's: behind the proxy that ends the
+    // agent's TLS the request says plain http, and its host and forwarding
+    // headers are whatever the proxy or caller wrote, so an address built from
+    // them could send a paid order's identifier anywhere. The identifier goes
+    // through the route table's substitution, since it may hold a character
+    // that would split the path.
     status_url: `${config.publicBaseUrl}${expandPath(API_ROUTES.get_order_status.path, {
       order_id: record.order.id,
     })}`,
     status,
-    // Null where nobody named a price rather than the card's own number: an
-    // order that closed before it was priced was never sold at anything, and
-    // standing the catalogue's figure in for it would be a claim about a sale
-    // that did not happen.
+    // Null where nobody named a price, never the card's figure: an order that
+    // closed before it was priced was never sold at anything.
     price: salePriceOf(record),
-    // The goods only once they are the buyer's, which is narrower than once
-    // the merchant handed them over. A synchronous delivery whose charge came
-    // back failed leaves goods on an order nothing was paid for; the purchase
-    // itself refuses to hand those over, and a door that answered with them
-    // anyway would be a way of collecting for free whatever a failed charge
-    // left behind. Where the charge failed outright a repeat purchase carries
-    // the payment home against the goods that already exist. Where it went
-    // silent instead, no repeat is taken either — the machine will not spend a
-    // second authorisation on a guess about the first — and the word this
-    // answers with is `in_progress`, because that is the truth of it: we are
-    // still waiting on the payment layer. That is the one case where goods
-    // exist, the buyer may have been charged, and nothing here hands them over.
+    // The goods only once they are the buyer's, which is narrower than once the
+    // merchant handed them over: a synchronous delivery whose charge failed
+    // leaves goods on an unpaid order, and answering with them would be a way
+    // to collect for free what a failed charge left behind. A charge that went
+    // silent reads `in_progress`, the one case where goods exist, the buyer may
+    // have been charged, and nothing here hands them over.
     delivered: status === "delivered" ? (record.delivery ?? null) : null,
     // A parcel's record of handing it to a carrier, and the instant it has to
-    // be with one by (ADR-0033): present on a parcel's order and on no other,
-    // and null until there is something to say. Nothing reached the agent, so
-    // the shipment is here and never under `delivered`.
+    // be with one by: present on a parcel's order only, and null until there
+    // is something to say. Nothing reached the agent, so the shipment is never
+    // under `delivered`.
     ...(record.order.mode.parcel === true
       ? {
           shipment: status === "shipped" ? (record.delivery as RecordedShipment | null) : null,
           ship_by: shipByOf(record.order),
         }
       : {}),
-    // The same word the merchant's receipt carries. Every other field here
-    // reads the same whether the charge was real or not, so a buyer with no
-    // way to ask would be holding what looks like proof of a payment.
+    // The same word the merchant's receipt carries. Every other field reads
+    // the same whether the charge was real or not, so without it a buyer would
+    // hold what looks like proof of a payment.
     test: record.order.test,
-    // Who sold it, as the catalog shows the merchant beside their cards and
-    // read as they stand now (ADR-0034): where an agent takes a question this
-    // document cannot answer. Passed in rather than looked up here, so that
-    // building the document stays a reading of what the caller holds.
+    // Who sold it, as the catalog shows the merchant now: where an agent takes
+    // a question this document cannot answer. Passed in, so that building the
+    // document stays a reading of what the caller holds.
     seller,
-    // The merchant's own two words for why they would not sell, where that is
-    // what closed the order. They are copied and not rephrased: the code is
-    // what the agent branches on and the sentence is what it shows a person,
-    // and both belong to whoever wrote them.
-    //
-    // The condition is the closure and not the status word, which is wider
-    // than the one ending this was asked for and is the point. One refusal
-    // reaches the agent under three different words depending on when it
-    // arrived — `rejected` before any money moved, `declined` for a
-    // confirmation that was answered "I will not", `refund_due` where the
-    // charge had already gone through — and the agent's question is the same
-    // in all three. Keying on the word would have withheld the merchant's own
-    // sentence from two of them for no reason a buyer could be told.
-    //
-    // Nothing else fills it: a code invented here for an ending the merchant
-    // never worded would be this gateway speaking in the merchant's voice.
-    // Where the ending was this gateway's to decide, it says so in its own
-    // voice instead, under `reason`, and never beside a merchant's refusal.
+    // The merchant's own code and sentence for why they would not sell, copied
+    // and not rephrased. The condition is the closure, not the status word: one
+    // refusal reaches the agent as `rejected`, `declined` or `refund_due`
+    // depending on when it arrived, and the merchant's sentence belongs in all
+    // three. Nothing else fills it; an ending this gateway decided is said in
+    // its own voice under `reason`.
     ...(closure?.cause === "merchant_refused"
       ? { refusal: { code: closure.code, message: closure.message } }
       : {}),
@@ -1318,10 +1070,10 @@ export function agentOrderStatusOf(
 }
 
 /**
- * Why an order ended, in this gateway's own words, where it and not the
- * merchant decided it: a code to branch on and a sentence saying what to do
- * next. Each sentence says that nothing was charged where that is so, because
- * that is the first thing an agent holding a closed purchase needs to know.
+ * Why an order ended, where this gateway and not the merchant decided it: a
+ * code to branch on and a sentence saying what to do next. Each sentence says
+ * that nothing was charged where that is so, since that is the first thing an
+ * agent holding a closed purchase needs to know.
  */
 function reasonOf(order: Order): { reason?: { code: EndingReason; message: string } } {
   const code = endingReasonFor(order);
@@ -1365,10 +1117,10 @@ export function orderDocumentOf(record: StoredOrder): OrderDocument {
 }
 
 /**
- * A parcel's address on the merchant's order, as far as the order has got
- * (ADR-0032): the place the price was asked for until the order is paid, the
- * whole address once it is, and only when it was erased once the merchant has
- * it. Nothing at all on an order that is not a parcel's.
+ * A parcel's address on the merchant's order, as far as the order has got: the
+ * place the price was asked for until the order is paid, the whole address once
+ * it is, and only when it was erased once it is gone. Nothing on an order that
+ * is not a parcel's.
  */
 function shipToAsTheMerchantReadsIt(record: StoredOrder): {
   readonly ship_to?: OrderDocument["ship_to"];
@@ -1384,14 +1136,10 @@ function shipToAsTheMerchantReadsIt(record: StoredOrder): {
 }
 
 /**
- * The receipt's word for where the order stands.
- *
- * Only one state can reach this, and the guard is the point rather than an
- * accident: the machine asks for a receipt on the way into `delivered` and
- * nowhere else. The receipt's vocabulary has three other words and this gateway
- * writes none of them, so a receipt asked for anywhere else is a change nobody
- * has thought through — and it stops here rather than quietly going out saying
- * "delivered" over an order that was not.
+ * The receipt's word for where the order stands. The machine asks for a
+ * receipt only on the way into `delivered`, and this gateway writes none of the
+ * receipt's other words, so a receipt asked for anywhere else stops here rather
+ * than going out saying "delivered" over an order that was not.
  */
 function receiptOutcomeOf(order: Order): ReceiptOutcome {
   if (order.state !== "delivered") {
@@ -1400,7 +1148,7 @@ function receiptOutcomeOf(order: Order): ReceiptOutcome {
     );
   }
   // A parcel's receipt says what its status says: it went to a carrier, and
-  // nothing reached the agent (ADR-0033).
+  // nothing reached the agent.
   return order.mode.parcel === true ? "shipped" : "delivered";
 }
 
@@ -1414,21 +1162,13 @@ function shipByOf(order: Order): string | null {
 }
 
 /**
- * Why a refund is owed, in the three words the merchant's event carries.
- *
- * Every closure that can reach a debt is named rather than falling into a
- * default, because the default was "a deadline passed" and two of these are not
- * deadlines at all. The sum a merchant sends back and the reason he files it
- * under are what somebody reconciles against; a reason picked because it was
- * the last branch is a claim beyond the evidence in the one place that costs
+ * Why a refund is owed, in the three words the merchant's event carries. Every
+ * closure that can reach a debt is named rather than left to a default, because
+ * the reason a refund is filed under is what somebody reconciles against. A
+ * charge that reported in after we gave up on it is folded into
+ * `deadline_passed`, meaning our deadline on the charge and not his on the
+ * goods, because the vocabulary has no word for our side losing track of the
  * money.
- *
- * One of them is a fold rather than a match and it is said out loud: a charge
- * that reported in after we had given up on it leaves a debt the merchant had
- * no part in, and the nearest of the three words is the deadline — ours, on the
- * charge, not his on the goods. The vocabulary has no word for "our side lost
- * track of the money" and inventing one here would be a wire value no decision
- * stands behind.
  */
 function refundReasonOf(order: Order): "refused" | "deadline_passed" | "merchant_left" {
   const closure = order.closure;
@@ -1457,31 +1197,13 @@ function refundReasonOf(order: Order): "refused" | "deadline_passed" | "merchant
 }
 
 /**
- * The goods to write down, out of the ones this call carried.
- *
- * Two conditions, and each is one way the stored order could come to claim
- * something that did not happen.
- *
- * The first delivery is what the buyer keeps. Delivery is at least once by
- * design, so one order is answered with goods more than once as a matter of
- * course: a worker restarting, a redelivery going out beside an answer already
- * on its way, a merchant's own retry after a dropped connection. The machine
- * answers all of those `already_delivered` — a successful transition — so goods
- * riding on a repeat would otherwise be written straight over the ones the
- * agent has already been handed and read, and nothing in the answer would show
- * it: a repeat looks the same whether it carried the same goods or different
- * ones.
- *
- * And goods the machine turned away are not kept either. Some of its refusals
- * to a merchant are successful transitions carrying a failure for him rather
- * than rejections of the event — an order that has closed, or one whose refund
- * is already paid out, answers his delivery call that way while the order
- * itself does not move at all. Told to his face that the call did not go
- * through, he would have had what he sent written down behind it, and the order
- * of a buyer who has his money back would carry goods nobody ever gave him.
- *
- * Nothing here second-guesses the machine: what it answered the merchant is
- * what decides this, and a call it answered with a failure delivered nothing.
+ * The goods to write down, out of the ones this call carried. Only the first
+ * delivery is kept: delivery is at least once, the machine answers repeats with
+ * a successful `already_delivered`, and goods riding on a repeat would otherwise
+ * overwrite what the agent was already handed with nothing to show it. Goods on
+ * a call the machine answered with a failure for the merchant, such as on a
+ * closed order or one whose refund is paid out, are not kept either, or a
+ * refunded buyer's order would carry goods nobody gave him.
  */
 function goodsToKeep(
   found: StoredOrder,
@@ -1516,14 +1238,10 @@ function refuseToWriteAnImpossibleOrder(order: Order): void {
 
 /**
  * What becomes of a parcel's address as the order moves: only the instant it
- * was erased, on the transition the machine says it stops being needed on
- * (ADR-0032), and nothing changes on any other.
- *
- * The instant is the clock's as the order is written, not the event's — the
- * one stamp here that is about this gateway's own copy rather than about the
- * order. A deadline's event carries the deadline, and its reminder can arrive
- * well after it, a re-armed one days after; the address was here all that
- * time, and the order must not say it was gone before it went.
+ * was erased, on the transition the machine says it stops being needed on, and
+ * nothing on any other. The instant is the clock's as the order is written, not
+ * the event's: a deadline's reminder can arrive days after the deadline, and
+ * the order must not say the address was gone before it went.
  */
 function addressToKeep(
   effects: readonly Effect[],
@@ -1535,13 +1253,11 @@ function addressToKeep(
 }
 
 /**
- * The last check before an order is written down, for a buyer's address
- * (ADR-0032): a parcel's order holds the whole of it exactly while the machine
- * says it is still needed, and afterwards only when it was erased; no other
- * order holds one at all. Failing it is a defect, as above, and what it costs
- * is a buyer's address kept after it stopped being needed, or a merchant handed
- * a parcel with nowhere to send it. The words name the order and never the
- * address.
+ * The last check before an order is written, for a buyer's address: a parcel's
+ * order holds all of it exactly while the machine says it is still needed and
+ * afterwards only when it was erased, and no other order holds one. Failing it
+ * is a defect that would keep an address past its need or hand a merchant a
+ * parcel with nowhere to send it; the error names the order, never the address.
  */
 function refuseToKeepAnAddressPastItsTime(record: StoredOrder): void {
   const wrong = whatIsWrongWithTheAddress(record);
@@ -1570,19 +1286,12 @@ function whatIsWrongWithTheAddress(record: StoredOrder): string | null {
 }
 
 /**
- * The events a verified payment drives an order home with, from where it stands.
- *
- * Almost always one: the order is waiting to be paid, and `payment_verified`
- * carries it forward. An order a repeat reopens — the goods already made and
- * the money never taken, or a synchronous purchase that ran out of time with
- * its work held — takes `purchase_repeated` first, to reset it, and then the
- * verification. Everywhere else a verified payment has nothing to drive, and an
- * empty list is how the owner asking again about a purchase already under way
- * is told the answer is wherever it has got to.
- *
- * The machine has the final say either way: a repeat it will not allow — one on
- * an order whose charge never reported back — is refused when the events run
- * through `transition`, not decided here.
+ * The events a verified payment drives an order with, from where it stands:
+ * `payment_verified` for an order waiting to be paid, preceded by
+ * `purchase_repeated` for one a repeat reopens. An empty list tells the owner
+ * asking again that the purchase is wherever it has got to. A repeat the
+ * machine will not allow, such as one on an order whose charge never reported
+ * back, is refused by `transition`, not here.
  */
 function eventsForVerifiedPayment(order: Order, at: number): StateEvent[] {
   switch (order.state) {

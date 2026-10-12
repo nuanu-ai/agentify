@@ -1,14 +1,10 @@
 /**
  * The flows: what happens when an agent buys, when a merchant's worker draws
- * its stream, and when either of them answers.
- *
- * Nothing here decides anything about an order. Each flow does the same shape
- * of work — read the world, put one event to the interpreter, answer with what
- * the machine made of it — and where a flow appears to make a choice, look
- * again: it is choosing which event happened, not what the order should do
- * about it. A price question that went unanswered becomes the event "the
- * merchant was silent", and whether silence sells is decided elsewhere, by
- * mode, exactly as ADR-0002 §3 says.
+ * its stream, and when either of them answers. Nothing here decides what an
+ * order does: each flow reads the world, puts one event to the order machine
+ * and answers with what the machine made of it. A price question that went
+ * unanswered becomes the event "the merchant was silent", and whether silence
+ * sells is decided by the mode, not here.
  */
 
 import type {
@@ -100,47 +96,26 @@ import {
 import { purchaseOf, Waiting } from "./waiting.js";
 
 /**
- * How stale the mark on a key is allowed to get before a call refreshes it.
- *
- * Five minutes, and the number is set by the two things it stands between. The
- * question it answers is asked in days — "has anything called with this key
- * since I handed it over in June" — so nothing about the screen needs better
- * than this, and a merchant reading a time five minutes behind the last call
- * reads the same answer they would have read from the exact one. What it buys
- * is everything else: a key under constant load is written to twelve times an
- * hour instead of once per request, and every other request behind the door
- * pays a comparison and no statement at all.
- *
- * It is a constant rather than a setting. What a knob here could do is take a
- * write on the money path and make it per-request, which is a way of putting a
- * deployment under load with nothing about it looking wrong.
+ * How stale a key's last-used mark may get before a call refreshes it, so a
+ * busy key is written a dozen times an hour rather than on every request. A
+ * constant rather than a setting: a knob here could put a write on every
+ * request of the money path.
  */
 const KEY_USE_WRITTEN_EVERY_MS = 5 * 60_000;
 
 /**
  * How long a replacement payout wallet waits on the live deployment, counted
- * from the moment every message about it was handed over (ADR-0019).
- *
- * A constant rather than a setting: a knob here is the one that turns the
- * guard off, on the one field money is sent to.
+ * from the moment every message about it was handed over. A constant rather
+ * than a setting: a knob here could turn the guard off on the field money is
+ * sent to.
  */
 export const WALLET_CHANGE_WAITS_MS = 48 * 60 * 60 * 1_000;
 
 /**
  * How long the gateway waits for the dashboard to hand every message of an
- * announcement over.
- *
- * The dashboard gives the mail provider ten seconds a message, and a merchant is
- * named by one account today and by a few at most, so twenty seconds covers
- * the ordinary case with room and ends a telling that is going nowhere well
- * inside the half minute a person pressing a button will wait: the dashboard's
- * page waits thirty seconds for a wallet change on the strength of this, and a
- * page that stopped waiting first would tell a person the gateway did not
- * answer while their change went on to be recorded. A telling cut off here may
- * still hand its messages over afterwards, which is what the refusal says. It is
- * a constant rather than a setting: what a knob here could do is make every
- * wallet change on the live site wait on a stuck mail provider for as long as
- * somebody typed.
+ * announcement over. It must stay under the thirty seconds the dashboard's page
+ * waits for a wallet change, or the page reports no answer while the change
+ * goes on to be recorded.
  */
 const ANNOUNCEMENT_ANSWER_MS = 20_000;
 
@@ -149,9 +124,10 @@ const ANNOUNCEMENT_ANSWER_MS = 20_000;
  *
  * `nobody_to_tell`: no account names the merchant. `not_announced`: a message
  * could not be confirmed as sent to every account — the provider refused one,
- * or telling failed or did not finish in time — though some may have gone out. `raced`: another write landed between reading the wallet and
- * writing it, on a change nothing had announced; `raced_after_announcing`:
- * the same, after this change's own message went out.
+ * or telling failed or did not finish in time — though some may have gone
+ * out. `raced`: another write landed between reading the wallet and writing
+ * it, on a change nothing had announced; `raced_after_announcing`: the same,
+ * after this change's own message went out.
  */
 export type WalletChangeRefusal =
   | "nobody_to_tell"
@@ -160,10 +136,10 @@ export type WalletChangeRefusal =
   | "raced_after_announcing";
 
 /**
- * Who a call comes from: a key, as the door resolved it, or a session in the
- * dashboard, which calls inside the process the two share as the merchant on
- * the signed-in account's row and holds no key (ADR-0030). What is known of a
- * session is the account it is signed in as, and that is what a message names.
+ * Who a call comes from: a key, as the door resolved it, or a dashboard
+ * session, which calls in-process as the merchant on the signed-in account's
+ * row and holds no key. A session is known only by its account's email, and
+ * that is what a message names.
  */
 export type Caller =
   | { readonly kind: "key"; readonly keyId: string }
@@ -173,11 +149,9 @@ export type Caller =
 export const SWEEP_CLAIMS = "agentify_forget_old_claims";
 
 /**
- * What the selling switch came to: the catalog as it now stands, or a refusal.
- *
- * A refusal rather than a thrown error, because a merchant who has left
- * pressing "start selling again" is an ordinary thing that happens and the
- * caller has to answer it rather than crash on it.
+ * The catalog as it stands after the selling switch, or a refusal. A merchant
+ * who has left can still press the switch, so that is an ordinary refusal
+ * rather than a thrown error.
  */
 export type SellingChange =
   | { readonly ok: true; readonly cards: MerchantCardList }
@@ -192,25 +166,17 @@ export interface QuoteAnswerRefused {
   readonly refused: readonly Problem[];
 }
 
-/**
- * One product as a thing that can be paid for, and everything a challenge for
- * it has to say: the card, whether it may be sold at this moment, the name its
- * seller is listed under, and the address its seller is paid at.
- */
+/** Everything a payment challenge for one product has to say. */
 export interface PaidResource {
   /** The card as it is held, under the catalog identifier we issued for it. */
   readonly stored: StoredCard;
   /** What a purchase of this card would meet right now. */
   readonly selling: MerchantSelling;
-  /** The seller's name in a discovery catalog, or nothing where none is set. */
+  /** The seller's name in a discovery catalog. */
   readonly serviceName: string | null;
   /**
-   * Where this card's own merchant is paid, or nothing where none is set.
-   *
-   * It travels with the card because it is the card's merchant's and nobody
-   * else's: the address an agent is invited to pay has to belong to the seller
-   * of the thing it is buying, and read anywhere but from this card's owner it
-   * would be somebody's takings going to somebody else.
+   * Where this card's own merchant is paid. It is read from the card's owner
+   * and nowhere else, or one seller's takings go to another.
    */
   readonly payoutWallet: string | null;
 }
@@ -246,10 +212,8 @@ export type PurchaseAttempt =
 
 /**
  * How many envelopes one poll draws past without handing anything out before
- * it answers empty. It is the batch a poll used to answer with, so one poll
- * gets past as many closed orders as it once carried at a time; and it is few
- * enough that a poll which can record nothing, because every write is
- * failing, answers in a bounded time.
+ * it answers empty. It is few enough that a poll which can record nothing,
+ * because every write is failing, still answers in a bounded time.
  */
 const PASSED_AT_MOST = 32;
 
@@ -259,12 +223,10 @@ export class Gateway {
   /** Purchases parked on a price question, by the identifier of the question. */
   readonly quotes = new Waiting<QuoteResponse>();
   /**
-   * Which order each open price question belongs to, and whose it is.
-   *
-   * The merchant is here because the answer route is a merchant's, and a price
-   * identifier is not a secret: it travels on a stream and it lands in a
-   * receipt. Without the merchant beside it, anybody holding one out of a log
-   * could name the price somebody else's purchase settled at.
+   * Which order each open price question belongs to, and whose it is. A price
+   * identifier is not a secret — it travels on a stream and lands in a receipt
+   * — so the answer is checked against the merchant too, or anyone holding one
+   * from a log could set the price of somebody else's purchase.
    */
   readonly #questions = new Map<string, { orderId: string; merchantId: string }>();
 
@@ -274,19 +236,17 @@ export class Gateway {
   }
 
   /**
-   * Starts the queue and points its reminders at the machine. Every reminder
-   * becomes an event and nothing more: a clock running out is a fact, and what
-   * it means for an order is not this file's to say.
+   * Starts the queue and points its reminders at the order machine; each
+   * reminder becomes one event and nothing more.
    */
   async start(): Promise<void> {
     this.runtime.queue.onReminder(async (reminder) => {
       try {
         await this.#onReminder(reminder);
       } catch (thrown) {
-        // Said out loud and then thrown on. A reminder is the only thing that
-        // ever declares an overdue order, and the queue is what delivers it
-        // again — catching it here and re-arming would mean writing to the very
-        // database whose unavailability had just thrown.
+        // Logged and rethrown: only a reminder declares an order overdue, and
+        // the queue's retry is what delivers it again. Catching and re-arming
+        // here would mean writing to the database whose failure just threw.
         console.error(
           `[gateway] a reminder failed (${reminder.kind}, order ${reminder.orderId})`,
           thrown,
@@ -297,51 +257,18 @@ export class Gateway {
 
     await this.runtime.queue.start();
 
-    // Claims on payments are swept by the queue's own scheduler rather than by
-    // a timer of ours: it survives a restart, and one tick of the schedule puts
-    // one job on the queue however many gateways are running, which a timer in
-    // each of them would not. Registering the same name replaces what was
-    // there, so a restart does not accumulate schedules.
-    //
-    // What that does not promise is that the job is only ever handled once.
-    // Nothing here needs it to be — forgetting claims older than an instant is
-    // the same work whoever does it and however often — but the sweep below
-    // does, and the paragraph there says why the promise is not available.
+    // Claims are swept by the queue's scheduler rather than a timer of ours: it
+    // survives a restart, puts one job on the queue per tick however many
+    // gateways run, and registering the name again replaces the schedule. A
+    // job may still be handled more than once, which forgetting claims allows.
     await this.runtime.queue.everyDay(SWEEP_CLAIMS, () => this.forgetOldClaims());
 
-    // And what the orders are still owed, on the same scheduler and for the
-    // same reasons (ADR-0013). It asks the orders themselves what is missing
-    // rather than keeping a second record of what was meant to happen, and it
-    // is written to be safe run twice, because it will be.
-    //
-    // Twice at once, in fact, and not only one after another. One process
-    // cannot do that to itself: there is one worker on this queue and it waits
-    // for the handler to return before it fetches again, so however long a run
-    // takes, the next one cannot start beside it here. What reaches two at once
-    // is two gateways, and the road there is the queue's expiry. A job is
-    // active from the moment it is fetched, the library fails an active job
-    // once it has been running longer than its expiry — fifteen minutes, on the
-    // defaults this job takes — and a failed job with retries left goes back on
-    // the queue rather than to a dead letter. The default allows two. So a
-    // sweep that runs past fifteen minutes is offered again while it is still
-    // going, and the idle worker in the other process takes it.
-    //
-    // That is not survivable by the argument that covers a second run
-    // afterwards: every arm reads the world and then acts on what it read, so
-    // two at once both find the same thing missing and both do it. The sweep
-    // takes the work under a name for that, and the run that finds the name
-    // held does nothing.
-    //
-    // The lock is in the sweep rather than here on purpose. Registering with a
-    // queue policy would leave it to a call whose settings the library writes
-    // only when the queue is first made — every database that has already run
-    // this would ignore it in silence — and a policy is about jobs on one
-    // queue, which is not what two gateways are.
-    //
-    // A skipped run is logged and nothing else: pg-boss is told the job
-    // finished, because it did. Worth knowing when reading those logs, since
-    // this is the safety net for effects that went missing — a name wedged
-    // permanently would show up as nothing but that line, every day.
+    // What the orders are still owed is swept the same way. Two gateways can
+    // run it at once, because pg-boss re-offers a job that outlives its
+    // fifteen-minute expiry, so the sweep itself runs under a named lock; a
+    // queue policy would not do, as pg-boss writes queue settings only when the
+    // queue is first created. A lock wedged for good shows only as the sweep's
+    // "did nothing" log line, every day.
     await this.runtime.queue.everyDay(SWEEP_EFFECTS, () => this.runner.sweep());
   }
 
@@ -356,42 +283,12 @@ export class Gateway {
       return;
     }
 
-    // A delivery went unanswered. It only counts while it is still the delivery
-    // the order is waiting on — the merchant who answered the one he was given
-    // must not be sent the order again for a reminder left against it — and it
-    // stops being that delivery here, in the same write, because giving up on a
-    // hand-over is the last thing that happens to it.
-    //
-    // Both halves are one call, and the reason is that this is the only place
-    // in the gateway where reading the order and acting on what was read are
-    // the same decision. Everything that can happen between the two is a change
-    // to the very thing being checked. The merchant's answer lands and clears
-    // the hand-over, and a redelivery goes out to a merchant who is already
-    // working on the order. A worker draws the order and records a hand-over of
-    // its own, and a clearing written on top of that takes away the hand-over
-    // the order is now waiting on, so the silence on it is noticed by nobody.
-    // Another delivery of this same reminder does the whole thing once already,
-    // and the second one does it again.
-    //
-    // That last one is the one the queue produces on its own. Reminders go on
-    // it with the library's own retries where envelopes go on with none, so a
-    // reminder whose delivery was never completed — the process took it and
-    // died, the completion never reached the database — is handed out again
-    // carrying the same hand-over. Two envelopes for one silence spend two of
-    // the order's deliveries, running out of deliveries closes the order, and
-    // closing an order that has been paid for is a debt: the merchant loses a
-    // sale he could still have made and owes the money back.
-    //
-    // What is written is the same fact the three answer routes write when they
-    // pass `openDeliveryId: null`, reached from the other side. There the
-    // hand-over is over because the merchant answered it; here it is over
-    // because we have stopped waiting for him. It does not shut the guard for
-    // good: the redelivery this decides on mints a hand-over of its own the
-    // moment a worker draws it and arms its own reminder against that one, so
-    // the next silence is worth a delivery in its turn. On an order the
-    // merchant has already taken on, the machine decides on nothing — his
-    // answer came, only later than we waited — and clearing the hand-over is
-    // all this does.
+    // A delivery went unanswered. It counts only while it is still the
+    // hand-over the order waits on, so the check and the clearing are one
+    // conditional write. Split in two, a late answer, a worker's fresh
+    // hand-over or a retried delivery of this same reminder lands in between,
+    // and a duplicate spends a second delivery: running out closes an order
+    // that has been paid for, and the money is owed back.
     await this.runner.apply(
       reminder.orderId,
       { kind: "handler_undelivered", at: this.runtime.clock() },
@@ -402,14 +299,11 @@ export class Gateway {
   }
 
   /**
-   * Forgets the claims on payments too old to be guarding anything, and says
-   * how many went.
-   *
-   * A claim stops one signed authorisation from buying two orders, and what it
-   * has to cover is the window between a payment being verified and the charge
-   * being executed — after that the token itself refuses the same authorisation
-   * a second time. They cannot be kept forever: the route that makes them takes
-   * no key, so anybody may make as many as they like.
+   * Forgets claims on payments too old to guard anything and returns how many
+   * went. A claim only has to cover the window between verifying a payment and
+   * executing the charge, after which the token itself refuses a reused
+   * authorisation; and claims cannot be kept forever, because the route that
+   * makes them takes no key.
    */
   async forgetOldClaims(): Promise<number> {
     const gone = await this.runtime.store.forgetClaimsBefore(
@@ -430,43 +324,29 @@ export class Gateway {
   // --- the catalog ----------------------------------------------------------
 
   /**
-   * Puts one card in the catalog, or says everything standing in its way.
-   *
-   * The findings are gathered rather than returned at the first one, and some
-   * of them may not be about the card at all: a merchant who lacks what the
-   * deployment asks of every merchant — a name for buyers to read, a wallet for
-   * their sales to be paid into, the operator's approval for the live catalog,
-   * as the rule in the core decides — cannot publish, for the reasons
-   * `MERCHANT_PROBLEMS` gives beside each.
-   *
-   * Those come back beside whatever is wrong with the card because the
-   * merchant is going to have to fix all of it, and told one at a time they fix
-   * the card, publish again, and only then find out about the rest. They lead
-   * the list for the same reason: a screen that shows one finding shows the one
-   * that is not on the card, which is the one nothing on the card explains.
+   * Puts one card in the catalog, or returns everything standing in its way.
+   * What the merchant lacks — a name, a payout wallet, the operator's approval
+   * for the live catalog — is reported beside the card's own problems and
+   * first, so a screen that shows one finding shows the one the card cannot
+   * explain.
    */
   async publishCard(merchantId: string, body: unknown): Promise<PublishResult> {
     const parsed = CardSchema.safeParse(body);
 
     const merchant = await this.runtime.store.merchantById(merchantId);
-    // Every external caller reaches this method through a key the door already
-    // resolved. Losing that merchant between the door and here is an internal
-    // contradiction, not three choices the caller can repair. Keep it loud and
-    // distinct from the complete list of ordinary publish prerequisites.
+    // Every caller arrives with a merchant the door already resolved, so a
+    // missing one is an internal contradiction: thrown, not reported as a
+    // publish finding.
     if (merchant === null) {
       throw new Error(`publishing resolved to ${merchantId}, and there is no such merchant`);
     }
-    // The same question the selling word asks of every card afterwards, put
-    // here where the merchant is in front of somebody who can be told what is
-    // missing.
+    // The question the selling word asks of every card later, asked here where
+    // somebody can be told what is missing.
     const missing = missingFrom(merchant, this.runtime.config);
 
-    // A parcel's card asks one more thing of its merchant, which no other card
-    // does: the site of their shop, where a buyer takes a parcel that did not
-    // arrive (ADR-0033). It is asked here, with the card in hand, rather than
-    // by the rule every card meets — and of the card as it was sent, so that a
-    // card refused for something else still names it, rather than leave the
-    // merchant to learn it on the next round trip.
+    // A parcel's card asks one more thing of its merchant: the site of their
+    // shop, where a buyer takes a parcel that did not arrive. It is checked on
+    // the card as sent, so a card refused for something else still names it.
     const parcelWithoutSite =
       typeof body === "object" &&
       body !== null &&
@@ -477,8 +357,8 @@ export class Gateway {
     if (!parsed.success) {
       return cardRejected([...missing, ...parcelWithoutSite], findingsOf(parsed.error.issues));
     }
-    // Asked of the card as it was opened out, so a price written as one string
-    // meets the same rule in the same words as one written as two fields.
+    // Asked of the parsed card, so a price written as one string meets the same
+    // rule in the same words as one written as two fields.
     const unsellable = [
       ...priceProblemsOf(parsed.data.price),
       ...notOnThisChannel(parsed.data, this.runtime.config.environment),
@@ -497,20 +377,11 @@ export class Gateway {
   }
 
   /**
-   * The catalog an agent reads, which is the cards that are actually for sale.
-   *
-   * A paused card is left out rather than listed and then refused. A catalog is
-   * an offer, and an entry every purchase of which comes back `not_selling` is
-   * an offer we would not honour — the agent budgets against it, chooses it
-   * over a competitor, and finds out at the till. That is the same reason the
-   * portal tells the merchant a pause means their cards stop selling rather
-   * than that they stop working.
+   * The catalog an agent reads: the cards that are actually for sale. A paused
+   * card is left out rather than listed and then refused, because an agent
+   * budgets against what it lists and would only find out at the till.
    */
   async catalog(): Promise<{ readonly items: ProjectedCard[] }> {
-    // One catalog across every merchant, which is the product (ADR-0010). The
-    // selling word is read per card because it is per merchant: one merchant
-    // stopping all selling takes their own cards out of this and leaves
-    // everybody else's exactly where they were.
     const entries = await this.runtime.store.catalogEntries();
     return {
       items: entries
@@ -530,19 +401,11 @@ export class Gateway {
   }
 
   /**
-   * One product as a thing that can be paid for: the card, the word it is
-   * selling under right now, and the name its seller is listed under.
-   *
-   * It is one read rather than three at the edge because the three answer one
-   * question — may this product be offered for sale, and what does a challenge
-   * for it say. The selling word is the same fold the order machine is given,
-   * so a card this reports as anything but open is a card whose purchase the
-   * machine would refuse; a challenge issued for one would be an invitation to
-   * pay for something that cannot be bought, and it would be that invitation
-   * that a discovery catalog listed.
-   *
-   * Null where there is no such card. Unscoped, like every other read on the
-   * buying surface: an agent has no key and no merchant.
+   * One product as a thing that can be paid for, or null where there is no
+   * such card. The selling word is the one the order machine is given, so a
+   * card reported as anything but open is one whose purchase would be refused
+   * and must not be offered a challenge. Unscoped, like every read on the
+   * buying surface: an agent has no key.
    */
   async paidResource(itemId: string): Promise<PaidResource | null> {
     const stored = await this.runtime.store.cardById(itemId);
@@ -552,20 +415,15 @@ export class Gateway {
     const merchant = await this.runtime.store.merchantById(stored.merchantId);
     return {
       stored,
-      // The same fold every other reader of this question gets, and the same
-      // one the machine is given: the merchant's word, the card's own pause and
-      // whether that merchant could make a sale at all — somewhere to send the
-      // money, a name to sell under — become one word. A merchant the store
-      // cannot find is a card with no owner, which the database refuses — and if
-      // it ever happened, the safe reading of "I cannot say" is that this is not
-      // for sale.
+      // The database refuses a card with no owner; if one were ever found, the
+      // safe reading is that it is not for sale.
       selling:
         merchant === null
           ? "paused"
           : sellingFor(merchant.selling, stored, sellableBy(merchant, this.runtime.config)),
       serviceName: merchant?.serviceName ?? null,
-      // The address a payment request written now names, which is a waiting
-      // change once its moment has come and not before (ADR-0019).
+      // A pending wallet change is the address once its moment has come, and
+      // not before.
       payoutWallet:
         merchant === null
           ? null
@@ -576,11 +434,9 @@ export class Gateway {
   // --- the merchant's own catalog -------------------------------------------
 
   /**
-   * Every card this merchant published, with the word each is selling under.
-   *
-   * "This merchant" is the merchant the key on the call resolved to, and the
-   * scoping is the store's — the query carries the merchant, so another
-   * merchant's card is never selected rather than selected and dropped.
+   * Every card this merchant published, with the word each sells under. The
+   * store's query carries the merchant, so another merchant's card is never
+   * selected rather than selected and filtered out.
    */
   async merchantCards(merchantId: string): Promise<MerchantCardList> {
     const { selling, sellable } = await this.#howTheySell(merchantId);
@@ -589,15 +445,10 @@ export class Gateway {
   }
 
   /**
-   * The two facts every card of one merchant is read through: the word they
-   * sell under, and whether a sale of theirs could be made at all — paid for,
-   * and made under a name.
-   *
-   * One read rather than two, and a merchant the store cannot find is a defect
-   * rather than a case — every key names a merchant that exists and every card
-   * carries one — so this throws exactly as the store's own read of the word
-   * does. Answering "open" would be selling on behalf of somebody nobody can
-   * find.
+   * The merchant's selling word, and whether a sale of theirs could be made at
+   * all (a payout wallet and a name). Every key and every card names a merchant
+   * that exists, so a missing one is a defect and this throws rather than
+   * answer "open" for somebody nobody can find.
    */
   async #howTheySell(
     merchantId: string,
@@ -613,12 +464,8 @@ export class Gateway {
   }
 
   /**
-   * Takes one card off sale, or puts it back. Null where there is no such card.
-   *
-   * Nothing about the orders already open is touched, and that is the whole
-   * shape of a pause: the guard the machine keeps is at the birth of an order
-   * and nowhere else, so an order accepted a minute ago plays out exactly as it
-   * would have.
+   * Takes one card off sale, or puts it back; null where there is no such card.
+   * Open orders are untouched: the machine guards only the birth of an order.
    */
   async setCardPaused(
     merchantId: string,
@@ -627,9 +474,8 @@ export class Gateway {
   ): Promise<MerchantCard | null> {
     const stored = await this.runtime.store.setCardPaused(merchantId, itemId, paused);
     if (stored === null) {
-      // Either there is no such card or it is not this merchant's, and the
-      // answer is the same one on purpose: a pause call is not a way of
-      // finding out what somebody else is selling.
+      // No such card, or not this merchant's: the same answer on purpose, so a
+      // pause call cannot probe what somebody else sells.
       return null;
     }
     const { selling, sellable } = await this.#howTheySell(merchantId);
@@ -637,25 +483,16 @@ export class Gateway {
   }
 
   /**
-   * Stops all selling for this merchant, or starts it again.
-   *
-   * Resuming does not put back the cards that were paused in their own right.
-   * Stopping everything did not forget which those were, and putting them all
-   * on sale would sell products their merchant took off — the answer carries
-   * the whole catalog so which cards actually came back is a fact rather than
-   * something to infer.
+   * Stops all selling for this merchant, or starts it again. Resuming leaves
+   * the cards paused in their own right paused, and the answer carries the
+   * whole catalog so which cards came back is stated rather than inferred.
    */
   async setSelling(merchantId: string, selling: MerchantSelling): Promise<SellingChange> {
     const now = await this.runtime.store.selling(merchantId);
     if (now === "departed") {
-      // A departure is not a heavier pause and this switch does not undo one.
-      // Leaving closed the orders that were open and left the merchant owing
-      // refunds on whatever was paid for and not delivered; setting the word
-      // back to "open" here would put a merchant who has left back in the
-      // catalog with none of that unwound, and the only sign of it would be
-      // sales arriving again. The contract's own documents argue that leaving
-      // cannot be reached by this switch; this is the same rule in the other
-      // direction, which is the half that was missing.
+      // A departure is not a heavier pause and this switch does not undo one:
+      // leaving closed the open orders and left refunds owed, and reopening
+      // would put the merchant back in the catalog with none of that unwound.
       return { ok: false, why: "this merchant has left, and selling is not resumed by a switch" };
     }
     await this.runtime.store.setSelling(merchantId, selling);
@@ -663,10 +500,8 @@ export class Gateway {
   }
 
   /**
-   * Every receipt this merchant has, and nobody else's.
-   *
-   * Scoped the way `merchantCards` is and by the same means: the merchant is in
-   * the query, so a receipt of somebody else's is never read at all.
+   * Every receipt this merchant has. The merchant is in the query, so somebody
+   * else's receipt is never read at all.
    */
   async receipts(merchantId: string): Promise<ReceiptList> {
     return { receipts: [...(await this.runtime.store.receipts(merchantId))] };
@@ -675,14 +510,10 @@ export class Gateway {
   // --- merchants and their keys ---------------------------------------------
 
   /**
-   * Registers a merchant and answers with their identifier. Whether the caller
-   * may is decided before this: the dashboard calls it inside the process for
-   * a signed-in person who pressed for one (ADR-0026 §4), and writes the
-   * merchant onto that person's account. Nothing else reaches it.
-   *
-   * What comes back names no seller, because nobody has chosen one. The merchant
-   * is listed under nothing until they set a name, and until then publishing is
-   * refused — so the caller's next screen is the one that asks for it.
+   * Registers a merchant and returns their identifier. Only the dashboard
+   * reaches it, in-process for a signed-in person: it decides beforehand
+   * whether they may and writes the merchant onto their account. The new
+   * merchant has no seller name, so publishing is refused until they set one.
    */
   async registerMerchant(): Promise<string> {
     const registered = await registerMerchant(
@@ -692,9 +523,8 @@ export class Gateway {
     );
 
     if (registered === null) {
-      // The identifier is generated with the same source every other one of ours
-      // comes from, so this is a collision rather than somebody registering
-      // twice, and there is nothing a caller could do about it.
+      // A freshly generated identifier was taken: a collision rather than a
+      // second registration, and nothing a caller can fix.
       throw new Error(
         "registering made no merchant: the identifier it generated was already taken",
       );
@@ -712,14 +542,9 @@ export class Gateway {
   }
 
   /**
-   * What this merchant's products are sold under, as it stands.
-   *
-   * A merchant who has chosen no name is answered with null rather than with a
-   * refusal: having none is an ordinary state a settings screen has to draw.
-   * The merchant not being there at all is a different matter — every caller of
-   * this is behind the merchant's key, which the door resolved to a merchant a
-   * moment ago, so a merchant missing here is this gateway disagreeing with
-   * itself rather than anything the caller did.
+   * What this merchant's products are sold under. Having no name is an
+   * ordinary state, answered with null; a merchant missing behind a key the
+   * door just resolved is the gateway contradicting itself, so it throws.
    */
   async sellerName(merchantId: string): Promise<SellerName> {
     const merchant = await this.runtime.store.merchantById(merchantId);
@@ -730,14 +555,10 @@ export class Gateway {
   }
 
   /**
-   * Who sold an order, as an agent reads it on the order's status (ADR-0034):
-   * the name and site the merchant gave, read as they stand now rather than
-   * as they stood at the sale, the way the catalog reads them.
-   *
-   * A merchant who is not there throws rather than reading as nobody. Orders
-   * hold their merchant by a key the database will not let go, so it cannot
-   * happen; and if it ever did, "we do not know who sold this" told as "the
-   * seller gave no name and no site" would be a claim we cannot make.
+   * Who sold an order, as an agent reads it on the order's status: the
+   * merchant's name and site as they stand now, not as they stood at the sale.
+   * A missing merchant throws rather than reading as a seller who gave no name
+   * and no site, which would turn "unknown" into a claim.
    */
   async sellerOf(merchantId: string): Promise<Seller> {
     const merchant = await this.runtime.store.merchantById(merchantId);
@@ -748,31 +569,15 @@ export class Gateway {
   }
 
   /**
-   * Sets what this merchant's products are sold under.
-   *
-   * There is no taking one away here, and that is the contract's rule rather
-   * than this method's: what arrives is a name, because a merchant with no name
-   * has nobody for a payment request to name as the seller and every card of
-   * theirs comes off sale — an end to their selling arriving under the name of
-   * editing a setting. The flow underneath still writes a null, because the
-   * terminal has a verb for it and somebody with the whole database in front of
-   * them is a different caller from a merchant with one key.
-   *
-   * The name is checked before it is written, by the one function that checks
-   * it — a name the catalog cannot carry is dropped there in silence, so the
-   * refusal has to happen at the moment somebody can still be told. The route
-   * above holds the same rule on the way in, so a throw from here is a caller
-   * that skipped it rather than a merchant with a bad name.
-   *
-   * What comes back is read off the row that was written, not off the argument.
-   * Echoed, this answer would look identical whether the write landed or not.
+   * Sets what this merchant's products are sold under. A name cannot be taken
+   * away here: without one every card of theirs comes off sale, which must not
+   * arrive as an edit to a setting. The answer is read off the written row
+   * rather than echoed, so it shows whether the write landed.
    */
   async setSellerName(merchantId: string, asked: SellerNameRequest): Promise<SellerName> {
-    // The name and the site are written one after the other, each through the
-    // one function that checks it, and only what the request names: a field
-    // left out stays as it was, so a screen that gives the site does not have
-    // to send the name again. The route has already held both to the contract,
-    // so a throw from either is a caller that skipped it.
+    // Only the fields the request names are written; one left out stays as it
+    // was. The route already checked both, so a throw from either is a caller
+    // that skipped it.
     const at = this.runtime.clock();
     let merchant = await this.runtime.store.merchantById(merchantId);
     if (asked.seller_name !== undefined) {
@@ -788,12 +593,8 @@ export class Gateway {
   }
 
   /**
-   * Where this merchant's sales are paid, as it stands.
-   *
-   * Null for a merchant who has set nothing, exactly as the listing name is
-   * null: having none is an ordinary state a settings screen has to draw, and
-   * on a deployment with a chain behind it, it is also the state that explains
-   * why nothing of theirs can be published.
+   * Where this merchant's sales are paid, as it stands now. Having none is an
+   * ordinary state rather than a refusal.
    */
   async payoutWallet(merchantId: string): Promise<PayoutWallet> {
     const merchant = await this.runtime.store.merchantById(merchantId);
@@ -805,55 +606,26 @@ export class Gateway {
 
   /**
    * Sets where this merchant's sales are paid, or asks for a change of it to
-   * wait — and answers with the wallet as it then stands, or with why it was
-   * refused.
+   * wait, and returns the wallet as it then stands or why it was refused. Only
+   * a dashboard session reaches it, in-process; no route at the door calls it,
+   * so a copied key can neither move the money nor send a message about it.
    *
-   * Only a session in the dashboard reaches it, inside the process: keys
-   * operate the shop, and where its money goes is set through the dashboard,
-   * so no route at the door calls this and no key can (ADR-0019). A copy of a
-   * key can neither move the money nor send a message about moving it.
+   * Where no money is real (the test channel and the sandbox) the address
+   * applies at once and nobody is told. On the live deployment the first
+   * address applies at once and is announced afterwards, since it replaces
+   * nothing. A replacement is announced to every account naming the merchant
+   * before anything is written, and recorded as pending for forty-eight hours
+   * only if every message was handed over: a change nobody was told of is the
+   * dangerous failure, while a message about a change that then did not land
+   * is safe, because the message says the change holds only if the wallet
+   * screen shows it.
    *
-   * There is no taking one away, and no verb at a terminal writes one either:
-   * every change reaches the gateway as this call, which is what lets it hold
-   * every change to the rule below.
-   *
-   * Where no money is real — the test channel and the sandbox — the address
-   * applies at once and nobody is told. The first address a merchant sets on
-   * the live deployment applies at once too, because it replaces nothing and a
-   * new merchant has to be able to start selling, and it is announced
-   * afterwards without being waited on: somebody signed in to the dashboard on
-   * a session that is not the owner's could set it, and the message is how
-   * the owner hears of it.
-   *
-   * On the live deployment a replacement is the act a stolen or forgotten
-   * session would reach for. So it is announced to
-   * every account that names the merchant before anything is written, and it is
-   * recorded — waiting, forty-eight hours from the moment every message was
-   * handed over — only if every message was. Until then payment requests name
-   * the address that applies now. That runs the effect before the state, the
-   * reverse of ADR-0013 and on purpose: a change nobody was told of is the
-   * dangerous failure, and a message about a change that then did not land is
-   * the safe one, because the message says the change takes effect only if the
-   * dashboard's wallet screen shows it.
-   *
-   * Three asks change nothing new. The address already waiting is a retry after
-   * a dropped connection, and it answers with the waiting change and sends
-   * nothing. The address that applies now, with a change waiting, is a cancel:
-   * written at once and announced afterwards, and never refused for want of a
-   * message, because it moves money nowhere new. And the address that applies
-   * now with nothing waiting is nothing at all.
-   *
-   * Changes for one merchant are serialized without a lock held across the
-   * announcement, which is a call to a mail provider:
-   * the write is conditional on the row still holding what was read before the
-   * announcement went out, and a change recorded in between turns this one
-   * away as `raced` rather than being overwritten by it. So the address waiting
-   * is always one whose own message went out before it was written.
-   *
-   * What comes back is read off the row that was written. Echoed, this answer
-   * would look identical whether the write landed or not — which for the one
-   * field in this system that money is sent to is not a difference to leave to
-   * chance.
+   * Asking for the pending address again is a retry and sends nothing; asking
+   * for the current address while a change is pending cancels it, written at
+   * once and announced afterwards. No lock is held across the announcement:
+   * the write is conditional on the row still holding what was read, so a
+   * change recorded in between turns this one away as `raced`. The answer is
+   * read off the written row, never echoed.
    */
   async setPayoutWallet(
     merchantId: string,
@@ -876,10 +648,9 @@ export class Gateway {
     }
 
     if (now.address === null) {
-      // The first address applies at once and is announced afterwards, the
-      // way a new key is: it replaces nothing, so it waits on nothing, and a
-      // message that cannot be sent refuses nothing — but a session that is
-      // not the owner's could set it, and the message is how they hear of it.
+      // The first address replaces nothing, so it waits on nothing and a
+      // message that cannot be sent refuses nothing; the message is how the
+      // owner hears of a session that is not theirs setting it.
       const set = await this.#recordWallet(merchantId, read, { address, pending: null });
       if (typeof set !== "string") {
         this.#announceAfterwards({
@@ -962,11 +733,9 @@ export class Gateway {
     if (written !== "moved") {
       return payoutWalletAnswer(payoutWalletAt(written.payoutWallet, this.runtime.clock()));
     }
-    // Another write landed between the read and this one. What it wrote may
-    // be exactly what this call asked for — a retry after a dropped connection
-    // that reached the gateway while the first was still waiting on the
-    // dashboard — and then the answer is that change, not a refusal of it:
-    // "asking again is safe" is the promise the retry was made on.
+    // Another write landed in between. If it wrote exactly what this call
+    // asked for, it was a retry after a dropped connection, and the answer is
+    // that change rather than a refusal, because asking again must be safe.
     const merchant = await this.runtime.store.merchantById(merchantId);
     const standing =
       merchant === null ? null : payoutWalletAt(merchant.payoutWallet, this.runtime.clock());
@@ -979,10 +748,9 @@ export class Gateway {
   }
 
   /**
-   * Asks the dashboard to tell the merchant, and reads a telling that threw,
-   * or did not finish within `ANNOUNCEMENT_ANSWER_MS`, as one that did not hand
-   * every message over: it fails in our own code or waits on the mail provider,
-   * before one message or between two, so some may have gone out (ADR-0030).
+   * Asks the dashboard to tell the merchant. A telling that threw or did not
+   * finish within `ANNOUNCEMENT_ANSWER_MS` counts as not handing every message
+   * over, though some may have gone out.
    */
   async #announce(announcement: Announcement): Promise<AnnouncementOutcome> {
     let cut: ReturnType<typeof setTimeout> | undefined;
@@ -1008,9 +776,9 @@ export class Gateway {
   }
 
   /**
-   * Announces something already done, and waits on nothing: a new key and a
-   * cancelled change are not refused, delayed or undone for want of a message
-   * (ADR-0019). What became of it is written to the log and nowhere else.
+   * Announces something already done, without waiting: a new key or a
+   * cancelled change is not refused, delayed or undone for want of a message.
+   * The outcome goes to the log and nowhere else.
    */
   #announceAfterwards(announcement: Announcement): void {
     void this.#announce(announcement).then((outcome) => {
@@ -1051,12 +819,10 @@ export class Gateway {
   }
 
   /**
-   * Issues another key for this merchant's own code, and hands it back once.
-   *
-   * On the live deployment the merchant is told of it afterwards, and the key
-   * never waits on the message (ADR-0019): a key moves no money and cannot set
-   * the wallet, and a merchant must not be kept from a key — their first above
-   * all — because mail is down.
+   * Issues another key for this merchant's own code and returns its secret
+   * once. On the live deployment the merchant is told afterwards and the key
+   * never waits on the message: a key cannot move money or set the wallet, and
+   * mail being down must not keep a merchant from a key.
    */
   async issueMerchantKey(merchantId: string, label: string, askedBy: Caller): Promise<IssuedKey> {
     const issued = await issueKey(
@@ -1079,30 +845,16 @@ export class Gateway {
   }
 
   /**
-   * Stops one of this merchant's keys working.
+   * Stops one of this merchant's keys working. `locked_out` is the key this
+   * very call was made with, refused before anything is read; a dashboard
+   * session holds no key and never meets it. `null` is a key that does not
+   * exist or is somebody else's, told apart nowhere, so a refusal cannot count
+   * another merchant's keys.
    *
-   * Three answers, and two of them are refusals with different shapes because
-   * they are different facts. `locked_out` is the key this very call was made
-   * with: whoever holds it would be left calling with something the gateway no
-   * longer takes (ADR-0014 §5), so it is refused before anything is read, which
-   * also means it can never half-happen — and it is asked first for that reason
-   * rather than for any other, since every answer below it costs a write or a
-   * read. A session in the dashboard holds no key, so it meets this never, and
-   * every key on its list can be disabled from there. `null` is every other key
-   * that is not this merchant's to disable — one that does not exist and one
-   * belonging to somebody else, told apart nowhere, so a refusal is not a way
-   * of counting another merchant's keys.
-   *
-   * How far these refusals reach is worth stating. A merchant with two keys
-   * they issued can still disable either with the other, and two calls made at
-   * the same moment with two such keys, each naming the other, both pass the
-   * first line and leave the merchant with none of their own. That is not
-   * refused here and is not refused anywhere else: widening it would mean
-   * refusing a merchant their own last working key, which takes something away
-   * from them and is a decision rather than a fix; §5 of ADR-0014 says as much
-   * and says nobody has taken it. What it costs them is their own code going
-   * quiet, and not the way back in — the dashboard is signed in to with a
-   * mailed link and holds no key, and issuing another is a page away.
+   * Two calls at once, each with a key naming the other, leave the merchant
+   * with no working key. That is not refused: refusing a merchant their own
+   * last key is an open product question, and the dashboard, signed in to by
+   * a mailed link, can always issue another.
    */
   async disableMerchantKey(
     merchantId: string,
@@ -1134,17 +886,13 @@ export class Gateway {
       return { step: "no_such_item" };
     }
 
-    // The parameters are checked against this card's own declaration, which is
-    // the only place that knows what this product needs. No schema written in
-    // advance of a catalog can do it.
     const fit = purchaseCheckFor(stored.card).safeParse(params);
     if (!fit.success) {
       return { step: "params_rejected", problems: findingsOf(fit.error.issues) };
     }
 
-    // A parcel goes somewhere, and nothing else needs to (ADR-0032): an address
-    // sent with anything else would be a buyer's details handed over for
-    // nothing, so it is refused rather than dropped.
+    // An address sent with anything but a parcel would be a buyer's details
+    // handed over for nothing, so it is refused rather than dropped.
     const parcel = stored.card.fulfillment === "ship";
     if (parcel && shipTo === undefined) {
       return {
@@ -1173,19 +921,13 @@ export class Gateway {
         currency: stored.card.price.currency,
         asOf: stored.asOf,
       },
-      // Whether the money that pays for this is real, which is the chain's
-      // answer and not a stage of the plan. `order.test` and `receipt.test`
-      // are what those fields were always for; the receipt takes its own copy
-      // from the order in `runner.ts`, so this is the one place it is decided.
+      // Whether the money that pays for this is real, which only the chain's
+      // environment decides. The receipt copies it from the order, so this is
+      // the one place it is set.
       test: this.runtime.config.environment === "test",
-      // One word out of the two switches a merchant has — the whole catalog and
-      // this card — and out of whether that merchant could make a sale at all:
-      // an address for the money, a name to sell under. Whichever of them it
-      // is, the machine hears the same word and refuses the same way, before an
-      // order exists: the orders already accepted are untouched, and none is
-      // opened that could never be paid or never be described. Whose word it is
-      // comes off the card: a buyer walks one catalog across every merchant,
-      // and what governs this sale is the card's own merchant.
+      // The merchant's switch, the card's own pause and whether the merchant
+      // could make a sale at all (a payout wallet, a name), folded into one
+      // word the machine refuses on before an order exists.
       selling: sellingFor(theirs.selling, stored, theirs.sellable),
     });
 
@@ -1194,16 +936,15 @@ export class Gateway {
     }
 
     // The price question is named before the order is written, because a
-    // parcel's order keeps the name: the question carries the place the parcel
-    // goes, and it leaves the queue with the rest of the address (ADR-0032).
+    // parcel's order keeps the name: the question carries where the parcel
+    // goes, and it leaves the queue with the rest of the address.
     const asksThePrice = created.effects.some((effect) => effect.kind === "request_quote");
     const priceQuestion = asksThePrice ? this.runtime.ids("prc") : null;
 
     const record: StoredOrder = {
       order: created.order,
-      // The sale belongs to whoever published the card it was made against, and
-      // it is settled here and never again: this is what puts the order on that
-      // merchant's stream and what every later read of it is checked against.
+      // Settled here and never again: this puts the order on the card's
+      // merchant's stream, and every later read of it is checked against it.
       merchantId: stored.merchantId,
       itemId: stored.id,
       merchantItemId: stored.card.merchant_item_id,
@@ -1217,10 +958,8 @@ export class Gateway {
       priceId: null,
       delivery: null,
       payment: null,
-      // Nothing has been verified yet, so there is no address this order's money
-      // was promised to. It arrives with the payment and not before: a challenge
-      // is an invitation, and the merchant may still move their wallet between
-      // this moment and the one an agent pays in.
+      // Set when a payment is verified and not before: the merchant may still
+      // move their wallet between now and the moment an agent pays.
       payTo: null,
       paidBy: null,
       settlement: null,
@@ -1255,9 +994,8 @@ export class Gateway {
     }
 
     // An order that is over with no money taken and no goods held takes no
-    // payment. Checking one would spend the payment layer's round trip and,
-    // were it refused, tell the agent to pay again for a price that is gone,
-    // so the agent is told where the purchase stands and nothing is checked.
+    // payment: verifying one could only, if refused, tell the agent to pay
+    // again for a price that is gone.
     if (
       NOTHING_TO_PAY_FOR.includes(before.order.state) ||
       (before.order.state === "expired" && !before.order.heldFulfillment)
@@ -1265,13 +1003,11 @@ export class Gateway {
       return this.#wherePurchaseStands(orderId);
     }
 
-    // A price holds for a fixed time, and a payment that arrives after it pays
-    // for a price that no longer holds. The timer that closes such an order can
-    // fire late, so a payment arriving after the price's life closes the order
-    // as the timer would have, before anything is verified or claimed, and the
-    // agent is told where its purchase stands. This covers the payment that
-    // arrives late, not one that arrives in time and is still being checked
-    // when the price runs out: the timer can close that order first.
+    // The timer that closes an order whose price lapsed can fire late, so a
+    // payment arriving after the lapse closes the order as the timer would
+    // have, before anything is verified or claimed. A payment that arrives in
+    // time and is still being checked when the price runs out is not covered:
+    // the timer can close that order first.
     const arrivedAt = this.runtime.clock();
     const lapsed = deadlines(before.order).find(
       (deadline) =>
@@ -1287,12 +1023,10 @@ export class Gateway {
       return this.#wherePurchaseStands(orderId);
     }
 
-    // The address a payment is for is the one its order was priced for
-    // (ADR-0032), and it is settled here, before anything is verified: a
-    // payment that names another is a different purchase, and the agent starts
-    // that one again. A payment that names none pays for the one priced. Once
-    // the merchant has the address and Agentify's copy is erased, the purchase
-    // is under way and there is nothing left here to compare with.
+    // A payment is for the address its order was priced for, checked before
+    // anything is verified: one naming another address is a different
+    // purchase, and one naming none pays for the priced one. Once Agentify's
+    // copy is erased there is nothing left to compare with.
     if (shipTo !== undefined) {
       const held = before.shipTo;
       if (held === undefined) {
@@ -1308,10 +1042,8 @@ export class Gateway {
 
     const price = before.order.price;
     if (price === null) {
-      // A payment for an order that was never priced. The agent is only ever
-      // given a challenge for a priced order, so this is a payment for the
-      // wrong order or one built without one; there is nothing to check it
-      // against.
+      // Challenges are issued only for priced orders, so this payment is for
+      // the wrong order or was built without a challenge.
       return {
         step: "payment_not_verified",
         why: "this order has no price for a payment to be checked against",
@@ -1319,23 +1051,15 @@ export class Gateway {
       };
     }
 
-    // The payment layer is asked whether this payment is good, and this happens
-    // before any lock is taken: it is a network round-trip and must not hold a
-    // row. Only a payment it vouches for goes any further — a payment that does
-    // not check out closes nothing and claims nothing, so a stranger's junk
-    // cannot spend the life of an order somebody else was issued a challenge
-    // for. The order stays open and ends on its own deadline; the agent is told
-    // what the layer said and may present a better payment while the quote
-    // still stands.
-    // Where this order's own merchant is paid, read once, here. What the
-    // payment is checked against has to be this merchant's address and nobody
-    // else's — a payment made out to anything else is not a payment for this
-    // sale, whatever else is right about it — and the same string is then kept
-    // on the order for the charge, so the money goes where the payer signed for
-    // it to go rather than wherever the merchant's wallet has got to by then.
+    // The payment is verified before any lock is taken, because verifying is a
+    // network round trip. A payment that does not verify closes and claims
+    // nothing, so a stranger's junk cannot spend the life of somebody else's
+    // order; the order stays open until its own deadline.
     //
-    // Read at the instant of the verification, like the challenge before it:
-    // a waiting change whose moment has passed is the address from then on.
+    // The payee is this order's merchant's address, read once here at the
+    // instant of verification, and the same string is kept on the order for
+    // the charge, so the money goes where the payer signed for it to go rather
+    // than wherever the merchant's wallet has moved by then.
     const payingMerchant = await this.runtime.store.merchantById(before.merchantId);
     const payTo =
       payingMerchant === null
@@ -1351,13 +1075,9 @@ export class Gateway {
     });
 
     if (verified.verified !== true) {
-      // Both ways a verification can fail carry their own message, and the
-      // agent is told it whichever it was. What the two are told apart by is
-      // the retryable flag below. A refusal also says what to do next, because
-      // that differs by why the payment failed and nothing else tells the
-      // agent: a payment against a stale offer needs a new purchase, an empty
-      // wallet needs funding, a signature that does not check out needs
-      // signing again. In every case nothing was charged, and it says so.
+      // A refusal says what to do next, since that depends on why the payment
+      // failed and nothing else tells the agent, and it says nothing was
+      // charged.
       const why =
         verified.verified === false
           ? `${verified.message}; nothing was charged: ${NEXT_STEP_AFTER[verified.reason]}`
@@ -1366,79 +1086,50 @@ export class Gateway {
       return {
         step: "payment_not_verified",
         why,
-        // "unknown" is nobody having said no: the layer did not answer, or
-        // could not be asked at all because something on our side of the call
-        // was missing. Trying again may reach it, and the words say which of
-        // the two it was. "false" is the layer saying no — the same payment
-        // will not pass, though the order is still open for a corrected one.
+        // "unknown" means nobody said no — the layer did not answer or could
+        // not be asked — so trying again may work; "false" means the same
+        // payment will not pass, though a corrected one still may.
         retryable: verified.verified === "unknown",
       };
     }
 
-    // The moment the payment checked out, and every clock the goods run on is
-    // counted from here. The two on the order are: the merchant's answer has
-    // `sync_response` from the payment, and the charge has its own
-    // `settle_response` after that — so the machine may still be legitimately
-    // deciding until `syncBudgetMs` after this instant, which is what the
-    // start-up check `syncResponseMs + settleResponseMs <= syncBudgetMs` ties
-    // together. The park below waits exactly that long, so that the agent is
-    // never given up on while an answer for it is still on its way.
-    //
-    // What the agent waits is therefore the check and then the ceiling, rather
-    // than the ceiling with the check inside it. Both of the other two
-    // readings have been shipped and both cost an agent its money. Counted
-    // from the moment the order was opened, an agent that read the
-    // requirements and took ten seconds to decide presented a perfectly good
-    // payment against a ceiling that had already run out. Counted from the
-    // arrival of this call — the check inside the budget on the ground that
-    // the agent is waiting through it — the park gave up one round trip to the
-    // facilitator before the machine's own window closed. Both ended the same
-    // way: charged, delivered, and told the purchase was in progress while
-    // holding nothing.
-    //
-    // A few milliseconds later `presentVerifiedPayment` stamps this same
-    // instant as `paidAt` off its own reading of the clock, and the difference
-    // between the two is the store call below. The park may be that much
-    // longer than the machine's window and may not be shorter, so the earlier
-    // of the two readings is the one to count from.
+    // Every clock the goods run on counts from this instant, and the park
+    // below waits `syncBudgetMs` from it, the longest the machine may still be
+    // deciding. Counted from when the order opened or when this call arrived,
+    // the park would give up while the answer is still on its way, and the
+    // agent is charged and told "in progress" while holding nothing.
+    // `presentVerifiedPayment` stamps `paidAt` a little later; the park may
+    // outlast the machine's window but must not fall short of it, so this
+    // earlier reading is the one used.
     const checkedOutAt = this.runtime.clock();
 
     // The owner is who the payment layer says paid, never the address the
-    // payment declares of itself: a declared address that did not sign does not
-    // verify. Where the layer vouches for a payment without naming a payer, the
-    // payment's own fingerprint stands in — it is derived from what was signed,
-    // so it is no more forgeable.
+    // payment declares of itself. Where the layer names no payer, the
+    // payment's fingerprint stands in; it is derived from what was signed, so
+    // it is no more forgeable.
     const owner = walletThatPaid(verified.payer) ?? fingerprint;
 
-    // One authorisation buys one order. This is a different guard from
-    // ownership: it stops the same payment being spent on two different orders,
-    // which owning-by-payer cannot, because the same wallet would own both. It
-    // comes after verification, so a payment that never checked out never burns
-    // a claim against the order it named.
+    // One authorisation buys one order, which ownership by payer cannot ensure
+    // since the same wallet would own both. It is claimed after verification,
+    // so a payment that never checked out never burns a claim.
     const claim = await this.runtime.store.claimPayment(fingerprint, orderId);
     if (!claim.claimed) {
       const holder = await this.runtime.store.orderById(claim.heldBy);
       return {
         step: "payment_already_spent",
         heldBy: claim.heldBy,
-        // Whether pointing the agent at that order is any use to it, which is
-        // the question of whether that order is still open and no other. A
-        // claim held by an order that is over is a dead end, and saying "go
-        // and collect it" would send the agent somewhere with nothing to
-        // collect. An order still open is worth going back to whatever its
-        // status reads — an order whose charge went quiet has its goods made
-        // and the buyer's money may have moved, and an agent told that one was
-        // over goes and pays for the same thing a second time.
+        // Whether that order is still open, and so worth going back to
+        // whatever its status reads: an open order whose charge went quiet may
+        // hold goods and moved money, and an agent told it was over would pay
+        // a second time.
         collectable: holder !== null && isOpen(holder.order.state),
       };
     }
 
-    // The park, keyed on the order and its owner. In the synchronous mode the
-    // goods reach the agent through this and nowhere else. Two different buyers
-    // racing one order carry two owners and park on two keys, so neither takes
-    // the other's goods; the same buyer's two concurrent calls share one key
-    // and both are woken. The wait is what is left of the promised ceiling,
-    // counted from the moment the payment checked out, and never longer.
+    // In the synchronous mode the goods reach the agent only through the park.
+    // It is keyed on the order and its owner, so two buyers racing one order
+    // never take each other's goods, while one buyer's two concurrent calls
+    // both wake.
     const key = purchaseOf(orderId, owner);
     const waits = before.order.mode.settle === "after_fulfillment";
     const spent = this.runtime.clock() - checkedOutAt;
@@ -1454,12 +1145,10 @@ export class Gateway {
       this.runtime.clock(),
     );
 
-    // Both of these turned the payment away before it spent anything, so the
-    // claim taken a moment ago goes back. Held, it would bind a live
-    // authorisation to an order that can never accept it, and the buyer who
-    // lost the race would be told their next attempt was already spent — on
-    // somebody else's order. `refused` is deliberately not here: its causes
-    // want reading one at a time, and some of them have moved money.
+    // These two turned the payment away before it spent anything, so the claim
+    // is released; held, it would tell the buyer who lost the race that their
+    // next attempt was already spent on somebody else's order. `refused` keeps
+    // its claim, because some of its causes have moved money.
     if (taken.kind === "no_such_order") {
       this.runner.purchases.giveUp(key);
       await this.runtime.store.releaseClaim(fingerprint, orderId);
@@ -1484,8 +1173,7 @@ export class Gateway {
     if (parked !== null) {
       const settled = await this.runtime.store.orderById(orderId);
       if (settled !== null && outcomeFor(settled.order) !== "in_progress") {
-        // It is already answered — an order that was over before this payment
-        // arrived, for instance. There is nothing left to wait for.
+        // Already answered, so there is nothing to wait for.
         this.runner.purchases.giveUp(key);
       }
       await parked;
@@ -1496,16 +1184,11 @@ export class Gateway {
   }
 
   /**
-   * Closes a synchronous order whose merchant's deadline has passed on the
-   * clock, where the timer that closes it has not landed yet.
-   *
-   * The agent's wait ends on its budget, and the timer carrying the merchant's
-   * deadline comes off a queue that looks for due reminders every so often, so
-   * it can still be on its way when the wait is over. The agent is owed how its
-   * purchase ended rather than that it is still under way, so the order is
-   * closed here as that timer would close it. Only the merchant's deadline is
-   * applied: the charge has a clock of its own, the payment layer's, and an
-   * answer from it after that clock is ordinary rather than an ending.
+   * Closes a synchronous order whose merchant's deadline has passed but whose
+   * timer has not landed yet: the queue polls for due reminders, so the timer
+   * can arrive after the agent's wait ends, and the agent is owed how the
+   * purchase ended. Only the merchant's deadline is applied; a late answer
+   * from the payment layer is ordinary rather than an ending.
    */
   async #closeOverdueSynchronously(orderId: string): Promise<void> {
     const record = await this.runtime.store.orderById(orderId);
@@ -1520,19 +1203,11 @@ export class Gateway {
   }
 
   /**
-   * One order, whoever it belongs to — the buying surface's read.
-   *
-   * Two routes use it and neither takes a key, for two different reasons. On
-   * the purchase the payment presented against the order stands in for one; on
-   * the agent's own read of what became of that purchase the order's identifier
-   * does (ADR-0011). Both callers are the buyer's side, which has no merchant
-   * to be scoped to — an agent walking one catalogue is not shopping inside a
-   * tenant. What keeps the second from becoming a way of reading across the
-   * merchants is the shape of what it answers with, not this read.
-   *
-   * A merchant's own read of one order is {@link merchantOrder}, which is
-   * scoped, and a merchant asking about a stranger's order is told there is no
-   * such order.
+   * One order, whoever it belongs to: the buying surface's read, for routes
+   * that take no key because a buyer has no merchant to be scoped to. Nothing
+   * here scopes it, so what keeps a caller from reading across merchants is
+   * the shape of the answer built from it. A merchant's own read is
+   * {@link merchantOrder}.
    */
   async orderById(orderId: string): Promise<StoredOrder | null> {
     return this.runtime.store.orderById(orderId);
@@ -1544,20 +1219,11 @@ export class Gateway {
   }
 
   /**
-   * Which key a request presented, or nothing at all.
-   *
-   * The lookup is by the digest of what was presented, so nothing here compares
-   * one secret against another and the time it takes says nothing about how
-   * much of a key was right. A key nobody was ever issued and a key that has
-   * been disabled come back identically, which is the store's promise and not
-   * this line's.
-   *
-   * The whole row and not the merchant alone, because the door is the only place
-   * that knows which key opened a call, and one route needs that: a merchant
-   * cannot disable the key they are holding.
-   *
-   * It is also the only place that sees a key being used, which is why the mark
-   * a merchant reads on their screen is written here and nowhere else.
+   * Which key a request presented, or null. The lookup is by digest, so no
+   * secret is compared and the timing says nothing about how much of a key was
+   * right; a key never issued and a disabled one look the same. The whole row
+   * comes back because a merchant may not disable the key they are calling
+   * with, and this is the one place a key's last use is marked.
    */
   async keyBehind(presented: string): Promise<StoredKey | null> {
     const key = await this.runtime.store.workingKey(keyDigest(presented));
@@ -1568,24 +1234,10 @@ export class Gateway {
   }
 
   /**
-   * Writes down that this key was used, unless it was written down recently.
-   *
-   * The read that got here happens on every call behind the door; the write
-   * must not. A statement per request is a statement in front of every purchase
-   * for a column somebody looks at when they are deciding what to revoke, so
-   * the instant on the row already in hand is what decides: fresher than the
-   * window and this costs nothing at all beyond the comparison.
-   *
-   * It is awaited rather than left running. The write happens at most once per
-   * key per window, so what awaiting costs is one round trip on that one call
-   * and nothing on the thousands between; and a promise let go of is a promise
-   * whose rejection nothing is holding — which takes the process down — and one
-   * that can land after the request that started it, which is a write arriving
-   * against a pool that is being closed.
-   *
-   * A failure is swallowed on purpose and said out loud once. Nothing a buyer
-   * pays for depends on this having been written: refusing a purchase because a
-   * column could not be updated would be a screen taking down a sale.
+   * Marks this key as used, unless it was marked within the window. Awaited
+   * rather than left running, because an unheld rejection takes the process
+   * down and a late write can land on a pool being closed. A failure is only
+   * logged: no sale may be refused because this column could not be updated.
    */
   async #noteKeyUse(key: StoredKey): Promise<void> {
     const at = this.runtime.clock();
@@ -1599,7 +1251,6 @@ export class Gateway {
     }
   }
 
-  /** Which site this is, for the one refusal that says so out loud. */
   get environment(): Environment {
     return this.runtime.config.environment;
   }
@@ -1608,51 +1259,27 @@ export class Gateway {
 
   /**
    * Draws the next envelope off the merchant's stream and records the
-   * hand-over if it is an order.
-   *
-   * One envelope a poll, and the reason is the clock on the answer. The wait
-   * for a handler's answer starts here, when the order is handed over, and a
-   * worker works what it is handed one at a time. Handed a batch, the orders
-   * at the back of it waited out the handler calls ahead of them and were
-   * taken for silences before their own handler had started; each repeat sent
-   * for that cost the order a delivery, and a burst of quick answers could
-   * spend a synchronous order's last one. A price question is different: its
-   * clock runs from the moment it is asked, so it gains nothing here, and on a
-   * single worker it waits for whatever is ahead of it on the stream either
-   * way. The contract leaves the size of an answer to the gateway
-   * whatever a worker asks for, and this one answers with one, so the wait
-   * measures the merchant's handler and the trip to it and back, and nothing
-   * else. It was a setting once; any number above one brought the fault
-   * back, so there is nothing left to set.
-   *
-   * An order that has moved on since it was queued is not handed out: the
-   * machine refuses the hand-over, and passing it to a handler anyway would ask
-   * a merchant to work on a purchase that is over.
+   * hand-over if it is an order. One envelope per poll, whatever the worker
+   * asks for: the wait for a handler's answer starts at the hand-over, so an
+   * order at the back of a batch would wait out the handler calls ahead of it
+   * and be taken for a silence, spending one of its deliveries. An order that
+   * has moved on since it was queued is not handed out.
    */
   async poll(merchantId: string, waitMs: number, gone?: AbortSignal): Promise<WorkerPollResponse> {
     const { config, queue } = this.runtime;
-    // The window is real time, as the queue's own wait is: it bounds how long a
-    // worker's request is held, and the order clock has nothing to do with it.
+    // Real time, not the order clock: the window bounds how long a worker's
+    // request is held.
     const window = Math.min(waitMs, config.worker.pollWaitMs);
     const until = performance.now() + window;
     const nothing = { contract_version: CONTRACT_VERSION, envelopes: [] };
 
-    // An envelope turned away is drawn past rather than answered with nothing.
-    // An empty answer is what a quiet stream looks like, and a worker rests on
-    // one — the SDK for a second — so answering an order that closed in the
-    // queue with nothing would hold everything live behind it for that long,
-    // and after an outage that is a second for every order that closed in the
-    // meantime.
-    //
-    // Drawing past has to end, though, and it does not end by itself. An
-    // envelope whose hand-over could not be recorded goes back on the stream
-    // behind a delay, and when every write is failing slowly that delay runs
-    // out before the others have been got through, so there is always one to
-    // draw. So a held poll stops at the end of its window, as it would have
-    // stopped on a quiet stream, and any poll stops after `PASSED_AT_MOST`
-    // envelopes turned away — the only bound a drain, whose window is nothing,
-    // has. Answered empty after its whole window, the SDK's worker does not rest
-    // before it polls again.
+    // An envelope turned away is drawn past rather than answered with nothing,
+    // because a worker rests after an empty answer and everything live behind
+    // a closed order would wait for it. Drawing past still has to end: an
+    // envelope whose hand-over could not be recorded returns after a delay, so
+    // there may always be one to draw. A held poll stops at the end of its
+    // window, and any poll after `PASSED_AT_MOST` envelopes turned away, the
+    // only bound a drain with no window has.
     for (let passed = 1; ; passed += 1) {
       const drawn = await queue.draw(merchantId, 1, Math.max(0, until - performance.now()), gone);
       if (drawn.length === 0) {
@@ -1686,14 +1313,10 @@ export class Gateway {
 
       const orderId = delivery.envelope.payload.id;
       const at = clock();
-      // A token for this hand-over, and neither of the two names already in
-      // hand would do. The envelope's identifier names this envelope, and a
-      // redelivery is built as a fresh one, so it does not last long enough to
-      // be matched against. The order's identifier does last, and is the same
-      // for every attempt, so it cannot tell one hand-over from another. That
-      // distinction is exactly what the reminder needs — whether the delivery
-      // it was armed for is still the one the order is waiting on — so it is
-      // minted per hand-over and stored as `openDeliveryId`.
+      // Minted per hand-over: the envelope's identifier changes on redelivery
+      // and the order's is shared by every attempt, but the reminder must tell
+      // whether the hand-over it was armed for is still the one the order
+      // waits on.
       const handOver = this.runtime.ids("dlv");
       let applied: Awaited<ReturnType<OrderRunner["apply"]>>;
       try {
@@ -1701,18 +1324,10 @@ export class Gateway {
           orderId,
           { kind: "order_dispatched", at },
           { openDeliveryId: handOver },
-          // The envelope came off this merchant's own stream and an envelope
-          // only ever reaches the stream of the merchant on its own order, so
-          // this cannot fire today: no test dies when it is taken out, and that
-          // is the honest state of it rather than a gap in the tests.
-          //
-          // It stays because of what it guards against and what that would
-          // cost. If the two ever came apart — one shared stream, a document
-          // and a column that disagree — a hand-over would be recorded against
-          // a stranger's order and the order then handed to the wrong merchant
-          // to work on. With this, the envelope is finished and nobody is given
-          // the order, which is also wrong but is the smaller of the two and is
-          // the one a merchant notices.
+          // Cannot fire while an envelope reaches only the stream of its own
+          // order's merchant, so no test covers it. It stays because if the two
+          // ever came apart the order would go to the wrong merchant; with it,
+          // nobody is given the order, the smaller and more noticeable wrong.
           { merchantId },
         );
       } catch (thrown) {
@@ -1726,11 +1341,9 @@ export class Gateway {
       }
 
       if (applied.outcome === "refused" && applied.rejection.retryable) {
-        // The machine will take this hand-over, just not yet — a charge on this
-        // order is being executed and it will not answer anything else until it
-        // reports. The order goes back on the stream rather than being dropped,
-        // because dropping it is how an order that was paid for never reaches a
-        // merchant at all.
+        // Refused for now because a charge on this order is being executed.
+        // The order goes back on the stream, since dropping it would leave a
+        // paid order that never reaches the merchant.
         await this.#putBack(merchantId, delivery.envelope, at, config.settleInFlightRetryMs);
         finished.push(delivery.handle);
         continue;
@@ -1738,26 +1351,18 @@ export class Gateway {
 
       if (applied.outcome !== "moved") {
         if (applied.outcome === "no_such_order") {
-          // Orders are never deleted, so inside this loop that answer has one
-          // meaning: the scope above refused an envelope whose order is not
-          // this merchant's. It cannot happen while an envelope only ever
-          // reaches the stream of the merchant on its own order — which is why
-          // it is said out loud rather than counted as an ordinary ending. A
-          // silence here is the one way the belt could catch something and
-          // nobody find out.
+          // Orders are never deleted, so this means the scope refused an order
+          // that is not this merchant's. That cannot happen while envelopes
+          // reach only their own merchant's stream, so it is logged loudly.
           console.error(
             `[gateway] ${merchantId} drew an envelope for ${orderId}, which is not their order`,
           );
         }
-        // The machine will not record the hand-over, so nobody is given the
-        // order. It refuses one wherever passing it on would ask a merchant to
-        // work on a purchase that is over, or hand them a parcel whose buyer's
-        // address is already erased, an open parcel they have taken on among
-        // them. One ending is not refused: an ordinary order that owes a
-        // refund is handed over again, because late goods still close the
-        // debt. A delivered order is refused because its purchase is over and
-        // reaches this line, which is where the second delivery seen on the
-        // stand used to leave from.
+        // The machine refused the hand-over, so nobody is given the order:
+        // passing it on would ask a merchant to work on a purchase that is
+        // over, or hand them a parcel whose buyer's address is already erased.
+        // An ordinary order that owes a refund is not refused, because late
+        // goods still close the debt.
         finished.push(delivery.handle);
         continue;
       }
@@ -1778,15 +1383,11 @@ export class Gateway {
   }
 
   /**
-   * A hand-over a poll drew and gave to nobody, back on the stream behind a
-   * delay with its identifier untouched.
-   *
-   * One carrying a parcel's address goes back only under the hold on its
-   * order, and not at all once the address is erased (ADR-0032): it was built
-   * when the order was handed over, and the merchant may have taken the order
-   * on while the poll was failing. Every other goes straight back, as it
-   * always has — under the hold, a put-back would fail exactly when the store
-   * is failing, which is when the poll needs it.
+   * Puts a hand-over a poll drew and gave to nobody back on the stream, behind
+   * a delay and with its identifier untouched. One carrying a parcel's address
+   * goes back only under the hold on its order, and not at all once the
+   * address is erased; every other goes straight back, because under the hold
+   * a put-back would fail exactly when the store is failing.
    */
   async #putBack(
     merchantId: string,
@@ -1803,23 +1404,13 @@ export class Gateway {
   }
 
   /**
-   * The price and availability for a question that came off the stream.
-   *
-   * The acknowledgement is the merchant's cue to release stock he set aside, so
-   * `used` has to mean what it says: the answer priced this purchase. It used to
-   * mean only that somebody was still listening, which is a different thing and
-   * wrong in the case that matters — the clock on our own patience can close the
-   * question a moment before an answer lands, and the merchant would have been
-   * told his price was taken while the sale went through at another one.
-   *
-   * So the answer is put to the machine here, and what the machine made of it is
-   * what comes back.
-   *
-   * A price no payment can be taken at is turned away before any of that, by
-   * the rule a card's price meets at publication, and it is turned away
-   * whichever question it names: the fault is in the answer, not in the
-   * question. A question still held stays open, so a corrected answer may
-   * still price the sale, and if none comes it ends as a silent one does.
+   * The price and availability for a question that came off the stream. The
+   * acknowledgement is the merchant's cue to release stock he set aside, so
+   * `used` means the machine took this answer as the purchase's price, not
+   * merely that the question was still held: our own clock can close it a
+   * moment before the answer lands. A price no payment can be taken at is
+   * refused first, by the rule a published card's price meets, and the
+   * question stays open for a corrected answer.
    */
   async answerQuote(
     merchantId: string,
@@ -1832,11 +1423,8 @@ export class Gateway {
     }
 
     const asked = this.#questions.get(priceId);
-    // A question this merchant was not the one asked is answered exactly as a
-    // question we no longer hold — a worker replaying an envelope from an hour
-    // ago, or one already answered. It priced nothing, and the answer says
-    // nothing about whether the identifier names a live sale of somebody
-    // else's.
+    // A question asked of another merchant is answered exactly like one no
+    // longer held, so the answer reveals nothing about somebody else's sale.
     if (asked === undefined || asked.merchantId !== merchantId) {
       return { used: false };
     }
@@ -1860,11 +1448,9 @@ export class Gateway {
       { merchantId },
     );
 
-    // The question is finished either way: it has been put to the machine, and
-    // a second answer to it can only be told the same thing. Whoever is parked
-    // on the purchase is woken either way too — if the answer priced it they
-    // have their price, and if it did not the order has already moved on and
-    // there is nothing left to wait for.
+    // Finished either way: a second answer could only be told the same, and
+    // whoever is parked on the purchase now has a price or nothing left to
+    // wait for.
     this.#questions.delete(priceId);
     this.quotes.answer(priceId, response);
 
@@ -1872,14 +1458,10 @@ export class Gateway {
   }
 
   /**
-   * What the merchant's handler returned for an order it was given.
-   *
-   * Every one of the four routes below names the merchant whose key opened the
-   * call, and hands it to the store as the scope of the hold on the order. An
-   * order belonging to somebody else is not found — the same answer an order
-   * that never existed gets — so a merchant holding an identifier out of a log
-   * cannot deliver, refuse or accept a stranger's sale, and learns nothing from
-   * trying.
+   * What the merchant's handler returned for an order it was given. Every
+   * answer route scopes the hold on the order to the calling merchant, so
+   * another merchant's order is not found, the same answer as one that never
+   * existed.
    */
   async answerOrder(
     merchantId: string,
@@ -1897,16 +1479,11 @@ export class Gateway {
   }
 
   /**
-   * The goods, held to the card that sold them before anything is written down.
-   *
-   * The check is here rather than in the machine because it is a fact about a
-   * card and the machine knows nothing about cards — it decides what a delivery
-   * does to an order, not whether these are the goods. And it is before the
-   * interpreter rather than inside it because the answer to a delivery that
-   * does not fit is that nothing happened: no goods on the order, no receipt,
-   * no instant moved, and the delivery still open with the merchant so his own
-   * clock and our redelivery are unchanged. That is the same shape as an event
-   * the machine refuses, arrived at one step earlier.
+   * Records a delivery, after holding the goods to what the order was sold
+   * with. The check is outside the machine, which knows nothing about cards,
+   * and comes first because a delivery that does not fit must change nothing:
+   * no goods on the order, no receipt, and the hand-over still open so its
+   * clock and redelivery are unchanged.
    */
   async deliverOrder(
     merchantId: string,
@@ -1914,26 +1491,17 @@ export class Gateway {
     delivery: Delivery,
     from: "handler" | "call" = "call",
   ): Promise<OrderCallResponse | null> {
-    // Read before the check, so that an order that is not this merchant's is
-    // answered exactly as one that never existed — the same silence every other
-    // call of his gets, and one that tells him nothing about a stranger's sale.
+    // Read before the check, so an order that is not this merchant's is
+    // answered exactly as one that never existed.
     const record = await this.runtime.store.merchantOrder(merchantId, orderId);
     if (record === null) {
       return null;
     }
 
-    // Goods are weighed against the card only where they could actually be
-    // written, and that is the one condition the interpreter uses for the same
-    // fact: this order does not carry goods yet. A repeat is not weighed at
-    // all, and the reason is what a refusal would tell the merchant. The
-    // answer to a repeat is that the order already has its goods and nothing
-    // was done — true whatever the repeat carried — while a refusal is marked
-    // as worth calling again, which on a delivered order is an invitation to
-    // loop on a call that can never take anything. Delivery is at least once
-    // by design, so repeats are ordinary rather than a sign of trouble, and
-    // making one of them fail would turn a merchant's safe retry into a
-    // failure branch on a sale that went through.
-    //
+    // Goods are checked only where they could still be written: the order
+    // carries none yet. A repeat is not checked, because delivery is at least
+    // once and a refusal is marked retryable, which on a delivered order would
+    // turn the merchant's safe retry into a loop that can never succeed.
     const parcel = record.order.mode.parcel === true;
     const misfit =
       record.delivery === null ? await this.#goodsAgainstTheCard(record, delivery) : null;
@@ -1954,14 +1522,11 @@ export class Gateway {
       { merchantId },
     );
 
-    // A parcel's shipment is the one exception to the repeat above (ADR-0033).
-    // The same shipment sent again is the ordinary repeat, but a different one
-    // is refused rather than answered as one: the merchant would read "already
-    // delivered" as a correction taken, and the corrected number would vanish
-    // without a word. A parcel cannot be sent twice safely, so a recorded
-    // shipment stays as it was recorded. The comparison is with the order as
-    // the hold read it, not as it was read above: two different shipments sent
-    // at once both find nothing recorded there, and only one of them lands.
+    // A parcel's shipment is the exception to repeats: a different shipment is
+    // refused rather than answered "already delivered", which the merchant
+    // would read as a correction taken. It is compared with the order as the
+    // hold read it, because two shipments sent at once both find nothing
+    // recorded in the earlier read and only one lands.
     if (
       parcel &&
       applied.outcome === "moved" &&
@@ -2000,17 +1565,10 @@ export class Gateway {
   }
 
   /**
-   * Takes an order on, through the route written for it. Its answer is the
-   * same one the answer route gives with the word taken out, because the shape
-   * this route publishes has nowhere to put a word.
-   *
-   * That is thinner than it looks and is worth knowing rather than discovering.
-   * The word is not always `accepted`: an acceptance of an order already
-   * delivered is answered `already_delivered`, and a merchant who called this
-   * route rather than answering his handler does not hear it. He is not told
-   * anything untrue — a bare success is what this route promises — but he is
-   * told less, and widening the shape is a change to a published document
-   * rather than something to do here.
+   * Takes an order on through its own route, whose published answer has no
+   * room for the word the answer route carries. A merchant accepting an order
+   * already delivered therefore hears a bare success here rather than
+   * `already_delivered`: less than the whole truth, but nothing untrue.
    */
   async acceptOrder(
     merchantId: string,
@@ -2022,23 +1580,19 @@ export class Gateway {
   }
 
   /**
-   * Taking an order on, once, for both the routes that do it.
-   *
-   * The full answer with the word in it, because the caller that needs it is
-   * the one that cannot say anything else: the SDK posts every handler answer
-   * to the answer route without the merchant asking and reports anything short
-   * of a success to him, so an acceptance that came back as a failure wrote a
-   * problem into his log for every asynchronous order that went through.
+   * Taking an order on, for both routes that do it. It returns the full answer
+   * with the word, because the SDK posts every handler answer to the answer
+   * route and reports anything short of a success to the merchant as a
+   * problem.
    */
   async #takeOrderOn(
     merchantId: string,
     orderId: string,
     _acceptance: Acceptance,
   ): Promise<OrderCallResponse | null> {
-    // The expected time to deliver is the merchant's estimate and not a
-    // commitment: what he is held to is the deadline on his card, which the
-    // order already carries. Writing his guess down beside it would put two
-    // numbers next to each other where only one is enforced.
+    // The acceptance's expected delivery time is an estimate and is not
+    // stored: the merchant is held to his card's deadline, and two numbers side
+    // by side would suggest both are enforced.
     const at = this.runtime.clock();
     const applied = await this.runner.apply(
       orderId,
@@ -2052,12 +1606,9 @@ export class Gateway {
 
   /**
    * This merchant's orders, or with `open` only the ones a restarted worker
-   * should walk.
-   *
-   * The store's own open flag is the machine's, and the sweep reads that. The
-   * list a merchant walks is narrower: an unpaid quote that never reached him
-   * is not work he owes, and putting it here is how a restart delivers goods
-   * for a purchase that never happened.
+   * should walk. That list is narrower than the store's open flag: an unpaid
+   * quote is not work the merchant owes, and listing it would have a restart
+   * deliver goods for a purchase that never happened.
    */
   async orders(merchantId: string, open: boolean | undefined): Promise<readonly StoredOrder[]> {
     const records = await this.runtime.store.orders(
@@ -2074,19 +1625,16 @@ export class Gateway {
 
   /**
    * Puts the price question to the merchant and waits out our own patience for
-   * it. Whatever comes back — an answer, a refusal to sell, or nothing at all —
-   * reaches the machine as an event, and what it costs the order is decided
-   * there. The question has its name already.
+   * it; whatever comes back, silence included, reaches the machine as an event.
    */
   async #askThePrice(record: StoredOrder, stored: StoredCard, priceId: string): Promise<void> {
     const { queue, ids, clock, config } = this.runtime;
     const orderId = record.order.id;
     const askedAt = clock();
 
-    // Registered and parked before the question goes out, not after. A worker
-    // sitting on a poll is woken by that publish, and a merchant whose handler
-    // answers inside a millisecond would otherwise find nobody listening and
-    // have his price thrown away.
+    // Registered and parked before the question goes out: a worker on a poll
+    // is woken by the publish, and a fast answer would otherwise find nobody
+    // listening and be thrown away.
     this.#questions.set(priceId, { orderId, merchantId: record.merchantId });
     const parked = this.quotes.wait(priceId, config.deadlines.quoteResponseMs);
 
@@ -2097,28 +1645,19 @@ export class Gateway {
       payload: {
         merchant_item_id: stored.card.merchant_item_id,
         params: { ...record.params },
-        // Where a parcel goes, as a place and nothing about who (ADR-0032): a
-        // question like this one reaches the merchant for purchases that are
-        // never made, and a shipping rate needs the place alone.
+        // Where a parcel goes, as a place and nothing about who: this question
+        // reaches the merchant for purchases that are never made, and a
+        // shipping rate needs the place alone.
         ...(record.shipTo === undefined || "erasedAt" in record.shipTo
           ? {}
           : { ship_to: localityOf(record.shipTo) }),
         price_id: priceId,
         purpose: "purchase",
-        // Until when the price the merchant names will be honoured, which is
-        // what this field means to the merchant holding stock against it — not
-        // how long we are prepared to wait for the answer. The two are
-        // different numbers and the second is much the shorter, so sending it
-        // here told a merchant to release a unit while the gateway was still
-        // selling at that price.
-        //
-        // It cannot be exact at the moment of asking, because the price's own
-        // life starts when the answer lands and nobody knows yet when that will
-        // be. So this is the upper bound: an answer later than our patience is
-        // refused outright, so the price can never be alive past that patience
-        // plus its own life. Long is the safe direction — a merchant holds
-        // stock a little longer than needed; short is the direction that
-        // oversells.
+        // Until when the named price will be honoured, which is what the
+        // merchant holds stock against, not how long we wait for the answer.
+        // The price's life starts when the answer lands, so this is an upper
+        // bound: a later answer is refused, and erring long only holds stock a
+        // little longer, while erring short oversells.
         expires_at: asTimestamp(
           askedAt + config.deadlines.quoteResponseMs + config.deadlines.quoteTtlMs,
         ),
@@ -2128,10 +1667,9 @@ export class Gateway {
     if (record.shipTo === undefined) {
       await queue.publish(record.merchantId, question);
     } else {
-      // A parcel's question carries the place it goes, so it is written under
-      // the hold on the order like everything else that carries the address:
-      // a slow stream could otherwise land it after the order had ended on our
-      // patience and its address had been erased (ADR-0032).
+      // A parcel's question carries its place, so it is written under the hold
+      // on the order: a slow stream could otherwise land it after the order
+      // ended and its address was erased.
       await this.runner.sendWhileTheAddressIsHeld(orderId, () => question);
     }
 
@@ -2139,35 +1677,19 @@ export class Gateway {
     this.#questions.delete(priceId);
 
     if (answered === null) {
-      // Nobody said what it costs. The machine decides what that is worth, by
-      // mode: where the merchant's live answer still stands between the price
-      // and the charge, the card's own number sells; where the money moves at
-      // the purchase, the sale does not happen.
+      // Nobody named a price; the machine decides by mode whether the card's
+      // own price sells.
       await this.runner.apply(orderId, { kind: "quote_silent", at: clock() });
     }
   }
 
   /**
    * What is wrong with these goods against what this order was sold with, or
-   * null where nothing is.
-   *
-   * The order is held to its own promise, never to the card as it stands. A
-   * merchant may republish under the same key while an order of his is still
-   * in flight — the catalog keeps one version per key — and holding the goods
-   * to the newer card went wrong both ways: a result loosened after the sale
-   * let through goods the agent was not promised, and for an order paid for
-   * under the old card, delivering exactly what the agent read was refused,
-   * so the sale could not be closed at all and ran to a refund. So the order
-   * keeps what it was sold with from the moment it is made: a parcel's that it
-   * is a parcel (ADR-0033), and everybody else's the result its card declared.
-   *
-   * An order written before it kept a result of its own is held to the card as
-   * it stands, which is what held every order then. That reading has an end:
-   * once no order for goods on either channel is both without a delivery and
-   * without the field — closed ones included, since a late answer still
-   * reaches this check — it goes, and an order for goods with no result of its
-   * own becomes the impossible case the missing card below already is. The
-   * question is kept in `docs/research/00-open-questions.md`.
+   * null where nothing is. The order is held to its own promise, never to the
+   * card as it stands: the catalog keeps one version per key, and a card
+   * republished mid-order would let through goods the agent was not promised
+   * or refuse exactly what it read. An order stored without a result of its
+   * own is held to the card as it stands.
    */
   async #goodsAgainstTheCard(record: StoredOrder, delivery: Delivery): Promise<CallError | null> {
     const parcel = record.order.mode.parcel === true;
@@ -2183,31 +1705,18 @@ export class Gateway {
     const goods = parcel
       ? "this is not a parcel's shipment, so nothing was written down"
       : `these goods are not what this order for "${cutShort(record.merchantItemId)}" was sold with, so nothing was written down`;
-    // The findings travel twice over, and on purpose. `problems` is the list a
-    // handler can walk field by field and fix; the sentence is what a person
-    // reads in a log, where nothing is going to walk anything. The sentence
-    // names a few of them and counts the rest, so the two are not the same
-    // text — one is the whole account, the other is enough to recognise it by.
+    // The findings travel twice on purpose: `problems` for a handler to walk
+    // field by field, and a sentence naming a few and counting the rest for a
+    // person reading a log.
     const problems = findingsOf(fit.error.issues);
     const misfits = misfitsIn(problems);
 
-    // Two facts are true of a misfit delivery to an order whose ending has
-    // already come, and only one of them was being said. "Nothing was written
-    // down and this order still stands where it did" is literally true — the
-    // call moved nothing — and reads as "the sale is still yours"; marked
-    // retryable beside it, it is an instruction to fix the handler and send
-    // again. There is nothing to send it to. He would find out on the next
-    // call, having made the goods twice.
-    //
-    // So a closed order says it is closed, in the same words `refusedCall`
-    // uses for the machine's own refusals, and the fields that did not fit are
-    // still named: what he sent is his to know either way, and it is the
-    // ending rather than the misfit that decides what he can do next.
-    //
-    // A synchronous order past its deadline has ended whether or not the timer
-    // that closes it has fired yet: the machine decides its goods by the
-    // instant they arrive, and this has to say the same about goods that do
-    // not fit, or a sale already over is called worth delivering to again.
+    // On an order that has ended, "this order still stands" marked retryable
+    // would tell the merchant to fix his handler and make the goods again for
+    // a sale that is over. So an ended order says so and is not retryable,
+    // with the misfit fields still named. A synchronous order past its
+    // deadline counts as ended before its timer fires, as the machine judges
+    // goods by the instant they arrive.
     const ending = isOpen(record.order.state)
       ? this.#overdueSynchronously(record)
         ? "expired"
@@ -2225,10 +1734,9 @@ export class Gateway {
     return {
       code: "delivery_does_not_match_card",
       message: `${goods} and this order still stands where it did — ${misfits}`,
-      // He can fix his handler and deliver again; the order is his to finish
-      // until its own deadline says otherwise. The alternative — closing the
-      // order on the merchant's behalf — would end a sale he could still make,
-      // and would do it on the strength of one bad call.
+      // The merchant can fix his handler and deliver again until the order's
+      // deadline; closing it here would end a sale he could still make on the
+      // strength of one bad call.
       retryable: true,
       problems,
     };
@@ -2245,7 +1753,7 @@ export class Gateway {
 
   /**
    * The goods an order for goods is held to: the result it was sold with, or,
-   * for an order written before it kept one, the result its card declares now.
+   * for an order stored without one, the result its card declares now.
    */
   async #promiseOf(record: StoredOrder): Promise<ReturnType<typeof deliveryCheckFor> | CallError> {
     if (record.result !== undefined) {
@@ -2254,18 +1762,15 @@ export class Gateway {
 
     const stored = await this.runtime.store.cardById(record.itemId);
     if (stored === null) {
-      // Our own catalog has lost the card an order of ours was made against.
-      // Nothing removes a card, so this cannot be reached by anything a
-      // merchant does; if it ever is, the honest thing is to stop rather than
-      // to wave through goods nothing can be compared with.
+      // Nothing removes a card, so this is a defect: stop rather than wave
+      // through goods nothing can be compared with.
       throw new Error(
         `the order ${record.order.id} was sold against ${record.itemId}, and there is no such card to hold its goods to`,
       );
     }
     if (stored.card.result === undefined) {
-      // Nothing sent again can clear this, so it is not marked as worth
-      // sending again: the card declares no goods any more, and only putting
-      // them back on it, or refusing the order, moves this sale.
+      // Not retryable: only declaring the goods on the card again, or refusing
+      // the order, moves this sale.
       const why =
         "this order was sold for goods, and its card has since been republished as a parcel's, which declares no goods to hold these to";
       return {
@@ -2280,9 +1785,7 @@ export class Gateway {
 
   /**
    * Leaves a reminder that this delivery has gone unanswered, but never one
-   * that would land after the order's own deadline has already closed it —
-   * a redelivery decided after the ending is a decision about a purchase that
-   * is over.
+   * that would land after the order's own deadline has closed it.
    */
   async #remindMeIfNobodyAnswers(record: StoredOrder, handOver: string, at: number): Promise<void> {
     const { config, queue } = this.runtime;
@@ -2306,27 +1809,17 @@ export class Gateway {
       return { step: "settled", order: record, delivery: record.delivery };
     }
 
-    // An order that has a price and no payment behind it is one the agent has
-    // been told the price of and has not paid. Everything else in progress is
-    // ours or the merchant's to finish, and the agent is not sitting on it.
+    // Priced and unpaid is the agent's move; everything else in progress is
+    // ours or the merchant's to finish.
     const waitingToBePaid = record.order.price !== null && record.order.payment === "none";
     return waitingToBePaid ? { step: "pay", order: record } : { step: "under_way", order: record };
   }
 
   /**
-   * The document one of the merchant's calls is answered with.
-   *
-   * Where the machine had a word for him it is his; where it had none, the
-   * answer is that his own answer landed — and which word that is depends on
-   * what he answered, not on what the machine happened to do next. A refusal
-   * answered with "delivered" because the machine went quiet would be a receipt
-   * for goods that do not exist.
-   *
-   * The machine is quiet wherever it settles the order itself and has nothing
-   * left to add — a handler's own delivery or refusal is the common case, and
-   * an acceptance of an order already owed a refund is another. What the
-   * merchant is owed then is the news that his answer landed, in his own word
-   * for it.
+   * The document one of the merchant's calls is answered with. Where the
+   * machine has a word for him it is used; where it has none, the answer is
+   * his own word for what he sent, never one guessed from what the machine did
+   * next, or a refusal could come back as "delivered".
    */
   #answerFor(
     applied: Awaited<ReturnType<OrderRunner["apply"]>>,
@@ -2339,17 +1832,14 @@ export class Gateway {
       return { ok: false, error: refusedCall(applied.rejection) };
     }
     if (applied.outcome === "moved_on") {
-      // Only a caller that held the order to a hand-over is ever told this, and
-      // that is the reminder rather than any of the merchant's calls. Reaching
-      // it means somebody added a hand-over to one of those calls and left the
-      // merchant's answer to be worked out here; saying so is cheaper than
-      // guessing a word for him.
+      // Only the reminder holds an order to a hand-over, never a merchant's
+      // call, so reaching this is a defect; throwing beats guessing a word for
+      // him.
       throw new Error(
         `a merchant's ${landed} was held to a hand-over, and there is no answer written for an order that moved on`,
       );
     }
     if (applied.answer === null) {
-      // The machine took the event and had nothing to say back about it.
       return { ok: true, result: landed };
     }
     return orderCallResponseOf(applied.answer);
@@ -2372,19 +1862,10 @@ const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
 const NOTHING_TO_PAY_FOR: readonly OrderState[] = ["failed", "rejected", "declined", "cancelled"];
 
 /**
- * Why the machine would not take a merchant's call, in words that are true.
- *
- * The contract promises three codes mean one thing each, and the one this used
- * to send for every refusal — "the order reached an ending that no call
- * reopens" — was a lie about four of the five things the machine can say. A
- * merchant walking their own list of open orders and calling deliver on one in
- * the wrong state was told, in a code they are invited to branch on, that a
- * live order was dead.
- *
- * So a closed order says it is closed, and everything else sends the machine's
- * own word for what happened. Those are outside the promised three, which the
- * contract allows for — the set is open — and each carries the state it was in,
- * because "this has no meaning here" is only useful alongside where "here" is.
+ * Why the machine would not take a merchant's call. Only a closed order gets
+ * `order_already_closed`, because merchants branch on that code; every other
+ * refusal carries the machine's own code, which the contract's open set of
+ * codes allows, together with the state the order was in.
  */
 function refusedCall(rejection: TransitionRejection): CallError {
   const closed = !isOpen(rejection.state);
@@ -2398,27 +1879,13 @@ function refusedCall(rejection: TransitionRejection): CallError {
 }
 
 /**
- * One wallet in one spelling, or nobody.
- *
- * Every facilitator's answer about who paid passes through here, and none of
- * them promises a canonical address. The official exact-EVM facilitator returns
- * `authorization.from` exactly as the agent's client wrote it, and a client
- * writes it checksummed — mixed case. Two spellings of one wallet reaching the
- * ownership guard, which compares exactly, are two buyers, and the buyer who
- * paid is refused their own repeat because their client changed its mind about
- * capitals. So the address is lowercased once, here, where an outside answer
- * becomes an identity this system decides ownership with — not in any one
- * adapter, or the next adapter would need the rule again and the one that
- * forgot it would be the one nobody tested.
- *
- * A blank is not a name, and it has to become nothing rather than survive as an
- * empty string: the caller falls back to the payment's fingerprint with `??`,
- * which an empty string does not trigger. Left as it is, `""` would be one
- * identity shared by every payer nobody named, and the second sender of one
- * would be handed the first sender's purchase.
- *
- * What comes out of here is the only thing ever written to `paidBy`, so the
- * guard in `presentVerifiedPayment` compares normalised against normalised.
+ * One wallet in one spelling, or null. No facilitator promises a canonical
+ * address (a client writes it checksummed, in mixed case) and the ownership
+ * guard compares exactly, so the address is lowercased here, the only source
+ * of `paidBy`, rather than in each adapter. A blank must become null so the
+ * caller's `??` falls back to the payment's fingerprint; an empty string would
+ * be one identity shared by every unnamed payer, handing one sender another's
+ * purchase.
  */
 function walletThatPaid(payer: string | null): string | null {
   const wallet = (payer ?? "").toLowerCase();
@@ -2426,32 +1893,19 @@ function walletThatPaid(payer: string | null): string | null {
 }
 
 /**
- * The same envelope, going back on the stream now.
- *
- * Both callers are paths where it was drawn and then handed to nobody — the
- * hand-over could not be recorded, or the machine will take it but not yet. No
- * worker has seen this envelope, so the identifier it keeps costs nothing. The
- * stamp is what would be wrong: left alone it would date the message to a draw
- * that came to nothing.
- *
- * This is not how a merchant is sent an order a second time. That decision is
- * the machine's, and it produces a fresh envelope with a fresh identifier
- * (`redeliver_order` in runner.ts). So nothing here gives a worker a way to
- * recognise a repeat; the order's own identifier is what does that.
+ * The same envelope, restamped to go back on the stream now. No worker has
+ * seen it, so it keeps its identifier; a redelivery the machine decides on is
+ * a fresh envelope built elsewhere.
  */
 function sentNow(envelope: WorkerEnvelope, at: number): WorkerEnvelope {
   return { ...envelope, sent_at: asTimestamp(at) };
 }
 
 /**
- * One stored card as its own merchant reads it.
- *
- * The two selling fields come from different places on purpose. `selling` is
- * what a purchase of this card would actually meet, which is the merchant's own
- * word, the card's pause and whether that merchant could make a sale at all
- * folded into one by `sellingFor` — the same fold the order machine is given.
- * `paused` is the card's own flag, untouched, so a merchant can still see which
- * cards they took off themselves while everything is stopped.
+ * One stored card as its own merchant reads it. `selling` is what a purchase
+ * would meet, the same word the order machine is given; `paused` is the card's
+ * own flag, so the merchant still sees which cards they paused themselves
+ * while all selling is stopped.
  */
 function merchantCardOf(
   stored: StoredCard,
@@ -2468,13 +1922,9 @@ function merchantCardOf(
 }
 
 /**
- * One stored key as its own merchant reads it.
- *
- * Built field by field rather than by taking the row and dropping what should
- * not go out. The row carries no secret today — what is kept is a digest — so
- * the two would produce the same document; assembled by addition, a column added
- * to the row later arrives nowhere until somebody writes a line for it, and
- * assembled by subtraction it would arrive on every screen the moment it exists.
+ * One stored key as its own merchant reads it, built field by field rather
+ * than by dropping fields from the row, so a column added to the row later
+ * never reaches a screen by accident.
  */
 function merchantKeyOf(stored: StoredKey): MerchantKey {
   return {
@@ -2487,43 +1937,22 @@ function merchantKeyOf(stored: StoredKey): MerchantKey {
 }
 
 /**
- * How many misfits a refusal names before it starts counting instead.
- *
- * The answer a merchant's call comes back in has one line for the reason, not a
- * list, so everything wrong with a delivery has to fit in a sentence somebody
- * will read in a log. A card may declare a dozen fields and a broken handler
- * can miss all of them; naming them all makes a paragraph nobody reads, and
- * naming one makes a merchant fix his handler a field per round trip. Five is
- * enough to see the shape of the mistake, and what is left over is counted
- * rather than dropped in silence — a reader has to be able to tell "these five"
- * from "these five and eleven more".
+ * How many misfits a refusal's one-line message names before it counts the
+ * rest instead. The rest are counted rather than dropped, so a reader can tell
+ * "these five" from "these five and eleven more".
  */
 const MISFITS_NAMED = 5;
 
 /**
- * How much of one misfit is quoted before it is cut short.
- *
- * Counting the findings is not enough on its own and the reason is worth
- * writing down, because it is not obvious and it was found by measurement
- * rather than by reading. Every field the card never declared arrives as a
- * single finding whose own text lists all of them — three hundred undeclared
- * names come back as one finding fourteen thousand characters long, and a cap
- * on the number of findings never fires. What the merchant sends is what sets
- * that length, so this bound is on the letters as well as on the count.
- *
- * A hundred and sixty is a wide log line: enough for a path and a sentence
- * about it, or for the first several names in a list of them. A cut is marked
- * where it happens rather than left to look like the whole of the finding.
+ * How much of one misfit is quoted before it is cut short. Capping the count
+ * is not enough: every field the card never declared arrives in a single
+ * finding that lists them all, so its length is set by what the merchant sent.
  */
 const LETTERS_PER_MISFIT = 160;
 
 /**
- * One piece of somebody else's text, held to a length, saying where it was cut.
- *
- * Everything this trims comes from outside and none of it has a maximum of its
- * own: a card's `merchant_item_id` is any non-blank string the contract will
- * take, and a finding's words are set by what the merchant delivered. Marked
- * rather than silent, so nobody reads a cut as the whole of it.
+ * Somebody else's text held to a length, marked where it was cut so nobody
+ * reads a cut as the whole. Nothing it trims has a maximum of its own.
  */
 function cutShort(text: string): string {
   return text.length <= LETTERS_PER_MISFIT
@@ -2579,16 +2008,10 @@ function canonical(value: unknown): string {
 }
 
 /**
- * A card in a mode this channel does not sell yet, said as a finding on the
- * mode rather than discovered by the first buyer.
- *
- * A parcel sells on the test channel and not on the live one (ADR-0033). What
- * a lost parcel needs is not built anywhere yet: the operator's command that
- * records its refund, the merchant's view of whom to pay back, and the rule
- * about who may read a parcel's tracking. On the test channel the money is not
- * real, so a parcel lost there costs nobody; on the live one it would take real
- * money with none of that behind it, so it is refused with words that say why,
- * until it can be.
+ * A card in a mode this channel does not sell yet, refused as a finding at
+ * publication rather than discovered by the first buyer. A parcel sells only
+ * on the test channel: on the live one a lost parcel would take real money
+ * with no way yet to record its refund.
  */
 function notOnThisChannel(card: Card, environment: Environment): Problem[] {
   return card.fulfillment === "ship" && environment === "live"
@@ -2604,19 +2027,10 @@ function notOnThisChannel(card: Card, environment: Environment): Problem[] {
 }
 
 /**
- * A card that is not going in the catalog, with everything standing in its way.
- *
- * The findings are the answer and the sentence is how it is recognised: a
- * program reads `problems` field by field, and the message is one line for a
- * person reading a log. The merchant's own findings lead the list, because
- * they are the ones nothing on the card explains, and where there are any the
- * line names every one of them plainly — the merchant has no seller name, no
- * payout wallet — rather than quoting the first finding's long sentence cut off
- * before it says how to fix it. There are three at most and each is a few
- * words, so naming them all is never long. What is wrong with the card itself
- * is counted and the first of it quoted, as it is where the merchant is not at
- * fault, because a card can have a dozen findings and one of them can be as
- * long as what the merchant sent.
+ * A card that is not going in the catalog, with everything standing in its
+ * way. A program reads `problems`; the message is one line for a log, naming
+ * every merchant finding plainly, since each is a few words, and quoting only
+ * the first of the card's own, which can be many and long.
  */
 function cardRejected(
   merchant: readonly MerchantFinding[],
@@ -2627,9 +2041,8 @@ function cardRejected(
     error: {
       code: CARD_REJECTED,
       message: `this card was not published: ${whatStands(merchant, card)}`,
-      // The same card published again is refused again. What changes the
-      // outcome is fixing what the findings name, and saying so here keeps a
-      // merchant's retry loop off a door that will not open.
+      // The same card published again is refused again; only fixing what the
+      // findings name changes the outcome.
       retryable: false,
       problems: [...merchant.map((finding) => MERCHANT_PROBLEMS[finding]), ...card],
     },
@@ -2651,11 +2064,8 @@ function whatStands(merchant: readonly MerchantFinding[], card: readonly Problem
   const last = words.pop();
   if (last === undefined) {
     if (first === undefined) {
-      // "Refused, and here is nothing" is the one answer a merchant cannot act
-      // on, and it is not one this can send: a card is refused because
-      // something about it or about its merchant is wrong, and that something
-      // is what fills the list. Stopping here beats sending an answer the
-      // contract will not carry and nobody could use.
+      // A refusal naming nothing is a defect: the contract cannot carry it and
+      // nobody could act on it.
       throw new Error("a card was refused with nothing named as standing in its way");
     }
     const counted = card.length === 1 ? "one thing stands" : `${card.length} things stand`;
@@ -2673,35 +2083,12 @@ function whatStands(merchant: readonly MerchantFinding[], card: readonly Problem
 }
 
 /**
- * Each finding about the merchant, as the publish door says it.
- *
- * The path of every one is empty, because none is about a field of the card: a
- * merchant reading one would search their card for what is missing and find
- * nothing, which is why each message names what fixes it instead. Where a
- * call of the merchant's own fixes it, its address is written out rather than
- * described, so that the sentence works for whoever is reading it — a person
- * in a dashboard, and an engineer with a terminal and this response. Which of
- * them a merchant meets on which surface is the rule's business (`readinessOf`
- * in the core); what each says is this.
- *
- * The seller name: a card published without one is offered for sale through a
- * payment request that names no seller at all, so the agent reading it is
- * invited to pay somebody the request does not name. That has been shipped
- * from here once, silently.
- *
- * The wallet: the money from the card's sales would have nowhere to go. It is
- * set in the dashboard alone, so the sentence names the dashboard's Settings screen
- * rather than a call no merchant key may make. Nothing here offers to stand an
- * address of ours in for theirs, and the silence is the decision (ADR-0019):
- * the gateway is configured with an address, it is the operator's, and a card
- * published against it would send a merchant's takings to somebody else with
- * nobody the wiser.
- *
- * The operator's approval: there is no public call to name, because the
- * boundary exists precisely so a merchant key cannot cross it. Test publication
- * remains available while the live catalogue stays closed, which is the useful
- * next move the merchant can take without pretending they control this
- * decision.
+ * Each finding about the merchant, as the publish door says it. None is about
+ * a field of the card, so each path is empty and each message names what
+ * fixes it, writing out the merchant's own call where there is one. The
+ * wallet is set only in the dashboard, so its message names the Settings
+ * screen; the gateway's own configured address is the operator's and must
+ * never stand in for a merchant's, or their takings go to somebody else.
  */
 const MERCHANT_PROBLEMS: Readonly<Record<MerchantFinding, Problem>> = {
   no_seller_name: {
@@ -2741,11 +2128,10 @@ const MERCHANT_PROBLEMS: Readonly<Record<MerchantFinding, Problem>> = {
 };
 
 /**
- * A merchant's wallet, already read at an instant, as the route answers with it.
- *
- * The waiting change travels with the address rather than being left for a
- * second call, because a caller that reads its own old address back must be
- * able to see in the same answer that its change is waiting rather than lost.
+ * A merchant's wallet, already read at an instant, as the route answers with
+ * it. The pending change travels with the address, so a caller that reads its
+ * old address back sees in the same answer that its change is waiting, not
+ * lost.
  */
 function payoutWalletAnswer(wallet: StoredPayoutWallet): PayoutWallet {
   return {

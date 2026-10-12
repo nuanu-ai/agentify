@@ -1,24 +1,16 @@
 /**
- * The merchant command, wired to the database.
- *
- * It lists the merchants there are and their keys, disables a key and takes a
- * listing name away; it makes no merchant and issues no key, since a merchant
- * comes into being only through the link mailed to a person and the dashboard's
- * one control (ADR-0014). Against the local stack it is one line, run on the
- * gateway that is already up:
+ * The merchant command, wired to the database. It lists merchants and their
+ * keys, disables a key and takes a listing name away; it makes no merchant and
+ * issues no key, since a merchant comes into being only through the dashboard.
+ * Against the local stack:
  *
  *   docker compose exec app \
  *     pnpm --filter @agentify/gateway merchant list
  *
- * Outside Docker it needs the same DATABASE_URL the gateway itself is given,
- * and nothing else — no key of any kind, because nothing here goes over the
- * API:
+ * Outside Docker it needs only the DATABASE_URL the gateway is given:
  *
  *   DATABASE_URL=postgres://agentify:agentify@localhost:5432/agentify \
  *     pnpm --filter @agentify/gateway merchant list
- *
- * What this file does is only the wiring. The commands are in
- * `merchant-command.ts`, where they are tested without a database.
  */
 
 import { connect, PostgresStore } from "./adapters/postgres/store.js";
@@ -49,8 +41,8 @@ try {
     },
   );
 } catch (thrown) {
-  // The tables are not there. Said as its own thing, because the database's own
-  // sentence names a table nobody has heard of and does not say what to run.
+  // Missing tables get their own message, because the database's own names a
+  // table and does not say what to run.
   if (
     typeof thrown === "object" &&
     thrown !== null &&

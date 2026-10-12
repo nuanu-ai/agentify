@@ -1,14 +1,9 @@
 /**
- * The gateway's application, built for a command run beside the gateway that
- * is already up: `report-payment`, and the dashboard's `woo:recover`, which
- * delivers late goods for one order (ADR-0030).
- *
- * It is the same store on the same database, and a queue that writes and does
- * not consume: a second consumer on the reminders queue would take deadlines
- * away from the gateway that applies them. It asks no payment layer, because a
- * command records or delivers what was learned somewhere else, and asking again
- * is the thing these commands exist because we cannot do. And it announces
- * nothing, since nothing a command does changes a wallet or issues a key.
+ * The gateway's application for a command run beside a gateway that is already
+ * up, such as `report-payment`. Its queue writes and does not consume, because
+ * a second consumer on the reminders queue would take deadlines away from the
+ * gateway that applies them. It never asks the facilitator, since a command
+ * records what was learned elsewhere, and it announces nothing.
  */
 
 import { queueOn } from "./adapters/pgboss/queue.js";
@@ -28,7 +23,6 @@ const refusesToAsk: Facilitator = {
   },
 };
 
-/** The application, and what lets go of its connections when the command is done. */
 export interface CommandApplication {
   readonly application: Gateway;
   close(): Promise<void>;

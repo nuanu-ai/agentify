@@ -1,58 +1,16 @@
 /**
- * The promises the store keeps, written once and run against both of them.
+ * The store port's promises, run against memory under `pnpm test` and against
+ * Postgres under `pnpm test:db`, so the two adapters cannot drift apart.
  *
- * There are two stores: the one a deployment runs on, which is Postgres, and
- * the one the whole of the application logic is tested against, which is a
- * handful of maps in memory. Two implementations of one interface drift, and
- * the way they drift is that the fast one is the one everybody develops
- * against — so the promise an agent's purchase actually rests on is the one
- * nobody checked. Until this file the answer was prose: a comment in one test
- * file naming the other, and a reader trusted to keep them in step. This is the
- * same answer with teeth. The suite runs under `pnpm test` against memory and
- * under `pnpm test:db` against a real database, and a difference between them
- * is a failure rather than a surprise in front of a merchant.
+ * Only the port's promises belong here; what pins one adapter's machinery
+ * (frozen objects in memory; driver errors, pool listeners, advisory locks and
+ * migrations in Postgres) stays in that adapter's own test file. No assertion
+ * turns on elapsed time: an instant a case needs is passed in, except when a
+ * payment was claimed, which each adapter stamps with its own clock.
  *
- * The store handed back by `open` is empty and has nothing in it — no merchant,
- * no card, no order — because every test here builds what it needs and a store
- * carrying somebody else's leftovers is a store whose counts mean nothing.
- *
- * It also has to allow at least two decisions to be in flight at once. Two
- * cases hold a decision open while a second one runs, and against a database a
- * decision is a transaction holding a connection for as long as it lasts — so
- * a store on a pool of one would make the second wait for a connection rather
- * than for a lock. That is a different thing with the same shape, and it would
- * be reported as the defect those two cases are named for.
- *
- * Two things are deliberately kept out, and both for the same reason: they are
- * not promises about the port, they are promises about one adapter's machinery.
- *
- * The first is anything that pins an adapter's own materials. A returned object
- * that refuses to be edited is an in-memory concern — the Postgres adapter
- * hands back a fresh document on every read and would ignore an edit to it — so
- * it stays in the in-memory file. So do the round trips, the driver's error
- * codes, the pool's listeners, the advisory lock across two connections and the
- * migrations, which stay in the database file.
- *
- * The second is the clock and the identifiers. Nothing here asserts what an
- * identifier looks like beyond what the port says about it, and no assertion
- * turns on how long something took: where an instant is needed it is passed in.
- * Three cases do pause, and none of them is timing anything. Two hold a
- * decision open because a lock is the subject, and give the decision waiting on
- * it a bound so that a store which never answers is reported as that rather
- * than as a runner timing out. The third puts real elapsed time between two
- * claims on payments, because when a claim was made is the one instant neither
- * adapter takes from the caller, and a sweep has to be asked to tell one age
- * from another rather than only to take everything or nothing.
- *
- * What is not covered here is worth naming as plainly. `openOrders`,
- * `deliveredWithoutReceipt`, `runAlone` and `merchants` have no case in this
- * suite, because they had none in the in-memory file either and inventing
- * coverage is a separate piece of work from stopping two adapters drifting.
- * `runAlone` in particular is checked on Postgres across two pools, which is
- * where it can actually fail, and nowhere in memory. Writes that go alongside
- * an order — the envelopes of ADR-0013 — are also absent: what each adapter has
- * to arrange for them is its own, one transaction against one ordering, and
- * both files check theirs where the failure lives.
+ * `openOrders`, `deliveredWithoutReceipt`, `runAlone`, `merchants` and the
+ * envelopes written alongside an order have no case here. `runAlone` is checked
+ * only on Postgres, across two pools; the envelopes in each adapter's own file.
  */
 
 import type { Order } from "@agentify/core";
@@ -78,15 +36,9 @@ const card = (merchantItemId: string, title: string): Card => ({
 });
 
 /**
- * One order, as little of one as the store will accept.
- *
- * The instant it was created at is a parameter and not a constant, and what
- * that buys is a stable answer rather than a known one. Nothing here asserts
- * the order a merchant's list comes back in — the port promises none and the
- * comparisons above sort — but the database orders that list by this instant,
- * so orders sharing one would come back in whatever order the planner chose
- * that time. Distinct instants are what keep a list read twice the same list,
- * which is the difference between a suite that fails and a suite that flickers.
+ * The smallest order the store accepts. Give orders listed together distinct
+ * `createdAt` values: Postgres sorts a merchant's list by it, and ties come back
+ * in whatever order the planner picks, which makes a suite flicker.
  */
 const anOrder = (
   id: string,
@@ -158,13 +110,8 @@ const aReceipt = (id: string, orderId: string, outcome: Receipt["outcome"]): Rec
 });
 
 /**
- * What the work answered, or the news that it had not answered in time.
- *
- * The one case that needs this is the one where the failure is a wait that
- * never ends. Left to the runner, a store that made two orders share a lock
- * would show up as a test timing out after thirty seconds with nothing said
- * about why; with a bound of its own it shows up as an assertion naming the
- * thing that went wrong.
+ * What the work answered, or "still waiting" after `ms`, so a lock that never
+ * releases fails as an assertion rather than as a runner timeout.
  */
 async function answeredWithin<T>(ms: number, work: Promise<T>): Promise<T | "still waiting"> {
   let bell: ReturnType<typeof setTimeout> | undefined;
@@ -179,25 +126,16 @@ async function answeredWithin<T>(ms: number, work: Promise<T>): Promise<T | "sti
 }
 
 /**
- * The identifiers of a list of orders, in an order of this suite's own.
- *
- * Which order a merchant's orders come back in is not among the things the
- * port promises, and the two adapters do not arrive at one the same way: a
- * column decides it in the database and the sequence a map was filled in
- * decides it in memory. A comparison written as a sequence would therefore be
- * asserting whatever the fixture happened to produce, so what is compared is a
- * set, laid out in one order so a failure still reads as a list.
+ * The identifiers of a list of orders, sorted: the port promises no order for a
+ * merchant's orders, and the two adapters arrive at different ones.
  */
 async function idsOf(orders: Promise<readonly StoredOrder[]>): Promise<string[]> {
   return (await orders).map((held) => held.order.id).sort((one, other) => one.localeCompare(other));
 }
 
 /**
- * What a call that had to be refused was refused with.
- *
- * It fails rather than answering when nothing was refused, so that a store
- * which quietly accepted the write is reported as the defect it is instead of
- * as an assertion about `undefined`.
+ * What a call was refused with. Throws if the call succeeded, so a store that
+ * quietly accepted the write is reported as that.
  */
 async function refusalOf(work: Promise<unknown>): Promise<unknown> {
   try {
@@ -209,13 +147,8 @@ async function refusalOf(work: Promise<unknown>): Promise<unknown> {
 }
 
 /**
- * Everything an unhandled failure would put in a log.
- *
- * `console.error` prints an exception's causes as well as its own message, so
- * the whole chain is what actually reaches whatever collects the log — and the
- * whole chain is what a test about something that must not be written down has
- * to read. A refusal that carried the driver's own error as its cause would
- * pass a test that only read the top message.
+ * Everything `console.error` would print for a thrown value, causes included:
+ * a secret carried in a cause would pass a test that read only the top message.
  */
 function asLogged(thrown: unknown): string {
   const said: string[] = [];
@@ -227,13 +160,17 @@ function asLogged(thrown: unknown): string {
   return said.join(" ");
 }
 
-/** Runs the whole contract against one store. */
+/**
+ * Runs the whole contract against the stores `open` returns. Each must be
+ * empty, and must allow two decisions in flight at once: on a pool of one
+ * connection the second would wait for the connection rather than the lock and
+ * be reported as a locking defect.
+ */
 export function describeStore(name: string, open: () => Promise<Store>): void {
   describe(name, () => {
-    /** An empty store, for the few cases whose subject is a store with nothing in it. */
+    /** An empty store, for cases about a store with nothing in it. */
     const fresh = open;
 
-    /** A store with two merchants in it, which is what a card or an order needs. */
     const twoMerchants = async (): Promise<Store> => {
       const store = await open();
       await store.addMerchant({ id: A, name: "Merchant A" }, 1_000);
@@ -243,11 +180,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
     describe("a card", () => {
       it("is changed by being published again, and keeps its catalog identifier", async () => {
-        // The portal's promise: republishing under the same merchant_item_id is
-        // how a card is changed rather than how a second one appears. A merchant
-        // who corrected a typo and found two products in the catalog — one of
-        // them at an address agents already hold — would have been told the
-        // opposite.
+        // The portal tells a merchant to change a card by publishing it again; a
+        // second card would leave agents holding the address of the stale one.
         const store = await twoMerchants();
 
         const first = await store.publishCard(A, card("sku-1", "A room"), 10_000);
@@ -270,11 +204,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is one merchant's even where two merchants use one identifier", async () => {
-        // A merchant's own identifier for a product means something inside their
-        // catalog and nothing outside it, which is what the card contract has
-        // always said. Held unique across the gateway, the second merchant to
-        // publish a "sku-1" would edit the first merchant's card instead of
-        // publishing their own.
+        // Held unique across the gateway, a second merchant publishing "sku-1"
+        // would edit the first merchant's card instead of publishing their own.
         const store = await twoMerchants();
 
         const mine = await store.publishCard(A, card("sku-1", "A's room"), 10_000);
@@ -290,10 +221,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is published selling, and stays off sale across the next publish", async () => {
-        // A merchant editing a price is not asking for a product they took off
-        // sale to go back on it. A pause that evaporated on the next publish
-        // would put stock they do not have in front of an agent, and nothing
-        // would say so.
+        // Editing a price must not silently put a product the merchant took off
+        // sale back in front of agents.
         const store = await twoMerchants();
         const first = await store.publishCard(A, card("sku-1", "A room"), 10_000);
         expect(first.paused).toBe(false);
@@ -318,24 +247,19 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is another merchant's exactly as loudly as it is nobody's", async () => {
-        // Two silences that have to sound the same. A pause call that said "that
-        // is somebody else's" would be a way of finding out what a stranger
+        // Told apart, the two answers would let a merchant probe what a stranger
         // sells.
         const store = await twoMerchants();
         const theirs = await store.publishCard(B, card("sku-1", "B's room"), 10_000);
 
         expect(await store.setCardPaused(A, theirs.id, true)).toBeNull();
         expect(await store.setCardPaused(A, "item_nope", true)).toBeNull();
-        // And nothing happened to it.
         expect((await store.cardById(theirs.id))?.paused).toBe(false);
       });
     });
 
     describe("the catalog", () => {
       it("carries every card with its own merchant's word beside it", async () => {
-        // One catalog across every merchant is the product, and the selling word
-        // is per merchant: A stopping takes A's cards out of what an agent sees
-        // and leaves B's exactly where they were.
         const store = await twoMerchants();
         await store.publishCard(A, card("sku-1", "A's room"), 10_000);
         await store.publishCard(B, card("sku-1", "B's room"), 20_000);
@@ -349,18 +273,15 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("carries where each card's merchant is paid, and nothing where none is set", async () => {
-        // Whether a card may be offered at all turns on this: a merchant with no
-        // address has nothing that can be sold where the money is real, so a
-        // catalog read that lost the address would go on listing cards no
-        // purchase can complete. It is per merchant like the word beside it.
+        // Whether a card may be offered turns on this: a catalog read that lost
+        // the address would list cards no live purchase can complete.
         const store = await twoMerchants();
         await store.publishCard(A, card("sku-1", "A's room"), 10_000);
         await store.publishCard(B, card("sku-1", "B's room"), 20_000);
         const paid = {
           address: "0x0000000000000000000000000000000000000009",
-          // A change waiting beside it travels too, because a waiting change
-          // whose moment has passed is the address a sale is paid at, and a
-          // catalog read that dropped it would offer a card at the old one.
+          // Once its moment passes, a waiting change is the address a sale is
+          // paid at, so it travels too.
           pending: { address: "0x0000000000000000000000000000000000000008", takesEffectAt: 90_000 },
         };
         await store.setPayoutWallet(A, NO_WALLET, paid, 30_000);
@@ -376,11 +297,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("carries what each card's merchant is listed as, and nothing where nobody named one", async () => {
-        // The other half of whether a card may be offered, and it travels for
-        // the same reason: a payment request names the seller, and a merchant
-        // stripped of their name has nobody to be named — so a catalog read that
-        // lost the name would go on listing cards that invite an agent to pay
-        // somebody the request cannot identify.
+        // A payment request names the seller, so a catalog read that lost the
+        // name would list cards whose payment request could name nobody.
         const store = await twoMerchants();
         await store.publishCard(A, card("sku-1", "A's room"), 10_000);
         await store.publishCard(B, card("sku-1", "B's room"), 20_000);
@@ -411,17 +329,13 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
     describe("whether a merchant is selling", () => {
       it("is open until somebody says otherwise, and is remembered when they do", async () => {
-        // There is no state of the world in which we hold a merchant's cards and
-        // cannot say whether they are selling, so this never answers "I do not
-        // know" — and the answer it gives before anybody has pressed anything is
-        // the one the order machine has been given all along.
+        // Never "unknown": a merchant the store holds is either open or paused.
         const store = await twoMerchants();
 
         expect(await store.selling(A)).toBe("open");
 
         await store.setSelling(A, "paused");
         expect(await store.selling(A)).toBe("paused");
-        // One merchant's switch and nobody else's.
         expect(await store.selling(B)).toBe("open");
 
         await store.setSelling(A, "open");
@@ -429,12 +343,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is refused for a merchant the store does not hold, in either direction", async () => {
-        // Answering "open" for a merchant nobody can find would be selling on
-        // behalf of somebody who does not exist.
-        //
-        // The merchant is named in the refusal by both adapters and that is
-        // asserted, because the one thing an operator reading this needs is
-        // which merchant the gateway cannot find.
+        // "open" here would sell on behalf of somebody who does not exist. The
+        // refusal names the merchant, which is what an operator reading it needs.
         const store = await twoMerchants();
 
         await expect(store.selling("mch_nobody")).rejects.toThrow(/mch_nobody/);
@@ -444,9 +354,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
     describe("a merchant", () => {
       it("is written down once, and is not written over by a second attempt", async () => {
-        // One caller is the sandbox's seed, which runs at every start and finds
-        // its merchant there from the second start on. It must not replace the
-        // merchant that is there.
+        // The sandbox seed runs at every start and finds its merchant already
+        // there from the second start on.
         const store = await fresh();
 
         expect(await store.addMerchant({ id: A, name: "Merchant A" }, 1_000)).toMatchObject({
@@ -493,17 +402,11 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is listed under a name for a catalog only where somebody set one", async () => {
-        // The name a seller is listed under travels to strangers, and everything
-        // offline is tested against the in-memory store. A column that took a
-        // name and gave back something else — or, worse, one that answered for a
-        // merchant nobody named — would show up only in production, in a
-        // catalog.
         const store = await twoMerchants();
 
         const made = await store.merchantById(A);
         expect(made?.name).toBe("Merchant A");
-        // Nobody has named one, which is the ordinary state and is never filled
-        // in from the name a person reads at a terminal.
+        // Never filled in from `name`.
         expect(made?.serviceName).toBeNull();
 
         expect((await store.setServiceName(A, "Freeland", 3_000))?.serviceName).toBe("Freeland");
@@ -511,16 +414,14 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
         expect((await store.setServiceName(A, null, 4_000))?.serviceName).toBeNull();
         expect((await store.merchantById(A))?.serviceName).toBeNull();
-        // And the merchant beside them was never listed under anything.
         expect((await store.merchantById(B))?.serviceName).toBeNull();
 
         expect(await store.setServiceName("mch_nobody", "Freeland", 5_000)).toBeNull();
       });
 
       it("has a shop's site only where somebody gave one, and their own", async () => {
-        // The address an agent is sent to with a question the order cannot
-        // answer (ADR-0034). A column that answered for a merchant who gave
-        // none would send agents to somebody else's shop.
+        // Agents are sent here with questions the order cannot answer, so a site
+        // answered for a merchant who gave none sends them to somebody else's shop.
         const store = await twoMerchants();
 
         expect((await store.merchantById(A))?.sellerSite).toBeNull();
@@ -529,7 +430,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           "https://freeland.example",
         );
         expect((await store.merchantById(A))?.sellerSite).toBe("https://freeland.example");
-        // A site given leaves the name as it was, and the other way round.
+        // Setting the site leaves the listing name alone.
         expect((await store.merchantById(A))?.serviceName).toBeNull();
         expect((await store.merchantById(B))?.sellerSite).toBeNull();
 
@@ -539,38 +440,27 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is paid at a wallet only where somebody set one, and at their own", async () => {
-        // Where the money goes. Everything offline is tested against the
-        // in-memory store, so a column that took an address and gave back
-        // another — or one that answered with a merchant's address for the
-        // merchant beside them — would show up first on a chain, in a payment
-        // that cannot be called back.
+        // A wrong address here shows up first on a chain, in a payment that
+        // cannot be called back.
         const store = await twoMerchants();
 
-        // Nobody has said where the money goes, which is the ordinary state
-        // and is never guessed at from anywhere.
         expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(NO_WALLET);
 
-        // Written as a wallet shows it, which is what the one caller of this
-        // hands over — the store keeps what it is given and normalizes nothing,
-        // so the fixture is written in the form that actually arrives.
+        // Checksummed, as the caller hands it over: the store normalizes nothing.
         const wallet = { address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", pending: null };
         const written = await store.setPayoutWallet(A, NO_WALLET, wallet, 3_000);
         expect(
           written === null || written === "moved" ? written : written.payoutWallet,
         ).toStrictEqual(wallet);
         expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(wallet);
-        // And the merchant beside them is still paid nowhere.
         expect((await store.merchantById(B))?.payoutWallet).toStrictEqual(NO_WALLET);
 
         expect(await store.setPayoutWallet("mch_nobody", NO_WALLET, wallet, 5_000)).toBeNull();
       });
 
       it("refuses a second first address written over one that landed after it was read", async () => {
-        // Two changes read the same row with no address on it and nothing
-        // waiting, and the second to write finds an address the first put
-        // there. Only the address tells the two rows apart — nothing waits on
-        // either — so this is the case that proves the address itself is
-        // compared, not only the change beside it.
+        // Nothing waits on either row, so only comparing the address itself
+        // tells them apart.
         const store = await twoMerchants();
         const first = { address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", pending: null };
         const second = { address: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359", pending: null };
@@ -581,11 +471,9 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("keeps a waiting change beside the wallet paid now, with the moment it takes effect", async () => {
-        // ADR-0019: on the live deployment a replacement waits forty-eight hours
-        // after it is announced, and the address in every payment request until
-        // then is the one paid now. A store that dropped either half, or moved
-        // the instant by a millisecond, would pay a sale to the new address
-        // early or tell the merchant a moment that is not the one kept.
+        // Until the waiting change takes effect, sales are paid to the current
+        // address. Dropping either half, or moving the instant by a millisecond,
+        // would pay the new address early or show the merchant the wrong moment.
         const store = await twoMerchants();
         const now = { address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", pending: null };
         await store.setPayoutWallet(A, NO_WALLET, now, 3_000);
@@ -600,19 +488,15 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.setPayoutWallet(A, now, waiting, 4_000);
 
         expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(waiting);
-        // And cleared again, which is what a cancel writes.
+        // Cleared again, as a cancel writes it.
         await store.setPayoutWallet(A, waiting, now, 5_000);
         expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(now);
       });
 
       it("writes nothing where the wallet moved after it was read, and says so", async () => {
-        // Changes for one merchant are serialized by this: a change is
-        // announced between reading the row and writing it, and a second change
-        // recorded in that time must not be overwritten by the first — or the
-        // waiting address would be one whose message went out before the one
-        // that is now shown, and the merchant would be looking at the wrong
-        // change. So the write is conditional on the row still holding what was
-        // read, and a row that moved answers with a word rather than a merchant.
+        // This compare-and-set serializes one merchant's wallet changes: a change
+        // recorded between another's read and write must not be overwritten, or
+        // the merchant would be shown a different change from the one announced.
         const store = await twoMerchants();
         const now = { address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", pending: null };
         await store.setPayoutWallet(A, NO_WALLET, now, 3_000);
@@ -630,8 +514,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.setPayoutWallet(A, now, second, 5_000)).toBe("moved");
         expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(first);
 
-        // The same address with another moment is another row, too: a clock
-        // restarted in between is a change this write never read.
+        // The same address with another moment is another row: a restarted
+        // clock is a change this write never read.
         const restarted = { ...first, pending: { ...first.pending, takesEffectAt: 99_000 } };
         expect(await store.setPayoutWallet(A, restarted, now, 6_000)).toBe("moved");
         expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(first);
@@ -640,12 +524,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
     describe("a key", () => {
       it("names itself at the door as well as the merchant it belongs to", async () => {
-        // The door answers with the whole key rather than the merchant alone,
-        // and that is a rule rather than a convenience: a merchant cannot
-        // disable the key their own call was made with (ADR-0014 §5), and the
-        // door is the only place that knows which key that was. Answered with a
-        // merchant, the route would have to hash the header a second time and
-        // look it up again to find out.
+        // A merchant may not disable the key their own call was made with, and
+        // only the door knows which key that was.
         const store = await twoMerchants();
         await store.addKey({ id: "mk_a", merchantId: A, label: "A's", digest: "digest-a" }, 1_000);
         await store.addKey({ id: "mk_b", merchantId: B, label: "B's", digest: "digest-b" }, 2_000);
@@ -660,9 +540,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is refused once disabled, exactly as a key nobody was issued is", async () => {
-        // No oracle. A door that told "this key exists and is off" apart from
-        // "this was never a key" would confirm which guesses had once been real
-        // keys, which is the thing revoking a key has to stop.
+        // Told apart, the two would confirm which guesses had once been real keys.
         const store = await twoMerchants();
         await store.addKey({ id: "mk_a", merchantId: A, label: "A's", digest: "digest-a" }, 1_000);
 
@@ -673,7 +551,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("leaves its merchant's other keys working when it is disabled", async () => {
-        // The whole reason a key is a row rather than a variable.
         const store = await twoMerchants();
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
         await store.addKey({ id: "mk_2", merchantId: A, label: "two", digest: "digest-2" }, 2_000);
@@ -685,8 +562,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("keeps the instant it was first revoked at when it is revoked again", async () => {
-        // A retry after a dropped connection must not rewrite the one fact
-        // somebody reconstructing an incident is working from.
+        // A retry after a dropped connection must not move the instant an
+        // incident is reconstructed from.
         const store = await twoMerchants();
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
 
@@ -734,19 +611,9 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is listed oldest first, with the identifier settling a tie", async () => {
-        // The order of this list is the port's own promise rather than whatever
-        // storage happens to hand back, and it is the one list here that is
-        // asserted as a sequence for that reason. A merchant reads it on a
-        // screen: left to the database two keys stamped in one millisecond swap
-        // places between two visits with nothing having changed, and left to
-        // insertion order in memory the same list would mean something else
-        // again.
-        //
-        // A tie is the ordinary case and not a contrived one — a merchant
-        // issuing two keys in one sitting can land both in the same
-        // millisecond. The three below go in in an order that is neither
-        // answer, so what is read is the promise and not the sequence they were
-        // written in.
+        // The one list here whose order the port promises, because a merchant
+        // reads it on a screen. Two keys issued in one sitting often share a
+        // millisecond, and the keys go in an order that is neither answer.
         const store = await twoMerchants();
         await store.addKey(
           {
@@ -784,11 +651,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is disabled by the merchant it belongs to and by nobody else", async () => {
-        // This is what the dashboard's own button calls, rather than the unscoped
-        // verb beside it. A merchant's call must never move a stranger's key,
-        // and "not yours" and "not there" are one answer on purpose: told apart,
-        // a refusal would count somebody else's keys, and a merchant walking
-        // identifiers would learn which of them are real.
+        // What the dashboard calls. "Not yours" and "not there" are one answer,
+        // or a merchant walking identifiers would learn which keys are real.
         const store = await twoMerchants();
         await store.addKey({ id: "mk_a", merchantId: A, label: "A's", digest: "digest-a" }, 1_000);
         await store.addKey({ id: "mk_b", merchantId: B, label: "B's", digest: "digest-b" }, 1_000);
@@ -797,19 +661,14 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.disableKeyOf(A, "mk_b", 2_000)).toBeNull();
         expect(await store.disableKeyOf(A, "mk_nobody_was_issued", 2_000)).toBeNull();
 
-        // And B's key still opens the door, which is the fact those two nulls
-        // were protecting.
         expect((await store.workingKey("digest-b"))?.id).toBe("mk_b");
-        // The first revocation stays the true one here as well: a retry after a
-        // dropped connection must not move the instant somebody reconstructing
-        // an incident is working from.
+        // A retry keeps the first revocation's instant here too.
         expect(await store.disableKeyOf(A, "mk_a", 9_000)).toMatchObject({ disabledAt: 2_000 });
       });
 
       it("is found by its digest whatever state it is in, which the door is not", async () => {
-        // The one caller is the seed, which would otherwise issue a second key
-        // with a digest already taken every time it ran against a key somebody
-        // disabled.
+        // The seed asks this, and would otherwise reissue a taken digest every
+        // time it ran after somebody disabled its key.
         const store = await twoMerchants();
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
         await store.disableKey("mk_1", 2_000);
@@ -819,16 +678,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is refused for a merchant that is not there", async () => {
-        // A key that opens a door onto nothing is worse than a command that
-        // failed. In the database that refusal is a foreign key; in memory it is
-        // a guard standing in for one, and the two have to agree that this is a
-        // failure rather than a key.
-        //
-        // What is not asserted is the wording, and deliberately. The database's
-        // refusal reaches us as the driver's, and the driver's message happens
-        // to carry every bound parameter — so a test matching the merchant's
-        // name here would pass on a leak rather than on a sentence anybody
-        // wrote.
+        // The wording is not asserted: the driver's message carries every bound
+        // parameter, so matching the merchant's name would pass on a leak.
         const store = await twoMerchants();
 
         await expect(
@@ -846,11 +697,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is refused under an identifier another key already has", async () => {
-        // The identifiers are ours, so a clash is a defect in whatever issues
-        // them rather than anything a merchant can cause. What it must never be
-        // is a silent overwrite: one merchant's key replaced by another's, the
-        // first still in somebody's configuration and no longer opening
-        // anything, and nobody told.
+        // A clash is our defect, never a merchant's, but it must not silently
+        // replace a key that is still in somebody's configuration.
         const store = await twoMerchants();
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
 
@@ -866,20 +714,14 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           ),
         ).rejects.toThrow(/the key mk_1 is already written down/);
 
-        // The key that was there still opens its own door, and the one that was
-        // refused opens none.
         expect((await store.workingKey("digest-1"))?.id).toBe("mk_1");
         expect(await store.workingKey("digest-2")).toBeNull();
       });
 
       it("is refused under a digest another key already has", async () => {
-        // The door resolves a request by the digest alone, so two keys carrying
-        // one digest would be one secret opening two merchants' doors — and
-        // which merchant a request reached would come down to which row the
-        // database happened to hand back. The command that issues keys asks
-        // `keyByDigest` before it writes; this is what stands behind that when
-        // two issues race, and it is the database's own rule rather than a
-        // check somebody remembered.
+        // The door resolves a request by digest alone, so one digest on two keys
+        // is one secret opening two merchants' doors. The issuing command checks
+        // `keyByDigest` first; this is what holds when two issues race.
         const store = await twoMerchants();
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
 
@@ -900,17 +742,10 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is refused without ever saying the digest out loud", async () => {
-        // A digest is the stored form of a secret its owner was shown once and
-        // nothing can read back, and a refusal is the one moment the store has
-        // it in hand with something going wrong. The database's own refusal
-        // carries it twice over — in the statement's bound parameters and in
-        // the detail line naming the value that clashed — so a store that
-        // passed the driver's error along, or hung it on a refusal of its own as
-        // a cause, would put every merchant's stored secret into whatever
-        // collects the log the first time a key was issued twice.
-        //
-        // Both routes to a refusal are read, because the parameters of the
-        // insert carry the digest whichever of the two rules turned it away.
+        // The driver's refusal carries the digest in its bound parameters and its
+        // detail line, so a store that passed that error along, even as a cause,
+        // would log a stored secret. Both refusals are read: the insert carries
+        // the digest whichever rule turned it away.
         const store = await twoMerchants();
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
 
@@ -942,10 +777,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is made with no call recorded against it", async () => {
-        // A key that was written a moment ago and a key older than this column
-        // come back with the same empty answer, and that is the whole of what
-        // the row claims: no call has been recorded. It does not claim nobody
-        // has called, because for one of those two rows nobody looked.
+        // Null means no call was recorded, not that none was made.
         const store = await twoMerchants();
 
         const made = await store.addKey(
@@ -957,11 +789,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("carries the instant of the last call made with it, and no other key's", async () => {
-        // The whole point of the column: a merchant with three keys is asking
-        // which of them can be revoked, and nothing else on this row answers
-        // that. One key's use moving another's would answer it wrongly in the
-        // dangerous direction — a key that is in somebody's worker looking
-        // busy, or an idle one looking used.
+        // A merchant reads this to decide which key can be revoked, so one key's
+        // use must not mark another.
         const store = await twoMerchants();
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
         await store.addKey({ id: "mk_2", merchantId: A, label: "two", digest: "digest-2" }, 2_000);
@@ -973,11 +802,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("keeps the later call when two of them are written down out of order", async () => {
-        // Two gateway processes write this, each from its own clock, and the
-        // door thins the writes rather than serialising them — so an older
-        // instant can arrive after a newer one. Taken as written, the mark
-        // would jump backwards and a key in constant use would read as one
-        // nobody has touched since this morning.
+        // Several gateway processes write this from their own clocks without
+        // serialising, so an older instant can arrive after a newer one.
         const store = await twoMerchants();
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
 
@@ -988,10 +814,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("keeps the call it last carried when it is revoked", async () => {
-        // Revoking is the decision the mark is read for, and the row stays on
-        // the list afterwards. A revocation that cleared it would take away the
-        // evidence for the very thing it had just been used to decide, on the
-        // screen where "which key did I turn off, and why" is asked next week.
+        // The revoked key stays listed, and the mark is the evidence the
+        // revocation was decided on.
         const store = await twoMerchants();
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
         await store.noteKeyUse("mk_1", 5_000);
@@ -1003,28 +827,18 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
     describe("an order", () => {
       it("is written once under one identifier, and a second attempt is refused", async () => {
-        // An order written twice would be an order whose history is somebody
-        // else's: the second write carries a different state, a different price
-        // and possibly a different payer, and the first order — the one an agent
-        // is holding an identifier for — is gone. The database refuses this with
-        // a primary key and the in-memory store with a check, and what matters
-        // is that both refuse it in words the gateway can read rather than in a
-        // driver's.
+        // A second write would replace the order an agent holds an identifier
+        // for. Both adapters must refuse in their own words, not a driver's.
         const store = await twoMerchants();
         await store.addOrder(anOrder("ord_1", "created"));
 
         await expect(store.addOrder(anOrder("ord_1", "quoted"))).rejects.toThrow(
           /already written down/,
         );
-        // And the order that was there is untouched, which is the point of
-        // refusing.
         expect((await store.orderById("ord_1"))?.order.state).toBe("created");
       });
 
       it("is said not to be there rather than thrown about", async () => {
-        // An agent asking after an order that never existed is ordinary. The
-        // caller has to answer it, which it cannot do if the store crashes on
-        // it.
         const store = await twoMerchants();
 
         expect(await store.withOrder("ord_nope", () => ({ result: 1 }))).toStrictEqual({
@@ -1033,16 +847,10 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is held still, so two decisions cannot both write over the same read", async () => {
-        // This is the double-charge test. Two events about one order arrive from
-        // different places all the time — a payment and a deadline, an answer and
-        // a redelivery — and if both read the same order and both write, the
-        // second erases the first. Here that shows up as a lost increment; next
-        // to someone else's money it shows up as a charge that happened twice.
-        //
-        // The pause inside the decision is what a real transaction has and what
-        // a lock has to survive. What comes back is sorted rather than taken in
-        // order: the port promises that the three decisions do not overlap, not
-        // which of them goes first.
+        // Two events about one order (a payment and a deadline, an answer and a
+        // redelivery) arrive at once all the time, and a lost update here is a
+        // double charge. The pause stands in for a real transaction's length; the
+        // results are sorted because the port promises no overlap, not an order.
         const store = await twoMerchants();
         await store.addOrder(anOrder("ord_1", "created"));
 
@@ -1061,10 +869,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
         const decided = await Promise.all([bump(), bump(), bump()]);
 
-        // Sorted as numbers. JavaScript's own sort compares them as text, which
-        // agrees with the numbers only while there are fewer than ten of them —
-        // a comparison that would start lying the day somebody raised the count
-        // to eleven, and lie by passing.
+        // A numeric comparator: the default sort compares as text, which goes
+        // wrong past nine.
         expect(
           decided
             .map((lookup) => (lookup.found ? lookup.result : null))
@@ -1074,30 +880,13 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("does not make one order wait on another", async () => {
-        // Two orders are two locks. A store that made them one would put every
-        // decision in the gateway in a single queue behind whichever order is
-        // slowest, and the slowest is an order whose decision is waiting on a
-        // merchant. In memory the hold is a chain of promises per identifier; on
-        // Postgres it is `select ... for update`, and there the granularity is
-        // decided by the predicate that goes with it — a `for update` matching
-        // more than the one row locks that much of the orders table, which is
-        // precisely the mistake only a real database can make.
+        // On Postgres a `for update` whose predicate matches more than one row
+        // locks them all, and every decision would queue behind the slowest
+        // order. The first decision is held open and the second gets two seconds.
         //
-        // Staged the way it would actually go wrong. A decision about the first
-        // order is held open — an unresolved promise inside its callback, which
-        // on Postgres means a transaction still holding that row's lock — and a
-        // decision about the second is asked for while it is. If the two share a
-        // lock the second never answers, so it is given two seconds and then
-        // reports itself still waiting: the assertion below then names the
-        // defect, rather than the runner reporting a timeout with nothing said
-        // about why.
-        //
-        // Both decisions are let go and waited out in a `finally` whatever
-        // happens above, and that is not tidiness. A decision still in flight is
-        // a transaction still holding a row, so a test that walked away from a
-        // failed assertion would leave the next test's first write — the truncate
-        // that empties the table — waiting on it, and the failure would land
-        // somewhere other than here.
+        // Both are released and awaited in `finally`: a transaction left holding
+        // a row would stall the next test's truncate, and the failure would land
+        // there instead of here.
         const store = await twoMerchants();
         await store.addOrder(anOrder("ord_1", "created", { createdAt: 1_000 }));
         await store.addOrder(anOrder("ord_2", "created", { createdAt: 2_000 }));
@@ -1128,16 +917,9 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is still there to decide about after a decision about it failed", async () => {
-        // A decision that threw must not take the order with it: every later
-        // event about that order would inherit the failure and the order would be
-        // stuck for good — no deadline could close it, no answer from the
-        // merchant could move it, and nobody would be told.
-        //
-        // The two adapters arrive at this differently and that is the whole
-        // reason it is here. In memory the chain of promises has to be caught, or
-        // every later decision waits on a rejection; on Postgres the transaction
-        // is rolled back and the row lock goes with it, and a lock that outlived
-        // the failure would wedge the order just as thoroughly.
+        // Otherwise the order is stuck for good: no deadline closes it and
+        // nobody is told. Memory must catch its promise chain, and Postgres must
+        // release the row lock on rollback.
         const store = await twoMerchants();
         await store.addOrder(anOrder("ord_1", "created"));
 
@@ -1150,29 +932,15 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           found: true,
           result: "still here",
         });
-        // And the decision that failed wrote nothing.
         expect((await store.orderById("ord_1"))?.order.state).toBe("created");
       });
 
       it("is not written when the decision asked for nothing to be written", async () => {
-        // Leaving `save` out is how a read that changes nothing says so, and
-        // what it costs to get wrong is not tidiness. A store that wrote back
-        // whatever the decision was holding, rather than what it asked to have
-        // written, is a store where a call that changed nothing overwrites
-        // whatever landed while it was reading — the lost update `withOrder`
-        // exists to prevent, arrived at by the one call that was not trying to
-        // write at all.
-        //
-        // So the decision below builds the order it would have written and asks
-        // for none of it. A store taking that has taken a state nobody asked it
-        // to take, and the order is read back both plainly and through a second
-        // decision, because in both adapters those two arrive by different
-        // routes.
-        //
-        // What this cannot see is a store that wrote the order back byte for
-        // byte: the document is the same either way, and the instant a row was
-        // last written at is a column rather than anything the port promises.
-        // The database file asks about that column where it exists.
+        // A store that wrote back what the decision held, rather than what it
+        // asked to save, would let a read overwrite whatever landed meanwhile.
+        // The order is read back both plainly and through a second decision
+        // because each adapter reaches them by different routes. A byte-identical
+        // write-back is invisible here; the database file checks the row itself.
         const store = await twoMerchants();
         await store.addOrder(anOrder("ord_1", "created"));
 
@@ -1187,10 +955,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is not found by another merchant, and is not written by one either", async () => {
-        // The ownership is read under the same hold as the order itself, so
-        // there is no window between learning whose it is and acting on it — and
-        // the answer is the one an identifier naming nothing gets, so a merchant
-        // holding one out of a log learns nothing by trying it.
+        // Ownership is read under the same lock as the order, and the answer is
+        // an unknown identifier's, so trying one found in a log reveals nothing.
         const store = await twoMerchants();
         await store.addOrder(anOrder("ord_1", "created", { merchantId: B }));
 
@@ -1208,13 +974,9 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("does not change hands because a decision about it said so", async () => {
-        // A sale belongs to whoever made it, settled at the birth of the order
-        // and never again. The Postgres adapter writes the merchant from the row
-        // and leaves the column out of its update, so a save carrying a different
-        // one would put the new merchant in the document and the old one in the
-        // column — an order in one merchant's list whose envelopes go on
-        // another's stream. Nothing reaches this today; the two adapters
-        // agreeing is what keeps it that way.
+        // Postgres leaves the merchant column out of its update, so a save
+        // carrying another merchant would split the document from the column:
+        // an order in one merchant's list whose envelopes go on another's stream.
         const store = await twoMerchants();
         await store.addOrder(anOrder("ord_1", "created"));
 
@@ -1228,7 +990,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.orders(B)).toStrictEqual([]);
         expect((await store.merchantOrder(A, "ord_1"))?.order.id).toBe("ord_1");
         expect(await store.merchantOrder(B, "ord_1")).toBeNull();
-        // And the change the decision was actually making did land.
+        // The rest of the save did land.
         expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");
       });
 
@@ -1239,33 +1001,25 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
         expect((await store.merchantOrder(A, "ord_mine"))?.order.id).toBe("ord_mine");
         expect(await store.merchantOrder(A, "ord_theirs")).toBeNull();
-        // The buying surface's read is unscoped on purpose: the route that uses
-        // it takes no key, because the payment presented stands in for one.
+        // Unscoped on purpose: the buying route takes no key, and the payment
+        // presented stands in for one.
         expect((await store.orderById("ord_theirs"))?.order.id).toBe("ord_theirs");
       });
 
       it("is listed among the ones still owed something, or apart from them", async () => {
-        // The merchant's list of unclosed orders has to show the two the portal
-        // calls open after the purchase itself is over — a debt, and goods
-        // delivered against a charge that never landed. One adapter answers this
-        // from a column written on every save and the other works it out from the
-        // state each time, so a column that fell behind the document is exactly
-        // what this catches.
+        // Open includes a debt and goods delivered unpaid. Postgres answers from
+        // a column written on save and memory from the state, so this catches a
+        // column that fell behind the document.
         const store = await twoMerchants();
         await store.addOrder(anOrder("ord_open", "dispatched", { createdAt: 1_000 }));
         await store.addOrder(anOrder("ord_debt", "refund_due", { createdAt: 2_000 }));
         await store.addOrder(anOrder("ord_unpaid", "delivered_unpaid", { createdAt: 3_000 }));
         await store.addOrder(anOrder("ord_done", "delivered", { createdAt: 4_000 }));
-        // Another merchant's open order, which must be in neither list.
+        // Another merchant's open order, which must be in neither of A's lists.
         await store.addOrder(
           anOrder("ord_theirs", "dispatched", { merchantId: B, createdAt: 5_000 }),
         );
 
-        // Sorted before it is compared, because which order a merchant's list
-        // comes back in is not something the port promises and not something
-        // the two adapters arrive at the same way. Written as a sequence this
-        // would be asserting an accident, and it would go red one day for a
-        // reason that has nothing to do with the open column.
         expect(await idsOf(store.orders(A, { open: true }))).toStrictEqual([
           "ord_debt",
           "ord_open",
@@ -1274,13 +1028,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.orders(A)).toHaveLength(4);
         expect(await idsOf(store.orders(B))).toStrictEqual(["ord_theirs"]);
 
-        // And an order closing drops out of the open list, which is the half of
-        // the promise the lists above cannot make. Every order there was written
-        // into the state it is asserted in, so a store that decided once at
-        // insert and never again would pass all of it — and that store is
-        // precisely the failure the comment above describes, a column that fell
-        // behind the document it was written from. Closing one through a
-        // decision is what asks the question.
+        // Every order above was inserted in its final state, so only closing one
+        // through a decision catches a store that decides "open" at insert alone.
         await store.withOrder("ord_open", (found) => ({
           save: { ...found, order: { ...found.order, state: "expired" as const } },
           result: null,
@@ -1290,21 +1039,15 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           "ord_debt",
           "ord_unpaid",
         ]);
-        // Closed is not deleted: the unfiltered list is what somebody
-        // reconciling a day's orders reads.
+        // Closed is not deleted.
         expect(await store.orders(A)).toHaveLength(4);
       });
     });
 
     describe("a payment", () => {
       it("belongs to the first order that presented it, and to no other", async () => {
-        // This is the replay guard. A signed payment says how much, to whom and
-        // on which chain, and nothing about which purchase it is for — so
-        // without this, two orders at the same price are payable with one
-        // signature, both reach a merchant, both are delivered, and only the
-        // second charge fails. It is a map and a check in one store and one
-        // insert against a primary key in the other, which is the widest the two
-        // ever are apart.
+        // The replay guard: a signed payment does not name its purchase, so
+        // without this one signature pays for two orders at the same price.
         const store = await twoMerchants();
 
         expect(await store.claimPayment("fp-1", "ord_1")).toStrictEqual({ claimed: true });
@@ -1314,13 +1057,12 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         });
         // The refusal moved nothing: the order that holds it still presents it.
         expect(await store.claimPayment("fp-1", "ord_1")).toStrictEqual({ claimed: true });
-        // And a different payment is nobody's yet.
         expect(await store.claimPayment("fp-2", "ord_2")).toStrictEqual({ claimed: true });
       });
 
       it("is presented again by its own order without complaint", async () => {
-        // A dropped connection and a retry is the ordinary case, and the portal
-        // promises the merchant that repeating a call is safe.
+        // A retry after a dropped connection is ordinary, and the portal promises
+        // that repeating a call is safe.
         const store = await twoMerchants();
         await store.claimPayment("fp-1", "ord_1");
 
@@ -1328,11 +1070,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is let go by the order holding it and by nobody else", async () => {
-        // The claim is taken before the ownership decision and has to be, so a
-        // presentation the decision turns away must be able to give it back:
-        // otherwise a live authorisation is bound to an order that can never
-        // accept it, and the agent that lost the race is told "already spent" and
-        // pointed at somebody else's order. Only the holder may do it, or one
+        // The claim is taken before the ownership decision, so a presentation
+        // the decision turns away must give it back. Only the holder may, or one
         // buyer could free another buyer's signature.
         const store = await twoMerchants();
         expect(await store.claimPayment("fp-1", "ord_1")).toStrictEqual({ claimed: true });
@@ -1348,25 +1087,11 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is forgotten once it is older than the instant asked about", async () => {
-        // They cannot be kept forever: the route that makes them takes no key, so
-        // anybody can make as many as they like and a table that only grows under
-        // an open door is a table that fills up. And they cannot be thrown away
-        // early either — a claim swept while the payment it guards is still
-        // between verification and charge is the replay guard being off for that
-        // payment, silently.
-        //
-        // Which means the sweep has to tell one claim's age from another's, and
-        // the two extremes cannot show that. A sweep reaching a minute ahead
-        // taking everything and one reaching a minute back taking nothing is
-        // also what a sweep that ignored the instant entirely would do, if it
-        // simply compared against now. So there is a claim on either side of an
-        // instant in the middle, and the sweep is asked about that instant.
-        //
-        // When a claim was made is the one thing neither adapter takes from the
-        // caller — each stamps it with its own clock — so the gap between the
-        // two is real elapsed time rather than a number handed in. Twenty-five
-        // milliseconds either side, which is nothing to wait for and far wider
-        // than the microseconds either clock resolves to.
+        // Claims come through a keyless route, so kept forever they fill the
+        // table; swept early, the replay guard is off for a payment still being
+        // charged. Each adapter stamps a claim with its own clock, so the two sit
+        // real time either side of an instant, and the sweep is asked about that
+        // instant: the extremes alone would pass a sweep that ignored it.
         const store = await twoMerchants();
 
         await store.claimPayment("fp-old", "ord_1");
@@ -1375,11 +1100,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await new Promise((resolve) => setTimeout(resolve, 25));
         await store.claimPayment("fp-fresh", "ord_2");
 
-        // Nothing is old enough for a sweep reaching a minute back.
         expect(await store.forgetClaimsBefore(Date.now() - 60_000)).toBe(0);
 
-        // One of the two is older than the instant in the middle, and it is the
-        // older one that goes.
         expect(await store.forgetClaimsBefore(between)).toBe(1);
         expect(await store.claimPayment("fp-old", "ord_3")).toStrictEqual({ claimed: true });
         expect(await store.claimPayment("fp-fresh", "ord_3")).toStrictEqual({
@@ -1387,8 +1109,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           heldBy: "ord_2",
         });
 
-        // And a sweep reaching past all of them takes what is left. Two, because
-        // the older fingerprint was claimed again above.
+        // Two, because the older fingerprint was claimed again above.
         expect(await store.forgetClaimsBefore(Date.now() + 60_000)).toBe(2);
         expect(await store.claimPayment("fp-fresh", "ord_3")).toStrictEqual({ claimed: true });
       });
@@ -1414,18 +1135,14 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
         expect((await store.receipts(A)).map((held) => held.id)).toStrictEqual(["rcp_1"]);
         expect((await store.receipts(B)).map((held) => held.id)).toStrictEqual(["rcp_2"]);
-        // The agent's own answer to its purchase carries the receipt, and the
-        // agent has no key, so this read is unscoped on purpose.
+        // Unscoped on purpose: the agent reads its receipt without a key.
         expect((await store.receiptForOrder("ord_2"))?.id).toBe("rcp_2");
       });
 
       it("does not change hands when it is written again", async () => {
-        // The machine writes a receipt again as an order moves on, and the sweep
-        // writes one for an order that has none. Neither is an occasion for the
-        // sale to belong to somebody else — the Postgres adapter leaves the
-        // merchant out of its upsert and the in-memory one keeps the merchant it
-        // first wrote, which is a rule expressed by omission in both and
-        // therefore one nothing else would catch.
+        // A receipt is written again as its order moves on. Both adapters keep
+        // the first merchant by omission (Postgres leaves it out of its upsert),
+        // which nothing else would catch.
         const store = await twoMerchants();
         await store.putReceipt(A, aReceipt("rcp_1", "ord_1", "delivered"));
 

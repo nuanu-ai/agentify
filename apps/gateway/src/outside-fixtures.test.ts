@@ -1,23 +1,10 @@
 /**
- * Purchases walked the whole way through, with nothing borrowed.
- *
- * Everything the other tests reach for — the harness, the counted identifiers,
- * the worker loop, the cards — is built here from scratch instead. A fixture
- * that quietly supplies a field, a default or a step is exactly what would let
- * a gateway pass its own suite and fail the first real purchase, so this file
- * takes nothing from one. It publishes a card the way a merchant's SDK would,
- * reads the catalog the way an agent would, pays the way an x402 client does,
- * answers the way a handler does, and reads the receipt at the end.
- *
- * The last walk borrows less again: it begins with no merchant at all, registers
- * one over the same route a person would, and sells on the key that registration
- * generated and showed once. Nothing in it chooses a key, a digest or a
- * merchant, so a registration that wrote down the digest of something other than
- * what it printed leaves the sale not happening at all.
- *
- * The only things swapped are the three that would need a database, a queue
- * server and a payment network. Everything between the socket and the order
- * machine is what runs in production.
+ * Purchases walked the whole way through without the shared harness, worker
+ * loop or cards: a fixture that quietly supplies a field, a default or a step
+ * would let a gateway pass its own suite and fail the first real purchase.
+ * Only the database, the queue server and the payment network are swapped;
+ * everything between the socket and the order machine is what runs in
+ * production.
  */
 
 import { randomUUID } from "node:crypto";
@@ -34,9 +21,8 @@ import { buildApp } from "./http/server.js";
 import { nobodyAnnounces } from "./ports/announcer.js";
 
 /**
- * The key this walk carries. It is prefixed because the door reads the prefix
- * before it looks a digest up, and the gateway below is configured with the
- * default chain, which is a test one.
+ * Prefixed because the door reads the prefix before it looks a digest up, and
+ * the gateway below runs on the default chain, which is a test one.
  */
 const MERCHANT_KEY = "csk_test_the-merchant-key-for-this-walk";
 
@@ -54,22 +40,12 @@ async function aGatewayOnAPort() {
   const ids = () => randomUUID();
   const queue = new MemoryQueue();
   // The queue is made first because the store publishes through it: an envelope
-  // that must not be lost is written where the order is (ADR-0013).
+  // that must not be lost is written together with the order.
   const store = new MemoryStore(ids, () => Date.now(), queue.envelopes());
   const facilitator = new ScriptedFacilitator();
 
-  // A merchant and a key, written the way anything that makes one writes one:
-  // a row for the merchant, a name for the merchant to be sold under, an address
-  // for them to be paid at, and a row holding the digest of the key rather than
-  // the key. Nothing else in this file knows the merchant's identifier — the key
-  // is the only thing the calls below carry, and the door is what turns one into
-  // the other.
-  //
-  // Neither the name nor the address is scaffolding. A merchant listed under
-  // nothing publishes nothing, and on a gateway that settles for real neither
-  // does one with nowhere to be paid, so a walk that skipped either would be
-  // refused at its first card; the walk that registers, further down, is where
-  // being made to choose both is the subject rather than a precondition.
+  // The calls below carry only the key; the door turns it into the merchant.
+  // Without the name or the payout address the first publish would be refused.
   await store.addMerchant({ id: "mch_the_walk", name: "The merchant of this walk" }, Date.now());
   await setServiceName(store, "mch_the_walk", "The walk's own shop", Date.now());
   await setPayoutWallet(store, "mch_the_walk", THE_WALKS_WALLET, Date.now());
@@ -98,7 +74,8 @@ async function aGatewayOnAPort() {
   });
   await gateway.start();
 
-  // On the address it is called at; `serve` in the harness says why.
+  // Bound to the address it is called at: a wildcard bind can share its port
+  // number with another process's server on 127.0.0.1, which then gets the calls.
   const server = buildApp(gateway).listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const { port } = server.address() as AddressInfo;
@@ -145,8 +122,7 @@ async function aGatewayOnAPort() {
 function aMerchantsWorker(
   call: Awaited<ReturnType<typeof aGatewayOnAPort>>["call"],
   handle: (order: { id: string; merchant_item_id: string }) => Record<string, unknown>,
-  // Whichever key this merchant holds. The walk that registers gets its key
-  // from the registration itself and nothing here knows it in advance.
+  // The registering walk passes the key its registration generated.
   key: string = MERCHANT_KEY,
 ) {
   let running = true;
@@ -249,9 +225,7 @@ describe("a purchase from the outside", () => {
       });
       await worker.stop();
 
-      // The goods themselves come back in the answer to the purchase, inside
-      // the document the agent's own door answers with — where the order
-      // stands, what it was priced at, and the goods.
+      // The goods come back in the answer to the purchase itself.
       expect(bought.status).toBe(200);
       const answer = bought.body as {
         order_id: string;
@@ -448,20 +422,11 @@ describe("a purchase from the outside", () => {
   });
 
   it("walks a merchant from registering to a sale, on a key nothing here chose", async () => {
-    // The walk with the least borrowed of all. Every other test in this file
-    // starts from a merchant and a key written into the store by hand; this one
-    // starts from nothing, the way the dashboard starts — a merchant made, a key
-    // issued — and the key it sells with is the one the gateway generated and
-    // showed once. If issuing wrote a digest of anything but the string it
-    // handed back, or hung the key on a merchant other than the one it was
-    // asked for, the sale below simply does not happen — and that failure looks
-    // like a wrong key rather than like the defect it is, which is why it is
-    // worth walking rather than asserting on.
-    //
-    // It is also the whole road a new merchant walks: register, choose the name
-    // buyers will read, say where the money goes, publish, sell. Neither middle
-    // step is optional and this is where that is shown rather than asserted — a
-    // card published before them is refused, and the sale below never happens.
+    // Starts from no merchant and sells on the key the gateway generated and
+    // showed once. If issuing stored the digest of anything but the string it
+    // returned, or hung the key on another merchant, the sale below does not
+    // happen. It is also a new merchant's whole road: register, choose a name,
+    // say where the money goes, publish, sell.
     const gateway = await aGatewayOnAPort();
     try {
       const merchantId = await gateway.application.registerMerchant();
@@ -478,11 +443,9 @@ describe("a purchase from the outside", () => {
         fulfillment: "sync",
       };
 
-      // Nothing of theirs goes on sale before they have a name and somewhere to
-      // be paid. Published now, this card would be offered to a buyer's agent
-      // through a payment request naming no seller at all, with nowhere for the
-      // money to go — and the refusal names both, in one answer, rather than
-      // sending them round the loop twice.
+      // Published now, this card would reach a buyer's agent through a payment
+      // request naming no seller, with nowhere for the money to go. The refusal
+      // names both at once rather than sending the merchant round twice.
       const early = await gateway.call("POST", "/v0/catalog/publish", {
         headers: { authorization: `Bearer ${theirKey}` },
         body: card,
@@ -500,17 +463,12 @@ describe("a purchase from the outside", () => {
       });
       expect(named.status).toBe(200);
 
-      // And the address their sales are paid into, which is theirs: the
-      // challenge below names it, and the gateway's own configured address is a
-      // different string, so a card offered against ours would show up here.
-      //
-      // Sent in the lower-case spelling and read back in the one their wallet
-      // shows, which is what everything from here on holds. An address of all
-      // digits would read back the same whichever the canon was and would pin
-      // nothing, so this one has letters in it.
+      // Not the gateway's own configured address, so a card offered against
+      // that one would show up below. Sent lower-case and read back in the
+      // mixed-case spelling a wallet shows; it has letters so that the spelling
+      // is actually pinned.
       const theirWallet = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
-      //
-      // It is set the one way it can be, as a person signed in to the dashboard.
+      // Only a person signed in to the dashboard can set it.
       const paidAt = await gateway.application.setPayoutWallet(
         merchantId,
         theirWallet.toLowerCase(),
@@ -525,10 +483,9 @@ describe("a purchase from the outside", () => {
       expect(published.status).toBe(200);
       const itemId = (published.body as { id: string }).id;
 
-      // What a crawler asks for, and what it is told about the seller. This is
-      // the whole reason a merchant is made to choose a name: without one the
-      // challenge carries no seller at all, and the merchant is absent from
-      // every catalogue built from these with nothing anywhere saying why.
+      // What a crawler is told about the seller. Without a name the challenge
+      // carries none, and the merchant is silently absent from every catalogue
+      // built from challenges.
       const probed = await gateway.call("GET", `/x402/${itemId}/purchase`);
       expect(probed.status).toBe(402);
       const declared = decodePaymentRequiredHeader(probed.headers.get("payment-required") ?? "");
@@ -570,9 +527,8 @@ describe("a purchase from the outside", () => {
       const theKeys = listed.body as { keys: { id: string }[]; this_call: string };
       expect(theKeys.keys.map((key) => key.id)).toStrictEqual([theKeys.this_call]);
 
-      // Two keys for two workers, and the second retires the first — which is
-      // what a merchant does when a box is decommissioned, and the ordinary use
-      // of the call.
+      // Two keys for two workers, and the second retires the first, as when a
+      // box is decommissioned.
       const first = await gateway.call("POST", "/v0/keys", {
         body: { label: "the first worker" },
         headers: { authorization: `Bearer ${theirKey}` },
@@ -586,10 +542,8 @@ describe("a purchase from the outside", () => {
       const retiring = first.body as { key: { id: string }; secret: string };
       const other = second.body as { key: { id: string }; secret: string };
 
-      // A key cannot retire itself: that one click is the whole of what the
-      // rule covers, and the key still works after the refusal, because a
-      // refusal that had already written the revocation would be worse than no
-      // rule at all.
+      // A key cannot retire itself, and the refusal writes nothing: the same key
+      // retires the first one next.
       const itself = await gateway.call(
         "POST",
         `/v0/keys/${encodeURIComponent(other.key.id)}/disable`,

@@ -4,26 +4,13 @@ import type { StoredOrder } from "../ports/store.js";
 import { type Harness, harness } from "../testing/harness.js";
 
 /**
- * The last check before anything is written down.
- *
- * `moneyInvariantViolations` is a list of things a person would notice: a buyer
- * whose money is gone with nothing recording it, a merchant credited for goods
- * nobody paid for, a debt with no charge behind it. A violation is a defect
- * rather than a case, and the only safe thing to do about one is stop, because
- * the alternative is to write it down and carry on selling against it.
- *
- * Nothing the order machine produces breaks any of them, which is why an order
- * has to be built by hand here to test that the guard is real. That is exactly
- * the shape of the accident it exists for: an order that came out of a database
- * written by an older version of this code, or out of a defect nobody has found
- * yet.
+ * The runner refuses to write an order that breaks a money invariant: writing
+ * it down would mean selling against it. The order machine never produces such
+ * an order, so the tests build one by hand, the way a row from an older version
+ * or an undiscovered defect would arrive.
  */
 
-/**
- * The address the payments below were checked against, carried onto the order
- * with them. Nothing in this file turns on which address it is; what matters
- * elsewhere is that the charge is sent to the one the payer signed for.
- */
+/** The address the payments below were checked against; its value does not matter here. */
 const PAID_AT = "0x0000000000000000000000000000000000000009";
 
 const impossible = (): StoredOrder => {
@@ -119,11 +106,10 @@ describe("an order that cannot be true", () => {
 });
 
 /**
- * The same last check for a buyer's address (ADR-0032): a parcel's order holds
- * the whole of it exactly while the merchant does not have it yet, and only
- * when it was erased afterwards; no other order holds one. The machine never
- * produces anything else, so the orders here are built by hand, as the money's
- * are above.
+ * The same check for a buyer's address: a parcel's order holds the whole
+ * address exactly while its merchant does not have it yet, and afterwards only
+ * the instant it was erased; no other order holds one. The orders are built by
+ * hand, as above.
  */
 describe("an order that holds an address it should not", () => {
   /** An address in a real place, with the person and the number taken out of it. */
@@ -135,7 +121,7 @@ describe("an order that holds an address it should not", () => {
     phone_number: "+62 000 0000 0000",
   };
 
-  /** A parcel the merchant has taken on, as an order of one is. */
+  /** A parcel the merchant has taken on. */
   const takenOn = (): StoredOrder => {
     const record = impossible();
     return {
@@ -152,9 +138,8 @@ describe("an order that holds an address it should not", () => {
   };
 
   it("is not written down once the merchant has it, and the words do not repeat it", async () => {
-    // A parcel taken on whose address is still here: an order from a version
-    // of this code that kept it, or a defect that skipped the erasure. Writing
-    // it down again would keep a buyer's address nobody here needs.
+    // A parcel taken on whose address was never erased. Writing it down again
+    // would keep a buyer's address nobody here needs.
     open = await harness();
     await open.store.addOrder({ ...takenOn(), shipTo: address });
 
@@ -257,16 +242,11 @@ describe("an order that holds an address it should not", () => {
 
 describe("an effect that must be written down, asked for at the birth of an order", () => {
   it("stops before the order exists rather than after", async () => {
-    // Creation is the one path with nowhere to write such an effect: `addOrder`
-    // takes no writes to go alongside, so an effect that must not be lost has
-    // no unit of work here to be lost with. Nothing the machine produces at
-    // creation is one — a price question and a request to verify a payment,
-    // neither of which leaves a record — so, exactly like the money invariant
-    // above, this has to be asked for by hand to be checked at all.
-    //
-    // The instant matters as much as the refusal. Stopping after the order was
-    // written would leave a merchant with an order in the database and no work
-    // on his stream, which is the failure the whole of ADR-0013 is about.
+    // `addOrder` takes no writes alongside it, so creation has nowhere to put an
+    // effect that must not be lost. The machine never asks for one at creation,
+    // so the test asks by hand. The refusal must come before the order is
+    // written: after, the merchant would have an order in the database and no
+    // work on his stream.
     open = await harness();
     const published = await open.gateway.publishCard(open.merchant.id, {
       merchant_item_id: "esim",
@@ -297,12 +277,10 @@ describe("an effect that must be written down, asked for at the birth of an orde
 
 describe("an order whose next clock could not be started", () => {
   it("is not written down at all", async () => {
-    // Of the two ways this can fail, one is repairable and one is not. Written
-    // first and then failing to arm, the order has moved, no clock is on it,
-    // and the event that would come back is one the machine says no longer
-    // applies — so the delivery is marked done and the order hangs with nobody
-    // waiting on anything. Armed first and failing, nothing is written and the
-    // event comes back to an order that has not moved.
+    // The clock is armed before the order is written. Written first and then
+    // failing to arm, the order would have moved with no clock on it, the
+    // retried event would no longer apply, and the order would hang with nobody
+    // waiting on it.
     open = await harness();
     const published = await open.gateway.publishCard(open.merchant.id, {
       merchant_item_id: "esim",
@@ -352,9 +330,8 @@ describe("who an order belongs to", () => {
   };
 
   it("is settled by the first verified payment, and not taken from its owner", async () => {
-    // The ownership decision reads the order under the lock, so a payment that
-    // is not the order's own is turned away without a mark on it — the charge is
-    // never swapped for a stranger's, and the merchant is never paid with an
+    // Ownership is decided under the order's lock, so a stranger's payment is
+    // turned away without a mark: the charge is never swapped for an
     // authorisation the buyer did not present.
     open = await harness();
     const orderId = await waiting(open);
@@ -461,19 +438,13 @@ describe("an event held to the hand-over the order is waiting on", () => {
   });
 
   it("writes nothing at all once the order is waiting on something else", async () => {
-    // The reason the hand-over is read under the same hold that writes the
-    // change rather than by the caller beforehand. Everything that can happen
-    // between a caller's read and its write is a change to the hand-over it
-    // read: the merchant's answer landing, a worker recording one of its own,
-    // another delivery of the same reminder having done all of it already. Any
-    // of those and the event is about a delivery nobody is waiting on — a
-    // redelivery decided on it spends one of the order's five for a silence the
-    // merchant never had, and the closure at that cap on a paid order is a
-    // debt.
-    //
-    // The facts are held back with the event, the cleared hand-over among them.
-    // Writing that one would take away whatever hand-over the order is waiting
-    // on now, and the silence on that one would then be noticed by nobody.
+    // The hand-over is read under the same hold that writes the change, not by
+    // the caller beforehand: in between, the merchant's answer can land or
+    // another delivery of the reminder can act. A redelivery decided on a stale
+    // hand-over spends one of the order's five attempts on a silence that never
+    // happened, and the closure at that cap on a paid order is a debt. The
+    // cleared hand-over is held back with the event too: writing it would drop
+    // the hand-over the order is actually waiting on.
     open = await harness({ HANDLER_ANSWER_MS: "60000", DEFAULT_ASYNC_FULFILLMENT_MS: "60000" });
     const { orderId, handOver } = await handedOver(open);
 

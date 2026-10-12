@@ -1,29 +1,11 @@
 /**
  * Which facilitator client a configuration means, and how it authenticates.
  *
- * This is a fork between two addresses and nothing else. A gateway told to talk
- * to Coinbase's facilitator signs every call with the credentials it was given;
- * a gateway told to talk to anything else — the x402.org testnet facilitator,
- * something self-hosted — sends nothing at all. The sandbox never reaches here:
- * it settles against nothing and is chosen a level up, in `start.ts` (ADR-0020).
- *
- * The fork is on the address and deliberately not on whether credentials happen
- * to be set, and the difference is a security boundary rather than tidiness. A
- * bearer token is a key: it is good for the account it was issued to, and
- * handing it to whichever host an environment variable names would be handing
- * somebody's Coinbase credentials to a stranger because a line was left in a
- * file. Credentials go to Coinbase or they go nowhere.
- *
- * Nothing here contacts anything. Building the payment layer reads configuration
- * and returns an object, and the first request the process makes to a
- * facilitator is the first payment it has to ask about. That is a property worth
- * naming, because the obvious way to build this does not have it: the spike's
- * server — the Bazaar listing spike of docs/research/04, on the official all-in-one
- * resource server — synchronised its supported schemes with the facilitator
- * while starting, and died on startup when the facilitator was unreachable. A
- * storefront that a supplier's outage can stop from booting is a storefront that
- * cannot be relied on, so the sequence here is the machine's and the protocol is
- * the library's, which is the same division `http/x402.ts` draws.
+ * The fork is on the facilitator's address, never on whether credentials are
+ * set: Coinbase credentials are sent to Coinbase's facilitator and to nothing
+ * else, whatever host an environment variable names. Building a client
+ * contacts nothing, so an unreachable facilitator cannot stop the gateway from
+ * starting.
  */
 
 import { generateJwt } from "@coinbase/cdp-sdk/auth";
@@ -31,14 +13,10 @@ import { HTTPFacilitatorClient } from "@x402/core/server";
 import { isCdpFacilitator, type PaymentConfig } from "../../config.js";
 
 /**
- * The calls the client makes, and the method each is made on.
- *
- * A CDP token is signed against one method, one host and one path, and is
- * refused for anything else — so this table has to agree with what
- * `HTTPFacilitatorClient` actually requests. It does: the client posts to
- * `/verify` and `/settle` and gets `/supported`. The three names are also the
- * keys the library asks for its headers under, which is why the same table
- * serves both.
+ * The calls the client makes, and the method each is made on. A CDP token is
+ * good for one method, host and path only, so this must match what
+ * `HTTPFacilitatorClient` requests; the names are also the keys the library
+ * asks for headers under.
  */
 const OPERATIONS = {
   verify: "POST",
@@ -47,28 +25,13 @@ const OPERATIONS = {
 } as const;
 
 /**
- * A client that signs every call with Coinbase's credentials.
+ * A client that signs every call with Coinbase's credentials, using
+ * `@coinbase/cdp-sdk` for the signing. The token names the exact host and path
+ * the client will request: the client strips trailing slashes from the base,
+ * so this does too, and the host keeps its port as a `Host` header would.
  *
- * The signing itself is `@coinbase/cdp-sdk`'s and is not reimplemented here.
- * What a CDP token has to contain is somebody else's specification — the
- * algorithm chosen from the shape of the key, a nonce in the header, a claim
- * naming the one request the token is good for, a life measured in a couple of
- * minutes — and a gateway that wrote its own would be a second implementation of
- * that specification, wrong in ways that show up only against the live API. The
- * dependency is the commodity and the seam is ours.
- *
- * What is ours is the address arithmetic, and it is worth reading. The token
- * names the request it is good for, so the host and the path have to be the
- * host and the path the client will really ask for — and the client strips
- * trailing slashes off the base before joining `/verify` onto it, so a base
- * written with one would otherwise be signed for a path with two. The host
- * carries the port when there is one, because that is what a request's own
- * `Host` header carries.
- *
- * The `Correlation-Context` header the CDP SDK sends alongside is deliberately
- * not sent. It names the SDK and its version as the source of the call, and
- * this is not that SDK; sending it would be a claim about who is calling that
- * happens not to be true, and nothing in the API asks for it.
+ * The CDP SDK's `Correlation-Context` header is deliberately not sent: it
+ * would claim the call comes from that SDK.
  */
 export function cdpAuthenticatedClient(
   facilitatorUrl: string,
@@ -92,11 +55,9 @@ export function cdpAuthenticatedClient(
 
   return new HTTPFacilitatorClient({
     url: facilitatorUrl,
-    // Signed per call rather than once, because each token names the one
-    // request it is good for and expires in about two minutes. The library asks
-    // for all three at once and picks the one it needs, so all three are made;
-    // a flat headers object is refused by it outright rather than silently
-    // dropping the auth on every request.
+    // Signed per call because each token is good for one request and expires
+    // in about two minutes. The library asks for all three at once and picks
+    // the one it needs.
     createAuthHeaders: async () => {
       const [verify, settle, supported] = await Promise.all([
         bearerFor("verify"),
@@ -109,20 +70,9 @@ export function cdpAuthenticatedClient(
 }
 
 /**
- * The facilitator client this configuration asks for.
- *
- * Both branches build the library's HTTP client and the return type says so
- * rather than narrowing to the interface: what separates them is what goes on
- * the request, and `createAuthHeaders` is how the library itself answers that
- * question — which makes it the one place a test can read what a configuration
- * would send without sending it to Coinbase.
- *
- * The refusal below is a second lock on a door the configuration already holds
- * shut: `loadConfig` will not let a gateway start pointed at Coinbase without
- * credentials. It is repeated because this function can be called from anywhere
- * in the process, and a client built without them would not fail here — it
- * would fail at the first charge, in front of a buyer, with the facilitator
- * refusing every call for a reason nobody would connect to a missing variable.
+ * The facilitator client this configuration asks for. The missing-credentials
+ * refusal repeats `loadConfig`'s on purpose: without it a client built
+ * elsewhere would fail only at the first charge, in front of a buyer.
  */
 export function facilitatorClientFor(payment: PaymentConfig): HTTPFacilitatorClient {
   if (!isCdpFacilitator(payment.facilitatorUrl)) {
@@ -141,37 +91,13 @@ export function facilitatorClientFor(payment: PaymentConfig): HTTPFacilitatorCli
 }
 
 /**
- * Signs one request and throws the whole deployment away if it cannot.
+ * Signs one request locally before the gateway starts selling, and refuses to
+ * start if it cannot. A credential that is set but unusable (a truncated
+ * secret) would otherwise turn every purchase into "unknown". Nothing is sent
+ * to the facilitator; a client without credentials passes.
  *
- * A credential that is set is not the same as a credential that works, and the
- * gap between the two is a gateway that starts, looks healthy, takes purchases
- * and turns every one of them into "nobody knows". A truncated paste of a CDP
- * secret does exactly that: it satisfies every check that asks whether the
- * variable is there, and then fails inside the signer on each call, where the
- * failure is indistinguishable from a facilitator that is not answering. The
- * configuration cannot catch it — knowing whether a string is a usable key
- * means trying to sign with it, and that is the signer's business, not a
- * regular expression's.
- *
- * So it is tried, once, before the process starts selling. Nothing leaves the
- * machine: a token is local arithmetic over the key, and the facilitator is
- * neither contacted nor needed. A client with no credentials to prove signs
- * nothing and passes, which is why every deployment can run the same check
- * rather than it being a branch only some take.
- *
- * The signer's own complaint is not repeated, and the refusal is written here
- * instead. A refusal is read in terminals and copied into logs, so the one
- * thing that must never be in one is the key — and this function is never given
- * it, which is what makes that true rather than merely intended. The cause is
- * dropped rather than wrapped for the same reason: it is a sentence written by
- * a library this file does not control.
- *
- * There was a test asserting the refusal does not contain the secret. It was
- * deleted after the mutation check, which is the honest end for it: nothing
- * could make it fail. The key is not in scope here, and measured against the
- * signer, every malformed shape — truncated base64, a PEM block with rubbish
- * inside it — produces the same sentence about key formats with no material in
- * it. A test that cannot go red is green enclosed in itself.
+ * The signer's error is dropped rather than wrapped: a refusal ends up in logs,
+ * and only text written here is known not to carry key material.
  */
 export async function refuseUnlessCredentialsSign(client: HTTPFacilitatorClient): Promise<void> {
   try {

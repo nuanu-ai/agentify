@@ -1,36 +1,13 @@
 /**
- * The facilitator, over HTTP, through the official client.
+ * The facilitator, over HTTP, through the official `@x402/core` client. The
+ * requirements handed to it are always rebuilt from our own order, never taken
+ * from the payment, so a payment against a price the agent invented fails.
  *
- * The two calls are the library's — `@x402/core` carries the request shapes,
- * the retries and the timeouts — and what is added here is the part no library
- * can know: which order a payment is for, and therefore what it should have
- * been paid against. The requirements handed to the facilitator are rebuilt
- * from our own order rather than taken from the payment, so a payment made
- * against a price the agent invented is checked against the price we issued and
- * fails, which is the point.
- *
- * Three things are worth reading before this is trusted.
- *
- * A silence is not a no. Both calls answer "unknown" when the facilitator could
- * not be asked or did not answer, and the settle's silence in particular is the
- * one place where money may or may not have moved. Turning either into a
- * refusal here would put a guess where the order machine has a word for not
- * knowing.
- *
- * A no is not a silence either, and that is the other half of the same rule.
- * The facilitator sends some of its verdicts with a refusing status, and the
- * client raises those rather than returning them; read as silences they would
- * leave an agent waiting on an answer that already arrived. So a 4xx carrying
- * the facilitator's own verdict is read as the verdict it is, and everything
- * else — a 5xx, a timeout, a connection that was never made — stays a silence.
- * `refused` below is where that line is drawn and why.
- *
- * And the reason a verification failed is a best fit rather than a fact. The
- * order machine takes one of three reasons; a facilitator returns an open set
- * of strings and adds to it. The string it actually sent is kept in the message
- * and the closest of the three is chosen for the code, so the record is a
- * little coarser than what happened — never wrong about whether the payment was
- * refused, only about which of three shapes the refusal had.
+ * A silence is not a no, and a no is not a silence: a 4xx carrying the
+ * facilitator's verdict is that verdict, and everything else (a 5xx, a
+ * timeout, no connection) is "unknown". A verification failure's reason is a
+ * best fit among three codes; the facilitator's own string is kept in the
+ * message.
  */
 
 import type { PaymentVerificationFailure } from "@agentify/core";
@@ -70,21 +47,16 @@ export class X402Facilitator implements Facilitator {
     try {
       requirements = this.#requirements(charge);
     } catch (thrown) {
-      // Nothing here is a verdict on the payment. What could not be built is
-      // our own side of the question — the address this sale is paid at, the
-      // currency it is priced in — so the facilitator was never asked, nothing
-      // is claimed, and the sentence that travels is the one naming what is
-      // actually missing. Reported as a refusal it would tell a buyer their
-      // payment is bad, which it may not be, and send them looking through it
-      // for a fault that is on our side of the call.
+      // Our own side of the question could not be built (no payout address,
+      // a currency we cannot charge in). That is not a verdict on the payment,
+      // so it must not be reported as a refusal.
       return { verified: "unknown", message: describe(thrown) };
     }
 
     const mismatch = wrongOffer(payload.accepted, requirements);
     if (mismatch !== null) {
-      // The agent paid against something other than what we asked for. It never
-      // reaches the facilitator: whatever it would say, this is not a payment
-      // for this order.
+      // Paid against something other than what we asked for: not a payment for
+      // this order, whatever the facilitator would say.
       return { verified: false, reason: "price_stale", message: mismatch };
     }
 
@@ -92,10 +64,7 @@ export class X402Facilitator implements Facilitator {
     try {
       answered = await this.#client.verify(payload, requirements);
     } catch (thrown) {
-      // A facilitator that judged the payment and said so with a refusing
-      // status has answered, and the answer is the same one it sends with a
-      // 200. Reported as a silence it would leave an agent waiting on a verdict
-      // that already arrived.
+      // A verdict sent with a refusing status is still a verdict.
       if (thrown instanceof VerifyError && refused(thrown.statusCode)) {
         const said = thrown.invalidMessage ?? thrown.invalidReason ?? "no reason was given";
         return { verified: false, reason: shapeOf(thrown.invalidReason), message: said };
@@ -117,33 +86,26 @@ export class X402Facilitator implements Facilitator {
         `the charge on ${charge.orderId} was to be executed and the payment kept for it cannot be read`,
       );
     }
-    // Whatever stopped the requirements being built is thrown with its own
-    // sentence rather than folded into the one above. Both end the same way —
-    // the charge does not happen and somebody reads about it — and the reader
-    // is being sent either to the payment or to the merchant's settings, which
-    // is the whole of what the words decide.
+    // Throws with its own sentence, which points the reader at the merchant's
+    // settings rather than at the payment.
     const requirements = this.#requirements(charge);
 
     let answered: SettleResponse;
     try {
       answered = await this.#client.settle(payload, requirements);
     } catch (thrown) {
-      // A charge the facilitator turned away is a charge that did not happen:
-      // it refused the request rather than failing inside one, so no money
-      // moved. The spike met one of these — `self_send_not_allowed`, a payer
-      // paying himself — and held as a silence it would park an order waiting
-      // on an answer that had already come.
+      // Turned away (for example `self_send_not_allowed`, a payer paying
+      // himself): the request was refused before anything ran, so no money
+      // moved.
       if (thrown instanceof SettleError && refused(thrown.statusCode)) {
         return {
           settled: false,
           reason: thrown.errorMessage ?? thrown.errorReason ?? "no reason was given",
         };
       }
-      // Everything else is a silence, and the difference is where the money
-      // is. A timeout is an indeterminate outcome by the protocol's own
-      // account, and so is a facilitator failing inside itself: either may have
-      // completed the settlement before it stopped answering. Nothing is
-      // claimed and no second charge is sent.
+      // A timeout or an internal failure may have completed the settlement
+      // before it stopped answering. Nothing is claimed and no second charge is
+      // sent.
       return { settled: "unknown", reason: describe(thrown) };
     }
 
@@ -158,22 +120,15 @@ export class X402Facilitator implements Facilitator {
 
   /**
    * What this payment should have been paid against, rebuilt from our own
-   * order.
-   *
-   * It throws rather than answering null, and that is the whole reason it is
-   * apart from the decode above. Everything that can go wrong here is on our
-   * side of the call — a merchant with nowhere to be paid, a price in a
-   * currency this gateway cannot charge in — and each of them arrives with a
-   * sentence saying which. Caught together with the decode, all of it read as
-   * "this is not a payment", which is a claim about the payer's payment that
-   * nobody here is in a position to make.
+   * order. It throws, rather than answering null like the decode, because
+   * every failure here is on our side and must not read as "this is not a
+   * payment".
    */
   #requirements(charge: Charge) {
     return this.#edge.requirementsFor(charge, charge.orderId, charge.payTo);
   }
 }
 
-/** The payment as the protocol carries it, or nothing where it is not one. */
 function decoded(payment: string): PaymentPayload | null {
   try {
     return decodePaymentSignatureHeader(payment);
@@ -183,15 +138,10 @@ function decoded(payment: string): PaymentPayload | null {
 }
 
 /**
- * What an agent accepted, against what we asked for.
- *
- * Every field here is the agent's own unsigned copy of our requirements, so
- * none of it is evidence of anything — a payment that passes this check has
- * only shown that the agent copied our offer down accurately. What actually
- * binds a payment to an order is the claim taken on it before any of this runs,
- * and what binds it to an amount is the signature the facilitator checks
- * against the requirements we rebuilt. This is the cheap early refusal of a
- * request that was never going to work.
+ * What an agent accepted, against what we asked for. These fields are the
+ * agent's unsigned copy of our offer, so passing this proves nothing: it is
+ * only a cheap early refusal. The payment is bound to the order by the claim
+ * taken on it and to the amount by the facilitator's signature check.
  */
 function wrongOffer(
   accepted:
@@ -230,31 +180,17 @@ function wrongOffer(
 }
 
 /**
- * Whether two addresses on the chain are the same address.
- *
- * One address has two spellings and both are correct: the mixed case a wallet
- * shows, whose capitals are a checksum over the rest, and the same forty
- * characters in lower case. Which of them arrives here is decided by whatever
- * library wrote the agent's copy of our offer, and nothing in the protocol says
- * it must come back the way it was sent. Compared exactly, one address would be
- * two strings, and a client that normalises case would have every payment it
- * ever made refused as though it had paid a stranger — with a message saying so,
- * which is the part that would send its engineer looking in the wrong place.
- *
- * The checksum still does its work where it is read: at the door a merchant
- * types their address into, which is the one place a wrong character can still
- * be caught by anybody (ADR-0019). It is not a second meaning of the address
- * once it is on the wire.
+ * Whether two chain addresses are the same, ignoring case. An address has a
+ * checksummed and a lower-case spelling, and an agent's client may send back
+ * either; the checksum is enforced where a merchant enters their address.
  */
 const sameAddress = (theirs: string | undefined, ours: string): boolean =>
   theirs !== undefined && theirs.toLowerCase() === ours.toLowerCase();
 
 /**
- * The closest of the machine's three reasons to what the facilitator said.
- *
- * The facilitator's set is open and grows; these are the shapes seen so far.
- * An unrecognised reason is recorded as a refused authorisation, which is what
- * every one of them is at bottom, and the string itself travels in the message.
+ * The closest of the machine's three reasons to what the facilitator said. The
+ * facilitator's set of reasons is open; an unrecognised one is recorded as
+ * `signature`.
  */
 function shapeOf(reason: string | undefined): PaymentVerificationFailure {
   const said = (reason ?? "").toLowerCase();
@@ -268,26 +204,14 @@ function shapeOf(reason: string | undefined): PaymentVerificationFailure {
 }
 
 /**
- * Whether a status carries the facilitator's own decision about this request,
- * as opposed to news about the facilitator.
+ * Whether a status carries the facilitator's own decision: a 4xx declines the
+ * request before anything moved, a 5xx may fail after. Only a body shaped as a
+ * verdict reaches here, so a proxy's error page or an empty 429 stays a
+ * silence.
  *
- * This is the line that decides which failures are answers and which are
- * silences, and it is drawn at the one place HTTP already draws it: a 4xx is
- * the facilitator declining the request, a 5xx is the facilitator failing
- * inside one. A decline happened before anything moved; a failure may have
- * happened after.
- *
- * Only a body the facilitator wrote in the shape of a verdict reaches either
- * branch — the client throws its structured error only when the failing
- * response parses as a verify or settle response — so a proxy's HTML error page
- * or a rate limiter's empty 429 is a plain throw and stays a silence. What is
- * being read here is a facilitator that answered, not a status seen on its own.
- *
- * The line is inferred from what the statuses mean, not measured against
- * Coinbase's facilitator: no test here has ever spoken to one. If it turns out
- * to answer a definite refusal with a 5xx, this reads that as "nobody knows",
- * which is the safe direction to be wrong in — an order waits for a person
- * instead of a buyer being told something false about his money.
+ * This line is inferred from what the statuses mean, not measured against a
+ * real facilitator. If one answers a definite refusal with a 5xx, it is read
+ * as unknown, which is the safe direction to be wrong in.
  */
 function refused(status: number): boolean {
   return status >= 400 && status < 500;

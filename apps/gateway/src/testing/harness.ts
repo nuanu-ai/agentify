@@ -1,15 +1,7 @@
 /**
- * A whole gateway on in-memory adapters, and a worker that behaves the way a
- * merchant's one does.
- *
- * This is test scaffolding and it is deliberately thin: it wires the real
- * flows to the real interpreter and the real order machine, and swaps only the
- * three things that would otherwise need a database, a queue server and a
- * payment network. What is being tested through it is the product, not this.
- *
- * The clock it hands out is the real one. Everything the flows do in memory is
- * microtasks, so nothing here waits for wall time unless a test asks it to; the
- * numbers a test passes in are what decide how long anything takes.
+ * A whole gateway with the real flows and order machine, in-memory adapters in
+ * place of the database, the queue server and the payment network, and a
+ * worker that behaves the way a merchant's does.
  */
 
 import type { AddressInfo } from "node:net";
@@ -71,13 +63,9 @@ export interface SeededMerchant {
   /** The row the key is, so a test can disable it. */
   readonly keyId: string;
   /**
-   * The address this merchant is paid at, which is theirs and no other seeded
-   * merchant's.
-   *
-   * It is carried out rather than left to be looked up because the assertions
-   * that need it are about whose address a challenge names, and a test that
-   * wrote the address in by hand would be pinning the harness's counter rather
-   * than the gateway's answer.
+   * The address this merchant is paid at, unique among seeded merchants.
+   * Compare against this rather than writing the address out, which would pin
+   * the harness's counter.
    */
   readonly wallet: string;
 }
@@ -97,11 +85,9 @@ export interface Harness {
   /** Moves the clock the flows read. Nothing fires from this on its own. */
   readonly advance: (ms: number) => void;
   /**
-   * A merchant with one key, made the way the command-line verb makes one.
-   *
-   * Every test that is about scoping seeds two of these, because one proves
-   * nothing: an unscoped gateway passes every assertion a single merchant can
-   * make about their own cards.
+   * A merchant with one key, made the way the command-line verb makes one. A
+   * test about scoping needs two: an unscoped gateway passes everything a single
+   * merchant can assert about their own cards.
    */
   readonly addMerchant: (name?: string) => Promise<SeededMerchant>;
   /** A second key for a merchant who already has one. The secret, once. */
@@ -109,54 +95,34 @@ export interface Harness {
   /** Stops one key working, touching no other. */
   readonly disableKey: (keyId: string) => Promise<void>;
   /**
-   * The merchant a test gets without asking for one.
-   *
-   * Almost every test here is about something else — a deadline, a refusal, the
-   * shape of a receipt — and has a merchant only because a sale needs one. So
-   * the harness seeds one, and those tests read the way they did before
-   * merchants existed. The tests that are about tenancy ignore this one and
-   * seed two of their own.
+   * The merchant a test gets without asking, for tests that need a seller but
+   * are not about one. Tests about tenancy seed two of their own.
    */
   readonly merchant: SeededMerchant;
   stop(): Promise<void>;
 }
 
 /**
- * The key the merchant every ordinary test sells as opens the door with, for
- * the environment the harness was configured into.
- *
- * It is a function of the environment rather than one string because the door
- * reads the prefix before it looks anything up, and `harness()` takes a
- * `PAYMENT_NETWORK` override — so a constant would hand a harness pointed at
- * mainnet a key its own gateway refuses, and every call in that test would come
- * back 401 naming the other site. Written this way there is no answer to give
- * without saying which environment it is for, and the harness gives its own.
+ * The harness merchant's key for an environment. Pass the harness's own: the
+ * door checks the key's prefix first, so a harness given a `PAYMENT_NETWORK`
+ * override answers 401 to a key made for another environment.
  */
 export const theMerchantKey = (environment: Environment): string =>
   `${keyPrefixFor(environment)}a-merchant-key-long-enough`;
 
 export async function harness(overrides: Record<string, string> = {}): Promise<Harness> {
-  // A clock that starts at a readable instant and only moves when a test says
-  // so, so an order's deadlines are arithmetic a reader can check by eye. It is
-  // declared first because everything that keeps time reads it — the store
-  // stamps its claims on payments from here too, or a test that moves the clock
-  // would move everything except the one thing it was moving it for.
+  // Moves only on `advance`, so deadlines are arithmetic to check by eye. The
+  // store stamps payment claims from it too, so `advance` moves those as well.
   let now = Date.parse("2026-08-26T12:00:00.000Z");
 
   const config = testConfig(overrides);
-  // The queue's patience with a failing reminder comes from the configuration,
-  // not from a default beside it — or a test that sets the number would be
-  // asserting against something else entirely.
+  // From the configuration, so a test that overrides these numbers gets them.
   const queue = new MemoryQueue({
     attempts: config.reminderAttempts,
     retryDelayMs: config.reminderRetryDelayMs,
   });
-  // The queue is made first because the store writes through it: an envelope
-  // that must not be lost is written where the order is (ADR-0013). It is
-  // `stage` rather than `publish` because the store needs the two halves apart
-  // — take it before the order is written, make it visible after — and the
-  // calls are made through the queue rather than bound to its methods, so a
-  // test that replaces `queue.stage` replaces the one the store uses too.
+  // The store writes an order's envelopes through the queue in the same step as
+  // the order, and a test that replaces `queue.stage` replaces the store's too.
   const store = new MemoryStore(countedIds(), () => now, queue.envelopes());
   const facilitator = new ScriptedFacilitator();
   const announcer = new RecordingAnnouncer();
@@ -175,45 +141,24 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
   const gateway = new Gateway(runtime);
   await gateway.start();
 
-  // Made through the same three functions the command-line verbs and the
-  // sandbox seed use, so a key that works here is a key that works there: a
-  // second way of turning a secret into a digest would be a key that opens one
-  // door and not the other, and the failure would look like a wrong key rather
-  // than like two hashes.
-  //
-  // The merchant is listed under the name it was made with, and that is not
-  // scaffolding for its own sake. A merchant with no name publishes nothing, so
-  // every test in this repository whose subject is a sale — a deadline, a
-  // refusal, the shape of a receipt — would otherwise be refused at the first
-  // card for a reason that has nothing to do with what it is testing.
-  //
-  // The listing name is the merchant's own name because the harness is given
-  // one string and a seeded merchant that reads differently in two places would
-  // be a puzzle in every assertion about a challenge. What that costs is a rule
-  // on the names tests pass in: they go through the catalogue's own check, so
-  // one over thirty-two characters or outside printable ASCII stops the harness
-  // here, saying which rule it broke. A test that wants a merchant listed under
-  // nothing takes the name away through the route.
+  // Seeded through the functions the command-line verbs and the sandbox seed
+  // use, so a key's digest is computed one way everywhere. A merchant without a
+  // listing name or a wallet publishes nothing, so both are set; the name passes
+  // the catalogue's check (at most 32 printable ASCII characters) or the harness
+  // throws here.
   const seed = async (name: string, secret?: string): Promise<SeededMerchant> => {
     const made = await store.addMerchant({ id: ids("mch"), name }, now);
     if (made === null) {
       throw new Error(`the harness could not make the merchant ${name}`);
     }
     await setServiceName(store, made.id, name, now);
-    // And a wallet, for the reason the listing name is set: a merchant with
-    // none publishes nothing on a gateway that settles for real, which is what
-    // the harness's own configuration says it is. Every test whose subject is a
-    // sale — a deadline, a refusal, the shape of a receipt — would otherwise be
-    // refused at its first card for a reason that has nothing to do with it.
-    // Each merchant gets their own, because a shared one would let a gateway
-    // that paid every sale to one address pass a test about whose it is.
+    // One wallet per merchant, or a gateway paying every sale to one address
+    // would pass a test about whose it is.
     const wallet = aSeededWallet();
     await setPayoutWallet(store, made.id, wallet, now);
-    // The harness's seeded merchant is the ready seller every unrelated order
-    // test has always exercised. Say the new live prerequisite explicitly on a
-    // live harness rather than weakening the store's denied default. This seed
-    // function is also the harness's explicit ready-merchant helper;
-    // registration and direct store creation remain unapproved.
+    // A live gateway sells only for approved merchants. Approval is granted
+    // here rather than defaulted, so merchants made any other way stay
+    // unapproved.
     if (config.surfaceMode === "live") {
       await grantLiveApproval(store, made.id, now);
     }
@@ -224,13 +169,8 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
     return { id: made.id, name: made.name, key: issued.secret, keyId: issued.key.id, wallet };
   };
 
-  // Everything after the gateway is running is guarded, because a throw here
-  // would leave it running with nobody holding it. Every caller writes
-  // `open = await harness(...)` and stops `open` afterwards, so a harness that
-  // threw on its way out would never be assigned and never stopped: its queue
-  // keeps live timers and its poll parks, and the suite carries them to the end
-  // of the file. The seeding below is where that can happen — the store can
-  // refuse to make a merchant, and it says so by returning null.
+  // A throw after the gateway starts would never reach the caller's `stop()`,
+  // leaving its queue timers and parked polls running to the end of the suite.
   try {
     const merchant = await seed("The merchant", theMerchantKey(config.environment));
 
@@ -264,14 +204,9 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
 }
 
 /**
- * A key whose secret the caller chose, which is the one thing `issueKey` will
- * not do.
- *
- * It has one caller, and it is here rather than in `merchants.ts` for that
- * reason: the harness's own merchant, whose key a test writes into a header by
- * hand. Everywhere a merchant is real the secret is generated, because a key
- * somebody chooses is a key somebody reuses; the sandbox's key is the other
- * chosen one, and `seedSandboxKey` writes that one itself.
+ * A key with a secret the caller chose, which `issueKey` will not do because a
+ * chosen key is a reused key. Only the harness's own merchant has one, so a
+ * test can write its key into a header by hand.
  */
 async function addKnownKey(
   store: MemoryStore,
@@ -293,18 +228,10 @@ async function addKnownKey(
 }
 
 /**
- * An address no other seeded merchant has, counted upwards so that a test
- * reading two of them side by side can see which is which.
- *
- * It is written out of a counter rather than picked at random: a test that
- * fails on whose address a challenge names is read by somebody, and
- * `0x…0002` beside `0x…0003` says what forty random characters do not. All
- * digits, so there is no letter for the checksum to capitalise: it is an
- * address in either of the two spellings one can be written in, and it is its
- * own canonical form, so no checksum has to be computed to write one down
- * here. What that costs is that these addresses say nothing about the
- * canonical form either way — the tests that are about it use addresses with
- * letters in them.
+ * An address no other seeded merchant has, counted upwards so two side by side
+ * in a failure are told apart. All digits, so it is its own checksummed form
+ * and says nothing about checksums; tests about the canonical form use
+ * addresses with letters.
  */
 const aSeededWallet = (() => {
   let issued = 0;
@@ -334,12 +261,7 @@ export type PriceHandler = (question: {
 export interface WorkerBehaviour {
   readonly onOrder?: OrderHandler;
   readonly onQuote?: PriceHandler;
-  /**
-   * Whose worker this is. Left out, it is the harness's own merchant, which is
-   * what every test that is about something other than tenancy wants; a test
-   * with two merchants says which one each worker belongs to, because that is
-   * the whole thing being checked.
-   */
+  /** Whose worker this is; the harness's own merchant when left out. */
   readonly merchantId?: string;
 }
 
@@ -347,15 +269,9 @@ export interface WorkerBehaviour {
 export type Worked = Harness | { readonly gateway: Gateway; readonly merchant: SeededMerchant };
 
 /**
- * One turn of a merchant's worker: draw the stream, answer what came, come
- * back. It is written the way ADR-0004 says the SDK's loop is — the handler's
- * return value is posted to the answer route in every mode — so that a test
- * exercises the same path a merchant's code will.
- *
- * Every call it makes names the merchant, exactly as the routes behind them do
- * once a key has been resolved: a worker draws its own merchant's stream and
- * answers its own merchant's orders, and neither is a filter over somebody
- * else's.
+ * One turn of a merchant's worker: poll that merchant's stream once and post
+ * each handler's return value to the answer route, in every mode, as the SDK's
+ * loop does. Returns how many envelopes came.
  */
 export async function workOnce(
   worked: Worked,
@@ -381,10 +297,8 @@ export async function workOnce(
 }
 
 /**
- * Everything on a merchant's stream at this moment, drawn the way a worker
- * draws it: one poll after another until one comes back empty. A poll answers
- * with one envelope, so a test that wants what the stream holds asks this
- * rather than reading one poll as all of it.
+ * Everything on a merchant's stream now, polled until a poll comes back empty.
+ * A poll answers with one envelope, so one poll is not the whole stream.
  */
 export async function drawEverything(
   worked: Worked,
@@ -416,23 +330,11 @@ export function workUntilStopped(worked: Worked, behaviour: WorkerBehaviour) {
 }
 
 /**
- * One purchase over HTTP, from the challenge to whatever the order came to.
- *
- * It exists so that a test whose subject is not the payment exchange can get an
- * order into a state without transcribing the x402 headers. The dashboard's tests
- * are the case in point: they need a delivered sale to draw a screen from, and
- * a second copy of the header names over there is a second place for them to
- * drift from the ones the gateway actually sets.
- *
- * Everything it does is what an agent's client does — ask for the price, sign
- * against the challenge, present it — with a worker turning alongside so the
- * merchant's side answers.
- *
- * The worker is started before the first call and not between the two, because
- * the first call is where a card with a price check asks its merchant what the
- * product costs. Started afterwards, that question would go to nobody and the
- * purchase would sit out the gateway's whole patience before pricing itself
- * from the card.
+ * One purchase over HTTP as an agent's client makes it: ask the price, sign
+ * against the challenge, present it, with a worker answering alongside. The
+ * worker starts before the first call, because that is when a card with a price
+ * check asks its merchant; started later, the purchase would wait out the
+ * gateway's whole patience.
  */
 export async function buyOverHttp(
   worked: Worked,
@@ -473,14 +375,9 @@ export async function buyOverHttp(
 }
 
 /**
- * A signature no other purchase has presented.
- *
- * One authorisation buys one order, and the gateway means it: the fingerprint
- * of what was signed is claimed by the first order to present it, and the same
- * string presented for a second order is refused before anything is verified.
- * Two purchases in one test are two buyers, so they sign two different things —
- * a shared constant here would have the second sale refused as a replay, which
- * is the gateway being right and the fixture being wrong.
+ * A signature no other purchase has presented. The first order to present a
+ * payment claims it, so a shared constant would get a second sale refused as a
+ * replay.
  */
 const aFreshSignature = (() => {
   let signed = 0;
@@ -491,28 +388,11 @@ const aFreshSignature = (() => {
 })();
 
 /**
- * One wallet's authorisation, as it arrives on the wire, together with the
- * fingerprint the purchase route takes of it.
- *
- * A test about whose purchase an order is cannot spell a payment however it
- * likes. What the payment layer answers with is the address that actually
- * signed, and it reads that address out of the payment — so a payment here is a
- * real header, written by the protocol's own encoder, carrying the signer where
- * the exact-EVM scheme puts one. Two authorisations from one wallet differ in
- * their nonce, and so in their fingerprint, while agreeing on their payer: that
- * is what a repeat is, and it is the one thing about a payment these tests
- * cannot invent a shorthand for.
- *
- * The envelope is real and the contents are not, and the difference is worth
- * being plain about. The header, the encoding and the place the signer sits are
- * the protocol's own; what is written inside would be refused by a real
- * deployment's door long before any of this mattered — priced at nothing,
- * naming no order, signed with a string that is not hex, and missing the value
- * and the validity window an EIP-3009 authorisation carries. It is enough for
- * exactly one question — who signed this, and is it the same wallet as last
- * time — and it is not a specimen of a valid payment. The route that reads an
- * offer and the adapter that checks one against our own order are exercised
- * elsewhere, over HTTP, against a challenge this gateway issued itself.
+ * One wallet's authorisation as a real x402 header, with the fingerprint the
+ * purchase route takes of it. The signer sits where the exact-EVM scheme puts
+ * it, and two nonces from one wallet give two fingerprints and one payer. Only
+ * the envelope is real: a real deployment would refuse the contents, so it
+ * answers only who signed, not whether a payment is valid.
  */
 export function authorisation(
   worked: { readonly runtime: Runtime },
@@ -526,15 +406,9 @@ export function authorisation(
 }
 
 /**
- * A payment that decodes perfectly and names nobody: a signature and no
- * authorisation at all.
- *
- * This is not a malformed header, and that is the point of having it. It is the
- * shape {@link buyOverHttp} sends and the shape any scheme sends that does not
- * sign an EIP-3009 authorisation, so it arrives over the wire, passes the
- * route's decode, and reaches the flows with no payer in it. What must hold
- * then is that two of them are two buyers — the payment's fingerprint is all
- * there is to tell them apart — and that one of them presented twice is one.
+ * A well-formed payment that names no payer: a signature with no authorisation,
+ * as {@link buyOverHttp} and any scheme without an EIP-3009 authorisation send.
+ * Only its fingerprint tells two such buyers apart.
  */
 export function paymentNamingNoPayer(worked: { readonly runtime: Runtime }): {
   readonly payment: string;
@@ -551,10 +425,8 @@ function encoded(
   const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.payment.timeoutSeconds);
   const signed: PaymentPayload = {
     x402Version: X402_VERSION,
-    // An offer has to name an address to be paid at, and nowhere is the honest
-    // one for an offer nobody reads: nothing about this payment is checked
-    // against a merchant, and the fingerprint the route takes of it does not
-    // look at the address at all.
+    // Nothing checks this offer against a merchant, and the fingerprint ignores
+    // the address.
     accepted: edge.requirementsFor({ amount: "0.00", currency: "USD" }, null, NOWHERE),
     payload,
   };
@@ -586,25 +458,10 @@ export interface Served {
 }
 
 /**
- * Puts the whole surface on a real port and calls it over real HTTP.
- *
- * Nothing is stubbed between the request and the flows: the mounting loop, the
- * body checks, the door and the payment exchange all run. A test that went
- * through a fake request object would be testing the fake.
- *
- * It listens on the address it then calls, and the difference is not cosmetic.
- * `listen(0)` without a host binds the IPv6 wildcard: the number is taken for
- * `[::]` and left free on 127.0.0.1, so the kernel hands that same number to
- * the next process asking for an ephemeral port on that address — and a
- * specific address beats a wildcard, so every call this harness makes then goes
- * to the other process's server. Several suites in this repository do bind
- * 127.0.0.1 by name, one of them a server that drops every connection without
- * answering, on purpose. Measured on this machine, a wildcard sweep of the
- * ephemeral range landed on a port another process was holding on 127.0.0.1
- * four hundred times in forty thousand binds. From in here it looked like
- * `fetch failed / SocketError: other side closed` out of a gateway that had
- * answered every other call in the file, on a connection its own server never
- * saw. It needs two processes, which is why one suite alone never shows it.
+ * Puts the whole surface on a real port on 127.0.0.1 and calls it over real
+ * HTTP. The host must stay named: `listen(0)` alone binds `[::]` and leaves the
+ * same port free on 127.0.0.1, where another suite's server can take it and
+ * receive these calls (seen as `SocketError: other side closed`).
  */
 export async function serve(harnessed: { readonly gateway: Gateway }): Promise<Served> {
   const app = buildApp(harnessed.gateway);

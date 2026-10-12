@@ -1,27 +1,14 @@
 /**
- * The wallet a merchant's sales are paid into.
+ * The wallet a merchant's sales are paid into. A buyer's agent pays this
+ * address directly, and nothing can call the payment back. Only a signed-in
+ * dashboard session sets it, in-process; reading it, publishing and the payment
+ * request an agent is sent all go through `serve`.
  *
- * It is the second thing a merchant sets about themselves rather than about a
- * card, and it is the one with money on it: the address a merchant writes here
- * is the address a buyer's agent is told to pay, directly, with nothing of ours
- * in between and nothing afterwards that can call the payment back. It is set
- * the one way it can be, by a person signed in to the dashboard, which calls
- * the gateway inside the process (ADR-0019, ADR-0030); everything else here —
- * reading it, publishing, the payment request an agent is sent — goes through
- * `serve`, so the door, the mounting loop and the flows all run.
- *
- * Two rules are what this file exists for, and both cost somebody money when
- * they are wrong. A card published by a merchant with no wallet would be offered
- * for sale with nowhere for the money to go — refused at the publish, where
- * somebody can still be told, rather than at the till. And the address in a
- * payment request has to be the address of the merchant who published that
- * card: two merchants are seeded wherever that is the claim, because one proves
- * nothing at all — a gateway that paid every sale to one address would satisfy
- * every assertion a single merchant can make about their own.
- *
- * The sandbox is the one place none of it holds, and it is asserted here too.
- * There is no chain behind it and no money in it, and a local stack that could
- * not sell without an address on a chain would be a stack nobody can bring up.
+ * A merchant with no wallet is refused at publish, where they can still be
+ * told, rather than at the till. The address in a payment request must be the
+ * publishing merchant's, so those claims are tested with two merchants: a
+ * gateway that paid every sale to one address would pass every single-merchant
+ * assertion. The sandbox, with no chain and no money behind it, is exempt.
  */
 
 import type { Card } from "@nuanu-ai/agentify-contracts";
@@ -38,18 +25,14 @@ const CONFIGURED_PAY_TO = "0x0000000000000000000000000000000000000001";
 const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
 
 /**
- * Two addresses that are addresses, and are not each other, written the way the
- * wallets they came out of would show them.
- *
- * That is the spelling everything here stores and answers with, so it is the
- * spelling the assertions are written in. Both have letters that the checksum
- * capitalises, deliberately: an address of all digits would read back
- * identically whatever the canon was, and would pin nothing.
+ * Two distinct addresses in the checksum spelling a wallet shows, which is the
+ * spelling the gateway stores and answers with. Both contain letters the
+ * checksum capitalises: an all-digit address reads the same in any spelling and
+ * would pin nothing.
  */
 const A_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 const ANOTHER_WALLET = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
 
-/** The same address as the first, written the other way one may be written. */
 const A_WALLET_IN_LOWER = "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed";
 
 const cardFor = (merchantItemId: string, title: string): Card => ({
@@ -90,10 +73,9 @@ const setPayoutWallet = (harnessed: Harness, merchantId: string, wallet: string)
   harnessed.gateway.setPayoutWallet(merchantId, wallet, SIGNED_IN);
 
 /**
- * A merchant with no wallet and no name, made the only way one comes to exist
- * outside the harness: by registering in the dashboard, with a key for their
- * own code issued from there. This is the state a real merchant is in between
- * signing up and setting either.
+ * A merchant with no wallet and no name, registered the way the dashboard does
+ * it, with a key for their own code: a real merchant between signing up and
+ * setting either.
  */
 const fresh = async (harnessed: Harness): Promise<{ merchantId: string; key: string }> => {
   const merchantId = await harnessed.gateway.registerMerchant();
@@ -135,10 +117,8 @@ const payToInTheChallenge = async (served: Served, itemId: string): Promise<stri
 
 describe("the wallet a merchant is paid at", () => {
   it("reads back nothing for a merchant who has set none", async () => {
-    // Null is the answer, not an empty string and not a 404. A merchant with no
-    // wallet exists and has a settings page to draw, and the shape it draws
-    // from has to say "there is none" in a way nobody can mistake for "I could
-    // not find you".
+    // Null, not an empty string and not a 404: "there is none" must not read as
+    // "I could not find you".
     const { served, harnessed } = await started();
     const { key } = await fresh(harnessed);
 
@@ -151,8 +131,8 @@ describe("the wallet a merchant is paid at", () => {
     const answered = await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
 
     expect(answered).toStrictEqual({ payout_wallet: A_WALLET, pending: null });
-    // And it is there on the next call, which is what makes the answer above a
-    // read of the row rather than an echo of the request.
+    // Read again, so the answer above is shown to be the row and not an echo of
+    // the request.
     expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual({
       payout_wallet: A_WALLET,
       pending: null,
@@ -160,13 +140,9 @@ describe("the wallet a merchant is paid at", () => {
   });
 
   it("takes the lower-case spelling too, and answers in the one a wallet shows", async () => {
-    // The other accepted spelling: a block explorer prints it, and half the
-    // tooling in this world hands it to somebody. It is one address, so it is
-    // answered with in the one form anything behind the door holds — the one a
-    // wallet shows. A merchant pastes forty characters out of their wallet and
-    // then looks at a settings screen: shown the same address in another
-    // spelling, they cannot tell it from a different address without going
-    // character by character, and nobody does that.
+    // Block explorers print the lower-case spelling. The answer is in the form a
+    // wallet shows, because a merchant cannot tell the same address in another
+    // spelling from a different address.
     const { harnessed } = await started();
 
     const answered = await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET_IN_LOWER);
@@ -176,11 +152,9 @@ describe("the wallet a merchant is paid at", () => {
   });
 
   it("writes nothing for a value that is not an address, whoever skipped holding it", async () => {
-    // The dashboard holds what a person typed to the address rule before it
-    // asks, and says what is wrong in words; this is the gateway's own hold
-    // behind it. An address whose capitals disagree with its digits has a
-    // character wrong, and an address that is wrong is another good address
-    // belonging to somebody else, which nothing downstream would ever notice.
+    // The gateway checks again behind the dashboard. Capitals that disagree with
+    // the checksum mean a character is wrong, and a wrong address may be
+    // somebody else's valid one, which nothing downstream would notice.
     const { served, harnessed } = await started();
     await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
 
@@ -193,8 +167,7 @@ describe("the wallet a merchant is paid at", () => {
     ).rejects.toThrow();
     await expect(setPayoutWallet(harnessed, harnessed.merchant.id, "0x1234")).rejects.toThrow();
 
-    // And the wallet they had is still theirs: a refusal that had already
-    // written would be worse than no rule at all.
+    // A refusal that had already written would be worse than no rule at all.
     expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual({
       payout_wallet: A_WALLET,
       pending: null,
@@ -215,9 +188,7 @@ describe("the wallet a merchant is paid at", () => {
   });
 
   it("pays the merchant the change was made for and nobody else", async () => {
-    // Seeded with two, because one proves nothing: a write that put the
-    // address onto every merchant would pass every assertion one merchant can
-    // make about their own.
+    // A write to every merchant would pass any single-merchant assertion.
     const { served, harnessed } = await started();
     const first = await harnessed.addMerchant("First shop");
     const second = await harnessed.addMerchant("Second shop");
@@ -232,8 +203,8 @@ describe("the wallet a merchant is paid at", () => {
   });
 
   it("reads it with any key of the merchant's, and with no key not at all", async () => {
-    // Reading moves no money, and a merchant's own code has good reason to
-    // know where the takings go: a reconciliation, a check before selling.
+    // Reading moves no money, and a merchant's own code may need it, for a
+    // reconciliation or a check before selling.
     const { served, harnessed } = await started();
     const { merchantId, key } = await fresh(harnessed);
     await setPayoutWallet(harnessed, merchantId, A_WALLET);
@@ -248,9 +219,6 @@ describe("the wallet a merchant is paid at", () => {
 
 describe("publishing before a wallet has been set", () => {
   it("refuses a merchant with no wallet, and says where to set one", async () => {
-    // The rule this half of the file exists for. A card published with no
-    // address behind it is a product offered for sale with nowhere for the
-    // money from it to go.
     const { served, harnessed } = await started();
     const { key } = await fresh(harnessed);
     await named(served, key, "Their own shop");
@@ -261,11 +229,8 @@ describe("publishing before a wallet has been set", () => {
     const { problems } = (
       refused.body as { error: { problems: { code: string; message: string }[] } }
     ).error;
-    // The words have to tell them what to do next. What is missing is not on
-    // the card at all, so a merchant told "something is missing" would go
-    // through the fields of a card looking for a field that is not there.
-    // The wallet is set in the dashboard and nowhere else, so that is where the
-    // words send them.
+    // What is missing is not on the card, so the message must send the merchant
+    // to the dashboard's settings, the only place the wallet is set.
     const said = problems.find((finding) => finding.code === "no_payout_wallet")?.message ?? "";
     expect(said).toMatch(/dashboard/i);
     expect(said).toMatch(/settings/i);
@@ -284,8 +249,6 @@ describe("publishing before a wallet has been set", () => {
   });
 
   it("lets a merchant publish as soon as they set one", async () => {
-    // The road out of the refusal, walked end to end. A rule a merchant cannot
-    // get past is not a rule, it is a wall.
     const { served, harnessed } = await started();
     const { merchantId, key } = await fresh(harnessed);
     await named(served, key, "Their own shop");
@@ -308,10 +271,8 @@ describe("who an agent is told to pay", () => {
   });
 
   it("pays each card to its own merchant, with two merchants selling at once", async () => {
-    // The whole claim of this feature in one test. Two merchants, two
-    // addresses, two cards: a gateway that paid both to one address — its own
-    // configured one, or the first merchant it found — passes every other test
-    // in this file and fails this one.
+    // A gateway that paid both cards to one address, its own configured one or
+    // the first merchant's, passes every other test in this file.
     const { served, harnessed } = await started();
     const first = await harnessed.addMerchant("First shop");
     const second = await harnessed.addMerchant("Second shop");
@@ -323,16 +284,13 @@ describe("who an agent is told to pay", () => {
 
     expect(await payToInTheChallenge(served, theirs)).toBe(A_WALLET);
     expect(await payToInTheChallenge(served, others)).toBe(ANOTHER_WALLET);
-    // And neither of them is the address the gateway itself was configured
-    // with, which is the operator's and not any merchant's.
     expect(await payToInTheChallenge(served, theirs)).not.toBe(CONFIGURED_PAY_TO);
     expect(await payToInTheChallenge(served, others)).not.toBe(CONFIGURED_PAY_TO);
   });
 
   it("follows a merchant who moves their wallet, with no republishing", async () => {
-    // The challenge reads the address at the moment it is asked for rather than
-    // copying it onto each card as it is published. A merchant whose wallet was
-    // compromised moves it once and every card of theirs moves with it.
+    // The challenge reads the address when asked rather than copying it onto
+    // cards, so a merchant whose wallet is compromised moves it once for all.
     const { served, harnessed } = await started();
     await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
@@ -343,10 +301,8 @@ describe("who an agent is told to pay", () => {
   });
 
   it("stands the configured address in for a merchant with none, in the sandbox alone", async () => {
-    // What the sandbox pays to. There is no chain behind it, so the address is
-    // a placeholder rather than a destination — but a challenge has to name
-    // one, and the deployment's own configured address is the only one there is
-    // when the merchant has set none.
+    // The sandbox has no chain behind it, so the address is only a placeholder,
+    // but a challenge has to name one.
     const { served, harnessed } = await started({ FACILITATOR_URL: SANDBOX_FACILITATOR });
     const { key } = await fresh(harnessed);
     await named(served, key, "Their own shop");
@@ -356,10 +312,8 @@ describe("who an agent is told to pay", () => {
   });
 
   it("pays a sandbox merchant who has set a wallet at their own, not the placeholder", async () => {
-    // The placeholder stands in where there is nothing, and nowhere else. A
-    // merchant testing against a sandbox who sets an address and is shown a
-    // different one in the challenge has been told something untrue about what
-    // will happen when the same card is sold for real.
+    // A sandbox merchant shown an address other than the one they set would be
+    // misled about what happens when the card is sold for real.
     const { served, harnessed } = await started({ FACILITATOR_URL: SANDBOX_FACILITATOR });
     await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
@@ -369,16 +323,10 @@ describe("who an agent is told to pay", () => {
 });
 
 /**
- * One card in the catalog whose merchant has nowhere to be paid.
- *
- * The publish door refuses to make one where the money is real, so the row is
- * written straight into the store — which is how one comes to exist in the
- * world. A card published while the gateway was in the sandbox, where no
- * address is asked for, is one of these the moment the deployment is pointed at
- * a facilitator that settles; so is every merchant who was there before the
- * column was, whom the migration left with nothing in it. What is under test is
- * what the buying surface does when it finds one, not the road it took to get
- * there.
+ * A card whose merchant has nowhere to be paid. The publish door refuses one
+ * where the money is real, so the row is written straight into the store. Such
+ * cards still exist: one published in the sandbox becomes one the moment the
+ * deployment is pointed at a facilitator that settles.
  */
 const soldWithNowhereToPay = async (
   harnessed: Harness,
@@ -397,11 +345,9 @@ const soldWithNowhereToPay = async (
 
 describe("a card whose merchant has nowhere to be paid", () => {
   it("tells an agent it is not on sale rather than falling over", async () => {
-    // A challenge for this card cannot be written at all: there is no address
-    // to name in it, and standing the operator's own in would send a merchant's
-    // takings to somebody else. The agent gets the word a card that is off sale
-    // gets — which is the truth, and which its client already knows how to
-    // read — instead of a five hundred out of the middle of the gateway.
+    // No challenge can be written: the operator's address must not stand in, or
+    // the merchant's takings go to somebody else. The agent gets the off-sale
+    // answer its client already reads, not a 500.
     const { served, harnessed } = await started();
     const { itemId } = await soldWithNowhereToPay(harnessed, served);
 
@@ -412,10 +358,8 @@ describe("a card whose merchant has nowhere to be paid", () => {
   });
 
   it("opens no order that nobody could ever pay for", async () => {
-    // The half that costs more than a status code. A purchase used to write the
-    // order first and fail afterwards, which left a row nobody could pay, nobody
-    // could close and nothing would ever collect — on the merchant's own stream,
-    // in their dashboard, against a deadline.
+    // An order written before the refusal could never be paid, closed or
+    // collected, and would sit in the merchant's dashboard against a deadline.
     const { served, harnessed } = await started();
     const { itemId, merchantId } = await soldWithNowhereToPay(harnessed, served);
 
@@ -429,9 +373,8 @@ describe("a card whose merchant has nowhere to be paid", () => {
   });
 
   it("is not in the catalog an agent walks", async () => {
-    // A catalog is an offer, and an entry every purchase of which comes back
-    // refused is an offer we would not honour: the agent budgets against it,
-    // chooses it over a competitor, and finds out at the till.
+    // Listed, it would be an offer every purchase of which is refused: the agent
+    // chooses it over a competitor and finds out at the till.
     const { served, harnessed } = await started();
     const { itemId } = await soldWithNowhereToPay(harnessed, served);
     const sellable = await publish(served, harnessed.merchant.key, cardFor("a-desk", "A desk"));
@@ -439,15 +382,13 @@ describe("a card whose merchant has nowhere to be paid", () => {
     const listed = (await served.call("GET", "/x402/catalog")).body as { items: { id: string }[] };
 
     expect(listed.items.map((item) => item.id)).not.toContain(itemId);
-    // The other half, or the assertion above would pass against a catalog that
-    // had stopped listing anything at all.
+    // Otherwise the assertion above would pass against an empty catalog.
     expect(listed.items.map((item) => item.id)).toContain(sellable);
   });
 
   it("says the same thing to its own merchant as it says to a buyer", async () => {
-    // One word about whether a card sells, and everybody who asks gets it. A
-    // dashboard that showed a card as selling while every purchase of it came
-    // back refused would send its merchant looking at the card for the fault.
+    // A dashboard showing the card as selling while every purchase is refused
+    // would send the merchant looking at the card for the fault.
     const { served, harnessed } = await started();
     const { itemId, key } = await soldWithNowhereToPay(harnessed, served);
 
@@ -459,10 +400,8 @@ describe("a card whose merchant has nowhere to be paid", () => {
   });
 
   it("sells in the sandbox, where there is no money to send anywhere", async () => {
-    // The safe direction, and the reason this is not simply "no wallet, no
-    // sale". A local stack has to come up and complete a purchase with nothing
-    // configured about a chain: there is nothing to send, so there is nothing
-    // to be missing an address for.
+    // A local stack must complete a purchase with no chain configured, so in
+    // the sandbox a missing wallet is no reason to refuse.
     const { served, harnessed } = await started({ FACILITATOR_URL: SANDBOX_FACILITATOR });
     const { itemId } = await soldWithNowhereToPay(harnessed, served);
 
@@ -472,8 +411,7 @@ describe("a card whose merchant has nowhere to be paid", () => {
   });
 
   it("sells again the moment their merchant says where the money goes", async () => {
-    // A rule a merchant cannot get out of is a wall. Setting the address is the
-    // whole of the repair, and it takes no republishing.
+    // Setting the address is the whole repair; nothing is republished.
     const { served, harnessed } = await started();
     const { itemId, merchantId } = await soldWithNowhereToPay(harnessed, served);
     expect((await served.call("GET", `/x402/${itemId}/purchase`)).status).toBe(409);
@@ -486,13 +424,10 @@ describe("a card whose merchant has nowhere to be paid", () => {
 
 describe("a wallet that moves while a sale is in flight", () => {
   it("charges what the payer signed, not the address set since", async () => {
-    // The window is the sale itself. A payment is verified before the order
-    // goes to the merchant and charged after the goods come back, and a wallet
-    // may be moved in between — this merchant moves theirs while fulfilling,
-    // which is the ordinary way it happens rather than a contrivance. The
-    // authorisation the buyer signed names one address, so a charge sent
-    // against another is refused by the payment layer after the goods have
-    // already gone out: the merchant has delivered and cannot be paid.
+    // A payment is verified before the order reaches the merchant and charged
+    // after the goods come back, and the wallet may move in between. The buyer's
+    // authorisation names one address, so a charge sent to another would be
+    // refused after the goods went out.
     const { served, harnessed } = await started();
     await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
@@ -507,19 +442,15 @@ describe("a wallet that moves while a sale is in flight", () => {
     expect(bought.status, JSON.stringify(bought.body)).toBe(200);
     expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(A_WALLET);
     expect(harnessed.facilitator.settles.at(-1)?.payTo).toBe(A_WALLET);
-    // And the move was real: the next agent to ask is invited to the new one.
+    // The move took effect: the next challenge names the new wallet.
     expect(await payToInTheChallenge(served, itemId)).toBe(ANOTHER_WALLET);
   });
 
   it("asks about the payment against the address the challenge named", async () => {
-    // The other window, and the safe direction in it. Between the challenge and
-    // the payment nothing of ours is in flight, so the address a payment is
-    // checked against is read at the verification and is the current one: a
-    // payment made out to an address the merchant has since moved off is asked
-    // about against the new one and refused there, before anything happens.
-    // (The refusal itself is the real payment layer's — `adapters/x402` — and
-    // is exercised in its own suite; what this pins is which address the
-    // question carries.)
+    // Between challenge and payment nothing is in flight, so verification uses
+    // the current address, and a payment made out to one the merchant has since
+    // left is refused before anything happens. The refusal itself is tested in
+    // `adapters/x402`; this pins which address verification carries.
     const { served, harnessed } = await started();
     await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));

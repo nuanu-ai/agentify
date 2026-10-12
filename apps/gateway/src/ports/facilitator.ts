@@ -1,62 +1,34 @@
 /**
- * The payment facilitator: the two questions the gateway asks about money.
+ * The payment facilitator. Verification and execution are separate calls
+ * because in the synchronous mode the charge is executed only after the goods
+ * come back, so a merchant's refusal costs the buyer nothing.
  *
- * Verification and execution are separate calls here because the order machine
- * leans on the gap between them. In the synchronous mode the payment is
- * verified before the order goes to the merchant and executed only after the
- * goods come back, which is the literal reading of "a refusal costs the buyer
- * nothing"; in the asynchronous mode both happen before the merchant sees
- * anything. A port that folded them into one call could serve neither.
- *
- * Three outcomes, not two, and the third is the point. "I could not find out"
- * is a different fact from "no", and the difference is worth someone's money:
- * an agent told his purchase did not happen goes and buys the same thing
- * elsewhere without checking his wallet. So neither call throws on a silence
- * and neither invents an answer. The machine already has the words for it — a
- * charge whose outcome is unknown, and the deadline that declares one — and
- * the executor's job is to hand it the silence unchanged rather than round it
- * to the nearest verdict.
+ * Each call has three outcomes, not two: "could not find out" is not "no". An
+ * agent told a purchase did not happen may buy it again elsewhere, so neither
+ * call throws on a silence or rounds it to a verdict; it answers `"unknown"`.
  */
 
 import type { PaymentVerificationFailure } from "@agentify/core";
 
 /**
- * One charge, as the payment layer needs to see it. The payment is the thing
- * the agent presented, verbatim and unread by us: what is inside it belongs to
- * the protocol and to the facilitator, and a gateway that took it apart would
- * be a second implementation of somebody else's specification.
+ * One charge, as the payment layer needs to see it. The payment is passed on
+ * verbatim and not parsed here: its contents belong to the payment protocol.
  */
 export interface Charge {
   readonly orderId: string;
   readonly amount: string;
   readonly currency: string;
-  /** What the agent presented, exactly as it arrived. */
   readonly payment: string;
   /**
-   * The address this order's own merchant is paid at, or nothing where they
-   * have set none and the deployment is one that asks for none.
+   * The address this order's merchant is paid at, or null where the deployment
+   * asks for none. The payment is checked against our own copy of it, never
+   * the one inside the payment.
    *
-   * It travels with the charge because the requirements a payment is checked
-   * against are rebuilt from our own side rather than read out of the payment,
-   * and the address is part of them: the agent's copy of it is compared against
-   * this, and the facilitator signs off on the pair. Left out, every real
-   * payment would be checked against an address nobody was ever offered.
-   *
-   * It is read once, at the verification, and then kept on the order for the
-   * charge — and the two halves of that are one rule read at two moments.
-   *
-   * Before the verification nothing of ours is in flight, so the address is the
-   * merchant's current one: a payment made out to an address they have moved
-   * off since the challenge was issued is refused rather than executed, which
-   * is the safe reading of a wallet that moved, since the likeliest reason to
-   * move one is that it is no longer the merchant's to spend from.
-   *
-   * After it, a sale is under way. The buyer has authorised money to one
-   * address and the merchant may be fulfilling against that promise, so reading
-   * the wallet again at the charge would send it somewhere the buyer never
-   * signed for — refused by the payment layer with the goods already gone out,
-   * which is the merchant delivering for nothing. A move in that window governs
-   * their next sale instead.
+   * It is read from the merchant at verification, so a payment made out to an
+   * address they have since moved off is refused. From then on it is kept on
+   * the order and reused for the charge: reading the wallet again would charge
+   * against an address the buyer never signed for, possibly after the goods
+   * went out.
    */
   readonly payTo: string | null;
 }
@@ -75,9 +47,8 @@ export type SettleOutcome =
   | { readonly settled: true; readonly transaction: string }
   | { readonly settled: false; readonly reason: string }
   /**
-   * The charge was asked for and nothing came back. The money may have moved
-   * and may not. Nobody is told either way, and no second charge is sent: only
-   * the payment layer can end this, by finally answering.
+   * The charge was asked for and nothing came back; the money may or may not
+   * have moved. No second charge is ever sent for it.
    */
   | { readonly settled: "unknown"; readonly reason: string };
 

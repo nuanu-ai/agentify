@@ -1,29 +1,11 @@
 /**
  * Making a merchant, naming what their products are sold under, and issuing
- * keys to one.
+ * keys to one. The sandbox seed, the gateway and the test harness all go
+ * through here, so there is one way of turning a secret into a digest.
  *
- * It is one small module rather than a copy per caller because there are three
- * and they must not drift: the seed the sandbox comes up with, the gateway's
- * application that a merchant's code and their dashboard both call, and the
- * test harness. A second way of
- * turning a secret into a digest would be a key that works in one of them and
- * not the others, and the failure would look like a wrong key rather than like
- * two hashes.
- *
- * Two things here are decisions rather than conveniences.
- *
- * The secret is generated and never taken from a caller. A key somebody chooses
- * is a key somebody reuses, and this one is compared against nothing — a
- * request is resolved by looking its digest up — so there is no length rule
- * left to enforce and nothing to enforce it at. Generating is what makes that
- * safe rather than merely tidy.
- *
- * And what is written down is the digest. The secret is handed back once, to
- * whoever asked for it, and this module keeps nothing: a copy of the table is
- * not a set of keys anybody can spend, and nobody — us included — can read a
- * merchant's key back out afterwards. What that costs is that a key which is
- * lost is gone, and the answer to a lost key is a new one and then disabling
- * the old, which is exactly what keys being rows is for.
+ * A key's secret is always generated, never taken from a caller, and only its
+ * digest is stored: the secret is handed back once and cannot be read back
+ * out, so a lost key is replaced, not recovered.
  */
 
 import { createHash, randomBytes } from "node:crypto";
@@ -37,19 +19,11 @@ import {
 import type { Ids } from "../ports/clock.js";
 import type { Store, StoredKey, StoredMerchant } from "../ports/store.js";
 
-/**
- * How much randomness a key carries. Thirty-two bytes is more than anybody
- * will exhaust and is not a number anybody should have to think about again.
- */
 const KEY_BYTES = 32;
 
 /**
- * A fresh key, in the only form its owner will ever see it.
- *
- * The prefix carries the environment because that is the one thing about a key
- * that a person holding it can read without asking us, and it is what lets the
- * door tell somebody their key works — on the other site — instead of handing
- * them a bare 401 with nothing wrong with the key.
+ * A fresh key. Its prefix names the environment, which lets the door tell
+ * somebody their key belongs to the other site instead of a bare 401.
  */
 export function newKeySecret(environment: Environment): string {
   return `${keyPrefixFor(environment)}${randomBytes(KEY_BYTES).toString("base64url")}`;
@@ -57,17 +31,13 @@ export function newKeySecret(environment: Environment): string {
 
 /**
  * The digest a key is stored and looked up under: SHA-256, in lower-case hex.
- *
- * Hex rather than the raw bytes because it goes into a text column and comes
- * back out of one, and a single spelling of it is the whole point — the door
- * and the command that issued the key have to produce the same string from the
- * same secret or the key simply does not work.
+ * Every issuer and the door must produce exactly this spelling, or the key
+ * does not work.
  */
 export function keyDigest(secret: string): string {
   return createHash("sha256").update(secret, "utf8").digest("hex");
 }
 
-/** A key as it comes back from being issued: the row, and the secret, once. */
 export interface IssuedKey {
   readonly key: StoredKey;
   /** The only time this is ever readable. Nothing keeps it. */
@@ -75,16 +45,10 @@ export interface IssuedKey {
 }
 
 /**
- * Sets or clears the name a merchant is listed under in a discovery catalog,
- * and hands back the merchant as they now stand. Null where there is no such
- * merchant.
- *
- * The check is here rather than in the store, and it throws rather than
- * answering, because there is exactly one wrong answer available: writing a
- * name the catalog will not carry. The catalog drops what it cannot render and
- * tells nobody, so a merchant would end up trading under a word they did not
- * choose with nothing anywhere to say so. Refusing loudly at the one place a
- * name is written is the only version of this that somebody reads.
+ * Sets or clears the name a merchant is listed under in a discovery catalog.
+ * Null where there is no such merchant. Throws on a name the catalog would not
+ * carry: a catalog silently drops what it cannot render, so the refusal has to
+ * be here.
  */
 export async function setServiceName(
   store: Store,
@@ -100,13 +64,9 @@ export async function setServiceName(
 }
 
 /**
- * Sets the site of a merchant's own shop, and hands back the merchant as they
- * now stand. Null where there is no such merchant.
- *
- * Checked here and thrown on for the reason the name is: this is the one place
- * a site is written, and an address an agent is sent to that is not the bare
- * https origin of a shop would carry whatever the merchant typed after the
- * host to every agent reading their cards (ADR-0034).
+ * Sets the site of a merchant's own shop. Null where there is no such
+ * merchant. Throws on anything but a bare https origin, since whatever follows
+ * the host would reach every agent reading the merchant's cards.
  */
 export async function setSellerSite(
   store: Store,
@@ -120,28 +80,13 @@ export async function setSellerSite(
 }
 
 /**
- * An address a merchant may be paid at, in the one spelling anything here holds.
+ * A payout address, checked and written in its checksummed spelling.
  *
- * Two things happen here and both are the reason this is a function rather than
- * a parse at each caller.
- *
- * The address is checked, and it throws rather than answering, for the reason
- * the listing name beside it does and with more on it: the one wrong answer
- * available is writing down an address that is not the merchant's. A mistyped
- * address is not a malformed one — it is another perfectly good address
- * belonging to somebody else — so nothing downstream will ever notice, and what
- * happens instead is that every sale the merchant makes from then on is paid to
- * a stranger, irreversibly. The capitals a wallet writes are the only warning
- * anybody gets, and this is where it is read.
- *
- * And the address is written out in one spelling before it is stored. An
- * address has two and the store holds one, so that a comparison somewhere else
- * cannot come out false for two spellings of one address — which is what a
- * retry of a waiting change is recognised by — and so that what a merchant reads
- * back does not depend on which spelling they last sent. The one it holds is the
- * wallet's own — the mixed-case checksummed form — because that is the string
- * the merchant copied and the string they will compare against when they look
- * at the settings screen a month from now.
+ * A mistyped address is usually another valid address belonging to somebody
+ * else, and every later sale would be paid to it irreversibly; the checksum's
+ * capitals are the only warning, so a wrong checksum throws here. Storing one
+ * spelling keeps comparisons (such as recognising a retried pending change)
+ * from failing on two spellings of one address.
  */
 export function payoutWalletFrom(payoutWallet: string): string {
   // Throws with the schema's own words, which say what is wrong with the
@@ -150,21 +95,10 @@ export function payoutWalletFrom(payoutWallet: string): string {
 }
 
 /**
- * Sets the address one merchant's sales are paid into at once, with nothing
- * waiting, and hands back the merchant as they now stand. Null where there is
- * no such merchant.
- *
- * This is the write with no wait and no message, and its callers are the
- * harnesses that seed a merchant ready to sell — the gateway's own test harness
- * and the slice's, which stands one merchant up with the address it was
- * configured with. Nothing a merchant or an operator reaches calls it: a
- * merchant's change goes through `Gateway#setPayoutWallet`, which waits and
- * announces where the money is real (ADR-0019), and no terminal command writes
- * a wallet at all.
- *
- * A row that moved between the read and the write is read again and written
- * over rather than refused, because a seed has nobody to tell and nothing to
- * race but itself.
+ * Sets a merchant's payout address at once, with no wait and no announcement.
+ * Null where there is no such merchant. Only test and seed harnesses may call
+ * this: a merchant's own change goes through `Gateway#setPayoutWallet`, which
+ * waits and announces where the money is real.
  */
 export async function setPayoutWallet(
   store: Store,
@@ -190,20 +124,15 @@ export async function setPayoutWallet(
   }
 }
 
-/** What the protected operator grant found and whether this call wrote it. */
 export interface LiveApprovalGrant {
   readonly merchant: StoredMerchant;
   readonly changed: boolean;
 }
 
 /**
- * Admits one merchant to live publication, once.
- *
- * This is an application function rather than an HTTP capability. The caller
- * is the protected operator command, which resolves a dashboard identity before
- * it gets here; the gateway stores no address and exposes no merchant-key route
- * that can make this decision. Null means the exact merchant is absent, while
- * `changed:false` is the idempotent answer for one already admitted.
+ * Admits one merchant to live publication. Only the protected operator command
+ * calls this; no merchant-key route can make this decision. Null means no such
+ * merchant; `changed: false` means already admitted.
  */
 export async function grantLiveApproval(
   store: Store,
@@ -214,13 +143,8 @@ export async function grantLiveApproval(
 }
 
 /**
- * Issues one key for a merchant's own code and hands back the secret, once.
- *
- * The caller is expected to have found the merchant first, so that "there is no
- * such merchant" is a sentence somebody reads rather than a foreign key
- * violation. This does not check again: two commands racing over a merchant
- * somebody is deleting is not a case worth a round trip, and the database
- * refuses it either way.
+ * Issues one key for a merchant and hands back the secret, once. The caller
+ * must have found the merchant first; this does not check again.
  */
 export async function issueKey(
   store: Store,
@@ -239,37 +163,16 @@ export async function issueKey(
 }
 
 /**
- * What a merchant made by registering is called in the merchant table.
- *
- * That column is the name a person reads at a terminal, beside the identifier
- * and the count of working keys, and it is not the name buyers read — the two
- * are different fields answering to different rules, and only the other one
- * ever leaves us. Somebody registering types neither, so this one has to come
- * from somewhere.
- *
- * It says how the merchant came to exist, because that is the only true thing
- * there is to say about a row nobody named. The alternatives were worse. Empty,
- * it is a blank column somebody has to work out the meaning of. The identifier
- * again, and the row carries it twice. Anything that reads like a name is a
- * name somebody will go looking for the owner of, and there is none.
+ * The operator-facing name of a merchant made by registering, which is not the
+ * name buyers see. It says how the merchant came to exist rather than reading
+ * like a name somebody chose.
  */
 export const REGISTERED_MERCHANT_NAME = "made in the dashboard";
 
 /**
- * Makes a merchant under a generated identifier. Null where that identifier is
- * taken, which a generated one never is.
- *
- * Nothing else is made with them. The dashboard that asked writes the merchant
- * onto the account of the person who pressed for it, and that account is the
- * way in; a merchant has no keys at all until they ask for one, and their list
- * of keys is empty on the first visit — which is the truth about a merchant who
- * has written no code yet.
- *
- * No name for buyers is written, because registering does not ask for one. It
- * is chosen afterwards through `setServiceName`, and what stands between here
- * and there is that a merchant listed under nothing publishes nothing: the
- * refusal is at the publish, where a merchant is actually about to be shown to
- * strangers, rather than here, where they have nothing to show yet.
+ * Makes a merchant under a generated identifier, with no keys and no name for
+ * buyers. Null where the identifier is taken. A merchant without a listing
+ * name is refused at publishing.
  */
 export async function registerMerchant(
   store: Store,
@@ -280,37 +183,16 @@ export async function registerMerchant(
 }
 
 /**
- * The merchant everything already in a database belongs to.
- *
- * It is a fixed identifier rather than a generated one because two things that
- * cannot see each other have to name the same merchant: the migration, which
- * writes this row and assigns every card, order and receipt that predates
- * merchants to it, and the seed below, which hangs the sandbox's key on it.
- *
- * The name is what somebody reads in a list at a terminal and nothing else uses
- * it. A sandbox brought up from nothing gets this row too, from the same
- * migration, which is what makes the two databases the same shape.
+ * The merchant that rows without one belong to. Its identifier is fixed because
+ * a migration writes the same row and assigns those rows to it, and the
+ * sandbox seed hangs its key on it.
  */
 export const SEEDED_MERCHANT = { id: "the_merchant", name: "The pilot merchant" } as const;
 
 /**
- * What a seeded merchant is listed as, which is different on each of the three
- * surfaces and is nothing at all on one of them.
- *
- * Two gateways seed: the laptop's stack, on the sandbox, and the slice's
- * in-process gateway, whose smoke runs on a test chain and may be pointed at a
- * live one. A deployed channel seeds nothing (ADR-0014), so none of these names
- * reaches the catalog of either site through a seed.
- *
- * It says what it is out loud on purpose: this name travels to a catalog, and
- * a listing that reads like a real seller is the one thing a sandbox must not
- * look like. `Agentify sandbox` is right for the laptop, wrong on a test
- * chain, and wrong in a way that reaches strangers on a live one.
- *
- * A live chain is seeded with no name. A merchant with no name is off sale, so
- * a live gateway nobody has named sells nothing, and the name it eventually
- * trades under is typed by a person rather than inherited from a constant
- * written for a sandbox.
+ * What a seeded merchant is listed as. The name reaches a catalog, so it must
+ * not read like a real seller. On a live chain there is none, which keeps a
+ * seeded merchant off sale until a person names it.
  */
 export function seededServiceNameFor(mode: SurfaceMode): string | null {
   switch (mode) {
@@ -327,17 +209,11 @@ export function seededServiceNameFor(mode: SurfaceMode): string | null {
   }
 }
 
-/** What seeding the sandbox's key came to, in a word somebody can print. */
 export type SeedOutcome =
   /**
-   * There was no such key and now there is; here it is, the way it was given.
-   *
-   * `listedAs` is the name this run listed the merchant under, and null where
-   * it left the listing as it found it — because there was already a name on
-   * it, and that name is somebody's. It is carried out rather than left to be
-   * inferred because listing a seller is the part of this that other people can
-   * see: the name travels to a catalogue, and a start-up log that reported the
-   * key and not the listing would be quiet about the half that goes outside.
+   * The key was issued. `listedAs` is the name this run listed the merchant
+   * under, null where it left an existing listing alone; it is reported
+   * because the listing is what reaches a catalog.
    */
   | { readonly kind: "issued"; readonly merchantId: string; readonly listedAs: string | null }
   /** The key is already there and works. Nothing was written. */
@@ -346,35 +222,11 @@ export type SeedOutcome =
   | { readonly kind: "disabled" };
 
 /**
- * Makes sure the sandbox's merchant and its one key exist, and says what it
- * found.
- *
- * This is what lets `docker compose up` sell with no manual step: the key in
- * `compose.yaml` is handed to the merchant process, and this puts the matching
- * row in the database so that the door recognises it. Run
- * again — a restart, a second replica — and nothing in the database changes:
- * the merchant row is insert-if-absent, and everything after it hangs off the
- * key lookup coming back empty. The listing name included, for the reason given
- * where it is written: on a database that already has the key, a merchant with
- * no listing name is a merchant somebody un-listed on purpose.
- *
- * A key that is there but disabled is left disabled and said out loud. Bringing
- * it back would make revocation a thing a restart undoes, and a key somebody
- * revoked deliberately is not a key this should quietly re-issue; the way back
- * is to seed a different one.
- *
- * The merchant row is written here as well as by the migration, and both are
- * needed: the migration is the only thing that can assign existing rows to it,
- * and this is the only thing that exists for a store with no migrations behind
- * it at all — which is every test and the end-to-end harness.
- *
- * Two processes starting at the same instant both find no key and both write
- * one, and the digest is unique — so one of them is refused by the database.
- * That is caught rather than thrown on, and the answer is the same one a
- * sequential second run gets, because it is the same fact: the key is there.
- * Left to propagate, it would take the losing process down at start-up with an
- * error about the database being unreachable, which is the one thing that had
- * not happened.
+ * Makes sure the sandbox's merchant and its one key (the one in `compose.yaml`)
+ * exist, and says what it found. Idempotent across restarts and replicas. A
+ * key somebody disabled stays disabled, so a restart never undoes a
+ * revocation. The merchant row is written here as well as by the migration
+ * because tests run on stores with no migrations.
  */
 export async function seedSandboxKey(
   store: Store,
@@ -386,9 +238,8 @@ export async function seedSandboxKey(
   const digest = keyDigest(secret);
   await store.addMerchant(SEEDED_MERCHANT, at);
 
-  // Looked up in whatever state it is in, not through the door's own lookup:
-  // the door answers nothing for a disabled key, and issuing a second key with
-  // a digest already taken is what that silence would lead to here.
+  // Not the door's lookup, which answers nothing for a disabled key and would
+  // lead to issuing a second key under a digest already taken.
   const found = await store.keyByDigest(digest);
   if (found !== null) {
     return standingOf(found.disabledAt);
@@ -400,19 +251,14 @@ export async function seedSandboxKey(
         id: ids("mk"),
         merchantId: SEEDED_MERCHANT.id,
         label: "the sandbox key from the compose file",
-        // One of the merchant's own: it is handed to a merchant process out of
-        // a configuration file, which is exactly what a merchant does with a
-        // key of theirs, and it is on the list they would revoke it from.
         digest,
       },
       at,
     );
   } catch (thrown) {
-    // Somebody wrote it between the read above and this line, or the write
-    // failed for a reason that has nothing to do with a race. The two are told
-    // apart by asking again: a key that is there now is the first answer,
-    // whoever wrote it, and anything else is a failure this cannot repair and
-    // must not swallow.
+    // Two processes starting together both find no key and one loses on the
+    // unique digest. Asking again tells that race apart from a real failure,
+    // which must not be swallowed.
     const raced = await store.keyByDigest(digest);
     if (raced === null) {
       throw thrown;
@@ -420,21 +266,10 @@ export async function seedSandboxKey(
     return standingOf(raced.disabledAt);
   }
 
-  // A sandbox that comes up undiscoverable is a sandbox that cannot show the
-  // thing it exists to show: without a listing name the challenge carries no
-  // declaration at all, and a catalogue has nothing to read. Nobody runs a
-  // command to fix that on a database that came up from nothing, so the run
-  // that issues the key writes the name too.
-  //
-  // Only that run, and this is the whole of why it is down here rather than
-  // above the lookup. A database that already has the key has been up before,
-  // and a merchant on it with no listing name is not a default nobody has got
-  // to yet — it is `merchant listed-as the_merchant --none`, which is how
-  // somebody takes the sandbox out of a catalogue. Writing the name back on the
-  // next boot would make that command something a restart undoes, silently, and
-  // the operator would find the sandbox listed again with nothing anywhere
-  // saying who listed it. A name that is already there is left alone for the
-  // matching reason: it is somebody's, and this is only a default.
+  // Only the run that issues the key writes the listing name. On a database
+  // that already has the key, a missing name means somebody un-listed the
+  // sandbox on purpose (`merchant listed-as the_merchant --none`), and a
+  // restart must not undo that; an existing name is likewise left alone.
   const merchant = await store.merchantById(SEEDED_MERCHANT.id);
   const wanted = seededServiceNameFor(mode);
   const listedAs = merchant !== null && merchant.serviceName === null ? wanted : null;
@@ -445,7 +280,6 @@ export async function seedSandboxKey(
   return { kind: "issued", merchantId: SEEDED_MERCHANT.id, listedAs };
 }
 
-/** Where a key that is already there stands, in the word the caller prints. */
 function standingOf(disabledAt: number | null): SeedOutcome {
   return disabledAt === null ? { kind: "already_there" } : { kind: "disabled" };
 }

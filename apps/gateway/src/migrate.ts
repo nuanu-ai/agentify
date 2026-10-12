@@ -1,9 +1,7 @@
 /**
- * Applies the checked-in migrations to the database DATABASE_URL names.
- *
- * It is a step somebody takes rather than something the gateway does on start.
- * A process that migrates on boot migrates once per replica, and the day there
- * are two of them they race each other over the same tables.
+ * Applies the checked-in migrations to the database DATABASE_URL names. It is a
+ * separate step rather than part of startup, because replicas that migrate on
+ * boot race each other over the same tables.
  */
 
 import { dirname, join } from "node:path";

@@ -1,20 +1,10 @@
 /**
- * Registering a merchant, and the keys they keep afterwards.
- *
- * A merchant is made the way the dashboard makes one, inside the process
- * (ADR-0030), and their first key is issued the way a person signed in to the
- * dashboard issues it. Everything after that goes through `serve`, so the door,
- * the mounting loop and the flows all run, and what is asserted is the answer a
- * merchant's own client would receive. Two of the rules below cannot be shown
- * with one merchant at all — that another merchant's key is answered as a key
- * that does not exist, and that registering twice makes two merchants rather
- * than one — so those tests make two and assert about both, the way
- * `tenancy.test.ts` does and for the same reason.
- *
- * The rule this file exists for most is the smallest one to write and the
- * worst one to get wrong: a call cannot disable the key it was made with.
- * Without it, one call leaves whoever holds that key with something the
- * gateway no longer takes.
+ * Registering a merchant, and the keys they keep afterwards. A merchant and
+ * their first key are made in-process, the way the dashboard makes them;
+ * everything after goes through `serve`, so what is asserted is the answer a
+ * merchant's own client receives. Rules about another merchant's keys, or
+ * about registering twice, are tested with two merchants, because one cannot
+ * show them.
  */
 
 import type { Card, MerchantKeyList } from "@nuanu-ai/agentify-contracts";
@@ -51,8 +41,8 @@ afterEach(async () => {
   await open?.served.close();
   await open?.harnessed.stop();
   open = null;
-  // One case silences the log to read it. Left standing it would silence every
-  // case after it in this file, including the ones a failure is reported by.
+  // One case silences the console to read it; left mocked, it would hide every
+  // later case's failure output.
   vi.restoreAllMocks();
 });
 
@@ -65,11 +55,7 @@ interface Registered {
   readonly keyId: string;
 }
 
-/**
- * A merchant made the way the dashboard makes one, with the first key issued
- * the way a person signed in to it issues one — the road every merchant takes
- * before their code calls anything.
- */
+/** A merchant and their first key, made the way the dashboard makes them. */
 const registered = async (harnessed: Harness): Promise<Registered> => {
   const merchantId = await harnessed.gateway.registerMerchant();
   const first = await harnessed.gateway.issueMerchantKey(merchantId, "the first worker", SIGNED_IN);
@@ -77,15 +63,9 @@ const registered = async (harnessed: Harness): Promise<Registered> => {
 };
 
 /**
- * What this merchant's products are sold under, and where their sales are paid,
- * set the way the dashboard sets them.
- *
- * The two travel together here because they are the two things a merchant made
- * by registering has to say before anything of theirs can be published, and
- * nothing in this file is about either — what it is about is keys. A test that
- * set only one would be refused at its first card for a reason it is not
- * testing; `seller-name.test.ts` and `payout-wallet.test.ts` are where each
- * refusal is the subject.
+ * Sets the seller name and the payout wallet, both required before a merchant
+ * can publish. Their refusals are tested in `seller-name.test.ts` and
+ * `payout-wallet.test.ts`.
  */
 const readyToSell = async (harnessed: Harness, served: Served, made: Registered, name: string) => {
   const named = await served.call("POST", "/v0/seller-name", {
@@ -139,10 +119,9 @@ const sellerInTheChallenge = async (
 
 describe("the calls a key made for a dashboard was for", () => {
   it("are calls this gateway does not have, and the wallet is still read here", async () => {
-    // The dashboard calls the gateway inside the process the two share and
-    // holds no key (ADR-0030): registering, the dashboard's own keys and the
-    // wallet write were its calls, and they are gone from the door. Reading
-    // the wallet is a call a merchant's own code makes, and it stays.
+    // The dashboard calls the gateway in-process and holds no key, so
+    // registering, dashboard keys and setting the wallet have no HTTP route.
+    // Reading the wallet is a call a merchant's own code makes.
     const { served, harnessed } = await started();
 
     for (const [method, path, body] of [
@@ -167,10 +146,8 @@ describe("the calls a key made for a dashboard was for", () => {
 
 describe("registering a merchant", () => {
   it("makes a merchant with no key, listed under nothing and paid nowhere", async () => {
-    // The press in the dashboard makes the merchant and nothing beside it. A
-    // key is issued when the merchant asks for one, so the first keys screen
-    // is empty; the name buyers read and the wallet are chosen on the screens
-    // after this one, where there is room to say what each is for.
+    // Registering makes only the merchant; the key, the seller name and the
+    // wallet are each set afterwards on their own screens.
     const { harnessed } = await started();
 
     const merchantId = await harnessed.gateway.registerMerchant();
@@ -187,9 +164,8 @@ describe("registering a merchant", () => {
   });
 
   it("lists the new merchant under the name they choose afterwards", async () => {
-    // Not decoration. A merchant with no name publishes nothing, and a card
-    // published under one carries it into the payment challenge a discovery
-    // catalogue reads — which is the whole road from registering to being found.
+    // A published card carries the seller name into the payment challenge that
+    // discovery catalogues read.
     const { served, harnessed } = await started();
     const made = await registered(harnessed);
     await readyToSell(harnessed, served, made, "Someone's shop");
@@ -202,9 +178,8 @@ describe("registering a merchant", () => {
   });
 
   it("gives each registration a merchant of its own", async () => {
-    // Two people pressing for a merchant are two merchants, not two people at
-    // one. Registering into a shared merchant would hand the second one the
-    // first one's cards, orders and receipts on their first screen.
+    // Registering into a shared merchant would hand the second person the first
+    // one's cards, orders and receipts.
     const { served, harnessed } = await started();
 
     const first = await registered(harnessed);
@@ -224,10 +199,8 @@ describe("registering a merchant", () => {
 
 describe("the keys a merchant holds", () => {
   it("lists every key of theirs, and the key the call came in on is one of them", async () => {
-    // Every key a merchant has is one they asked for, so the list is all of
-    // them, whichever key reads it — and the key that made the call is always
-    // a row on it, so a screen can draw the disable button beside every row
-    // but that one.
+    // The calling key is always on the list, so a screen can offer to disable
+    // every row but that one.
     const { served, harnessed } = await started();
     const made = await registered(harnessed);
     const worker = await issued(served, made.secret, "the worker on the small box");
@@ -241,12 +214,9 @@ describe("the keys a merchant holds", () => {
   });
 
   it("names a different key when the call is made with a different key", async () => {
-    // The half a merchant with one key cannot show, and the whole promise of
-    // the field: `this_call` is the key that opened this call rather than the
-    // merchant's first, their oldest, or whichever the list happens to start
-    // with. Named wrongly, a screen would hide the disable button on a key
-    // that works and offer it on the one the gateway answers 409 to, which is
-    // the exact failure the field exists to prevent.
+    // `this_call` is the key that opened this call, not the merchant's first
+    // key or the list's first row. Named wrongly, a screen would offer to
+    // disable the one key the gateway answers 409 to.
     const { served, harnessed } = await started();
     const made = await registered(harnessed);
     const second = await issued(served, made.secret, "a second worker");
@@ -256,19 +226,16 @@ describe("the keys a merchant holds", () => {
 
     expect(asTheFirst.this_call).toBe(made.keyId);
     expect(asTheSecond.this_call).toBe(second.key.id);
-    // And the same keys are listed both times: which key asked decides what
-    // this_call says and not who is on the list. The rows are not identical
-    // between the two reads and should not be — this call is itself a call, so
-    // the second read has marked the key it was made with as used.
+    // The same keys are listed both times. Only ids are compared: each read is
+    // itself a call and marks its own key as used, so the rows differ.
     expect(asTheSecond.keys.map((key) => key.id)).toStrictEqual(
       asTheFirst.keys.map((key) => key.id),
     );
   });
 
   it("lists no key of another merchant's", async () => {
-    // One merchant reading another's keys learns how many workers they run and
-    // what each is called. Made with two, because a list scoped to nobody
-    // passes every assertion one merchant can make about their own.
+    // Another merchant's list would reveal how many workers they run and what
+    // each is called. An unscoped list passes every single-merchant assertion.
     const { served, harnessed } = await started();
     const first = await registered(harnessed);
     const second = await registered(harnessed);
@@ -281,8 +248,7 @@ describe("the keys a merchant holds", () => {
   });
 
   it("keeps a revoked key in the list with the instant it stopped", async () => {
-    // The question after an incident is when a key stopped working, and a list
-    // that dropped the key answers nothing at all.
+    // After an incident the question is when a key stopped working.
     const { served, harnessed } = await started();
     const made = await registered(harnessed);
     const second = await issued(served, made.secret, "a second worker");
@@ -310,7 +276,6 @@ const issued = async (
 
 describe("issuing another key", () => {
   it("issues a key that opens the door, leaving the one that asked for it working", async () => {
-    // The whole reason a key is a row: a merchant hands one to each worker.
     const { served, harnessed } = await started();
     const made = await registered(harnessed);
 
@@ -359,8 +324,7 @@ describe("disabling a key", () => {
   });
 
   it("refuses to disable the key the call was made with", async () => {
-    // ADR-0014 §5. One call otherwise, and whoever holds that key meets "the
-    // gateway will not take this key" on every call afterwards.
+    // Otherwise one call would lock out whoever holds that key.
     const { served, harnessed } = await started();
     const made = await registered(harnessed);
 
@@ -370,16 +334,13 @@ describe("disabling a key", () => {
 
     expect(answered.status).toBe(409);
     expect((answered.body as { error: { code: string } }).error.code).toBe("key_opened_this_call");
-    // And the key is still working afterwards, which is the half that matters:
-    // a refusal that had already written the revocation would be worse than no
+    // A refusal that had already written the revocation would be worse than no
     // rule at all.
     expect(await opensTheDoor(served, made.secret)).toBe(true);
   });
 
   it("refuses the caller's own key even where the merchant has others", async () => {
-    // The rule is about the key this call was made with and not about the last
-    // working key: a merchant with two keys still cannot disable the one the
-    // call in front of the gateway came in on.
+    // The rule is about the calling key, not about the last working key.
     const { served, harnessed } = await started();
     const made = await registered(harnessed);
     const worker = await issued(served, made.secret, "the worker on the small box");
@@ -393,9 +354,8 @@ describe("disabling a key", () => {
   });
 
   it("disables any key from the dashboard, which holds none", async () => {
-    // A session calls inside the process with no key, so no key on its list
-    // is the one its call was made with, and every one of them — the one the
-    // merchant's code calls with included — is the merchant's to switch off.
+    // A signed-in session calls with no key, so it may disable any key,
+    // including the one the merchant's code calls with.
     const { served, harnessed } = await started();
     const made = await registered(harnessed);
 
@@ -410,8 +370,8 @@ describe("disabling a key", () => {
   });
 
   it("answers another merchant's key exactly as a key that never existed", async () => {
-    // Answered differently, this call would count somebody else's keys: a
-    // stranger walking identifiers would learn which of them are real.
+    // Answered differently, a caller walking identifiers would learn which of
+    // them are other merchants' real keys.
     const { served, harnessed } = await started();
     const first = await registered(harnessed);
     const second = await registered(harnessed);
@@ -425,14 +385,12 @@ describe("disabling a key", () => {
 
     expect(theirs.status).toBe(404);
     expect(theirs.body).toStrictEqual(nobodys.body);
-    // And the other merchant's key is untouched, which is what the refusal is
-    // actually protecting.
     expect(await opensTheDoor(served, second.secret)).toBe(true);
   });
 
   it("answers a second disabling the same way and keeps the first instant", async () => {
-    // A retry after a dropped connection is safe, and the instant somebody
-    // reconstructs an incident from is not moved by it.
+    // A retry after a dropped connection must not move the instant an incident
+    // is reconstructed from.
     const { served, harnessed } = await started();
     const made = await registered(harnessed);
     const second = await issued(served, made.secret, "a second worker");
@@ -450,8 +408,6 @@ describe("disabling a key", () => {
   });
 
   it("takes no key of a merchant who presents none", async () => {
-    // The three key routes are behind the merchant's door like every other
-    // merchant route, so a call with no key never reaches a handler.
     const { served } = await started();
 
     expect((await served.call("GET", "/v0/keys")).status).toBe(401);
@@ -460,15 +416,14 @@ describe("disabling a key", () => {
   });
 });
 
-/** The code and the sentence out of a refusal, which is what this door says. */
+/** The code and the message of a refusal. */
 const refusalIn = (answered: { readonly body: unknown }): { code: string; message: string } =>
   (answered.body as { error: { code: string; message: string } }).error;
 
 /**
- * What makes a harness a live one: Base mainnet, and the one facilitator a live
- * chain is allowed. The harness wires the scripted facilitator whatever the
- * configuration says, so naming Coinbase's here buys the derivation and nothing
- * else.
+ * Base mainnet and the one facilitator a live chain allows. The harness still
+ * wires its scripted facilitator, so this changes only what the gateway derives
+ * from its configuration.
  */
 const LIVE_CHAIN = {
   PAYMENT_NETWORK: "eip155:8453",
@@ -479,9 +434,9 @@ const LIVE_CHAIN = {
 
 describe("what a presented value's prefix says", () => {
   it("is told only which prefix it begins with and where keys with that prefix work", async () => {
-    // The gateway under test is live; the value presented merely begins like a
-    // test key. No digest lookup follows this branch, so the gateway knows
-    // nothing about whether this fabricated value is or ever was a key.
+    // The gateway is live and the value merely begins like a test key. No
+    // digest lookup happens on this branch, so the answer reveals nothing about
+    // whether the value is or ever was a key.
     const { served } = await started(LIVE_CHAIN);
 
     const answered = await served.call("GET", "/v0/cards", {
@@ -489,12 +444,9 @@ describe("what a presented value's prefix says", () => {
     });
 
     expect(answered.status).toBe(401);
-    // The same code every other refusal at this door carries. What changes is
-    // the sentence: a new machine-readable code would be a new value in a
-    // closed response enum, which by ADR-0006 moves CONTRACT_VERSION from "1"
-    // and stops every installed worker at startup — a heavy price for words,
-    // and the charter's answer to a finding is honest words at the door rather
-    // than a wider surface.
+    // The same code as every other refusal here; only the message differs. A
+    // new code would be a new value in a closed response enum, which bumps
+    // CONTRACT_VERSION and stops every installed worker at startup.
     const said = refusalIn(answered);
     expect(said.code).toBe("not_authorised");
     expect(said.message).toContain("this value begins with csk_test_");
@@ -503,11 +455,9 @@ describe("what a presented value's prefix says", () => {
   });
 
   it("says nothing more to a value that names no environment at all", async () => {
-    // The bare prefix, a guess, a stranger's key: all one answer, because a
-    // door that told them apart would confirm which guesses had once been real
-    // keys — which is exactly what revoking one has to stop. A key that names
-    // the other environment is the one exception, and it gives nothing away:
-    // whoever presents the value can read its prefix.
+    // Every value that names no environment gets one answer: telling them apart
+    // would confirm which guesses were once real keys. A value naming the other
+    // environment is the one exception, and its prefix is already the caller's.
     const { served } = await started();
 
     const answered = await served.call("GET", "/v0/cards", {
@@ -521,11 +471,9 @@ describe("what a presented value's prefix says", () => {
   });
 
   it("turns away a key from before this change, whose digest is still in the database", async () => {
-    // The delete-first promise, made by the door rather than by a database
-    // somebody emptied: the row is there, the digest matches, and the key still
-    // opens nothing. Without this the promise would hold only because the host
-    // reset destroyed both volumes, which is a fact about an afternoon rather
-    // than about the system.
+    // A key without an environment prefix is refused by the door even when its
+    // row and digest are in the database, not merely because a database was
+    // emptied.
     const { harnessed, served } = await started();
     const legacy = "a-merchant-key-long-enough";
     await harnessed.store.addKey(
@@ -538,10 +486,8 @@ describe("what a presented value's prefix says", () => {
       harnessed.now(),
     );
 
-    // The premise, asserted rather than assumed. This is the lookup the door
-    // makes, and it finds the row — so what turns the key away below is the
-    // prefix and not a write that never landed. Left out, a change that made
-    // this `addKey` do nothing would leave the test green and testing nothing.
+    // The premise: the door's own lookup finds the row, so what turns the key
+    // away below is the prefix and not a write that never landed.
     expect(await harnessed.store.workingKey(keyDigest(legacy))).not.toBeNull();
     expect(await opensTheDoor(served, legacy)).toBe(false);
   });
@@ -553,13 +499,9 @@ describe("what a presented value's prefix says", () => {
   });
 
   it("lets a live gateway's own key through, which is the same rule the other way", async () => {
-    // The rule read in the other direction, and the fixture every HTTP test in
-    // this repository leans on. A harness whose key was a constant carrying
-    // `csk_test_` handed a live gateway a key its own door refuses, so a test
-    // that overrode the chain would fail at its first call for a reason that
-    // had nothing to do with what it was testing — and the smoke, which boots
-    // through the same shape one package over, would fail wholesale on the day
-    // it was first pointed at mainnet.
+    // Every HTTP test leans on the harness key matching the gateway's
+    // environment. A live harness handing out a `csk_test_` key would be
+    // refused at its first call, and so would the smoke run against mainnet.
     const { harnessed, served } = await started(LIVE_CHAIN);
 
     // Asserted, so that a door which accepted everything could not pass this.
@@ -569,19 +511,11 @@ describe("what a presented value's prefix says", () => {
 });
 
 /**
- * The mark the door leaves on the key a call was made with.
- *
- * It is the one thing on that screen a merchant cannot work out for
- * themselves: three keys, and which of them is safe to revoke. Everything below
- * is about the two ways of getting it wrong. Writing it on every call would put
- * a database write in front of every purchase for the sake of a column somebody
- * reads once a week; writing it too rarely, or against the wrong row, would
- * answer the question wrongly on the one screen where being wrong ends with a
- * live key revoked.
- *
- * The instants are read out of the store rather than off the surface, because
- * the surface carries the key's own mark and these cases are about a key the
- * call was not made with.
+ * The last-use mark tells a merchant which keys are safe to revoke. Written on
+ * every call, it would put a database write in front of every purchase; written
+ * too rarely or on the wrong row, it would get a live key revoked. The instants
+ * are read from the store, because a read over the route is itself a call and
+ * these cases are about keys a call was not made with.
  */
 describe("the mark a call leaves on the key it was made with", () => {
   /** When the store last saw a call on one key, straight off the row. */
@@ -597,7 +531,7 @@ describe("the mark a call leaves on the key it was made with", () => {
     return found.lastUsedAt;
   };
 
-  /** Another key of one merchant's own, and the row it is. */
+  /** Issues another key for the same merchant and returns its id. */
   const spareKey = async (served: Served, key: string, label: string): Promise<string> => {
     const answered = await served.call("POST", "/v0/keys", {
       body: { label },
@@ -614,10 +548,8 @@ describe("the mark a call leaves on the key it was made with", () => {
   };
 
   it("marks the key the call came in on and leaves the merchant's others blank", async () => {
-    // The row and not the merchant. A merchant hands one key to each worker
-    // precisely so that one can be revoked without touching the rest, and a
-    // mark that landed on all of them would say every key is in use — which is
-    // the answer that stops anybody revoking anything.
+    // A mark on every key of the merchant would show all of them in use, and
+    // nobody could tell which one is safe to revoke.
     const { served, harnessed } = await started();
     const { merchant } = harnessed;
     const idle = await spareKey(served, merchant.key, "the one nobody calls");
@@ -629,11 +561,8 @@ describe("the mark a call leaves on the key it was made with", () => {
   });
 
   it("leaves the mark where it is on a second call made straight after the first", async () => {
-    // The door reads this row on every call behind it, and writing to it on
-    // every call would be a write in front of every purchase for a fact nobody
-    // reads twice a day. So the mark is refreshed only once it has gone stale,
-    // and this is that: the thinning is behaviour rather than an optimisation,
-    // and without a case it would come out in a refactor with nothing failing.
+    // The mark is refreshed only once stale, to keep a write out of every
+    // purchase. Without this case a refactor could drop that with nothing failing.
     const { served, harnessed } = await started();
     const { merchant } = harnessed;
 
@@ -648,9 +577,8 @@ describe("the mark a call leaves on the key it was made with", () => {
   });
 
   it("moves the mark on for a call that comes in long after the last one", async () => {
-    // The other half of the same rule, and the half a merchant is looking at.
-    // A mark that stopped moving would answer "last used in August" about a key
-    // somebody's worker is calling with this morning.
+    // A mark that stopped moving would show a key a worker calls with today as
+    // long idle.
     const { served, harnessed } = await started();
     const { merchant } = harnessed;
 
@@ -662,10 +590,8 @@ describe("the mark a call leaves on the key it was made with", () => {
   });
 
   it("does not move one merchant's mark when another merchant calls", async () => {
-    // Two merchants prove what one cannot. A gateway that wrote the mark
-    // without scoping it to the row would pass every assertion a single
-    // merchant can make, and would report a key as busy on the strength of
-    // somebody else's traffic.
+    // A mark not scoped to the row passes every single-merchant assertion and
+    // would report a key as busy on somebody else's traffic.
     const { served, harnessed } = await started();
     const theirs = await harnessed.addMerchant();
     const ours = harnessed.merchant;
@@ -680,10 +606,8 @@ describe("the mark a call leaves on the key it was made with", () => {
   });
 
   it("answers the call when the mark cannot be written, and says so in the log", async () => {
-    // The mark is what somebody reads on a screen; the call behind it is
-    // somebody's purchase. A database that will not take the one must not
-    // refuse the other — and it must not do it quietly either, or the column
-    // goes stale across a deployment with nothing anywhere saying why.
+    // A mark that cannot be written must not fail the purchase behind it, and
+    // must be logged, or the column goes stale with nothing saying why.
     const { served, harnessed } = await started();
     const said = vi.spyOn(console, "error").mockImplementation(() => {});
     harnessed.store.noteKeyUse = async () => {
@@ -707,11 +631,9 @@ describe("the mark a call leaves on the key it was made with", () => {
 
 describe("the merchant every ordinary test sells as", () => {
   it("still reaches its own keys, which is what the seeded merchant is for", async () => {
-    // The harness writes a merchant straight into the store, with no
-    // registration involved, the way the sandbox's seed does and the way every
-    // merchant a database already held came to be. Its key resolves to a key
-    // row like any other, so the list names it — a door that could only name a
-    // key registration made would break every one of those.
+    // The harness writes its merchant straight into the store, as the sandbox
+    // seed does, with no registration. Its key must still resolve to a key row
+    // that the list names.
     const { served, harnessed } = await started();
 
     const listed = await keysWith(served, harnessed.merchant.key);

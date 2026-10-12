@@ -14,14 +14,9 @@ const database = "postgres://agentify:secret@localhost:5432/agentify";
 const required = { DATABASE_URL: database };
 
 /**
- * What the gateway said when it refused to start on this environment.
- *
- * The arithmetic refusals below are checked through this rather than against a
- * regular expression over the whole sentence. What is owed to the operator
- * reading a container that will not come up is the numbers and what each of
- * them is; the order the clauses are written in is not owed to anybody, and a
- * test that pinned it would turn rewording the message into a failure and
- * teach the next person to keep the wording rather than improve it.
+ * What the gateway said when it refused to start on this environment. Refusals
+ * are checked for the numbers and names owed to the operator, not against the
+ * whole sentence, so rewording a message fails no test.
  */
 const refusalFor = (overrides: Record<string, string>): string => {
   try {
@@ -37,16 +32,13 @@ describe("loadConfig", () => {
     const config = loadConfig(required);
 
     expect(config.databaseUrl).toBe(database);
-    // Nothing is seeded unless somebody asks for it. A gateway that made a key
-    // from a default would be a gateway with a key nobody meant to issue.
+    // A key made from a default would be a key nobody meant to issue.
     expect(config.sandboxMerchantKey).toBeNull();
   });
 
   it("carries every deadline the order machine asks for, and none of them is invented in code", () => {
-    // The promise: an engineer changing how long the gateway waits for anything
-    // changes an environment variable, and never a number buried in a source
-    // file. The machine takes its policy from here, so a number missing from
-    // this object is a number somebody would have had to guess further down.
+    // The order machine takes its policy from here, so a number missing from
+    // this object would be guessed further down in code.
     const { deadlines, redelivery } = loadConfig(required);
 
     expect(deadlines).toStrictEqual({
@@ -144,10 +136,9 @@ describe("loadConfig", () => {
   });
 
   it("takes one address that means the sandbox, and tells it from a real one", () => {
-    // The promise: a local stack completes a purchase with no chain behind it,
-    // and a deployment that names a real facilitator cannot also be pretending.
-    // One field holds one value, so the two cannot be held at once — there is
-    // no flag beside the address to be left set from yesterday (ADR-0020).
+    // One field holds one value, so a deployment cannot name a real
+    // facilitator and the sandbox at once; there is no separate flag to be
+    // left set by mistake.
     expect(isSandboxFacilitator(loadConfig(required).payment.facilitatorUrl)).toBe(false);
 
     const sandbox = loadConfig({ ...required, FACILITATOR_URL: SANDBOX_FACILITATOR });
@@ -162,10 +153,9 @@ describe("loadConfig", () => {
   });
 
   it("refuses the sandbox beside a real facilitator's credentials", () => {
-    // The mistake this catches is a production environment file copied onto a
-    // sandbox. Those credentials exist only to talk to a real facilitator, so
-    // beside an address that settles against nothing they are somebody's
-    // leftovers rather than a choice (ADR-0020).
+    // Catches a production environment file copied onto a sandbox: these
+    // credentials only talk to a real facilitator, so beside the sandbox they
+    // are leftovers rather than a choice.
     const sandbox = { ...required, FACILITATOR_URL: SANDBOX_FACILITATOR };
 
     expect(() => loadConfig({ ...sandbox, CDP_API_KEY_ID: "key-id" })).toThrowError(/CDP_API_KEY/);
@@ -193,8 +183,6 @@ describe("loadConfig", () => {
     });
 
     it("still refuses a real credential beside a facilitator that settles nothing", () => {
-      // The door ADR-0020 puts here does not move: what changed is the reading of
-      // nothing, not the reading of something.
       expect(() =>
         loadConfig({ ...required, FACILITATOR_URL: SANDBOX_FACILITATOR, CDP_API_KEY_ID: "key-id" }),
       ).toThrowError(/left over from somewhere else/);
@@ -214,23 +202,16 @@ describe("loadConfig", () => {
   });
 
   it("refuses the CDP facilitator without the credentials it takes no request without", () => {
-    // The mirror of the door above, and the one that costs money rather than
-    // tidiness. The CDP facilitator answers nothing unsigned, so a deployment
-    // pointed at it without credentials verifies nothing and settles nothing —
-    // and it would discover that at the first purchase, in front of a buyer,
-    // rather than here. A knob that can silently take a deployment down is a
-    // defect in the knob.
+    // The CDP facilitator answers nothing unsigned, so without credentials a
+    // deployment would find out at the first purchase, in front of a buyer.
     const cdp = { ...required, FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402" };
 
-    // Which one is missing is the whole of what the operator needs, so each is
-    // named on its own rather than the pair being reported as "credentials".
     const neither = refusalFor(cdp);
     expect(neither).toContain("CDP_API_KEY_ID");
     expect(neither).toContain("CDP_API_KEY_SECRET");
 
-    // Each of these names the one that is missing and not the one that is
-    // there: a refusal that listed both every time would send an operator who
-    // has half the pair looking for the half they already have.
+    // Only the missing half is named, so an operator is not sent looking for
+    // the half they already have.
     const noSecret = refusalFor({ ...cdp, CDP_API_KEY_ID: "key-id" });
     expect(noSecret).toContain("CDP_API_KEY_SECRET");
     expect(noSecret).not.toContain("CDP_API_KEY_ID");
@@ -239,8 +220,6 @@ describe("loadConfig", () => {
     expect(noId).toContain("CDP_API_KEY_ID");
     expect(noId).not.toContain("CDP_API_KEY_SECRET");
 
-    // Both there is a deployment that works, and it is the only spelling that
-    // gets past this door.
     expect(() =>
       loadConfig({ ...cdp, CDP_API_KEY_ID: "key-id", CDP_API_KEY_SECRET: "secret" }),
     ).not.toThrow();
@@ -258,11 +237,8 @@ describe("loadConfig", () => {
   });
 
   it("knows the CDP facilitator by its host, not by one exact spelling", () => {
-    // A trailing slash, a staging host, a path of another shape: each is the
-    // same facilitator with the same appetite for credentials. Reading only one
-    // exact string would let every other spelling through unauthenticated, to
-    // fail at the first purchase — which is the failure this door exists to
-    // move to startup.
+    // Matching one exact string would let every other spelling of the same
+    // facilitator start unauthenticated and fail at the first purchase.
     for (const url of [
       "https://api.cdp.coinbase.com/platform/v2/x402",
       "https://api.cdp.coinbase.com/platform/v2/x402/",
@@ -271,9 +247,8 @@ describe("loadConfig", () => {
       expect(refusalFor({ ...required, FACILITATOR_URL: url })).toContain("CDP_API_KEY_ID");
     }
 
-    // And a host that merely reads like it is not it. The rule is the domain,
-    // so a look-alike somebody else registered asks for nothing and is handed
-    // nothing — credentials do not travel to a host on somebody's say-so.
+    // A look-alike somebody else registered is asked for nothing and handed
+    // no credentials.
     expect(() =>
       loadConfig({
         ...required,
@@ -283,12 +258,9 @@ describe("loadConfig", () => {
   });
 
   it("reads a host written down to the root as the host it is, and passes it on in one spelling", () => {
-    // `api.cdp.coinbase.com.` is the fully qualified spelling of the same name,
-    // and it is a spelling deployments genuinely use — it is what a resolver is
-    // handed to stop a search domain being appended. Read as a different host it
-    // would be sent no credentials at all: the gateway would come up looking
-    // healthy against a facilitator that answers nothing unsigned, and every
-    // verify and every settle would come back refused, in front of a buyer.
+    // `api.cdp.coinbase.com.` is the fully qualified spelling of the same host.
+    // Read as another host it would be sent no credentials, and every verify
+    // and settle would be refused on a gateway that came up healthy.
     const rooted = "https://api.cdp.coinbase.com./platform/v2/x402";
 
     expect(refusalFor({ ...required, FACILITATOR_URL: rooted })).toContain("CDP_API_KEY_ID");
@@ -301,12 +273,8 @@ describe("loadConfig", () => {
       }),
     ).not.toThrow();
 
-    // And what is carried away from here is the one spelling, not the one that
-    // was typed. Everything downstream reads this string rather than the
-    // environment — the client that signs a token naming the host, and the
-    // `Host` header on the very request that token is good for — so a second
-    // spelling surviving this far would be a deployment that passes the door
-    // above and is then refused by the facilitator on every call.
+    // Downstream, the signed token names the host and must match the request's
+    // `Host` header, so only the canonical spelling is passed on.
     expect(
       loadConfig({
         ...required,
@@ -318,11 +286,9 @@ describe("loadConfig", () => {
   });
 
   it("will not start unauthenticated against a Coinbase host it does not know", () => {
-    // The door fails closed. Coinbase answers on more than one host, and this
-    // gateway knows how to authenticate against exactly one of them; pointed at
-    // any other of theirs it would build a client with no credentials on it and
-    // discover that at the first charge. A refusal at startup is the same news
-    // in front of the person who typed the address.
+    // Fails closed: the gateway authenticates against exactly one Coinbase
+    // host, and any other would get a client with no credentials that fails at
+    // the first charge.
     for (const url of [
       "https://coinbase.com/x402",
       "https://api.coinbase.com/platform/v2/x402",
@@ -338,16 +304,11 @@ describe("loadConfig", () => {
       expect(refused).toContain("cdp.coinbase.com");
     }
 
-    // Credentials are not what the rule is about, so the refusal does not go
-    // away by taking them out: what is refused is the address.
+    // The address is what is refused, with or without credentials.
     expect(refusalFor({ ...required, FACILITATOR_URL: "https://api.coinbase.com/x402" })).toContain(
       "FACILITATOR_URL",
     );
 
-    // The safe direction, twice over. A facilitator that is nobody's Coinbase
-    // starts as it always did, and so does the one host this gateway does know:
-    // a door that refused either would take deployments down rather than
-    // protect them.
     expect(() =>
       loadConfig({ ...required, FACILITATOR_URL: "https://x402.org/facilitator" }),
     ).not.toThrow();
@@ -359,12 +320,9 @@ describe("loadConfig", () => {
         CDP_API_KEY_SECRET: "secret",
       }),
     ).not.toThrow();
-    // And a look-alike registered by somebody else is not Coinbase's at all: it
-    // is refused nothing and handed nothing. Both shapes of look-alike are here
-    // because the rule is a name boundary rather than a run of letters — one
-    // hangs the name off a domain of their own, the other is a domain of their
-    // own that merely ends in those letters, and anybody can register the
-    // second.
+    // Look-alikes are refused nothing and handed nothing. The rule is a label
+    // boundary rather than a run of letters, so both a name hung off another
+    // domain and a domain merely ending in those letters are here.
     for (const url of [
       "https://coinbase.com.evil.example/x402",
       "https://api.cdp.coinbase.com.evil.example/x402",
@@ -376,9 +334,6 @@ describe("loadConfig", () => {
   });
 
   it("does not let it start, names every problem at once and tells absent from wrong", () => {
-    // The promise to the engineer: the whole list of what is missing arrives in
-    // one go rather than one variable per restart, and "not set" sounds
-    // different from "set wrong".
     const bothBroken = () => loadConfig({ QUOTE_RESPONSE_MS: "not a number" });
     expect(bothBroken).toThrowError(/DATABASE_URL: the variable is not set/);
     expect(bothBroken).toThrowError(/QUOTE_RESPONSE_MS: must be a whole number of milliseconds/);
@@ -409,10 +364,9 @@ describe("loadConfig", () => {
   });
 
   it("takes a key to seed the sandbox with, and refuses one too short to hand out", () => {
-    // Not a key anything is compared against — there is no such variable any
-    // more (ADR-0010). It is written into the database at start-up so a sandbox
-    // comes up selling, and the floor is on what a sandbox may hand out: a real
-    // key is generated with thirty-two bytes behind it and chosen by nobody.
+    // It is written into the database at start-up so a sandbox comes up
+    // selling. Real keys are generated from thirty-two random bytes; the floor
+    // is on what a sandbox may hand out.
     expect(
       loadConfig({ ...required, SANDBOX_MERCHANT_KEY: "csk_test_a-key-long-enough" })
         .sandboxMerchantKey,
@@ -424,17 +378,11 @@ describe("loadConfig", () => {
   });
 
   it("reads a seed key set to nothing the way it reads one never set", () => {
-    // The comment on this variable tells a deployment to unset it, and a
-    // deployment says that by handing the process a file with the name and
-    // nothing after it rather than by deleting the line. Read as a key of
-    // length zero that value is refused and the gateway does not start, so an
-    // operator who did exactly what they were told would be looking at a
-    // process that will not come up. Nothing is not a key.
+    // Deployments unset the variable by leaving the name with nothing after
+    // it; read as an empty key, that would stop the gateway from starting.
     expect(loadConfig({ ...required, SANDBOX_MERCHANT_KEY: "" }).sandboxMerchantKey).toBeNull();
-    // The same answer the absence gives, which is the whole claim.
     expect(loadConfig(required).sandboxMerchantKey).toBeNull();
-    // And the floor still stands for everything that is a key: a short one is
-    // refused rather than swept in with the empty one.
+    // Anything that is not empty is still held to the floor.
     expect(() => loadConfig({ ...required, SANDBOX_MERCHANT_KEY: " " })).toThrowError(
       /SANDBOX_MERCHANT_KEY: must be at least 16 characters/,
     );
@@ -456,41 +404,31 @@ describe("loadConfig", () => {
   });
 
   it("refuses a poll window longer than a caller it cannot ask will wait", () => {
-    // The promise: a deployment cannot set this to a number that leaves the
-    // gateway holding a poll past the point where the client on the other end
-    // has given up. Which client that is matters, and getting it wrong here
-    // would put a false reason in front of an operator. A worker that names the
-    // window it wants is safe by arithmetic, whatever this is set to — the
-    // gateway holds a poll for the smaller of the two. The window is optional
-    // on the wire, and a poll that names none is held for this number instead,
-    // with nothing here knowing when its caller stops waiting. That is what the
-    // ceiling is for, and it is what the refusal has to say.
+    // A worker that names its window gets the smaller of the two. A poll that
+    // names none is held for this number by a caller the gateway cannot ask,
+    // so the ceiling exists for that poll and the refusal says so.
     expect(() => loadConfig({ ...required, WORKER_POLL_WAIT_MS: "60000" })).toThrowError(
       /WORKER_POLL_WAIT_MS: must be at most 40000ms/,
     );
     expect(() => loadConfig({ ...required, WORKER_POLL_WAIT_MS: "60000" })).toThrowError(
       /a poll that named no window of its own/,
     );
-    // Naming the ceiling alone would leave an operator to guess where the
-    // number came from, so the figure it was derived from is in the sentence —
-    // as the provenance of the bound, not as a claim about who is calling.
+    // The figure the ceiling is derived from is named too, as its provenance
+    // rather than a claim about who is calling.
     expect(() => loadConfig({ ...required, WORKER_POLL_WAIT_MS: "60000" })).toThrowError(/50000ms/);
 
-    // The ceiling itself starts: it is a bound and not a target, and an
-    // operator who reads the number out of the refusal must be able to use it.
+    // The ceiling itself is accepted: an operator who copies it out of the
+    // refusal must be able to use it.
     expect(loadConfig({ ...required, WORKER_POLL_WAIT_MS: "40000" }).worker.pollWaitMs).toBe(
       40_000,
     );
   });
 
   it("refuses a synchronous budget the two waits inside it do not fit into", () => {
-    // The composition of `docs/research/16-order-state-machine.md`: the agent's
-    // worst case in the synchronous mode is the merchant's answer plus the
-    // charge, and the portal promises the agent one ceiling. A configuration
-    // whose parts do not fit inside that ceiling breaks the promise on the
-    // first slow sale rather than at startup, so it is refused here.
-    // Four numbers, because the operator has to see which of them to change:
-    // the ceiling, the two parts, and what the two come to.
+    // The agent's worst case in the synchronous mode is the merchant's answer
+    // plus the charge, and the portal promises the agent one ceiling. The
+    // refusal gives the ceiling, both parts and their sum, so the operator
+    // sees which to change.
     const refused = refusalFor({ SYNC_RESPONSE_MS: "9000", SETTLE_RESPONSE_MS: "2000" });
     for (const owed of ["synchronous budget", "10000ms", "9000ms", "2000ms", "11000ms"]) {
       expect(refused, refused).toContain(owed);
@@ -503,13 +441,10 @@ describe("loadConfig", () => {
   });
 
   it("refuses a synchronous answer too short to deliver an order a second time", () => {
-    // A handler that throws is the merchant's temporary failure, and the
-    // portal tells them to throw rather than refuse so that the order comes
-    // again. In the synchronous mode it comes again only if a second attempt
-    // fits before the answer's deadline: the wait for the first answer, the
-    // time the queue takes to notice that wait is over, and the delay before
-    // the next attempt. A configuration where those do not fit sends the
-    // advice to throw into a sale that can never recover, so it is refused.
+    // Merchants are told to throw on a temporary failure so the order comes
+    // again. In the synchronous mode that needs the first answer's wait, the
+    // queue noticing it is over and the redelivery delay to fit before the
+    // deadline.
     const tooLong = loadConfig({
       ...required,
       HANDLER_ANSWER_MS: "7000",
@@ -531,9 +466,8 @@ describe("loadConfig", () => {
   });
 
   it("will not start the gateway where a synchronous sale has no second attempt", async () => {
-    // The refusal above is only a promise if the process asks it. The
-    // database is one nothing answers at, so a gateway that skipped the check
-    // fails on the connection instead, in other words.
+    // Nothing answers at this database, so a gateway that skipped the check
+    // would fail on the connection instead, in other words.
     const cramped = loadConfig({
       DATABASE_URL: "postgres://agentify:secret@127.0.0.1:1/agentify",
       HANDLER_ANSWER_MS: "7000",
@@ -546,10 +480,8 @@ describe("loadConfig", () => {
   });
 
   it("gives one address for the gateway however the variable was written", () => {
-    // A path is joined onto this string. Written with a trailing slash it
-    // produced an address with two slashes in the middle — a second spelling of
-    // every product, which a discovery catalog reads as a second resource, and
-    // the operator who typed the slash would have no way of seeing it.
+    // Paths are joined onto this, so a trailing slash would give every product
+    // a second address, which a discovery catalog reads as a second resource.
     const of = (PUBLIC_BASE_URL: string) =>
       loadConfig({ ...required, PUBLIC_BASE_URL }).publicBaseUrl;
 
@@ -562,33 +494,24 @@ describe("loadConfig", () => {
   });
 
   it("refuses a base address that carries a question mark or a fragment", () => {
-    // Same operator and the same class of mistake as the trailing slash, and it
-    // cannot be quietly repaired the way a slash can: a path is joined onto
-    // this string, so a query or a fragment ends up in the middle of every
-    // resource address, which then answers nothing — and a discovery listing
-    // would be keyed on it. There is no reading of either that was meant, so
-    // this is a refusal at start-up where somebody is looking, and not a
-    // silent trim of something they typed on purpose.
+    // Unlike a slash, this cannot be quietly repaired: joined paths would land
+    // after the query or fragment, so every resource address would answer
+    // nothing.
     const broken = (PUBLIC_BASE_URL: string) => () => loadConfig({ ...required, PUBLIC_BASE_URL });
 
     expect(broken("https://agentify.example/?utm=abc")).toThrowError(/PUBLIC_BASE_URL/);
     expect(broken("https://agentify.example?utm=abc")).toThrowError(/query/);
     expect(broken("https://agentify.example/#top")).toThrowError(/fragment/);
-    // And the ordinary ones still start.
     expect(loadConfig({ ...required, PUBLIC_BASE_URL: "https://a.example/x" }).publicBaseUrl).toBe(
       "https://a.example/x",
     );
   });
 
   it("refuses the other spellings that make one product two addresses", () => {
-    // Everything here is a value that parses as a URL, is kept verbatim, and
-    // then goes into a payment challenge as the thing an agent is invited to
-    // pay for. A scheme spelled in capitals is the one with a measured cost:
-    // the validation endpoint this repository talks to answers 400 to anything
-    // that does not begin with a lower-case https, so a gateway configured that
-    // way is simply absent from a listing with nothing to say why. A space
-    // inside makes an address that answers nothing. A user name and password
-    // in front of the host would be published to every agent that asks a price.
+    // Each parses as a URL and would go verbatim into every payment challenge.
+    // The validation endpoint answers 400 to a scheme that is not lower-case
+    // https; a space makes an address that answers nothing; a name and
+    // password would be published to every agent that asks a price.
     const broken = (PUBLIC_BASE_URL: string) => () => loadConfig({ ...required, PUBLIC_BASE_URL });
 
     expect(broken("HTTPS://agentify.example")).toThrowError(/http:\/\/ or https:\/\//);
@@ -596,7 +519,6 @@ describe("loadConfig", () => {
     expect(broken("https://user:secret@agentify.example")).toThrowError(/name and password/);
     expect(broken("https://agentify.example/a b")).toThrowError(/space/);
 
-    // And the ordinary spellings still start, including a mount path.
     for (const good of [
       "http://localhost:3000",
       "https://agentify.example",
@@ -607,9 +529,6 @@ describe("loadConfig", () => {
   });
 
   it("names every problem at once when more than one is wrong", () => {
-    // All of them, and not the first one found. An operator who fixed the
-    // budget and restarted into the next refusal would be reading the
-    // configuration one mistake per deploy.
     const refused = refusalFor({
       SYNC_RESPONSE_MS: "9000",
       SETTLE_RESPONSE_MS: "5000",
@@ -627,8 +546,8 @@ describe("loadConfig", () => {
 
 describe("a seeded key belongs to this environment", () => {
   it("stops the process on a key from the other environment", () => {
-    // The laptop's `.env` seeding a live gateway with a key written down in a
-    // repository is the mistake this is for.
+    // Catches a laptop's `.env` seeding a live gateway with a key written down
+    // in a repository.
     expect(() =>
       loadConfig({
         ...required,
@@ -707,11 +626,9 @@ describe("a live chain is allowed exactly one facilitator", () => {
   });
 
   it("refuses the default that arrives when nobody names the variable at all", () => {
-    // The copied environment file, and the one that would otherwise pass every
-    // other check: FACILITATOR_URL falls back to the public facilitator, so a
-    // `.env` from the test host with one line changed to eip155:8453 would
-    // start, issue csk_live_ keys, show no banner, and settle somewhere the
-    // pilot does not settle.
+    // FACILITATOR_URL falls back to the public facilitator, so a test host's
+    // `.env` with only the network changed would otherwise start live, issue
+    // csk_live_ keys and settle in the wrong place.
     const { FACILITATOR_URL, CDP_API_KEY_ID, CDP_API_KEY_SECRET, ...unnamed } = live;
     expect(() => loadConfig(unnamed)).toThrowError(/eip155:8453.*FACILITATOR_URL/s);
   });
@@ -745,11 +662,9 @@ describe("a live chain is allowed exactly one facilitator", () => {
   });
 
   it("refuses a name and password written into Coinbase's address", () => {
-    // Two costs, and the first settles it on its own: a request whose address
-    // carries credentials is refused where it is built, so every verify and
-    // every settle throws, in front of a buyer, on a gateway that came up
-    // healthy. The second is that the refusal prints the address it was given,
-    // so a password written there also reaches the operator's log.
+    // A request whose address carries credentials is refused where it is
+    // built, so every verify and settle would throw on a gateway that came up
+    // healthy, and that refusal would print the password into the log.
     expect(() =>
       loadConfig({
         ...live,
@@ -759,9 +674,8 @@ describe("a live chain is allowed exactly one facilitator", () => {
   });
 
   it("refuses a port the facilitator does not answer on", () => {
-    // The host is right, the path is right, and nothing is listening there.
-    // That is the wrong-path failure again under a different spelling: the
-    // gateway starts, issues keys, and finds out at the first buyer.
+    // Nothing listens on that port: the gateway would start, issue keys, and
+    // find out at the first buyer.
     expect(() =>
       loadConfig({
         ...live,

@@ -1,16 +1,9 @@
 /**
- * The payment-report command, wired to the database.
- *
- * Run on the gateway that is already up, the same way the merchant command is:
+ * The payment-report command, wired to the database. Run on the gateway that
+ * is already up:
  *
  *   docker compose exec app \
  *     pnpm --filter @agentify/gateway report-payment <order>
- *
- * It writes through the order machine. It does not start the reminder worker:
- * a second consumer on that queue would take deadlines away from the gateway
- * that applies them. And it does not ask the facilitator. The fact it records
- * was read somewhere else; asking again is the thing this command exists
- * because we cannot do.
  */
 
 import { openCommandApplication } from "./command-application.js";

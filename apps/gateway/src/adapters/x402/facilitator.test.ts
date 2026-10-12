@@ -146,14 +146,10 @@ describe("verifying a payment", () => {
   });
 
   it("takes one address in either spelling it may be written in", async () => {
-    // An address on an EVM chain has two spellings and one value: the mixed
-    // case a wallet shows, whose capitals are a checksum, and the same forty
-    // characters in lower case. A merchant's address is stored and offered
-    // checksummed (ADR-0019), and a client that normalises what it echoes back
-    // — or one whose library does — would have every payment it ever made
-    // refused as though it had paid a stranger, with a message saying so. The
-    // checksum's job is catching a typed character at the door, not making the
-    // wire case-sensitive.
+    // An EVM address has two spellings and one value: the checksummed mixed case
+    // a merchant's address is stored and offered in, and the same characters in
+    // lower case. A client whose library normalises what it echoes back must not
+    // have every payment refused as though it had paid a stranger.
     const checksummed = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
     const inLowerCase = checksummed.toLowerCase();
     const client = new Answering();
@@ -449,11 +445,10 @@ describe("executing a charge", () => {
 
   it("reads a charge the facilitator refused outright as a charge that did not happen", async () => {
     // A 4xx carrying the facilitator's own settlement verdict is the request
-    // turned away before any money moved — the spike met one of these,
-    // `self_send_not_allowed`, where the facilitator will not send a payer's
-    // money to the payer. Held as "unknown" it would park the order waiting for
-    // an answer that has already arrived, and somebody would reconcile a charge
-    // that was never attempted.
+    // turned away before any money moved, such as `self_send_not_allowed` when
+    // the payer would pay itself. Held as "unknown" it would park the order
+    // waiting for an answer that has already arrived, and somebody would
+    // reconcile a charge that was never attempted.
     const answered = await new X402Facilitator(
       new Answering({
         settle: new SettleError(400, {

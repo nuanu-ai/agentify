@@ -1,18 +1,13 @@
 /**
- * The facilitator client, against a facilitator that is really there.
+ * The facilitator client, against a facilitator that is really there. Every
+ * test stands a server up on 127.0.0.1 and lets the official client make a real
+ * request to it: only that checks that the configured credentials arrive at the
+ * far end, in the right header, on the request carrying the payment. A fake
+ * asserting call arguments would pass with the wrong header name.
  *
- * Every test here stands a server up on 127.0.0.1 and lets the official client
- * make a real request to it. The reason is the one thing a hand-written fake
- * cannot check: that the credentials this gateway is configured with actually
- * arrive at the far end, as a header, on the request that carries the payment.
- * A fake client asserting that a function was called with the right arguments
- * would have gone green against the wrong header name, which is the defect this
- * file was written after.
- *
- * The address is given by name and never left to `listen(0)` alone. A bare
+ * The address is given by name, never left to `listen(0)` alone: a bare
  * `listen(0)` takes the port on the IPv6 wildcard and leaves it free on
- * 127.0.0.1, and the calls below name 127.0.0.1 — the long version of why is in
- * `testing/harness.ts`, above `serve`.
+ * 127.0.0.1, which the calls below name.
  */
 
 import { generateKeyPairSync } from "node:crypto";
@@ -223,15 +218,11 @@ describe("choosing a facilitator client for a configuration", () => {
       "POST api.cdp.coinbase.com/platform/v2/x402/verify",
     ]);
 
-    // The same host written down to the root, which is a spelling deployments
-    // genuinely use — and it comes the way a real one comes, out of the
-    // environment through `loadConfig`, because that is where the two spellings
-    // become one. What the token names has to be what the request carries: the
-    // HTTP client puts this string's host in the `Host` header, so a token
-    // signed for `api.cdp.coinbase.com.` against a request that says
-    // `api.cdp.coinbase.com` — or the other way about — is refused by the
-    // facilitator, every verify comes back "unknown", and the agent retries a
-    // purchase that can never complete.
+    // The same host with a trailing root dot, a spelling deployments use, read
+    // through `loadConfig`, where the two spellings become one. The HTTP client
+    // puts this string's host in the `Host` header, so a token signed for the
+    // other spelling is refused by the facilitator, every verify comes back
+    // "unknown", and the agent retries a purchase that can never complete.
     const rooted = facilitatorClientFor(
       loadConfig({
         DATABASE_URL: "postgres://agentify:secret@localhost:5432/agentify",
@@ -299,10 +290,9 @@ describe("choosing a facilitator client for a configuration", () => {
 
 describe("a facilitator that is not answering", () => {
   it("is built without being asked anything, so an outage cannot stop the process starting", async () => {
-    // The spike's server called the facilitator while starting up and died when
-    // it did not answer — a storefront killed by somebody else's outage. This
-    // gateway builds its payment layer from configuration alone: nothing is
-    // asked until there is a payment to ask about.
+    // Asking the facilitator at start-up would let somebody else's outage kill
+    // the storefront, so the payment layer is built from configuration alone:
+    // nothing is asked until there is a payment to ask about.
     const facilitator = await aFacilitator();
 
     const client = facilitatorClientFor(aPayment({ facilitatorUrl: facilitator.url }));

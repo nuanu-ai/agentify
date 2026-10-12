@@ -1,27 +1,11 @@
 /**
- * The tables.
- *
- * An order is kept as one document rather than as a column per field, and that
- * is the decision worth arguing. The order machine's shape is the product and
- * it is still moving; a column per field would put that shape into the schema,
- * and every change to a state, a stage or a timestamp would become a migration
- * of somebody's live orders. What is pulled out into columns is only what the
- * gateway actually queries by — which order, whose product, and whether it is
- * still owed something — and those are written from the document on every save,
- * so they cannot drift from it.
- *
- * The cost is named too: nothing here can be reported on in SQL beyond those
- * columns. The trigger to revisit is the first report the dashboard needs that
- * this cannot answer.
- *
- * Every table but one carries the merchant it belongs to, not null. That is
- * ADR-0010 and it is the difference between a filter somebody remembered to
- * write and a row that cannot exist without an owner; the exception is the
- * claims on payments, which says why in its own place.
- *
- * Money is never a column. Prices live inside the documents as the decimal
- * strings the contract writes them in, so nothing on the way through a database
- * driver can turn one into a float.
+ * The tables. An order is kept as one document so a change to the order
+ * machine's shape needs no migration of live orders; only what the gateway
+ * queries by is pulled into columns, written from the document on every save so
+ * they cannot drift from it. Every table except the payment claims carries its
+ * merchant, not null, so a row cannot exist without an owner. Money is never a
+ * column: prices stay inside the documents as the contract's decimal strings,
+ * so no database driver can turn one into a float.
  */
 
 import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
@@ -39,19 +23,10 @@ import {
 import type { StoredOrder } from "../../ports/store.js";
 
 /**
- * A merchant.
- *
- * One row per merchant, carrying an identity and the one fact the order machine
- * asks about them: whether they are taking new orders. That fact is a table
- * rather than a setting in the environment because a merchant presses it and it
- * has to survive a restart — configuration is what the operator sets, and this
- * is what the merchant sets.
- *
- * There is no address, no password and no record of who signed them up. Those
- * belong to registration (ADR-0014), not here, and a column nobody fills in is a
- * column that lies. The name is what a person reads at a
- * terminal; nothing on the wire carries it. What does go out is the separate
- * listing name beside it, and only where somebody set one.
+ * One row per merchant, with whether they are taking new orders: the merchant
+ * sets that and it must survive a restart, so it is not configuration. No email
+ * address, password or sign-up record is kept here, and `name` is for a person
+ * at a terminal and never goes on the wire.
  */
 export const merchants = pgTable(
   "merchants",
@@ -59,49 +34,31 @@ export const merchants = pgTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     /**
-     * The name this seller is listed under in a discovery catalog, where anybody
-     * has named one. Null is the ordinary state and it is never filled in from
-     * the name above: that one is for a person at a terminal and may be written
-     * in any alphabet, and this one goes out to strangers through a catalog that
-     * carries printable ASCII and cuts anything else without a word.
+     * The name this seller is listed under in a discovery catalog, or null where
+     * nobody has named one. It is never filled in from `name`: the catalog
+     * carries only printable ASCII and silently cuts the rest.
      */
     serviceName: text("service_name"),
     /**
-     * The https origin of this seller's own shop, where anybody has given one
-     * (ADR-0034). Null is the ordinary state. An agent reads it beside the
-     * name on every card and order of theirs, as where to take what an order
-     * cannot answer.
+     * The https origin of this seller's own shop, or null. An agent reads it
+     * beside the name on every card and order of theirs, as where to take what
+     * an order cannot answer.
      */
     sellerSite: text("seller_site"),
     /**
-     * The address on the chain this merchant's sales are paid into, where
-     * somebody has set one. Null is the ordinary state.
-     *
-     * A column and not a setting in the environment, because the money is the
-     * merchant's and never ours: it goes straight from a buyer's agent to this
-     * address, and one address per deployment would mean one address for every
-     * merchant on it — which is the custodial arrangement this whole design
-     * refuses. It is never filled in from the operator's own configured address
-     * for the same reason.
-     *
-     * Always in the mixed-case spelling a wallet displays. An address has two
-     * spellings, and holding both would make one address two strings to every
-     * comparison and to every read back; of the two, this is the one a merchant
-     * can check against their own wallet at a glance.
+     * The address this merchant's sales are paid into, or null where nobody has
+     * set one. Buyers' agents pay it directly, so it is never filled in from the
+     * operator's own configured address. Always in the mixed-case spelling a
+     * wallet displays, so one address is never two strings.
      */
     payoutWallet: text("payout_wallet"),
     /**
      * A replacement for that address which has been announced and is waiting,
-     * and the instant it takes effect (ADR-0019). Both null where nothing is
-     * waiting, which is every merchant on a test deployment and every merchant
-     * the day this column arrived.
-     *
-     * Two columns rather than a document, because the write that records a change
-     * is conditional on the row still holding what was read before the change was
-     * announced, and a comparison is cleaner over two columns than inside a
-     * document. They are both or neither, which the check below holds for
-     * anybody writing by hand: half a change is a sale paid somewhere at no stated
-     * time, or at a stated time to nowhere.
+     * and the instant it takes effect; both null where nothing is waiting. Two
+     * columns rather than a document because the write recording a change
+     * compares them with what was read before it was announced. The check below
+     * keeps them both set or both null: half a change is a sale paid somewhere
+     * at no stated time, or at a stated time to nowhere.
      */
     pendingPayoutWallet: text("pending_payout_wallet"),
     pendingPayoutWalletFrom: timestamp("pending_payout_wallet_from", {
@@ -109,11 +66,9 @@ export const merchants = pgTable(
       mode: "date",
     }),
     /**
-     * The first and only operator grant for live publication.
-     *
-     * Null is the denied default for every new and migrated merchant. Repeated
-     * grants preserve the first instant, so this column is the audit fact as well
-     * as the eligibility switch.
+     * The first and only operator grant for live publication; null denies it.
+     * Repeated grants keep the first instant, so the column is the audit record
+     * as well as the switch.
      */
     liveApprovedAt: timestamp("live_approved_at", { withTimezone: true, mode: "date" }),
     /** The order machine's own word: open, paused or departed. */
@@ -130,19 +85,10 @@ export const merchants = pgTable(
 );
 
 /**
- * One key a merchant opens the door with.
- *
- * The secret is not here. What is kept is its SHA-256 digest, and it is unique
- * because that is what a request is resolved by: the door hashes what was
- * presented and looks the result up, which is constant-time by construction and
- * needs no comparison of one secret against another. A copy of this table is
- * not a set of keys somebody can spend.
- *
- * `disabled_at` rather than a boolean. Both answer whether the key works; only
- * one of them answers the question somebody asks after an incident, which is
- * when it stopped. Revoking a key is a write to this one row and touches no
- * other key and no session — which is the whole reason a key is a row and not
- * an environment variable.
+ * One key a merchant opens the door with. Only its SHA-256 digest is kept,
+ * unique because a request is resolved by hashing what was presented and
+ * looking it up, with no comparison of secrets; a copy of this table is not a
+ * set of keys anyone can spend.
  */
 export const merchantKeys = pgTable(
   "merchant_keys",
@@ -151,7 +97,6 @@ export const merchantKeys = pgTable(
     merchantId: text("merchant_id")
       .notNull()
       .references(() => merchants.id, { onDelete: "cascade" }),
-    /** What it is called, so one of several can be told from the others. */
     label: text("label").notNull(),
     /** The SHA-256 of the key, in lower-case hex. Never the key. */
     digest: text("digest").notNull().unique(),
@@ -159,11 +104,9 @@ export const merchantKeys = pgTable(
     /** When it was revoked, or null while it still opens the door. */
     disabledAt: timestamp("disabled_at", { withTimezone: true, mode: "date" }),
     /**
-     * The last call this key was seen on, thinned to one write per key per
-     * window, and null where none has been written.
-     *
-     * Not indexed and not read by anything on the way to a purchase: it is
-     * written by the door and read on one screen, beside the row it belongs to.
+     * The last call this key was seen on, written at most once per key per
+     * window, or null where none was written. Not indexed and never read on the
+     * way to a purchase.
      */
     lastUsedAt: timestamp("last_used_at", { withTimezone: true, mode: "date" }),
   },
@@ -177,31 +120,27 @@ export const cards = pgTable(
   {
     /** Our catalog identifier, the one an agent and a receipt both use. */
     id: text("id").primaryKey(),
-    /** Whose card this is. Every read a merchant makes filters on it. */
     merchantId: text("merchant_id")
       .notNull()
       .references(() => merchants.id, { onDelete: "restrict" }),
     /**
-     * The merchant's own key for this product. Republishing under it changes
-     * the card that is there rather than adding a second one, and the database
-     * is where that promise is actually kept.
+     * The merchant's own key for this product. Republishing under it updates
+     * the card in place, which the unique constraint below enforces.
      */
     merchantItemId: text("merchant_item_id").notNull(),
     card: jsonb("card").$type<Card>().notNull(),
     /** When this version of the card was published. */
     asOf: timestamp("as_of", { withTimezone: true, mode: "date" }).notNull(),
     /**
-     * Whether this card is off sale in its own right. A column and not a field
-     * inside the document, because republishing writes the document whole and a
-     * pause kept in there would be erased by the next edit to a price.
+     * Whether this card alone is off sale. A column rather than a field in the
+     * document, because republishing writes the document whole and would erase
+     * the pause.
      */
     paused: boolean("paused").notNull().default(false),
   },
   (table) => [
-    // Unique inside a merchant and not across the gateway, which is what the
-    // card contract has always said a merchant's own identifier means. Held
-    // unique globally, the second merchant to publish a "sku-1" would edit the
-    // first merchant's card instead of publishing their own.
+    // Unique within a merchant, not across the gateway: held globally, the
+    // second merchant to publish a "sku-1" would edit the first one's card.
     unique("cards_merchant_item_unique").on(table.merchantId, table.merchantItemId),
     index("cards_merchant_idx").on(table.merchantId),
   ],
@@ -215,7 +154,7 @@ export const orders = pgTable(
     state: text("state").notNull(),
     /** Whether this order is still owed work or money. */
     open: boolean("open").notNull(),
-    /** Whose sale this is, written from the document like the rest of these. */
+    /** Written from the document, like `state` and `open`. */
     merchantId: text("merchant_id")
       .notNull()
       .references(() => merchants.id, { onDelete: "restrict" }),
@@ -225,9 +164,8 @@ export const orders = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
   },
-  // A merchant lists their own orders, open ones first among them, so the
-  // merchant leads the index: an index on `open` alone would have every
-  // merchant's list walking every merchant's orders.
+  // The merchant leads the index because a merchant lists their own orders,
+  // open ones first; an index on `open` alone would walk every merchant's.
   (table) => [index("orders_open_idx").on(table.merchantId, table.open, table.createdAt)],
 );
 
@@ -236,7 +174,6 @@ export const receipts = pgTable(
   {
     /** One receipt per order, which is what makes writing it again an update. */
     orderId: text("order_id").primaryKey(),
-    /** Whose receipt it is. A merchant reconciles their own list and no other. */
     merchantId: text("merchant_id")
       .notNull()
       .references(() => merchants.id, { onDelete: "restrict" }),
@@ -247,18 +184,11 @@ export const receipts = pgTable(
 );
 
 /**
- * Which order owns which payment.
- *
- * The primary key is the whole of the mechanism: a signed payment carries no
- * record of which purchase it is for, so two orders at the same price are
- * payable with one signature unless something refuses the second. That refusal
- * is this row already existing.
- *
- * The one table here with no merchant on it, and deliberately. The two orders
- * one signature would buy are as likely to be at two merchants as at one — an
- * agent walking the public catalog is not shopping inside a tenant — so a
- * fingerprint unique per merchant would let the same authorisation be spent
- * once at each.
+ * Which order owns which payment. The primary key is the mechanism: a signed
+ * payment names no purchase, so this row already existing is what refuses a
+ * second order paid with the same signature. It deliberately has no merchant:
+ * a fingerprint unique per merchant would let one authorisation be spent once
+ * at each merchant.
  */
 export const paymentClaims = pgTable(
   "payment_claims",

@@ -1,39 +1,13 @@
 /**
- * The HTTP surface, mounted from the table rather than written out.
+ * The HTTP surface, mounted from the contract's route table
+ * (`packages/contracts/src/api.ts`); nothing here writes an address, a method
+ * or a schema of its own. A route with no handler stops the gateway from
+ * starting, and a route whose door is undecided is never mounted.
  *
- * `packages/contracts/src/api.ts` is the agreement: which calls exist, at which
- * addresses, behind which door, with which document going each way. This file
- * reads that table and serves it. Nothing below writes an address, a method or
- * a schema of its own, and that is the whole point — a surface transcribed by
- * hand is how one side ends up posting to `/v0/order/:id/deliver` while the
- * other serves `/v0/orders/:id/deliver`.
- *
- * Two consequences are deliberate and both are loud. A route in the table with
- * nothing to serve it stops the gateway from starting, so a call cannot be
- * agreed and quietly unimplemented. And a route whose door nobody has chosen is
- * never mounted: the list this loop walks is the one the contract calls
- * mountable, and the loop refuses such a route again on its own account, so a
- * door nobody chose cannot be opened by editing a list.
- *
- * Which door a call is behind is read off `auth` and off nothing else — never
- * off the address. That is the one rule this file has to keep, and it is worth
- * keeping precisely because the addresses look like they would do the job. The
- * table has two prefixes today, `/v0` for the merchant's API and `/x402` for
- * the storefront, and every route under each of them happens to be behind the
- * same door. It was not always so: the agent's order status used to sit under
- * `/v0/orders`, where every other route is the merchant's, and a key check
- * attached to that prefix would have shut the only caller that route is for out
- * of it with nothing about the table looking wrong. The addresses agreeing is a
- * fact about today's table rather than a rule, and the next route written down
- * is the one that breaks it. So there is no path-scoped middleware here at all,
- * and the function that resolves the door names every mode the contract has —
- * adding one stops the build until somebody says which door it is, rather than
- * defaulting it to open.
- *
- * What the table deliberately does not carry, this file supplies: the header the
- * merchant's key arrives in, and the status code each answer comes back under.
- * Those are the gateway's, and a number invented in the contract would have been
- * a decision nobody took.
+ * Which door a call is behind is read off the route's `auth` and never off its
+ * address: the address prefixes happen to line up with the doors today, but
+ * that is not a rule. So there is no path-scoped middleware, and a new auth
+ * mode stops the build until somebody says which door it is.
  */
 
 import { environmentOfKeyPrefix, keyPrefixFor, SITES } from "@agentify/core";
@@ -54,37 +28,25 @@ import { bearerIn } from "./auth.js";
 import { GATEWAY_FAILED } from "./merchant-answers.js";
 import { handlersFor } from "./routes.js";
 
-/** What a handler answers with: a document and its status, or its own writing. */
 export type RouteAnswer =
   | { readonly status: number; readonly document: unknown }
-  /** The handler wrote the response itself. Only the payment exchange does. */
+  /** The handler wrote the response itself: a refusal or the payment exchange. */
   | { readonly written: true };
 
 export interface RouteCall {
   readonly params: Readonly<Record<string, string>>;
-  /** The body, already held to the schema the table names for this route. */
+  /** The body, already held to the route's schema unless it checks its own. */
   readonly body: unknown;
   readonly query: unknown;
   /**
-   * Whose key opened this call, where the route is behind one.
-   *
-   * It is resolved before any handler runs, and a route behind the merchant's
-   * key whose key resolves to nobody never reaches a handler at all — so on
-   * those routes this is a merchant that exists. Null is what an open route
-   * carries: the catalog and the purchase take no key, because an agent has
-   * none.
+   * Whose key opened this call. On a route behind the merchant's key it is
+   * always a merchant that exists; null on a route that takes no key.
    */
   readonly merchantId: string | null;
   /**
-   * Which key opened this call, resolved in the same lookup as the merchant.
-   *
-   * One route needs it and the reason is a rule rather than a convenience: a
-   * merchant cannot disable the key their own call was made with (ADR-0014 §5),
-   * and this is the only place that knows which key that was. Read again in a
-   * handler it would be a second hash of the same header and a second chance for
-   * the two answers to disagree.
-   *
-   * Null on an open route, exactly as the merchant is, and for the same reason.
+   * Which key opened this call, resolved in the same lookup as the merchant so
+   * the two cannot disagree. A merchant may not disable the key their own call
+   * was made with. Null on a route that takes no key.
    */
   readonly keyId: string | null;
   readonly request: Request;
@@ -93,20 +55,12 @@ export interface RouteCall {
 
 export type RouteHandler = (call: RouteCall) => Promise<RouteAnswer>;
 
-/** One call of the table, and how it is served. */
 export interface MountedRoute {
   readonly serve: RouteHandler;
   /**
-   * The body reaches this handler unchecked, because the contract gave this
-   * call somewhere in its own answer to say what is wrong with what arrived.
-   *
-   * Publishing a card is one. Its answer is either an identifier or a list of
-   * findings, and that list is how a merchant learns everything wrong with
-   * their card at once. Checked generically, the card would come back under
-   * the gateway's own refusal shape instead, and the branch the contract
-   * designed for it would never be reached by anybody. The purchase is the
-   * other, for the opposite reason: an unpaid call with no document is not a
-   * mistake there but the probe, and the loop cannot tell the two apart.
+   * The body reaches this handler unchecked. Publishing a card reports every
+   * problem as findings in its own answer; the purchase treats an unpaid call
+   * with no document as the probe, not a mistake.
    */
   readonly checksItsOwnBody?: boolean;
 }
@@ -115,11 +69,8 @@ export interface MountedRoute {
 const BODY_LIMIT = "256kb";
 
 /**
- * The whole surface, on an express app.
- *
- * `routes` is a parameter with the real table as its default so that the guard
- * below can be shown to work. Nothing but a test ever passes anything else, and
- * what a deployment mounts is the contract's own list.
+ * The whole surface, on an express app. Only tests pass `routes`; a deployment
+ * mounts the contract's own list.
  */
 export function buildApp(
   gateway: Gateway,
@@ -128,9 +79,8 @@ export function buildApp(
   const app = express();
   const handlers = handlersFor(gateway);
 
-  // Behind a terminator the address an agent called is not the one this process
-  // sees. The challenge names the address from configuration rather than from
-  // the request, so this is only about the client's own address in logs.
+  // Only affects the client address in logs: the challenge names the public
+  // address from configuration, never from the request.
   app.set("trust proxy", true);
   app.disable("x-powered-by");
   app.use(express.json({ limit: BODY_LIMIT }));
@@ -139,20 +89,16 @@ export function buildApp(
     response.json({ ok: true });
   });
 
-  // An agent given only the site tries the storefront's root before anything
-  // else, and "there is no call here" reads as there being nothing to buy. It
-  // is pointed at the catalogue instead. The catalogue is not a paid resource,
-  // so no discovery listing keys on this address and the redirect adds no
-  // second identity to anything listed.
+  // An agent given only the site tries the storefront's root first. The
+  // catalog is not a paid resource, so the redirect gives nothing listed a
+  // second address.
   app.get("/x402", (_request, response) => {
     response.redirect(302, "/x402/catalog");
   });
 
   for (const [name, route] of routes) {
-    // The contract's own list already leaves these out, and that is one filter
-    // away from not doing so. Refusing them here as well puts the guard at the
-    // place the mistake would land, so a route whose door nobody has chosen
-    // cannot be served by handing it over by name.
+    // The contract's list already leaves these out; this guards against a
+    // caller passing one in by name.
     if (route.auth === "undecided") {
       throw new Error(
         `the contract leaves ${name}'s door undecided, so this gateway will not serve it at ${route.method} ${route.path}`,
@@ -171,46 +117,18 @@ export function buildApp(
     response.status(404).json(refusal("no_such_route", "there is no call at this address"));
   });
 
-  // Everything refused before a route runs arrives here, and here is the only
-  // place it is still possible to say what was refused. Without an answer of
-  // our own it comes back as express's own HTML page — from a surface whose
-  // every other refusal is a document, to a client that reads only documents.
+  // Everything refused before a route runs arrives here; without this it would
+  // go out as express's HTML page. A 4xx from whatever threw is the caller's
+  // fault and must not become a 5xx, which an agent would retry forever. Any
+  // other throw is ours: logged, and answered 500.
   //
-  // The rule is the status. Whatever raised the throw, a 4xx is that thing
-  // saying the caller was wrong, and this gateway does not take the blame for a
-  // call it was right to turn away: a 5xx is the one answer an agent is
-  // entitled to retry, and the retry brings the same bad request back for as
-  // long as it keeps trying. A throw carrying no such claim is ours, and gets
-  // the log line and the 500.
-  //
-  // Within that, the named refusals are refinements, each keyed on the word the
-  // parser puts on its own throw. They exist because the answer is the only
-  // thing the caller can act on, and one refusal wearing another's words sends
-  // somebody else's agent to repair what was never broken. A document that is
-  // good JSON and merely too long, told it could not be read, is re-encoded and
-  // sent again unchanged forever, so the size case says so and names the limit
-  // — "too large" without a number leaves the caller bisecting against a live
-  // gateway. The encoding and charset refusals both happen before the body
-  // becomes text at all, so nothing whatever about the JSON inside is known and
-  // neither answer pretends otherwise; each names the header it refused and the
-  // one value that always works, rather than the set that would work, which
-  // belongs to a dependency and would rot in this file unwatched.
-  //
-  // One refusal arrives with no word on it: a body under an encoding the parser
-  // does inflate whose bytes then turn out not to be that encoding — a dropped
-  // upload, or a client that set the header and forgot to compress. Two things
-  // are known there and no more, that the caller asked for a decompression and
-  // that the parser blamed the caller. That is enough to answer honestly and
-  // not enough to say whether the bytes or the header is the wrong one, so the
-  // answer offers both and picks neither.
-  //
-  // Order carries the rest. Every named refusal is answered above the unnamed
-  // ones, which is what keeps a body that inflates cleanly and holds bad JSON —
-  // the same header, a different failure — on the malformed-JSON answer. The
-  // generic sits under all of them and says only that the call was refused
-  // before we began and that there is no name for why here. The next refusal
-  // raised by a layer we do not control lands there, and a floor that guessed
-  // would be wrong about it in some new way.
+  // The named refusals refine the 4xx by the parser's own `type`, so each
+  // answer names the actual problem (the size limit, the refused header).
+  // A body that failed to decompress carries no type: whether the bytes or the
+  // header is wrong is unknown, so the answer offers both. Order matters:
+  // named cases come first, so a body that inflates cleanly but holds bad JSON
+  // still gets the malformed-JSON answer, and an unrecognised refusal falls to
+  // the generic answer rather than a guess.
   app.use(
     (thrown: unknown, request: Request, response: Response, next: (error?: unknown) => void) => {
       if (response.headersSent) {
@@ -303,9 +221,8 @@ function mount(
   const methods = [route.method, ...(route.also_answers_on ?? [])];
 
   for (const method of methods) {
-    // Only the route's own method carries a body. The others exist because
-    // something outside our design asks for them — a validator listing a paid
-    // resource with GET — and they answer without one.
+    // Only the route's own method carries a body; the others (a validator's
+    // GET on a paid resource) answer without one.
     const carriesBody = method === route.method;
     const serve = async (request: Request, response: Response): Promise<void> => {
       try {
@@ -320,11 +237,8 @@ function mount(
       }
     };
 
-    // Every method the contract declares is mounted by name, and the last arm
-    // is why this is a switch. Written as "GET, or DELETE, or else POST", the
-    // day a fourth method arrived it would be mounted as a POST and answer
-    // nothing at the address it was declared at, with nothing here looking
-    // wrong. Exhausted, the same addition stops the build naming the method.
+    // Exhaustive, so a new method in the contract stops the build instead of
+    // being mounted as something else.
     switch (method) {
       case "GET":
         app.get(route.path, serve);
@@ -350,11 +264,9 @@ async function answer(
 ): Promise<void> {
   const caller = await callerBehind(route.auth, request, gateway);
   if (caller === OTHER_ENVIRONMENT_PREFIX) {
-    // The same code and the same status as every other refusal at this door.
-    // Only the sentence differs, and that is the whole of what the design asks
-    // for: a value beginning with the other environment's prefix is refused
-    // with words rather than a status code. No digest lookup happened, so the
-    // sentence claims no more than the prefix proves.
+    // Same code and status as any refusal at this door; only the sentence says
+    // where such keys work. No lookup happened, so it claims no more than the
+    // prefix proves.
     const theirs = gateway.environment === "live" ? "test" : "live";
     response
       .status(401)
@@ -368,9 +280,8 @@ async function answer(
     return;
   }
   if (caller === REFUSED) {
-    // Which key would have worked is not said, whether one was sent at all is
-    // not said, and a key that was issued and then revoked is refused in
-    // exactly these words — all three are answers to somebody who is guessing.
+    // One answer for no key, an unknown key and a revoked key, so a guesser
+    // learns nothing.
     response.status(401).json(refusal("not_authorised", "this call is behind the merchant's key"));
     return;
   }
@@ -425,18 +336,9 @@ async function answer(
     return;
   }
 
-  // The document goes out held to the same schema the SDK will hold it to. A
-  // response that does not match the contract is a lie the other side would
-  // reject anyway, and failing on our side is how it gets found here rather
-  // than in somebody's integration. A storefront document is held to its
-  // closed form as well (`written.ts`): an agent reads it open, and the open
-  // form alone would let anything out.
-  //
-  // A handler that writes its own response — the payment exchange, and every
-  // refusal — passes above and is not held to this. That is what `written`
-  // means and it is the whole of the exception: a challenge is a header and an
-  // empty body, and a refusal is the contract's envelope rather than the
-  // route's document.
+  // The document is held to the contract's schema on the way out, so a
+  // mismatch fails here rather than in somebody's integration; a storefront
+  // document is also held to its closed form (`written.ts`).
   for (const check of checksBeforeSending(route.response.document)) {
     check.parse(answered.document);
   }
@@ -444,49 +346,25 @@ async function answer(
   response.status(answered.status).json(answered.document);
 }
 
-/** The door said no. A value rather than null, which is what an open route has. */
+/** The door said no. Not null, which is what an open route has. */
 const REFUSED = Symbol("the key on this call opens nothing");
 
-/**
- * The value on this call begins with the other site's key prefix, which is the
- * one refusal here with more to say than no.
- *
- * A second value beside {@link REFUSED} rather than a field on it, because the
- * door either sees the other site's prefix or it does not, and those are two
- * answers rather than one answer with a detail hanging off it. A field would be
- * a detail somewhere above here could read and forget to.
- */
+/** The value on this call begins with the other site's key prefix. */
 const OTHER_ENVIRONMENT_PREFIX = Symbol("the value begins with the other site's key prefix");
 
-/** Who made a call that came through a door: the merchant, and which key. */
 interface Caller {
   readonly merchantId: string;
   readonly keyId: string;
 }
 
 /**
- * Who is behind this call: a merchant and the key they presented, nobody at all
- * on a route that takes no key, or the refusal.
+ * Who is behind this call: a merchant and their key, nobody on a route that
+ * takes no key, or a refusal. The switch is exhaustive so a new auth mode
+ * cannot silently default to open.
  *
- * Every door the contract has is named below, and the last branch is why: a
- * mode added to the contract and not answered here stops the build, naming the
- * omission. Written as "is it the merchant's key, and otherwise nobody", the
- * same addition would have quietly made the new route open, and the one route
- * that already takes no key is the agent's own — under the merchant's prefix,
- * where nobody would look for it.
- *
- * There is no comparison here and there is nothing to compare against — the key
- * presented is hashed and the digest looked up, and a key nobody was issued and
- * a key that has been disabled come back the same way. That sameness is the
- * point: a door that answered them differently would confirm which guesses had
- * once been real keys, which is exactly what revoking one has to stop.
- *
- * What it costs is a database round trip on every call behind this door, where
- * the single key it replaced cost nothing. It is one probe of a unique index
- * and it does not grow with the number of merchants or of keys, so the trigger
- * for caching it is a measurement rather than a feeling — and a cache would
- * have to answer for how long a revoked key goes on working, which is the one
- * thing revoking a key is for.
+ * A key never issued and a disabled key come back the same way, or the door
+ * would confirm which guesses were once real keys. Do not cache the lookup
+ * without deciding how long a revoked key may go on working.
  */
 async function callerBehind(
   auth: AuthMode,
@@ -500,24 +378,11 @@ async function callerBehind(
         return REFUSED;
       }
 
-      // Read before the digest is looked up, and only this environment's own
-      // prefix goes any further.
-      //
-      // The filter is structural rather than decorative. This gateway issues
-      // keys under one prefix and no other, so a key carrying anything else
-      // cannot be a key it issued — and the row that would otherwise answer for
-      // one is a key from before this change, issued by a gateway that settled
-      // against nothing. "Every key issued before this stops working" has to be
-      // true of the door and not merely of a database somebody emptied.
-      //
-      // The two ways it can be wrong get two different answers. A value naming
-      // the other environment is told where keys with that prefix work: that
-      // gives nothing away — whoever presents it can read its prefix — and it
-      // replaces the failure most likely to cost an integrator an afternoon, a
-      // bare 401 that says nothing about the recognisable prefix. Everything
-      // else gets the one answer every other refusal here gets, because a door
-      // that told a bare key from a guess apart would confirm which guesses had
-      // once been real keys.
+      // Only this environment's prefix reaches the lookup: a key without it was
+      // not issued here, even if an old row would still match its digest. A
+      // value with the other environment's prefix is told where such keys work,
+      // which reveals nothing its holder cannot read; anything else gets the
+      // plain refusal.
       const theirs = environmentOfKeyPrefix(presented);
       if (theirs === null) {
         return REFUSED;
@@ -530,12 +395,8 @@ async function callerBehind(
       return key === null ? REFUSED : { merchantId: key.merchantId, keyId: key.id };
     }
 
-    // Neither of these carries a key, and they are two different reasons for
-    // that rather than one. On an open route the payment stands in for
-    // authorisation, or there is nothing to authorise — the catalog. On the
-    // agent's own route the order's identifier does, so whatever arrives in the
-    // key's header is not read at all: a stranger's key neither opens this door
-    // nor closes it.
+    // No key is read: on an open route the payment stands in for
+    // authorisation, and on the agent's route the order's identifier does.
     case "none":
     case "order_id":
       return null;
@@ -551,15 +412,8 @@ async function callerBehind(
 }
 
 /**
- * Whether a thrown value is a refusal of the caller rather than a failure of
- * ours.
- *
- * Everything that turns a request away before our handlers do — the body
- * parser, the router decoding a path — marks the refusal the same way, with an
- * HTTP status, and on a throw that says nothing else the status is the only
- * part that says whose fault it was. A 4xx is that layer declining what it was
- * sent; anything else is this process, and this process does not get to answer
- * its own defects with somebody else's name on them.
+ * Whether a thrown value is a refusal of the caller (a 4xx status set by the
+ * body parser or the router) rather than a failure of ours.
  */
 function blamesTheCaller(thrown: unknown): boolean {
   if (typeof thrown !== "object" || thrown === null || !("status" in thrown)) {
@@ -569,14 +423,7 @@ function blamesTheCaller(thrown: unknown): boolean {
   return typeof status === "number" && status >= 400 && status < 500;
 }
 
-/**
- * The word a refusal puts on itself, when it puts one there at all.
- *
- * The body parser names most of what it turns away; the layers around it name
- * almost nothing. A refusal with no word is not a lesser refusal, only one this
- * gateway has no refinement for, and it is answered as such rather than being
- * sorted into whichever named case it happens to resemble.
- */
+/** The `type` the body parser puts on most of its refusals, if any. */
 function refusalType(thrown: unknown): string | null {
   if (typeof thrown !== "object" || thrown === null || !("type" in thrown)) {
     return null;
@@ -586,11 +433,8 @@ function refusalType(thrown: unknown): string | null {
 }
 
 /**
- * Whether the caller asked for the body to be decompressed on the way in.
- *
- * An absent header and an empty one both mean identity, which is what the
- * parser itself makes of them; reading either as a compression would put a
- * refusal that has nothing to do with encoding under an answer about encoding.
+ * Whether the caller asked for the body to be decompressed. An absent or empty
+ * header means identity, as the parser reads it.
  */
 function declaresCompression(request: Request): boolean {
   const declared = request.headers["content-encoding"];
@@ -601,7 +445,6 @@ function declaresCompression(request: Request): boolean {
   return named !== "" && named !== "identity";
 }
 
-/** One thing wrong with a body, in the schema's own words, and where it is. */
 interface Problem {
   readonly path: readonly string[];
   readonly code: string;
@@ -626,41 +469,21 @@ export function hold(schema: ZodType, value: unknown): Held {
 }
 
 /**
- * Whether making the same call again could get past each refusal.
+ * Whether making the same call again could get past each refusal. A full
+ * record, so a new code stops the build until it is answered here.
  *
- * `Record<ErrorCode, boolean>` and not a partial one: a code added to the
- * contract without an answer here stops the build, which is the only way this
- * table stays true. Guessing a default would make the silence look like an
- * answer, and the guess would be wrong in whichever direction it was made.
- *
- * The rule is conservative and deliberately lopsided. True is claimed only
- * where repeating this very call is genuinely the way through — not where a
- * retry might coincide with somebody else fixing something. A merchant putting
- * a paused card back on sale, a key being granted:
- * those all end in a call that works, and none of them is the retry doing it.
- * So they are false, along with everything definitive and everything merely
- * arguable. What that costs is a caller who stops one call early; what the
- * other direction costs is a loop against a door that will never open, and the
- * bill for that arrives before anybody notices.
- *
- * Two codes are not decided here at all. `payment_not_verified` and
- * `payment_not_taken` carry what the payment layer said about this particular
- * payment, passed in beside the sentence — see {@link refusal}.
+ * True only where repeating this very call is the way through, not where a
+ * retry might coincide with somebody else fixing something: a wrong false
+ * costs one call, a wrong true costs an endless loop. `payment_not_verified`
+ * and `payment_not_taken` normally carry the payment layer's own answer
+ * instead (see {@link refusal}).
  */
 const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
-  // The call fell over inside us and nothing was decided. The one refusal here
-  // that says nothing about the call and everything about our own moment, so
-  // it is the one a second attempt genuinely gets past.
   gateway_failed: true,
 
-  // Not a "no" but a "not yet": the order is open and still waiting for its
-  // price, and the same call is what the caller makes again to get the
-  // document once it has one. Marking this false would tell an agent to stop
-  // asking about an order that is about to be priced.
+  // Not yet priced, and the same call returns the document once it is.
   order_not_priced_yet: true,
 
-  // Everything the caller sent. The same bytes, the same header and the same
-  // query produce the same answer for as long as they are the same.
   body_too_large: false,
   body_undecodable: false,
   charset_unsupported: false,
@@ -672,85 +495,35 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   ship_to_does_not_fit: false,
   call_refused: false,
 
-  // Who the caller is, and what they hold. A key is granted by somebody else
-  // doing something, never by the call being repeated.
   not_authorised: false,
   no_such_key: false,
   key_opened_this_call: false,
 
-  // What is being asked about, and whether it is there. A route that does not
-  // exist and an order or a product that does not will not appear between two
-  // calls; a merchant who has left has left.
   no_such_route: false,
   no_such_item: false,
   no_such_order: false,
   merchant_departed: false,
 
-  // A card that is not on sale. Arguable, and false under the rule: the
-  // merchant may put it back, and that is the merchant acting rather than the
-  // retry working. An agent polling a paused card until it returns is a loop
-  // this gateway would be starting on its behalf.
+  // The merchant may put it back, but that is not the retry working.
   not_selling: false,
 
-  // Where the order already is. An order that ended before it was priced is
-  // over; a payment already presented for another order stays presented; an
-  // order that belongs to another payment is not this caller's to pay.
   order_closed_before_it_was_priced: false,
   payment_already_spent: false,
   not_this_purchase: false,
 
-  // Said by the payment layer about this payment, not by this table. The
-  // values here are the floor for a caller that reads the table rather than
-  // the answer; what actually ships is what the layer said.
+  // The floor; the answer carries what the payment layer said.
   payment_not_verified: false,
   payment_not_taken: false,
 };
 
 /**
- * How this gateway says no, and the only way it does.
+ * Every refusal this gateway sends, in the contract's envelope with one of its
+ * error codes and our own sentence.
  *
- * The shape is the contract's — `ErrorEnvelopeSchema` — and so is the code:
- * the first parameter takes one of `ERROR_CODES` and nothing else, which is
- * what makes that published list true rather than a description somebody keeps
- * in step by hand. A refusal this gateway wants to send under a name the
- * contract has not got stops the build until the name is added there, where a
- * consumer switching over the codes will see it.
- *
- * The words stay ours. The table publishes what each call answers with when it
- * works and names no sentences, so "you are not allowed", "there is no such
- * route" and "something here is broken" are this gateway's to write, and the
- * contract fixes only that every refusal arrives in one shape with a code and
- * a sentence — so a caller can always find out that it was refused and always
- * have something to print.
- *
- * `detail` is for the refusals that know more about themselves than the three
- * required fields: where an order ended, which fields of a document did not
- * fit. It goes inside the envelope beside the code and the sentence rather
- * than beside the envelope, because a reader that does not recognise it must
- * still be able to read the three that are always there — and because a body
- * carrying anything at the top level but `error` is not a refusal at all.
- *
- * It is spread first, so the code and the sentence win. Spread last it would
- * be a way of replacing them: a detail that happened to carry a `message` —
- * a field named after the thing it describes, arriving from a payment layer or
- * a validator — would silently become the refusal's own sentence, and the one
- * the caller was meant to read would be gone with nothing to say it ever
- * existed. The type does not catch it, because `unknown` fits a string.
- *
- * `retryable` is the one field of the envelope a caller may set, and it is
- * taken out of the detail by name rather than left to the spread, so that it
- * is a decision here and not an accident of ordering. Two refusals need it:
- * the payment layer, and only the payment layer, knows whether the payment it
- * would not vouch for might be vouched for on a second look, and whether a
- * charge that is mid-flight will accept a hand-over once it reports. Those
- * are facts about one call and not about a code, and a table could only
- * guess at them. Everything else takes the code's own answer from
- * {@link RETRYABLE}.
- *
- * Every refusal this gateway sends goes through here. Three of them used to be
- * written out as object literals with findings and no sentence at all, which
- * left the caller a code to search our source for and an empty space where the
- * reason belongs.
+ * `detail` goes inside the envelope and is spread first, so a detail field
+ * named `message` or `code` can never replace the refusal's own. `retryable`
+ * is taken out by name: only the payment layer knows whether its own answer
+ * might change on a second look; everything else takes {@link RETRYABLE}.
  */
 export function refusal(
   code: ErrorCode,

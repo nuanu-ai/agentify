@@ -2,12 +2,9 @@ import { CatalogPageSchema, cardsOf, PublishResultSchema } from "@nuanu-ai/agent
 import { afterEach, describe, expect, it } from "vitest";
 import { type Harness, harness } from "../testing/harness.js";
 
-// ADR-0017 promises two halves. The schema keeps one at the door: a short
-// spelling opens out into the canonical card at parse. This file keeps the
-// other half, which no schema can: that the gateway stored what came through
-// the door rather than what arrived at it, and that an agent is shown the
-// same. If publish ever writes its raw input, or the catalog ever serves
-// one, this goes red.
+// The contracts schema opens a short spelling out into the canonical card at
+// parse. This file holds the half no schema can: the gateway stores, and shows
+// an agent, the canonical card rather than the raw input it was sent.
 
 let open: Harness | null = null;
 afterEach(async () => {

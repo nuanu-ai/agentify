@@ -13,13 +13,8 @@ import {
 const BUYER = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 /**
- * The clocks, from the outside.
- *
- * Every row of the portal's "time ran out" table is a promise to somebody, and
- * each of these is one row of it: what happens when a deadline runs out, and
- * whose money is where afterwards. The numbers are in tens of milliseconds so
- * that a whole life of an order fits in a test, and they come from the same
- * configuration a deployment uses.
+ * Each test here is one row of the portal's "time ran out" table: what happens
+ * when a deadline runs out, and whose money is where afterwards.
  */
 
 const syncCard: Card = {
@@ -43,27 +38,10 @@ const asyncCard: Card = {
 /**
  * Deadlines short enough that an order lives and dies inside one test.
  *
- * The synchronous budget is the odd one out, and it is deliberately nowhere
- * near the rest. Every other number here is arithmetic against a clock that
- * does not move, so it is exact. The budget is not: it is the real wait an
- * agent parked on a synchronous purchase actually sits out, and it races the
- * real timer carrying the synchronous deadline that is supposed to end the
- * order first. Because the harness clock is frozen, the two are counted from
- * two different real instants — the park from the moment the payment reaches
- * the gateway, the deadline from the moment the machine arms it a few lines
- * later — so the distance between the two numbers is the whole slack absorbing
- * whatever the process was doing in between.
- *
- * At 200 that slack was 120ms, which is inside what this machine loses to a
- * worker importing its own modules while other suites have the cores. It went
- * the wrong way roughly once in eighty runs, always on the first test in the
- * file: the park gave up first, and the agent was told `under_way` about a
- * purchase whose deadline was a microtask away from closing it. A deployment
- * can invert the two as well, because its timer comes off a queue that looks
- * for due reminders every so often; the gateway then closes the order itself
- * when the wait runs out, which one test below pins with every timer late.
- * Here, with the clock frozen, that cannot help, so the margin is bought in
- * the number rather than in the gateway.
+ * SYNC_BUDGET_MS is deliberately far above SYNC_RESPONSE_MS. The budget is a
+ * real wait racing the real timer that ends the order, and the two start at
+ * slightly different instants, so a narrow gap lets a loaded machine end the
+ * agent's wait first and tell it `under_way` about an order about to close.
  */
 const brisk = {
   QUOTE_RESPONSE_MS: "20",
@@ -99,9 +77,8 @@ const state = async (harnessed: Harness, orderId: string) =>
 
 describe("when the time runs out", () => {
   it("closes a synchronous purchase nobody answered, and charges nothing", async () => {
-    // The portal's row: "you are delivering a synchronous order" — the purchase
-    // did not happen, there was no charge. Which is what the mode is for: the
-    // buyer's money never moves until the goods exist.
+    // In the synchronous mode the buyer's money never moves until the goods
+    // exist.
     const harnessed = await started();
     const orderId = await bought(harnessed, syncCard);
 
@@ -119,13 +96,10 @@ describe("when the time runs out", () => {
   });
 
   it("tells the agent its synchronous purchase expired when the timer that closes it is late", async () => {
-    // The timer carrying the merchant's deadline comes off a queue that looks
-    // for due reminders every so often, and it can land after the agent's
-    // budget has run out. The agent is then owed how its purchase ended, not
-    // that it is still under way: the deadline passed on the clock.
-    // The agent's wait runs on the real clock while the poll below takes the
-    // order, so it is a second rather than a hair over the merchant's answer:
-    // a loaded machine must not end the wait before the clock is moved.
+    // In a deployment the deadline timer comes off a polling queue and can land
+    // after the agent's wait has run out; the agent is still owed how the
+    // purchase ended. The wait is a full second so that a loaded machine cannot
+    // end it before the clock below is moved.
     const harnessed = await started({ SYNC_BUDGET_MS: "1000" });
     const orderId = await bought(harnessed, syncCard);
     // From the payment on, every timer is late: none of them lands inside the
@@ -133,8 +107,6 @@ describe("when the time runs out", () => {
     vi.spyOn(harnessed.queue, "remind").mockResolvedValue(undefined);
 
     const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
-    // The merchant takes the order and says nothing, and the merchant's
-    // deadline passes on the clock.
     expect((await harnessed.gateway.poll(harnessed.merchant.id, 200)).envelopes).toHaveLength(1);
     harnessed.advance(Number(brisk.SYNC_RESPONSE_MS));
     const settled = await buying;
@@ -145,13 +117,9 @@ describe("when the time runs out", () => {
   });
 
   it("does not tell a merchant a closed order still stands", async () => {
-    // Goods are weighed against the card before the machine sees the call, and
-    // that check does not ask whether the order is still alive. Its refusal
-    // said the order "still stands where it did" and marked itself worth
-    // calling again — literally true of a call that moved nothing, and read as
-    // "the sale is still yours". A merchant told that on an order whose
-    // deadline has passed goes and fixes his handler for a sale he has already
-    // lost, and finds out on the next call.
+    // Goods are checked against the card before the order's state is consulted.
+    // Told "still stands" and "retryable" on an expired order, a merchant would
+    // fix his handler for a sale he has already lost.
     const harnessed = await started();
     const orderId = await bought(harnessed, syncCard);
 
@@ -159,9 +127,8 @@ describe("when the time runs out", () => {
     if (settled.step !== "settled") throw new Error("the purchase did not settle");
     expect(settled.order.order.state).toBe("expired");
 
-    // The card declares an access code; this handler sends a serial. Both
-    // things are true at once here — the goods are wrong and the order is
-    // over — and it is the second that decides what he can do next.
+    // The card declares an access code; this sends a serial. The goods are wrong
+    // and the order is over, and it is the second that decides what he can do.
     const refused = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
       serial: "89310410106543789301",
     });
@@ -171,19 +138,14 @@ describe("when the time runs out", () => {
     expect(refused.error.message).toContain("expired");
     expect(refused.error.message).not.toContain("still stands where it did");
     expect(refused.error.retryable).toBe(false);
-    // He is still told which fields were wrong: the order being over is the
-    // news, not a reason to stop naming what he sent.
     expect(refused.error.message).toContain("serial");
 
-    // And still nothing was written against the order.
     expect((await harnessed.store.orderById(orderId))?.delivery).toBeNull();
   });
 
   it("still says an open order stands where it did", async () => {
-    // The negative control for the sentence above. The clause is right on an
-    // order the merchant can still finish, and a fix that removed it from
-    // everything would take away the one thing that tells him his goods are
-    // still wanted.
+    // The negative control: on an order he can still finish, that clause is
+    // what tells the merchant his goods are still wanted.
     const harnessed = await started({ DEFAULT_ASYNC_FULFILLMENT_MS: "5000" });
     const orderId = await bought(harnessed, asyncCard);
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
@@ -198,10 +160,8 @@ describe("when the time runs out", () => {
   });
 
   it("marks an asynchronous order for a refund, because the money is already gone", async () => {
-    // The other row of the same table, and the reason the two are different
-    // words: here the charge went through at the purchase, so an ending that
-    // said "nothing happened" would leave a buyer out of pocket with the
-    // system claiming otherwise.
+    // Unlike the synchronous case the charge went through at the purchase, so an
+    // ending that said "nothing happened" would leave the buyer out of pocket.
     const harnessed = await started();
     const orderId = await bought(harnessed, asyncCard);
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
@@ -227,19 +187,10 @@ describe("when the time runs out", () => {
   });
 
   it("keeps the first of two late answers in the drawer, and the buyer collects that one", async () => {
-    // The one place "the first delivery is what the buyer keeps" applies to
-    // goods nobody has been handed yet, so it is pinned rather than inferred.
-    //
-    // A synchronous purchase ran out of time and the handler finished after
-    // it. The work is not thrown away: it goes in the drawer and a repeat
-    // purchase collects it. If the handler is sent the order again and makes a
-    // second set of goods, the first stays. That is consistent with every
-    // other repeat, and it is worth knowing that it cuts differently here: a
-    // handler that issues a fresh code per run — the natural thing when the
-    // first was released back to stock on the timeout — has its later code
-    // discarded, and the buyer collects the earlier one. Which of the two
-    // belongs to the buyer is a question about the product rather than about
-    // this code, and this test is where the answer would change.
+    // A late answer after a synchronous timeout is held for a repeat purchase to
+    // collect, and the first one held is kept. A handler that issues a fresh code
+    // per run therefore has its later code discarded; if the buyer should get the
+    // latest instead, this is the test that changes.
     const harnessed = await started();
     const orderId = await bought(harnessed, syncCard);
 
@@ -262,9 +213,8 @@ describe("when the time runs out", () => {
       access_code: "CODE-ONE",
     });
 
-    // And the repeat purchase that collects the drawer gets that same one. A
-    // fresh authorisation from the same wallet, which is how the owner of the
-    // order is recognised across a repeat.
+    // The repeat is a fresh authorisation from the same wallet, which is how the
+    // order's owner is recognised.
     const repeat = authorisation(harnessed, BUYER, "0x02");
     const collected = await harnessed.gateway.payPurchase(
       orderId,
@@ -274,19 +224,14 @@ describe("when the time runs out", () => {
     expect(collected.step).toBe("settled");
     if (collected.step !== "settled") throw new Error("the repeat did not settle");
     expect(collected.delivery).toStrictEqual({ access_code: "CODE-ONE" });
-    // Collected for the repeat's payment: the goods held for a closed order
-    // are the buyer's only once that payment has gone through.
+    // Held goods become the buyer's only once the repeat's payment goes through.
     expect((await state(harnessed, orderId))?.state).toBe("delivered");
   });
 
   it("brings the money back when a handler never sends what the card declares", async () => {
-    // The cost of the choice made when goods do not match the card: the
-    // delivery is refused and the order is left open, so the merchant can fix
-    // his handler and deliver. That is only defensible if an order nobody ever
-    // fixes still ends — otherwise the refusal is a way of parking a buyer's
-    // money forever. The deadline is what ends it, and this is that promise:
-    // a merchant who keeps sending the wrong shape runs out of time exactly as
-    // one who sends nothing at all does, and the buyer is owed his money back.
+    // A delivery that does not match the card is refused and the order left open
+    // for a fix. That is only safe if the deadline still ends an order nobody
+    // fixes; otherwise the buyer's money is parked forever.
     const harnessed = await started();
     const orderId = await bought(harnessed, asyncCard);
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
@@ -308,15 +253,13 @@ describe("when the time runs out", () => {
       cause: "deadline_expired",
       deadline: "async_fulfillment",
     });
-    // And nothing of his was ever written against the order.
     expect((await harnessed.store.orderById(orderId))?.delivery).toBeNull();
     expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
   });
 
   it("lets a price the agent sat on stop being a price", async () => {
-    // "The agent got a price and is thinking" — the price stops applying, and
-    // an agent who still wants it asks for a fresh one. Nothing was charged, so
-    // the ending is free.
+    // Nothing was charged, so this ending is free; an agent that still wants the
+    // item asks for a fresh price.
     const harnessed = await started();
     const orderId = await bought(harnessed, syncCard);
 
@@ -335,13 +278,9 @@ describe("when the time runs out", () => {
 
 describe("a card that names no delivery deadline", () => {
   it("holds its merchant to ours, and shows the agent no deadline at all", async () => {
-    // The delivery deadline is optional on an asynchronous card, and this is
-    // what leaving it out costs. Our own number applies, and an order that runs
-    // past it is marked as needing a refund exactly as one past a number the
-    // merchant chose would be — while the card an agent reads carries no
-    // deadline for it to see. So the clock the merchant is held to was shown to
-    // neither of them, and the page has to say so rather than promise the agent
-    // a deadline that is not there.
+    // With no deadline on the card the gateway's default applies and runs out
+    // into a refund as a merchant's own would, yet the agent is shown no deadline
+    // at all. The portal has to say so rather than promise one.
     const harnessed = await started();
     const published = await harnessed.gateway.publishCard(harnessed.merchant.id, asyncCard);
     if (!published.ok) throw new Error("the card would not publish");
@@ -373,9 +312,8 @@ describe("a card that names no delivery deadline", () => {
 
 describe("when a delivery goes unanswered", () => {
   it("sends the order again, after the wait the machine asked for", async () => {
-    // An exception in the handler, a dead process and a broken connection are
-    // the same thing to us — the answer never came — and they are answered with
-    // another delivery, not with a refusal.
+    // A thrown handler, a dead process and a broken connection all look like
+    // silence, and silence is answered with another delivery, not a refusal.
     const harnessed = await started({
       HANDLER_ANSWER_MS: "10",
       REDELIVERY_BASE_DELAY_MS: "10",
@@ -392,19 +330,13 @@ describe("when a delivery goes unanswered", () => {
     );
     await silent.stop();
 
-    // Still open, still owed the goods, and never refused on our own account.
     expect((await state(harnessed, orderId))?.state).toBe("dispatched");
   });
 
   it("wraps each repeat in a new message, so only the order's identifier holds still", async () => {
-    // The mirror of the event that is never sent twice, and the reason the
-    // portal gives two rules rather than one for a subscription that carries
-    // both. An order does come again — and what does not come with it is the
-    // message it arrived in the first time: a redelivery is built fresh, with a
-    // new envelope identifier. A handler telling a repeat apart by that would
-    // read the second hand-over as a new sale and make the goods twice. The
-    // order's own identifier is what does not move, and it is what the portal
-    // tells a merchant to answer from.
+    // A redelivery comes in a new envelope with a new identifier. A handler that
+    // deduplicated on the envelope would make the goods twice; the order's
+    // identifier is the one that holds still.
     const harnessed = await started({
       HANDLER_ANSWER_MS: "10",
       REDELIVERY_BASE_DELAY_MS: "10",
@@ -413,8 +345,7 @@ describe("when a delivery goes unanswered", () => {
     const orderId = await bought(harnessed, asyncCard);
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
-    // A worker that draws its stream and answers nothing, keeping what it was
-    // handed rather than only how much of it there was.
+    // A worker that answers nothing and records every envelope it is handed.
     const seen: { readonly message: string; readonly order: string }[] = [];
     let running = true;
     const drawing = (async () => {
@@ -436,10 +367,8 @@ describe("when a delivery goes unanswered", () => {
   });
 
   it("stops repeating once the attempts are spent, and leaves the debt behind", async () => {
-    // The repeats are not endless. Here the merchant's own deadline is far
-    // away — far enough that reaching the ending inside this test can only be
-    // the attempt cap — and the money moved at the purchase, so what is left
-    // when we stop trying is a debt rather than a free ending.
+    // The fulfilment deadline is far away, so reaching refund_due inside this
+    // test can only be the attempt cap.
     const harnessed = await started({
       HANDLER_ANSWER_MS: "10",
       REDELIVERY_BASE_DELAY_MS: "5",
@@ -462,17 +391,15 @@ describe("when a delivery goes unanswered", () => {
   });
 
   it("does not send an order again to a merchant who answered the delivery he was given", async () => {
-    // A merchant who took the order on has a day to fulfill it. The reminder
-    // left against the delivery he answered must not fire behind him, or he
-    // would be handed the same order every window until his deadline.
+    // The silence reminder left against the delivery he accepted must not fire
+    // behind him, or he is handed the same order every window until his
+    // deadline.
     const harnessed = await started({
       HANDLER_ANSWER_MS: "10",
-      // Short enough that a redelivery, if one were decided on, would be drawn
-      // and answered long before the order's own deadline arrives.
+      // Short, so that a wrong redelivery would show well before the deadline.
       REDELIVERY_BASE_DELAY_MS: "5",
-      // The order's own deadline, and the only thing this test waits for. It is
-      // far behind the reminder above so that the reminder has had its whole
-      // life by the time the deadline is reached.
+      // The deadline this test waits for, far enough out that the reminder has
+      // fired by then.
       DEFAULT_ASYNC_FULFILLMENT_MS: "150",
     });
     const orderId = await bought(harnessed, asyncCard);
@@ -482,21 +409,17 @@ describe("when a delivery goes unanswered", () => {
       onOrder: () => ({ accepted: {} }),
     });
 
-    // The wait is for the order's own deadline to expire, and not for a stretch
-    // of wall time. That is the whole difference: a sleep and then "he was not
-    // asked again" passes on a machine so loaded that the reminder had not run
-    // yet, which is the test agreeing with itself. The deadline is a later
-    // reminder on the same queue, so reaching it means the earlier one has been
-    // and gone — and on a loaded machine this waits longer rather than
-    // concluding sooner, or gives up and says so.
+    // Wait for the deadline, not for wall time: a sleep would pass on a loaded
+    // machine where the reminder had not run yet. The deadline is a later
+    // reminder on the same queue, so reaching it means the earlier one has fired.
     await vi.waitFor(
       async () => expect((await state(harnessed, orderId))?.state).toBe("refund_due"),
       { timeout: 5_000, interval: 5 },
     );
     await taking.stop();
 
-    // One hand-over for the whole life of the order. Every repeat is counted
-    // here, so a reminder that fired behind the merchant shows up as two.
+    // Every hand-over is counted, so a reminder that fired behind him shows as
+    // two.
     const owed = await state(harnessed, orderId);
     expect(owed?.dispatch.attempts).toBe(1);
     expect(owed?.dispatch.accepted).toBe(true);
@@ -507,24 +430,17 @@ describe("when a delivery goes unanswered", () => {
   });
 
   it("does not close an order on the silence after a repeat its merchant had already taken on", async () => {
-    // Our wait for a handler's answer is a few seconds, and a merchant's handler
-    // can take longer than that to say it has taken the order on. The silence
-    // noticed in the meantime sends the order out again, and that repeat is
-    // ordinary — delivery is at least once. What must not follow is the silence
-    // after the repeat being counted as well: the merchant has answered, and a
-    // slow but willing one would otherwise run out of deliveries in seconds and
-    // see a paid order close into a refund while he is filling it.
-    //
-    // Each step is taken by hand rather than raced on timers, so the order of
-    // the silence, the acceptance and the repeat is the one written here on
-    // every run, however loaded the machine is.
+    // A slow handler may accept after our answer wait has expired, and the repeat
+    // sent for that silence is ordinary. The silence after the repeat must not
+    // count once he has accepted, or a slow but willing merchant runs out of
+    // deliveries and sees a paid order close into a refund while he fills it.
+    // Each step is driven by hand so the order of events is the same every run.
     const harnessed = await started({
-      // Long enough that the gateway's own reminders do not fire inside the
-      // test: the two silences below are the whole of the input.
+      // Long enough that the gateway's own reminders never fire: the two
+      // silences below are the only input.
       HANDLER_ANSWER_MS: "60000",
       REDELIVERY_BASE_DELAY_MS: "5",
-      // Two deliveries, so the silence after the repeat is the one that would
-      // spend the last of them and close the order.
+      // Two deliveries, so counting the second silence would close the order.
       REDELIVERY_MAX_ATTEMPTS: "2",
       DEFAULT_ASYNC_FULFILLMENT_MS: "60000",
     });
@@ -554,16 +470,10 @@ describe("when a delivery goes unanswered", () => {
     await harnessed.gateway.answerOrder(merchantId, orderId, { accepted: {} });
     expect((await harnessed.gateway.poll(merchantId, 1_000)).envelopes).toHaveLength(1);
 
-    // The silence after the repeat, and then the goods. The merchant cannot
-    // see a silence being weighed, so the test asks what he can see: what his
-    // delivery is told, and what reaches his stream.
-    //
-    // The order of the two is the in-memory adapters' and is relied on here.
-    // The reminder is due at once and fires on the next turn of the event
-    // loop, and it takes the order's hold as it does; the delivery made after
-    // that turn waits behind it. Were the delivery ever to go first, the order
-    // would be closed by the goods before the silence was weighed, and this
-    // would pass on the old machine as well — it cannot fail a sound one.
+    // The silence after the repeat, then the goods. This relies on the in-memory
+    // adapters: the reminder fires on the next event-loop turn and takes the
+    // order's hold, so the delivery waits behind it. If the delivery ever went
+    // first, this would pass whether or not the silence is counted.
     await harnessed.queue.remind(
       { kind: "delivery_unanswered", orderId, handOver: await openHandOver() },
       0,
@@ -573,13 +483,11 @@ describe("when a delivery goes unanswered", () => {
       activation_code: "LPA:1$smdp.example$K2-1A2B3C",
     });
 
-    // His goods close an order that was still his. Counted, the silence would
-    // have closed it into a refund owed first, and he would be told his
-    // delivery paid a debt off rather than made a sale.
+    // Had the silence counted, the order would already owe a refund, and his
+    // goods would pay off a debt rather than make a sale.
     expect(delivered).toStrictEqual({ ok: true, result: "delivered" });
-    // And nothing on his stream says otherwise. An event goes out once and is
-    // never taken back, so a refund notice sent here in error would stand in
-    // his records whatever happened to the order afterwards.
+    // Events are never taken back, so a refund notice sent in error would stand
+    // in his records whatever happened to the order afterwards.
     expect((await harnessed.queue.draw(merchantId, 10, 0)).map((d) => d.envelope)).toStrictEqual(
       [],
     );
@@ -590,22 +498,13 @@ describe("when a delivery goes unanswered", () => {
   });
 
   it("spends one delivery on one silence, though the same reminder arrives twice", async () => {
-    // The queue hands a reminder out again when the process that took it never
-    // answered — it died, or the completion never reached the database. That is
-    // not a failure mode invented here: reminders are published with the
-    // library's own retries, where envelopes are published with none, and the
-    // queue adapter's database test watches a taken-and-unanswered reminder
-    // come back as the same job carrying the same payload.
-    //
-    // What must not follow is a second redelivery. Every hand-over is counted
-    // against the order's attempt cap, the order closes the moment the cap is
-    // reached, and closing an order that has been paid for is a debt: the
-    // merchant loses the sale and owes the money back. So a second arrival of
-    // one reminder has to cost nothing, or a silence the merchant had once
-    // spends two of the deliveries he was owed.
+    // The queue hands a reminder out again when whoever took it never completed
+    // it. Every hand-over counts against the attempt cap, and reaching the cap
+    // closes a paid order into a refund, so a second arrival of the same
+    // reminder must cost nothing.
     const harnessed = await started({
-      // Long enough that the gateway's own reminder for this hand-over does not
-      // fire inside the test: the two arrivals below are the whole of the input.
+      // Long enough that the gateway's own reminder never fires: the two
+      // arrivals below are the only input.
       HANDLER_ANSWER_MS: "60000",
       REDELIVERY_BASE_DELAY_MS: "5",
       DEFAULT_ASYNC_FULFILLMENT_MS: "60000",
@@ -621,12 +520,9 @@ describe("when a delivery goes unanswered", () => {
       throw new Error("the hand-over was not recorded, so there is nothing to remind against");
     }
 
-    // The reminder for that hand-over, and then the same one over again. It is
-    // put on the queue twice rather than repeated from inside it because what
-    // reaches the gateway is the same either way: one payload, naming one
-    // hand-over. The in-memory queue repeats a reminder only when the handler
-    // throws, and a handler that got as far as deciding on a redelivery did not
-    // throw — so its own repeat is the one path that cannot produce this.
+    // The same reminder, put on the queue twice. The in-memory queue repeats a
+    // reminder only when its handler throws, and one that decided on a
+    // redelivery did not, so this is how a database queue's repeat is reproduced.
     const unanswered: Reminder = { kind: "delivery_unanswered", orderId, handOver };
     await harnessed.queue.remind(unanswered, 0);
     await vi.waitFor(
@@ -635,25 +531,20 @@ describe("when a delivery goes unanswered", () => {
       { timeout: 2_000, interval: 5 },
     );
     await harnessed.queue.remind(unanswered, 0);
-    // Long enough for the second arrival to have been dealt with and for
-    // anything it decided on to have come off its redelivery delay.
+    // Long enough for the second arrival to be handled and for any redelivery it
+    // decided on to come off its delay.
     await new Promise((resolve) => setTimeout(resolve, 150));
 
-    // One silence, one repeat. Two envelopes here is the merchant being asked
-    // twice for goods he was asked for once, and two of his five attempts gone.
+    // One silence, one repeat; two envelopes would spend two of his attempts.
     const again = await harnessed.gateway.poll(harnessed.merchant.id, 100);
     expect(again.envelopes).toHaveLength(1);
     expect((await state(harnessed, orderId))?.dispatch.attempts).toBe(2);
   });
 
   it("sends the order again when the next hand-over goes quiet in its turn", async () => {
-    // The other side of the guard, and the one an over-eager fix breaks. A
-    // hand-over that has been given up on is finished, but the order is not:
-    // the redelivery arms a hand-over of its own when it is drawn, and the
-    // silence after that one has to be worth another delivery. A guard shut for
-    // good would leave the order sitting in `dispatched` with nobody working on
-    // it and nothing sending it out again — its attempts would stop at two, and
-    // it would run to its deadline instead.
+    // The negative control: each redelivery arms a hand-over of its own, and
+    // silence on that one is worth another delivery. A guard shut for the whole
+    // order would leave it in `dispatched` with attempts stuck at two.
     const harnessed = await started({
       HANDLER_ANSWER_MS: "10",
       REDELIVERY_BASE_DELAY_MS: "5",
@@ -676,13 +567,9 @@ describe("when a delivery goes unanswered", () => {
 
 describe("a burst of orders", () => {
   it("waits for each answer from the moment that order was handed over, not the burst", async () => {
-    // The wait for a handler's answer starts when an order is handed to the
-    // worker, and a worker works its orders one at a time. Handed a burst all
-    // at once, the orders at the back of it would be waiting out the handler
-    // calls ahead of them, and taken for silences while their own handler had
-    // not even started. A repeat sent for that costs the order one of its
-    // deliveries — and a synchronous order, which cannot be taken on, can
-    // run out of them — although every handler here answers at once.
+    // A worker handles orders one at a time. If the answer wait started for a
+    // whole burst at once, orders at the back would be taken for silences before
+    // their handler had started, and each would lose a delivery attempt.
     const harnessed = await started({
       // Eight times what one handler call takes, so only a wait that also
       // covers the calls ahead of an order can run out.
@@ -711,10 +598,8 @@ describe("a burst of orders", () => {
         return { accepted: {} };
       },
     });
-    // Every order taken on and nothing more on its way to anybody. A repeat
-    // decided on for any of them sits on the stream until it is drawn, so
-    // this is not reached until every repeat there was has been handed over
-    // and counted below.
+    // A repeat sits on the stream until drawn, so this is not reached until every
+    // repeat has been handed over and counted below.
     await vi.waitFor(
       async () => {
         for (const orderId of orderIds) {
@@ -734,12 +619,9 @@ describe("a burst of orders", () => {
   });
 
   it("answers with what is live behind an envelope that has gone stale, rather than nothing", async () => {
-    // One envelope a poll has a cost a batch did not. An order that closed
-    // while its envelope waited in the queue is not handed out, and a poll that
-    // answered with nothing for it would send the worker to rest as though the
-    // stream were quiet — a second, in the SDK — while live orders and price
-    // questions waited behind it. After an outage that is a second for every
-    // order that closed in the meantime.
+    // A closed order's envelope is skipped. A poll that answered empty for it
+    // would send the worker to rest as if the stream were quiet, a second each in
+    // the SDK, while live orders waited behind it.
     const harnessed = await started();
     // A synchronous purchase nobody draws in time: it closes at its deadline,
     // and its envelope stays at the head of the stream.
@@ -749,7 +631,7 @@ describe("a burst of orders", () => {
     const live = await bought(harnessed, asyncCard);
     await harnessed.gateway.payPurchase(live, "PAYMENT-1", "PAYMENT-1");
 
-    // A drain: whatever is there right now. Something is, and it comes back.
+    // A drain: whatever is there right now.
     const first = await harnessed.gateway.poll(harnessed.merchant.id, 0);
     expect(first.envelopes).toHaveLength(1);
     const handed = [...first.envelopes, ...(await drawEverything(harnessed))].flatMap((each) =>
@@ -759,13 +641,9 @@ describe("a burst of orders", () => {
   });
 
   describe("when no hand-over can be recorded", () => {
-    // The poll draws past what it cannot hand out, and that has to end. Here
-    // the store fails every write, and slowly, the way a database that is
-    // struggling does: every envelope drawn goes back on the stream behind a
-    // delay shorter than it takes to get through the others, so there is
-    // always one to draw. A poll that drew until something was handed out
-    // would draw for ever, and the worker behind it would give up and poll
-    // again beside it.
+    // The store fails every write, slowly, and each envelope goes back on the
+    // stream sooner than the others take to draw, so there is always one to
+    // draw. A poll that drew until it could hand something out would never end.
     const failing = async () => {
       const harnessed = await started({ SETTLE_IN_FLIGHT_RETRY_MS: "50" });
       for (const nth of [0, 1, 2]) {
@@ -791,8 +669,7 @@ describe("a burst of orders", () => {
       const took = performance.now() - startedAt;
 
       expect(answered).toStrictEqual({ contract_version: expect.any(String), envelopes: [] });
-      // The window and at most one more pass, nowhere near the time the same
-      // envelopes would take to come round again and again.
+      // The window plus at most one more pass.
       expect(took).toBeLessThan(500);
     });
 
@@ -810,17 +687,9 @@ describe("a burst of orders", () => {
 
 describe("a timer that fires at the wrong moment", () => {
   it("hands the machine's refusal back rather than closing the order on it", async () => {
-    // A stale reminder off the queue, or one for a clock this order never had.
-    // Closing an order on it would refund a buyer whose merchant is not late.
-    //
-    // Which timers the machine refuses is the machine's own subject and is
-    // settled in `packages/core`, where the deadline that is not running and
-    // the one that has not come due yet are two cases over the transition. What
-    // is the gateway's is everything after that word: the refusal reaches the
-    // caller as a refusal, carrying the machine's own code and not a code
-    // invented here, and nothing at all is written down. A runner that
-    // swallowed it would leave a caller told the event was applied and an order
-    // that had quietly closed.
+    // A stale reminder, or one for a clock this order never had, must not close
+    // it. Which timers are refused is tested in `packages/core`; here the runner
+    // must hand the machine's refusal and code back and write nothing.
     const harnessed = await started();
     const orderId = await bought(harnessed, asyncCard);
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
@@ -841,10 +710,8 @@ describe("a timer that fires at the wrong moment", () => {
 
 describe("a reminder that could not be carried out", () => {
   it("is asked for again rather than lost in silence", async () => {
-    // A reminder is the only thing that ever declares an overdue order, so one
-    // dropped on a store that was briefly unreachable is a paid order nobody
-    // ever marks for a refund. It is asked for again, and a defect that will
-    // never work stops rather than looping.
+    // A reminder is the only thing that declares an order overdue, so one
+    // dropped on a brief store outage is a paid order never marked for a refund.
     const harnessed = await started({
       DEFAULT_ASYNC_FULFILLMENT_MS: "20",
       REDELIVERY_BASE_DELAY_MS: "5",

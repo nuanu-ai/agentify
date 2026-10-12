@@ -1,35 +1,12 @@
 /**
- * The queue, on pg-boss, in the same Postgres as everything else (ADR-0003 §6).
+ * The queue, on pg-boss, in the same Postgres as everything else. All the
+ * durable machinery is the library's.
  *
- * The durable part is entirely the library's: the rows, the locking, the
- * delayed jobs, the visibility window after which an unanswered delivery
- * expires. The rule that put it there is ADR-0003 §9 — the wish to write a
- * queue on SELECT ... FOR UPDATE SKIP LOCKED by hand reads as a badly chosen
- * component rather than as a task — and none of it is written here.
- *
- * Two things this adapter does add, and both are worth reading.
- *
- * A poll is woken in-process the moment something is published. Drawing on its
- * own is a poll of the database every `pollIntervalMs`; ADR-0004 §4 asks for no
- * polling lag at all on the one path where an agent is waiting. Since the
- * process that publishes an order is the same process a worker is parked
- * against, a signal between them costs nothing and closes that gap.
- *
- * The polling underneath it is this adapter's own and not the library's, and
- * the distinction matters to anybody reading `draw`. pg-boss polls inside
- * `work()`, which is how reminders are delivered; `draw` uses `fetch()`, which
- * asks once and answers. So what carries an envelope to a poll in another
- * process — and what would carry one to a second gateway the day there is one —
- * is the loop in `draw` calling `fetch` again, not anything the library is
- * doing on its own behalf.
- *
- * And a job is completed as soon as it is handed over rather than held open
- * until the merchant answers. Whether an unanswered delivery is repeated is the
- * order machine's decision — it is the one that knows how many attempts are
- * left and whether another could still land inside the deadline — and pg-boss's
- * own retries are turned off so that there is only ever one opinion about that.
- * The reminder the gateway leaves itself is what carries the news of a silence
- * to the machine.
+ * A parked poll is woken in-process the moment this process publishes, so an
+ * agent waiting on a purchase sees no polling lag. Work published by another
+ * process reaches a poll only through the loop in `draw` calling `fetch`
+ * again. pg-boss's own retries are off for envelopes: whether an unanswered
+ * delivery is repeated is the order machine's decision alone.
  */
 
 import type { WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
@@ -52,68 +29,28 @@ import { failingWithoutValues, withoutValues } from "../database-failure.js";
 import type { Envelopes } from "../postgres/store.js";
 
 /**
- * What pg-boss will take as a queue name, and therefore what every name below
- * has to be.
- *
- * It is the library's own rule, copied: a space or a colon is refused, a period
- * and a hyphen are not — pg-boss's own internal queue is called
- * `__pgboss__send-it`. `pgboss/queue.db-test.ts` asks the real library whether
- * this still agrees with it.
- *
- * It used to be read by the tests alone, on the grounds that pg-boss does its
- * own checking and says why in a sentence worth reading. That held while every
- * queue name was a constant in this file. One of them is now built out of a
- * merchant identifier, and the failure moved: a merchant whose identifier
- * pg-boss will not take is not a start-up error somebody sees, it is one
- * merchant whose orders reach nobody, discovered at the first sale.
+ * What pg-boss will take as a queue name, copied from the library's own rule;
+ * a database test checks it still agrees. It is checked here because a merchant
+ * identifier pg-boss refused would otherwise surface only at that merchant's
+ * first sale, as orders reaching nobody.
  */
 export const A_NAME_PG_BOSS_ACCEPTS = /^[\w.\-/]+$/;
 
-/**
- * The reminders queue, and the prefix each merchant's stream is named under.
- *
- * The shape is held to in a test, and the test that matters is the one against
- * the library: this rule was written down here from a reading of the
- * documentation as "a bare identifier, no periods", the first run against a
- * real pg-boss accepted `agentify.envelopes` without complaint, and a rule
- * nobody had ever asked the library about had been standing in a comment as a
- * fact.
- */
+/** The prefix each merchant's stream is named under, and the reminders queue. */
 export const ENVELOPES = "agentify_envelopes";
 export const REMINDERS = "agentify_reminders";
 
-/**
- * How often the reminders are looked for, in seconds: the half second that is
- * pg-boss's floor, and the port's promise. A deadline lands at most this long
- * after its moment, plus the time to take the reminders ahead of it, which
- * come in batches.
- */
+/** How often reminders are looked for, in seconds: pg-boss's floor. */
 const REMINDER_POLL_SECONDS = REMINDER_POLL_MS / 1_000;
 
-/** How many due reminders one fetch takes. */
 const REMINDER_BATCH = 20;
 
 /**
- * One merchant's stream, which is a pg-boss queue of its own.
- *
- * The alternative was one queue carrying every merchant's envelopes and a
- * filter on the way out, and it does not work: pg-boss hands out work by queue
- * name and has no way to fetch by anything inside a job, so filtering would
- * mean drawing a stranger's envelope in order to look at it — and a drawn
- * envelope is one nobody is offered again, this adapter finishing it in the
- * pass it was drawn in and the library failing it outright if that pass never
- * came. A worker polling would silently swallow everybody else's orders.
- *
- * What a queue costs is a row. With pg-boss's own partitioning left off, which
- * is the default, `createQueue` is an insert into its `queue` table and every
- * job lives in the one table underneath — so this is a row per merchant and not
- * a table per merchant.
- *
- * These names are a direct namespace boundary. The adapter neither reads nor
- * migrates jobs under another prefix, so deployment has to drain the queues it
- * is replacing before this code starts. The cutover order belongs to the
- * operator plan because guessing that state in application code would create a
- * second queue contract and make the hand-over silent.
+ * One merchant's stream, a pg-boss queue of its own. pg-boss fetches only by
+ * queue name, so a shared queue would mean drawing a stranger's envelope to
+ * look at it, and a drawn envelope is never offered again. With partitioning
+ * off (the default) a queue costs one row. Jobs under any other name are never
+ * read.
  */
 export const streamOf = (merchantId: string): string => {
   if (!A_NAME_PG_BOSS_ACCEPTS.test(merchantId)) {
@@ -126,47 +63,34 @@ export const streamOf = (merchantId: string): string => {
 
 export interface PgBossQueueOptions {
   /**
-   * How long a poll waits on the library's own polling before giving up on this
-   * turn. It only matters for work published by another process; work published
-   * by this one wakes a parked poll immediately.
+   * How long a parked poll waits before fetching again. It matters only for
+   * work published by another process; this process wakes a poll at once.
    */
   readonly pollIntervalMs: number;
-  /** How patient the queue is with a reminder whose handler threw. */
   readonly reminders: ReminderPatience;
 }
 
 export class PgBossQueue implements Queue {
   readonly #boss: PgBoss;
   readonly #options: PgBossQueueOptions;
-  /** Workers parked on a stream, by the stream they are parked on. */
   readonly #waiters = new Map<string, Set<() => void>>();
   /**
-   * The streams this process has already asked pg-boss to make.
-   *
-   * `create_queue` ends in `on conflict do nothing`, so asking twice is
-   * harmless — but it is a round trip, and one per publish on a busy gateway is
-   * a round trip nobody needs. Remembered per process rather than per
-   * deployment: a second process makes the same call once and gets the same
-   * nothing.
+   * The streams this process has already asked pg-boss to make. Asking twice is
+   * harmless but costs a round trip per publish.
    */
   readonly #made = new Set<string>();
   #fire: ((reminder: Reminder) => Promise<void>) | null = null;
   #running = false;
 
   /**
-   * A queue on this pg-boss, and the one way to make one: a failure of the
-   * database leaves it without the values bound to the statement
-   * (`database-failure.ts`, ADR-0032) — for a job, the envelope it carries.
-   * That covers the queue's own calls. An envelope written inside an order's
-   * transaction (`envelopes`) fails inside the store's `withOrder`, and the
-   * store strips it there.
+   * The only way to make a queue: database failures leave it stripped of the
+   * values bound to the statement (`database-failure.ts`), which for a job is
+   * the envelope it carries. Envelopes written inside an order's transaction
+   * are stripped by the store instead.
    *
-   * pg-boss reports its internal failures as an event, and they are listened
-   * to here for the same reason: a worker's failure can carry the row of the
-   * job it was working on. An unhandled one of those events is also an
-   * uncaught exception and a dead process, which costs more here than in most
-   * services: every parked purchase and every parked worker lives in this
-   * process's memory.
+   * pg-boss's `error` event is handled here for the same reason, and because
+   * an unhandled one kills the process, and with it every parked purchase and
+   * worker.
    */
   static over(boss: PgBoss, options: PgBossQueueOptions): PgBossQueue {
     boss.on("error", (error: unknown) => {
@@ -186,16 +110,14 @@ export class PgBossQueue implements Queue {
   async publish(merchantId: string, envelope: WorkerEnvelope, afterMs?: number): Promise<void> {
     const stream = await this.#stream(merchantId);
     const sent = await this.#boss.send(stream, envelope as unknown as object, {
-      // Retries are the machine's to decide, so the queue keeps none of its own.
+      // Retries are the order machine's to decide, so the queue keeps none.
       retryLimit: 0,
       ...(afterMs === undefined || afterMs <= 0
         ? {}
         : { startAfter: new Date(Date.now() + afterMs) }),
     });
 
-    // The library answers with the job's identifier, or with nothing when it
-    // did not make one. Nothing is what an order never reaching a merchant
-    // looks like from here, and swallowing it would make that silent.
+    // Null means no job was made: an order that would silently reach nobody.
     if (sent === null) {
       throw new Error(`the queue would not take the envelope ${envelope.id}`);
     }
@@ -206,27 +128,14 @@ export class PgBossQueue implements Queue {
   }
 
   /**
-   * The same publish, made part of somebody else's transaction (ADR-0013).
+   * The same publish, inside the caller's transaction, so the job commits or
+   * rolls back with the order. Nothing sees it until the commit, so parked
+   * polls are woken by `envelopesCommitted`, not here.
    *
-   * `fromDrizzle` wraps that transaction as the handle pg-boss takes in its
-   * send options — whose whole contract is running one statement — so the job
-   * is inserted on that connection and commits or rolls back with whatever else
-   * is being written there. Nothing sees it until the commit, which is why the
-   * parked polls are not woken here but by `committed` afterwards.
-   *
-   * Making the merchant's stream is not part of the transaction and must not
-   * be: it is `create_queue` ending in `on conflict do nothing`, it goes on the
-   * library's own connection, and a stream left behind by a transaction that
-   * rolled back is a row nobody minds.
-   *
-   * What it costs is worth naming, because it is more than a round trip. The
-   * library wraps that statement in an advisory lock whose key is the schema
-   * and the word "create-queue" — one key for every queue rather than one per
-   * name — so two merchants making their first stream at the same moment wait
-   * for each other, and they do it while each holds an order row. It is a
-   * queue rather than a hang: the lock is held for pg-boss's own short
-   * transaction, and `#made` means one process asks once per merchant. A first
-   * sale pays for it and no later one does.
+   * Making the stream is deliberately outside the transaction. pg-boss takes
+   * one advisory lock for every queue creation, so two merchants making their
+   * first stream at once wait for each other while each holds an order row;
+   * it is short, and happens once per merchant per process.
    */
   async publishWithin(
     tx: DrizzleTransactionLike,
@@ -243,30 +152,19 @@ export class PgBossQueue implements Queue {
       db: fromDrizzle(tx, sql),
     });
 
-    // The library answers with the job's identifier, or with nothing when it
-    // did not make one. Thrown rather than swallowed, and here the throw is
-    // what takes the order down with it: an order that says the merchant was
-    // handed the work is not written unless the work was actually enqueued.
+    // The throw rolls back the order with it: an order saying the merchant was
+    // handed the work is never written unless the work was enqueued.
     if (sent === null) {
       throw new Error(`the queue would not take the envelope ${envelope.id}`);
     }
   }
 
   /**
-   * Deletes, inside somebody else's transaction, every job on one merchant's
-   * stream that carries any of a parcel's address (ADR-0032): the order's
-   * hand-overs and the price question named, in whatever state they are.
-   *
-   * Every state, because pg-boss keeps a job it has finished in the same table
-   * for as long as the queue's retention says — days — and an envelope that was
-   * drawn and answered still holds what it carried. The jobs are found by what
-   * they carry, which is the library's own containment filter on the document
-   * a worker reads, and deleted by identifier, both on the transaction's
-   * connection, so they are gone exactly when the order that says the address
-   * was erased commits and not otherwise.
-   *
-   * A job a worker is holding is deleted too. Finishing it afterwards finds
-   * nothing and does nothing, which is the same answer a second finish gets.
+   * Deletes, inside the caller's transaction, every job on the stream that
+   * carries a parcel's address: the order's hand-overs and the named price
+   * question, in any state. Finished jobs count, because pg-boss keeps them
+   * for days. They are gone exactly when the erasure commits. Finishing a
+   * deleted job later does nothing.
    */
   async forgetWithin(
     tx: DrizzleTransactionLike,
@@ -298,12 +196,9 @@ export class PgBossQueue implements Queue {
   }
 
   /**
-   * The transaction those envelopes were written in has committed, so the polls
-   * parked on those streams are told to look again.
-   *
-   * Woken any earlier they would fetch, find nothing — the job is not visible
-   * outside an uncommitted transaction — and go back to their polling interval
-   * having spent the wake ADR-0004 §4 exists to give them.
+   * Wakes the polls parked on these streams once the transaction has
+   * committed. Woken earlier they would find nothing and go back to waiting a
+   * full interval.
    */
   envelopesCommitted(merchantIds: readonly string[]): void {
     for (const merchantId of new Set(merchantIds)) {
@@ -311,7 +206,6 @@ export class PgBossQueue implements Queue {
     }
   }
 
-  /** This queue as the store's way of writing an envelope with an order. */
   envelopes(): Envelopes {
     return {
       within: (tx, merchantId, envelope, afterMs) =>
@@ -342,8 +236,7 @@ export class PgBossQueue implements Queue {
     const until = Date.now() + waitMs;
     while (Date.now() < until) {
       await this.#park(stream, Math.min(this.#options.pollIntervalMs, until - Date.now()), gone);
-      // A worker that left while this waited takes nothing: what arrives is
-      // kept on the stream for the poll that comes after it.
+      // A worker that left takes nothing; what arrives stays for the next poll.
       if (gone?.aborted) {
         return [];
       }
@@ -357,33 +250,14 @@ export class PgBossQueue implements Queue {
 
   async holdsOrder(merchantId: string, orderId: string): Promise<boolean> {
     const stream = await this.#stream(merchantId);
-    // `queued` is the library's word for a job that has not been handed to
-    // anybody, which it reads as a state before `active` — `created` or
-    // `retry`. On a stream that means `created` and only `created`: a
-    // redelivery waiting out its delay is a created job with its start time in
-    // the future, and `retry` cannot occur here at all, because every envelope
-    // is published with no retries of the library's own. A job somebody has
-    // drawn is `active` and is not counted, and one that was drawn and never
-    // answered ends up `failed` rather than back on the stream, so it is not
-    // counted either — which is right, because that order really has reached
-    // nobody and the sweep should send it again.
+    // `queued` is a job not yet handed out, delayed redeliveries included. A
+    // drawn job is `active` and one drawn and never answered ends `failed`;
+    // neither is counted, which is right, since the sweep should resend.
     //
-    // What this cannot tell apart is an envelope in a worker's hands from one
-    // that was never written. That is the honest answer rather than a gap, and
-    // the sweep covers part of it with patience instead.
-    //
-    // One difference from how the library hands work out, harmless today and
-    // worth knowing before it is not: fetching also excludes a job whose
-    // dependencies have not finished, and this does not. Nothing here ever
-    // makes a dependent job — an envelope is a plain send — so no job on a
-    // stream can be in that state. The day one could be, this would answer
-    // "held" for an envelope nobody will ever be handed, and the sweep would
-    // leave that order alone for good.
-    //
-    // The match is on what the envelope carries rather than on its identifier,
-    // because the caller knows the order and not which envelope was written for
-    // it. Containment on the document is the library's own filter, so the
-    // shape below is the shape a worker reads.
+    // Unlike `fetch`, this does not exclude jobs waiting on dependencies. No
+    // envelope is ever sent with one; if one ever were, this would answer
+    // "held" for an envelope nobody will be handed, and the sweep would leave
+    // that order alone for good.
     const held = await this.#boss.findJobs(stream, {
       data: { kind: "order", payload: { id: orderId } },
       queued: true,
@@ -392,24 +266,22 @@ export class PgBossQueue implements Queue {
   }
 
   async finish(merchantId: string, handle: string): Promise<void> {
-    // Completing names the queue as well as the job, so a handle from one
-    // merchant's stream cannot finish a delivery on another's: pg-boss looks
-    // the job up under the name it is given and finds nothing.
+    // Naming the queue means a handle cannot finish another merchant's job.
     await this.#boss.complete(streamOf(merchantId), handle);
   }
 
   async remind(reminder: Reminder, afterMs: number): Promise<void> {
     const { attempts, retryDelayMs } = this.#options.reminders;
     const sent = await this.#boss.send(REMINDERS, reminder as unknown as object, {
-      // The library's own retries, durably, rather than a handler catching its
-      // own failure and writing to the database that had just refused it.
+      // The library's durable retries, not a handler re-arming itself against
+      // the database that just refused it.
       retryLimit: Math.max(attempts - 1, 0),
       retryDelay: Math.max(Math.round(retryDelayMs / 1_000), 1),
       startAfter: new Date(Date.now() + Math.max(afterMs, 0)),
     });
 
-    // A reminder that was not written down is a deadline that will never fire,
-    // and the deadline is the only thing that ever closes an overdue order.
+    // An unwritten reminder is a deadline that never fires, and only a deadline
+    // closes an overdue order.
     if (sent === null) {
       throw new Error(
         `the queue would not take the ${reminder.kind} reminder for ${reminder.orderId}`,
@@ -429,19 +301,15 @@ export class PgBossQueue implements Queue {
     await this.#boss.work(name, { batchSize: 1 }, async () => {
       await work();
     });
-    // Registering the same name again replaces the schedule rather than adding
-    // one, so a restart does not accumulate them.
+    // Scheduling the same name again replaces the schedule.
     await this.#boss.schedule(name, "17 3 * * *");
   }
 
   /**
-   * Starts the library so this process can send, and does not consume.
-   *
-   * A second process that called {@link start} would register a worker on the
-   * reminders queue and take deadlines away from the gateway that is supposed
-   * to apply them. Sending a job does not require that worker. The operator
-   * command that records a payment fact uses this and must not grow a second
-   * consumer beside it.
+   * Starts the library so this process can send, without consuming. A second
+   * process calling {@link start} would take reminders away from the gateway
+   * that must apply them; the operator command that records a payment fact
+   * uses this instead.
    */
   async startWriter(): Promise<void> {
     await this.#boss.start();
@@ -451,42 +319,23 @@ export class PgBossQueue implements Queue {
   async start(): Promise<void> {
     const fire = this.#fire;
     if (fire === null) {
-      // A queue started with nowhere to put reminders would swallow every
-      // deadline in the system, and would do it silently.
       throw new Error("the queue has nowhere to put reminders and will not start");
     }
 
     await this.#boss.start();
-    // A merchant's own stream is made the first time something is published to
-    // it or drawn from it, because the merchants are rows now and this process
-    // does not hold a list of them at start-up.
-    // Both queues run on pg-boss's own defaults, and the important one is the
-    // fifteen minutes a delivery may be held before the library gives up on it
-    // and fails the job. That is deliberate for envelopes, where the machine
-    // rather than the queue decides whether anything is repeated, and it has
-    // never been thought about for reminders.
-    //
-    // Whoever thinks about it should know that these calls cannot be the place
-    // it is changed. pg-boss writes a queue's settings when the queue is first
-    // made and its `create_queue` ends in `on conflict do nothing`, so options
-    // added here would apply to a database that has never run this and be
-    // silently ignored by every database that has. Changing them on a live
-    // installation is `updateQueue`, or a migration.
+    // Merchant streams are made on first use. Both kinds of queue run on
+    // pg-boss's defaults, including the fifteen minutes a job may be held
+    // before it fails; nobody has decided whether that suits reminders. Queue
+    // settings are written only when a queue is first made, so options added
+    // here would be silently ignored on an existing database: change them with
+    // `updateQueue` or a migration.
     await this.#boss.createQueue(REMINDERS);
 
-    // Reminders are where the order's clocks live, so how promptly they are
-    // taken is how promptly a deadline closes. Taken one per poll at the
-    // library's two-second default, the reminders an order leaves behind
-    // queued behind each other and a deadline could land seconds after its
-    // moment. So they are looked for every half second, taken in batches, and
-    // fetched again at once while a batch comes back full. These are options
-    // of this one worker rather than settings of the queue, so unlike the
-    // queue's own settings above they apply on every database.
-    //
-    // A batch is settled one reminder at a time. Settled as a whole, a reminder
-    // that throws would fail every other reminder taken with it and spend
-    // their attempts on a defect that is not theirs; settled one by one, the
-    // one that threw is tried again on its own and its neighbours are done.
+    // How promptly reminders are taken is how promptly a deadline closes, so
+    // they are polled every half second, in batches, refetched at once while
+    // a batch is full. These are worker options, so they apply on every
+    // database. Each reminder is settled on its own, so one that throws does
+    // not spend its neighbours' attempts.
     await this.#boss.work<Reminder>(
       REMINDERS,
       {
@@ -528,7 +377,6 @@ export class PgBossQueue implements Queue {
     await this.#boss.stop({ graceful: true });
   }
 
-  /** This merchant's stream, made if this process has not made it yet. */
   async #stream(merchantId: string): Promise<string> {
     const name = streamOf(merchantId);
     if (!this.#made.has(name)) {
@@ -561,11 +409,7 @@ export class PgBossQueue implements Queue {
     });
   }
 
-  /**
-   * Wakes the workers parked on one stream, and only them. Waking every parked
-   * poll on every publish would send each of them back to a fetch on a stream
-   * nothing had arrived on.
-   */
+  /** Wakes the workers parked on one stream, and only them. */
   #wakeEverybody(stream: string): void {
     for (const wake of [...(this.#waiters.get(stream) ?? [])]) {
       wake();
@@ -573,7 +417,6 @@ export class PgBossQueue implements Queue {
   }
 }
 
-/** A queue on this database, ready to be started. */
 export function queueOn(databaseUrl: string, options: PgBossQueueOptions): PgBossQueue {
   return PgBossQueue.over(new PgBoss(databaseUrl), options);
 }

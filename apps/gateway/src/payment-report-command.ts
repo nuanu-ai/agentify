@@ -1,24 +1,11 @@
 /**
- * Recording a payment fact the settle call did not return.
- *
- * The facilitator is asked once. A silence is not asked again, and sending
- * the charge a second time is the thing the machine forbids. What is left is
- * a person who has read the answer somewhere else — a dashboard, a chain
- * explorer — and needs a way to hand that fact to the machine. This command
- * is that way. It does not check the fact. It says so, in the line it prints
- * and in the word it writes beside the order, so a later reader can tell an
- * operator's record from a sentence the facilitator actually returned.
- *
- * It is not a merchant route. A merchant did not see the facilitator's
- * answer, and a button that asserts a charge is a second machine. Whoever
- * runs this has the database in front of them, the same authority as the
- * merchant command, and a wrong transaction cannot be taken back: after
- * `payment_settled` the machine has no reverse.
- *
- * The settlement field the purchase route puts in the payment-layer header
- * is left empty. That header is the facilitator's receipt. Writing the
- * operator's string there would be presenting a person's reading as the
- * payment layer's own.
+ * Records a payment fact the settle call did not return: the facilitator is
+ * asked once and a silence is never asked again, so a person who read the
+ * outcome elsewhere hands it to the machine here. The fact is not checked, and
+ * the word written beside the order says it is an operator's record. A wrong
+ * transaction cannot be taken back, since after `payment_settled` the machine
+ * has no reverse. The settlement field of the payment-layer header stays
+ * empty, because that header is the facilitator's receipt.
  */
 
 import { isOpen, type OrderEvent } from "@agentify/core";
@@ -86,17 +73,11 @@ export async function runPaymentReport(
     say(already(found));
     return found.order.payment === "settling" ? 1 : 0;
   }
-  // The deadline can declare a silence while the original settle call is still
-  // in flight — the client waits longer than that deadline. A settle word is
-  // written only when that call has returned. Without one, a fact written now
-  // races the answer, and whichever lands second is dropped.
-  //
-  // It has to be this charge's word and not any word. A first charge that came
-  // back failed leaves one behind; the buyer then repeats the purchase and a
-  // second charge goes out, and that one can go quiet with the first one's
-  // sentence still sitting on the order. The order says when the payment was
-  // last handed over for execution, and a word written before that instant
-  // belongs to the charge before this one.
+  // The deadline can declare a silence while the settle call is still in
+  // flight, and a fact written then races the answer; a settle word is written
+  // only once that call has returned. It must be this charge's word: a failed
+  // earlier charge leaves one behind, so only a word written after the payment
+  // was last handed over for execution counts.
   const sentAt = found.order.timestamps.settleStartedAt;
   const answered =
     sentAt !== null &&
@@ -107,11 +88,10 @@ export async function runPaymentReport(
     );
     return 1;
   }
-  // Recording a failure on an open order sets the payment to failed and lifts
-  // the guard that refuses a second charge. An unchecked "it failed" would
-  // spend the buyer's money on a guess about the first. The order stays
-  // unresolved until somebody records that the charge landed, which releases
-  // the goods already made and sends nothing new.
+  // Recording a failure on an open order lifts the guard against a second
+  // charge, so an unchecked "it failed" would spend the buyer's money on a
+  // guess. The order stays unresolved until somebody records that the charge
+  // landed, which releases the goods already made and sends nothing new.
   if (verb === "failed" && isOpen(found.order.state)) {
     say(
       `${found.order.id} is still open; recording a failure would allow a second charge on a guess about the first`,

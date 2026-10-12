@@ -1,37 +1,17 @@
 /**
  * Every number the portal names, held to the configuration default it mirrors.
+ * The merchant's own sentences are read out of the markdown and compared with
+ * `loadConfig` given nothing but the database, which is the deployment the
+ * portal describes. It sits beside `config.ts` because that is where a deadline
+ * is changed.
  *
- * The charter's rule is that the documentation's examples are fixtures of the
- * code, and this is that rule applied to the deadlines. The pages used to keep
- * their side of it by naming no numbers at all: six shipped defaults were
- * described as questions nobody had answered yet, and two of them were dressed
- * as hypotheticals that happened to equal the real default to the digit. A
- * merchant cannot size a handler against that, and the way it went wrong is
- * instructive — nothing was lying when it was written, and nothing said so
- * afterwards.
- *
- * So the pages now name them, and this file is what stops the two drifting
- * apart again. It reads the merchant's own sentences out of the markdown and
- * compares what they say against `loadConfig` with nothing but the database in
- * the environment, which is the deployment the portal describes.
- *
- * It lives here rather than beside the other portal tests because the numbers
- * live here: `config.ts` is the one place a deadline is decided, so this is
- * where somebody changing one will be standing when it fails. The pages are
- * read from the repository the same way `packages/contracts/src/portal-fixtures
- * .test.ts` reads them, by a URL relative to this file.
- *
- * What the anchors are for. A pin quotes enough of the sentence around the
- * number to die when the sentence is rewritten rather than quietly matching
- * some other "five" further down the page — the pages say "five seconds" about
- * a merchant's own supplier and "at most five" about tags, and neither is ours.
- * Where a page says the same thing twice, every occurrence is checked, so two
- * paragraphs cannot come to disagree with each other either.
- *
- * One reader is not the merchant and reads no page. An agent learns what a
- * route does from the contract's route table, and where a description there
- * names one of these numbers it is held here the same way, read from the
- * description itself rather than from a copy of its sentence.
+ * A pin quotes enough of the sentence around its number to fail when the
+ * sentence is rewritten, rather than match some other "five" on the page: the
+ * pages say "five seconds" about a merchant's own supplier and "at most five"
+ * about tags, and neither is ours. Every occurrence is checked, so two
+ * paragraphs cannot disagree. A route description in the contract's route
+ * table that names one of these numbers is held the same way, read from the
+ * description itself.
  */
 
 import { readFileSync } from "node:fs";
@@ -42,12 +22,8 @@ import { loadConfig } from "./config.js";
 const repoRoot = new URL("../../../", import.meta.url);
 
 /**
- * A page with its line wrapping taken out.
- *
- * The portal wraps its prose at eighty columns, so almost every sentence worth
- * anchoring on is split across two lines and no regular expression written for
- * a reader would match it. Collapsing the whitespace is what lets a pin be
- * written as the sentence a person reads.
+ * A page with its line wrapping collapsed, so that a pin can quote a sentence
+ * the portal wraps across two lines.
  */
 const pageText = (file: string): string =>
   readFileSync(new URL(file, repoRoot), "utf8").replace(/\s+/g, " ");
@@ -69,14 +45,9 @@ type Reads = "seconds" | "count" | "period";
 
 /**
  * The number a captured word stands for, in the unit the configuration keeps.
- *
- * A word this cannot read is a failure and not a skip. Rewrite "eight seconds"
- * as "8 seconds" and the pin would otherwise capture something it has no entry
- * for, and a pin that shrugs at what it cannot read is a pin that passes on a
- * page saying anything at all.
- *
- * Case is the one thing forgiven, because a sentence that opens on its number
- * capitalises it and the portal has one of those.
+ * A word it cannot read (say "8" for "eight") throws rather than skips, or the
+ * pin would pass on a page saying anything at all. Case is forgiven, because a
+ * sentence that opens on its number capitalises it.
  */
 function quantityOf(written: string, reads: Reads): number {
   const word = written.toLowerCase();
@@ -139,12 +110,10 @@ const PINS: readonly Pin[] = [
     is: deadlines.quoteTtlMs,
   },
   {
-    // The anchor holds the moment as well as the number, and that is the point
-    // of it. The page used to hang this thirty on `expires_at`, which is a
-    // different and longer number — the gateway works that field out when the
-    // question goes out, as our patience for an answer plus the price's own
-    // life, because the life cannot start until the answer lands. A pin that
-    // read the number alone would have gone on certifying that pairing.
+    // The anchor holds the moment as well as the number. `expires_at` is a
+    // different, longer number: the wait for an answer plus the price's own
+    // life, set when the question goes out. A pin on the number alone would
+    // pass a page that paired the two.
     what: "how long a price holds, and the moment it is counted from",
     page: "apps/docs/cards.md",
     anchor:
@@ -176,8 +145,7 @@ const PINS: readonly Pin[] = [
 
   // --- the synchronous answer, and the ceiling around it --------------------
   //
-  // The one the merchant sizes a synchronous handler against, and the one it
-  // was hardest to find a sentence for: before this, no page named it at all.
+  // The number a merchant sizes a synchronous handler against.
   {
     what: "how long a synchronous answer has, in the deadline reference",
     page: "apps/docs/orders.md",
@@ -186,12 +154,9 @@ const PINS: readonly Pin[] = [
     is: deadlines.syncResponseMs,
   },
   {
-    // The anchor holds the moment as well as the number. The page said these
-    // seconds ran from the moment the agent bought, and the gateway counted
-    // them that way — from the unpaid call that opened the order, so an agent
-    // that took its time deciding was charged and delivered on a clock that had
-    // already run out. Both were wrong together, which is why this pin quotes
-    // the moment and not just the eight.
+    // The anchor holds the moment as well as the number: counted from the
+    // unpaid call that opened the order, the clock would already have run out
+    // on an agent that took its time deciding.
     what: "the same, where the page explains what the clock covers",
     page: "apps/docs/orders.md",
     anchor: /The (\w+) seconds run from the moment the payment checked out/,
@@ -360,9 +325,8 @@ describe("every number the portal names is the number this gateway ships", () =>
     it(`${pin.what} (${pin.page})`, () => {
       const captured = capturedBy(pin.text ?? pageText(pin.page), pin.anchor);
 
-      // A dead anchor is the failure this file exists to make loud. Without
-      // this the pin would pass on a page that had stopped saying anything at
-      // all, which is the state the pages were in before they named numbers.
+      // Without this a pin would pass on a page that had stopped saying
+      // anything at all.
       expect(
         captured.length,
         `${pin.page} no longer carries the sentence this pin reads (${pin.anchor.source}); if it was rewritten, rewrite the pin with it`,
@@ -379,21 +343,17 @@ describe("every number the portal names is the number this gateway ships", () =>
 
   it("grows the pause between attempts, which is the one claim carrying no number", () => {
     // failures.md: "we repeat the delivery, after a pause that grows with each
-    // attempt". Every other claim the portal publishes is a number this file
-    // reads back; this one is a shape, and the configuration can falsify it on
-    // its own — a factor of one is accepted and means a flat retry, which puts
-    // all five attempts inside a couple of seconds on a merchant already in
-    // trouble, and the sentence would then be describing nothing that happens.
+    // attempt". The configuration accepts a factor of one, a flat retry that
+    // puts every attempt inside a couple of seconds, and the sentence would
+    // then describe nothing that happens.
     expect(redelivery.factor).toBeGreaterThan(1);
   });
 });
 
 describe("a number the portal publishes is not also called undecided", () => {
-  // The other half of the same promise, and the half that decays quietly. A
-  // page can name a deadline in its body and go on listing that deadline in
-  // "What is not settled yet", and then the merchant has read both a number and
-  // a statement that there is no number. Each entry below names what is true
-  // instead, in the manner of `packages/core/src/retired-claims.test.ts`.
+  // A page that names a deadline in its body must not also list it under "What
+  // is not settled yet", or the merchant reads both a number and a statement
+  // that there is none. Each entry below names what is true instead.
   const RESOLVED: readonly {
     readonly page: string;
     readonly claim: RegExp;
@@ -434,12 +394,9 @@ describe("a number the portal publishes is not also called undecided", () => {
       claim: /the build that would let the command start/,
       truth: "the SDK builds and `agentify verify` runs; `scripts/outside.sh` runs it",
     },
-    // The two entries about a number the portal does not name, and the reason
-    // they belong anyway: the pause between attempts is settled in `config.ts`
-    // — a base, a factor and a cap — and is deliberately left unpublished,
-    // because a merchant sizes nothing against it. Calling it an open question
-    // was the same half-claim the deadlines were, and what settled it was
-    // deleting the bullet rather than naming a schedule.
+    // The pause between attempts is settled in `config.ts` and deliberately
+    // unpublished, because a merchant sizes nothing against it; listing it as
+    // open would be the same half-claim.
     {
       page: "apps/docs/orders.md",
       claim: /The delay before we resend/,
@@ -497,8 +454,8 @@ describe("the pin itself", () => {
   });
 
   it("finds nothing when the sentence is gone, rather than a number from elsewhere", () => {
-    // The page still says "five seconds" — about a supplier of the merchant's
-    // own, which is not our number and never was.
+    // The pages do say "five seconds", about a merchant's own supplier, which
+    // is not our number.
     const page = "a supplier that did not answer within five seconds is not worth a refusal";
 
     expect(capturedBy(page, /until we have tried (\w+) times/)).toStrictEqual([]);

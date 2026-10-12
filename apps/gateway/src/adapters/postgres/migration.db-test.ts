@@ -1,20 +1,12 @@
 /**
- * The migrations that touch rows, run against rows.
+ * The migrations that touch rows, run against rows. The rest of `pnpm test:db`
+ * migrates an empty database, where a backfill touches nothing. Here a database
+ * is brought up to the version before a migration, rows are written the way
+ * that version wrote them, and the assertions are about what became of them:
+ * nothing lost, nothing changing hands, nothing else touched.
  *
- * Everything else in `pnpm test:db` runs against a database the migrator built
- * from nothing, where a backfill touches nothing at all — so the one thing such
- * a migration exists to do is exercised nowhere. This is the file that
- * exercises it: a database is brought up to the version before the change, rows
- * are written the way that version wrote them, and then the migration runs.
- *
- * What is being checked is not that it completes. It is what became of the
- * rows: that nothing is lost, that nothing changes hands, and that what the
- * migration was not written for is left exactly as it was found.
- *
- * The migrations are applied as SQL rather than through drizzle's migrator,
- * because the point is to stop part way — and the migrator applies everything
- * in the folder. What runs here is therefore the exact text a deployment
- * applies, split on the same breakpoints the migrator splits on.
+ * The files are applied as SQL, split on the migrator's own breakpoints,
+ * because drizzle's migrator applies the whole folder and cannot stop part way.
  */
 
 import { readFile } from "node:fs/promises";
@@ -29,14 +21,10 @@ import { countedIds, testConfig } from "../../testing/harness.js";
 import { connect, type Database, PostgresStore } from "./store.js";
 
 /**
- * A database of this file's own, beside the one the rest of `pnpm test:db` uses.
- *
- * It has to be a database rather than a schema, and the reason is in the
- * migration: drizzle writes its foreign keys as `references "public"."merchants"`,
- * so tables built in any other schema would point back at a `public` this file
- * is not touching. Standing the whole thing up at the version before the change
- * and then moving it is also not something to do to tables another suite is
- * emptying between its own tests.
+ * A database of this file's own, not a schema: drizzle writes foreign keys as
+ * `references "public"."merchants"`, so tables in any other schema would point
+ * at a `public` this file does not control. Dropping and rebuilding at an older
+ * version must also never happen under another suite's tables.
  */
 const wanted = (() => {
   const url = new URL(testDatabaseUrl());
@@ -109,9 +97,8 @@ if (databaseUrl === null) {
     });
 
     beforeEach(async () => {
-      // Emptied back to nothing and brought up to the version just before this
-      // change. Doing it before rather than after is what makes a run that died
-      // half way through harmless to the next one.
+      // Rebuilt before each test rather than after, so a run that died half way
+      // through leaves the next one unharmed.
       await pool.query("drop schema public cascade");
       await pool.query("create schema public");
       await run("0000_init.sql");
@@ -137,11 +124,9 @@ if (databaseUrl === null) {
     });
 
     it("puts the merchant inside the order's document as well as in its column", async () => {
-      // Two readers, and they must not disagree. The column is what a merchant's
-      // own list of orders filters on; the document is what tells the
-      // interpreter whose stream the next envelope for this order goes on. An
-      // order with the column and no field would be one whose redelivery
-      // reached nobody, and nothing would say so.
+      // The column filters a merchant's list of orders; the document field
+      // decides whose stream the order's next envelope goes on. With the column
+      // and no field, a redelivery would silently reach nobody.
       await asItWasBefore();
 
       await run("0003_merchant_tenancy.sql");
@@ -154,8 +139,8 @@ if (databaseUrl === null) {
     });
 
     it("loses nothing a card was carrying, including a pause", async () => {
-      // A pause is stock a merchant took off sale. Dropped by a migration, it
-      // is that stock back in front of an agent with nobody saying so.
+      // A dropped pause silently puts stock the merchant took off sale back in
+      // front of agents.
       await asItWasBefore();
 
       await run("0003_merchant_tenancy.sql");
@@ -168,9 +153,9 @@ if (databaseUrl === null) {
     });
 
     it("does not put a merchant who had stopped selling back on sale", async () => {
-      // The row that carries the selling word is the one this adopts. Written
-      // over, a merchant who had paused would come back from a migration
-      // selling, and the first thing they would learn about it is an order.
+      // The migration adopts the existing merchant row. Overwriting it would
+      // bring a paused merchant back selling, and they would learn of it from
+      // an order.
       await pool.query(
         "insert into merchants (id, selling, updated_at) values ($1, 'paused', now())",
         [SEEDED_MERCHANT.id],
@@ -184,13 +169,12 @@ if (databaseUrl === null) {
       );
       expect(rows).toHaveLength(1);
       expect(rows[0]?.selling).toBe("paused");
-      // And the row got the name the column now demands, rather than failing.
+      // The adopted row gets the name the column requires instead of failing.
       expect(rows[0]?.name).not.toBe("");
     });
 
     it("leaves one merchant and no orphans on a database that never sold anything", async () => {
-      // The other half: a volume that has run the stack and never had the
-      // selling switch pressed has no merchant row at all.
+      // A database whose selling switch was never pressed has no merchant row.
       await run("0003_merchant_tenancy.sql");
 
       const { rows } = await pool.query<{ id: string; selling: string }>(
@@ -200,9 +184,8 @@ if (databaseUrl === null) {
     });
 
     it("lets two merchants use one identifier for two products afterwards", async () => {
-      // The uniqueness moved from the merchant's own identifier to the pair.
-      // Left where it was, the second merchant to publish a "sku-1" would edit
-      // the first merchant's card.
+      // Uniqueness is on the merchant and identifier together. On the identifier
+      // alone, a second merchant publishing "sku-1" would edit the first one's card.
       await asItWasBefore();
       await run("0003_merchant_tenancy.sql");
       await pool.query(
@@ -220,7 +203,7 @@ if (databaseUrl === null) {
         "select count(*)::text as count from cards where merchant_item_id = 'sku-1'",
       );
       expect(rows[0]?.count).toBe("2");
-      // And the same merchant still cannot have two cards under one identifier.
+      // One merchant still cannot have two cards under one identifier.
       await expect(
         pool.query(
           `insert into cards (id, merchant_id, merchant_item_id, card, as_of)
@@ -231,12 +214,10 @@ if (databaseUrl === null) {
     });
 
     it("refuses a card, an order or a receipt that names no merchant", async () => {
-      // The difference between a filter somebody remembered to write and a row
-      // that cannot exist without an owner.
       await run("0003_merchant_tenancy.sql");
 
-      // Every other column is given, so what is refused is the merchant and
-      // nothing else: no merchant at all, and then a merchant who is not there.
+      // Every other column is given, so the only thing refused is the merchant:
+      // first missing, then one who does not exist.
       const rows = [
         {
           table: "cards",
@@ -273,23 +254,12 @@ if (databaseUrl === null) {
   });
 
   /**
-   * The migration that gives an order verified before yesterday the address its
-   * charge will be sent to.
-   *
-   * The window it closes is a real one and it is measured in a deploy. An
-   * order's document carries `payTo` — the address the payment was checked
-   * against, kept from that moment so a merchant who moves their wallet
-   * mid-sale is paid at the new one on their next sale and not on this one. The
-   * orders verified before that field existed have no such key, and it reads
-   * back as nothing: on a deployment that settles for real the charge is then
-   * refused with the sentence about a merchant who has set no wallet — which is
-   * false for a merchant who has one — out of the effects loop, as a five
-   * hundred, inside the merchant's own delivery call, after the goods went out.
-   *
-   * So the repair is in the data and not in a branch that would outlive the
-   * window: the orders still open and already paid for are given their own
-   * merchant's current address, and everything else is left exactly as it was
-   * found.
+   * The backfill of `payTo`, the address an order's payment was verified
+   * against and its charge is sent to; a wallet moved mid-sale does not move
+   * it. An order written without the key reads back as no address, and on a
+   * deployment that settles for real its charge would be refused as "no
+   * wallet" after the goods went out. Open, paid orders get their merchant's
+   * current address; everything else is left exactly as it was found.
    */
   describe("the migration that carries the address a charge is sent to", () => {
     const url = databaseUrl;
@@ -297,7 +267,6 @@ if (databaseUrl === null) {
     let db: Database;
     let store: PostgresStore;
 
-    /** A merchant with somewhere to be paid, and one without. */
     const PAID_AT = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
     const WITH_WALLET = "mch_paid";
     const WITHOUT_WALLET = "mch_unpaid";
@@ -308,10 +277,7 @@ if (databaseUrl === null) {
       }
     };
 
-    /**
-     * One order as the version before this migration wrote it: no `payTo` key
-     * anywhere in the document, because there was no such field.
-     */
+    /** An order as the version before this migration wrote it: no `payTo` key. */
     const orderAsItWas = (
       id: string,
       merchantId: string,
@@ -359,13 +325,9 @@ if (databaseUrl === null) {
     };
 
     /**
-     * Where the charge for this order would actually be sent, on a deployment
-     * that settles for real — or the refusal, in the words a person would read.
-     *
-     * This is the call the settle path makes with `record.payTo` in hand
-     * (`app/runner.ts`, `adapters/x402/facilitator.ts`), and it is the one that
-     * throws where there is no address. Asserting on the row alone would say
-     * that a key is present; this says what becomes of somebody's money.
+     * Where a real settlement would send this order's charge, or the refusal it
+     * would throw. It is the call the settle path makes with `record.payTo`, so
+     * the assertion is about the money rather than the presence of a key.
      */
     const chargedTo = (payTo: unknown): string =>
       new PaymentEdge(
@@ -408,10 +370,6 @@ if (databaseUrl === null) {
     });
 
     it("sends the charge on an order verified before the field existed to its merchant's wallet", async () => {
-      // The promise: a sale that was verified last week and is delivered today
-      // settles, at the address its own merchant is paid at, instead of dying
-      // inside the merchant's delivery call with a sentence that is not true
-      // of them.
       await writeOrder("ord_open", WITH_WALLET);
 
       await run("0006_order_pay_to_backfill.sql");
@@ -421,10 +379,8 @@ if (databaseUrl === null) {
     });
 
     it("leaves the order of a merchant who has no wallet alone, because that sentence is true", async () => {
-      // The one order the refusal was written for. There is no address to give
-      // it and the operator's own will not stand in (ADR-0019), so the honest
-      // outcome is the refusal that names what is missing — inventing an
-      // address here would send somebody's takings to somebody else.
+      // There is no address to give it, and the operator's own must never stand
+      // in: that would send the merchant's takings to somebody else.
       await writeOrder("ord_nowhere", WITHOUT_WALLET);
 
       await run("0006_order_pay_to_backfill.sql");
@@ -435,11 +391,9 @@ if (databaseUrl === null) {
     });
 
     it("touches no order that is closed or that nobody has paid for", async () => {
-      // A closed order is history: its charge is over, and rewriting the
-      // address it was settled against would make the record disagree with the
-      // chain. An open order with no payment has been promised nothing yet —
-      // the address arrives with the payment and not before, so writing one now
-      // would say a wallet had been checked when none had.
+      // Rewriting a closed order's address would make the record disagree with
+      // the chain it settled on. An unpaid order gets its address with the
+      // payment, so writing one now would claim a wallet was checked when none was.
       await writeOrder("ord_closed", WITH_WALLET, { open: false });
       await writeOrder("ord_unpaid", WITH_WALLET, { extra: { payment: null } });
 
@@ -450,12 +404,9 @@ if (databaseUrl === null) {
     });
 
     it("does not write over an address a payment was already verified against", async () => {
-      // What the field is for: the address the payer signed for, which is not
-      // necessarily the one the merchant is paid at now. An order carrying one
-      // is an order the running gateway wrote, and a migration that read "no
-      // address yet" as "no key" would move a charge the buyer never
-      // authorised. The sandbox writes that field as null on purpose, and null
-      // is an answer rather than an absence.
+      // The address the payer signed for may differ from the merchant's current
+      // wallet, and overwriting it would move a charge the buyer never
+      // authorised. The sandbox writes null on purpose; only a missing key counts.
       const signedFor = "0x1111111111111111111111111111111111111111";
       await writeOrder("ord_signed", WITH_WALLET, { extra: { payTo: signedFor } });
       await writeOrder("ord_sandbox", WITH_WALLET, { extra: { payTo: null } });
@@ -468,24 +419,17 @@ if (databaseUrl === null) {
   });
 
   /**
-   * The migration that separates the keys a merchant made from the one their
-   * dashboard calls with.
-   *
-   * Every key already written was made before there was any such distinction,
-   * so the column arrives with a word for all of them and the rows registration
-   * made are moved across. Finding those rows by their label is the part worth
-   * exercising rather than trusting: the sentence it matches was written by one
-   * line of code and by nobody's hand, and a migration that matched nothing
-   * would leave a dashboard's key sitting in the list a merchant revokes keys
-   * from — which is the state this whole change exists to end, arrived at
-   * silently.
+   * The migration that separates the keys a merchant issued from the one
+   * registration made for their dashboard, found by its label and creation
+   * instant. Matching nothing would silently leave the dashboard's key in the
+   * list a merchant revokes keys from.
    */
   describe("the migration that says what each key was made for", () => {
     const url = databaseUrl;
     let pool: Pool;
 
     const MERCHANT = "mch_a";
-    /** The label the version before this one gave a merchant's first key. */
+    /** The label registration wrote on a merchant's first key. */
     const AS_REGISTRATION_WROTE_IT = "the key this merchant registered with";
 
     const run = async (file: string): Promise<void> => {
@@ -495,12 +439,9 @@ if (databaseUrl === null) {
     };
 
     /**
-     * One key row, written at the instant a merchant issues one.
-     *
-     * Later than its merchant's own creation, which is the whole difference
-     * between a key somebody asked for and the one registration made: those two
-     * rows are written in one transaction from one timestamp, and this one
-     * cannot be.
+     * A key a merchant issued, written later than the merchant row. Registration
+     * writes its key and the merchant in one transaction with one timestamp,
+     * which is how the migration tells the two apart.
      */
     const writeKey = async (id: string, label: string): Promise<void> => {
       await pool.query(
@@ -561,15 +502,9 @@ if (databaseUrl === null) {
     });
 
     it("hands the keys registration made to the dashboard and leaves the rest alone", async () => {
-      // The one row that changes hands and the three that must not. A key a
-      // merchant asked for stays theirs — it is in their own worker and on the
-      // list they revoke it from — and so does the sandbox's, which is handed
-      // to a merchant process out of a configuration file.
-      //
-      // The last of the three is the case either half of the rule would get
-      // wrong on its own: a merchant who named a key our own internal sentence.
-      // They asked for it, so it is theirs, and what says so is that they asked
-      // for it later than their merchant row was written.
+      // A merchant's own keys, the sandbox's included, stay theirs. The last one
+      // carries registration's label but was issued later than the merchant row,
+      // so matching on the label alone would take it.
       await writeKeyAsRegistrationDoes("mk_registered", AS_REGISTRATION_WROTE_IT);
       await writeKey("mk_worker", "the worker on the small box");
       await writeKey("mk_sandbox", "the sandbox key from the compose file");
@@ -584,9 +519,8 @@ if (databaseUrl === null) {
     });
 
     it("leaves a key alone that was written at its merchant's instant under another name", async () => {
-      // The other half, on its own. Sharing the instant is not enough either:
-      // whatever else a row written in that moment might be, the key
-      // registration made is the one carrying the sentence registration wrote.
+      // Matching on the instant alone is not enough either: registration's key
+      // also carries registration's label.
       await writeKeyAsRegistrationDoes("mk_same_instant", "the worker on the small box");
 
       await run("0007_cabinet_keys.sql");
@@ -595,9 +529,6 @@ if (databaseUrl === null) {
     });
 
     it("calls the keys registration made the dashboard's once the later rename runs, and leaves the rest alone", async () => {
-      // The keys 0007 marked as the cabinet's are the dashboard's: the same
-      // credential under the product's own word, which the code reads and
-      // writes from then on. A merchant's own keys are not touched.
       await writeKeyAsRegistrationDoes("mk_registered", AS_REGISTRATION_WROTE_IT);
       await writeKey("mk_worker", "the worker on the small box");
 
@@ -617,11 +548,8 @@ if (databaseUrl === null) {
     });
 
     it("refuses a key written afterwards that does not say what it is for", async () => {
-      // The default exists for the length of the backfill and is taken away
-      // again, so that this column cannot be quietly left out by anything
-      // written later. Left in place, a key inserted without it would become
-      // one more of the merchant's own — which is the one row that must never
-      // appear in their list by accident.
+      // The default is dropped after the backfill, so an insert that omits the
+      // purpose fails instead of silently becoming one of the merchant's keys.
       await run("0007_cabinet_keys.sql");
 
       await expect(writeKey("mk_silent", "a key that says nothing")).rejects.toThrow(/purpose/);
@@ -629,18 +557,10 @@ if (databaseUrl === null) {
   });
 
   /**
-   * The migration that starts writing down when a key was last called.
-   *
-   * There is nothing to backfill and that is the whole of what it has to get
-   * right. The instant a key was made is on the row already and it is not the
-   * instant it was last used; written into the new column it would put a date
-   * on a merchant's screen that nothing stands behind, and the merchant would
-   * revoke a key on the strength of it.
-   *
-   * So the rows it finds keep their blank, which is the honest answer for them
-   * — nothing was recorded — and is the same blank a key written tomorrow and
-   * never called will carry. Nothing on the row separates the two, and nothing
-   * is meant to: what says so is the sentence under the column on the screen.
+   * The migration that adds a key's last use must backfill nothing. Copying the
+   * creation instant would show a merchant a last-use date nothing stands
+   * behind, and they might revoke a key on the strength of it. Existing keys
+   * keep the same blank as a key that was never called.
    */
   describe("the migration that starts recording when a key was last used", () => {
     const url = databaseUrl;
@@ -705,11 +625,6 @@ if (databaseUrl === null) {
     });
 
     it("guesses nothing about the keys it finds", async () => {
-      // The one thing that must not happen: a key that has been sitting in
-      // somebody's worker for a month coming out of this with a date on it. The
-      // date to hand is when the key was made, and the difference between that
-      // and when it was last called is the difference between a key a merchant
-      // may revoke and one they may not.
       await writeKey("mk_older_than_the_record");
 
       await run("0008_key_last_use.sql");
@@ -842,10 +757,8 @@ if (databaseUrl === null) {
     });
 
     it("leaves every wallet paying where it paid, with nothing waiting", async () => {
-      // A merchant already being paid is paid at the same address the moment
-      // after this runs. Nothing was announced for any of them, so nothing may
-      // be waiting: a change found waiting after a migration is a change nobody
-      // was told about.
+      // Nothing was announced to these merchants, so nothing may be waiting: a
+      // change found waiting after the migration is one nobody was told about.
       const updatedAt = new Date("2026-09-20T10:00:00.000Z");
       await pool.query(
         `insert into merchants (id, name, payout_wallet, selling, created_at, updated_at)
@@ -870,9 +783,8 @@ if (databaseUrl === null) {
     });
 
     it("refuses half a waiting change, an address with no moment or a moment with none", async () => {
-      // Read back, half a change is a sale paid somewhere at no stated time or
-      // at a stated time to nowhere. The store never writes one, and the table
-      // says so for anybody who writes to it by hand.
+      // The store never writes half a change; the table refuses one written by
+      // hand too.
       await run("0010_pending_payout_wallet.sql");
 
       await expect(
@@ -891,11 +803,9 @@ if (databaseUrl === null) {
   });
 
   describe("the migration that deletes the keys made for a dashboard", () => {
-    // The dashboard calls the gateway inside the process the two share and
-    // holds no key (ADR-0030), so a key made for one opens the API for whoever
-    // holds a copy of it and for nobody else. Every one goes, the leftovers of
-    // an interrupted renewal included, and with them the column that told the
-    // two kinds apart: every key left is one a merchant issued for their code.
+    // The dashboard calls the gateway in-process and holds no key, so a key made
+    // for it serves only whoever holds a copy. Every one goes, including those
+    // left by an interrupted renewal, and the purpose column with them.
     const url = databaseUrl;
     let pool: Pool;
     const MERCHANT = "mch_a";

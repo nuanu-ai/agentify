@@ -1,42 +1,13 @@
 /**
- * The store: everything the gateway remembers.
+ * Everything the gateway remembers, as the questions the flows ask rather than
+ * as tables, so the application logic is testable without Postgres.
  *
- * It is a port because the thing behind it is one Postgres (ADR-0003 §6) and
- * the whole of the application logic has to be testable without one. What is
- * written here is therefore the smallest set of questions the flows actually
- * ask, in the words of the domain, and nothing about tables.
- *
- * Almost every question here is asked on behalf of one merchant, and asks so
- * out loud: the merchant is a parameter rather than something the store is
- * configured with, so a read that forgot whose it was would not compile.
- *
- * The ones that name no merchant fall into four groups, and each says which it
- * is in its own words. Four are the buying surface: `cardById`,
- * `catalogEntries`, `orderById` and `receiptForOrder` answer an agent, or a
- * clock of ours, and neither has a key. Three are the claims on payments —
- * `claimPayment`, `releaseClaim`, `forgetClaimsBefore` — which are deliberately
- * across the whole gateway, for the reason written beside the first of them.
- * Two are the sweep's — `openOrders` and `deliveredWithoutReceipt` — which ask
- * what is still owed across every merchant, because an effect that went missing
- * is not one merchant's problem to notice. The rest are the merchants and their
- * keys, whose caller is somebody at a terminal, the door itself, or the one
- * call that makes a merchant and so has none to be scoped to. `withOrder` is
- * in none of the four: it takes the merchant when there is one to take and says
- * in its own place what leaving it out means.
- *
- * Disabling a key comes in a scoped and an unscoped form, and which is which
- * matters. `disableKeyOf` takes the merchant and serves the button a merchant
- * presses in their dashboard; `disableKey` names a key alone and serves the
- * command somebody types, where one identifier is the whole of what they have.
- *
- * One method is not an accessor and is the reason this is an interface rather
- * than three maps. `withOrder` holds an order still while a decision is made
- * about it. Two events about the same order arrive from different places all
- * the time — the agent's payment and a deadline, the merchant's answer and a
- * redelivery — and without that hold both would read the same order, both
- * would decide against it, and the second write would erase the first. Next to
- * someone else's money that is not a race to lose politely: it is how an order
- * gets charged twice.
+ * A method about one merchant's data takes the merchant as a parameter, so a
+ * read that forgets whose data it is does not compile; the buying surface, the
+ * sweep and the payment claims are deliberately across all merchants. Without
+ * the hold `withOrder` takes, two events about one order (a payment and a
+ * deadline, an answer and a redelivery) both read it, both decide, and the
+ * second write erases the first, which is how an order gets charged twice.
  */
 
 import type { MerchantSelling, Order } from "@agentify/core";
@@ -52,162 +23,102 @@ import type {
 /** A card as its merchant published it, under the catalog identifier we issued. */
 export interface StoredCard {
   readonly id: string;
-  /** Whose card it is. Every card has one, and it is never guessed at. */
   readonly merchantId: string;
   readonly card: Card;
   /** When this version of the card was published. */
   readonly asOf: number;
   /**
-   * Whether this card is off sale in its own right.
-   *
-   * It is a flag on the card and not a second kind of pause. What the order
-   * machine is given at the birth of an order is one word for whether the
-   * merchant is selling, and a card paused on its own is that word being
-   * "paused" for purchases of this card and nothing else — same guard, same
-   * refusal, same message. The alternative was a second notion of pause with
-   * its own rejection, which is how two switches end up disagreeing about
-   * whether a product is for sale.
+   * Whether this card alone is off sale. It reaches the order machine as the
+   * same "paused" word as a paused catalog, so it is refused by the same guard
+   * with the same message.
    */
   readonly paused: boolean;
 }
 
 /**
- * One order: the machine's own order, and everything about the purchase the
- * machine has no opinion about.
- *
- * The payment sits here as the opaque thing the agent presented rather than as
- * anything this package understands. It is kept because the charge is executed
- * later than it is verified — in the synchronous mode, after the goods come
- * back — and by then the request that carried it is long over.
+ * One order: the machine's order plus everything about the purchase the
+ * machine has no opinion about. The payment is kept as the opaque string the
+ * agent presented because the charge runs later than the verification, in the
+ * synchronous mode only after the goods come back.
  */
 export interface StoredOrder {
   readonly order: Order;
   /**
-   * Whose sale this is: the merchant who published the card it was made
-   * against, settled at the birth of the order and never afterwards.
-   *
-   * It is on the order rather than looked up through the card because the two
-   * questions it answers are asked when there is no card in hand — which
-   * stream this order's envelopes go on, and whether the key asking about it
-   * is the one entitled to. A card can also be republished, and a sale belongs
-   * to the merchant who made it whatever happens to the catalog afterwards.
+   * The merchant whose card the order was made against, fixed when the order
+   * is made. It lives on the order because routing its envelopes and checking
+   * the asking key happen with no card in hand, and a republished card must
+   * not move a sale.
    */
   readonly merchantId: string;
   /** Our catalog identifier for the product. */
   readonly itemId: string;
-  /** The merchant's own identifier for it, so they need no mapping table. */
   readonly merchantItemId: string;
   /**
-   * The goods this order was sold with: the result its card declared at the
-   * instant the order was made, which is what a delivery against it is held
-   * to, so that a card republished since changes nothing for it. Absent on a
-   * parcel's order, which is held to a shipment instead, and on an order
-   * written before this was kept, which is held to the card as it stands.
+   * The result the card declared when the order was made; a delivery is held
+   * to this, so a later republish changes nothing for the order. Absent on a
+   * parcel's order, which is held to a shipment, and on an order stored
+   * without it, which is held to the card as it stands.
    */
   readonly result?: ParamSpec;
   readonly params: Readonly<Record<string, unknown>>;
   /**
-   * Where a parcel goes, on a parcel's order and on no other (ADR-0032): the
-   * buyer's whole address while the order holds it, and only the instant it
-   * was erased once nothing here needs it. Absent on every other order, and on
-   * every order stored before parcels existed, which is the same fact.
+   * On a parcel's order only: the buyer's whole address while the order needs
+   * it, then only the instant it was erased. Absent on every other order.
    */
   readonly shipTo?: ShipTo | { readonly erasedAt: number };
   /**
-   * The price question put to the merchant for a parcel's order, by the
-   * identifier it went out under. The question carries the place the parcel
-   * goes, so it leaves the queue with the rest of the address (ADR-0032), and
-   * this is how it is found: nothing in a price question names the order it
-   * was asked for. Absent on every other order, and on a parcel's whose price
-   * was never asked of the merchant.
+   * The identifier of the price question asked for a parcel's order. A price
+   * question carries the address and names no order, so this is how it is
+   * found when the address is erased from the queue. Absent on other orders
+   * and where no price was asked of the merchant.
    */
   readonly priceQuestion?: string;
   /** The price question this order was priced by, where one was asked. */
   readonly priceId: string | null;
-  /** What the merchant handed over, once they have. */
   readonly delivery: Delivery | null;
   /** What the agent presented to pay with, verbatim, until the charge is done. */
   readonly payment: string | null;
   /**
-   * The address that payment was checked against, kept beside it from the
-   * moment it was verified.
-   *
-   * It is written here rather than read again at the charge because a payment
-   * is an authorisation to send money to one address, and the two happen at
-   * different times: in the synchronous mode the whole of the merchant's
-   * fulfilment sits between them. A merchant who moves their wallet in that
-   * window — which they may, and for the best of reasons (ADR-0019) — would
-   * have the charge sent against an address the buyer never signed for, refused
-   * by the payment layer after the goods had already gone out. Carried, the
-   * charge is the one the payer agreed to, and the new address governs the next
-   * sale rather than this one.
-   *
-   * Null until a payment has been verified for this order, and null on a
-   * deployment that asks for no address at all — the sandbox, which settles
-   * against nothing (ADR-0020).
+   * The address the payment was verified against. The charge must go to the
+   * address the payer signed for even if the merchant moves their wallet
+   * between verification and charge, which in the synchronous mode spans the
+   * whole fulfilment. Null until a payment is verified, and on the sandbox,
+   * which settles against no address.
    */
   readonly payTo: string | null;
   /**
-   * Who this order belongs to: the payer the payment layer named when it
-   * verified the first payment presented for it.
-   *
-   * An order's identifier is not a secret the way a password is — it travels in
-   * the challenge, on the merchant's stream and in a receipt — and the route
-   * that takes a payment takes no key, the payment standing in for one. So
-   * without an owner, anybody holding an identifier could present a payment
-   * against somebody else's order and be treated as its buyer: swapping the
-   * authorisation that gets charged, taking the goods when they came back, or
-   * closing the order on a payment that failed. Ownership is settled by the
-   * first payment the payment layer vouches for, and the owner is the payer it
-   * names — never the address a payment declares of itself, because a payment
-   * whose declared address did not sign it does not verify. A repeat of the
-   * purchase carries a fresh authorisation from the same wallet, so the payer
-   * is how the owner is recognised across it. Where the layer verifies a
-   * payment without naming a payer, the payment's own fingerprint stands in.
-   *
-   * The decision that sets this is made inside the store's hold on the order,
-   * reading this very field, so two payments racing one order cannot both
-   * become its owner.
+   * The order's owner: the payer the payment layer named when it verified the
+   * first payment for the order (never the address a payment declares of
+   * itself), or that payment's fingerprint where the layer names none. Order
+   * ids are not secret and the payment route takes no key, so without an owner
+   * anyone holding an id could pay against, take the goods of, or close
+   * someone else's order. It is set inside the store's hold on the order, so
+   * two racing payments cannot both become the owner.
    */
   readonly paidBy: string | null;
   /**
    * What the payment layer said when the charge went through, kept because the
-   * agent's own client reads it off the answer to its purchase. It is the
-   * payment layer's word and not ours: the order's own record of the money is
-   * the machine's payment stage, and this is only the receipt for it.
+   * agent's client reads it off the purchase answer. It is the layer's
+   * receipt; the order's own record of the money is the machine's payment
+   * stage.
    */
   readonly settlement: { readonly transaction: string } | null;
   /**
-   * Everything the payment layer has actually said about this order, in its own
-   * words and in order.
-   *
-   * The machine keeps a coarse verdict — verified, settled, unknown — and three
-   * reasons a verification can fail. What the facilitator said is richer than
-   * that and is the only thing an operator can work from when a charge goes
-   * quiet: it is the difference between an outage, an empty wallet and a chain
-   * nobody configured. Dropping it left the one order somebody has to
-   * reconcile by hand with nothing to reconcile from.
+   * Everything the payment layer has said about this order, in its own words
+   * and in order. The machine keeps only a coarse verdict, and this is what an
+   * operator reconciles a charge that went quiet from.
    */
   readonly paymentWords: readonly PaymentWord[];
   /**
-   * How many of them fell off the end of that list.
-   *
-   * The list is bounded, because the route that fills it takes no key and
-   * anybody may present as many payments as they like against one order. What
-   * is dropped is counted rather than dropped quietly: a reader of the last
-   * twenty things the payment layer said needs to know whether there were
-   * twenty or two hundred.
+   * How many words fell off the end of `paymentWords`. The list is bounded
+   * because anyone may present any number of payments against an order without
+   * a key, and the count tells a reader how much more was said than they see.
    */
   readonly paymentWordsDropped: number;
   /**
-   * The delivery that is out with a worker and has not been answered.
-   *
-   * It is here so that a reminder about one delivery cannot undo the answer to
-   * another. A merchant who took an order on and has a day to fulfill it
-   * answered the delivery he was given; without this, the reminder left against
-   * that same delivery would fire afterwards, the machine would be told his
-   * handler never answered, and he would be sent the order again — every window,
-   * all day.
+   * The delivery out with a worker and not yet answered. A reminder acts only
+   * on this delivery, so a reminder left against one already answered cannot
+   * report the handler as silent and send the order again.
    */
   readonly openDeliveryId: string | null;
 }
@@ -220,38 +131,15 @@ export interface PaymentWord {
 }
 
 /**
- * One write that has to land with the order or not at all (ADR-0013).
+ * One write that lands with the order or not at all. These are effects that
+ * cannot be re-driven once the order has moved past the transition that asked
+ * for them, so no retry repairs an order that says the merchant was handed the
+ * work with no envelope written. The caller describes the writes and each
+ * adapter makes them atomic its own way, so the port never holds a transaction.
  *
- * These are the effects that cannot be re-driven once the order has moved past
- * the transition that asked for them. An order that says the merchant was
- * handed the work, with no envelope written, is not repairable by a retry: the
- * state is already past the point that emits the dispatch. So the envelope is
- * written where the order is, and either both are there or neither is.
- *
- * They are described here rather than carried out by the caller on purpose.
- * What each adapter has to arrange is its own — a row in the same transaction
- * for Postgres, one uninterrupted span for the in-memory store — and a caller
- * that held a transaction handle would be holding a Postgres in a port that
- * has never known about one.
- *
- * Three shapes of write are on this list — an envelope for a merchant, a
- * receipt, and the deletion of the envelopes that carry a parcel's address —
- * and adding a fourth shape is a decision rather than a detail.
- *
- * What is on the list is not the same as what the sweep may write again
- * afterwards, and running the two together is the mistake worth naming here.
- * Landing with the state is about an effect that cannot be re-driven once the
- * order has moved past it. Being re-drivable is about what its receiver was
- * promised, and by that reading the first two shapes carry three receivers
- * between them: an order envelope, whose merchant is told his handler can see
- * the same order twice; a receipt, which is one row keyed by its order, so
- * writing it again writes the same row; and an event envelope, which is
- * delivered at most once and must never be sent a second time. All three land
- * with the state.
- * Only the first two have an arm in the sweep, and that is a decision rather
- * than an omission. The deletion has no receiver at all: it lands with the
- * order that says the address was erased, so neither is ever true without the
- * other, and there is nothing for anybody to write again.
+ * Landing with the order is not the same as being safe to write again: the
+ * sweep re-drives order envelopes and receipts, but an event envelope is
+ * delivered at most once and must never be sent a second time.
  */
 export type WithTheOrder =
   | {
@@ -263,12 +151,10 @@ export type WithTheOrder =
     }
   | { readonly kind: "receipt"; readonly merchantId: string; readonly receipt: Receipt }
   /**
-   * Every envelope on the merchant's stream that carries any of a parcel's
-   * address, deleted in whatever state it is in (ADR-0032): the order's own
-   * hand-overs, and the price question it was priced by, where one was put.
-   * Waiting, drawn or finished, they go — a queue keeps a finished envelope
-   * for days, and drawn is not gone. The events about the order carry no
-   * address and are left where they are.
+   * Deletes every envelope on the merchant's stream that carries any of a
+   * parcel's address (the order's hand-overs and its price question) in
+   * whatever state it is in, since a queue keeps a finished envelope for days
+   * and drawn is not gone. Events about the order carry no address and stay.
    */
   | {
       readonly kind: "forget";
@@ -279,13 +165,9 @@ export type WithTheOrder =
 
 /**
  * What `withOrder` decided: the order to write back, if any, the writes that go
- * with it, and the answer to give the caller. Leaving `save` out is how a read
- * that changes nothing says so, rather than writing the order it just read.
- *
- * `alongside` is not conditional on `save`, and the honest reading is that
- * these writes belong to the same unit of work rather than to the order
- * document: a decision that returns them and then throws writes none of them,
- * and one that returns normally writes all of them.
+ * with it, and the caller's answer. Leaving `save` out says the read changed
+ * nothing. `alongside` does not depend on `save`: a decision that throws writes
+ * none of them, and one that returns writes all of them.
  */
 export interface OrderChange<T> {
   readonly save?: StoredOrder;
@@ -294,19 +176,14 @@ export interface OrderChange<T> {
 }
 
 /**
- * What came of asking to run something nobody else is running: the answer, or
- * the news that somebody else has it.
- *
- * Finding it taken is an ordinary outcome rather than a failure — that is the
- * mechanism working — so it is a value the caller reads, exactly as an order
- * that is not there is.
+ * The result of running something only if nobody else is running it. Finding
+ * it taken is an ordinary outcome, not a failure.
  */
 export type Ran<T> = { readonly ran: true; readonly result: T } | { readonly ran: false };
 
 /**
- * An order that is not there. It is a value rather than a thrown error because
- * an agent asking about an order that never existed is an ordinary thing that
- * happens, and the caller has to answer it rather than crash on it.
+ * An agent asking about an order that never existed is ordinary, so not finding
+ * one is a value rather than a thrown error.
  */
 export type OrderLookup<T> =
   | { readonly found: true; readonly result: T }
@@ -318,29 +195,21 @@ export type PaymentClaim =
   | { readonly claimed: false; readonly heldBy: string };
 
 /**
- * A change of a merchant's wallet that has been announced and has not taken
- * effect yet (ADR-0019).
- *
- * On the live deployment a replacement for an address already set waits
- * forty-eight hours after every account of the merchant was told of it, and
- * this is what waits: the address, and the instant it replaces the one paid
- * now. Both or neither — the table refuses half of one.
+ * A wallet change that has been announced to the merchant and has not taken
+ * effect yet. Both fields or neither: the table refuses half of one.
  */
 export interface PendingPayoutWallet {
-  /** The address sales are paid into from `takesEffectAt` on. */
   readonly address: string;
   /** When it replaces the address paid now, counted from the announcement. */
   readonly takesEffectAt: number;
 }
 
 /**
- * Where a merchant is paid, as their row holds it.
- *
- * `address` is the address that applied when the row was last written, or null
- * where none was ever set; `pending` is a replacement waiting beside it, or
- * null. The two are one value rather than two fields on the merchant because
- * they are written together and compared together: a change is recorded only
- * where the row still holds the pair that was read before it was announced.
+ * Where a merchant is paid, as their row holds it: `address` as of the last
+ * write (null where none was ever set) and a `pending` replacement, or null.
+ * They are one value because they are written and compared together: a change
+ * is recorded only where the row still holds the pair read before it was
+ * announced.
  */
 export interface StoredPayoutWallet {
   readonly address: string | null;
@@ -348,82 +217,46 @@ export interface StoredPayoutWallet {
 }
 
 /**
- * A merchant: a row with an identity, and the one fact the order machine asks
- * about them.
- *
- * The name is what a person reads in a list at a terminal, and nothing on the
- * wire carries it. There is no address, no password and no record of who signed
- * this merchant up, and there is not meant to be: registering makes a merchant
- * here and an account on the other side of the boundary names it, and the
- * address belongs to whatever signs a person in (ADR-0014 §1).
+ * A merchant. `name` is for a person reading a list at a terminal and never
+ * goes on the wire. No email address, password or sign-up record is kept here:
+ * an account on the other side of the boundary names the merchant.
  */
 export interface StoredMerchant {
   readonly id: string;
   readonly name: string;
   /**
-   * The name this seller is listed under in a discovery catalog, or nothing at
-   * all where nobody has named one.
-   *
-   * It is a second field rather than the name above, and the difference is the
-   * whole reason it exists. The name above is read by a person at a terminal
-   * and may be written in any alphabet and be any length; this one goes out to
-   * strangers through a catalog that carries at most thirty-two characters of
-   * printable ASCII and drops anything else in silence. Folded into one field,
-   * either a merchant could not be called what they are called, or they would
-   * be listed under a cut-down version of it and never be told.
-   *
-   * Null is the ordinary state and it means what it says: nobody has named one,
-   * so nothing about a seller goes out. It is never filled in from the name
-   * above, because a name that happens to fit the catalog's rule is still not a
-   * name anybody chose to trade under.
+   * The name this seller is listed under in a discovery catalog, or null where
+   * nobody has named one, in which case nothing about the seller goes out. It
+   * is separate from `name` because the catalog carries at most thirty-two
+   * characters of printable ASCII and silently drops the rest, and it is never
+   * filled in from `name`: a name that happens to fit is not one anybody chose
+   * to trade under.
    */
   readonly serviceName: string | null;
   /**
    * The https origin of this merchant's own shop, where an agent takes what an
-   * order cannot answer (ADR-0034), or nothing where none was given. Held to
-   * its rule before it is written, by `setSellerSite` in `app/merchants.ts`.
+   * order cannot answer, or null where none was given. `setSellerSite` in
+   * `app/merchants.ts` validates it before it is written.
    */
   readonly sellerSite: string | null;
   /**
-   * The address on the chain that this merchant's sales are paid into, or
-   * nothing at all where nobody has set one.
+   * Where this merchant's sales are paid: buyers' agents pay this address
+   * directly, and it is the `payTo` of every payment request for the
+   * merchant's cards. It is stored in the mixed-case spelling a wallet
+   * displays, so one address is never two strings. A null `address` means
+   * nobody has said where the money goes, and it is never filled in from the
+   * gateway's own configured address, which is the operator's.
    *
-   * It is here because there is nowhere else it could be. The money never
-   * passes through us — a buyer's agent pays this address directly, and it is
-   * what goes into the `payTo` of every payment request written for one of this
-   * merchant's cards — so the gateway has to know it and has to know whose it
-   * is. It is a column on the merchant rather than a field on each card because
-   * it is a fact about the seller: a merchant with fifty products is paid at
-   * one address, and fifty copies of it is forty-nine chances for one of them
-   * to be somebody else's.
-   *
-   * It is written in one spelling, always, whichever of the two an address may
-   * be written in arrived: the mixed-case one a wallet displays. One address
-   * with two spellings would be two strings to every comparison, and the answer
-   * a merchant reads back would depend on which of them they last sent — and of
-   * the two, the wallet's is the one a person can check against their own
-   * screen without going character by character.
-   *
-   * Null is the ordinary state and it means what it says: nobody has said where
-   * the money goes. It is never filled in from the gateway's own configured
-   * address, because that address is the operator's and paying a merchant's
-   * sales into it is the custodial arrangement this whole design refuses.
-   *
-   * It is the row as written, with a change that may be waiting beside it, and
-   * not the address a sale is paid at: a waiting change whose moment has passed
-   * is that address, though the row does not say so until it is next written.
-   * So nothing reads `address` off this for a payment; everything that asks
-   * where a sale goes asks `payoutWalletAt` in `app/runtime.ts`, with the
-   * clock.
+   * This is the row as written: a pending change whose moment has passed is
+   * already the address, so anything deciding where a sale goes asks
+   * `payoutWalletAt` in `app/runtime.ts` with the clock and never reads
+   * `address` off this.
    */
   readonly payoutWallet: StoredPayoutWallet;
   /**
-   * When the operator admitted this merchant to the live catalogue, or null
-   * where that one-time decision has never been made.
-   *
-   * A timestamp rather than a boolean because the first grant is the event an
-   * operator can account for afterwards. It never moves on a repeated grant,
-   * and test deployments ignore it rather than manufacturing one.
+   * When the operator admitted this merchant to live sales, or null where that
+   * has never happened. A repeated grant never moves it, and test deployments
+   * ignore it.
    */
   readonly liveApprovedAt: number | null;
   readonly selling: MerchantSelling;
@@ -431,41 +264,22 @@ export interface StoredMerchant {
 }
 
 /**
- * One key a merchant opens the door with.
- *
- * The secret itself is not here and never comes back out of the store: what is
- * kept is its SHA-256 digest, and a request is resolved by looking that digest
- * up. Whoever generated the key showed it to its owner once and has nothing
- * left that can be read back.
- *
- * `disabledAt` carries the flag and the instant together. A boolean would
- * answer "does this key work" and nothing else, and the question somebody
- * actually asks after an incident is when it stopped.
+ * One key a merchant opens the door with. Only the SHA-256 digest of the secret
+ * is kept and a request is resolved by looking the digest up, so the secret
+ * never comes back out of the store.
  */
 export interface StoredKey {
   readonly id: string;
   readonly merchantId: string;
-  /** What it is called, so one of several can be told from the others. */
   readonly label: string;
   readonly createdAt: number;
   /** When it was revoked, or null while it still opens the door. */
   readonly disabledAt: number | null;
   /**
-   * The last call this key was seen on, as far as anything wrote down.
-   *
-   * It lags on purpose. The door reaches this row on every request behind it
-   * and a write on every one of them is a write on the money path, so the
-   * instant is refreshed only once the one on the row has gone stale — see
-   * {@link Store.noteKeyUse}. What it therefore answers is "this key was in use
-   * around then", which is the question somebody deciding whether to revoke it
-   * has, and not "this is the last request it opened".
-   *
-   * Null is the absence of a record rather than the absence of calls. The keys
-   * that were already there when this column arrived carry it too, and nothing
-   * on the row tells them from a key nobody has called — a second column would
-   * separate them, and it would outlive by years the few weeks in which any row
-   * needs it. What carries that instead is the sentence beside the column
-   * wherever it is drawn.
+   * Roughly when the key was last used. It is refreshed only once the stored
+   * instant has gone stale, so the door does not write on every request on the
+   * money path. Null means nothing was recorded, not that the key was never
+   * called, and nothing on the row tells the two apart.
    */
   readonly lastUsedAt: number | null;
 }
@@ -473,34 +287,21 @@ export interface StoredKey {
 /** One card in the public catalog, with the word its own merchant sells under. */
 export interface CatalogEntry {
   readonly card: StoredCard;
-  /** The card's own merchant's word, which is not every merchant's word. */
   readonly merchant: MerchantSelling;
   /**
-   * Where that merchant is paid, or nothing where they have set none.
-   *
-   * It travels with the entry because whether a card may be offered at all
-   * depends on it: a payment request names the seller's own address, so a card
-   * whose merchant has none cannot be sold where the money is real, and a
-   * catalog that listed one would be making an offer every purchase of which
-   * comes back refused.
-   *
-   * As the row holds it, with any change waiting beside it, for the reason the
-   * merchant's own field gives: the address a card is paid at now is asked of
-   * `payoutWalletAt`, with the clock.
+   * Where the card's merchant is paid, carried because a card whose merchant
+   * has no address cannot be sold where the money is real. It is as the row
+   * holds it: the address paid now is asked of `payoutWalletAt` with the clock.
    */
   readonly payoutWallet: StoredPayoutWallet;
   /**
-   * What that merchant is listed under, or nothing where nobody has named one.
-   *
-   * It travels for the same reason the address does, one step earlier: a
-   * payment request names the seller, and where there is no name the field is
-   * left out — so a card whose merchant has none cannot be offered either, and
-   * listing it would invite an agent to pay somebody the request does not name.
+   * The merchant's listing name, or null. A payment request names the seller,
+   * so a card whose merchant has no name cannot be offered either.
    */
   readonly serviceName: string | null;
   /**
-   * That merchant's shop's site, or nothing where none was given: an agent
-   * reads it beside the name on every card in the catalog.
+   * That merchant's shop's site, or null where none was given: an agent reads
+   * it beside the name on every card in the catalog.
    */
   readonly sellerSite: string | null;
   /** The operator's live grant, or null; ignored outside the live surface. */
@@ -516,18 +317,9 @@ export interface Store {
   // --- merchants and their keys ---------------------------------------------
 
   /**
-   * Writes down a merchant that is not there yet, or answers null where that
-   * identifier is taken.
-   *
-   * Null rather than a thrown error because one caller is the sandbox's seed,
-   * which runs at every start and finds the row there from the second start
-   * on. The other is registration, whose identifier is generated, so a null
-   * there is a generator that collided and nothing was written over.
-   *
-   * No listing name goes down, and no address to be paid at, because making a
-   * merchant asks for neither: both are chosen afterwards, and a merchant
-   * listed under nothing or paid nowhere is a state the rest of the system is
-   * already honest about — a card cannot be published while it holds.
+   * Writes a merchant that is not there yet. Null means the identifier is
+   * taken and nothing was overwritten; the sandbox seed relies on that at every
+   * start after the first.
    */
   addMerchant(
     merchant: { readonly id: string; readonly name: string },
@@ -537,12 +329,10 @@ export interface Store {
   merchantById(id: string): Promise<StoredMerchant | null>;
 
   /**
-   * Records the one operator grant that admits a merchant to live sales.
-   *
-   * The first call writes `at`; every later call returns the original instant
-   * with `changed:false`. Null means the merchant is absent. The write does not
-   * move the merchant's ordinary `updated_at`: repeating an approval changes
-   * no merchant-owned setting, and the first grant has its own timestamp.
+   * Records the one operator grant that admits a merchant to live sales. The
+   * first call writes `at`; every later call returns the original instant with
+   * `changed:false`. Null means the merchant is absent. It does not move the
+   * merchant's `updated_at`.
    */
   grantLiveApproval(
     id: string,
@@ -553,12 +343,9 @@ export interface Store {
   merchants(): Promise<readonly StoredMerchant[]>;
 
   /**
-   * Sets or clears the name one merchant is listed under, and hands back the
-   * merchant as they now stand. Null where there is no such merchant.
-   *
-   * The value is expected to have been held to the catalog's rule already; the
-   * caller that does it is `setServiceName` in `app/merchants.ts`, which is the
-   * one place a name is checked before it is written.
+   * Sets or clears one merchant's listing name and returns the merchant as they
+   * now stand, or null where there is no such merchant. The value must already
+   * be validated, by `setServiceName` in `app/merchants.ts`.
    */
   setServiceName(
     id: string,
@@ -567,42 +354,24 @@ export interface Store {
   ): Promise<StoredMerchant | null>;
 
   /**
-   * Sets the site of one merchant's own shop, and hands back the merchant as
-   * they now stand. Null where there is no such merchant.
-   *
-   * The value is expected to have been held to its rule already, by
-   * `setSellerSite` in `app/merchants.ts`.
+   * Sets one merchant's shop site and returns the merchant as they now stand,
+   * or null where there is no such merchant. The value must already be
+   * validated, by `setSellerSite` in `app/merchants.ts`.
    */
   setSellerSite(id: string, sellerSite: string, at: number): Promise<StoredMerchant | null>;
 
   /**
-   * Writes where one merchant's sales are paid, and any change waiting beside
-   * it, where the row still holds what the caller read — and hands back the
-   * merchant as they now stand. `"moved"` where the row holds something else
-   * by now, and then nothing was written; null where there is no such merchant.
+   * Writes the merchant's payout wallet only where the row still holds
+   * `expected`, compared by both halves and the instant, and returns the
+   * merchant as they now stand; `"moved"` means the row changed meanwhile and
+   * nothing was written, null means no such merchant. It is a compare-and-set
+   * rather than a lock because a live change is announced to the merchant
+   * between the read and the write, and a lock across that call would hold a
+   * row on the money path for seconds.
    *
-   * The condition is the serialization ADR-0019 asks for, without a lock held
-   * across anything slow. A change on the live deployment is announced between
-   * reading the row and writing it, and the announcement is a call to another
-   * process and a mail provider: a lock held across that would be a row held
-   * for seconds on the money path. So the write asks instead whether the row
-   * is still what was read, compared by both halves and the instant, and a
-   * second change recorded in the meantime turns this one away rather than
-   * being overwritten by it — so what is waiting is always a change whose own
-   * announcement went out before it was written.
-   *
-   * The addresses are expected to be addresses already, in the checksummed
-   * spelling a wallet shows; the one place an address is checked and written
-   * out before it is stored is `payoutWalletFrom` in `app/merchants.ts`.
-   *
-   * There is no clearing an address that is set, and the absence of a null is
-   * the difference from the listing name beside it. A payment request cannot be
-   * written without an address, so a merchant whose address was taken away
-   * would have every card of theirs go off sale at once — the selling word
-   * folds that in — and what somebody reaching for this wants is either a
-   * different address, which is this same call, or an end to selling, which is
-   * the pause and says so in its own name. So what is written always names an
-   * address, and the type says so; only what was read may say "none yet".
+   * Addresses must already be in the checksummed spelling `payoutWalletFrom`
+   * in `app/merchants.ts` produces. A set address cannot be cleared, as the
+   * type of `next` says; ending sales is the pause.
    */
   setPayoutWallet(
     id: string,
@@ -611,10 +380,7 @@ export interface Store {
     at: number,
   ): Promise<StoredMerchant | "moved" | null>;
 
-  /**
-   * Writes down one key of one merchant. The digest is what is kept, not the
-   * key.
-   */
+  /** Writes one key of one merchant; only its digest is kept. */
   addKey(
     key: {
       readonly id: string;
@@ -626,106 +392,54 @@ export interface Store {
   ): Promise<StoredKey>;
 
   /**
-   * Writes down that a call came in on this key at this instant.
-   *
-   * Two things about it are the caller's rather than this one's, and both are
-   * deliberate.
-   *
-   * The thinning is the caller's. This writes every time it is asked, and the
-   * door asks only once the instant on the row has gone stale — a store that
-   * took the window and decided for itself would still be a statement sent on
-   * every request behind the door, which is a write on the money path for a
-   * fact nobody reads more than once a day.
-   *
-   * And so is what happens when it fails. Nothing a merchant buys depends on
-   * this having been written, so the door swallows a failure here and answers
-   * the call; a purchase refused because a column could not be updated would be
-   * a screen taking down a sale.
-   *
-   * What it promises in return is that the mark never goes backwards. Two
-   * gateway processes write it from two clocks and the door does not serialise
-   * them, so an older instant can arrive after a newer one — taken as written,
-   * a key in constant use would read as one nobody has touched since morning.
-   * A key that is not there is not an error, and nothing is written for it: it
-   * went with its merchant between the door reading it and this being written.
+   * Records that a call came in on this key at this instant. The caller writes
+   * only once the stored instant has gone stale and swallows a failure here,
+   * since no purchase depends on it. The mark never goes backwards: two gateway
+   * processes write it from two clocks without serialising. A key that is not
+   * there is not an error, and nothing is written.
    */
   noteKeyUse(id: string, at: number): Promise<void>;
 
   /**
-   * The key a request presented, by its digest — and nothing at all where there
-   * is no such key or where the key there is has been disabled.
-   *
-   * The two silences are deliberately the same one. A door that answered "that
-   * key exists but is off" differently from "that is not a key" would be a way
-   * of confirming which guesses were once real keys, which is the thing a
-   * revoked key must never leak.
-   *
-   * This is what makes the check constant-time by construction: nothing here
-   * compares a secret with a secret. What travels is a digest, always the same
-   * size, and what answers is an index.
-   *
-   * The whole row rather than the merchant alone, and the difference is a rule
-   * rather than a convenience: a merchant cannot disable the key their own call
-   * was made with (ADR-0014 §5), and the door is the only place that knows
-   * which key that was. Answered with a merchant, the route would have to hash
-   * the header a second time and look it up again to find out.
+   * The key a request presented, found by its digest, or null where there is no
+   * such key or it is disabled; the two answers must stay the same, so the door
+   * never confirms which guesses were once real keys. Looking a digest up by
+   * index, rather than comparing secrets, keeps the check constant-time. It
+   * returns the whole row because a merchant cannot disable the key their own
+   * call was made with, and only the door knows which key that was.
    */
   workingKey(digest: string): Promise<StoredKey | null>;
 
   /**
-   * The key with this digest, working or not.
-   *
-   * Separate from {@link workingKey} because the two questions are different and
-   * only one of them is asked at the door: this one is for the command that
-   * would otherwise issue a second key with a digest already taken, and it is
-   * never reachable from a request.
+   * The key with this digest, working or not, for the command that must not
+   * issue a second key with a digest already taken. Never reachable from a
+   * request.
    */
   keyByDigest(digest: string): Promise<StoredKey | null>;
 
   /**
    * Every key of one merchant, disabled ones included, never their secrets.
-   *
-   * Oldest first, with the identifier settling a tie. The order is part of what
-   * this promises rather than whatever each adapter's storage happens to give,
-   * because a merchant reads a list built on this on a screen: left to the
-   * database, two keys made in the same millisecond would swap places between
-   * two visits with nothing having changed, and a test about the list would
-   * mean one thing in memory and another against Postgres.
+   * Oldest first with the identifier settling a tie, so a list on a merchant's
+   * screen is stable between visits and both adapters agree.
    */
   keysOf(merchantId: string): Promise<readonly StoredKey[]>;
 
   /**
-   * Stops one key working and hands back where it now stands. Null where there
-   * is no such key.
-   *
-   * Disabling a key that is already disabled keeps the instant it was first
-   * revoked at rather than moving it: the first revocation is the true one, and
-   * a retry after a dropped connection must not rewrite history.
-   *
-   * It names a key and no merchant, and that is safe only because nothing
-   * reachable from a request calls it — the callers are the command somebody
-   * types, where one identifier already names the row, and the test harness.
-   * What the dashboard's own button calls is {@link disableKeyOf}, which takes the
-   * merchant the way every other scoped write here does.
+   * Stops one key working and returns it as it now stands, or null where there
+   * is no such key. A key already disabled keeps its first revocation instant.
+   * It names no merchant, which is safe only because nothing reachable from a
+   * request calls it; the dashboard calls {@link disableKeyOf}.
    */
   disableKey(id: string, at: number): Promise<StoredKey | null>;
 
   /**
-   * Stops one of this merchant's keys working and hands back where it now
-   * stands. Null where this merchant has no such key.
-   *
-   * Which is the same answer as no such key anywhere, on purpose. The sameness
-   * is the point rather than a simplification. Told apart, this call would
-   * count somebody else's keys: a merchant walking identifiers would learn
-   * which of them are real, and the identifiers of a merchant's keys are not
-   * secrets.
-   *
-   * The merchant is in the predicate rather than checked after the read, so a
-   * key this call may not touch is never selected and there is no window
-   * between finding out whose it is and writing to it.
-   *
-   * Disabling a key that is already disabled keeps the instant it was first
-   * revoked at, exactly as {@link disableKey} does.
+   * Stops one of this merchant's keys working and returns it as it now stands,
+   * or null where this merchant has no such key. That null must stay the same
+   * as for a key that exists nowhere, or a merchant walking identifiers would
+   * learn which belong to others. The merchant is in the write's predicate
+   * rather than checked after a read, so there is no window between learning
+   * whose a key is and writing to it. A key already disabled keeps its first
+   * revocation instant.
    */
   disableKeyOf(merchantId: string, id: string, at: number): Promise<StoredKey | null>;
 
@@ -733,22 +447,16 @@ export interface Store {
 
   /**
    * Publishes one card for one merchant. Republishing under the same
-   * `merchant_item_id` changes that merchant's card that is there rather than
-   * adding a second one, which is what the portal promises, so the catalog
-   * identifier stays what it was.
-   *
-   * The merchant's own identifier is unique inside their catalog and nowhere
-   * else, which is what the card contract has always said it means: two
-   * merchants may both sell a "sku-1", and neither publish touches the other.
+   * `merchant_item_id` updates that merchant's card in place, keeping its
+   * catalog identifier. `merchant_item_id` is unique within one merchant's
+   * catalog only: two merchants may both sell a "sku-1".
    */
   publishCard(merchantId: string, card: Card, at: number): Promise<StoredCard>;
 
   /**
-   * One card by the catalog identifier, whoever published it.
-   *
-   * Deliberately unscoped: this is the buying surface, and an agent has no key
-   * and no merchant. The card that comes back carries whose it is, and that is
-   * how a purchase reaches the right merchant.
+   * One card by its catalog identifier, whoever published it. Unscoped because
+   * a buying agent has no key and no merchant; the card carries its merchant,
+   * which is how a purchase reaches the right one.
    */
   cardById(id: string): Promise<StoredCard | null>;
 
@@ -757,33 +465,23 @@ export interface Store {
 
   /**
    * Every card the gateway holds, each with the word its own merchant is
-   * selling under — the one catalog the public surface is built from.
-   *
-   * The merchant's word travels with the card because it is per merchant: one
-   * merchant stopping all selling takes their own cards out of the catalog and
-   * leaves everybody else's exactly where they were.
+   * selling under, for the public catalog. The word is per merchant, so one
+   * merchant stopping takes only their own cards out.
    */
   catalogEntries(): Promise<readonly CatalogEntry[]>;
 
   /**
-   * Takes one of this merchant's cards off sale, or puts it back, and hands
-   * back the card as it now stands. Null where this merchant has no such card
-   * — which is the same answer as no such card anywhere, on purpose.
-   *
-   * Republishing does not touch this: a merchant editing a price is not asking
-   * for a product they took off sale to go back on it, and a pause that
-   * evaporated on the next publish would put stock they do not have in front
-   * of an agent.
+   * Takes one of this merchant's cards off sale, or puts it back, and returns
+   * the card as it now stands; null where this merchant has no such card, the
+   * same answer as no such card anywhere. Republishing does not clear a pause,
+   * so editing a price never puts a product taken off sale back on it.
    */
   setCardPaused(merchantId: string, id: string, paused: boolean): Promise<StoredCard | null>;
 
   /**
-   * Whether this merchant is taking new orders at all — the word the order
-   * machine is given at the birth of every order made against their cards.
-   *
-   * A merchant nobody has ever paused is selling. This cannot answer "I do not
-   * know": there is no state of the world in which we hold a merchant's cards
-   * and cannot say whether they are selling.
+   * Whether this merchant is taking new orders, the word the order machine is
+   * given when an order is made against their cards. A merchant never paused
+   * is selling; there is no "unknown" answer.
    */
   selling(merchantId: string): Promise<MerchantSelling>;
 
@@ -796,17 +494,11 @@ export interface Store {
   addOrder(record: StoredOrder): Promise<void>;
 
   /**
-   * One order by its identifier, whoever it belongs to.
-   *
-   * Unscoped because its callers have no merchant to be scoped to: the payment
-   * route, which takes no key and is answered by the payment itself; the
-   * agent's read of what became of its own purchase, which is answered by the
-   * order's identifier (ADR-0011); and the gateway's own clocks, which act on
-   * an order rather than for somebody. What keeps the agent's read from
-   * becoming a way of reading across the merchants is the shape of the document
-   * it answers with, which names none of them.
-   *
-   * A merchant's own read of one order is {@link merchantOrder}.
+   * One order by its identifier, whoever it belongs to. Unscoped because its
+   * callers have no merchant: the payment route, which takes no key; the
+   * agent's read of its own purchase; and the gateway's own clocks. The answer
+   * the agent gets names no merchant, which keeps this from being a read
+   * across merchants. A merchant's own read is {@link merchantOrder}.
    */
   orderById(id: string): Promise<StoredOrder | null>;
 
@@ -817,79 +509,38 @@ export interface Store {
   orders(merchantId: string, query?: { readonly open?: boolean }): Promise<readonly StoredOrder[]>;
 
   /**
-   * Every order still owed work or money, whoever it belongs to.
-   *
-   * The one caller is the sweep, which asks the orders themselves what they are
-   * missing rather than keeping a second book of what was meant to happen
-   * (ADR-0013). It names no merchant because a clock that never fired is not
-   * one merchant's problem to notice.
-   *
-   * What bounds it is that open orders close: every one of them is waiting on a
-   * deadline that ends it, so this is the work in flight and not the history.
-   * A gateway whose orders stopped closing would find this growing, and that is
-   * the same fault seen from another angle rather than a second one.
+   * Every order still owed work or money, whoever it belongs to, for the
+   * sweep, which asks the orders what they are missing rather than keeping a
+   * second record of what was meant to happen. It stays bounded because every
+   * open order waits on a deadline that closes it.
    */
   openOrders(): Promise<readonly StoredOrder[]>;
 
   /**
-   * Runs `work` if nothing anywhere in the gateway is already running the work
-   * called `name`, and otherwise runs nothing and says so.
-   *
-   * The one caller is the sweep, and what it buys is the thing the sweep is
-   * for. Every arm of it reads the world and then acts on what it read — is
-   * this order's envelope still on the stream, does this delivered order have a
-   * receipt — so two runs at once both read "missing" and both act. The
-   * dispatch arm doing that is the double hand-over the arm exists to prevent,
-   * arrived at by the thing meant to prevent it, and it spends one of that
-   * order's deliveries.
-   *
-   * It has to hold across processes and not merely across this one, because the
-   * overlap that makes it necessary is two gateways running the same work at
-   * the same time. One gateway on its own does not need it: the queue's worker
-   * waits for the handler before it fetches anything else, so a second run
-   * cannot start inside a process where the first has not returned. What puts
-   * one run in two processes is the queue's expiry — a run that outlasts it has
-   * its job failed for taking too long and offered again while it is still
-   * going, and the other process's idle worker takes it.
-   *
-   * It is a lock and not a record: nothing about having run is written down and
-   * nothing has to be cleaned up afterwards.
-   *
-   * What it holds is one run per live connection, which is not quite one run.
-   * A lock is let go the moment the session holding it goes away — a backend
-   * terminated by an administrator, a failover, a pooler dropping an idle
-   * session — and the process that was doing the work does not necessarily go
-   * with it. So a run whose connection died carries on, unprotected, while the
-   * next caller is told the name is free and starts beside it. That is the
-   * failure this cannot see, and it is a much smaller window than the one it
-   * closes.
-   *
-   * And it promises no fairness and no queue: a caller that finds the name
-   * taken does not wait, it goes away, because the work it wanted is already
-   * being done.
+   * Runs `work` only if nothing anywhere in the gateway is running the work
+   * called `name`, and otherwise returns at once without running it. The sweep
+   * needs this across processes: it reads the world and then acts, so two
+   * overlapping runs (a run that outlasts the queue's expiry is offered again
+   * to another process) would both find an envelope missing and hand the order
+   * over twice. It is a lock held by a connection, not a record: if the
+   * connection dies while the work carries on, the next caller is told the
+   * name is free and starts beside it.
    */
   runAlone<T>(name: string, work: () => Promise<T>): Promise<Ran<T>>;
 
   /**
-   * Every order that ended delivered with no receipt written against it,
-   * whoever it belongs to.
-   *
-   * A receipt is what a merchant reconciles a wallet against, so a delivered
-   * order without one is a sale that is invisible to the person whose money it
-   * was. With the receipt written where the order is, the answer to this should
-   * always be empty; it is asked because "should always be" is not a thing to
-   * take on trust about somebody else's money.
+   * Every order that ended delivered with no receipt, whoever it belongs to.
+   * The receipt is written with the order, so this should always be empty; it
+   * is checked because a delivered order without a receipt is a sale the
+   * merchant cannot reconcile their wallet against.
    */
   deliveredWithoutReceipt(): Promise<readonly StoredOrder[]>;
 
   /**
-   * Holds one order still, hands it to `change`, and writes back whatever
-   * `change` asks to be written. Nothing else touches that order in between.
-   *
-   * Given a `scope`, an order belonging to another merchant is not found at
-   * all — the ownership is part of the same read as the lock, so a merchant's
-   * call can never move a stranger's order and there is no window between
-   * checking whose it is and acting on it.
+   * Holds one order, hands it to `change`, and writes back whatever `change`
+   * asks; nothing else touches the order in between. Given a `scope`, another
+   * merchant's order is not found: ownership is checked in the same read as the
+   * lock, so there is no window between checking whose it is and acting on it.
    */
   withOrder<T>(
     id: string,
@@ -900,54 +551,31 @@ export interface Store {
   // --- payments -------------------------------------------------------------
 
   /**
-   * Binds one payment to one order, once and for all.
-   *
-   * A signed payment authorises an amount to an address; nothing inside it says
-   * which purchase it is for, and nothing about presenting it twice is visible
-   * to the payment layer until the second charge is actually executed. Two
-   * orders at the same price are therefore payable with one signature — both
-   * verify, both go to a merchant, both are delivered, and only the second
-   * charge fails. This is what stops that: the first order to present a payment
-   * owns it, and the same payment presented for a second order is refused
-   * before anything is verified or dispatched.
-   *
-   * A claim is the one thing here that is deliberately not per merchant, and
-   * the reason is the failure it guards. The two orders one signature would
-   * buy are just as likely to be at two different merchants as at one — an
-   * agent walking the public catalog is not shopping inside a tenant — and a
-   * claim scoped to a merchant would let the same authorisation be spent once
-   * at each. So the fingerprint is unique across the gateway, and nothing
-   * about which merchant is asking enters into it.
+   * Binds one payment to one order for good. A signed payment authorises an
+   * amount to an address and names no purchase, and a second presentation is
+   * invisible to the payment layer until its charge fails, so without this one
+   * signature could buy two orders at the same price and both be delivered.
+   * The first order to present a payment owns it, and the same payment for any
+   * other order is refused before anything is verified or dispatched. It is
+   * deliberately across the whole gateway: a claim per merchant would let one
+   * authorisation be spent once at each merchant.
    */
   claimPayment(fingerprint: string, orderId: string): Promise<PaymentClaim>;
 
   /**
-   * Lets go of a claim this order took and then could not use.
-   *
-   * The claim is taken before the ownership decision, and it has to be: it is
-   * what stops one signature being spent on two orders, so it must be in place
-   * before anything is verified against a second one. But a presentation the
-   * ownership decision turns away never spent anything — the money did not
-   * move and no merchant was asked for goods — and a claim left behind then
-   * binds a live authorisation to an order that can never accept it. The agent
-   * that lost a race for the last unit would find its next attempt answered
-   * "already spent" and pointed at somebody else's order.
-   *
-   * Only the holder can let go: a fingerprint claimed by another order is left
-   * exactly as it is, so this can never hand one buyer's signature to another.
+   * Lets go of a claim this order took and then could not use because the
+   * ownership decision turned the presentation away and no money moved; left
+   * behind, it would answer that live authorisation's next attempt "already
+   * spent". Only the holder can release: a fingerprint claimed by another order
+   * is left as it is.
    */
   releaseClaim(fingerprint: string, orderId: string): Promise<void>;
 
   /**
-   * Forgets claims older than an instant, and says how many went.
-   *
-   * They cannot be kept forever. The route that makes them takes no key — the
-   * payment is what stands in for one — so anybody can make as many as they
-   * like, and a table that only grows under an open door is a table that fills
-   * up. What a claim actually guards is the window between a payment being
-   * verified and the charge being executed, because after that the token
-   * itself refuses the same authorisation twice; how long that window is worth
-   * keeping is configuration.
+   * Forgets claims older than an instant and returns how many went. Anyone can
+   * make claims without a key, so the table must be pruned; a claim only
+   * matters between verification and charge, after which the token itself
+   * refuses a second use.
    */
   forgetClaimsBefore(instant: number): Promise<number>;
 
@@ -955,10 +583,9 @@ export interface Store {
   putReceipt(merchantId: string, receipt: Receipt): Promise<void>;
 
   /**
-   * The receipt for one order, whoever it belongs to.
-   *
-   * Unscoped for the same reason {@link orderById} is: the agent's own answer
-   * to its purchase carries the receipt, and the agent has no key.
+   * The receipt for one order, whoever it belongs to. Unscoped because the
+   * agent's answer to its own purchase carries the receipt, and the agent has
+   * no key.
    */
   receiptForOrder(orderId: string): Promise<Receipt | null>;
 

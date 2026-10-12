@@ -1,12 +1,9 @@
 import { defineConfig } from "drizzle-kit";
 
 /**
- * Where the migrations come from and where they go.
- *
- * The generated SQL is checked in, so what a deployment applies is a file
- * somebody read rather than whatever a tool works out at the time. Applying it
- * is `pnpm --filter @agentify/gateway db:migrate`, which needs DATABASE_URL and
- * nothing else.
+ * The generated SQL is checked in, so a deployment applies a file somebody read
+ * rather than whatever a tool works out at the time. It is applied by
+ * `pnpm --filter @agentify/gateway db:migrate`, which needs only DATABASE_URL.
  */
 export default defineConfig({
   dialect: "postgresql",

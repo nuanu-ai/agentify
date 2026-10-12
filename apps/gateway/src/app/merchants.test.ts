@@ -98,8 +98,8 @@ describe("a key", () => {
   });
 
   it("hashes and looks up a key exactly as it did before", () => {
-    // The prefix changed and the digest must not have. This is the test that
-    // would catch a prefix change that quietly broke every key.
+    // The digest stays the SHA-256 of the whole secret, prefix included:
+    // changing it would quietly break every key already issued.
     const secret = newKeySecret("test");
     expect(keyDigest(secret)).toBe(createHash("sha256").update(secret, "utf8").digest("hex"));
     expect(keyDigest(secret)).toHaveLength(64);
@@ -322,18 +322,16 @@ describe("seeding the sandbox", () => {
   });
 
   it("throws when the write failed for a reason that is not a race", async () => {
-    // The catch above is narrow on purpose. A store that cannot write is a
+    // The seed catches only that race. A store that cannot write is a
     // start-up failure somebody has to see, and swallowing it would leave a
     // gateway up with a key that opens nothing.
     const store = aStore();
     const broken = {
       ...store,
       addMerchant: store.addMerchant.bind(store),
-      // The merchant row and the listing are the real store's, whenever the
-      // seed gets to them, so this stays a test about the key write and nothing
-      // else. As it stands the key write fails first and it never gets to the
-      // listing at all — which is itself the promise that a start-up failure
-      // leaves the sandbox listed the way it found it.
+      // The merchant row and the listing are the real store's, so this stays a
+      // test about the key write. The key write fails before the listing is
+      // reached, so a start-up failure leaves the sandbox listed as it was.
       merchantById: store.merchantById.bind(store),
       setServiceName: store.setServiceName.bind(store),
       keyByDigest: async () => null,
@@ -419,9 +417,8 @@ describe("the name a merchant is listed under", () => {
   it("is nothing at all until somebody sets one", async () => {
     // A merchant's row carries a name a person reads at a terminal, and that
     // name is not a listing name: it may be written in any alphabet and be any
-    // length.
-    // Standing it in for one would put a mangled version of somebody's name in
-    // front of every agent that searches.
+    // length. Standing it in for one would put a mangled version of somebody's
+    // name in front of every agent that searches.
     const store = aStore();
 
     const made = await store.addMerchant({ id: "mch_1", name: "Кафе «Ветер»" }, 1_000);

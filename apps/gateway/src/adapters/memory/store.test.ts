@@ -1,22 +1,12 @@
 /**
- * The store the whole of the application logic is tested against.
+ * The in-memory store. What it promises as a port is checked once, in
+ * `testing/store-contract.ts`, and run both here and against Postgres under
+ * `pnpm test:db`. Two hand-written copies would drift, and the one left
+ * unchecked would be the Postgres one a purchase actually rests on.
  *
- * Almost everything this adapter promises is a promise about the port rather
- * than about a map, so almost everything it is checked for lives in
- * `testing/store-contract.ts` and is run twice: here against these maps, and
- * under `pnpm test:db` against a real Postgres. Written out twice instead, the
- * two copies drift, and they drift in one direction — the fast store is the one
- * everybody develops against, so the promise a purchase actually rests on is
- * the one nobody checked.
- *
- * What is left in this file is what only this adapter can be asked. An order
- * that refuses to be edited after it has been handed out is about objects in
- * one process; the Postgres adapter builds a fresh document on every read and
- * would ignore such an edit, so the two cannot be asked the same question. The
- * writes that go with an order are the same shape of thing: there the promise
- * comes from a transaction, and here it comes from the order the writes are
- * taken in, so what each one has to be checked for is its own arrangement and
- * not a shared sentence.
+ * What remains here is what only this adapter can be asked: that an object it
+ * handed out cannot be edited, and that the writes alongside an order are all
+ * or nothing by the order they are taken in rather than by a transaction.
  */
 
 import type { Order } from "@agentify/core";
@@ -90,11 +80,9 @@ describeStore("the store in memory", async () => new MemoryStore(counted()));
 
 describe("MemoryStore, where it is not like the other one", () => {
   it("keeps what it was given, whatever the caller does with its copy afterwards", async () => {
-    // The Postgres adapter would ignore an edit made to a returned object,
-    // because what it hands back is built from a row and thrown away. If this
-    // one honoured it, a caller editing what it read would be editing the
-    // database — a bug that passes every test in the shared suite and fails in
-    // production.
+    // If this store honoured an edit to a returned object, code that edits what
+    // it read would work here and silently do nothing against Postgres, which
+    // builds every object afresh from a row.
     const store = new MemoryStore(counted());
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
     await store.addOrder(order("ord_1", "created"));
@@ -108,18 +96,10 @@ describe("MemoryStore, where it is not like the other one", () => {
   });
 
   it("says which merchant a key was refused for", async () => {
-    // The shared suite can only ask that this is refused, not what it says.
-    // There the refusal is the database's foreign key and reaches the caller as
-    // the driver's own error, whose message happens to contain the merchant's
-    // identifier among the statement's bound parameters — so a test matching it
-    // would pass on a leak rather than on a sentence anybody wrote.
-    //
-    // Here the refusal is a guard of this adapter's own, standing in for that
-    // foreign key, and what it says is this adapter's to promise. Whoever meets
-    // it is running the seed or a command they typed, and the one thing they
-    // need is which merchant the store cannot find: a bare "no such merchant"
-    // in the middle of a script that names four of them is a message that
-    // starts an investigation rather than ending one.
+    // The shared suite can only check that the key is refused: under Postgres
+    // the refusal is the driver's foreign-key error, whose message happens to
+    // contain the identifier. Here the guard is this adapter's own, and whoever
+    // runs the seed needs to know which merchant is missing.
     const store = new MemoryStore(counted());
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
 
@@ -139,19 +119,17 @@ describe("MemoryStore, where it is not like the other one", () => {
 
 describe("MemoryStore writes that go with an order", () => {
   it("does not let an envelope be seen before the order that implies it", async () => {
-    // The sentence this adapter's atomicity rests on. An order envelope would
-    // survive the other ordering, because acting on one comes back through this
-    // store's own hold; a merchant event would not, because the poll hands one
-    // over without touching the order at all. So the envelope becomes visible
-    // after the order is written, and this is what says so.
+    // The poll hands a merchant event over without touching the order, so an
+    // envelope visible before its order is written would announce a change
+    // that is not written down.
     let seenState: string | undefined;
     let store!: MemoryStore;
     store = new MemoryStore(counted(), undefined, {
       async stage(_merchantId, envelope) {
         expect(envelope.id).toBe("env_1");
         return () => {
-          // Read inside the arrival, which is the whole point: by now the store
-          // must already be saying what the envelope announces.
+          // Read as the envelope arrives: the order must already say what it
+          // announces.
           void store.orderById("ord_1").then((found) => {
             seenState = found?.order.state;
           });
@@ -192,10 +170,9 @@ describe("MemoryStore writes that go with an order", () => {
   });
 
   it("writes nothing at all when one of the writes refuses", async () => {
-    // All or nothing, which is what the port promises and what the Postgres
-    // adapter gets from a transaction. Here it comes from the order the writes
-    // are taken in — the one that can refuse goes first — so a refusal leaves
-    // no receipt, no envelope and an order exactly where it was.
+    // All or nothing without a transaction: the write that can refuse is taken
+    // first, so a refusal leaves no receipt, no envelope and the order where it
+    // was.
     const store = new MemoryStore(counted(), undefined, {
       async stage() {
         throw new Error("the stream would not take it");
@@ -256,8 +233,8 @@ describe("MemoryStore writes that go with an order", () => {
     ).rejects.toThrow("the stream would not take it");
 
     expect((await store.orderById("ord_1"))?.order.state).toBe("paid");
-    // The receipt is named second in the list and is written first by nothing:
-    // the envelope that refuses is taken before it, so it never happened.
+    // The receipt is listed before the envelope, but envelopes are taken
+    // first, so the refusal comes before any receipt is written.
     expect(await store.receiptForOrder("ord_1")).toBeNull();
   });
 });

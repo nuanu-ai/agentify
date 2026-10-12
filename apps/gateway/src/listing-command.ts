@@ -1,42 +1,12 @@
 /**
- * The command that asks the catalog whether it would take our resources.
- *
- * Everything else about the discovery declaration is checked offline, against
- * the schema the declaration ships with and against the catalog's own
- * sanitiser. None of that is the catalog accepting a resource. The spike this
- * work descends from learned the difference the hard way: its first attempt was
- * structurally fine and was refused outright by a version gate, and nothing
- * short of asking would have found that.
- *
- * So this asks. `POST /platform/v2/x402/validate` at the CDP API is public,
- * needs no key and costs nothing — there is no wallet, no chain and no spending
- * to cap here — and it reports whether the resource is reachable, whether it
- * answers 402, whether the discovery block holds up and whether the payment it
- * asks for is one the facilitator would accept.
- *
- * The one thing it needs is a gateway the endpoint can reach, which means a
- * public address. A laptop is not one. That is the whole reason this is a
- * command somebody runs against a deployment rather than a test: `pnpm test` is
- * offline and free, and a check that fakes this call proves nothing at all.
- *
- * What the validator never sees is a GET. It holds a probe to the declaration,
- * and the declaration names the purchase, which is a POST; asked any other way
- * it answers only that it was asked the wrong way. But a GET is what an agent
- * reading the resource by hand sends, and on 2026-09-10 one did: it took the
- * declaration a GET carried, paid with a GET, and a GET reads no payment — no
- * order, no receipt, its money left reserved
- * (`docs/research/26-discovery-method-on-get.md`). So this also knocks on each
- * door itself, unpaid and not through anybody's endpoint, and holds the answer
- * to what the door promises: a 402, a challenge that decodes, and a declaration
- * naming the purchase as a POST. The code behind that door has tests of its
- * own; what nothing else looks at is the door that is actually up.
- *
- * What it must never do is report a pass it did not see. Three different things
- * can happen and they are three different answers: the catalog said the
- * resource is good, the catalog said it is not, and the catalog did not say —
- * an endpoint that was unreachable, an answer that would not parse, an answer
- * with no verdict in it. The third is the one that quietly becomes a green tick
- * if nobody writes it down, so it is written down here and it exits non-zero.
+ * Asks the public CDP validation endpoint whether it would take this gateway's
+ * paid resources, which no offline check can answer; the endpoint must reach
+ * the gateway, so this runs against a deployment rather than in `pnpm test`.
+ * The validator probes only with POST, the method the declaration names, so
+ * each resource is also sent the plain unpaid GET an agent reading it by hand
+ * sends: a payment made with a GET is read by nothing, and the agent's money
+ * is left reserved. A verdict the catalog did not give is never reported as a
+ * pass, and it exits non-zero.
  */
 
 import { API_ROUTES, expandPath } from "@nuanu-ai/agentify-contracts";
@@ -45,76 +15,56 @@ import { z } from "zod";
 import { PAYMENT_REQUIRED_HEADER } from "./http/x402.js";
 
 /**
- * The whole of a catalog this command reads: one identifier per product.
- *
- * Everything else in the document is somebody else's business here — a price a
- * probe never quotes, a description a probe never shows — and every field this
- * does not name is one more way for a working gateway to be turned away by a
- * copy of the code older than it is.
+ * Only the identifiers are read: every other field named here would be one
+ * more way for an older copy of this code to turn away a working gateway.
  */
 const CATALOG_IDENTIFIERS = z.object({
   items: z.array(z.object({ id: z.string().min(1) })),
 });
 
-/** What a catalog is, to this command. */
 type CatalogIdentifiers = z.infer<typeof CATALOG_IDENTIFIERS>;
 
-/** Where the public validation endpoint lives. No key, no cost. */
+/** Public: it takes no key and costs nothing. */
 export const VALIDATE_ENDPOINT = "https://api.cdp.coinbase.com/platform/v2/x402/validate";
 
 /** The method a purchase is made with, and so the method a challenge declares. */
 const PURCHASE_METHOD = "POST";
 
 /**
- * The method the validator is asked to probe with: the one the declaration
- * names, which is the purchase.
- *
- * The declaration says POST whichever way the challenge was asked for, and the
- * validator holds the probe to the declaration: asked with GET it stops at
- * "declares method POST but was probed with GET — re-run validation with
- * method=POST", measured 2026-09-10. So it is asked with POST, and what that
- * proves is the whole path a listing needs — the bare POST answers a
- * challenge, and the challenge holds up. The validator is never asked about
- * the GET, which is why the command asks the door about it directly instead of
- * mistaking the catalog's silence on the matter for an opinion.
+ * The validator holds a probe to the method the declaration names, which is
+ * always POST, and asked with GET it only says it was probed the wrong way. The
+ * GET is therefore checked at the door directly.
  */
 export const PROBED_METHODS = [PURCHASE_METHOD] as const;
 
-/** What the endpoint answered, or why there is no answer. */
 export type ValidateAnswer =
-  /** It answered. The body is whatever it said, unread. */
   | { readonly kind: "answered"; readonly status: number; readonly body: unknown }
-  /** It did not answer, and this is what went wrong reaching it. */
   | { readonly kind: "unreachable"; readonly why: string };
 
-/** What the door answered a plain unpaid GET, or why there is no answer. */
+/** The answer to a plain unpaid GET of the resource. */
 export type DoorAnswer =
-  /** It answered. The challenge is the header as it came, or null if it set none. */
+  /** `challenge` is the header as it came, or null when none was set. */
   | { readonly kind: "answered"; readonly status: number; readonly challenge: string | null }
-  /** It did not answer, and this is what went wrong reaching it. */
   | { readonly kind: "unreachable"; readonly why: string };
 
-/** The three things this command has to go outside for. */
 export interface Reach {
-  /** The public catalog of a running gateway, or a reason there is none. */
+  /** Throws with the reason when the catalog cannot be read. */
   readonly catalog: (baseUrl: string) => Promise<CatalogIdentifiers>;
   readonly validate: (resource: string, method: string) => Promise<ValidateAnswer>;
-  /** The resource itself, fetched the way an agent's own first fetch fetches it. */
+  /** Fetches the resource the way an agent's own first fetch does. */
   readonly door: (resource: string) => Promise<DoorAnswer>;
 }
 
-/** What one probe came to, in the three words that are actually different. */
 type Verdict =
   | { readonly said: "valid" }
-  /** Somebody said no. The why is carried when this command is the one saying it. */
+  /** `why` is set only when this command is the one refusing. */
   | { readonly said: "invalid"; readonly why?: string }
-  /** Nobody gave a verdict. This is not a failure of the resource. */
+  /** Nobody gave a verdict, which is not a failure of the resource. */
   | { readonly said: "no answer"; readonly why: string };
 
 /**
- * The same three words about the door, where a refusal always says why: this
- * command is the one judging there, so there is nobody else's answer to print
- * underneath and no excuse for a bare "refused".
+ * At the door this command is the judge, so a refusal always says why: there
+ * is nobody else's answer to print underneath.
  */
 type DoorVerdict =
   | { readonly said: "valid" }
@@ -155,11 +105,9 @@ export async function runListingCheck(
 
   const base = baseUrl.replace(/\/+$/, "");
 
-  // The same mistake the gateway's own configuration refuses at start-up, for
-  // the same reason: a path is joined onto this, so either one lands in the
-  // middle of every resource address. Asking the endpoint about an address like
-  // that would come back a refusal, and the refusal would read as though there
-  // were something wrong with the product.
+  // A path is joined onto this, so a query or fragment lands in the middle of
+  // every resource address, and the endpoint's refusal would read as though
+  // the product were at fault.
   for (const [mark, what] of [
     ["?", "query"],
     ["#", "fragment"],
@@ -172,13 +120,9 @@ export async function runListingCheck(
   }
 
   if (!base.toLowerCase().startsWith("https://")) {
-    // Measured rather than read: put an http address to the endpoint and it
-    // answers 400 with "doesn't match the regular expression ^https://.*$".
-    // Said here so that a run against a sandbox is a sentence somebody
-    // understands instead of two identical refusals with no verdict in them.
-    // It is a warning and not a refusal: the endpoint's rules are the
-    // endpoint's, and a run that asks and reports what came back is worth more
-    // than one that decided in advance.
+    // The endpoint answers 400 to an http address. This only warns: the
+    // endpoint's rules are its own, and a run that asks and reports what came
+    // back is worth more than one that decided in advance.
     say(`${base} is not an https address, and the endpoint only takes those.`);
     say("Expect no verdict. A listing needs a public https gateway.");
   }
@@ -200,10 +144,9 @@ export async function runListingCheck(
   }
 
   if (items.length === 0) {
-    // Zero resources checked is not zero failures. A command that printed a
-    // success here would be reporting on nothing at all, and the catalog is
-    // empty exactly when every card is paused or none was ever published —
-    // which is the state where somebody most needs to be told.
+    // Zero resources checked is not zero failures. The catalog is empty exactly
+    // when every card is paused or none was published, which is when somebody
+    // most needs to be told.
     say(`There is nothing on sale at ${base}, so there is nothing to check.`);
     return 1;
   }
@@ -214,12 +157,9 @@ export async function runListingCheck(
   const unbuildable: string[] = [];
 
   for (const itemId of items) {
-    // A catalog is an answer from somewhere else, and an identifier in it may be
-    // something no address can be made of — a dot, say, which is a step through
-    // a path rather than a value in it. Thrown, that would come off the top of
-    // the command and take the products after it with it, which is the failure
-    // this whole way of reading a catalog exists to remove. It is one line, and
-    // the rest of the catalog is still checked.
+    // An identifier from the catalog may be something no address can be made
+    // of, such as a dot; it is reported on one line and the rest of the catalog
+    // is still checked.
     let resource: string;
     try {
       resource = `${base}${expandPath(API_ROUTES.purchase_item.path, { item_id: itemId })}`;
@@ -231,9 +171,8 @@ export async function runListingCheck(
       continue;
     }
 
-    // Our own knock first, because it is the cheaper question and the plainer
-    // one: whatever the catalog goes on to say about this resource, an agent
-    // that finds it will fetch it like this.
+    // Our own knock first: it is the cheaper question, and whatever the catalog
+    // says, an agent that finds this resource fetches it like this.
     const knocked = await reach.door(resource);
     const atTheDoor = doorVerdictOf(knocked);
     say("");
@@ -265,14 +204,12 @@ export async function runListingCheck(
   }
 
   say("");
-  // One probe per method the validator is asked with, and the one this command
-  // makes itself. They are counted together because they are checks of the same
-  // resource and a person reading the summary wants to know how many held.
+  // One probe per method the validator is asked with, plus the knock at the
+  // door, counted together because they check the same resource.
   const probes = (items.length - unbuildable.length) * (PROBED_METHODS.length + 1);
 
-  // The three outcomes are kept apart in the summary as well, because "we asked
-  // and it said no" and "we never got an answer" want different next moves and
-  // only one of them is about the resource.
+  // "It said no" and "no answer came" stay apart in the summary because only
+  // the first is about the resource.
   if (silences.length > 0) {
     say(`${silences.length} of ${probes} probes got no verdict, so nothing is proven about them:`);
     for (const silence of silences) {
@@ -292,10 +229,8 @@ export async function runListingCheck(
     }
   }
   if (silences.length === 0 && failures.length === 0 && unbuildable.length === 0) {
-    // What was checked, and no claim about what was not. The catalog document
-    // says in its own words that the absence of a paging field is not a promise
-    // that there is nothing more, so this counts the products it was given
-    // rather than announcing the whole catalog is good.
+    // Counts the products it was given rather than calling the whole catalog
+    // good: a missing paging field is not a promise that there is nothing more.
     say(
       `All ${probes} probes over the ${items.length} products this catalog listed were accepted.`,
     );
@@ -305,14 +240,9 @@ export async function runListingCheck(
 }
 
 /**
- * What one answer means, and the reading is deliberately narrow.
- *
- * Only an answer that says `valid: true` in as many words is a pass. An answer
- * this cannot read is not a pass and it is not a failure of the resource
- * either: it is the endpoint not having told us, and it says so. The shape of
- * the body beyond that one field is not modelled anywhere here — it belongs to
- * somebody else and it changes when they change it, so it is printed whole for
- * a person to read rather than picked apart by us.
+ * Only an answer that says `valid: true` is a pass. One this cannot read is no
+ * verdict, neither a pass nor a failure of the resource. The rest of the body
+ * is not modelled; it is printed whole for a person to read.
  */
 function verdictOf(answer: ValidateAnswer): Verdict {
   if (answer.kind === "unreachable") {
@@ -336,16 +266,10 @@ function verdictOf(answer: ValidateAnswer): Verdict {
 }
 
 /**
- * What the door's own answer to an unpaid GET comes to.
- *
- * The reading is stricter here than at the validator, and on purpose. That
- * endpoint is somebody else's: an answer from it this command cannot read is
- * their silence, and nothing about our resource follows from it. This door is
- * ours, and we know exactly what it promised. An answer we can read that is not
- * that promise — any status but 402, a challenge naming anything but the method
- * a purchase is made with — is the finding, and it is a refusal. An answer we
- * cannot read at all stays no verdict: something between here and the door
- * spoke, and what the door would have said is still unknown.
+ * Stricter than at the validator: this door is ours and its promise is known,
+ * so any status but 402, a missing or undecodable challenge, or one naming any
+ * method but the purchase's is a refusal. Only an unreachable door stays no
+ * verdict, since what it would have said is still unknown.
  */
 function doorVerdictOf(answer: DoorAnswer): DoorVerdict {
   if (answer.kind === "unreachable") {
@@ -357,10 +281,6 @@ function doorVerdictOf(answer: DoorAnswer): DoorVerdict {
       why: `it answered ${answer.status}, and an unpaid GET is answered with a price`,
     };
   }
-  // From here on the door has answered, and this door is ours. A validator's
-  // answer we cannot read is somebody else's silence; a 402 of ours with no
-  // challenge on it, or one that will not decode, is an answer we can read
-  // perfectly well — it breaks the promise, and that is a finding, not a gap.
   if (answer.challenge === null) {
     return {
       said: "invalid",
@@ -391,7 +311,6 @@ function doorVerdictOf(answer: DoorAnswer): DoorVerdict {
   return { said: "valid" };
 }
 
-/** One step into an answer from outside, without assuming there is one to take. */
 function fieldIn(held: unknown, key: string): unknown {
   return typeof held === "object" && held !== null
     ? (held as Record<string, unknown>)[key]
@@ -409,7 +328,6 @@ function wordFor(verdict: Verdict): string {
   }
 }
 
-/** The answer whole, indented, for whoever is reading the terminal. */
 function indented(answer: ValidateAnswer): string {
   const text =
     answer.kind === "unreachable" ? answer.why : (JSON.stringify(answer.body, null, 2) ?? "null");
@@ -424,13 +342,8 @@ function messageOf(thrown: unknown): string {
 }
 
 /**
- * The real way out: one fetch for the catalog, one at each door and one per
- * probe.
- *
- * Everything that can go wrong on the way is turned into an answer rather than
- * thrown, so that one unreachable probe is one line in the report instead of
- * the end of the run — the operator wants to know which of their products the
- * catalog would take, not which one failed first.
+ * A probe that cannot reach its endpoint is turned into an answer rather than
+ * thrown, so it is one line in the report instead of the end of the run.
  */
 export const overTheNetwork = (): Reach => ({
   catalog: async (baseUrl) => {
@@ -439,29 +352,18 @@ export const overTheNetwork = (): Reach => ({
     if (!answered.ok) {
       throw new Error(`${at} answered ${answered.status}`);
     }
-    // Read for what this command needs and nothing else: the identifiers, so a
-    // resource address can be built from each. Two mistakes are avoided at
-    // once. Cast rather than read, an answer that is JSON and not a catalog —
-    // a proxy, a login page, a maintenance stub answering for the gateway —
-    // came out further down as a stack trace about a property of undefined,
-    // and the sentence written for exactly that case never printed. Held to
-    // the whole catalog document instead, this would refuse a good catalog
-    // from a gateway newer than the copy it is run from: that document says in
-    // its own words that it grows a paging field the day paging is designed,
-    // and this command is run from somebody's local checkout against a
-    // deployment that may be ahead of it. Then the report would say nothing
-    // was checked, about a gateway that was working.
+    // Parsed rather than cast, so JSON that is not a catalog (a proxy, a login
+    // page) is refused here instead of failing further down. Only the
+    // identifiers are held, because this runs from a local checkout against a
+    // deployment that may be newer and carry fields this copy does not know.
     return CATALOG_IDENTIFIERS.parse(await answered.json());
   },
   door: async (resource) => {
     try {
-      // Nothing else: no payment header, no body, no accept that asks for
-      // anything special. The point is the fetch an agent makes before it has
-      // decided to buy, and a fetch dressed up as something else would be a
-      // check of a request nobody sends.
+      // No payment header, no body, no special accept: this is the fetch an
+      // agent makes before it has decided to buy.
       const answered = await fetch(resource, { method: "GET" });
-      // Read to the end and dropped. What matters is the status and the
-      // challenge header, and a body left unread holds its connection open.
+      // Read and dropped: a body left unread holds its connection open.
       await answered.text();
       return {
         kind: "answered",
@@ -484,8 +386,8 @@ export const overTheNetwork = (): Reach => ({
       try {
         body = JSON.parse(text);
       } catch {
-        // Kept as the text it was. An endpoint answering HTML is a thing that
-        // happens, and "the answer would not parse" is a verdict of its own.
+        // Kept as text: an endpoint answering HTML happens, and that reads as no
+        // verdict rather than a crash.
         body = text;
       }
       return { kind: "answered", status: answered.status, body };

@@ -1,27 +1,12 @@
 /**
- * The payment protocol at the edge.
+ * The payment protocol at the edge. Encoding and decoding are the official x402
+ * packages'; this file adds which order a payment is for. The all-in-one x402
+ * middleware is not used because it verifies and settles around one request,
+ * and the order machine needs the two apart.
  *
- * The pieces here come from the official x402 packages and none of the protocol
- * is written by hand: the challenge and the payment are encoded and decoded by
- * `@x402/core`, and the asset a network is paid in comes from the same table
- * the official server reads. What this file adds is the one thing no library
- * can supply — which order a payment is for.
- *
- * That is also why the all-in-one middleware is not what mounts the purchase.
- * It verifies a payment and settles it around one handler, in one request, and
- * the order machine needs those two apart: in the synchronous mode the payment
- * is verified before the merchant is asked anything and executed only after the
- * goods come back, and in the asynchronous mode the charge goes through at the
- * purchase while the goods arrive hours later. Neither is a shape a
- * verify-handler-settle sandwich can hold. So the protocol comes from the
- * library and the sequence comes from the machine, which is the division
- * ADR-0003 §9 draws: the commodity is bought, the domain is ours.
- *
- * The order identifier travels in `extra` on the requirements the agent
- * accepts, and comes back inside the payment because a payment carries the
- * requirements it was made against. It is a hint and never an authority: the
- * price a payment is checked against is read from our own order, so a payment
- * naming somebody else's order buys nothing.
+ * The order identifier travels in the requirements' `extra` and comes back
+ * inside the payment. It is a hint, never an authority: a payment is checked
+ * against the price on our own order.
  */
 
 import { createHash } from "node:crypto";
@@ -50,26 +35,18 @@ import { isSandboxFacilitator, type PaymentConfig } from "../config.js";
 /** The x402 version this edge speaks. */
 export const X402_VERSION = 2;
 
-/** The header a challenge travels in, and the two the exchange uses. */
 export const PAYMENT_REQUIRED_HEADER = "PAYMENT-REQUIRED";
 export const PAYMENT_SIGNATURE_HEADER = "payment-signature";
-/** What version one of the protocol called the same header. */
+/** The payment header's name in version 1 of the protocol. */
 export const PAYMENT_SIGNATURE_HEADER_V1 = "x-payment";
 export const PAYMENT_RESPONSE_HEADER = "PAYMENT-RESPONSE";
 
-/** Where in the requirements an order says which order it is. */
 export const ORDER_ID_IN_EXTRA = "order_id";
 
 /**
- * A price in the smallest unit the token has, written out exactly.
- *
- * Money never becomes a float on the way through here. A price with more
- * fractional digits than the token carries is refused rather than rounded: a
- * rounded charge is a different charge, and which way it was rounded is the
- * difference between shorting the buyer and shorting the merchant. The publish
- * door and a price answer's door refuse such a price first, against
- * `PAYABLE_DECIMALS`, which a test holds equal to the token's own places, so
- * what reaches this throw is a card stored before the door refused it.
+ * A price in the token's smallest unit, written out exactly; money never
+ * becomes a float here. A price with more fractional digits than the token
+ * carries is refused, never rounded: a rounded charge is a different charge.
  */
 export function atomicUnits(amount: string, decimals: number): string {
   const [whole = "0", fraction = ""] = amount.split(".");
@@ -84,11 +61,9 @@ export function atomicUnits(amount: string, decimals: number): string {
   return written;
 }
 
-/** What a parcel's challenge says before any address is named. */
 const PARCEL_LISTED =
   "this is a parcel: the price shown is for the goods alone, and a purchase that names an address is priced for it with shipping included";
 
-/** What a parcel's challenge says once the purchase has named an address. */
 const PARCEL_PRICED = "this is a parcel: the amount asked includes shipping to the address named";
 
 export class PaymentEdge {
@@ -103,38 +78,20 @@ export class PaymentEdge {
   }
 
   /**
-   * What an agent is asked to pay, whose address it is paid to, and which order
-   * it is for.
+   * What an agent is asked to pay, to whom, and for which order. The agent pays
+   * the card's own merchant directly, so the address comes from that merchant,
+   * never from our configuration.
    *
-   * The address is the merchant's own, and that is the whole of the payment
-   * arrangement this gateway has: the agent pays the seller directly, nothing
-   * passes through us, and there is no moment at which a merchant's money is
-   * ours (ADR-0019). So the address comes in from the card's own merchant
-   * rather than out of our configuration, and a challenge for one merchant's
-   * product can never name another's address, because there is no other address
-   * in reach of this call.
-   *
-   * A merchant with none is refused rather than defaulted. The gateway does
-   * have an address in its configuration, and it is the operator's: standing it
-   * in here would send a merchant's takings to somebody else, in a payment that
-   * settles on a chain and cannot be called back, with nobody the wiser. The
-   * one place it is used is the sandbox, which settles against nothing — no
-   * chain, no money — and where the address is a placeholder a challenge has to
-   * name rather than a destination.
-   *
-   * Nothing reaches here without an address on a deployment that settles for
-   * real: the publish door refuses a merchant who has set none, and a wallet
-   * cannot be taken away once set. The throw is what that promise is worth if
-   * it is ever wrong, and it says which of the two silences it is.
+   * A merchant with no address is refused, never defaulted: the configured
+   * address is the operator's, and standing it in would send a merchant's
+   * takings to somebody else irreversibly. It is used only in the sandbox,
+   * which settles against nothing.
    */
   requirementsFor(
     price: { readonly amount: string; readonly currency: string },
     orderId: string | null,
     payoutWallet: string | null,
   ): PaymentRequirements {
-    // The set the publish door and the price answer's door hold a price to, so
-    // what reaches this line in another currency is a card stored before the
-    // door refused it.
     if (!PAYABLE_CURRENCIES.includes(price.currency.toUpperCase())) {
       throw new Error(
         `${price.currency} is not a currency this gateway can charge in, and it will not invent a rate to one that is`,
@@ -154,48 +111,31 @@ export class PaymentEdge {
       extra: {
         name: asset.name,
         version: asset.version,
-        // A challenge issued for one order says which; one issued for a card
-        // alone, to a crawler asking what a resource costs, says nothing,
-        // because there is no order behind it to name.
+        // A challenge for a card alone, with no order behind it, names none.
         ...(orderId === null ? {} : { [ORDER_ID_IN_EXTRA]: orderId }),
       },
     };
   }
 
   /**
-   * The canonical address of one product, which is what a listing is keyed on.
-   *
-   * It is built from the configured base and the route table, never from the
-   * request. Behind a reverse proxy that ends the agent's TLS connection and
-   * passes the request on to us, the request says `http://` and carries
-   * whatever query string the caller wrote, and two spellings of one address
-   * are two resources to a catalog — two listings for one product, or one that
-   * flickers between them. The identifier is put through the route table's own
-   * substitution rather than pasted in, because an identifier may carry
-   * characters that would otherwise become extra path segments.
+   * The canonical address of one product, which a catalog listing is keyed on.
+   * It is built from the configured base, never from the request: behind a
+   * TLS-terminating proxy the request says `http://` and carries the caller's
+   * query string, and two spellings would be two listings. The identifier goes
+   * through the route table's substitution so it cannot add path segments.
    */
   resourceUrlFor(itemId: string): string {
     return `${this.#baseUrl}${expandPath(API_ROUTES.purchase_item.path, { item_id: itemId })}`;
   }
 
   /**
-   * The whole challenge, as the header carries it: what is being paid for, what
-   * it costs, and enough about the product for an agent that has never heard of
-   * us to find it and buy it.
+   * The whole challenge, as the header carries it, including the discovery
+   * declaration that lets an agent find and buy the product.
    *
-   * The last part is the discovery declaration, and it is assembled here rather
-   * than written out: `bazaarDeclarationOf` decides what a card says about
-   * itself and the protocol's own library turns that into the wire shape.
-   * Nothing in this file writes the format by hand.
-   *
-   * The declaration is the same whichever method the request came in on. It
-   * describes the purchase — a POST with a JSON body — because that is what an
-   * agent reads it for, and an agent reads it off the GET probe: on 2026-09-10
-   * one read a declaration that named GET, paid GET, and met the branch that
-   * reads no payment. The catalog's validator, asked with GET, objects that
-   * the method does not match its probe and says to ask with POST; asked with
-   * POST it is answered by the same declaration on a call that matches
-   * (docs/research/26-discovery-method-on-get.md, ADR-0012).
+   * The declaration always describes the purchase, a POST with a JSON body,
+   * whichever method the request came in on: an agent reads it off the GET
+   * probe, and a declaration naming GET leads it to pay with GET, which reads
+   * no payment.
    */
   challengeFor(
     price: { readonly amount: string; readonly currency: string },
@@ -204,7 +144,6 @@ export class PaymentEdge {
       readonly itemId: string;
       readonly card: Card;
       readonly serviceName: string | null;
-      /** Where this card's own merchant is paid, which is who the agent pays. */
       readonly payoutWallet: string | null;
     },
     why?: string,
@@ -214,10 +153,9 @@ export class PaymentEdge {
       serviceName: listed.serviceName,
     });
 
-    // A parcel's card lists the goods alone, and its purchase is priced for the
-    // address it names, shipping included. An agent choosing by the catalogue
-    // number is told which number it is reading, here in our own words rather
-    // than in the merchant's description.
+    // A parcel's listed price is for the goods alone, and its purchase is
+    // priced with shipping to the address named; the agent is told which
+    // number it is reading.
     const said =
       listed.card.fulfillment === "ship"
         ? [why, orderId === null ? PARCEL_LISTED : PARCEL_PRICED]
@@ -235,9 +173,7 @@ export class PaymentEdge {
         ...(declared.resource.serviceName === undefined
           ? {}
           : { serviceName: declared.resource.serviceName }),
-        // The contract hands the tags out read-only, and the protocol's own
-        // resource block takes a plain array. A copy rather than a cast: what
-        // goes into the challenge is nobody else's to change afterwards.
+        // A copy, not a cast: the contract's tags are read-only.
         ...(declared.resource.tags === undefined ? {} : { tags: [...declared.resource.tags] }),
       },
       accepts: [this.requirementsFor(price, orderId, listed.payoutWallet)],
@@ -246,20 +182,14 @@ export class PaymentEdge {
     return encodePaymentRequiredHeader(challenge);
   }
 
-  /** The settlement receipt, as the header carries it. */
   receiptHeader(settlement: SettleResponse): string {
     return encodePaymentResponseHeader(settlement);
   }
 
   /**
-   * The address the sandbox names where the merchant has set none.
-   *
-   * It exists so that a local stack sells with nothing configured about a
-   * merchant's chain identity, which is the whole reason the sandbox exists.
-   * Everywhere else this refuses, and the two refusals are told apart because
-   * they are fixed in two different places: on a deployment that settles for
-   * real the merchant has to set an address, and in a sandbox with nothing
-   * configured at all the operator has to.
+   * The placeholder address the sandbox names where the merchant has set none.
+   * Everywhere else this refuses; the two refusals differ because one is fixed
+   * by the merchant and the other by the operator.
    */
   #sandboxPlaceholder(): string {
     if (!isSandboxFacilitator(this.#config.facilitatorUrl)) {
@@ -280,32 +210,17 @@ export class PaymentEdge {
     return this.#config.network as `${string}:${string}`;
   }
 
-  /** The token this gateway charges in, for anything that has to name it. */
   token(): TokenIdentity {
     return { network: this.#config.network, asset: getDefaultAsset(this.#network()).asset };
   }
 }
 
 /**
- * One card's declaration in the shape the protocol carries it.
- *
- * Both steps are the library's. `declareDiscoveryExtension` builds the
- * declaration and the schema it is checked against; `enrichDeclaration` is the
- * hook the official resource server calls on every challenge, and it is what
- * writes the method into both halves — the declaration says which method it
- * describes, and the schema beside it is narrowed to that one method. Left
- * out, the declaration would fail the check the catalog runs on it, which
- * demands a method and has none to find. The official server hands the hook
- * the request's method; this hands it the purchase's, whatever the request.
- *
- * The hook wants a transport context, and what it reads out of one is the
- * method and, where it is also given a route pattern, the values of that
- * pattern's parameters. No route pattern is passed: our own route does carry
- * one — the product — but naming it would put the identifier into the
- * declaration a second time, where it is already the resource's own address.
- * So the hook adds nothing but the method, and the empty path below is never
- * read. It is there because the hook decides whether it has a transport
- * context at all by looking for the two keys, and one of them is `adapter`.
+ * One card's declaration in the shape the protocol carries it. The library's
+ * `enrichDeclaration` hook writes the method in, without which the catalog's
+ * check fails; it is given the purchase's method whatever the request's. No
+ * route pattern is passed, so the product identifier is not declared twice;
+ * the empty `getPath` is never read but the hook requires an `adapter` key.
  */
 function discoveryExtensionOf(declared: BazaarDeclaration): Record<string, unknown> {
   const built = declareDiscoveryExtension({
@@ -324,55 +239,24 @@ function discoveryExtensionOf(declared: BazaarDeclaration): Record<string, unkno
 }
 
 /**
- * A fingerprint of one payment: the same for two presentations of the same
- * authorisation, and not something an agent can vary at will.
+ * The replay guard's key for one payment: the same for every presentation of
+ * one authorisation, and not something an agent can vary.
  *
- * This is the replay guard, so what it keys on has to match what the chain
- * keys on, exactly and in both directions. An EIP-3009 token records
- * `authorizationState[authorizer][nonce]`, so a payment is identified by the
- * pair — the payer and the nonce — and neither half alone will do. The nonce
- * alone makes the nonce space global: the first payer to use a nonce would
- * block every other payer who ever picked the same one, permanently, and a
- * client that counts from one picks exactly those. The payer alone identifies
- * nothing.
+ * It keys on what the token contract keys on,
+ * `authorizationState[payer][nonce]`, plus the token from our configuration
+ * (never from the payment). The nonce alone would make the nonce space global
+ * across payers. Hex is lowercased and
+ * amounts go through BigInt, so `0xABCD` and `0xabcd` are not two payments.
+ * The protocol version and the agent's copy of amount and address stay out:
+ * an agent could vary them freely.
  *
- * And it has to be canonical, because the signature is over decoded bytes and
- * this is over text. `0xABCD` and `0xabcd` are one nonce to the token contract,
- * to the facilitator and to the signature, and were two fingerprints here —
- * which is a replay guard an attacker defeats by holding down the shift key.
- * So every hex value is lowercased and required to carry its prefix, and every
- * amount is put through BigInt, where `1000000`, `"1000000"` and `"0xF4240"`
- * are one number rather than three strings — as far out as a JSON number is
- * exact, and no further. Past 2^53 a number is left as it is, because a double
- * that far out is no longer the integer it was written as; the cost is that
- * such an amount and its own text are two fingerprints rather than one.
- *
- * Nothing else goes in, and two omissions are deliberate. The protocol version
- * is a JSON field the agent types and nothing checks; digested, it would let an
- * agent make as many fingerprints out of one authorisation as it liked by
- * counting upwards. And the amount and the address are the agent's own copy of
- * what we asked for — they are checked elsewhere, against our own order, and
- * they are not what a token records.
- *
- * What does go in besides the pair is the token itself, and it comes from our
- * configuration rather than from the payment. A token records that state in its
- * own contract, so one payer and one nonce on two different assets are two
- * payments; taking the asset from the agent would hand back the variation this
- * whole function exists to remove.
- *
- * Where a scheme carries no authorisation under that name the signature is used
- * instead, canonicalised the same way; where it carries neither, the whole
- * payload is, with the amounts inside it normalised. That last one is the weak
- * case and is worth saying plainly: a scheme could accept a payload with a
- * field its verifier ignores, and the addition would change the fingerprint
- * while leaving the payment valid. Reaching into a payload at all is the
- * protocol's business rather than ours, and this reaches in exactly far enough
- * to stop one authorisation buying two orders.
+ * Without an authorisation the signature is used, and without either the
+ * whole canonicalised payload. That last case is weak: a field the verifier
+ * ignores would change the fingerprint while the payment stays valid.
  */
 export function paymentFingerprint(payload: PaymentPayload, token: TokenIdentity): string {
-  // The payload may be anything at all: the decoder is a base64 JSON parse with
-  // no schema behind it, so a header naming a known order and carrying nothing
-  // else reaches here.
+  // The decoder is a schemaless base64 JSON parse, so the payload may be
+  // anything at all.
   const signed = asRecord(payload.payload) ?? {};
   const authorization = asRecord(signed.authorization);
 
@@ -391,7 +275,6 @@ export function paymentFingerprint(payload: PaymentPayload, token: TokenIdentity
   return digestOf({ ...chain, by: "payload", payload: canonical(signed) });
 }
 
-/** Which token an authorisation is spent on, as this gateway has configured it. */
 export interface TokenIdentity {
   readonly network: string;
   readonly asset: string;
@@ -401,11 +284,8 @@ export interface TokenIdentity {
 const AMOUNTS = new Set(["value", "amount", "validAfter", "validBefore", "maxAmount"]);
 
 /**
- * The payload with every value written one way.
- *
- * Hex is lowercased, numbers are put through BigInt, and everything else is
- * left as it is. Two spellings of one payment come out identical; two payments
- * do not.
+ * The payload with hex lowercased and amounts put through BigInt, so two
+ * spellings of one payment come out identical.
  */
 function canonical(value: unknown, key?: string): unknown {
   if (Array.isArray(value)) {
@@ -433,12 +313,14 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-/** A hex string in one spelling, or nothing where the value is not one. */
 function asHex(value: unknown): string | null {
   return typeof value === "string" && /^0x[0-9a-fA-F]+$/.test(value) ? value.toLowerCase() : null;
 }
 
-/** A whole number in one spelling, however it was written. */
+/**
+ * A whole number in one spelling. A JSON number past 2^53 is left alone, since
+ * it is no longer the integer it was written as.
+ */
 function asAmount(value: unknown): string | null {
   if (typeof value === "bigint") {
     return value.toString();
@@ -468,16 +350,9 @@ function stably(value: unknown): string {
 
 /**
  * What an agent presented, if anything, and which order it says it is for.
- *
- * A payment that will not decode is answered the way a payment naming an order
- * we are not holding is: with a fresh challenge rather than an error about our
- * parser, because that is the answer that lets the agent try again. It is not,
- * though, the same as no payment at all, and the two used to come back here as
- * one `null`. An agent that presented something and got back a bare price has
- * no way to tell that its own encoding is what went wrong, and every retry it
- * makes fails the same way. So "there was none" is `null` and "there was one
- * and nothing could be read out of it" says so, and the caller has the words to
- * put on the challenge.
+ * `null` means no payment; `"unreadable"` means one that would not decode,
+ * which the caller answers with a fresh challenge that says so, or the agent
+ * cannot tell its own encoding is at fault.
  */
 export function presentedPayment(headers: Record<string, string | string[] | undefined>):
   | {

@@ -1,24 +1,14 @@
 /**
- * A payout wallet change on the live deployment: announced first, then waited
- * on (ADR-0019).
+ * A payout wallet change on the live deployment. The payout address is the one
+ * setting whose change redirects money, and only a dashboard session reaches
+ * it, so the wait guards against a session left signed in on somebody else's
+ * device or stolen: a replacement is announced to every account naming the
+ * merchant before anything is written, and takes effect forty-eight hours
+ * later.
  *
- * The address a merchant is paid at is the one setting whose change redirects
- * money, and only a session in the dashboard reaches it, inside the process
- * (ADR-0030), so what it guards against is a session: one left signed in on
- * somebody else's device, or one somebody stole. So on the live deployment a
- * replacement is told to every account naming the merchant before anything is
- * written, and it takes effect forty-eight hours after that. Every change here
- * is asked for the way the dashboard asks; what a merchant's code reads back
- * and what an agent is told to pay while the wait runs go through `serve`.
- *
- * The dashboard is not in this file. The harness records what the gateway asked
- * it to say and answers as a test tells it to, so each of the dashboard's answers
- * — every message handed over, nobody to tell, a message refused — and a
- * telling that throws or does not finish are cases here, and what the dashboard
- * does with an announcement is the dashboard's own suite.
- *
- * Time is the harness's clock and nothing else: forty-eight hours pass because
- * a test says so.
+ * The dashboard is not in this file: the harness records what the gateway asked
+ * it to announce and answers as each test tells it to. Time is the harness's
+ * clock; forty-eight hours pass because a test says so.
  */
 
 import type { Card } from "@nuanu-ai/agentify-contracts";
@@ -191,8 +181,8 @@ describe("the first address a merchant sets", () => {
 describe("a replacement on the live deployment", () => {
   it("waits forty-eight hours, and payment requests name the address paid now until then", async () => {
     // The promise the whole wait is for: a session that is not the owner's
-    // cannot move a merchant's money today. Until the moment is reached, every agent asking
-    // to pay is told the old address.
+    // cannot move a merchant's money today. Until the moment is reached, every
+    // agent asking to pay is told the old address.
     const { served, harnessed } = await started();
     const itemId = await published(served, harnessed.merchant.key);
     const asked = harnessed.now();
@@ -393,10 +383,10 @@ describe("a change that could not be announced", () => {
   );
 
   it("is refused as not announced when telling throws", async () => {
-    // The dashboard tells in the gateway's own process (ADR-0030), so a
-    // failure is a throw from our own code: reading the addresses, or a defect
-    // before one message or between two. That is "not every message was handed
-    // over, and some may have been", which is what this refusal says.
+    // The dashboard tells in the gateway's own process, so a failure is a throw
+    // from our own code: reading the addresses, or a defect before one message
+    // or between two. That is "not every message was handed over, and some may
+    // have been", which is what this refusal says.
     const { served, harnessed } = await started();
     await ask(harnessed, A_WALLET);
     const before = await walletOf(served, harnessed.merchant.key);
@@ -646,10 +636,9 @@ describe("a new key on the live deployment", () => {
   });
 
   it("names a key made elsewhere by one line of at most a hundred characters", async () => {
-    // A key written before labels had a limit can carry anything. When it
-    // issues another key, the announcement names it all the same, as one line
-    // a message can carry, rather than failing to announce because of how a key
-    // was named.
+    // A key made elsewhere can carry any label. When it issues another key, the
+    // announcement names it all the same, as one line a message can carry,
+    // rather than failing to announce because of how a key was named.
     const { served, harnessed } = await started();
     const long = `the stock\nworker ${"k".repeat(200)}`;
     const key = await harnessed.addKey(harnessed.merchant.id, long);

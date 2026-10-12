@@ -1,13 +1,9 @@
 /**
- * Recording a payment fact the call did not return.
- *
- * The promise is a narrow one. An order whose charge went quiet can be
- * finished by a fact somebody read elsewhere, and finishing it does not ask
- * the facilitator again and does not present that fact as the facilitator's
- * own answer. A fact written while the original settle call is still out
- * races that answer, and the one that lands second is dropped. A failure
- * recorded on an open order would allow a second charge on a guess about
- * the first. Neither is written.
+ * Recording a payment fact the settle call did not return. It finishes an
+ * order whose charge went quiet without asking the facilitator again or
+ * presenting the fact as the facilitator's answer. A fact written while the
+ * settle call is still out races its answer, and whichever lands second is
+ * dropped.
  */
 
 import type { Card } from "@nuanu-ai/agentify-contracts";
@@ -210,12 +206,9 @@ describe("recording what a silent charge came to", () => {
   });
 
   it("does not take a settle word an earlier charge left behind as this one's", async () => {
-    // The first charge failed, the buyer repeated the purchase with a fresh
-    // authorisation, and the second charge is the one out there now. A word
-    // about the first is already on the order, so a guard that asks only
-    // whether some settle word exists sees the wrong call's answer and writes
-    // against a charge still in flight — and of that fact and the one the
-    // facilitator is about to return, whichever lands second is dropped.
+    // A settle word from the first, failed charge is already on the order. A
+    // guard that asks only whether any settle word exists would write against
+    // the second charge while it is still in flight.
     const harnessed = await harness({
       QUOTE_RESPONSE_MS: "50",
       SYNC_RESPONSE_MS: "200",
@@ -243,8 +236,6 @@ describe("recording what a silent charge came to", () => {
     expect(failed?.order.payment).toBe("settle_failed");
     expect(failed?.paymentWords.filter((word) => word.about === "settle")).toHaveLength(1);
 
-    // The buyer comes back an hour later, and this charge is the one nobody
-    // has heard from.
     harnessed.advance(60 * 60 * 1_000);
     const release = harnessed.facilitator.holdSettle();
     const second = authorisation(harnessed, BUYER, "nonce-2");
@@ -261,8 +252,7 @@ describe("recording what a silent charge came to", () => {
     expect(refused.exit).not.toBe(0);
     expect((await harnessed.store.orderById(orderId))?.order.payment).toBe("outcome_unknown");
 
-    // And once that call has returned, the word beside the order is its own
-    // and a fact read elsewhere can be written against it.
+    // Once that call returns, a fact read elsewhere can be recorded.
     release();
     await repeating;
     const returned = await harnessed.store.orderById(orderId);
