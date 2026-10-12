@@ -1,9 +1,10 @@
 /**
  * A log line about a failure is read by the operator who has to act on it, and
  * kept wherever logs go, which is further than anything this gateway erases.
- * So it may say what kind of failure it was and the code a system put on it,
- * and nothing the failure carried: not a shop's key, not a buyer's address,
- * not a newline a stranger put in a request to start a line of their own.
+ * So it may say what kind of failure it was, the code a system put on it and
+ * where in the code it was thrown, and nothing the failure carried: not a
+ * shop's key, not a buyer's address, not a newline a stranger put in a request
+ * to start a line of their own.
  */
 
 import { DrizzleQueryError } from "drizzle-orm/errors";
@@ -16,11 +17,27 @@ const SECRET = "cs_a-secret-from-the-shop";
 const BUYER = "buyer-7c1e05@example.com";
 const FORGED = "\n[gateway] forged";
 
+/** Where a frame of this file's names its location. */
+const IN_THIS_FILE = /failure-named\.test\.ts:\d+:\d+\)/;
+
+const caught = (work: () => unknown): unknown => {
+  try {
+    work();
+  } catch (thrown) {
+    return thrown;
+  }
+  throw new Error("nothing was thrown");
+};
+
+function throwsHere(): never {
+  throw new TypeError(`${SECRET}${FORGED}`);
+}
+
 describe("a failure, as a log line names it", () => {
   it("is its class and the code a system put on it, without its message", () => {
     const failed = Object.assign(new Error(`${SECRET}${FORGED}`), { code: "ECONNREFUSED" });
 
-    expect(failureNamed(failed)).toBe("Error ECONNREFUSED");
+    expect(failureNamed(failed)).toMatch(/^Error ECONNREFUSED; at /);
   });
 
   it("keeps a database's refusal code and none of the row it quoted", () => {
@@ -32,7 +49,8 @@ describe("a failure, as a log line names it", () => {
     refused.code = "23505";
     refused.detail = `Key (email)=(${BUYER}) already exists.`;
 
-    expect(failureNamed(refused)).toBe("DatabaseError 23505");
+    expect(failureNamed(refused)).toMatch(/^DatabaseError 23505; at /);
+    expect(failureNamed(refused)).not.toContain(BUYER);
   });
 
   it("follows what caused it, so a failed request says what the network did", () => {
@@ -42,13 +60,14 @@ describe("a failure, as a log line names it", () => {
     });
     const failed = new TypeError("fetch failed", { cause: refused });
 
-    expect(failureNamed(failed)).toBe("TypeError, caused by Error ECONNREFUSED");
+    expect(failureNamed(failed)).toMatch(/^TypeError, caused by Error ECONNREFUSED; at /);
   });
 
   it("keeps a name shaped like an error's, such as a timeout's", () => {
     const timedOut = new DOMException(`${SECRET} timed out`, "TimeoutError");
 
-    expect(failureNamed(timedOut)).toBe("DOMException TimeoutError");
+    expect(failureNamed(timedOut)).toMatch(/^DOMException TimeoutError(; at |$)/);
+    expect(failureNamed(timedOut)).not.toContain(SECRET);
   });
 
   it("keeps the store's own sentence for a database failure, which names only identifiers", () => {
@@ -83,7 +102,7 @@ describe("a failure, as a log line names it", () => {
       },
     });
 
-    expect(failureNamed(unreadable)).toBe("a failure that could not be named");
+    expect(failureNamed(unreadable)).toMatch(/^a failure that could not be named(; at |$)/);
   });
 
   it("takes no name or code from a value's own fields unless they read as one", () => {
@@ -94,5 +113,59 @@ describe("a failure, as a log line names it", () => {
     );
 
     expect(failureNamed(parsed)).toBe("Object");
+  });
+});
+
+describe("where a failure was thrown, as a log line names it", () => {
+  it("is the frames of its stack, without the line that carries its message", () => {
+    const named = failureNamed(caught(throwsHere));
+
+    expect(named).toMatch(/^TypeError; at throwsHere \(/);
+    expect(named).toMatch(IN_THIS_FILE);
+    expect(named).not.toContain(SECRET);
+    expect(named).not.toContain("\n");
+  });
+
+  it("takes no line of the message for a frame, however much it looks like one", () => {
+    const named = failureNamed(
+      caught(() => {
+        throw new Error(`${SECRET}\n    at /srv/${SECRET}/forged.ts:1:1`);
+      }),
+    );
+
+    expect(named).toMatch(IN_THIS_FILE);
+    expect(named).not.toContain(SECRET);
+  });
+
+  it("keeps no frame from a function whose name was given a newline", () => {
+    // Code can name a function after data, by a computed key or by redefining
+    // its name, and the name is written into the frame as it is.
+    const renamed = function renamed(): never {
+      throw new Error("renamed");
+    };
+    Object.defineProperty(renamed, "name", { value: `split\n${SECRET}` });
+
+    const named = failureNamed(caught(renamed));
+
+    expect(named).not.toContain(SECRET);
+    expect(named).not.toContain("\n");
+  });
+
+  it("is the first eight frames, however deep the failure", () => {
+    const deeper = (depth: number): never => (depth === 0 ? throwsHere() : deeper(depth - 1));
+
+    const named = failureNamed(caught(() => deeper(20)));
+
+    expect(named.match(/:\d+:\d+\)/g)).toHaveLength(8);
+  });
+
+  it("is left out where the stack does not begin with the failure's own message", () => {
+    // A message changed after its stack was written no longer says where the
+    // stack's own lines end, so none of them is trusted.
+    const changed = new Error(`${SECRET}\n    at /srv/${SECRET}/forged.ts:1:1`);
+    void changed.stack;
+    changed.message = "another message";
+
+    expect(failureNamed(changed)).toBe("Error");
   });
 });

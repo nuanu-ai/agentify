@@ -16,6 +16,7 @@ import { PgBossQueue } from "./adapters/pgboss/queue.js";
 import { connect, type Database, PostgresStore } from "./adapters/postgres/store.js";
 import { SWEEP_EFFECTS } from "./app/runner.js";
 import type { Reminder } from "./ports/queue.js";
+import type { StoredCard } from "./ports/store.js";
 import { startGateway } from "./start.js";
 import {
   countedIds,
@@ -241,6 +242,28 @@ describe("a failure in the gateway's log", () => {
 
     expect(status).toBe(500);
     expect(written).toContain("list_merchant_cards failed");
+    expectNothingCarried(written);
+  });
+
+  it("says where a defect behind a call was thrown, and not what its message quoted", async () => {
+    // A defect's own message quotes the code's values: here the key it read
+    // past the end with.
+    const harnessed = await started();
+    served = await serve(harnessed);
+    const nothing = undefined as unknown as Readonly<Record<string, readonly StoredCard[]>>;
+    harnessed.store.cards = async function readsPastTheEnd() {
+      return nothing[SECRET] ?? [];
+    };
+
+    const written = await loggedWhile(async () => {
+      await served?.call("GET", "/v0/cards", {
+        headers: { authorization: `Bearer ${harnessed.merchant.key}` },
+      });
+    });
+
+    expect(written).toMatch(/list_merchant_cards failed: TypeError; at .*readsPastTheEnd/);
+    expect(written).toMatch(/logs\.test\.ts:\d+:\d+\)/);
+    expect(written).not.toContain("Cannot read");
     expectNothingCarried(written);
   });
 });
