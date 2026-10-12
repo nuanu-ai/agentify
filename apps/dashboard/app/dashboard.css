@@ -765,7 +765,7 @@ h2 {
 .issue:has(> .field) {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 12px;
+  gap: 0 12px;
   align-items: end;
 }
 .issue > .field {
