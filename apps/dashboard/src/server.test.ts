@@ -2757,6 +2757,33 @@ describe("the keys screen", () => {
     expect((await browser.get("/keys")).html).not.toContain(SECRET);
   });
 
+  it("hands the secret only to the press that issued it, in an answer no cache keeps", async () => {
+    // Where script runs, React Router sends the press as a data request and
+    // draws the page from its answer. A reload, a prefetch, Back and the data
+    // a page asks for after a press ask again, and a browser may keep a page's
+    // data for a moment: none of those answers may carry the secret.
+    const keys = withKeys();
+    const { browser } = await started({ client: keys.client });
+    await browser.signIn();
+    await browser.get("/keys");
+
+    const pressed = await browser.post("/keys.data", { label: "the second worker" });
+
+    expect(keys.issued).toStrictEqual(["the second worker"]);
+    expect(pressed.html).toContain(SECRET);
+    expect(pressed.headers.get("cache-control")).toBe("private, no-store");
+    for (const asked of [
+      "/keys.data",
+      `/keys.data?_routes=${encodeURIComponent("routes/gate,routes/keys")}`,
+      "/keys",
+      "/keys/new",
+      "/keys/new.data",
+    ]) {
+      expect((await browser.get(asked)).html, asked).not.toContain(SECRET);
+    }
+    expect(keys.issued).toStrictEqual(["the second worker"]);
+  });
+
   it("shows the secret of the key it issued even when the list cannot be read right after", async () => {
     // A key issued and never seen is one the merchant cannot use and must find
     // and revoke, so nothing read after the issue may stand between the press
