@@ -116,6 +116,12 @@ describe("a card for a parcel", () => {
     expect(policyFor(parcelCard, testConfig()).deadlines.asyncFulfillmentMs).toBe(172_800_000);
   });
 
+  it("waits for its charge as long as every order paid before its goods", () => {
+    const config = testConfig({ SETTLE_RESPONSE_MS: "2000", SETTLE_BEFORE_GOODS_MS: "15000" });
+
+    expect(policyFor(parcelCard, config).deadlines.settleResponseMs).toBe(15_000);
+  });
+
   it("is a card this gateway can show an agent, once it may", () => {
     const shown = publicCardOf(parcelCard, {
       id: "itm_beans",
