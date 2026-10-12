@@ -2544,6 +2544,25 @@ describe("the receipts screen", () => {
     expect(text).toContain("Delivered or shipped 1 of 1 receipt");
   });
 
+  it("links each receipt to its transfer on the chain the money moved on", async () => {
+    // A merchant matching a receipt to their wallet had only its time to go
+    // by (second manual run, finding 13).
+    const transfer = `0x${"5e".repeat(32)}`;
+    const { browser, gateway, harnessed } = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    harnessed.facilitator.willSettle({ settled: true, transaction: transfer });
+    const itemId = await publish(gateway, roomCard);
+    await buyOverHttp(harnessed, gateway, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    await browser.signIn();
+
+    const html = (await browser.get("/receipts")).html;
+
+    expect(html).toContain(`href="https://sepolia.basescan.org/tx/${transfer}"`);
+  });
+
   it("marks money that was never real as what it is", async () => {
     // Stage one marks every order as a test, so today this is every row on the
     // screen. A ledger of payments that never happened, laid out as a ledger of

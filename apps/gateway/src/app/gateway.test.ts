@@ -2758,6 +2758,12 @@ describe("the test mark on an order and its receipt", () => {
     };
   };
 
+  it("names on the receipt the transfer the payment layer reported", async () => {
+    const sold = await soldOn({ PAYMENT_NETWORK: "eip155:84532" });
+
+    expect(sold.receipt?.transaction).toBe("0xtx1");
+  });
+
   it("is true on a test environment", async () => {
     const sold = await soldOn({ PAYMENT_NETWORK: "eip155:84532" });
 
