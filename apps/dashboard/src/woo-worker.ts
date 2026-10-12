@@ -16,6 +16,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { failureNamed } from "@agentify/gateway/failure-named";
 import {
   type HandlerAnswer,
   localityOf,
@@ -45,6 +46,12 @@ import {
   shippingRatesInTheShop,
 } from "./woo-shop.js";
 import type { WooConnection, WooOrderFacts, WooPermission, WooShops } from "./woo-shops.js";
+
+/**
+ * A shop as a log line names it. Its address is kept as the merchant typed it,
+ * where a newline the URL parser drops without a word is still in the text.
+ */
+const shopNamed = (shopUrl: string): string => new URL(shopUrl).origin;
 
 export interface Filling {
   readonly shops: WooShops;
@@ -199,7 +206,7 @@ export const fillFromTheShop = async (
     // screen; the agent only the fact, since the grant is nothing it could act
     // on.
     console.error(
-      `[dashboard] the shop at ${connection.shopUrl} granted ${JSON.stringify(connection.permissions)}` +
+      `[dashboard] the shop at ${shopNamed(connection.shopUrl)} granted ${JSON.stringify(connection.permissions)}` +
         " access, which cannot create an order, so every sale on it is refused",
     );
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
@@ -404,7 +411,7 @@ const fillParcelFromTheShop = async (
   }
   if (connection.permissions !== "read_write") {
     console.error(
-      `[dashboard] the shop at ${connection.shopUrl} granted ${JSON.stringify(connection.permissions)}` +
+      `[dashboard] the shop at ${shopNamed(connection.shopUrl)} granted ${JSON.stringify(connection.permissions)}` +
         " access, which cannot create an order, so every sale on it is refused",
     );
     return await refuse(
@@ -489,7 +496,7 @@ const samePermission = (left: WooPermission, right: WooPermission): boolean =>
 
 const unknownCreation = (orderId: string, shopUrl: string, attemptedAt: Date): HandlerAnswer => {
   console.error(
-    `[dashboard] ${orderId} was already being placed in the shop at ${shopUrl} at` +
+    `[dashboard] ${orderId} was already being placed in the shop at ${shopNamed(shopUrl)} at` +
       ` ${attemptedAt.toISOString()} and that attempt never reported back. It is refused` +
       " rather than placed again; look for an order carrying this identifier as its" +
       " transaction id before deciding nothing happened.",
@@ -794,8 +801,7 @@ export const followShipments = async (
       }
     } catch (thrown) {
       console.error(
-        `[dashboard] the parcels of ${connection.accountId} could not be followed this time`,
-        thrown,
+        `[dashboard] the parcels of ${connection.accountId} could not be followed this time: ${failureNamed(thrown)}`,
       );
     }
   }
@@ -863,7 +869,9 @@ export const startWooWorker = (
         } catch (thrown) {
           // A turn that threw must not take the loop with it: the other end is
           // somebody else's shop and network.
-          console.error(`[dashboard] a WooCommerce turn failed for ${accountId}`, thrown);
+          console.error(
+            `[dashboard] a WooCommerce turn failed for ${accountId}: ${failureNamed(thrown)}`,
+          );
           await new Promise((resolve) =>
             setTimeout(resolve, parts.betweenTurnsMs ?? BETWEEN_TURNS_MS),
           );
@@ -895,7 +903,9 @@ export const startWooWorker = (
           }
         }
       } catch (thrown) {
-        console.error("[dashboard] the WooCommerce worker could not read its connections", thrown);
+        console.error(
+          `[dashboard] the WooCommerce worker could not read its connections: ${failureNamed(thrown)}`,
+        );
       }
       await new Promise((resolve) => setTimeout(resolve, parts.betweenTurnsMs ?? BETWEEN_TURNS_MS));
     }
@@ -909,7 +919,9 @@ export const startWooWorker = (
       try {
         await followShipments(parts);
       } catch (thrown) {
-        console.error("[dashboard] the parcels could not be followed this time", thrown);
+        console.error(
+          `[dashboard] the parcels could not be followed this time: ${failureNamed(thrown)}`,
+        );
       }
       // A stop during the pass found nothing to wake.
       if (!running) break;
