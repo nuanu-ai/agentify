@@ -19,7 +19,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { defineConfig, mergeConfig } from "vitest/config";
-import { jsxRuntime, unitTests } from "../vitest.config.js";
+import { jsxRuntime, reactRouterExpress, unitTests } from "../vitest.config.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const packageDir = process.env.AGENTIFY_MUTATION_PACKAGE_DIR;
@@ -96,6 +96,6 @@ export default mergeConfig(
   defineConfig({ oxc: jsxRuntime, test: unitTests }),
   defineConfig({
     ...(family === "scanner" ? scannerTarget : {}),
-    resolve: { alias },
+    resolve: { alias: [...alias, reactRouterExpress] },
   }),
 );

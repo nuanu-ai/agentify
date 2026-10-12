@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { configDefaults, defineConfig, type ViteUserConfig } from "vitest/config";
 
@@ -49,6 +50,12 @@ const scannerSources = [
  */
 const shared: TestOptions = {
   environment: "node",
+  // React Router's Express adapter checks the request context with
+  // `instanceof`, so it must load the router through the runner the code under
+  // test loads it through; left to Node, it gets a second copy and refuses
+  // every request. Its ES module is named, since the runner would otherwise
+  // pick its CommonJS one, which Node's own `require` runs.
+  server: { deps: { inline: ["@react-router/express"] } },
   execArgv: ["--no-experimental-webstorage"],
   setupFiles: [source("./vitest.setup.ts")],
   passWithNoTests: false,
@@ -91,8 +98,16 @@ export const jsxRuntime: NonNullable<ViteUserConfig["oxc"]> = {
   jsx: { runtime: "automatic", importSource: "react" },
 };
 
+/** The adapter's ES module; `shared` says why it is named. */
+export const reactRouterExpress = {
+  find: /^@react-router\/express$/,
+  replacement: createRequire(source("./apps/dashboard/package.json")).resolve(
+    "@react-router/express",
+  ),
+};
+
 export default defineConfig({
-  resolve: { alias: scannerSourceAlias },
+  resolve: { alias: [...scannerSourceAlias, reactRouterExpress] },
   oxc: jsxRuntime,
   test: {
     // Two projects rather than two configs: a file the configuration does not
