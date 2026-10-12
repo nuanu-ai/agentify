@@ -83,7 +83,7 @@ const throughTheGate = async (request: Request, identity: ReturnType<typeof iden
   }
 };
 
-const form = (cookie: string, fields: Record<string, string>): Request =>
+const form = (cookie: string, fields: Record<string, string> | string[][]): Request =>
   new Request(ORDERS, {
     method: "POST",
     headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
@@ -113,10 +113,23 @@ describe("the gate in front of the React pages", () => {
     await identity.close();
   });
 
-  it("refuses a form drawn for somebody else, and one drawn for nobody, before any action reads it", async () => {
+  it("refuses a form drawn for somebody else, for nobody, or marked more than once, before any action reads it", async () => {
+    // A mark given twice is not a form any page draws, and which of the two
+    // counts would be a guess.
     const { identity, cookie } = await signedInBrowser();
 
-    const drawn: Record<string, string>[] = [{ [DRAWN_FOR]: "someone@example.com" }, {}];
+    const drawn: (Record<string, string> | string[][])[] = [
+      { [DRAWN_FOR]: "someone@example.com" },
+      {},
+      [
+        [DRAWN_FOR, PERSON],
+        [DRAWN_FOR, "someone@example.com"],
+      ],
+      [
+        [DRAWN_FOR, PERSON],
+        [DRAWN_FOR, PERSON],
+      ],
+    ];
     for (const fields of drawn) {
       const passed = await throughTheGate(form(cookie, fields), identity);
 
