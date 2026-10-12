@@ -1629,6 +1629,30 @@ describe("the settings screen", () => {
     expect(after.html).toContain('value="https://brightdataplans.example"');
   });
 
+  it("marks every refused box on the settings as refused, with the refusal read out with it", async () => {
+    // The same state as a refused name where the account began: the box
+    // outlined, named invalid, and described by the sentence that refused it.
+    const running = await started();
+    await running.browser.signIn();
+
+    for (const [path, box, value] of [
+      ["/settings", "seller_name", "<b>Shop</b>"],
+      ["/settings/site", "seller_site", "https://brightdataplans.example/contact"],
+      ["/settings/payout-wallet", "payout_wallet", "0x123"],
+    ] as const) {
+      const answered = await running.browser.post(path, { [box]: value });
+
+      expect(answered.status, path).toBe(400);
+      const input = new RegExp(`<input[^>]*id="${box}"[^>]*>`).exec(answered.html)?.[0] ?? "";
+      expect(input, path).toContain('aria-invalid="true"');
+      const line = /aria-describedby="([^"]+)"/.exec(input)?.[1] ?? "(none)";
+      const said = new RegExp(`id="${line}"[^>]*>([^<]*)<`).exec(answered.html)?.[1] ?? "";
+      expect(said, path).toMatch(/not saved|refused|printable|address|Use/i);
+      // A browser opening the refused page puts the cursor in the box.
+      expect(input, path).toContain("autofocus");
+    }
+  });
+
   it("refuses a site with anything after the host, says the form it takes, and keeps the one there was", async () => {
     const running = await started();
     await running.browser.signIn();

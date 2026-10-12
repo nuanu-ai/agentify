@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import { Field } from "./field.js";
 
@@ -37,6 +38,33 @@ describe("a field", () => {
     expect(box.getAttribute("aria-invalid")).toBe("true");
     // The refusal takes the hint's place rather than sitting under it.
     expect(screen.queryByText("We send the link here.")).toBeNull();
+  });
+
+  it("takes the focus when what was typed is refused, so the person can correct it at once", () => {
+    const drawn = render(
+      <>
+        <Field label="Seller name" name="seller_name" />
+        <button type="button">Use this name</button>
+      </>,
+    );
+    screen.getByText("Use this name").focus();
+
+    act(() => {
+      drawn.rerender(
+        <>
+          <Field label="Seller name" name="seller_name" error="Too long." />
+          <button type="button">Use this name</button>
+        </>,
+      );
+    });
+
+    expect(document.activeElement).toBe(screen.getByLabelText("Seller name"));
+  });
+
+  it("asks a browser drawing it refused to put the cursor in it, with no script to do so", () => {
+    const html = renderToString(<Field label="Seller name" name="seller_name" error="Too long." />);
+
+    expect(html).toMatch(/<input[^>]*autofocus/i);
   });
 
   it("has its hint read out with the box while nothing is wrong, and is not marked invalid", () => {
