@@ -76,11 +76,17 @@ to their payout wallet or keys (ADR-0019).
 
 The pages are server-rendered HTML, with no client-side framework and no
 client build, and they are tested over HTTP against the real gateway.
-Interactivity is form posts, and an inline script only where a control has a
-wait to draw, which takes the control away and gives it back while the HTML
-stays the working page. A screen that needs more argues for a framework on its
-own merits. The front page is the scanner's, everywhere; the scanner is a
-Next.js application and not the dashboard, so none of this binds it.
+Interactivity is form posts. Two pages carry an inline script, and both work
+without it. On the sign-in page the script takes the resend button away while
+its wait runs and gives it back (`apps/dashboard/src/sign-in.ts`); without it
+the button stays pressable and the door refuses an early press in words. The
+page that shows a new key's secret, once, replaces its history entry so that a
+reload returns to the list instead of issuing another key, and copies the
+secret to the clipboard at a press (`apps/dashboard/src/keys.ts`); without it
+the secret is selected by hand, and the page warns against resending the form.
+A screen that needs more argues for a framework on its own merits. The front
+page is the scanner's, everywhere; the scanner is a Next.js application and not
+the dashboard, so none of this binds it.
 
 The whole chain, Postgres included, comes up locally from `docker compose up`
 behind the same route table the channels use (ADR-0005), so a person clicks
