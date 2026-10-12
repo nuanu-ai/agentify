@@ -3341,6 +3341,23 @@ describe("the page that says a call to the gateway failed", () => {
     expect(failed.status).toBe(504);
     expect(again).toMatch(/\/receipts$/);
   });
+
+  it("offers the page again, not its data, when the page was opened inside the application", async () => {
+    // A click inside the application asks for the page's data alone; the way
+    // back the failed page offers is still the page, with what it was asked
+    // with, never the address of its data.
+    const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
+    await browser.signIn();
+    silenceGateway();
+
+    const failed = await browser.get(
+      "/orders.data?open=true&_routes=routes%2Fgate%2Croutes%2Forders",
+    );
+
+    expect(failed.html).toContain('"/orders?open=true"');
+    expect(failed.html).not.toContain(".data");
+    expect(failed.html).not.toContain("_routes");
+  });
 });
 
 describe("a session that is ended while somebody is looking at a page", () => {
