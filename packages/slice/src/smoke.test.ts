@@ -62,7 +62,7 @@ describe("the smoke's verdict on a purchase through the gateway", () => {
 });
 
 const orderReading = (
-  ...stages: Array<[StoredOrder["order"]["payment"], string | null]>
+  ...stages: [StoredOrder["order"]["payment"], string | null][]
 ): ((id: string) => Promise<StoredOrder | null>) => {
   let read = 0;
   return async () => {
