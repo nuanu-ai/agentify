@@ -114,7 +114,14 @@ describe("the browser's scripts and styles", () => {
   });
 
   it("answers nothing the build did not write as a script or a style, and reaches no other path", async () => {
-    for (const name of ["missing-000.js", "notes.txt", "..%2Fpages.ts", "..%2F..%2Fpackage.json"]) {
+    for (const name of [
+      "missing-000.js",
+      "notes.txt",
+      "..%2Fpages.ts",
+      "..%2F..%2Fpackage.json",
+      // Not a percent-encoding at all, which a stranger can send.
+      "entry-AbC123.js%E0%A4%A",
+    ]) {
       const { answered } = await asked(name, "br");
       expect(answered.status, name).toBe(404);
       expect(answered.headers.get("cache-control"), name).toBeNull();

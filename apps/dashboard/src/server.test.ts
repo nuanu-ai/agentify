@@ -991,6 +991,63 @@ describe("the passwordless dashboard door", () => {
   });
 });
 
+describe("what the React pages take from a stranger", () => {
+  it("reads a body that is not a form as a form with nothing in it", async () => {
+    // A program can post anything; the pages answer it as the empty form it
+    // amounts to, never as a fault of the dashboard's.
+    const { browser } = await started();
+
+    const asked = await browser.postRaw("/sign-in", "text/plain", "email=owner@example.com");
+    const opened = await browser.postRaw("/sign-in/open", "application/json", '{"token":"x"}');
+
+    expect(asked.status).toBe(400);
+    expect(readable(asked.html)).toContain("Enter an address of the shape someone@example.com.");
+    expect(opened.status).toBe(401);
+    expect(readable(opened.html)).toContain("That link no longer works");
+  });
+
+  it("takes a page's action only as a form post, so no other method gets past the origin check", async () => {
+    // The origin check reads posts, so a sign-out sent by another site as
+    // DELETE must not reach the action that ends the session.
+    const running = await started();
+    await running.browser.signIn();
+    const signedIn = running.rows.dashboard_sessions?.length ?? 0;
+
+    const answered = await fetch(`${running.url}/sign-out`, {
+      method: "DELETE",
+      body: "x",
+      redirect: "manual",
+      headers: {
+        cookie: `${COOKIE}=${running.browser.sessionToken() ?? ""}`,
+        origin: "https://evil.example",
+      },
+    });
+
+    expect(answered.headers.getSetCookie()).toStrictEqual([]);
+    expect(running.rows.dashboard_sessions).toHaveLength(signedIn);
+    expect(signedIn).toBeGreaterThan(0);
+  });
+
+  it("answers an address that cannot be decoded without a fault", async () => {
+    const { browser } = await started();
+    await browser.signIn();
+
+    const answered = await browser.get("/cards%E0%A4%A");
+
+    expect(answered.status).toBeLessThan(500);
+  });
+
+  it("never lets a browser keep the data of the page a mailed link lands on", async () => {
+    // That page holds a one-time token and runs no script, so nothing of the
+    // pages' own asks for its data; asked by hand, it is kept nowhere.
+    const { browser } = await started();
+
+    const data = await browser.get(`/sign-in/open.data?token=${"D".repeat(32)}`);
+
+    expect(data.headers.get("cache-control")).toBe("private, no-store");
+  });
+});
+
 describe("one session for the whole site", () => {
   it("sets one cookie for the whole origin over https: prefixed, Secure, HttpOnly and Lax", async () => {
     // A report and the dashboard are two applications on one origin sharing one
@@ -1203,6 +1260,10 @@ describe("the gate", () => {
       ],
       ["pressing it", () => stranger.post("/dashboard/sign-in/open", { token: "C".repeat(32) })],
       ["the stylesheet", () => stranger.get("/dashboard/agentify.css")],
+      [
+        "the route table the pages' script asks for",
+        () => stranger.get("/dashboard/__manifest?paths=%2Fdashboard%2Fcards&version=any"),
+      ],
       ["the health probe", () => stranger.get("/dashboard/healthz")],
       [
         "the shop's callback",
