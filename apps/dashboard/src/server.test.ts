@@ -2786,6 +2786,26 @@ describe("the keys screen", () => {
     expect(keys.issued).toStrictEqual(["the second worker"]);
   });
 
+  it("never lets a browser keep the list's data, so a key revoked a moment ago never reads as working", async () => {
+    // The list is the screen a merchant opens when a key has leaked. A browser
+    // keeps a page's data under the address it asked with, and a press posts
+    // to another one, so data kept from before a revoke would show the key
+    // still working, with its Revoke button.
+    const { browser } = await started({ client: withKeys().client });
+    await browser.signIn();
+
+    for (const asked of [
+      "/keys.data",
+      `/keys.data?_routes=${encodeURIComponent("routes/keys")}`,
+      `/keys.data?_routes=${encodeURIComponent("routes/gate,routes/keys")}`,
+    ]) {
+      const data = await browser.get(asked);
+      expect(data.status, asked).toBe(200);
+      expect(data.html, asked).toContain(NIGHTLY.id);
+      expect(data.headers.get("cache-control"), asked).toBe("private, no-store");
+    }
+  });
+
   it("shows the secret of the key it issued even when the list cannot be read right after", async () => {
     // A key issued and never seen is one the merchant cannot use and must find
     // and revoke, so nothing read after the issue may stand between the press
@@ -3044,7 +3064,7 @@ describe("what every screen says about the address", () => {
     const { browser } = await started();
     await browser.signIn();
 
-    for (const path of ["/cards", "/orders", "/receipts", "/keys"]) {
+    for (const path of ["/cards", "/orders", "/receipts"]) {
       const data = await browser.get(`${path}.data`);
       expect(data.status, path).toBe(200);
       expect(data.html, path).toContain(PERSON);
