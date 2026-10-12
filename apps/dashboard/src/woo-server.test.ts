@@ -1163,6 +1163,36 @@ describe("importing the catalogue", () => {
     expect((await running.get("/woocommerce/return?success=1")).status).toBe(404);
   });
 
+  it("answers its pages on the live channel as any address the dashboard does not have", async () => {
+    // Somebody signed in is told in the dashboard's frame, with its menu and a
+    // way back, and somebody with no session is sent to the sign-in, as from
+    // any other address that is no page.
+    const running = await started({ channel: "live" });
+    await running.signIn();
+    await running.get("/cards");
+
+    for (const [method, path] of [
+      ["GET", "/woocommerce"],
+      ["GET", "/woocommerce/connect"],
+      ["POST", "/woocommerce/connect"],
+      ["POST", "/woocommerce/import"],
+      ["GET", "/woocommerce/return?success=1"],
+    ] as const) {
+      const answered =
+        method === "GET"
+          ? await running.get(path)
+          : await running.post(path, { shop_url: "https://shop.example.com" });
+      expect(answered.status, `${method} ${path}`).toBe(404);
+      expect(readable(answered.html), `${method} ${path}`).toContain("There is no such page");
+      expect(readable(answered.html), `${method} ${path}`).toContain(PERSON);
+    }
+    expect(running.asked).toEqual([]);
+
+    const stranger = await running.getWithoutCookie("/woocommerce");
+    expect(stranger.status).toBe(303);
+    expect(new URL(stranger.to ?? "", "http://dashboard.test").pathname).toBe("/sign-in");
+  });
+
   it("says a wallet is needed on the shop screen, before Import is pressed", async () => {
     const running = await started({ channel: "test", fresh: "named" });
     await connected(running);
