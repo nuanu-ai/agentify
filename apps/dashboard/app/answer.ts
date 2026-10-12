@@ -61,22 +61,28 @@ const headersOf = (
  * handed over without it, and one outside it is written as a whole address on
  * the origin the request came to.
  */
-export function sendTo(
-  location: string,
-  request: Request,
-  base: string,
-  headers?: Headers,
-): Response {
+export function sendTo(location: string, url: URL, base: string, headers?: Headers): Response {
   const within =
     base === ""
       ? location
       : location === base || location.startsWith(`${base}/`) || location.startsWith(`${base}?`)
         ? location.slice(base.length) || "/"
         : null;
-  return redirectDocument(within ?? `//${new URL(request.url).host}${location}`, {
+  return redirectDocument(within ?? `//${url.host}${location}`, {
     status: 303,
     ...(headers === undefined ? {} : { headers }),
   });
+}
+
+/**
+ * What a loader or an action is handed. `url` is the page's address with React
+ * Router's own parts taken off (a data request's `.data` and `_routes`);
+ * `request.url` is the address as it arrived.
+ */
+export interface Asked {
+  readonly request: Request;
+  readonly url: URL;
+  readonly context: Readonly<RouterContextProvider>;
 }
 
 /**
@@ -84,11 +90,7 @@ export function sendTo(
  * problem page. A problem on a page that failed to load offers the page again;
  * one on a form that failed cannot be sent again from there.
  */
-export function answer<View>(
-  outcome: Outcome<View>,
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-) {
+export function answer<View>(outcome: Outcome<View>, { request, url, context }: Asked) {
   if (outcome.kind === "view") {
     return data(outcome.view, {
       status: outcome.status ?? 200,
@@ -99,12 +101,11 @@ export function answer<View>(
   if (outcome.kind === "redirect") {
     throw sendTo(
       outcome.location,
-      request,
+      url,
       chrome.base,
       headersOf(outcome.headers, outcome.setCookies),
     );
   }
-  const url = new URL(request.url);
   const trouble: Trouble = {
     kind: "problem",
     chrome,

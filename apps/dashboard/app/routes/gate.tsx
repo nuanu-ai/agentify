@@ -34,14 +34,14 @@ const drawnForIn = async (request: Request): Promise<unknown> => {
 };
 
 export const middleware: MiddlewareFunction<Response>[] = [
-  async ({ request, context }, next) => {
+  async ({ request, url, context }, next) => {
     const pages = context.get(services);
     let answer: Awaited<ReturnType<typeof pages.gate>>;
     try {
       answer = await pages.gate({
         cookie: request.headers.get("cookie") ?? undefined,
         method: request.method,
-        path: new URL(request.url).pathname.replace(/\.data$/, ""),
+        path: url.pathname,
         drawnFor: await drawnForIn(request),
       });
     } catch {

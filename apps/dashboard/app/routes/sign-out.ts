@@ -7,11 +7,10 @@ import type { ActionFunctionArgs } from "react-router";
 import { answer } from "../answer.js";
 import { services } from "../services.js";
 
-export async function action({ request, context }: ActionFunctionArgs) {
-  const pages = context.get(services);
+export async function action(asked: ActionFunctionArgs) {
+  const { request, context } = asked;
   return answer(
-    await pages.signIn.signOut(request.headers.get("cookie") ?? undefined),
-    request,
-    context,
+    await context.get(services).signIn.signOut(request.headers.get("cookie") ?? undefined),
+    asked,
   );
 }

@@ -10,8 +10,11 @@
  *
  * A route module's loader and action read what the request carried, call its
  * server half in `src/page-services.ts` through the `services` context, and
- * pass the outcome to `answer`; its component draws a screen from
- * `app/screens/`, which is a function of a view and is tested by drawing it.
+ * pass the outcome to `answer` with their own arguments; its component draws a
+ * screen from `app/screens/`, which is a function of a view and is tested by
+ * drawing it. The page's address is `url`, never `request.url`: React Router 8
+ * hands a loader the request as it arrived, and a data request's address
+ * carries `.data` and `_routes`.
  * Every form behind the gate is a `PostForm`. Route modules import nothing at
  * run time from `src/` but `drawn-for.ts`, which imports nothing itself, so the
  * browser's build carries no schema library and no copy of the server; types

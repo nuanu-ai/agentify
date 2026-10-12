@@ -11,5 +11,4 @@ export default {
   basename: "/dashboard",
   buildDirectory: "dist",
   ssr: true,
-  future: { v8_middleware: true },
 } satisfies Config;

@@ -4,12 +4,11 @@ import { Frame } from "../components/frame.js";
 import { OrdersScreen } from "../screens/orders.js";
 import { services, signedIn } from "../services.js";
 
-export async function loader({ request, context }: LoaderFunctionArgs) {
-  const pages = context.get(services);
+export async function loader(asked: LoaderFunctionArgs) {
+  const { url, context } = asked;
   return answer(
-    await pages.screens.orders(context.get(signedIn), new URL(request.url).searchParams),
-    request,
-    context,
+    await context.get(services).screens.orders(context.get(signedIn), url.searchParams),
+    asked,
   );
 }
 

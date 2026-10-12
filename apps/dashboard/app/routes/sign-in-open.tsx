@@ -17,24 +17,23 @@ export const handle = { script: false };
 
 export const headers = carried;
 
-export async function loader({ request, context }: LoaderFunctionArgs) {
-  const pages = context.get(services);
+export async function loader(asked: LoaderFunctionArgs) {
+  const { request, url, context } = asked;
   return answer(
-    await pages.signIn.landing(
-      request.headers.get("cookie") ?? undefined,
-      new URL(request.url).searchParams,
-    ),
-    request,
-    context,
+    await context
+      .get(services)
+      .signIn.landing(request.headers.get("cookie") ?? undefined, url.searchParams),
+    asked,
   );
 }
 
-export async function action({ request, context }: ActionFunctionArgs) {
-  const pages = context.get(services);
+export async function action(asked: ActionFunctionArgs) {
+  const { request, context } = asked;
   return answer(
-    await pages.signIn.open(request.headers.get("cookie") ?? undefined, await formOf(request)),
-    request,
-    context,
+    await context
+      .get(services)
+      .signIn.open(request.headers.get("cookie") ?? undefined, await formOf(request)),
+    asked,
   );
 }
 

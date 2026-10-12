@@ -1,9 +1,10 @@
 /**
- * The dashboard's React pages, mounted on its listener in front of the pages
- * still drawn as strings. A request is handed to React Router only where one of
- * its routes answers that path with that method; everything else falls through
- * to the string handlers, so a screen moves by adding its route here and
- * deleting its string handler in the same change.
+ * The dashboard's React pages, React Router 8 in framework mode, mounted on its
+ * listener in front of the pages still drawn as strings. A request is handed to
+ * React Router only where one of its routes answers that path with that
+ * method; everything else falls through to the string handlers, so a screen
+ * moves by adding its route here and deleting its string handler in the same
+ * change.
  *
  * What the pages need from the process — the session lookup, the gateway as
  * the signed-in merchant, the configuration — reaches their loaders through the
@@ -26,15 +27,6 @@ import {
   type ServerBuild,
 } from "react-router";
 import type { PageServices } from "./page-services.js";
-
-// What React Router's type generation would declare for `future.v8_middleware`
-// in `react-router.config.ts`: loaders, actions and the server's load context
-// are typed for a context provider rather than a plain object.
-declare module "react-router" {
-  interface Future {
-    v8_middleware: true;
-  }
-}
 
 const APP_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const BUILT_SERVER = join(APP_ROOT, "dist", "server", "index.js");
@@ -185,12 +177,16 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
 };
 
 /**
- * The path a request is about: a data request for a page is about the page,
- * and `_root.data` is about the root the router is mounted at.
+ * The path a request is about, read as React Router reads it: a data request
+ * for a page is about the page, `/_.data` standing for the page's address with
+ * its trailing slash.
  */
-const pageOf = (path: string, basename: string): string => {
-  if (path === `${basename.replace(/\/$/, "")}/_root.data`) return basename;
-  const page = path.endsWith(".data") ? path.slice(0, -".data".length) : path;
+const pageOf = (path: string): string => {
+  const page = path.endsWith("/_.data")
+    ? path.slice(0, -"_.data".length)
+    : path.endsWith(".data")
+      ? path.slice(0, -".data".length)
+      : path;
   return page.length > 1 && page.endsWith("/") ? page.slice(0, -1) : page;
 };
 
@@ -280,7 +276,7 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
         handle(request, response, next);
         return;
       }
-      const matches = matchRoutes(routes, pageOf(request.path, basename), basename);
+      const matches = matchRoutes(routes, pageOf(request.path), basename);
       const served = matches?.at(-1)?.route.handle as Served | undefined;
       if (served === undefined || !served.answers(request.method)) {
         next();

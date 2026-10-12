@@ -4,9 +4,9 @@ import { Frame } from "../components/frame.js";
 import { CardsScreen } from "../screens/cards.js";
 import { services, signedIn } from "../services.js";
 
-export async function loader({ request, context }: LoaderFunctionArgs) {
-  const pages = context.get(services);
-  return answer(await pages.screens.cards(context.get(signedIn)), request, context);
+export async function loader(asked: LoaderFunctionArgs) {
+  const { context } = asked;
+  return answer(await context.get(services).screens.cards(context.get(signedIn)), asked);
 }
 
 export default function Cards() {

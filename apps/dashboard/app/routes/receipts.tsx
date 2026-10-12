@@ -4,9 +4,9 @@ import { Frame } from "../components/frame.js";
 import { ReceiptsScreen } from "../screens/receipts.js";
 import { services, signedIn } from "../services.js";
 
-export async function loader({ request, context }: LoaderFunctionArgs) {
-  const pages = context.get(services);
-  return answer(await pages.screens.receipts(context.get(signedIn)), request, context);
+export async function loader(asked: LoaderFunctionArgs) {
+  const { context } = asked;
+  return answer(await context.get(services).screens.receipts(context.get(signedIn)), asked);
 }
 
 export default function Receipts() {
