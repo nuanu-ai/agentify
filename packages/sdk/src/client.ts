@@ -112,7 +112,9 @@ export interface OrderCalls {
 
   /**
    * A final "this cannot be delivered" for an order already taken on. Unlike
-   * `deliver`, it is not promised to be safe to repeat.
+   * `deliver`, it is not promised to be safe to repeat: when it fails, and
+   * above all with `outcome_unknown`, read the order back with `orders.get`
+   * before sending it again.
    */
   refuse(refusal: Refusal): Promise<OrderCallResponse>;
 

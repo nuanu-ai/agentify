@@ -4,15 +4,15 @@
  * sale, and an eSIM plan whose profile arrives after the money has moved.
  *
  * Taken from the merchant's API: the two products and their modes; the
- * number's price of $8.75, reached from the supplier's $7.00 by the markup in
- * the merchant's worked example, computed per sale; the eSIM delivery fields
- * (the ICCID, the LPA string and the iOS link); the supplier answering that no
- * profile is available; and the idempotency key their purchase API requires.
+ * number's price of $8.75, reached from the supplier's $7.00 by a markup and
+ * computed per sale; the eSIM delivery fields (the ICCID, the LPA string and
+ * the iOS link); the supplier answering that no profile is available; and the
+ * idempotency key their purchase API requires.
  *
  * Constructed, and this list is the whole of it: the eSIM plan's price of
  * $18.90, both identifiers, titles and descriptions, the eSIM's delivery
- * deadline of 900 seconds, the number's `phone_number` result field, and every
- * timestamp on this page.
+ * deadline of 900 seconds, the number's `phone_number` result field, which is
+ * not taken from the merchant's API, and every timestamp on this page.
  *
  * One merchant publishes two cards, answers a price question, delivers one
  * order inside the handler and another by a later call, refuses a third,
@@ -211,9 +211,10 @@ it("carries one merchant's two products from publishing to the last refusal", as
       return question.unavailable(AT);
     }
 
-    // The markup comes from the merchant's worked example, $7.00 to $8.75,
-    // rather than from the sentence beside it calling it a fifth; the two
-    // disagree, and the pair of real numbers is the firmer fact.
+    // The markup is the one that takes $7.00 to $8.75 in the worked example
+    // the catalog was recorded from, rather than the sentence beside it that
+    // calls it a fifth; the two disagree, and a pair of numbers is the firmer
+    // fact.
     const cost = Number(supplierCostUsd);
 
     return question.available({ amount: (cost * (8.75 / 7)).toFixed(2), currency: "USD" }, AT);

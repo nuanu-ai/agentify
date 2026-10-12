@@ -1,9 +1,12 @@
 /**
  * Recording a payment fact the settle call did not return. It finishes an
  * order whose charge went quiet without asking the facilitator again or
- * presenting the fact as the facilitator's answer. A fact written while the
- * settle call is still out races its answer, and whichever lands second is
- * dropped.
+ * presenting the fact as the facilitator's answer.
+ *
+ * Two facts are refused rather than written. One recorded while the settle
+ * call is still out would race that call's answer, and whichever landed second
+ * would be dropped. A failure recorded on an open order would allow a second
+ * charge on a guess about the first.
  */
 
 import type { Card } from "@nuanu-ai/agentify-contracts";

@@ -354,9 +354,10 @@ describe("a scan evaluated again", () => {
   // The worker evaluates a scan's checks up to four times as its requests
   // complete, each round with a new set of artifacts holding the same pages,
   // so a reading is kept with the page itself. The test counts calls rather
-  // than timing rounds, since timings flake under load. A count does not see
-  // work that is not kept, such as check 15 and the fingerprint going over
-  // the raw pages every round.
+  // than timing rounds, since timings flake under load. A count sees only the
+  // readers listed below: it misses work that is not kept, such as check 15
+  // and the fingerprint going over the raw pages every round, and a new reader
+  // added without a place to keep its result.
   const readers = { visibleText, htmlSignals, parseJsonLd, parseSitemap, parseRobots };
   const callsSoFar = () =>
     Object.fromEntries(

@@ -19,9 +19,10 @@ const THE_STACK_DATABASE = "agentify";
 export const DEFAULT_TEST_DATABASE_URL = `postgres://agentify:agentify@localhost:5432/${TEST_DATABASE}`;
 
 /**
- * For a host whose Postgres is not on localhost:5432 (a deployment binds
- * 127.0.0.1:55432). It is separate from DATABASE_URL, which names the stack's
- * own database for `db:migrate`, and it wins when both are set.
+ * For a host whose Postgres is not on localhost:5432, such as one that moved
+ * the published port with AGENTIFY_POSTGRES_PUBLISH (the deployed channels
+ * publish no database port). It is separate from DATABASE_URL, which names the
+ * stack's own database for `db:migrate`, and it wins when both are set.
  */
 const TEST_DATABASE_URL_VARIABLE = "AGENTIFY_TEST_DATABASE_URL";
 

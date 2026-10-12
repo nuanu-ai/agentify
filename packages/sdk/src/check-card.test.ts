@@ -60,15 +60,17 @@ describe("checking a card before it is published", () => {
     expect(paths).toContainEqual(["fulfillment"]);
   });
 
-  // The card rules themselves are tested in the contracts package's
-  // `card.test.ts`; `checkCard` is `CardSchema` and the price rule. What this
+  // `checkCard` is `CardSchema` and the price rule. The card's own rules are
+  // tested in the contracts package's `card.test.ts`, and the price rule where
+  // a price comes in, in `apps/gateway/src/app/gateway.test.ts`
+  // (`UNSELLABLE_PRICES`) and `apps/gateway/src/http/x402.test.ts`. What this
   // file holds is the shape of the answer.
 
   it("finds a price the publish call would refuse, and passes one it would take", () => {
     // The promise: a card this check passes is not refused at publication for
     // anything about the card. The price rule is applied outside the card's
     // schema, so it is read here too; one case of each kind, as the rule is
-    // walked in the contracts package.
+    // walked in the gateway's tests.
     for (const [price, field] of [
       [{ amount: "0.00", currency: "USD" }, "amount"],
       ["500 USD", "amount"],

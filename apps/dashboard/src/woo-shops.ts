@@ -202,7 +202,11 @@ export interface WooShops {
    * can no longer be. Once only: the answer says whether this call ended it.
    */
   endParcel(orderId: string, phase: "shipped" | "closed", now: Date): Promise<boolean>;
-  /** The compare-and-set keeps two operator commands to one POST. */
+  /**
+   * Reopens a definite pre-create refusal as `create_unknown`, and only under a
+   * different grant: a connection revision other than the one that refused.
+   * The compare-and-set keeps two operator commands to one POST.
+   */
   beginPrecreateRecovery(orderId: string, revision: string, now: Date): Promise<boolean>;
 }
 

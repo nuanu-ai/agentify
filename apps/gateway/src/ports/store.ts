@@ -555,8 +555,10 @@ export interface Store {
    * amount to an address and names no purchase, and a second presentation is
    * invisible to the payment layer until its charge fails, so without this one
    * signature could buy two orders at the same price and both be delivered.
-   * The first order to present a payment owns it, and the same payment for any
-   * other order is refused before anything is verified or dispatched. It is
+   * The first order to present a payment owns it. The claim is taken after the
+   * payment verifies, so a payment that never checked out claims nothing, and
+   * the same payment for any other order is refused before anything is
+   * dispatched or charged. It is
    * deliberately across the whole gateway: a claim per merchant would let one
    * authorisation be spent once at each merchant.
    */
@@ -583,9 +585,9 @@ export interface Store {
   putReceipt(merchantId: string, receipt: Receipt): Promise<void>;
 
   /**
-   * The receipt for one order, whoever it belongs to. Unscoped because the
-   * agent's answer to its own purchase carries the receipt, and the agent has
-   * no key.
+   * The receipt for one order, whoever it belongs to. Only tests read a
+   * receipt this way. The read is not scoped to a merchant, so anything that
+   * serves its answer to a caller has to settle whose order it is first.
    */
   receiptForOrder(orderId: string): Promise<Receipt | null>;
 

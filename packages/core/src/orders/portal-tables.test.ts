@@ -23,7 +23,9 @@ import { outcomeFor } from "./outcome.js";
  * A row is pinned by its first cell only: a row added, removed or renamed on
  * the portal fails here until somebody decides which scenario it is. The rest
  * of the row is prose, checked as the machine fact it states, so a sentence
- * reworded without changing its meaning does not fail.
+ * reworded without changing its meaning does not fail. Where a cell lists more
+ * than the scenarios here name, such as the four ways an order comes to need
+ * a refund, the rest is checked in `machine.test.ts` and not in this file.
  *
  * The parser is deliberately tiny: it finds a section by its heading, takes the
  * first table in it and returns one named column.

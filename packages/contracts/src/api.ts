@@ -94,9 +94,11 @@ export const MerchantCardListSchema = z
   });
 
 /**
- * Every receipt this merchant has: the list a merchant reconciles their wallet
- * against. A purchase that ended before any payment has no receipt, and none
- * is written while it is unknown whether the buyer was charged.
+ * Every receipt this merchant has. A purchase that ended before any payment
+ * has no receipt, none is written while it is unknown whether the buyer was
+ * charged, and a gateway that writes receipts only as goods are released has
+ * none for a payment whose goods have not come. So the list is not by itself
+ * an account of what was received.
  */
 export const ReceiptListSchema = z
   .strictObject({
@@ -133,8 +135,9 @@ export const WorkerPollRequestSchema = z
   .strictObject({
     /**
      * How long the gateway may hold the request open waiting for something to
-     * arrive. Zero means a drain: answer with whatever is queued now, which is
-     * what a worker shutting down asks for.
+     * arrive. Zero means a drain: answer with whatever is queued now and come
+     * straight back. The SDK's worker never asks for one, not even when it
+     * stops, since that would pull work into a process that is going away.
      */
     wait_seconds: z.int().min(0).optional(),
 
@@ -249,8 +252,8 @@ const openWindow = closedWindow.loose().meta(closedWindow.meta() ?? {});
  * `price` and `delivered` are required and nullable, so that "none yet" is a
  * stated fact rather than a missing field. `refusal` is present only where a
  * merchant's refusal ended the order, and `reason` only where Agentify ended
- * it; a product that was gone or a payment that failed its check can still
- * arrive as a bare `rejected`.
+ * it and the status word alone would not say what to do next. A payment that
+ * failed its check arrives as a bare `rejected`, with neither.
  */
 export const AgentOrderStatusSchema = z
   .looseObject({

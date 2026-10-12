@@ -116,6 +116,11 @@ export interface DashboardIdentity {
   ): Promise<AttachMerchantResult>;
 
   /**
+   * Ends every session of every account naming this merchant except the ones
+   * the `keep` Cookie header carries, and returns how many ended. `keep` is the
+   * raw Cookie header of the presser's request, not a token: anything else
+   * keeps nothing and signs the presser out too.
+   *
    * For a cancelled wallet change: the change may have been asked for from a
    * session somebody else holds, and the person who pressed cancel is the one
    * known to be the owner, so theirs is the one kept.
@@ -123,8 +128,11 @@ export interface DashboardIdentity {
   endOtherSessionsOfMerchant(merchantId: string, keep: string | undefined): Promise<number>;
 
   /**
-   * Another account naming the same merchant is somebody else's, and its
-   * sessions are not this person's to end.
+   * Ends every live session of this one account except the ones the `keep`
+   * Cookie header carries, and returns how many ended. `keep` is the raw Cookie
+   * header of the presser's request, not a token: anything else keeps nothing
+   * and signs the presser out too. Another account naming the same merchant is
+   * somebody else's, and its sessions are not this person's to end.
    */
   endOtherSessionsOfPerson(personId: string, keep: string | undefined): Promise<number>;
 }

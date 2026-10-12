@@ -523,9 +523,9 @@ export const startWorker = (
         fatal: false,
         cause,
         subject: event.order_id,
-        // An event carries no acknowledgement, so nothing here can ask for it
-        // again, and whether the gateway would resend it is not known here:
-        // the merchant is told it cannot be got back, not that it is gone.
+        // An event is sent at most once and carries no acknowledgement, so
+        // nothing here can ask for it again: what the handler failed on is
+        // lost, and the open-orders list is where a refund owed shows up.
         message: `the event handler threw on ${event.type} for order ${event.order_id}; nothing here can ask for that event again, and whether it is sent again is not something this SDK knows: ${String(cause)}`,
       });
     }

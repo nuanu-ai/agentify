@@ -1,6 +1,7 @@
 /**
- * The merchant's door: a presented key is hashed and its digest looked up
- * (`app/merchants.ts`, the store's `merchantForKey`). Never compare a key
+ * The merchant's door: a presented key is hashed (`keyDigest` in
+ * `app/merchants.ts`) and its digest looked up (`Gateway#keyBehind`, the
+ * store's `workingKey`). Never compare a key
  * against a secret with `===`; the time taken would leak how much of it was
  * right. A lookup by digest compares nothing secret.
  */

@@ -659,8 +659,9 @@ describe("an expired session returning to WooCommerce", () => {
 describe("importing the catalogue", () => {
   const connected = async (running: Running): Promise<void> => {
     await running.signIn();
-    // Said here because one test below has no gateway, and with none every page
-    // drawn is the error page.
+    // The drawn-for mark is sent here rather than read off the Connect page,
+    // because one test below has no gateway, and with none every page drawn is
+    // the error page.
     const pressed = await running.post("/woocommerce/connect", {
       shop_url: SHOP,
       [DRAWN_FOR]: PERSON,
@@ -1610,9 +1611,8 @@ describe("coming back from the shop with no session on the request", () => {
   });
 
   it("still takes the state token out of the address bar", async () => {
-    // With the cookie held back by SameSite, the visit with no session is the
-    // only one a real merchant makes, so an unspent token left in the address
-    // would be left every time.
+    // A return with no session is the one the return page is drawn for, so it
+    // must strip the token too, or an unspent token would stay in the address.
     const running = await started();
     await running.signIn();
     const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });

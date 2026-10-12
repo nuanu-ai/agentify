@@ -279,7 +279,8 @@ describe("the poll a worker makes", () => {
   });
 
   it("accepts a poll that asks for no wait at all", () => {
-    // A drain: whatever is queued now, at once, as a worker shutting down asks.
+    // A drain: whatever is queued now, at once. The SDK's worker does not
+    // send one, but the contract allows it.
     expect(WorkerPollRequestSchema.safeParse({ wait_seconds: 0 }).success).toBe(true);
   });
 

@@ -10,10 +10,11 @@
  *
  * It spends real money on a real chain, from the wallet whose key is in the
  * environment, paid straight to the merchant's own address. `SMOKE_MAX_USD`
- * caps one purchase and `SMOKE_TOTAL_USD` the whole run, and both are also
- * handed to the payment client as its spend control, because the client
+ * caps one purchase and `SMOKE_TOTAL_USD` the whole run. Only the per-purchase
+ * cap is handed to the payment client as its spend control, because the client
  * otherwise has a hidden default of $1 a payment that silently drops anything
- * larger before it is signed. Without `--confirm` it reads every challenge,
+ * larger before it is signed; the run total is held by this command's own
+ * check before each purchase. Without `--confirm` it reads every challenge,
  * runs every gate, prints what a run would cost and signs nothing.
  *
  * Which chain a purchase lands on is the gateway's own `PAYMENT_NETWORK`. This

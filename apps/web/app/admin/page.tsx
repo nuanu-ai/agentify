@@ -2,8 +2,11 @@
  * The operator's dashboard: read-only numbers about the scanner, for a session
  * whose account carries the operator flag.
  *
- * Anybody the seller dashboard does not confirm as an operator gets the site's
- * 404, including everybody while the seller dashboard cannot answer. Metadata
+ * Nothing stands in front of /admin: the proxy's matcher does not include it
+ * and Caddy adds nothing, so this page, and any page added beside it, must
+ * refuse by itself. Anybody the seller dashboard does not confirm as an
+ * operator gets the site's 404, including everybody while the seller dashboard
+ * cannot answer. Metadata
  * refuses too: it is resolved on its own, and a title shown to a visitor who is
  * then refused would tell them what this page is.
  */

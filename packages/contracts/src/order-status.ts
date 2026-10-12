@@ -34,7 +34,8 @@ export const ORDER_STATUSES = Object.freeze([
    * `refusal` beside this word: a short code to branch on and a sentence to
    * show. Where Agentify ended the order, it carries a `reason` from
    * `ORDER_ENDING_REASONS` instead, never beside the merchant's words, so that
-   * no merchant is credited with words they did not write.
+   * no merchant is credited with words they did not write. A payment that
+   * failed its check carries neither.
    */
   "rejected",
   /**

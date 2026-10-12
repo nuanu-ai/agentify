@@ -11,9 +11,9 @@
  *
  * Constructed, and this list is the whole of it: the eSIM plan's price of
  * $18.90, its identifier, title, description and delivery deadline of 900
- * seconds; the phone number's `phone_number` result field, whose exact shape
- * the merchant's API leaves open; and every identifier, timestamp and title on
- * this page. They are plausible and none is a quotation.
+ * seconds; the phone number's `phone_number` result field, which is not taken
+ * from the merchant's API; and every identifier, timestamp and title on this
+ * page. They are plausible and none is a quotation.
  *
  * One purchase is walked end to end, from card to receipt and the event that
  * follows a delivery that did not happen, and then the same products across

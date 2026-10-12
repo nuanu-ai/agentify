@@ -321,8 +321,7 @@ describe("what a merchant sends to change that name", () => {
   });
 
   it("takes the site alone, the name alone, or both", () => {
-    // One call carries the name, the site or both, and a client that sends
-    // the name alone is answered as before.
+    // One call carries the name, the site or both; either may come alone.
     const site = { seller_site: "https://someones.example" };
 
     expect(SellerNameRequestSchema.parse(site)).toStrictEqual(site);

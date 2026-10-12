@@ -275,9 +275,9 @@ async function main(): Promise<void> {
 // imports this file, and a run that began on import would refuse at its first
 // gate and take the importing process down through the exit below.
 //
-// `import.meta.main` needs Node 24.2, which is why the repository's
-// `engines.node` names it: earlier versions read `undefined`, and this command
-// would print nothing, exit 0 and look like a run that went fine.
+// `import.meta.main` needs Node 24.2 or later, which the repository's
+// `engines.node` (`>=24.21`) covers: earlier versions read `undefined`, and
+// this command would print nothing, exit 0 and look like a run that went fine.
 if (import.meta.main) {
   main().catch((error: unknown) => {
     // The message only, never the whole error object: a payment client's error

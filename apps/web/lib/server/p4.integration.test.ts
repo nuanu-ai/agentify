@@ -483,8 +483,8 @@ describe("P4 dashboard-owned scanner identity", () => {
     // A scan nothing turned away does not say that something did.
     const plain = await createFreshCompletedScan("open-home-page");
     expect(await getScanStatus(plain.scan.id, plain.accessToken)).not.toHaveProperty("blocked");
-    // Nor does a scan with a score, even when one of its checks says the home
-    // page was blocked: it was graded, so it was read.
+    // Nor does a scan with a score: stored scans can carry a home page marked
+    // unreachable that was graded all the same, and a graded scan was read.
     const graded = await createFreshCompletedScan("graded-around-an-outage");
     await db.insert(scanChecks).values({
       scanId: graded.scan.id,

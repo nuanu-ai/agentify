@@ -1,11 +1,12 @@
 /**
- * The receipt: the record left by a purchase that was paid for.
+ * The receipt: the record left by a purchase that was paid for. A purchase that
+ * ends before any payment leaves no receipt. The price on a receipt is the
+ * price the sale went through at, and it stays so after the merchant's price
+ * changes.
  *
- * It exists from the moment the money moves, which in some modes is before the
- * product is delivered, so a receipt can say "paid, delivery still running". A
- * purchase that ends before any payment leaves no receipt. The price on a
- * receipt is the price the sale went through at, and it stays so after the
- * merchant's price changes.
+ * The shape can describe a payment whose delivery is still running, but when
+ * a receipt is written is the gateway's to decide, and Agentify's gateway
+ * writes one only once the goods are delivered or the parcel has shipped.
  */
 
 import { z } from "zod";
@@ -21,7 +22,10 @@ import { IdentifierSchema, SalePriceSchema, TimestampSchema } from "./primitives
  * written then.
  *
  * The list does not promise that a receipt exists for every payment that
- * executed; when a receipt is written is the gateway's to decide.
+ * executed. Agentify's gateway writes a receipt only on the way into delivery,
+ * so in practice only `delivered` and `shipped` appear: a payment taken at
+ * purchase whose goods have not come, and an order owing a refund, have no
+ * receipt.
  */
 export const ReceiptOutcomeSchema = z.enum([
   "in_progress",

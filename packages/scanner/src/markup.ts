@@ -6,7 +6,10 @@
  * such as `<link\b[^>]*rel=…` retries from every opening it meets, which on a
  * 2 MiB page of unclosed tags runs for minutes. So a reader walks the text
  * with indexOf, left to right, and stops when an opening finds no closer,
- * since nothing after it can close either. A regular expression is safe on
+ * since nothing after it can close either. When an opening leads nowhere, the
+ * reader resumes past the text that attempt covered instead of retrying inside
+ * it: a reader that retried at the next character would be quadratic. A
+ * regular expression is safe on
  * site text only where its attempts cannot add up past the text's length: a
  * fixed word, one repeated class followed by nothing the class could also
  * match, such as `\s+`, a pattern a few characters long, or one whose attempt

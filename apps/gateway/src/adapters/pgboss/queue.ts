@@ -252,7 +252,9 @@ export class PgBossQueue implements Queue {
     const stream = await this.#stream(merchantId);
     // `queued` is a job not yet handed out, delayed redeliveries included. A
     // drawn job is `active` and one drawn and never answered ends `failed`;
-    // neither is counted, which is right, since the sweep should resend.
+    // neither is counted. For a `failed` job that is right, since the sweep
+    // should resend. An `active` one is still in a poll's hands, and what keeps
+    // the sweep off it is `sweepDispatchGraceMs`, not this answer.
     //
     // Unlike `fetch`, this does not exclude jobs waiting on dependencies. No
     // envelope is ever sent with one; if one ever were, this would answer

@@ -103,9 +103,12 @@ export interface Queue {
   onReminder(fire: (reminder: Reminder) => Promise<void>): void;
 
   /**
-   * Runs `work` about once a day under `name`, once across all processes;
-   * registering the same name again replaces it. The in-memory queue never
-   * runs it, so nothing an order depends on may be put here.
+   * Runs `work` about once a day under `name`, with one job per tick however
+   * many processes run. A job that outlives its expiry is offered again, so two
+   * processes can run it at once, and work that reads and then acts needs a
+   * lock of its own. Registering the same name again replaces it. The
+   * in-memory queue never runs it, so nothing an order depends on may be put
+   * here.
    */
   everyDay(name: string, work: () => Promise<unknown>): Promise<void>;
 

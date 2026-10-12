@@ -2851,8 +2851,9 @@ describe("when something goes wrong that the merchant has to get out of", () => 
   });
 
   it("says there is no such page inside the dashboard, with its menu and a way back", async () => {
-    // Only to somebody signed in; a stranger is told nothing about which
-    // addresses exist here (the test above).
+    // Only to somebody signed in; a stranger is sent to the sign-in from every
+    // address, one that does not exist included, and learns nothing about which
+    // exist (held under "the gate").
     const { browser } = await started();
     await browser.signIn();
 

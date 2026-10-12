@@ -81,7 +81,10 @@ export interface Viewer {
    * them.
    */
   readonly shop?: ShopTile;
-  /** Only on the settings screen that pressed it. */
+  /**
+   * What became of signing out every other device; present only on the
+   * settings screen drawn as the answer to that press.
+   */
   readonly accountNotice?: string;
 }
 
@@ -106,8 +109,11 @@ export const refusedForNoName = (viewer: Viewer): boolean =>
   readinessSeenBy(viewer).missing.includes(MERCHANT_FINDINGS.NO_SELLER_NAME);
 
 /**
- * Every screen asks with the approval unread, so the approval is only ever in
- * `unknown`; this narrows what is missing to what Settings has words for.
+ * What is missing that the merchant sets in Settings: everything the rule finds
+ * missing except the operator's approval, which nobody sets there (on live,
+ * where the cards and settings screens read it, it is said on its own). Nothing
+ * else may be dropped, because this is the list a merchant is told to go and
+ * set.
  */
 export const unsetIn = (door: Readiness): readonly Unset[] =>
   door.missing.filter(

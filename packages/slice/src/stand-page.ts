@@ -648,8 +648,8 @@ const failed = (entry: Entry): boolean => {
   if (detail.error !== undefined) return true;
   // The envelope read as the protocol rather than as a key that happens to be
   // named `error`: a refused publish comes back at HTTP 200 with `ok: false`.
-  // The arm above usually catches it first, because such a refusal carries
-  // `error` beside it.
+  // The arm above catches it first, because such a refusal always carries
+  // `error`; nothing currently writes a detail this arm alone decides.
   if (detail.ok === false) return true;
   // A document the stand itself could not read comes back as zod's issues,
   // which is not an answer from anywhere and has no envelope around it.

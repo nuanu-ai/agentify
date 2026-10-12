@@ -72,7 +72,11 @@ if (databaseUrl === null) {
     await pool.query("create schema public");
   }
 
-  /** The cutover tests stop at the migration they are about. */
+  /**
+   * Every checked-in migration, in order: the schema a deployment runs today.
+   * The cutover tests use `migrateThrough` instead, to stop at the migration
+   * they are about.
+   */
   async function migrateEverything(): Promise<void> {
     const files = (await readdir(migrationsIn)).filter((file) => file.endsWith(".sql")).sort();
     for (const file of files) await run(file);

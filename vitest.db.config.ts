@@ -10,8 +10,9 @@ import { defineConfig } from "vitest/config";
  * Name the service: `docker compose up -d` alone starts the whole stack.
  *
  * The suite runs against its own `agentify_test` database and creates it if
- * missing. A host whose Postgres is not on the 5432 `compose.yaml` publishes
- * (a deployment binds `127.0.0.1:55432`) says so to the command:
+ * missing. A host whose Postgres is not on the 5432 `compose.yaml` publishes by
+ * default (AGENTIFY_POSTGRES_PUBLISH moved it; the deployed channels publish no
+ * database port at all) says so to the command:
  *
  *   AGENTIFY_TEST_DATABASE_URL=postgres://agentify:agentify@localhost:55432/agentify_test \
  *     pnpm test:db

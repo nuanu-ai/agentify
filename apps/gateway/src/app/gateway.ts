@@ -1590,9 +1590,9 @@ export class Gateway {
     orderId: string,
     _acceptance: Acceptance,
   ): Promise<OrderCallResponse | null> {
-    // The acceptance's expected delivery time is an estimate and is not
-    // stored: the merchant is held to his card's deadline, and two numbers side
-    // by side would suggest both are enforced.
+    // The acceptance carries no field, since `AcceptanceSchema` is empty: the
+    // merchant is held to the card's delivery deadline and to nothing they say
+    // here.
     const at = this.runtime.clock();
     const applied = await this.runner.apply(
       orderId,

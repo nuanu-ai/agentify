@@ -5,8 +5,9 @@ import { configDefaults, defineConfig, type ViteUserConfig } from "vitest/config
  * `pnpm test` must be free, deterministic and work without the network.
  * Everything that touches the chain, the facilitator, a merchant's live API or
  * a database lives in a separate command; the `*.integration.test.ts` files
- * are those, excluded by name. `vitest.setup.ts` enforces it: a request to
- * anywhere but loopback fails the test that made it.
+ * are those, excluded by name. `vitest.setup.ts` enforces it for `fetch` only:
+ * a `fetch` to anywhere but loopback fails the test that made it, while a raw
+ * socket, an `http` agent or a database driver is not intercepted.
  *
  * A per-test timeout is a hang detector, not an assertion. Vitest's default of
  * five seconds fails tests nobody broke on a loaded machine (those that stand

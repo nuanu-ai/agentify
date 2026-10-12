@@ -59,8 +59,8 @@ describe("MemoryQueue delivery", () => {
   });
 
   it("comes straight back with whatever is queued when no wait is asked for", async () => {
-    // A worker shutting down asks for a drain, and a drain that parked for
-    // twenty-five seconds would hold the shutdown open for twenty-five seconds.
+    // A drain asks for no wait, and one that parked for twenty-five seconds
+    // would hold its caller for twenty-five seconds.
     const queue = await started();
     await queue.publish(A, envelope("env_1"));
 

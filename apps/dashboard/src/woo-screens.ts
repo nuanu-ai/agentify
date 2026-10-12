@@ -342,7 +342,7 @@ ${went.length === 0 ? "" : publishedBlock(went)}${refused.length === 0 ? "" : re
   });
 };
 
-/** None of the four counts is hidden. */
+/** Published is always said; each other outcome is said whenever it is not zero. */
 const summaryOf = (
   published: number,
   refused: number,
