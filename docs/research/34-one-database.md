@@ -604,7 +604,7 @@ schema name.
 This goes on top of Option 1 or Option 2. The three drizzle schemas move into
 one package, for example `packages/database`, with one migrations folder, one
 history table and one migrate command. The package is private and never
-enters the published SDK's dependency tree (ADR-0003, point 8).
+enters the published SDK's dependency tree (ADR-0003, point 1).
 
 It deletes forty-one migration files and three journals in favour of one
 baseline, three history tables in favour of one, and the reasoning about
@@ -737,9 +737,9 @@ not proposed now.
 
 ## Decision records the implementation edits
 
-ADR-0003, points 2 and 6, say that the scanner and commerce use separate
-databases in one instance and that one database is the goal. They become one
-database, one account, the migration sets' histories as the chosen option
+ADR-0003, in its points on storage and the queue, said that the scanner and
+commerce use separate databases in one instance and that one database is the
+goal. They become one database, one account, the migration sets' histories as the chosen option
 has them, and one pg-boss schema shared by the gateway and the scanner.
 
 ADR-0024 says the scanner uses a separate database and that the separate

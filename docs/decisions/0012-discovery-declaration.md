@@ -5,10 +5,11 @@ Status: accepted (the product owner)
 
 ## Context
 
-ADR-0001 exposes the product on the x402 Bazaar, a discovery catalog that lists
-an endpoint once its payment challenge carries a discovery declaration and a
-payment to it settles through the CDP facilitator
-(`docs/research/04-spike-bazaar-listing.md`). A card already holds almost
+The product is exposed on the x402 Bazaar, a discovery catalog that lists an
+endpoint once its payment challenge carries a discovery declaration and a
+payment to it settles through the CDP facilitator, so the live chain settles
+there (ADR-0020). Why this catalog, and what the pilot expects of it, is in
+`docs/research/04-spike-bazaar-listing.md`. A card already holds almost
 everything a declaration wants.
 
 ## Decision
@@ -20,7 +21,7 @@ body is held to, and an example of what the agent receives. A parcel's body and
 schema carry `ship_to`, and its example output is a recorded shipment. Examples
 stand for each declared type and carry no invented data. The wire format is
 assembled at the edge by the protocol's own library, never by hand, and
-`@x402/extensions` is the gateway's dependency alone, since ADR-0003 §8 keeps
+`@x402/extensions` is the gateway's dependency alone, since ADR-0003 §1 keeps
 the contracts package, on which the merchant SDK depends, to zod. The resource
 address is pinned from `PUBLIC_BASE_URL` and the route table, never read off the
 request, which behind our reverse proxy arrives as `http://` with the caller's

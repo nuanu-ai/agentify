@@ -61,9 +61,10 @@ refused answers, so it drops `purchase_already_closed`; `apps/docs/orders.md`
 lists that gap as open.
 
 WebSocket is rejected as a persistent-connection stack bought for nothing we
-need, plus custom framing the hand-rolling rule (ADR-0003 §9) forbids; it is
-revisited on a measured latency or throughput need long polling cannot meet, or
-on fan-out to many workers per merchant. Server-Sent Events go one way, so
+need, plus custom framing the hand-rolling rule
+(`docs/research/45-stack-toolchain.md`) forbids; it is revisited on a measured
+latency or throughput need long polling cannot meet, or on fan-out to many
+workers per merchant. Server-Sent Events go one way, so
 answers would need a second surface anyway. Webhooks as the default fall to
 ADR-0002: the merchant would have to expose a public endpoint. A batch a poll,
 each order's wait started by its place in the batch, guesses at handler times

@@ -3,7 +3,8 @@
 Date: 2026-08-28
 Status: accepted (the product owner, 2026-08-28; 2026-09-25: every registration
 path except the one main path is removed; 2026-10-09: the key made for a
-dashboard and the registration route are deleted with ADR-0030)
+dashboard and the registration route are deleted when the dashboard joined the
+gateway's process, `docs/research/35-one-process.md`)
 
 ## Context
 
@@ -32,20 +33,20 @@ request.** The account appears when a one-time link is consumed for an address
 that has none (ADR-0026 §1), and no form asks for a password or an invitation.
 The merchant is made later, when the signed-in person presses the one control
 the dashboard offers (ADR-0026 §4). The press calls the gateway inside the
-process the two share (ADR-0030), and each side writes in a transaction of its
-own: the gateway makes the merchant, with no key, and the dashboard writes its
-identifier on the person. A database that does not answer leaves the person
-signed in without a merchant, pressing again from inside the session rather than
-spending another link; a dashboard that fails after the gateway made the
-merchant leaves a merchant nobody names — litter, not damage, and the next
-attempt makes a new one.
+process the two share (`docs/research/35-one-process.md`), and each side writes
+in a transaction of its own: the gateway makes the merchant, with no key, and
+the dashboard writes its identifier on the person. A database that does not
+answer leaves the person signed in without a merchant, pressing again from
+inside the session rather than spending another link; a dashboard that fails
+after the gateway made the merchant leaves a merchant nobody names — litter,
+not damage, and the next attempt makes a new one.
 
 **2. An account names its merchant, and holds nothing else of it.** The
 dashboard calls the gateway's application as the merchant on the signed-in
-account's row (ADR-0030), so two accounts are two merchants; `MERCHANT_API_KEY`
-left the configuration with the process-wide client. The row holds the
-merchant's identifier and no credential: the dashboard calls with none, so a
-copy of its database is not a way into the API.
+account's row (`docs/research/35-one-process.md`), so two accounts are two
+merchants; `MERCHANT_API_KEY` left the configuration with the process-wide
+client. The row holds the merchant's identifier and no credential: the
+dashboard calls with none, so a copy of its database is not a way into the API.
 
 **3. Nothing at the door makes a merchant.** The press is a call inside the
 process (§1), so the gateway has no registration route and no invitation
@@ -62,15 +63,15 @@ seller reaches an agent inside a payment challenge that names nobody.
 **5. Keys are made and disabled from the dashboard.** Three merchant-scoped
 routes over a merchant's keys — list, issue, disable — which a merchant's own
 code calls over the API, and which the dashboard reaches as the same
-operations, called inside the process as a signed-in person (ADR-0030). Every
-key is one the merchant issued, so the list is all of them, the key a call
-over the API was made with included. A call over the API cannot disable the
-key it was made with — a rule in the route, because that click leaves whoever
-made it calling with something the gateway no longer takes; a session in the
-dashboard holds no key, so every key on its list can be disabled there. The
-rule sees the key on the call, so two keys disabling each other in one moment
-still leave a merchant with none, which nobody has decided to refuse; the way
-back in is the mailed link.
+operations, called inside the process as a signed-in person
+(`docs/research/35-one-process.md`). Every key is one the merchant issued, so
+the list is all of them, the key a call over the API was made with included. A
+call over the API cannot disable the key it was made with — a rule in the
+route, because that click leaves whoever made it calling with something the
+gateway no longer takes; a session in the dashboard holds no key, so every key
+on its list can be disabled there. The rule sees the key on the call, so two
+keys disabling each other in one moment still leave a merchant with none, which
+nobody has decided to refuse; the way back in is the mailed link.
 
 ## Consequences
 
@@ -97,11 +98,10 @@ registration.** Not before an address means something: the catalogue is shared,
 and the first cost of a stranger's words is the buyer's, not ours. **Wait for
 mail, build nothing.** Everything here is needed whichever the door is; only the
 door changes. **One privileged dashboard key naming the merchant per request.**
-The same secret with a second authentication mode on the money path (ADR-0005
-§2), plus a "which merchant" parameter somebody forgets to check. **A
-registration route behind an invitation code.** It was the dashboard's way in
-while it called the gateway over HTTP; with the call inside the process a route
-is only a door to guard, and its code a secret every host has to keep.
-**Registration on the gateway.** A public form, a password and a rate limit on
-the money path, and the gateway would need the account table this decision keeps
-out of it.
+The same secret with a second authentication mode on the money path (ADR-0010),
+plus a "which merchant" parameter somebody forgets to check. **A registration
+route behind an invitation code.** It was the dashboard's way in while it
+called the gateway over HTTP; with the call inside the process a route is only
+a door to guard, and its code a secret every host has to keep. **Registration
+on the gateway.** A public form, a password and a rate limit on the money path,
+and the gateway would need the account table this decision keeps out of it.
