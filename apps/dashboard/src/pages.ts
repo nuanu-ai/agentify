@@ -141,8 +141,8 @@ interface Served {
    * Whether a browser may keep the page's data for a moment. A page sent with
    * no script never has its data asked for by its own page, so whatever asks
    * for it is not a prefetch, and nothing of it is kept; nor is any of a page
-   * that says `keepsData: false`, because what it shows must be what is held
-   * now, nor the data of a page whose `handle` says `{ fresh: true }`.
+   * whose `handle` says `keepsData: false`, because what it shows must be what
+   * is held now.
    */
   readonly keepsData: boolean;
 }
@@ -161,7 +161,7 @@ const routesOf = (build: ServerBuild, wooOffered: boolean): RouteObject[] => {
         default?: unknown;
         loader?: unknown;
         action?: unknown;
-        handle?: { script?: boolean; keepsData?: boolean; fresh?: boolean; woocommerce?: boolean };
+        handle?: { script?: boolean; keepsData?: boolean; woocommerce?: boolean };
       };
       // A layout with no path of its own, the root among them, is a frame
       // around pages and never a page, even while nothing is nested in it.
@@ -174,10 +174,7 @@ const routesOf = (build: ServerBuild, wooOffered: boolean): RouteObject[] => {
           (method === "GET" || method === "HEAD"
             ? module.loader !== undefined || module.default !== undefined
             : method === "POST" && module.action !== undefined),
-        keepsData:
-          module.handle?.script !== false &&
-          module.handle?.keepsData !== false &&
-          module.handle?.fresh !== true,
+        keepsData: module.handle?.script !== false && module.handle?.keepsData !== false,
       };
       const shared = {
         id: route.id,
