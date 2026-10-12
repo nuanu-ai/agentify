@@ -26,7 +26,11 @@ The origin is the boundary between the surfaces. One session cookie reaches
 all of them (ADR-0026 §2) and a script injected into any page acts with it, so
 whatever the scanner renders from somebody else's site is escaped. The door
 also decides what the origin does not carry: the calls only the dashboard
-makes are left out of the gateway's paths (ADR-0014, ADR-0019).
+makes are left out of the gateway's paths (ADR-0014, ADR-0019). The dashboard
+calls the gateway's application inside the process the two share
+(`docs/research/35-one-process.md`), so one rule keeps the published contract
+complete: a dashboard screen that needs what a merchant's code could need gets
+a contract route, never a private call.
 
 `/healthz` sits outside the contract's prefixes, because a probe is not
 something a merchant's code calls, and answers for the gateway alone; the
