@@ -38,9 +38,8 @@ import { pageServicesFor } from "./page-services.js";
 import { type Pages, pagesHandler } from "./pages.js";
 import { printable } from "./printable.js";
 import { notDrawnForYouScreen, notFoundScreen, type Viewer } from "./screens.js";
-import { type ShopCalls, shopStateOf, wooPagesFor } from "./woo-pages.js";
+import { type ShopCalls, wooPagesFor } from "./woo-pages.js";
 import { type WooShops, wooOfferedOn } from "./woo-shops.js";
-import type { ShopState } from "./woo-views.js";
 
 /**
  * The shared visual language, then the dashboard's own layout, read once at
@@ -159,8 +158,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
                 shops: wooShops,
                 ...(parts.shop === undefined ? {} : { shop: parts.shop }),
               }),
-        // Asked per request, by which time the function below is defined.
-        shopState: (accountId) => shopStateFor(accountId),
       }),
     ),
   );
@@ -295,10 +292,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     }
     next();
   });
-
-  /** `undefined` means nowhere to keep a connection, which draws no block. */
-  const shopStateFor = async (accountId: string): Promise<ShopState | undefined> =>
-    wooShops === undefined ? undefined : await shopStateOf(wooShops, accountId);
 
   app.use((request, response) => {
     response

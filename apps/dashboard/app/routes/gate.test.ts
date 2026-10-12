@@ -61,7 +61,6 @@ const throughTheGate = async (request: Request, identity: ReturnType<typeof iden
             },
           },
           woo: null,
-          shopState: async () => undefined,
         }),
       ],
     ]),

@@ -54,7 +54,6 @@ const live = async (): Promise<{ harnessed: Harness; services: PageServices }> =
     clientFor: (acting, answerWithinMs) => gatewayFor(slow, acting, answerWithinMs),
     registrar: registrarFor(slow),
     woo: null,
-    shopState: async () => undefined,
   });
   return { harnessed, services };
 };

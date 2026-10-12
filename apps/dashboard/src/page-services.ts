@@ -50,7 +50,7 @@ import {
   receiptsView,
 } from "./views.js";
 import type { WooPages } from "./woo-pages.js";
-import type { ShopState, ShopTile } from "./woo-views.js";
+import type { ShopTile } from "./woo-views.js";
 import { moment } from "./words.js";
 
 /** A view to draw, a place to send the browser, or a problem to show instead. */
@@ -241,11 +241,6 @@ export interface PageParts {
    * elsewhere, where no screen offers it and none of its pages is answered.
    */
   readonly woo: WooPages | null;
-  /**
-   * The account's WooCommerce connection as the shop's own screen reads it;
-   * undefined where this dashboard has nowhere to keep one.
-   */
-  readonly shopState: (accountId: string) => Promise<ShopState | undefined>;
 }
 
 /**
@@ -1001,7 +996,8 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       // The failure is logged as a line: a store's exception can carry a shop's
       // key.
       async page(person) {
-        const shop = await parts.shopState(person.id).catch((): ShopTile => {
+        if (parts.woo === null) return { kind: "view", view: integrationsView(undefined) };
+        const shop = await parts.woo.stateOf(person.id).catch((): ShopTile => {
           console.error(
             "[dashboard] the WooCommerce connection could not be read for the integrations screen",
           );

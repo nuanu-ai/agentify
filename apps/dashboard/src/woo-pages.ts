@@ -16,8 +16,8 @@ import {
 import type { DashboardConfig } from "./config.js";
 import type { DashboardIdentity, Person } from "./dashboard-entry.js";
 import type { Acting, Answer, GatewayClient } from "./gateway.js";
+import { noted } from "./noted.js";
 import { type Outcome, problemOf } from "./page-services.js";
-import { printable } from "./printable.js";
 import { unsetIn, type Viewer } from "./screens.js";
 import {
   cardsFromTheShop,
@@ -80,6 +80,8 @@ export interface WooPages {
    * the session and nothing else, and answers anybody without one alike.
    */
   cameBack(cookie: string | undefined, query: URLSearchParams): Promise<Outcome<null>>;
+  /** The account's connection as the shop screen reads it, for any screen that says it. */
+  stateOf(accountId: string): Promise<ShopState>;
 }
 
 export interface WooParts {
@@ -152,14 +154,6 @@ const mapAtMost = async <Input, Output>(
   };
   await Promise.all(Array.from({ length: Math.min(atMost, values.length) }, worker));
   return results;
-};
-
-/**
- * A process log, not an audit trail, written through `printable` whole so that
- * nothing interpolated can forge a second line; never a key or a token.
- */
-const noted = (person: Person, did: string): void => {
-  console.log(printable(`[dashboard] ${person.email} ${did}`));
 };
 
 /**
@@ -280,6 +274,8 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   };
 
   return {
+    stateOf: async (accountId) => await shopStateOf(shops, accountId),
+
     async shop(person, query) {
       // The only page that reads the flag the return address's redirect set,
       // and it is spent by being drawn, so a merchant opening this page

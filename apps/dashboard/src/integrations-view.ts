@@ -6,8 +6,7 @@
  */
 
 import { type FrameView, type MomentView, momentView } from "./views.js";
-import { keysNotArrived } from "./woo-screens.js";
-import type { ShopTile } from "./woo-views.js";
+import { noKeysYet, type ShopTile } from "./woo-views.js";
 
 /**
  * The state rather than a standing invitation: "connect a WooCommerce shop"
@@ -34,26 +33,26 @@ export interface IntegrationsView {
   readonly shop: ShopTileView | null;
 }
 
+/** In the shop screen's own words about a Connect that brought no keys. */
 const tileOf = (shop: ShopTile): ShopTileView => {
-  switch (shop.kind) {
-    case "unread":
-    case "none":
-      return { kind: shop.kind };
-    case "connected":
-      return {
-        kind: "connected",
-        shopUrl: shop.shop.shopUrl,
-        connectedAt: momentView(shop.shop.connectedAt.toISOString()),
-        narrower: shop.shop.permissions === "read_write" ? null : shop.shop.permissions,
-      };
-    case "waiting":
-    case "unanswered":
-      return {
-        kind: "not-arrived",
-        ...keysNotArrived(shop),
-        next: shop.kind === "waiting" ? "Check the connection" : "Connect again",
-      };
+  if (shop.kind === "unread") return { kind: "unread" };
+  if (shop.kind === "connected") {
+    return {
+      kind: "connected",
+      shopUrl: shop.shop.shopUrl,
+      connectedAt: momentView(shop.shop.connectedAt.toISOString()),
+      narrower: shop.shop.permissions === "read_write" ? null : shop.shop.permissions,
+    };
   }
+  const said = noKeysYet(shop);
+  return said === null
+    ? { kind: "none" }
+    : {
+        kind: "not-arrived",
+        what: said.what,
+        why: said.why,
+        next: said.waiting ? "Check the connection" : "Connect again",
+      };
 };
 
 export const integrationsView = (shop: ShopTile | undefined): IntegrationsView => ({

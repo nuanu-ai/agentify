@@ -83,7 +83,6 @@ const keysPage = ({ listAfterIssue = "fails" }: { listAfterIssue?: "fails" | "an
       },
     },
     woo: null,
-    shopState: async () => undefined,
   });
   // A request of its own each time, as the server gives every call.
   const asked = () =>
