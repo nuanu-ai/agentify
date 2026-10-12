@@ -391,6 +391,29 @@ does not accept; too little room for the restore point; and an earlier release
 or restore that waits for a person, below. Fix the cause and run the same
 command again.
 
+### A card the release takes off sale on purpose
+
+Activation holds every release to the cards on sale before it: a card in the
+catalog before the release and gone after it fails the release, which then
+runs unverified, because a card that stops answering is the commonest way a
+release breaks somebody's sales. Some releases take cards off sale on purpose
+— a migration that moves a merchant to an integration whose cards those are
+not, for one. The failure names the cards and ends with the way to release
+them knowingly: run the same release again naming them, comma-separated.
+
+```sh
+ssh -t agentify-test sudo agentify-release deploy-test --leaving item_a,item_b
+```
+
+On PRODUCTION it is the same `app-v*` tag with `--leaving`, and when the
+cards are known before the release they can be named on its first run. The
+release is held to exactly those: a card gone that was not named still fails
+it, and so does a named card that is still on sale or was not on sale before
+the release. A rerun of a release that started carries on from its record, as
+above, and checks the cards against those on sale before its first run. The
+timer never names a card, so on TEST a release that takes cards off sale waits
+for a person's run.
+
 ### The transition record
 
 From just before the three applications stop until the release is verified, the
