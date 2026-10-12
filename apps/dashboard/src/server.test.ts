@@ -2743,6 +2743,8 @@ describe("the keys screen", () => {
     expect(keys.issued).toStrictEqual(["the second worker"]);
     expect(issued.status).toBe(200);
     expect(issued.html).toContain(SECRET);
+    // Kept by no cache, so nothing can hand the page back later.
+    expect(issued.headers.get("cache-control")).toBe("private, no-store");
     expect(readable(issued.html)).toMatch(/only time|once/i);
     expect(readable(issued.html)).toContain("Copy key");
 
@@ -2753,6 +2755,35 @@ describe("the keys screen", () => {
     // Gone from every later page: the list is drawn from documents that carry
     // no secret.
     expect((await browser.get("/keys")).html).not.toContain(SECRET);
+  });
+
+  it("shows the secret of the key it issued even when the list cannot be read right after", async () => {
+    // A key issued and never seen is one the merchant cannot use and must find
+    // and revoke, so nothing read after the issue may stand between the press
+    // and the one page that shows the secret.
+    const keys = withKeys();
+    let issuing = false;
+    const { browser } = await started({
+      client: (real) => {
+        const decorated = keys.client(real);
+        return {
+          ...decorated,
+          keys: async () =>
+            issuing
+              ? { ok: false, status: 0, why: "the gateway did not answer in time" }
+              : await decorated.keys(),
+        };
+      },
+    });
+    await browser.signIn();
+    await browser.get("/keys");
+    issuing = true;
+
+    const issued = await browser.post("/keys", { label: "the second worker" });
+
+    expect(keys.issued).toStrictEqual(["the second worker"]);
+    expect(issued.status).toBe(200);
+    expect(issued.html).toContain(SECRET);
   });
 
   it("revokes a key only on a second, deliberate press", async () => {
@@ -3683,6 +3714,55 @@ describe("naming a new key", () => {
     expect((listed.body as MerchantKeyList).keys.some((key) => key.label.startsWith("kkk"))).toBe(
       false,
     );
+  });
+});
+
+describe("a key issued from the dashboard, against the real gateway", () => {
+  const LIVE = {
+    PAYMENT_NETWORK: "eip155:8453",
+    FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+  };
+  const issuedOn = async (live: boolean): Promise<{ running: Running; issued: Visit }> => {
+    const running = await started(
+      live
+        ? {
+            gateway: { ...LIVE, CDP_API_KEY_ID: "key-id", CDP_API_KEY_SECRET: "key-secret" },
+            dashboard: LIVE,
+          }
+        : {},
+    );
+    await running.browser.signIn();
+    await running.browser.get("/keys");
+    return { running, issued: await running.browser.post("/keys", { label: "the stock worker" }) };
+  };
+
+  it("carries the prefix of the site it works on, which its holder can read", async () => {
+    // A key from the other site is refused with a sentence naming the site it
+    // works on, so the prefix the merchant copies is the site's own.
+    const { issued: onTest } = await issuedOn(false);
+    expect(onTest.status).toBe(200);
+    expect(readable(onTest.html)).toMatch(/\bcsk_test_\S+/);
+    expect(onTest.html).not.toContain("csk_live_");
+    await open?.browser.close();
+
+    const { issued: onLive } = await issuedOn(true);
+    expect(onLive.status).toBe(200);
+    expect(readable(onLive.html)).toMatch(/\bcsk_live_\S+/);
+    expect(onLive.html).not.toContain("csk_test_");
+  });
+
+  it("is announced on live to the merchant's accounts, naming the address the session is signed in as", async () => {
+    const { running, issued } = await issuedOn(true);
+
+    expect(issued.status).toBe(200);
+    expect(running.harnessed.announcer.announced).toMatchObject([
+      {
+        kind: "key_issued",
+        merchant_id: running.theMerchant,
+        key: { label: "the stock worker" },
+        asked_with: { kind: "signed_in", email: PERSON },
+      },
+    ]);
   });
 });
 
