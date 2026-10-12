@@ -18,7 +18,7 @@ import type { DashboardIdentity, Person } from "./dashboard-entry.js";
 import type { Acting, Answer, GatewayClient } from "./gateway.js";
 import { noted } from "./noted.js";
 import { type Outcome, problemOf } from "./page-services.js";
-import { unsetIn, type Viewer } from "./screens.js";
+import { unsetIn, type Viewer } from "./viewer.js";
 import {
   cardsFromTheShop,
   decimalOfMinorUnits,

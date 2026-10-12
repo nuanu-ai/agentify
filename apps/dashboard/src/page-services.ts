@@ -30,7 +30,6 @@ import { type IntegrationsView, integrationsView } from "./integrations-view.js"
 import { type KeysView, keysView, type NewKeyView, newKeyView } from "./keys.js";
 import { noted } from "./noted.js";
 import { WALLET_CHANGE_MS, WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
-import type { Viewer } from "./screens.js";
 import {
   NAME_CANNOT_BE_TAKEN_AWAY,
   NAME_NEEDED,
@@ -41,6 +40,7 @@ import {
   whatIsWrongWithTheSite,
 } from "./seller-name.js";
 import { type SettingsPress, type SettingsView, settingsView } from "./settings-view.js";
+import type { Viewer } from "./viewer.js";
 import {
   type CardsView,
   cardsView,

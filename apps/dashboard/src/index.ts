@@ -31,8 +31,8 @@ export {
   postmanFor,
   SANDBOX_MAIL,
 } from "./mail.js";
-export type { Viewer } from "./screens.js";
 export { buildApp, type DashboardParts } from "./server.js";
+export type { Viewer } from "./viewer.js";
 export {
   FULFILLMENT_WORDS,
   moment,

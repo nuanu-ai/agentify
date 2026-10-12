@@ -37,7 +37,8 @@ import { bare, brandLockup, escaped } from "./html.js";
 import { pageServicesFor } from "./page-services.js";
 import { type Pages, pagesHandler } from "./pages.js";
 import { printable } from "./printable.js";
-import { notDrawnForYouScreen, notFoundScreen, type Viewer } from "./screens.js";
+import { notDrawnForYouScreen, notFoundScreen } from "./screens.js";
+import type { Viewer } from "./viewer.js";
 import { type ShopCalls, wooPagesFor } from "./woo-pages.js";
 import { type WooShops, wooOfferedOn } from "./woo-shops.js";
 

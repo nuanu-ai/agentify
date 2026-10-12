@@ -20,7 +20,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
 import type { RefundCause } from "./gateway.js";
-import { readinessSeenBy, refusedForNoName, unsetIn, type Viewer } from "./screens.js";
+import { readinessSeenBy, refusedForNoName, unsetIn, type Viewer } from "./viewer.js";
 import {
   APPROVAL_PENDING,
   FULFILLMENT_WORDS,

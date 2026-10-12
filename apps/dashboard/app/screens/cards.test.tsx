@@ -11,7 +11,7 @@ import { MerchantCardListSchema } from "@nuanu-ai/agentify-contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRoutesStub, Outlet, redirect, ScrollRestoration } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Viewer } from "../../src/screens.js";
+import type { Viewer } from "../../src/viewer.js";
 import { cardsView } from "../../src/views.js";
 import { CardsScreen } from "./cards.js";
 

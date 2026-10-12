@@ -11,7 +11,7 @@
  */
 
 import type { Integration } from "@agentify/gateway";
-import { refusedForNoName, type Viewer } from "./screens.js";
+import { refusedForNoName, type Viewer } from "./viewer.js";
 import { type FrameView, type MomentView, momentView } from "./views.js";
 import type { SkippedProduct } from "./woo-catalog.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
