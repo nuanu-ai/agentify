@@ -175,6 +175,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
                 ...(parts.shop === undefined ? {} : { shop: parts.shop }),
               }),
       }),
+      config.cookieSecure,
     ),
   );
 

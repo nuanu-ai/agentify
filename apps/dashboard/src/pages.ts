@@ -46,8 +46,8 @@ const BUILT_ASSETS = join(APP_ROOT, "dist", "client", ASSETS_DIRECTORY);
  * press is never handed to a read after it, whichever page the read is for and
  * wherever the press was posted: React Router reads its page again after a
  * press at the very address a prefetch or the press before already filled.
- * It names and opens nothing, so it needs neither `Secure` nor clearing at
- * sign-out.
+ * It names and opens nothing, so it needs no clearing at sign-out; it is
+ * `Secure` wherever the session's cookie is.
  */
 const PRESSED = "agentify.dashboard_pressed";
 
@@ -282,9 +282,14 @@ interface Mounted {
  * The React pages as one Express handler for the dashboard's listener. The
  * build's own prefix is replaced by the one the dashboard is configured with,
  * so a dashboard at the root of its origin answers there too; the browser's
- * files stay where the build put them.
+ * files stay where the build put them. `cookieSecure` is the session cookie's
+ * setting, which the press's cookie follows.
  */
-export function pagesHandler(pages: Pages, services: PageServices): RequestHandler {
+export function pagesHandler(
+  pages: Pages,
+  services: PageServices,
+  cookieSecure: boolean,
+): RequestHandler {
   const basename = services.base === "" ? "/" : services.base;
   const mounted = new WeakMap<ServerBuild, Mounted>();
   const refusals = new WeakMap<Request, Refusal>();
@@ -342,7 +347,7 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
     if (request.method === "POST" && request.headers.cookie !== undefined) {
       response.append(
         "set-cookie",
-        `${PRESSED}=${randomBytes(12).toString("base64url")}; Path=${basename}; HttpOnly; SameSite=Lax`,
+        `${PRESSED}=${randomBytes(12).toString("base64url")}; Path=${basename}; HttpOnly; SameSite=Lax${cookieSecure ? "; Secure" : ""}`,
       );
     }
     void (async () => {
