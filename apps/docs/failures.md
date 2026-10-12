@@ -88,8 +88,9 @@ repeat the delivery, after a pause that grows with each attempt, until the
 mode's deadline runs out — or until we have tried five times, whichever comes
 first. That count is ours and no card carries it. It is also the one that
 surprises people: a handler that throws on every attempt runs out of attempts
-long before it runs out of clock, and the order then ends the same way it would
-have ended at the deadline.
+long before it runs out of clock. The order is then not sent again, but it stays
+open until the deadline, so an answer or a delivery that arrives before it
+still counts, and at the deadline it ends as any order whose deadline passed.
 
 A handler that is only slow looks the same to us until its answer arrives:
 after three seconds without an answer we send the order again, and the answer

@@ -439,21 +439,27 @@ describe("when a delivery goes unanswered", () => {
     expect(new Set(seen.map((each) => each.message)).size).toBe(seen.length);
   });
 
-  it("stops repeating once the attempts are spent, and leaves the debt behind", async () => {
-    // The repeats are not endless. Here the merchant's own deadline is far
-    // away — far enough that reaching the ending inside this test can only be
-    // the attempt cap — and the money moved at the purchase, so what is left
-    // when we stop trying is a debt rather than a free ending.
+  it("stops repeating once the attempts are spent, and leaves the debt to the deadline", async () => {
+    // The repeats are not endless, and running out of them is not running out
+    // of time: the merchant may still deliver until the deadline, and the debt
+    // the deadline leaves says the deadline passed because it did. The money
+    // moved at the purchase, so what is left then is a debt rather than a free
+    // ending.
     const harnessed = await started({
       HANDLER_ANSWER_MS: "10",
       REDELIVERY_BASE_DELAY_MS: "5",
       REDELIVERY_MAX_ATTEMPTS: "2",
-      DEFAULT_ASYNC_FULFILLMENT_MS: "60000",
+      DEFAULT_ASYNC_FULFILLMENT_MS: "400",
     });
     const orderId = await bought(harnessed, asyncCard);
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
     const silent = workUntilStopped(harnessed, {});
+    await vi.waitFor(
+      async () => expect((await state(harnessed, orderId))?.dispatch.attempts).toBe(2),
+      { timeout: 2_000, interval: 5 },
+    );
+    expect((await state(harnessed, orderId))?.state).toBe("dispatched");
     await vi.waitFor(
       async () => expect((await state(harnessed, orderId))?.state).toBe("refund_due"),
       { timeout: 2_000, interval: 5 },
@@ -463,6 +469,10 @@ describe("when a delivery goes unanswered", () => {
     const owing = await state(harnessed, orderId);
     expect(owing?.dispatch.attempts).toBe(2);
     expect(owing?.payment).toBe("settled");
+    expect(owing?.closure).toStrictEqual({
+      cause: "deadline_expired",
+      deadline: "async_fulfillment",
+    });
   });
 
   it("does not send an order again to a merchant who answered the delivery he was given", async () => {
