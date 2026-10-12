@@ -1134,6 +1134,9 @@ export class OrderRunner {
       ...(record.priceId === null ? {} : { price_id: record.priceId }),
       paid_at: asTimestamp(paidAt),
       outcome: receiptOutcomeOf(record.order),
+      // The payment layer's own name for the transfer, so the receipt can be
+      // found on the chain by more than its time.
+      ...(record.settlement === null ? {} : { transaction: record.settlement.transaction }),
       test: record.order.test,
     };
   }

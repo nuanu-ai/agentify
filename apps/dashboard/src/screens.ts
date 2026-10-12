@@ -27,6 +27,7 @@ import type { RefundCause } from "./gateway.js";
 import {
   bare,
   brandLockup,
+  type Cell,
   escaped,
   momentCell,
   page,
@@ -623,10 +624,30 @@ const whereTheRestIs = (status: OrderList["orders"][number]["status"]): string =
         "What can still happen to it",
       );
 
+/**
+ * The transfer behind a receipt, as the payment layer named it: a link to the
+ * chain's own page for it where this deployment has one and the name is a
+ * transaction hash, the name as written otherwise, and said to be missing
+ * where the layer named none. Written out whole, because a shortened hash is a
+ * different string to whoever pastes it.
+ */
+const transferCell = (transaction: string | undefined, page: string | null): Cell => {
+  if (transaction === undefined) {
+    return { kind: "quiet", html: "Not reported" };
+  }
+  return page !== null && /^0x[0-9a-fA-F]{64}$/.test(transaction)
+    ? {
+        kind: "ident",
+        html: `<a href="${escaped(`${page}${transaction}`)}" rel="noreferrer">${escaped(transaction)}</a>`,
+      }
+    : { kind: "ident", html: escaped(transaction) };
+};
+
 export const receiptsScreen = (
   viewer: Viewer,
   cards: MerchantCardList,
   receipts: ReceiptList,
+  transactionPage: string | null = null,
 ): string => {
   const titles = new Map(cards.cards.map((entry) => [entry.id, entry.card.title]));
   // A shipped parcel is a sale as much as goods handed over: the money is the
@@ -648,6 +669,7 @@ export const receiptsScreen = (
         momentCell(receipt.paid_at),
         momentCell(receipt.price.at),
         momentCell(receipt.price.as_of),
+        transferCell(receipt.transaction, transactionPage),
       ],
     }),
   );
@@ -685,7 +707,17 @@ export const receiptsScreen = (
     <p>This page does not show all of your money. Payments for products not yet delivered and refunds you owe are on Orders. A purchase that was never paid leaves no receipt, and no receipt appears while it is unknown whether the buyer was charged.</p>
   </div>
 ${table(
-  ["Receipt", "Order", "Product", "Amount", "Outcome", "Paid", "Price set", "Price as of"],
+  [
+    "Receipt",
+    "Order",
+    "Product",
+    "Amount",
+    "Outcome",
+    "Paid",
+    "Price set",
+    "Price as of",
+    "Transfer",
+  ],
   rows,
   "No receipts yet. One appears when a product is released to the buyer.",
 )}

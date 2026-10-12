@@ -1906,7 +1906,12 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     response
       .type("html")
       .send(
-        receiptsScreen(viewing(request, base, name.document), cards.document, receipts.document),
+        receiptsScreen(
+          viewing(request, base, name.document),
+          cards.document,
+          receipts.document,
+          config.transactionPage,
+        ),
       );
   });
 

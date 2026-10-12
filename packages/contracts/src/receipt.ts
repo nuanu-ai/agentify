@@ -92,6 +92,14 @@ export const ReceiptSchema = z.strictObject({
   outcome: ReceiptOutcomeSchema,
 
   /**
+   * The transfer the payment layer reported when the charge went through, in
+   * its own words — on an EVM chain, the hash of the transaction — so that a
+   * receipt can be matched to the payment on the chain by more than its time.
+   * Absent where the layer named none.
+   */
+  transaction: z.string().regex(/\S/, "a transaction names the transfer").optional(),
+
+  /**
    * Whether the money behind this receipt was real. A receipt is proof of
    * payment, and an unmarked receipt for a test purchase is proof of a payment
    * that never happened.
