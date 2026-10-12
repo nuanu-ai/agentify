@@ -12,6 +12,7 @@ import {
   type MiddlewareFunction,
   Outlet,
   redirectDocument,
+  type ShouldRevalidateFunction,
 } from "react-router";
 import { DRAWN_FOR } from "../../src/drawn-for.js";
 import { chromeOf, type Trouble } from "../answer.js";
@@ -94,6 +95,18 @@ export { ErrorBoundary } from "../root.js";
 
 /** The address every page behind the gate is drawn for, and names. */
 export const loader = ({ context }: LoaderFunctionArgs) => ({ who: context.get(signedIn).email });
+
+/**
+ * Not asked again after a press: the press was refused unless drawn for the
+ * address signed in now, and a request made only to read that address again
+ * could fail and take the press's answer off the screen, a new key's secret
+ * among them. A move to another page reads it, since another tab may have
+ * signed in as somebody else.
+ */
+export const shouldRevalidate: ShouldRevalidateFunction = ({
+  formMethod,
+  defaultShouldRevalidate,
+}) => formMethod === undefined && defaultShouldRevalidate;
 
 export default function Gate() {
   return <Outlet />;

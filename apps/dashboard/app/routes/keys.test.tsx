@@ -11,13 +11,7 @@
 
 import type { MerchantKey } from "@nuanu-ai/agentify-contracts";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import {
-  createRoutesStub,
-  Outlet,
-  RouterContextProvider,
-  type ShouldRevalidateFunction,
-  useNavigate,
-} from "react-router";
+import { createRoutesStub, Outlet, RouterContextProvider, useNavigate } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../../src/config.js";
 import type { GatewayClient } from "../../src/gateway.js";
@@ -26,7 +20,7 @@ import { pageServicesFor } from "../../src/page-services.js";
 import { chromeOf } from "../answer.js";
 import { ErrorBoundary } from "../root.js";
 import { services, signedIn } from "../services.js";
-import * as gate from "./gate.js";
+import { shouldRevalidate as gateShouldRevalidate } from "./gate.js";
 import Keys, { action, loader, shouldRevalidate } from "./keys.js";
 
 const PERSON = "owner@example.com";
@@ -124,8 +118,7 @@ const keysPage = ({
             }
             return { who: PERSON };
           },
-          shouldRevalidate: (gate as { shouldRevalidate?: ShouldRevalidateFunction })
-            .shouldRevalidate,
+          shouldRevalidate: gateShouldRevalidate,
           Component: Outlet,
           children: [
             {
