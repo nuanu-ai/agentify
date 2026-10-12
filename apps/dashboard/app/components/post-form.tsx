@@ -9,7 +9,9 @@ import { DRAWN_FOR } from "../../src/drawn-for.js";
  * signed in.
  *
  * `document` posts with a whole page load, for an action still served by a
- * string page; otherwise React Router sends it. Either way it is an HTML form
+ * string page; otherwise React Router sends it. `replace={false}` gives the
+ * answer a history entry of its own even where it is drawn at the page's own
+ * address, so Back returns to the page the press was made on. Either way it is an HTML form
  * that works with no script, and with script its button shows the press at
  * once and takes no second one.
  *
@@ -20,12 +22,14 @@ import { DRAWN_FOR } from "../../src/drawn-for.js";
 export function PostForm({
   action,
   document = false,
+  replace,
   className,
   children,
 }: Readonly<{
   /** A path under the dashboard's prefix, without it. */
   action: string;
   document?: boolean;
+  replace?: boolean;
   className?: string;
   children: (pending: boolean) => ReactNode;
 }>) {
@@ -42,6 +46,7 @@ export function PostForm({
       method="post"
       action={action}
       reloadDocument={document}
+      {...(replace === undefined ? {} : { replace })}
       className={className}
       onSubmit={document ? () => setSent(true) : undefined}
     >

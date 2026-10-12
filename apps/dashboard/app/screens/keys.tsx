@@ -101,7 +101,7 @@ export function KeysScreen({ view }: Readonly<{ view: KeysView }>) {
           </p>
         </div>
       </div>
-      <PostForm className="issue key-name" action="/keys">
+      <PostForm className="issue key-name" action="/keys" replace={false}>
         {(pending) => (
           <>
             <div>
