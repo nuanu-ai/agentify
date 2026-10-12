@@ -23,7 +23,10 @@ let url = "";
 let close = async (): Promise<void> => {};
 
 beforeAll(async () => {
-  directory = await mkdtemp(join(tmpdir(), "dashboard-assets-"));
+  // Under a directory whose name starts with a dot, as a checkout under a
+  // tool's hidden directory is: a file server that refuses dotfiles by default
+  // reads the whole path and refuses every file there.
+  directory = await mkdtemp(join(await mkdtemp(join(tmpdir(), ".dashboard-")), "assets-"));
   await writeFile(join(directory, "entry-AbC123.js"), SCRIPT);
   await writeFile(join(directory, "entry-AbC123.js.br"), brotliCompressSync(SCRIPT));
   await writeFile(join(directory, "entry-AbC123.js.gz"), gzipSync(SCRIPT));
@@ -43,7 +46,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await close();
-  await rm(directory, { recursive: true, force: true });
+  await rm(join(directory, ".."), { recursive: true, force: true });
 });
 
 /** As the bytes arrive: `fetch` would undo the encoding before a test saw it. */
@@ -103,6 +106,7 @@ describe("the browser's scripts and styles", () => {
   it("may be kept by any cache for a year, since a changed file has a new name", async () => {
     for (const name of ["entry-AbC123.js", "styles-XyZ789.css"]) {
       const { answered } = await asked(name, "br");
+      expect(answered.status, name).toBe(200);
       expect(answered.headers.get("cache-control"), name).toBe(
         "public, max-age=31536000, immutable",
       );
