@@ -16,7 +16,13 @@ export const readable = (html: string): string =>
     .replaceAll(/<[^>]*>/g, " ")
     .replaceAll("&lt;", "<")
     .replaceAll("&gt;", ">")
-    .replaceAll("&#39;", "'")
+    .replaceAll(/&#(x[0-9a-f]+|[0-9]+);/gi, (_entity, code: string) =>
+      String.fromCodePoint(
+        code.startsWith("x") || code.startsWith("X")
+          ? Number.parseInt(code.slice(1), 16)
+          : Number(code),
+      ),
+    )
     .replaceAll("&quot;", '"')
     .replaceAll("&amp;", "&")
     .replaceAll(/\s+/g, " ")

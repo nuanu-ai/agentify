@@ -2850,13 +2850,43 @@ describe("what every screen says about the address", () => {
     }
   });
 
+  it("lets only this browser keep a page's data, for the ten seconds a prefetch needs, and per session", async () => {
+    // A page's data is fetched while the pointer rests on its link, and a
+    // browser hands that answer to the click only while it is fresh; it names
+    // the signed-in address, so no shared cache may keep it, and a session
+    // signed in afterwards must not be handed it.
+    const { browser } = await started();
+    await browser.signIn();
+
+    for (const path of ["/cards", "/orders", "/receipts"]) {
+      const data = await browser.get(`${path}.data`);
+      expect(data.status, path).toBe(200);
+      expect(data.html, path).toContain(PERSON);
+      expect(data.headers.get("cache-control"), path).toBe("private, max-age=10");
+      expect(data.headers.get("vary"), path).toMatch(/cookie/i);
+    }
+  });
+
+  it("answers a signed-out browser's request for a page's data with the sign-in, not the data", async () => {
+    const { browser } = await started();
+    await browser.signIn();
+    await browser.post("/sign-out");
+
+    const data = await browser.get("/orders.data");
+
+    expect(data.html).not.toContain(PERSON);
+    expect(data.html).toContain("/sign-in");
+  });
+
   it("links the signed-in address to settings without a confirmation control", async () => {
     const { browser } = await started();
     await browser.signIn();
 
     for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
       const answered = await browser.get(path);
-      const link = /<a class="who" href="\/settings"[^>]*>([^<]*)<\/a>/.exec(answered.html);
+      const link = /<div class="account">\s*<a [^>]*href="\/settings"[^>]*>([^<]*)<\/a>/.exec(
+        answered.html,
+      );
       expect(link?.[1], path).toBe(PERSON);
       expect(answered.html, path).not.toContain('action="/confirm"');
     }

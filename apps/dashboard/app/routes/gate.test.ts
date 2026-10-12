@@ -47,7 +47,18 @@ const signedInBrowser = async () => {
 /** The gate run on one request; what it let through, or what it answered with. */
 const throughTheGate = async (request: Request, identity: ReturnType<typeof identityFor>) => {
   const context = new RouterContextProvider(
-    new Map([[services, pageServicesFor(config, { identity })]]),
+    new Map([
+      [
+        services,
+        pageServicesFor(config, {
+          identity,
+          clientFor: () => {
+            throw new Error("the gate asks the gateway nothing");
+          },
+          wooOffered: false,
+        }),
+      ],
+    ]),
   );
   const gate = middleware[0];
   if (gate === undefined) throw new Error("the gate route has no middleware");

@@ -32,7 +32,7 @@ export {
   postmanFor,
   SANDBOX_MAIL,
 } from "./mail.js";
-export { cardsScreen, ordersScreen, receiptsScreen, type Viewer } from "./screens.js";
+export type { Viewer } from "./screens.js";
 export { chooseNameScreen, settingsScreen } from "./seller-name.js";
 export { buildApp, type DashboardParts } from "./server.js";
 export {

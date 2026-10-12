@@ -19,7 +19,17 @@ import {
   type Person,
 } from "./dashboard-entry.js";
 import { clearingLines, dashboardPathFor, type Gate, gateFor, startOf } from "./gate.js";
+import type { Acting, Answer, GatewayClient } from "./gateway.js";
 import { SESSION_DAYS } from "./identity.js";
+import type { Viewer } from "./screens.js";
+import {
+  type CardsView,
+  cardsView,
+  type OrdersView,
+  ordersView,
+  type ReceiptsView,
+  receiptsView,
+} from "./views.js";
 
 /** A view to draw, a place to send the browser, or a problem to show instead. */
 export type Outcome<View> =
@@ -102,11 +112,39 @@ export interface PageServices {
     open(cookie: string | undefined, form: FormData): Promise<Outcome<OpenLinkView>>;
     signOut(cookie: string | undefined): Promise<Outcome<never>>;
   };
+  /** The screens about a merchant's selling, for a person the gates let through. */
+  readonly screens: {
+    cards(person: Person): Promise<Outcome<CardsView>>;
+    orders(person: Person, query: URLSearchParams): Promise<Outcome<OrdersView>>;
+    receipts(person: Person): Promise<Outcome<ReceiptsView>>;
+  };
 }
 
 export interface PageParts {
   readonly identity: DashboardIdentity;
+  /**
+   * The gateway's application called as the merchant on the signed-in
+   * account's row, built per request so two people are two merchants.
+   */
+  readonly clientFor: (acting: Acting) => GatewayClient;
+  /** Whether this dashboard offers the WooCommerce connector at all. */
+  readonly wooOffered: boolean;
 }
+
+/**
+ * The gateway writes refusals in lower case for a program's log; a person reads
+ * the page. Nothing answered in time is not a refusal and is said under its own
+ * status, because a merchant told the wrong one checks something that works; a
+ * refusal keeps the gateway's status, and nothing is claimed beyond what it
+ * said.
+ */
+const problemOf = (answer: Answer<unknown> & { ok: false }): Outcome<never> => ({
+  kind: "problem",
+  problem: {
+    status: answer.status === 0 ? 504 : answer.status,
+    said: `${answer.why.slice(0, 1).toUpperCase()}${answer.why.slice(1)}`,
+  },
+});
 
 /**
  * Not the real grammar of an address: it catches the mistakes made in a form (a
@@ -148,6 +186,32 @@ const once = (values: readonly unknown[]): unknown => (values.length === 1 ? val
 export function pageServicesFor(config: DashboardConfig, parts: PageParts): PageServices {
   const base = config.basePath;
   const { identity } = parts;
+
+  /**
+   * The name is passed only by screens that asked the gateway for it: a screen
+   * that did not ask must not draw a line either way about it.
+   */
+  const viewing = (person: Person, sellerName?: string | null): Viewer => ({
+    base,
+    mode: config.surfaceMode,
+    who: person.email,
+    confirmed: person.confirmed,
+    sellerName,
+  });
+
+  /**
+   * Only called behind the gate that sends an account with no merchant to the
+   * control that makes one, so a missing merchant here is a defect, not a case.
+   */
+  const gatewayAs = (person: Person): GatewayClient => {
+    if (person.merchant === null) {
+      throw new Error(
+        "a screen that needs a merchant ran for an account with none, which means the merchant" +
+          " gate let one through — this is a defect in how the routes are nested",
+      );
+    }
+    return parts.clientFor({ merchantId: person.merchant.id, email: person.email });
+  };
 
   /**
    * A browser with a live session goes to its own start, so the answer depends
@@ -312,6 +376,90 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           kind: "redirect",
           location: `${base}/sign-in`,
           setCookies: clearingLines(identity, config.cookieSecure),
+        };
+      },
+    },
+
+    screens: {
+      async cards(person) {
+        const gateway = gatewayAs(person);
+        // A card can read paused for want of any of these, and the control
+        // beside it says which. The operator's approval is read only on live,
+        // the one place publishing needs it.
+        const [cards, name, wallet, approval, integration] = await Promise.all([
+          gateway.cards(),
+          gateway.sellerName(),
+          gateway.payoutWallet(),
+          config.surfaceMode === "live"
+            ? gateway.liveApproval()
+            : Promise.resolve({ ok: true as const, document: undefined }),
+          gateway.integration(),
+        ]);
+        if (!cards.ok) return problemOf(cards);
+        if (!integration.ok) return problemOf(integration);
+        if (!name.ok) return problemOf(name);
+        if (!wallet.ok) return problemOf(wallet);
+        if (!approval.ok) return problemOf(approval);
+        return {
+          kind: "view",
+          view: cardsView(
+            {
+              ...viewing(person, name.document),
+              payout: { wallet: wallet.document.payout_wallet },
+              ...(approval.document === undefined ? {} : { liveApproval: approval.document }),
+            },
+            cards.document,
+            config.publicBaseUrl,
+            parts.wooOffered,
+            integration.document,
+          ),
+        };
+      },
+
+      async orders(person, query) {
+        // Only the exact word narrows the list, as the contract says.
+        const open = once(query.getAll("open")) === "true";
+        const gateway = gatewayAs(person);
+        const [cards, orders, name, owed] = await Promise.all([
+          gateway.cards(),
+          gateway.orders(open),
+          gateway.sellerName(),
+          gateway.refundsOwed(),
+        ]);
+        if (!cards.ok) return problemOf(cards);
+        if (!orders.ok) return problemOf(orders);
+        if (!name.ok) return problemOf(name);
+        if (!owed.ok) return problemOf(owed);
+        return {
+          kind: "view",
+          view: ordersView(
+            viewing(person, name.document),
+            cards.document,
+            orders.document,
+            open,
+            owed.document,
+          ),
+        };
+      },
+
+      async receipts(person) {
+        const gateway = gatewayAs(person);
+        const [cards, receipts, name] = await Promise.all([
+          gateway.cards(),
+          gateway.receipts(),
+          gateway.sellerName(),
+        ]);
+        if (!cards.ok) return problemOf(cards);
+        if (!receipts.ok) return problemOf(receipts);
+        if (!name.ok) return problemOf(name);
+        return {
+          kind: "view",
+          view: receiptsView(
+            viewing(person, name.document),
+            cards.document,
+            receipts.document,
+            config.transactionPage,
+          ),
         };
       },
     },

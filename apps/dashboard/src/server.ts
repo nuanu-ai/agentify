@@ -49,15 +49,7 @@ import { pageServicesFor } from "./page-services.js";
 import { type Pages, pagesHandler } from "./pages.js";
 import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import { printable } from "./printable.js";
-import {
-  cardsScreen,
-  notDrawnForYouScreen,
-  notFoundScreen,
-  ordersScreen,
-  receiptsScreen,
-  unsetIn,
-  type Viewer,
-} from "./screens.js";
+import { notDrawnForYouScreen, notFoundScreen, unsetIn, type Viewer } from "./screens.js";
 import {
   chooseNameScreen,
   integrationsScreen,
@@ -298,7 +290,16 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     app.use(parts.pages.assets.path, parts.pages.assets.handle);
   }
   // Ahead of the body parser, because React Router reads a form itself.
-  app.use(pagesHandler(parts.pages, pageServicesFor(config, { identity })));
+  app.use(
+    pagesHandler(
+      parts.pages,
+      pageServicesFor(config, {
+        identity,
+        clientFor: (acting) => clientFor(acting),
+        wooOffered: wooShops !== undefined,
+      }),
+    ),
+  );
   // Only small forms are posted here.
   app.use(express.urlencoded({ extended: false, limit: "16kb" }));
 
@@ -1324,110 +1325,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       response.redirect(303, `${base}/woocommerce${query}`);
     });
   }
-
-  app.get(`${base}/cards`, async (request, response) => {
-    const gateway = gatewayAs(request);
-    // A card can read paused for want of any of these, and the control beside
-    // it says which (`cardControl`).
-    const [cards, name, wallet, approval, integration] = await Promise.all([
-      gateway.cards(),
-      gateway.sellerName(),
-      gateway.payoutWallet(),
-      approvalOn(gateway),
-      gateway.integration(),
-    ]);
-    if (!cards.ok) {
-      return trouble(response, base, cards);
-    }
-    if (!integration.ok) {
-      return trouble(response, base, integration);
-    }
-    if (!name.ok) {
-      return trouble(response, base, name);
-    }
-    if (!wallet.ok) {
-      return trouble(response, base, wallet);
-    }
-    if (!approval.ok) {
-      return trouble(response, base, approval);
-    }
-    response.type("html").send(
-      cardsScreen(
-        {
-          ...viewing(request, base, name.document),
-          payout: { wallet: wallet.document.payout_wallet },
-          ...(approval.document === undefined ? {} : { liveApproval: approval.document }),
-        },
-        cards.document,
-        config.publicBaseUrl,
-        shops !== undefined,
-        integration.document,
-      ),
-    );
-  });
-
-  app.get(`${base}/orders`, async (request, response) => {
-    // Only the exact word narrows the list, as the contract says.
-    const open = request.query.open === "true";
-    const gateway = gatewayAs(request);
-    const [cards, orders, name, owed] = await Promise.all([
-      gateway.cards(),
-      gateway.orders(open),
-      gateway.sellerName(),
-      gateway.refundsOwed(),
-    ]);
-    if (!cards.ok) {
-      return trouble(response, base, cards);
-    }
-    if (!orders.ok) {
-      return trouble(response, base, orders);
-    }
-    if (!name.ok) {
-      return trouble(response, base, name);
-    }
-    if (!owed.ok) {
-      return trouble(response, base, owed);
-    }
-    response
-      .type("html")
-      .send(
-        ordersScreen(
-          viewing(request, base, name.document),
-          cards.document,
-          orders.document,
-          open,
-          owed.document,
-        ),
-      );
-  });
-
-  app.get(`${base}/receipts`, async (request, response) => {
-    const gateway = gatewayAs(request);
-    const [cards, receipts, name] = await Promise.all([
-      gateway.cards(),
-      gateway.receipts(),
-      gateway.sellerName(),
-    ]);
-    if (!cards.ok) {
-      return trouble(response, base, cards);
-    }
-    if (!receipts.ok) {
-      return trouble(response, base, receipts);
-    }
-    if (!name.ok) {
-      return trouble(response, base, name);
-    }
-    response
-      .type("html")
-      .send(
-        receiptsScreen(
-          viewing(request, base, name.document),
-          cards.document,
-          receipts.document,
-          config.transactionPage,
-        ),
-      );
-  });
 
   for (const [verb, paused] of [
     ["pause", true],

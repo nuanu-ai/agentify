@@ -20,5 +20,11 @@ export default [
   route("sign-in", "routes/sign-in.tsx"),
   route("sign-in/open", "routes/sign-in-open.tsx"),
   route("sign-out", "routes/sign-out.ts"),
-  layout("routes/gate.tsx", [layout("routes/merchant-only.tsx", [])]),
+  layout("routes/gate.tsx", [
+    layout("routes/merchant-only.tsx", [
+      route("cards", "routes/cards.tsx"),
+      route("orders", "routes/orders.tsx"),
+      route("receipts", "routes/receipts.tsx"),
+    ]),
+  ]),
 ] satisfies RouteConfig;
