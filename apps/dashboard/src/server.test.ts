@@ -2074,6 +2074,45 @@ describe("the cards screen", () => {
     expect(await purchasable(gateway, itemId)).toBe(false);
     expect(readable((await browser.get("/cards")).html)).toContain("Resume");
   });
+
+  it("loads a page whole when a press is answered on another page, which may not be one the script draws", async () => {
+    // Only a press answered back on its own page stays inside the
+    // application; the seller name is answered on the cards.
+    const running = await started();
+    await unname(running);
+    await running.browser.signIn();
+    await running.browser.get("/choose-name");
+
+    const chosen = await running.browser.post("/choose-name.data", { seller_name: "Freeland" });
+
+    expect(chosen.status).toBe(202);
+    expect(chosen.headers.get("x-remix-reload-document")).toBe("true");
+    expect(await listedAs(running)).toBe("Freeland");
+  });
+
+  it("refuses a press that names no one switch, and switches nothing", async () => {
+    // A press is the switch its form names. One naming two switches, naming
+    // its switch twice, or naming a way no switch has, is refused whole
+    // rather than read as whichever part came first.
+    const { browser, gateway } = await started();
+    const itemId = await publish(gateway, roomCard);
+    await browser.signIn();
+
+    for (const query of [
+      `?selling=pause&pause=${itemId}`,
+      `?pause=${itemId}&pause=${itemId}`,
+      "?selling=pause&selling=pause",
+      "?selling=stop",
+      "?pause=",
+      "",
+    ]) {
+      const answered = await browser.post(`/cards${query}`);
+      expect(answered.status, query).toBe(404);
+      expect(readable(answered.html), query).toMatch(/no such switch/i);
+    }
+    expect(await purchasable(gateway, itemId)).toBe(true);
+    expect(readable((await browser.get("/cards")).html)).toContain("Pause all sales");
+  });
 });
 
 describe("a card held off sale by what its merchant lacks", () => {
@@ -3002,10 +3041,27 @@ describe("what every screen says about the address", () => {
       expect(answered.status, name).toBeLessThan(400);
       const line = answered.headers.getSetCookie().find((one) => one.startsWith(`${PRESSED}=`));
       expect(line, name).toBeDefined();
+      // Sent back with every read of the dashboard's data for the rest of the
+      // browser's session, on the plain-http origin too.
+      const attributes = attributesOf(line ?? "");
+      expect(attributes.get("path"), name).toBe("/");
+      expect(attributes.has("max-age") || attributes.has("expires"), name).toBe(false);
+      expect(attributes.has("secure"), name).toBe(false);
       given.push(line?.split(";")[0] ?? "");
     }
 
     expect(new Set(given).size).toBe(presses.length);
+  });
+
+  it("gives the press's cookie to every page of a dashboard under a prefix", async () => {
+    const running = await started({ base: "/dashboard" });
+    await running.browser.signIn();
+
+    const answered = await running.browser.post("/dashboard/cards?selling=pause");
+
+    expect(answered.status).toBe(303);
+    const line = answered.headers.getSetCookie().find((one) => one.startsWith(`${PRESSED}=`));
+    expect(attributesOf(line ?? "").get("path")).toBe("/dashboard");
   });
 
   it("answers a signed-out browser's request for a page's data with the sign-in, not the data", async () => {
