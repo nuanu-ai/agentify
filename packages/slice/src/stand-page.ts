@@ -566,12 +566,10 @@ const ordersTab = (state: PageState): string => {
 
 const LANES: readonly string[] = ["stand", "merchant", "agent", "gateway"];
 /**
- * Which way a line went, from this console's side.
- *
- * The lane already says who is speaking and said nothing about direction, so a
- * request and the answer to it read as two sentences about the same thing and
- * the reader had to work out which was which from the wording. A blank is a
- * line that crossed nothing, and blank is the honest mark for it.
+ * Which way a line went, from this console's side. The lane says who is
+ * speaking but not the direction, so without this a request and its answer read
+ * as two sentences about the same thing. A blank marks a line that crossed
+ * nothing.
  */
 const WAY_MARKS: Readonly<Record<string, string>> = {
   sent: "\u2192",
@@ -649,10 +647,9 @@ const failed = (entry: Entry): boolean => {
     return true;
   if (detail.error !== undefined) return true;
   // The envelope read as the protocol rather than as a key that happens to be
-  // named `error`. A refused publish comes back at HTTP 200 and is the line
-  // this whole reading exists to catch — though today the arm above catches it
-  // first, because a refusal that says `ok: false` always carries the `error`
-  // beside it. Nothing currently writes a detail this arm alone decides.
+  // named `error`: a refused publish comes back at HTTP 200 with `ok: false`.
+  // The arm above usually catches it first, because such a refusal carries
+  // `error` beside it.
   if (detail.ok === false) return true;
   // A document the stand itself could not read comes back as zod's issues,
   // which is not an answer from anywhere and has no envelope around it.
@@ -660,10 +657,8 @@ const failed = (entry: Entry): boolean => {
 };
 
 /**
- * One line of the log.
- *
- * Exported because the stream renders with it too: the page and the live
- * updates were two copies of this markup, and two copies of one thing drift.
+ * One line of the log. Exported because the live stream renders with it too, so
+ * the page and the live updates share one markup.
  */
 export const renderEntry = (one: Entry): string => {
   const lane = LANES.includes(one.kind) ? one.kind : "stand";
@@ -699,13 +694,10 @@ const grouped = (newestFirst: readonly Entry[]): Group[] => {
 };
 
 /*
- * Oldest first, which is what a log is.
- *
- * Newest-first put the answer above the question and the confirmation above the
- * call that earned it, so one purchase read backwards while the purchases
- * themselves read forwards. Written the way it happened, the group heading
- * comes before its lines and a conversation reads as one; the column is parked
- * at the bottom and follows new lines, the way every log anybody has read does.
+ * Oldest first, which is what a log is: the group heading comes before its
+ * lines and a conversation reads in the order it happened, where newest first
+ * would put each answer above its question. The column is parked at the bottom
+ * and follows new lines.
  */
 const logColumn = (entries: readonly Entry[]): string => {
   const rows = grouped(entries).flatMap((group) => {

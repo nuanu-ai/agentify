@@ -1,11 +1,11 @@
 /**
- * How the stand's two buyers read a catalog: card by card (ADR-0006 §5).
+ * How the stand's two buyers read a catalog: card by card.
  *
  * The storefront has no version, so a page can carry a card of a mode these
  * buyers were not built for, or one they cannot read at all. Either is passed
  * over and the rest of the page stays for sale; a buyer that read the page
- * whole would either refuse it over one card or buy a card whose mode it
- * cannot follow.
+ * whole would either refuse it over one card or buy a card whose mode it cannot
+ * follow.
  */
 
 import { createServer, type Server } from "node:http";

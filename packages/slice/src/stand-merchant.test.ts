@@ -1,12 +1,8 @@
 /**
- * The one thing about the stand's merchant that cannot be seen by looking.
- *
- * Everything else is watched on the page as it happens: a card publishes or is
- * refused, an order arrives and is answered, a mood changes and the next order
- * goes the other way. A subscription that outlived its replacement is
- * different — it goes on taking orders from a gateway nobody is watching, and
- * what shows on the screen afterwards is a run that makes no sense for a reason
- * that is not on it.
+ * What cannot be seen on the stand's page: a merchant subscription that
+ * outlived its replacement goes on taking orders from a gateway nobody is
+ * watching, and the screen afterwards shows a run that makes no sense for a
+ * reason that is not on it.
  */
 
 import { createServer, type Server } from "node:http";
@@ -32,12 +28,11 @@ const waitUntil = async (that: () => boolean, within = 5_000): Promise<void> => 
 /**
  * A gateway that answers a poll and counts it, and nothing else.
  *
- * The SDK's own fake gateway is not reachable from here — the package publishes
- * one entry point and no subpath — and widening a published package so a test
- * can reach its helper is not a trade worth making. The answer has to name the
- * contract version: a poll answered without one is a gateway the worker decides
- * it cannot speak to, and it ends the loop on the spot, which would make the
- * second gateway look silent for a reason that has nothing to do with this.
+ * The SDK's own fake gateway is not reachable from here, since the package
+ * publishes one entry point, and widening a published package for a test helper
+ * is not worth it. The answer has to name the contract version: a worker polled
+ * without one decides it cannot speak to the gateway and ends its loop, which
+ * would make the second gateway look silent for an unrelated reason.
  */
 const pollCounter = async (): Promise<{
   url: string;
@@ -256,14 +251,12 @@ afterEach(async () => {
 
 describe("a closing call the gateway would not take", () => {
   it("writes it as a line the log reads as failed, with the reason on it", async () => {
-    // The promise: a refusal that arrives under a clean status is still visible
-    // in the log. It is the one line in a run of two hundred that a person at
-    // the stand has to find, and everything about it looks ordinary — HTTP 200,
-    // an answer where an answer was expected. What marks it is the reading in
-    // `stand-page`, and that reading is fed by what this side puts in the
-    // detail. Written whole under `result` alone the refusal is swallowed: the
-    // envelope's `ok` sits one level down where nothing looks for it, and the
-    // line renders like every other.
+    // A refusal that arrives under a clean status must still be visible in the
+    // log: HTTP 200 and an answer where one was expected, so only the reading
+    // in `stand-page` marks it, fed by what this side puts in the detail.
+    // Written whole under `result` the refusal is swallowed: the envelope's
+    // `ok` sits one level down where nothing looks for it, and the line renders
+    // like every other.
     const gateway = await refusingDeliveryGateway();
     shutting.push(gateway.close);
     const feed = makeFeed();

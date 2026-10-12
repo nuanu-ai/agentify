@@ -44,12 +44,10 @@ export interface Entry {
 
 export interface Feed {
   /**
-   * A line about the console itself, which crossed no wire.
-   *
-   * The two beside it are the ones that did, and they are separate verbs rather
-   * than a flag on this one so that every call site says which way it went at
-   * the site — a direction worked out later from the wording is a guess, and
-   * the wording is exactly what was unreadable before.
+   * A line about the console itself, which crossed no wire. The two beside it
+   * are the ones that did; they are separate verbs rather than a flag so that
+   * every call site says which way it went, instead of a direction guessed
+   * later from the wording.
    */
   write(kind: string, title: string, detail?: unknown): void;
   /** Something this console put on the wire. */

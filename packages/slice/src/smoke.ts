@@ -1,25 +1,19 @@
 /**
- * The smoke command: the same buyer and the same mock merchant as the offline
- * gate, but against a gateway wired to the real x402 facilitator on the Base
- * Sepolia testnet, where a purchase moves real testnet USDC.
+ * The smoke command: the same buyer and mock merchant as the offline suite,
+ * against a gateway wired to the real x402 facilitator on the Base Sepolia
+ * testnet, where a purchase moves real testnet USDC.
  *
- * It is not part of `pnpm test` and never runs from it. It touches the network
- * and, with `--confirm`, moves money — testnet money with no real value, but a
- * real transfer — so it is fenced behind explicit intent and a spending cap,
- * and its default is a dry run that stops before anything is signed.
+ * It never runs from `pnpm test`. It touches the network and, with
+ * `--confirm`, makes a real transfer of testnet money, so it is fenced behind
+ * explicit intent and a spending cap, and by default it is a dry run that stops
+ * before anything is signed. Each safeguard below refuses the run outright
+ * rather than proceeding on a guess.
  *
- * What is real here and what is not is worth stating plainly. The facilitator
- * is the real one: it verifies and settles against Base Sepolia through the CDP
- * endpoint using the credentials in the environment. The store and the queue
- * are still in memory — the smoke's subject is the money path, not persistence
- * — so nothing it writes outlives the process. The buyer's wallet and the
- * merchant's receiving address are throwaway testnet accounts; the buyer's key
- * is read from the environment, never printed, and never written down.
- *
- * The safeguards below each refuse the run outright rather than proceeding on a
- * guess. They are the same shape the pilot's payment spike used, because the
- * thing they guard against — signing a transfer nobody meant to send — is the
- * same.
+ * The facilitator is real: it verifies and settles against Base Sepolia through
+ * the CDP endpoint with the credentials in the environment. The store and the
+ * queue are in memory, so nothing the run writes outlives the process. The
+ * buyer's key is read from the environment, never printed and never written
+ * down.
  *
  *   AGENTIFY_SMOKE=1 SMOKE_BUYER_KEY=0x… SMOKE_PAY_TO=0x… pnpm smoke
  *   AGENTIFY_SMOKE=1 SMOKE_BUYER_KEY=0x… SMOKE_PAY_TO=0x… \
@@ -74,12 +68,9 @@ const isBurnAddress = (address: string): boolean => {
 };
 
 /**
- * Why this network is not one this command may spend on, or nothing.
- *
- * It is a function rather than a condition inside `main` so that the decision
- * can be asked of it directly. What it guards is money, and the three places
- * that classify a chain have to agree — `spending-gate.test.ts` is where that
- * is proved, and it can only prove it by calling this.
+ * Why this network is not one this command may spend on, or nothing. A function
+ * rather than a condition inside `main`, so that `spending-gate.test.ts` can
+ * call it and prove that the places which classify a chain agree.
  */
 export function whyNotThisNetwork(network: string, allowMainnet: boolean): string | null {
   if (isTestnetChain(network) || allowMainnet) {
@@ -280,18 +271,13 @@ async function main(): Promise<void> {
   }
 }
 
-// The run starts only where somebody typed the command. This file is now also
-// a module — `spending-gate.test.ts` asks `whyNotThisNetwork` what it thinks of
-// a chain — and a run that began on import would meet its own first gate,
-// AGENTIFY_SMOKE, refuse, and take the importing process down with it through
-// the exit below. `bootstrap.ts` buys the same separation by being a different
-// file from the command it runs; here one line does it.
+// The run starts only where somebody typed the command. `spending-gate.test.ts`
+// imports this file, and a run that began on import would refuse at its first
+// gate and take the importing process down through the exit below.
 //
-// That line is why the repository's `engines.node` names 24.2 rather than 24:
-// `import.meta.main` arrived in 24.2, and on anything earlier it reads
-// `undefined`, so this command would print nothing, exit 0, and look like a
-// run that went fine. A spending command that silently does nothing is worse
-// than one that will not start.
+// `import.meta.main` needs Node 24.2, which is why the repository's
+// `engines.node` names it: earlier versions read `undefined`, and this command
+// would print nothing, exit 0 and look like a run that went fine.
 if (import.meta.main) {
   main().catch((error: unknown) => {
     // The message only, never the whole error object: a payment client's error

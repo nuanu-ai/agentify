@@ -1,21 +1,15 @@
 /**
- * The merchant-key calls the SDK does not carry.
+ * The merchant-key calls the SDK does not carry: cards, receipts and the two
+ * selling switches, which are dashboard operations the SDK deliberately lacks.
+ * Addresses come from the contract's route table, so they cannot drift into a
+ * second surface. Nothing the SDK does carry belongs here; an order list built
+ * by hand beside `client.orders.list` would teach an outside engineer to do the
+ * same.
  *
- * The stand needs the merchant's own catalogue and switches as well as the
- * SDK subscription.  These calls use the contract table so their addresses do
- * not become a second, drifting surface.
- *
- * What is here is only what the SDK does not carry, and that boundary is the
- * point: an order list is not here, because `client.orders.list` exists and a
- * console assembling that request by hand would teach an outside engineer to do
- * the same. Cards, receipts and the two selling switches are the merchant's
- * dashboard operations, which the SDK deliberately does not have.
- *
- * The fetch is handed in rather than taken from the global, and that is the
- * whole of why: the console records what crosses its edges by wrapping the
- * fetch, and a call that reached around it left only its answer in the log —
- * a line arriving with nothing before it, which reads as a log out of order
- * rather than as a log missing a half.
+ * The fetch is handed in rather than taken from the global because the console
+ * records what crosses its edges by wrapping it. A call that reached around it
+ * would leave only its answer in the log, which reads as a log out of order
+ * rather than one missing a half.
  */
 
 import {

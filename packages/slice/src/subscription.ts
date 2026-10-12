@@ -26,46 +26,31 @@
 import { WORKER_PROBLEM_KINDS, type WorkerProblem } from "@nuanu-ai/agentify";
 
 /**
- * How long one reported poll failure keeps the subscription in doubt.
- *
- * It is the longest a working-but-unreachable gateway can go without producing
- * a second failure, plus a margin, and it is the sum of two SDK constants
- * because the gap between two reports is two waits and not one:
+ * How long one reported poll failure keeps the subscription in doubt: the
+ * longest a working-but-unreachable gateway can go without a second failure,
+ * plus a margin. It is the sum of two SDK constants, because the gap between
+ * two reports is two waits and not one:
  *
  *   POLL_DEADLINE_MS   50s  how long the worker waits on a poll before giving
  *                           up on it (packages/sdk/src/worker.ts)
  *   RETRY_CEILING_MS   30s  the longest it then rests before asking again
  *                           (packages/sdk/src/backoff.ts)
  *
- * The first term is the one that is easy to miss, and missing it is a lie
- * rather than an imprecision. A gateway that has stopped answering while still
- * accepting connections — paused, wedged, or behind something holding the
- * socket open — fails no call quickly: each poll runs the full deadline before
- * the worker abandons it, and only then does the backoff start. So reports
- * arrive 65 to 80 seconds apart, and a window sized to the backoff alone
- * expires in the quiet between two of them. This file then says `selling` about
- * a worker that has been deaf for minutes, and says it more often as the
- * backoff grows. A refused connection, which fails instantly and is the case
- * one tests first, hides all of it.
+ * A gateway that accepts connections but has stopped answering fails no call
+ * quickly: each poll runs the full deadline before the backoff starts, so
+ * reports arrive 65 to 80 seconds apart. A window sized to the backoff alone
+ * would say `selling` about a worker that has been deaf for minutes. A refused
+ * connection, which fails at once, hides all of this.
  *
- * The cost of the sum is that a recovery is noticed late by up to this window,
- * and that a gateway restarted on purpose shows the merchant red for about as
- * long.
- *
- * Neither end of this is immediate, and the near end is the one worth stating
- * because it is the one somebody watching a stack will time with a stopwatch. A
- * gateway that refuses connections fails a poll at once, so the doubt starts
- * within a second of it going down. One that freezes with its socket still open
- * is not noticed until the poll already in flight reaches the deadline above —
- * measured at forty-one seconds against a paused container. So this signal is
- * late at both ends: by up to a poll deadline going in, and by this window
- * coming out. What it does not do, and what the width of the window is entirely
- * for, is go green in the middle of an outage.
+ * The signal is late at both ends: by up to a poll deadline going in, and by
+ * this window coming out, so a gateway restarted on purpose shows the merchant
+ * red for about as long. What the width buys is never going green in the
+ * middle of an outage.
  *
  * Both numbers are copied rather than imported, because the SDK publishes
- * neither and a merchant's healthcheck is no reason to widen what it publishes.
- * Both sources carry a line naming this file, so that raising either of them is
- * a change that finds this one.
+ * neither and a merchant's healthcheck is no reason to widen what it
+ * publishes. Both sources carry a line naming this file, so that raising
+ * either of them is a change that finds this one.
  */
 export const DOUBT_MS = 90_000;
 

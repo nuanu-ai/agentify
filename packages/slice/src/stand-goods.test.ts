@@ -1,12 +1,9 @@
 /**
- * What the stand puts in the boxes.
- *
- * A card declares what it delivers and what it is bought with, and the stand
- * fills both in before anything goes out. Getting it wrong is not cosmetic: a
- * delivery the checks refuse reads on the page as a gateway that would not take
- * the goods, and a purchase missing a parameter reads as a card published
- * wrong. So what is checked here is not the shape of the values but that they
- * survive the very validators the product applies to them, in both directions.
+ * What the stand fills into a card's declared fields. A delivery the checks
+ * refuse reads on the page as a gateway that would not take the goods, and a
+ * purchase missing a parameter reads as a card published wrong. So what is
+ * checked here is not the shape of the values but that they survive the
+ * validators the product applies to them, in both directions.
  */
 
 import { type ParamSpec, paramSpecToValidator } from "@nuanu-ai/agentify-contracts";

@@ -37,23 +37,19 @@ import {
 } from "@agentify/gateway";
 
 /**
- * The key the merchant in this harness opens the door with, for the site the
- * chain it was given makes it.
+ * The key the merchant in this harness opens the door with, for the site its
+ * chain makes.
  *
- * It is seeded into the store as a row, the way the sandbox's key is seeded
- * from `compose.yaml` (ADR-0010) and through the same function — so what this
- * gate exercises is the door a deployment actually has, a digest looked up in a
- * table, and not a comparison written for tests.
+ * It is seeded into the store as a row through the same function a deployment's
+ * sandbox key goes through, so what is exercised is the door a deployment
+ * actually has, a digest looked up in a table, and not a comparison written for
+ * tests.
  *
- * The prefix is part of that door, and it is derived rather than written down
- * because this harness is also how `pnpm smoke` boots a gateway, and the smoke
- * takes the chain from `SMOKE_NETWORK`. A constant carrying one site's prefix
- * would be a key the harness's own gateway refuses the moment somebody points
- * it at the other site — the smoke failing wholesale at its first merchant
- * call, for a reason that says nothing about what the smoke checks.
- *
- * Nothing outside reads this. What a caller wants is the key a particular boot
- * seeded, which is {@link Booted.merchantKey}.
+ * The prefix is derived rather than written because `pnpm smoke` also boots
+ * through this harness, with the chain from `SMOKE_NETWORK`; a constant
+ * carrying one site's prefix would be refused by the harness's own gateway on
+ * the other site. Callers read the key a boot seeded from {@link
+ * Booted.merchantKey}.
  */
 const sliceMerchantKeyFor = (environment: Environment): string =>
   `${keyPrefixFor(environment)}slice-merchant-key-please`;
@@ -172,9 +168,9 @@ export async function bootGateway(
       retryDelayMs: config.reminderRetryDelayMs,
     });
     // The queue is made first because the store writes through it: an envelope
-    // that must not be lost is written where the order is (ADR-0013). It is
-    // `stage` rather than `publish` because the store needs the two halves apart
-    // — take it before the order is written, make it visible after.
+    // that must not be lost is written where the order is. It is `stage` rather
+    // than `publish` because the store needs the two halves apart: take it
+    // before the order is written, make it visible after.
     const store = new MemoryStore(randomIds, systemClock, queue.envelopes());
 
     const runtime: Runtime = {
@@ -212,15 +208,15 @@ export async function bootGateway(
 
     // And where that merchant is paid, which is the address this slice was
     // configured with. The two are one thing here and only here: this harness
-    // runs one merchant and the operator is that merchant, so the address in the
-    // environment is theirs — under the scripted facilitator a placeholder no
-    // money moves to, and under the smoke's real one the testnet address the sale
-    // actually lands at.
+    // runs one merchant and the operator is that merchant, so the address in
+    // the environment is theirs. Under the scripted facilitator it is a
+    // placeholder no money moves to; under the smoke's real one it is the
+    // testnet address the sale lands at.
     //
-    // The seed above deliberately does not do this. It is what a deployment runs,
-    // and a deployment's configured address belongs to whoever runs the gateway
-    // rather than to the merchants selling on it; writing it onto a merchant
-    // there would pay their sales to the operator (ADR-0019).
+    // The seed above deliberately does not do this. It is what a deployment
+    // runs, and a deployment's configured address belongs to whoever runs the
+    // gateway rather than to the merchants selling on it; writing it onto a
+    // merchant there would pay their sales to the operator.
     if (config.payment.payTo !== null) {
       await setPayoutWallet(store, SEEDED_MERCHANT.id, config.payment.payTo, systemClock());
     }

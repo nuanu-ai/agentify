@@ -1,24 +1,19 @@
 /**
  * The agent's side of the console, driven one press at a time.
  *
- * `buyer.ts` is the slice's own agent and walks x402 the way an integrator
- * would: `wrapFetchWithPayment` makes the unpaid call, reads the challenge and
- * sends the signed retry, all inside one call. That is the right shape for a
- * smoke test and the wrong one for a console, where the whole point is to stop
- * between the two halves, read what the challenge demands, and only then decide
- * to sign it. So this file drives the same official client — `x402Client` with
- * the exact-EVM scheme, wrapped in `x402HTTPClient` for the header encoding —
- * with the two halves as two calls.
- *
- * It is deliberately not a change to `buyer.ts`. That file says in its own
- * header that it writes none of the protocol, and the smoke and the bootstrap
- * rest on that claim; needing the exchange in two presses is this console's
- * business, not the agent's.
+ * `buyer.ts` walks x402 the way an integrator would: `wrapFetchWithPayment`
+ * makes the unpaid call, reads the challenge and sends the signed retry inside
+ * one call. A console has to stop between the two halves so a person can read
+ * what the challenge demands before signing, so this file drives the same
+ * official client (`x402Client` with the exact-EVM scheme, wrapped in
+ * `x402HTTPClient` for the header encoding) as two calls. It stays apart from
+ * `buyer.ts`, which writes none of the protocol itself and which the smoke and
+ * the bootstrap rely on.
  *
  * Nothing here decides anything. Every method makes one HTTP call and hands
- * back what came of it, including the refusals — a 402 is an answer and so is a
- * 400, and a caller holding a paid order needs to tell them apart from a call
- * that never landed, which is the only thing that throws.
+ * back what came of it, refusals included: a 402 is an answer and so is a 400,
+ * and a caller holding a paid order needs to tell them apart from a call that
+ * never landed, which is the only thing that throws.
  */
 
 import { CatalogPageSchema, cardsOf, type PublicCard } from "@nuanu-ai/agentify-contracts";

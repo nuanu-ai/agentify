@@ -1,31 +1,16 @@
 /**
- * The bootstrap purchase, tested without the network and without a wallet.
+ * The bootstrap purchase, tested without the network and without a wallet. The
+ * live path is `pnpm smoke:bootstrap`, which moves real money on a real chain;
+ * what is tested here is everything that decides whether a payment happens and
+ * what it meant afterwards.
  *
- * The live path is `pnpm smoke:bootstrap` and nothing here goes near it: a
- * purchase moves real money on a real chain, and a suite that could make one
- * would take `pnpm test` off the free, deterministic, offline footing
- * `vitest.config.ts` puts it on. What is testable here is everything that
- * decides whether a payment happens and what it meant afterwards, and that is
- * the part where a mistake costs somebody money or tells them a lie about it.
- *
- * Four promises are worth more than the rest:
- *
- * The caps hold. A run cannot spend more than it was told to, and the
- * arithmetic is in the token's own units, so a budget is not eaten by the
- * rounding of a float.
- *
- * A payment that cannot list is not made. Paying yourself is refused by the
- * facilitator anyway, and a gateway nothing can crawl cannot be listed however
- * the payment goes — so neither is attempted, and the reason is said out loud.
- *
- * A refusal is read out of the header where it actually lives. In version two
- * the body of a 402 is empty and the verdict is in `PAYMENT-REQUIRED.error`, and
- * a client that does not read it reports a silence as though it were a result.
- *
- * And a settle that a catalog will never see is not reported as a settle. A
- * gateway with no chain behind it answers a purchase exactly as a real one does,
- * receipt and all, and the only thing that gives it away is that the transaction
- * it names is not a transaction.
+ * The promises that matter most: the caps hold, counted in the token's own
+ * units so a budget is not eaten by float rounding; a payment that could never
+ * be listed is not made, and the reason is said; a refusal is read out of
+ * `PAYMENT-REQUIRED.error`, because the body of a version-two 402 is empty; and
+ * a settle from a gateway with no chain behind it, which answers exactly as a
+ * real one but names a transaction that is not one, is not reported as a
+ * settle.
  *
  * The last block opens a socket, to this process, and stubs the payment.
  */
@@ -252,9 +237,8 @@ describe("what a paid call came to", () => {
   });
 
   it("reads the facilitator's own verdict out of the header when the purchase is refused", () => {
-    // The body of a 402 is always {} in version two. A command that read the
-    // status alone would report "the gateway answered 402" and nothing more,
-    // which is what the spike did for an afternoon.
+    // The body of a 402 is always {} in version two, so a command that read the
+    // status alone would report "the gateway answered 402" and nothing more.
     const payment = whatBecameOfThePayment(
       {
         kind: "answered",
@@ -334,9 +318,9 @@ describe("what a paid call came to", () => {
   });
 
   it("will not call a call that never landed a refusal", () => {
-    // The fifth gate. An agent told its purchase did not happen goes and buys
-    // the same thing elsewhere without looking at its wallet, and here nobody
-    // knows whether the money moved.
+    // An agent told its purchase did not happen goes and buys the same thing
+    // elsewhere without looking at its wallet, and here nobody knows whether
+    // the money moved.
     const payment = whatBecameOfThePayment(
       { kind: "unreachable", why: "socket hang up" },
       BASE_SEPOLIA,

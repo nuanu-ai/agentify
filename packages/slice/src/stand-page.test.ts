@@ -1,10 +1,7 @@
 /**
- * The one claim on these pages that is about money.
- *
- * Everything else the console draws is a convenience, and a test that pinned
- * its wording would be pinning prose. This is different: the stand signs real
+ * The one claim on these pages that is about money. The stand signs real
  * payments, the only thing here that names an environment is the prefix of the
- * key somebody typed, and the page has to keep three answers apart — real money,
+ * key somebody typed, and the page has to keep three answers apart: real money,
  * test money, and not knowing. The sentence is the promise, so the sentence is
  * what these check.
  */

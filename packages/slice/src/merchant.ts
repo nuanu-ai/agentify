@@ -1,31 +1,20 @@
 /**
- * The mock merchant, built on the real SDK.
+ * The mock merchant, built on the real SDK: everything a merchant's engineer
+ * would write and nothing this slice invents. `createClient`, `catalog.publish`
+ * for each card, and one `on` per kind arriving on the single subscription
+ * `start` opens, as a real process would run them.
  *
- * Everything a merchant's engineer would write, and nothing this slice invents:
- * `createClient` from a key and the gateway's address, `catalog.publish` for
- * each card, and one `on` for each kind that arrives on the stream — the paid
- * orders, the price question the rented number is sold by, the events, and the
- * problems. All four share the single subscription that `start` opens, exactly
- * as a real process would run them, so this merchant hosts nothing and exposes
- * nothing.
+ * The rented number is synchronous, so the handler returns the goods and the
+ * SDK posts them; the eSIM is asynchronous, so the handler takes the order on
+ * and the goods follow through the `deliver` call. It keeps the order itself
+ * for that call, since the calls that close an order live on the order. Nothing
+ * on this side holds the goods to the card: the gateway does, and a delivery
+ * that does not match comes back refused as `delivery_does_not_match_card`,
+ * reported as a problem rather than thrown here.
  *
- * How it answers is the whole of what a merchant decides. The rented number is
- * synchronous, so the handler returns the goods and the SDK posts them; the
- * eSIM is asynchronous, so the handler takes the order on and the goods follow
- * later through the explicit `deliver` call, which is the merchant's to make.
- * What it keeps for that later call is the order itself rather than its
- * identifier — the calls that close an order live on the order — and what it
- * delivers is a function of the order's own parameters. Nothing on this side
- * holds those goods to the card: the SDK checks that an answer has the shape an
- * answer has, and it has never seen the card. The card is the gateway's, and so
- * is the check — a delivery that is not what the card declares comes back
- * refused under `delivery_does_not_match_card`, which is a problem this
- * merchant is told about rather than an exception here.
- *
- * It records what it was told without doing anything — the events, and any
- * problem the SDK reported — so a test can assert not only what happened but
- * what did not: a clean run reports no problem and, on the happy asynchronous
- * path, no event.
+ * It records the events and problems the SDK reports, so a test can assert what
+ * did not happen too: a clean run reports no problem and, on the happy
+ * asynchronous path, no event.
  */
 
 import type {

@@ -1,22 +1,16 @@
 /**
  * The two products the mock merchant sells, and the goods it hands over for
- * each.
- *
- * They are the pilot's own two shapes rather than invented ones: a rented phone
- * number, delivered in the answer to the purchase (synchronous), priced when it
- * is bought because a number's availability and cost are a live question; and a
+ * each. They are real product shapes rather than invented ones: a rented phone
+ * number, delivered in the answer to the purchase (synchronous) and priced when
+ * bought because a number's availability and cost are a live question; and a
  * data eSIM, paid for at once and provisioned afterwards (asynchronous), sold
- * at its published price. The two together are the reason the slice exists —
- * one product whose money moves last and one whose money moves first — and they
- * are the candidates the pilot plan names for the two modes.
+ * at its published price. One product's money moves last and the other's first.
  *
- * The cards are held to the real `CardSchema` the moment they are published, so
- * anything wrong with one of them fails the merchant's own publish call rather
- * than this file. `goodsFor` returns exactly the fields each card declares and
- * no others because this file writes it that way, and not because anything on
- * the merchant's side would stop it: the check against the card's `result` is
- * the gateway's, on the far end of the delivery, and it comes back as a refusal
- * rather than as an error here.
+ * The cards are held to the real `CardSchema` when published, so anything wrong
+ * with one fails the merchant's own publish call. `goodsFor` returns exactly
+ * the fields each card declares because this file writes it that way: nothing
+ * on the merchant's side checks it, and the gateway's check against the card's
+ * `result` comes back as a refusal rather than as an error here.
  */
 
 import type { Card, Delivery } from "@nuanu-ai/agentify-contracts";
@@ -93,11 +87,8 @@ export const RENTED_NUMBER_LIVE_PRICE = { amount: "3.50", currency: "USD" } as c
 
 /**
  * The goods for one order, computed from its parameters so that the delivery is
- * a function of the purchase rather than a fixed string.
- *
- * Each branch returns exactly the fields its card's `result` declares: the SDK
- * holds the return value to that declaration before it is sent, so a field too
- * many or too few would be refused on the merchant's own side.
+ * a function of the purchase rather than a fixed string. Each branch returns
+ * exactly the fields its card's `result` declares.
  */
 export function goodsFor(
   merchantItemId: string,

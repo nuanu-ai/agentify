@@ -1,42 +1,29 @@
 /**
- * One purchase, against a gateway that is already running.
+ * One purchase, against a gateway that is already running. The buyer is the
+ * official x402 client with a throwaway key: it reads the catalogue, meets the
+ * payment challenge, signs, and reads back the answer, with nothing simulated
+ * on this side.
  *
- * The buyer is the official x402 client with a throwaway key, the same one the
- * offline gate uses — it reads the catalogue, meets the payment challenge,
- * signs, and reads back whatever the resource answers. Nothing about the
- * exchange is simulated on this side.
- *
- * What is not real is the other end. This is meant for the local stack, where
- * the gateway settles against nothing (ADR-0020), so no money moves and the key
- * below needs to hold nothing. Pointed at a gateway with a real facilitator
- * behind it, this would sign a real transfer — which is why the command says
- * which gateway it is talking to before it does anything, and why the smoke
- * command, not this one, is the thing with a spending cap and a dry run.
+ * It is meant for the local stack, where the gateway settles against nothing,
+ * so no money moves and the key holds nothing. Pointed at a gateway with a real
+ * facilitator it would sign a real transfer, which is why it names the gateway
+ * before doing anything, and why the smoke command, not this one, carries a
+ * spending cap and a dry run.
  *
  *   GATEWAY_URL=http://localhost:8080 pnpm --filter @agentify/slice buy
  *   GATEWAY_URL=http://localhost:8080 pnpm --filter @agentify/slice buy esim
  *
  * With no argument it buys the first card in the catalogue. With one, it takes
- * the card whose catalogue identifier matches it exactly, or failing that the
- * first whose title contains it — which is the only handle an agent has. The
- * merchant's own identifier for a product is deliberately not in the public
- * card, so nothing outside can select by it.
+ * the card whose catalogue identifier matches exactly, or else the first whose
+ * title contains it, which is the only handle an agent has: the merchant's own
+ * identifier is deliberately not in the public card.
  *
- * A card whose goods come later does not answer with them, and this command
- * does not stop there. It waits, asking the door that is the agent's own
- * (ADR-0011) at the address the purchase answer named in `status_url`, and
- * prints the goods when they arrive. What it will not do is pretend the wait
- * is the purchase: when the ceiling below runs out, or the reader interrupts
- * it, the order is still the merchant's to finish and the command says where
- * to collect it rather than reporting a sale that ended. An order that owes a
- * refund is not a sale that ended either: the merchant can still deliver
- * against it, and the goods then arrive at the same address, so the watching
- * goes on through it.
- *
- * Both answers it reads are one document — where your order stands — so the
- * purchase and the wait are read the same way here, and the only thing the
- * card's mode decides is whether the goods are in the first answer or in a
- * later one.
+ * A card whose goods come later is watched at the address the purchase answer
+ * named in `status_url` until the goods arrive. When the ceiling below runs out
+ * or the reader interrupts, the order is still the merchant's to finish, and the
+ * command says where to collect it rather than reporting a sale that ended. An
+ * order that owes a refund is not an ending either: the merchant can still
+ * deliver against it, and the goods then arrive at the same address.
  */
 
 import { ORDER_STATUSES } from "@nuanu-ai/agentify-contracts";
@@ -84,15 +71,13 @@ const OWES_A_REFUND = "refund_due";
  * The words under which goods can still arrive at the status address.
  *
  * `in_progress` is a purchase that has not finished. `refund_due` is a paid
- * order whose goods have not come — its deadline passed, or the merchant
- * refused or left — and it is here because it is not an ending: the merchant
- * owes the buyer the goods or the money back, a late delivery is accepted and
- * settles that debt, and the goods then appear at the same address. Every other
- * word of the vocabulary this buyer was built with is an ending of some kind,
- * so watching stops on it and the command prints whatever it was told rather
- * than deciding what it meant. A word it was not built with is not one of
- * those: the storefront's words grow without a version (ADR-0006 §5), and a
- * word nobody here knows is not an ending anybody here knows.
+ * order whose goods have not come (its deadline passed, or the merchant refused
+ * or left), and it is not an ending: the merchant owes the goods or the money
+ * back, a late delivery is accepted and settles the debt, and the goods then
+ * appear at the same address. Every other word this buyer was built with is an
+ * ending, so watching stops on it and the command prints what it was told
+ * rather than deciding what it meant. A word it was not built with is not an
+ * ending it knows, since the storefront's words grow without a version.
  */
 const GOODS_CAN_STILL_ARRIVE: readonly string[] = ["in_progress", OWES_A_REFUND];
 
@@ -176,13 +161,12 @@ const refusedAs = (body: unknown): string | null => {
  * Whether the door has said where this order stands and there is nothing more
  * to wait for.
  *
- * Two answers end the watching: a word from the status vocabulary under which
- * no goods can arrive any more — one this buyer knows — and the gateway's own
- * refusal, which no amount
- * of asking again will turn into an order. Everything else — an error page, a body with
- * no state in it, a 502 from something in the middle — is not an answer about
- * the order at all, so the watching goes on. A door that answered badly once
- * has not told us the purchase is over.
+ * Two answers end the watching: a known status word under which no goods can
+ * arrive any more, and the gateway's own refusal, which no amount of asking
+ * again will turn into an order. Anything else (an error page, a body with no
+ * state, a 502 from something in the middle) is not an answer about the order,
+ * so the watching goes on: a door that answered badly once has not said the
+ * purchase is over.
  */
 const isAnEnding = (seen: OrderStatus): boolean =>
   (seen.state !== null &&
