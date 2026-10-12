@@ -1,8 +1,8 @@
 /*
  * The dashboard's own layout on top of the shared visual language: its frame,
- * tables, state dots and controls. Colours, families, radii and base element
- * rules come only from `packages/visual/tokens.css`, which the dashboard serves
- * ahead of this file; nothing here declares them.
+ * tables and controls. Colours, families, radii and base element rules come
+ * only from `packages/visual/tokens.css`, which `styles.css` imports ahead of
+ * this file; nothing here declares them.
  */
 
 /* Text runs the full width of its block: no balanced or "pretty" early line
@@ -342,7 +342,7 @@ tbody td::before {
     content: attr(data-label);
   }
 
-  .scroller tbody :is(.state, .amount) {
+  .scroller tbody .amount {
     white-space: normal;
   }
 }
@@ -371,59 +371,9 @@ tbody td::before {
     content: attr(data-label);
   }
 
-  .scroller:has(th:nth-child(7)) tbody :is(.state, .amount) {
+  .scroller:has(th:nth-child(7)) tbody .amount {
     white-space: normal;
   }
-}
-
-/* --- the state badge ---------------------------------------------------- */
-
-/*
- * The scanner's badge on the dashboard's four tones. The monospaced label tells a
- * state from the sentence beside it without relying on colour. `busy` is hollow:
- * an outline says "not settled yet", where a filled dot would leave colour alone
- * to separate it from an ending. No pulse: these pages do not update themselves,
- * and an animation would claim the screen is watching something.
- */
-.state {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  white-space: nowrap;
-  color: var(--muted);
-  font: 500 0.75rem / 1.4 var(--font-mono);
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border: 2px solid currentColor;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-/* `ok` is the scanner's pass, `warn` its fail, `busy` its running, `quiet` its
-   pending: muted words over a fainter dot, so a row nobody has to act on does not
-   draw the eye. */
-.state.ok {
-  color: var(--pass);
-}
-
-.state.warn {
-  color: var(--fail);
-}
-
-.state.busy {
-  color: var(--accent);
-}
-
-.state.busy .dot {
-  background: none;
-}
-
-.state.quiet .dot {
-  color: var(--faint);
 }
 
 /* Beside the amount rather than in its own column, so it cannot scroll out of
@@ -609,20 +559,10 @@ td.control {
   color: var(--pass);
 }
 
-.tile .figure.busy {
-  color: var(--accent);
-}
-
 .tile .aside {
   color: var(--muted);
   font-size: 0.875rem;
   margin-top: 4px;
-}
-
-.empty {
-  padding: 40px 24px;
-  text-align: center;
-  color: var(--muted);
 }
 
 /* --- signing in --------------------------------------------------------- */
@@ -772,14 +712,6 @@ p.quiet {
   margin-top: 16px;
   font-size: 0.875rem;
   color: var(--muted);
-}
-
-/* The note beside the address borrows the pill above but not the warn colour:
-   on these screens that colour means money that did not move, and painting an
-   account fact amber would spend a merchant's attention on every receipt. */
-.tag.plain {
-  color: var(--muted);
-  border-color: var(--line-strong);
 }
 
 /* --- the keys screen ---------------------------------------------------- */
