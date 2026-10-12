@@ -71,6 +71,12 @@ operator.
   commit leaves the repository in a valid state (docs read, builds build). The
   single declared exception is the red `test(...)` commit of a red→green pair,
   from the code stage onward.
+- A pull request carries a whole task, as its reader will review it. The steps
+  of one task, and the small fixes found along the way, travel as separate
+  commits on one branch rather than as a request each, so the reader merges
+  once and git can still roll back any single step. A second request is opened
+  only for work that must reach `main` on a schedule of its own, such as a fix
+  production needs now; otherwise an author has one request open at a time.
 - Remote: `github.com/nuanu-ai/agentify` (public). We push the branch when we
   commit.
 - Delivery (ADR-0016): a branch is tried on the test channel by moving the
