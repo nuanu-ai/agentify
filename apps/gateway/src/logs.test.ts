@@ -7,10 +7,16 @@
  * failure can, and neither may reach the log.
  */
 
+import { EventEmitter } from "node:events";
 import type { Card } from "@nuanu-ai/agentify-contracts";
+import type { Job, JobResult, PgBoss } from "pg-boss";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PgBossQueue } from "./adapters/pgboss/queue.js";
+import { connect, type Database, PostgresStore } from "./adapters/postgres/store.js";
 import { SWEEP_EFFECTS } from "./app/runner.js";
+import type { Reminder } from "./ports/queue.js";
 import {
+  countedIds,
   type Harness,
   harness,
   loggedWhile,
@@ -233,5 +239,102 @@ describe("a failure in the gateway's log", () => {
     expect(status).toBe(500);
     expect(written).toContain("list_merchant_cards failed");
     expectNothingCarried(written);
+  });
+});
+
+describe("a failure beneath the gateway, in its log", () => {
+  it("names a database connection that failed, and nothing the driver carried", async () => {
+    // A connection failure arrives as an event on the pool, held or idle.
+    const { pool } = connect("postgres://nobody@127.0.0.1:1/nowhere");
+    const held = new EventEmitter();
+
+    const written = await loggedWhile(async () => {
+      pool.emit("error", carrying(), held);
+      pool.emit("acquire", held);
+      held.emit("error", carrying());
+    });
+    await pool.end();
+
+    expect(written).toContain("an idle database connection failed");
+    expect(written).toContain("a database connection somebody was holding failed");
+    expectNothingCarried(written);
+  });
+
+  it("names the lock the sweep could not let go of", async () => {
+    const queried: string[] = [];
+    const client = {
+      query: async (statement: string) => {
+        queried.push(statement);
+        if (statement.includes("unlock")) throw carrying();
+        return { rows: [{ got: true }] };
+      },
+      release: () => undefined,
+    };
+    const db = { $client: { connect: async () => client } } as unknown as Database;
+    const store = PostgresStore.over(db, countedIds());
+
+    const written = await loggedWhile(() => store.runAlone("a_sweep", async () => "done"));
+
+    expect(queried.some((statement) => statement.includes("unlock"))).toBe(true);
+    expect(written).toContain("could not let go of a_sweep");
+    expectNothingCarried(written);
+  });
+
+  it("names a failure the queue reported of its own", async () => {
+    const boss = new EventEmitter();
+    PgBossQueue.over(boss as unknown as PgBoss, {
+      pollIntervalMs: 50,
+      reminders: { attempts: 3, retryDelayMs: 1_000 },
+    });
+
+    const written = await loggedWhile(async () => {
+      boss.emit("error", carrying());
+    });
+
+    expect(written).toContain("the queue reported a failure");
+    expectNothingCarried(written);
+  });
+
+  it("names the reminder that failed, and keeps nothing it carried on the queue's job", async () => {
+    // pg-boss keeps a failed job's output in its table, which is dumped with
+    // the database like everything else in it.
+    let handle: ((jobs: Job<Reminder>[]) => Promise<JobResult[]>) | null = null;
+    const boss = Object.assign(new EventEmitter(), {
+      start: async () => undefined,
+      createQueue: async () => undefined,
+      work: async (
+        _name: string,
+        _options: unknown,
+        handler: (jobs: Job<Reminder>[]) => Promise<JobResult[]>,
+      ) => {
+        handle = handler;
+        return "worker";
+      },
+    });
+    const queue = PgBossQueue.over(boss as unknown as PgBoss, {
+      pollIntervalMs: 50,
+      reminders: { attempts: 3, retryDelayMs: 1_000 },
+    });
+    queue.onReminder(async () => {
+      throw carrying();
+    });
+    await queue.start();
+    const reminder: Reminder = {
+      kind: "deadline",
+      deadline: "quote_expiry",
+      at: 0,
+      orderId: "ord_9",
+    };
+
+    let results: JobResult[] = [];
+    const written = await loggedWhile(async () => {
+      if (handle === null) throw new Error("the queue took no reminders");
+      results = await handle([{ id: "job_1", data: reminder } as Job<Reminder>]);
+    });
+
+    expect(written).toContain("a deadline reminder for ord_9 failed");
+    expectNothingCarried(written);
+    expect(results.map((result) => result.status)).toStrictEqual(["failed"]);
+    expectNothingCarried(JSON.stringify(results));
   });
 });
