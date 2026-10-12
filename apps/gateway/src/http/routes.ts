@@ -276,8 +276,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
             asked.wait_seconds === undefined
               ? gateway.runtime.config.worker.pollWaitMs
               : asked.wait_seconds * 1_000,
-            gone.signal,
-            callersKey(call),
+            { gone: gone.signal, keyId: callersKey(call) },
           ),
         };
       },

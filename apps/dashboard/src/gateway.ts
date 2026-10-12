@@ -593,13 +593,9 @@ export const gatewayFor = (
         if (!asked.ok) return asked.refused;
         return answered(
           API_ROUTES.poll_worker,
-          await application.poll(
-            merchantId,
-            (asked.value.wait_seconds ?? waitSeconds) * 1_000,
-            undefined,
-            null,
-            "woocommerce",
-          ),
+          await application.poll(merchantId, (asked.value.wait_seconds ?? waitSeconds) * 1_000, {
+            through: "woocommerce",
+          }),
         );
       }),
     answerOrder: (orderId, answer) =>

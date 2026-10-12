@@ -320,6 +320,18 @@ function quietFor(ms: number, ended: AbortSignal): Promise<void> {
   });
 }
 
+/**
+ * Who is drawing a merchant's stream, beside the merchant: the connection
+ * that ends the poll when it closes, the key it came in on, and the
+ * integration drawing (`Gateway#poll`). A poll a test or the dashboard makes
+ * names none of the first two.
+ */
+export interface PollDrawing {
+  readonly gone?: AbortSignal;
+  readonly keyId?: string | null;
+  readonly through?: Integration;
+}
+
 /** One poll held open, the key it came in on, and the way to end it early. */
 interface HeldPoll {
   readonly keyId: string | null;
@@ -1793,10 +1805,9 @@ export class Gateway {
   async poll(
     merchantId: string,
     waitMs: number,
-    gone?: AbortSignal,
-    keyId: string | null = null,
-    through: Integration = "api",
+    drawing: PollDrawing = {},
   ): Promise<WorkerPollResponse> {
+    const { gone, keyId = null, through = "api" } = drawing;
     const held: HeldPoll = { keyId, stop: new AbortController() };
     const holding = this.#held.get(merchantId) ?? new Set<HeldPoll>();
     holding.add(held);

@@ -371,13 +371,9 @@ export async function workOnce(
 ): Promise<number> {
   const { gateway } = worked;
   const merchantId = behaviour.merchantId ?? worked.merchant.id;
-  const { envelopes } = await gateway.poll(
-    merchantId,
-    waitMs,
-    undefined,
-    null,
-    behaviour.through ?? "api",
-  );
+  const { envelopes } = await gateway.poll(merchantId, waitMs, {
+    through: behaviour.through ?? "api",
+  });
 
   for (const envelope of envelopes) {
     if (envelope.kind === "order" && behaviour.onOrder !== undefined) {

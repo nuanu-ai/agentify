@@ -2824,7 +2824,7 @@ describe("one integration at a time", () => {
 
     const id = harnessed.merchant.id;
     expect((await harnessed.gateway.poll(id, 0)).envelopes).toStrictEqual([]);
-    const shop = await harnessed.gateway.poll(id, 0, undefined, null, "woocommerce");
+    const shop = await harnessed.gateway.poll(id, 0, { through: "woocommerce" });
     expect(shop.envelopes.map((envelope) => envelope.payload)).toMatchObject([
       { id: offered.order.order.id },
     ]);
@@ -2909,13 +2909,9 @@ describe("one integration at a time", () => {
     const harnessed = await started();
     const startedAt = performance.now();
 
-    const answered = await harnessed.gateway.poll(
-      harnessed.merchant.id,
-      300,
-      undefined,
-      null,
-      "woocommerce",
-    );
+    const answered = await harnessed.gateway.poll(harnessed.merchant.id, 300, {
+      through: "woocommerce",
+    });
 
     expect(answered.envelopes).toStrictEqual([]);
     expect(performance.now() - startedAt).toBeGreaterThanOrEqual(250);
