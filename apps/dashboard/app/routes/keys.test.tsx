@@ -10,7 +10,7 @@
  */
 
 import type { MerchantKey } from "@nuanu-ai/agentify-contracts";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createRoutesStub, Outlet, RouterContextProvider, useNavigate } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../../src/config.js";
@@ -144,5 +144,22 @@ describe("issuing a key where the page's script runs", () => {
     expect(await screen.findByText("Issue a key")).toBeTruthy();
     expect(screen.queryByText("The cards page")).toBeNull();
     expect(screen.queryByText(SECRET)).toBeNull();
+  });
+
+  it("takes the secret off a page the browser keeps for Back and Forward, and draws the list when it is brought back", async () => {
+    // A browser may keep a page it leaves whole, and show it again as it was.
+    keysPage({ listAfterIssue: "answers" });
+    await issue();
+
+    act(() => {
+      window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
+    });
+    expect(document.body.textContent).not.toContain(SECRET);
+
+    act(() => {
+      window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+    });
+    expect(await screen.findByText("Issue a key")).toBeTruthy();
+    expect(document.body.textContent).not.toContain(SECRET);
   });
 });
