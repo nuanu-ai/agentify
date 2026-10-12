@@ -47,7 +47,6 @@ export default [
       ]),
       route("settings/payout-wallet", "routes/settings-payout-wallet.tsx"),
       route("keys", "routes/keys.tsx"),
-      route("keys/new", "routes/keys-new.ts"),
       route("keys/:key_id/disable", "routes/keys-disable.ts"),
       route("woocommerce", "routes/woocommerce.tsx"),
       layout("routes/woocommerce-presses.tsx", [

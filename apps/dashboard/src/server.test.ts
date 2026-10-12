@@ -2924,9 +2924,6 @@ describe("the keys screen", () => {
     expect(readable(issued.html)).toMatch(/only time|once/i);
     expect(readable(issued.html)).toContain("Copy key");
 
-    const reloaded = await browser.get("/keys/new");
-    expect(reloaded.status).toBe(303);
-    expect(reloaded.to).toBe("/keys");
     expect(keys.issued).toStrictEqual(["the second worker"]);
     // Gone from every later page: the list is drawn from documents that carry
     // no secret.
@@ -2953,8 +2950,6 @@ describe("the keys screen", () => {
       "/keys.data",
       `/keys.data?_routes=${encodeURIComponent("routes/gate,routes/keys")}`,
       "/keys",
-      "/keys/new",
-      "/keys/new.data",
     ]) {
       expect((await browser.get(asked)).html, asked).not.toContain(SECRET);
     }
@@ -3207,7 +3202,6 @@ describe("the keys screen", () => {
     const issued = await browser.post("/dashboard/keys", { label: "the second worker" });
     expect(readable(issued.html)).toContain(SECRET);
     expect(issued.html).toContain('href="/dashboard/keys"');
-    expect((await browser.get("/dashboard/keys/new")).to).toBe("/dashboard/keys");
     const revoked = await browser.post(`/dashboard/keys/${NIGHTLY.id}/disable`);
     expect(revoked.to).toBe("/dashboard/keys");
     expect(keys.disabled).toStrictEqual([NIGHTLY.id]);
@@ -4690,17 +4684,18 @@ describe("the screen a signed-out person was going to", () => {
 
   it("is the section an address below it belongs to: a screen inside it, or a form sent from it", async () => {
     // The form most likely lost is the payout wallet change, posted to an
-    // address under the settings; the new-key form is a screen of the keys.
+    // address under the settings; a key's revoke is an address of the keys,
+    // read or pressed.
     const running = await started();
 
     const wallet = await running.browser.post("/settings/payout-wallet", {
       payout_wallet: "0x1111111111111111111111111111111111111111",
     });
-    const newKey = await running.browser.get("/keys/new");
+    const read = await running.browser.get("/keys/some-key/disable");
     const disable = await running.browser.post("/keys/some-key/disable");
 
     expect(wallet.to).toBe("/sign-in?reason=unsaved&destination=settings");
-    expect(newKey.to).toBe("/sign-in?destination=keys");
+    expect(read.to).toBe("/sign-in?destination=keys");
     expect(disable.to).toBe("/sign-in?reason=unsaved&destination=keys");
   });
 
