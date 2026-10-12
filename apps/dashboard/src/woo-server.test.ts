@@ -1,17 +1,10 @@
 /**
- * The Connect flow as a merchant walks it, over HTTP, against a real gateway.
- *
- * Nothing between the browser and the catalogue is stubbed except the merchant's
- * own shop, which is the one party these tests cannot stand up: a shop is
- * refused at the door unless it is https, and a server on a loopback port is
- * not. So the two calls that reach a shop are handed in, and everything else —
- * the routes, the sign-in, the publish door, the cards that come out — is the
- * real thing.
- *
- * The assertions this file exists for are the two that decide whether a
- * stranger can plant keys on somebody's account: a callback carrying a token
- * nobody issued writes nothing, and a token that already worked does not work
- * again.
+ * Nothing between the browser and the catalogue is stubbed except the
+ * merchant's shop: a shop must be https and a loopback server is not, so the
+ * two calls that reach a shop are handed in. The assertions that matter most
+ * decide whether a stranger can plant keys on somebody's account: a callback
+ * with a token nobody issued writes nothing, and a token that already worked
+ * does not work again.
  */
 
 import { createServer, type Server } from "node:http";
@@ -72,39 +65,30 @@ interface Running {
   readonly identity: Identity;
   readonly shops: WooShops;
   /**
-   * The account the tests sign in as, for the two that put a Connect in the
-   * past rather than waiting a quarter of an hour for one to expire.
+   * For the tests that put a Connect in the past rather than wait for it to
+   * expire.
    */
   readonly accountId: string;
   readonly url: string;
-  /** Every authorize address the preflight was asked about. */
   readonly asked: string[];
-  /** Every shop whose catalogue was read, once per read. */
+  /** Once per read. */
   readonly read: string[];
-  /** A key of the merchant's own, for reading their catalogue off the gateway. */
+  /** For reading their catalogue off the gateway. */
   readonly ownKey: string;
   get(path: string): Promise<Visit>;
   /**
-   * A GET carrying no cookie: a browser coming back from a merchant's own shop
-   * without a session, because the session ended while they were there or the
-   * shop was opened in another browser.
-   *
-   * The session cookie is `SameSite=Lax` (ADR-0026 §2), so a browser that is
-   * signed in carries it back and is sent on into the dashboard; the page the
-   * return address draws is for the browser that does not.
+   * A browser coming back from its shop without a session. The session cookie
+   * is `SameSite=Lax`, so a signed-in browser carries it back and is sent on
+   * into the dashboard; the return page is for the browser that does not.
    */
   getWithoutCookie(path: string): Promise<Visit>;
   post(path: string, form?: Record<string, string>): Promise<Visit>;
   /**
-   * A JSON post carrying no cookie, which is what a WooCommerce shop sends.
-   *
-   * The absence is the point: the callback comes from the merchant's own web
-   * server, with no session of ours on it, and the route being above the
-   * sign-in gate is what makes it reachable at all.
+   * No cookie is the point: the callback comes from the shop's own server, and
+   * only a route above the sign-in gate can be reached by it.
    */
   postJson(path: string, body: unknown): Promise<Visit>;
   signIn(destination?: "default" | "woocommerce"): Promise<Visit>;
-  /** Ends the session, so the next visit is a stranger's until they sign in. */
   signOut(): Promise<void>;
   close(): Promise<void>;
 }
@@ -124,41 +108,27 @@ interface Standing {
     merchantItemId: string,
   ) => Promise<ProductInspection>;
   /**
-   * Makes every read of the connections table fail, the way an unreachable
-   * Postgres does.
-   *
-   * The real store and the memory one both answer from somewhere that can stop
-   * answering, and nothing else in this suite can produce that. Only the reads
-   * the screens make are broken: the writes on the Connect path are left alone,
-   * so a test can still put a row there to be read.
+   * Fails every read of the connections table, as an unreachable Postgres
+   * would. Only the screens' reads break; the Connect path's writes still work,
+   * so a test can put a row there to be read.
    */
   readonly breakTheShopsRead?: () => never;
   /**
-   * Which of the dashboard's calls to the gateway never finish, and run out of
-   * a short deadline instead: every one, which is how this suite asks what an
-   * import says when nothing answers at all; or only the publishing, which is
-   * a gateway that stopped answering in the middle of an import, after it had
-   * answered what the merchant has set. Or the publishing fails in our own
-   * code, the way a database that went away fails it.
+   * Every gateway call never finishing (nothing answers an import); only
+   * publishing never finishing (the gateway stopped mid-import, after answering
+   * what the merchant has set); or publishing failing in our own code, as when
+   * a database goes away.
    */
   readonly silent?: "everything" | "publishing" | "publishing fails";
-  /**
-   * The channel the dashboard and its gateway are both on: the sandbox, where
-   * nothing settles; the test channel, where test money settles on a chain;
-   * or live, where real money does and the operator admits each merchant. The
-   * sandbox where a test does not say.
-   */
+  /** The sandbox where a test does not say. */
   readonly channel?: Channel;
   /**
-   * Signs in as a merchant just registered through the gateway's own door
-   * instead of the harness's ready seller, which is the merchant a person
-   * holds in the minutes after making one in the dashboard: no wallet, and a
-   * seller name only where the test asks for one.
+   * A merchant just registered through the gateway rather than the harness's
+   * ready seller: no wallet, and a seller name only where asked.
    */
   readonly fresh?: "named" | "unnamed";
 }
 
-/** What each channel is configured with, told to both the dashboard and the gateway. */
 const CHANNELS = {
   sandbox: { PAYMENT_NETWORK: "eip155:84532", FACILITATOR_URL: "sandbox:scripted" },
   test: { PAYMENT_NETWORK: "eip155:84532", FACILITATOR_URL: "https://x402.org/facilitator" },
@@ -169,16 +139,11 @@ const CHANNELS = {
 } as const;
 type Channel = keyof typeof CHANNELS;
 
-/** What only the gateway is told on live: a facilitator's credentials and a way to announce. */
 const LIVE_GATEWAY_ONLY = {
   CDP_API_KEY_ID: "key-id",
   CDP_API_KEY_SECRET: "key-secret",
 } as const;
 
-/**
- * A merchant made the way the dashboard's press makes one, and named or not.
- * Nothing else is set on them.
- */
 const registered = async (application: Gateway, named: boolean): Promise<string> => {
   const made = await application.registerMerchant();
   if (named) {
@@ -187,7 +152,6 @@ const registered = async (application: Gateway, named: boolean): Promise<string>
   return made;
 };
 
-/** The application, with every call it is asked to make waiting for good. */
 const silenced = (application: Gateway): Gateway =>
   new Proxy(application, {
     get(target, property, receiver) {
@@ -196,7 +160,7 @@ const silenced = (application: Gateway): Gateway =>
     },
   });
 
-/** How long a silenced call is waited on: long enough to start, short enough not to stall. */
+/** Long enough to start, short enough not to stall. */
 const SILENT_FOR_MS = 50;
 
 const started = async (standing: Standing = {}): Promise<Running> => {
@@ -231,7 +195,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     standing.fresh === undefined
       ? harnessed.merchant.id
       : await registered(harnessed.gateway, standing.fresh === "named");
-  // A key of the merchant's own, for the calls a test makes as their code.
+  // For the calls a test makes as the merchant's code.
   const ownKey =
     standing.fresh === undefined ? harnessed.merchant.key : await harnessed.addKey(merchant);
   const person = await identity.make(PERSON, merchant);
@@ -367,20 +331,18 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     getWithoutCookie: (path) => visit("GET", path, { noCookie: true }),
     post: (path, form = {}) => visit("POST", path, { body: new URLSearchParams(form).toString() }),
     postJson: (path, body) =>
-      // No cookie, which is the whole shape of this request: WooCommerce posts
-      // the keys from the shop's own web server, carrying no session of ours.
-      // Sent with one, every callback test would pass with the route mounted
-      // below the sign-in — and every real Connect would break in silence.
+      // No cookie, as WooCommerce posts from the shop's server; sent with one,
+      // every callback test would pass with the route mounted below the sign-in
+      // while every real Connect broke in silence.
       visit("POST", path, {
         body: JSON.stringify(body),
         type: "application/json;charset=UTF-8",
         noCookie: true,
       }),
     async signIn(destination = "default") {
-      // The door keeps a minute between two links to one address. A test here
-      // that signs in twice — once to lose the session, once to come back — is
-      // about where WooCommerce sends a merchant, so the minute is moved out
-      // of the way rather than waited out.
+      // A minute must pass between two links to one address; these tests sign
+      // in twice and are about where WooCommerce sends a merchant, so the
+      // minute is moved out of the way.
       rewindLinkSends(rows);
       await visit("POST", "/sign-in", {
         body: new URLSearchParams({
@@ -394,8 +356,8 @@ const started = async (standing: Standing = {}): Promise<Running> => {
       const opened = await visit("POST", action.pathname, {
         body: new URLSearchParams({ token: action.searchParams.get("token") ?? "" }).toString(),
       });
-      // A browser shows the screen the link leads to, and the forms a test
-      // then presses are that screen's.
+      // A browser shows the screen the link leads to, and the forms a test then
+      // presses are that screen's.
       if (opened.to?.startsWith("/") === true) await visit("GET", opened.to);
       return opened;
     },
@@ -413,7 +375,6 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   return open;
 };
 
-/** The token in the authorize address the preflight was asked about. */
 const tokenIn = (authorizeUrl: string): string =>
   new URL(authorizeUrl).searchParams.get("user_id") ?? "";
 
@@ -445,8 +406,8 @@ describe("pressing Connect", () => {
   });
 
   it("asks the shop about the very address the browser is sent to", async () => {
-    // Not a similar one. A preflight that checked a differently built address
-    // would be measuring something nobody is about to visit.
+    // The very address, not a similar one: a preflight on a differently built
+    // address would measure something nobody is about to visit.
     const running = await started();
     await running.signIn();
     const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
@@ -467,8 +428,7 @@ describe("pressing Connect", () => {
   });
 
   it("refuses a shop whose grant screen we never reached, and sends nobody there", async () => {
-    // The plain-permalink trap: the shop answers with its own front page and a
-    // 200, so a merchant sent there lands on their shop with nothing to report.
+    // Plain permalinks: the shop answers with its own front page and a 200.
     const running = await started({
       grantScreen: async () => ({ ok: false, why: "…the shop's permalink setting…" }),
     });
@@ -478,8 +438,8 @@ describe("pressing Connect", () => {
 
     expect(pressed.status).toBe(400);
     expect(pressed.html).toContain("permalink");
-    // And nothing was written down: a Connect nobody could complete leaves no
-    // token behind for anybody to post against.
+    // A Connect nobody could complete leaves no token for anybody to post
+    // against.
     expect(
       await running.shops.connectFromGrant(
         tokenIn(running.asked[0] ?? ""),
@@ -515,10 +475,9 @@ describe("the keys arriving from the shop", () => {
   });
 
   it("refuses a token nobody issued, and writes nothing", async () => {
-    // The callback carries no session and no key of ours, so this is the whole
-    // of what stops a stranger putting their own shop's keys on this account.
-    // The refusal is a status and not a page: WooCommerce takes the key it
-    // minted back out of the shop when the post fails.
+    // The callback carries no session and no key of ours, so this is all that
+    // stops a stranger putting their shop's keys on this account. A status, not
+    // a page: WooCommerce takes back the key it minted when the post fails.
     const running = await started();
     await running.signIn();
     await running.post("/woocommerce/connect", { shop_url: SHOP });
@@ -654,23 +613,21 @@ describe("the keys arriving from the shop", () => {
     await running.postJson("/woocommerce/callback", grantedBody(token, "read"));
 
     expect((await running.shops.connections())[0]?.permissions).toBe("read");
-    // And the merchant is told, rather than finding out from a refunded buyer.
+    // Told, rather than finding out from a refunded buyer.
     const seen = await running.get("/woocommerce");
     expect(seen.html).toContain("read and write");
   });
 });
 
 describe("the page the shop sends the browser back to, with a session on the request", () => {
-  // One test, and one is right. Under SameSite=Lax a signed-in browser carries
-  // its cookie back from the merchant's own shop, and what that branch owes is
-  // the redirect; what it redirects to is covered where a merchant actually
-  // lands: on the settings screen and on the shop screen.
+  // Under `SameSite=Lax` a signed-in browser carries its cookie back, and that
+  // branch owes only the redirect; where it lands is covered on the settings
+  // and shop screens.
   it("takes the state token out of the address bar", async () => {
-    // WooCommerce hands user_id back on this redirect, and in the case this
-    // page exists for — the keys never arrived — that token is unspent and good
-    // for the rest of its fifteen minutes. Left in the address it is in the
-    // browser's history, in the Referer of everything the page then loads, and
-    // in the address bar of a laptop somebody else can walk up to.
+    // WooCommerce hands `user_id` back on this redirect, and when the keys
+    // never arrived that token is unspent for the rest of its fifteen minutes.
+    // Left in the address it would sit in history, in every Referer the page
+    // sends, and on a screen somebody else can walk up to.
     const running = await started();
     await running.signIn();
     const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
@@ -702,9 +659,8 @@ describe("an expired session returning to WooCommerce", () => {
 describe("importing the catalogue", () => {
   const connected = async (running: Running): Promise<void> => {
     await running.signIn();
-    // The Connect form as a page drawn for this person carries it, said here
-    // because one test below has no gateway, and with none every page drawn
-    // is the error page.
+    // Said here because one test below has no gateway, and with none every page
+    // drawn is the error page.
     const pressed = await running.post("/woocommerce/connect", {
       shop_url: SHOP,
       [DRAWN_FOR]: PERSON,
@@ -723,7 +679,7 @@ describe("importing the catalogue", () => {
     readonly card: { readonly title: string; readonly price: { readonly amount: string } };
   }
 
-  /** The merchant's own cards as the gateway holds them, read with their key. */
+  /** Read with the merchant's own key. */
   const cardsOf = async (running: Running): Promise<readonly Held[]> => {
     const answered = await running.gateway.call("GET", "/v0/cards", {
       headers: { authorization: `Bearer ${running.ownKey}` },
@@ -741,20 +697,18 @@ describe("importing the catalogue", () => {
 
     expect(imported.status).toBe(200);
     expect(imported.html).toContain("Canvas tote bag");
-    // An import the door answered in full claims no other kind of outcome.
+    // An import the gateway answered in full claims no other kind of outcome.
     expect(readable(imported.html)).not.toContain("no verdict");
-    // And the card is really in the merchant's catalogue, priced at the scale
-    // the shop sent rather than at a hundred times it.
+    // Priced at the scale the shop sent, not at a hundred times it.
     const listed = await cardsOf(running);
     expect(listed).toHaveLength(1);
     expect(listed[0]?.card.price.amount).toBe("25.00");
   });
 
   it("publishes a physical product as a parcel, once the merchant has given the shop's site", async () => {
-    // The door holds a parcel's card back from a merchant with no site
-    // (ADR-0034), because the site is where a buyer asks about a parcel that
-    // did not come. The import says so; it never fills the site in on the
-    // merchant's behalf.
+    // A parcel's card is held back from a merchant with no site, because the
+    // site is where a buyer asks about a parcel that did not come. The import
+    // says so and never fills the site in for the merchant.
     const running = await started({
       catalogue: async () => ({
         ok: true,
@@ -792,9 +746,8 @@ describe("importing the catalogue", () => {
   });
 
   it("tells an owner whose parcel is held for want of the shop's site to set it in Settings", async () => {
-    // The door's own words for a missing site name the call a merchant's code
-    // makes. The person who pressed Import sets the site in Settings, and an
-    // instruction to call the API is one they cannot follow from here.
+    // The gateway's words name an API call; the person who pressed Import sets
+    // the site in Settings.
     const running = await started({
       catalogue: async () => ({
         ok: true,
@@ -866,14 +819,10 @@ describe("importing the catalogue", () => {
   });
 
   it("counts a card it published again and does not call it on sale while it is paused", async () => {
-    // Publishing a paused card again changes the card and leaves it paused —
-    // a merchant editing a price in their shop is not asking for a product
-    // they took off sale to go back on it — and the door's answer says nothing
-    // about selling either way. A page that reads "on sale" over that card
-    // tells the merchant that agents can buy it, and they cannot. Two products
-    // and one pause, which is the list a merchant actually reads: the paused
-    // card beside one that is not, with nothing on this page to tell them
-    // apart, and the count in the plural the demo runbook shows.
+    // Republishing a paused card leaves it paused, and the gateway's answer
+    // says nothing about selling, so "on sale" over it would tell the merchant
+    // agents can buy what they cannot. Two products and one pause, the list a
+    // merchant actually reads.
     const running = await started({
       catalogue: async () => ({
         ok: true,
@@ -896,9 +845,8 @@ describe("importing the catalogue", () => {
   });
 
   it("shows the door's own refusal word for word", async () => {
-    // The description a shop wrote is longer than our catalogue carries. The
-    // merchant's move is to shorten it in their shop, and the only thing that
-    // tells them so is the sentence the door gave.
+    // The merchant's move is to shorten it in their shop, and only the
+    // gateway's sentence tells them so.
     const running = await started({
       catalogue: async () => ({
         ok: true,
@@ -910,19 +858,15 @@ describe("importing the catalogue", () => {
     const imported = await running.post("/woocommerce/import");
 
     expect(imported.html).toContain("Refused");
-    // Both halves of the door's sentence reach the merchant: the ceiling, and
-    // the length of the text they wrote in their own shop. The second is what
-    // tells them how much to cut, and it is the half a summary would lose.
+    // The ceiling and the length they wrote: the second says how much to cut,
+    // and a summary would lose it.
     expect(readable(imported.html)).toContain("at most 500");
     expect(readable(imported.html)).toContain("900 characters");
   });
 
   it("says the door did not answer, and does not send the merchant to their shop to fix it", async () => {
-    // A valid product and a gateway that is not there. Nothing about the
-    // product is wrong and nothing in the shop can repair it, so a page that
-    // puts it under "change what they name in your shop" sends the merchant
-    // to edit a product nobody read. What the page can say is what came back
-    // instead of an answer, and what to do about that.
+    // A valid product and no gateway: nothing in the shop can repair it, so the
+    // page must not send the merchant to edit a product nobody read.
     const running = await started({
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
       silent: "publishing",
@@ -936,16 +880,14 @@ describe("importing the catalogue", () => {
     expect(text).toContain("1 got no verdict");
     expect(text).toContain("Canvas tote bag");
     expect(text).toContain("Agentify did not answer");
-    // Not under the door's rules: neither their heading nor their count.
+    // Neither the refusals' heading nor their count.
     expect(text).not.toContain("Refused");
     expect(text).not.toContain("publishing rules");
   });
 
   it("keeps what it did when publishing fails in our own code, and says nobody knows whether it went", async () => {
     // A failure of ours may come after the card was written, so it is no
-    // verdict rather than a refusal, and the import stops there with its
-    // record rather than being replaced by a page that says only that
-    // something broke.
+    // verdict rather than a refusal, and the import stops with its record.
     const running = await started({
       catalogue: async () => ({
         ok: true,
@@ -1012,22 +954,19 @@ describe("importing the catalogue", () => {
   });
 
   /**
-   * What the screen itself says, without the header and the footer. The header
-   * carries a link to the settings on every page, the account's own address,
-   * so a page as a whole always has a way there and says nothing by having one.
+   * The header links to settings on every page, so only the body says anything
+   * by linking there.
    */
   const bodyOf = (html: string): string =>
     html.slice(html.indexOf("</header>"), html.indexOf("<footer"));
 
-  /** An address of the right shape that is nobody's, in the lower case a wallet accepts. */
+  /** In the lower case a wallet accepts. */
   const A_WALLET = "0x0123456789abcdef0123456789abcdef01234567";
 
   it("reads nothing and publishes nothing for a merchant with nowhere to be paid, and sends them to Settings", async () => {
-    // The door refuses every card of a merchant with no wallet on a channel
-    // where money settles, in a sentence written for an engineer holding an
-    // API response. A WooCommerce merchant wrote no code: what they can act on
-    // is the dashboard's own screen where the wallet is set, and they learn it
-    // before their shop is read product by product for nothing.
+    // Where money settles, the gateway refuses every card of a merchant with no
+    // wallet, in a sentence for an engineer. A WooCommerce merchant learns
+    // where to set it before their shop is read product by product for nothing.
     const running = await started({
       channel: "test",
       fresh: "named",
@@ -1047,8 +986,7 @@ describe("importing the catalogue", () => {
   });
 
   it("imports once the merchant has set a wallet in Settings", async () => {
-    // The road out of the refusal, walked through the screen it links to. A
-    // refusal a merchant cannot get past from the dashboard is a wall.
+    // The way past the refusal, walked through the screen it links to.
     const running = await started({
       channel: "test",
       fresh: "named",
@@ -1066,9 +1004,8 @@ describe("importing the catalogue", () => {
   });
 
   it("asks for no wallet in the sandbox, where the door takes a card without one", async () => {
-    // Nothing settles in the sandbox, the settings screen says the address is
-    // optional there, and the door agrees. An import refused for it would be
-    // this dashboard stricter than its own gateway.
+    // Nothing settles in the sandbox and the wallet is optional there; refusing
+    // an import for it would make the dashboard stricter than its gateway.
     const running = await started({
       channel: "sandbox",
       fresh: "named",
@@ -1083,8 +1020,8 @@ describe("importing the catalogue", () => {
   });
 
   it("reads nothing for a merchant with no seller name, and sends them to Settings", async () => {
-    // The door's other rule about the merchant rather than the card, and the
-    // one that holds on every channel, the sandbox included.
+    // The rule about the merchant that holds on every channel, the sandbox
+    // included.
     const running = await started({
       channel: "sandbox",
       fresh: "unnamed",
@@ -1103,9 +1040,8 @@ describe("importing the catalogue", () => {
   });
 
   it("is not offered on the live channel, where it does not work", async () => {
-    // The connector works on the test channel only, and its own words say so.
-    // Offered on the live one, an owner is left to infer the limit from a page
-    // that invites them in.
+    // The connector works in test mode only, and offering it on live would
+    // leave an owner to infer the limit.
     const running = await started({ channel: "live" });
     await running.signIn();
 
@@ -1115,8 +1051,7 @@ describe("importing the catalogue", () => {
     expect(shopScreen.status).toBe(404);
     expect(integrations.status).toBe(200);
     expect(integrations.html).not.toContain("/woocommerce");
-    // Nor do the addresses a shop sends its keys and its owner back to answer:
-    // nothing on live can have started a grant for them to finish.
+    // Nothing on live can have started a grant for these to finish.
     const keys = await running.postJson("/woocommerce/callback", {
       key_id: 2,
       user_id: "a-token-nobody-issued",
@@ -1141,9 +1076,8 @@ describe("importing the catalogue", () => {
   });
 
   it("answers a refused press with an alert the screen before the press does not carry", async () => {
-    // Both pages name what is missing, beside the same button. What tells a
-    // merchant, or the screen reader reading the page to them, that the press
-    // itself was refused is the alert only the answer to the press carries.
+    // Both pages name what is missing beside the same button; only the answer
+    // to the press carries the alert that says the press was refused.
     const running = await started({
       channel: "test",
       fresh: "named",
@@ -1169,8 +1103,8 @@ describe("importing the catalogue", () => {
   });
 
   it("does not read the shop when the gateway cannot say what the merchant has set", async () => {
-    // Nothing could be published through a gateway that is not there, so
-    // reading the shop product by product first is work done for nothing.
+    // Nothing could be published through a missing gateway, so reading the shop
+    // first would be work for nothing.
     const running = await started({
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
       silent: "everything",
@@ -1185,10 +1119,8 @@ describe("importing the catalogue", () => {
   });
 
   /**
-   * The merchant's shop answering the protected product check, in-process,
-   * with each product's `wc/v3` price stored the way the merchant typed it and
-   * the shop's Number of decimals as given. The check itself is the real one;
-   * only the shop is not.
+   * The real product check against an in-process shop that stores each `wc/v3`
+   * price as typed, with the given number of decimals.
    */
   const shopStoring =
     (typed: Readonly<Record<string, string>>, decimals = "2"): WooRequest =>
@@ -1226,7 +1158,6 @@ describe("importing the catalogue", () => {
       });
     };
 
-  /** What the import page says about each product it left in the shop. */
   const leftInTheShop = (html: string): Record<string, string> =>
     Object.fromEntries(
       [
@@ -1242,9 +1173,8 @@ describe("importing the catalogue", () => {
     );
 
   it("imports a price typed without cents, or with one decimal, at the amount the shop charges", async () => {
-    // WooCommerce keeps a price as the merchant typed it, so wc/v3 says "25"
-    // or "19.9" where the Store API says 2500 or 1990 cents. Those are the
-    // same money, and ordinary shops are full of prices typed this way.
+    // `wc/v3` says "25" or "19.9" where the Store API says 2500 or 1990 cents:
+    // the same money, typed this way in ordinary shops.
     const usd = (cents: string) => ({ price: cents, currency_code: "USD", currency_minor_unit: 2 });
     const running = await started({
       catalogue: async () => ({
@@ -1294,18 +1224,17 @@ describe("importing the catalogue", () => {
 
     expect(await cardsOf(running)).toHaveLength(0);
     expect(left["11"]).toContain("does not match");
-    // Not "does not match": the Store API rounded 25.001 to 2500 cents, and a
-    // merchant told the two prices differ would find them equal on screen.
-    // Nor the decimals setting: the price is the thing to change.
+    // Not "does not match": the Store API rounded it to 2500 cents, so the
+    // prices look equal on screen. Nor the decimals setting: the price is what
+    // to change.
     expect(left["12"]).toContain("25.001");
     expect(left["12"]).not.toContain("Number of decimals");
   });
 
   it("tells a shop set to another number of decimals about the setting, not about a mismatch", async () => {
-    // A merchant who hides cents sets WooCommerce's Number of decimals to 0,
-    // and the Store API then writes 25 dollars as "25" at a scale of 0. The
-    // import sells at two decimals and names the setting that changes that;
-    // the two prices are the same, and retyping them would change nothing.
+    // With Number of decimals at 0, the Store API writes $25 as "25" at scale
+    // 0. The import sells at two decimals and names the setting; retyping
+    // prices would change nothing.
     const noCents = (whole: string) => ({
       price: whole,
       currency_code: "USD",
@@ -1333,10 +1262,9 @@ describe("importing the catalogue", () => {
   });
 
   it("names the setting when the catalogue is written at another scale than the setting says", async () => {
-    // The setting reads 2 while the public catalogue writes prices at 0, which
-    // is what a plugin that changes the shop's decimals looks like from here.
-    // The two prices are still the same money, so the refusal is about the
-    // decimals and not about a mismatch.
+    // The setting reads 2 while the catalogue writes scale 0, as when a plugin
+    // changes the shop's decimals; the refusal is about the decimals, not a
+    // mismatch.
     const running = await started({
       catalogue: async () => ({
         ok: true,
@@ -1362,13 +1290,10 @@ describe("importing the catalogue", () => {
   });
 
   describe("agrees with the publish door about what the merchant lacks", () => {
-    // The promise: a merchant is told the same thing by the dashboard as by the
-    // door their cards go through, on every channel the connector is offered
-    // on. The dashboard stops an import before the shop is read for exactly the
-    // settings the door would refuse every card for, names them, and names
-    // nothing the door would not ask for. The live channel is not here: the
-    // connector is not offered there, so the operator's approval, which the
-    // door asks for on live alone, is never a reason this page gives.
+    // The dashboard stops an import before reading the shop for exactly the
+    // settings the gateway would refuse every card for, names them, and names
+    // nothing else, on every channel the connector is offered on (so never
+    // live's operator approval).
     const A_CARD = {
       merchant_item_id: "a-guide",
       title: "A guide",
@@ -1378,7 +1303,7 @@ describe("importing the catalogue", () => {
       fulfillment: "sync",
     };
 
-    /** What the door says about this merchant, as a program would pick it out. */
+    /** As a program would pick it out. */
     const theDoorSays = async (running: Running): Promise<readonly string[]> => {
       const answered = await running.gateway.call("POST", "/v0/catalog/publish", {
         body: A_CARD,
@@ -1392,11 +1317,11 @@ describe("importing the catalogue", () => {
       return problems.map((finding) => finding.code).filter((code) => aboutTheMerchant.has(code));
     };
 
-    /** The line beside Import, read the way a merchant reads it. */
+    /** Read the way a merchant reads it. */
     const lineIn = (html: string): string =>
       readable(/<p class="problem"[^>]*>[\s\S]*?<\/p>/.exec(importFormOf(html))?.[0] ?? "");
 
-    /** What a line names, in the door's words for the same things. */
+    /** In the gateway's words for the same things. */
     const named = (line: string): readonly string[] => [
       ...(/\bname\b/i.test(line) ? [MERCHANT_FINDINGS.NO_SELLER_NAME] : []),
       ...(/wallet/i.test(line) ? [MERCHANT_FINDINGS.NO_PAYOUT_WALLET] : []),
@@ -1414,8 +1339,8 @@ describe("importing the catalogue", () => {
           const running = await started({ channel, fresh: hasName ? "named" : "unnamed" });
           await connected(running);
           if (hasWallet) {
-            // Where a wallet is set: in the dashboard's Settings, by the person
-            // signed in, since no key of the merchant's own code may set one.
+            // Set in Settings by the signed-in person, since no key of the
+            // merchant's code may set one.
             const saved = await running.post("/settings/payout-wallet", {
               payout_wallet: A_WALLET,
             });
@@ -1423,7 +1348,7 @@ describe("importing the catalogue", () => {
           }
           const door = await theDoorSays(running);
           if (hasWallet) {
-            // The fixture took: a wallet saved is a wallet the door has.
+            // The fixture took: a wallet saved is a wallet the gateway has.
             expect(door).not.toContain(MERCHANT_FINDINGS.NO_PAYOUT_WALLET);
           }
           const before = lineIn((await running.get("/woocommerce")).html);
@@ -1442,11 +1367,9 @@ describe("importing the catalogue", () => {
 });
 
 describe("what the integrations screen says about a shop", () => {
-  // The promise, and it is the whole reason this block reads rows at all: the
-  // integrations screen is where a merchant looks for their shop, and it has to
-  // tell apart the four things that can have happened. Three of them are not "connected", and a merchant told "connect a
-  // WooCommerce shop" in any of the other three is being told their Connect
-  // failed when two of those are not a failure and one has a different cure.
+  // The integrations screen must tell apart the four things that can have
+  // happened; "connect a WooCommerce shop" in any state but none would tell a
+  // merchant their Connect failed.
   const approve = async (running: Running, permissions = "read_write"): Promise<void> => {
     const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
     await running.postJson("/woocommerce/callback", {
@@ -1457,7 +1380,6 @@ describe("what the integrations screen says about a shop", () => {
     });
   };
 
-  /** A Connect that was pressed this long ago and never answered. */
   const startedMinutesAgo = async (running: Running, minutes: number): Promise<void> => {
     const began = Date.now() - minutes * 60_000;
     await running.shops.beginGrant({
@@ -1498,9 +1420,7 @@ describe("what the integrations screen says about a shop", () => {
     expect(readable(screen.html)).toMatch(/experimental/i);
     expect(readable(screen.html)).not.toMatch(/acceptance path/i);
     // What a supported product is, is written on the shop screen this block
-    // links to, and nowhere else. It used to be here as well and in the import
-    // form beside it: three copies of one rule, two of them free to go stale
-    // against a connector whose rule is the only reason a card is refused.
+    // links to, and only there.
     expect(readable(screen.html)).not.toMatch(/one protected download file/i);
     expect(screen.html).toContain(`href="/woocommerce"`);
   });
@@ -1518,10 +1438,8 @@ describe("what the integrations screen says about a shop", () => {
   });
 
   it("says a Connect is still running, and how long it has been", async () => {
-    // The state the whole finding was about. The merchant approved in their own
-    // shop and their shop's keys have not arrived; the honest answer inside the
-    // fifteen minutes is "wait", and a page that said "connect a shop" here
-    // sends them round the loop for nothing.
+    // Approved in the shop, keys not yet here: inside the fifteen minutes the
+    // honest answer is "wait".
     const running = await started();
     await running.signIn();
     await startedMinutesAgo(running, 4);
@@ -1542,16 +1460,9 @@ describe("what the integrations screen says about a shop", () => {
   });
 
   it("says only that no keys came in the fifteen minutes, and does not guess why", async () => {
-    // The other half of the same state, and a different sentence because it
-    // is a different move: the request is not coming on this Connect, and the
-    // one move that fits every way it can have gone is another Connect.
-    //
-    // What the page may not do is name a cause. Nothing here records whether
-    // the merchant approved, declined or closed their shop's screen, and a
-    // post that never got through leaves the same nothing as a post never
-    // made. "Your shop could not reach us", which this page once said, was one
-    // of three guesses presented as the fact, and it sent a merchant who had
-    // declined off to repair a firewall that was fine.
+    // Past the fifteen minutes the move is another Connect. No cause is named:
+    // nothing records whether the merchant approved, declined or closed the
+    // shop's screen, and a failed post leaves the same nothing as none.
     const running = await started();
     await running.signIn();
     await startedMinutesAgo(running, 40);
@@ -1565,8 +1476,8 @@ describe("what the integrations screen says about a shop", () => {
     expect(screen.html).toContain(`href="/woocommerce"`);
     expect(text).not.toMatch(/could not reach us/);
     expect(text).not.toMatch(/firewall/);
-    // And not the sentence for a Connect still running, which would have the
-    // merchant sitting and reloading a page that will never change.
+    // Not the sentence for a running Connect, which would have the merchant
+    // reloading a page that will never change.
     expect(text).not.toContain("Reload this page in a moment");
   });
 
@@ -1581,9 +1492,8 @@ describe("what the integrations screen says about a shop", () => {
   });
 
   it("offers the SDK first and the experimental shop path after it, from an empty catalogue", async () => {
-    // The SDK is the product's path and the shop connector is an experiment
-    // (AGENTS.md, "Stage"), so the button a new merchant is led to press first
-    // is the SDK guide, and the shop path says what it is.
+    // The SDK is the product's path and the shop connector an experiment, so
+    // the first button a new merchant is led to is the SDK guide.
     const running = await started();
     await running.signIn();
 
@@ -1600,9 +1510,8 @@ describe("what the integrations screen says about a shop", () => {
   });
 
   it("says a connected shop granted less than it needs to sell anything", async () => {
-    // A channel that cannot create an order is broken, and a settings line
-    // reading only "connected" over it is this page being reassuring about
-    // something that refuses every sale at delivery.
+    // A channel that cannot create an order refuses every sale at delivery;
+    // "connected" alone over it would be reassuring about something broken.
     const running = await started();
     await running.signIn();
     await approve(running, "read");
@@ -1628,8 +1537,8 @@ describe("what the integrations screen says about a shop", () => {
   });
 
   it("carries no key of the shop's onto the settings screen", async () => {
-    // The screen is handed the fields it may know rather than the row, and this
-    // is the promise that shape exists to keep (ADR-0023).
+    // The screen is handed only the fields it may know, never the row with the
+    // shop's secret.
     const running = await started();
     await running.signIn();
     await approve(running);
@@ -1641,14 +1550,10 @@ describe("what the integrations screen says about a shop", () => {
   });
 
   it("says the WooCommerce state could not be read, rather than nothing, when the shops table is unreachable", async () => {
-    // The settings screen is where a merchant fixes the address their money
-    // arrives at. Our own shops table being down must not stand between them
-    // and that box, so the page stays. The shop's block, on the integrations
-    // screen, stays too, saying what happened, because a block that simply
-    // vanishes reads as "no shop is connected" to a merchant who connected one
-    // yesterday — and that is a different sentence with a different next move
-    // from "we could not read it". The two must be told apart on the page, not
-    // in our logs.
+    // Our shops table being down must not keep a merchant from the payout
+    // address box, so settings stays up; the shop's block on integrations says
+    // it could not read, because a vanished block would read as "no shop is
+    // connected".
     const running = await started({
       breakTheShopsRead: () => {
         throw new Error("the shops table is not answering");
@@ -1671,13 +1576,9 @@ describe("what the integrations screen says about a shop", () => {
 
 describe("coming back from the shop with no session on the request", () => {
   /**
-   * The return that arrives without a session, and the reason this describe
-   * exists.
-   *
    * The session may have ended while the merchant was in their shop, or the
-   * shop may have been opened in another browser. Behind the gate, that lands
-   * the merchant on a sign-in at the end of a flow that worked, and what they
-   * read is "it broke" (ADR-0026 §7).
+   * shop was opened in another browser; behind the gate, a flow that worked
+   * would end on a sign-in that reads as "it broke".
    */
   const cameBack = (running: Running, query = "?success=1&user_id=whatever"): Promise<Visit> =>
     running.getWithoutCookie(`/woocommerce/return${query}`);
@@ -1695,9 +1596,8 @@ describe("coming back from the shop with no session on the request", () => {
   });
 
   it("leads its Continue, through the sign-in, back to the shop screen", async () => {
-    // The merchant this page is for has no session, so Continue meets the gate,
-    // and the sign-in it lands on keeps the shop screen as where the link
-    // returns them, the query the button adds notwithstanding.
+    // No session, so Continue meets the gate, and the sign-in keeps the shop
+    // screen as where the link returns them.
     const running = await started();
     const stripped = await cameBack(running);
     const page = (await running.getWithoutCookie(stripped.to ?? "/woocommerce/return")).html;
@@ -1710,10 +1610,9 @@ describe("coming back from the shop with no session on the request", () => {
   });
 
   it("still takes the state token out of the address bar", async () => {
-    // The property the redirect was written for, and the one this change could
-    // silently have dropped: with the cookie held back by SameSite, the visit
-    // with no session is now the only visit a real merchant makes, so an
-    // unspent token left in the address would be left there every time.
+    // With the cookie held back by SameSite, the visit with no session is the
+    // only one a real merchant makes, so an unspent token left in the address
+    // would be left every time.
     const running = await started();
     await running.signIn();
     const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
@@ -1726,10 +1625,8 @@ describe("coming back from the shop with no session on the request", () => {
   });
 
   it("reads nothing at all, so there is nothing for it to answer differently", async () => {
-    // The narrow property this route rests on, and it is stronger than "the two
-    // pages happen to match": a handler that touches no row cannot vary by one.
-    // The store here fails every read, and the page still comes out — which it
-    // could not do if the route consulted anything.
+    // A handler that touches no row cannot vary by one: the store fails every
+    // read here and the page still comes out.
     const running = await started({
       breakTheShopsRead: () => {
         throw new Error("nothing on this route may read a row");
@@ -1745,9 +1642,8 @@ describe("coming back from the shop with no session on the request", () => {
   });
 
   it("says the same thing whether or not a shop is connected", async () => {
-    // The other half: not merely that it reads nothing, but that a stranger and
-    // an owner are handed the same bytes. Two runs, one with a connection and
-    // one without.
+    // A stranger and an owner are handed the same bytes: one run with a
+    // connection, one without.
     const withNothing = await started();
     const before = await withNothing.getWithoutCookie("/woocommerce/return");
     await withNothing.close();
@@ -1768,9 +1664,8 @@ describe("coming back from the shop with no session on the request", () => {
   });
 
   it("continues into the dashboard with the session the browser already holds", async () => {
-    // A return that arrived without the cookie is followed by a click that
-    // carries it. Asking for another email in between turned a successful
-    // Connect into a loop even though the browser was still signed in.
+    // A click after a cookieless return carries the cookie; asking for another
+    // email in between would turn a successful Connect into a loop.
     const running = await started();
     await running.signIn();
     await running.post("/woocommerce/connect", { shop_url: SHOP });
@@ -1806,13 +1701,9 @@ describe("coming back from the shop with no session on the request", () => {
   });
 
   it("does not say the shop approved merely because the browser came through the return address", async () => {
-    // The return route reads nothing off the redirect on purpose, so the page
-    // it lands on has nothing to add for the arrival — and until now it added
-    // "your shop says it approved", the redirect's claim presented as read.
-    // Here the redirect says the opposite, `success=0`, the shape WooCommerce
-    // sends when the merchant declined. What the page may claim about approval
-    // and keys is what our rows hold, a Connect started and no keys yet, and
-    // the check is that it is the very settings page a plain reload gives.
+    // `success=0` is what WooCommerce sends when the merchant declined. The
+    // page may claim only what our rows hold (a Connect started, no keys yet),
+    // and it is the same settings page a plain reload gives.
     const running = await started();
     await running.signIn();
     await running.post("/woocommerce/connect", { shop_url: SHOP });
@@ -1827,11 +1718,8 @@ describe("coming back from the shop with no session on the request", () => {
   });
 
   it("offers Connect and adds nothing when the return address is opened by hand", async () => {
-    // Nothing was started and no shop sent this browser anywhere: a merchant
-    // signed in on it typed the address in. What they land on is settings in
-    // its ordinary empty state — a note that a shop approved
-    // something, or that the browser came back from one, would be a note about
-    // an event that did not happen.
+    // Nothing was started; a signed-in merchant typed the address. A note that
+    // a shop approved something would be about an event that did not happen.
     const running = await started();
     await running.signIn();
 
@@ -1845,8 +1733,7 @@ describe("coming back from the shop with no session on the request", () => {
   });
 
   it("leaves every other dashboard address behind the sign-in", async () => {
-    // The narrowing is one address. A gate that had been opened a crack wider
-    // than that is the defect this test exists to catch.
+    // The gate is opened for one address and no wider.
     const running = await started();
 
     for (const path of [
@@ -1862,8 +1749,8 @@ describe("coming back from the shop with no session on the request", () => {
     ]) {
       const seen = await running.getWithoutCookie(path);
       expect(seen.status, path).toBe(303);
-      // Where the sign-in returns the person afterwards is in its query, and
-      // is not this test's question; that it is the sign-in is.
+      // Where the sign-in returns the person is in its query, and not this
+      // test's question.
       expect(new URL(seen.to ?? "", "http://dashboard.test").pathname, path).toBe("/sign-in");
     }
   });

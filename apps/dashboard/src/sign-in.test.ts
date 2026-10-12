@@ -1,26 +1,13 @@
 /**
- * The three answers the door gives to a request for a link, and the one script.
+ * Every answer carries the resend button, and none serves it `disabled`: the
+ * script takes it away for the length of the wait, because nothing can lift the
+ * attribute where the script did not run, and a disabled button would lock out
+ * somebody with no other way in.
  *
- * All three carry the resend, and none of them carries it `disabled`. That is
- * the promise this file exists for: the dashboard serves a button that works and
- * a script takes it away for the length of the wait, never the other way
- * round. Rendered `disabled`, the button could not be given back — nothing on
- * a page whose script did not run can lift the attribute — and the one control
- * that asks for a new link would be dead in the browser of somebody who has no
- * other way into their dashboard.
- *
- * The script is tested by being run, twice over and never from a copy. Once
- * against a stand-in for the two properties it touches, which is cheap enough
- * to walk a forty-seven-minute countdown through every unit it changes into.
- * And once in jsdom, which parses the page the dashboard serves and runs the
- * script inside it.
- *
- * The second is there because the first was green while the feature was dead.
- * A stand-in answers any selector the same way wherever the script sits in the
- * document, so moving the script above the card — the tidy-up any later
- * refactor makes — left it finding no button, doing nothing, and passing. What
- * only a browser can be asked is whether the script can reach the button on
- * the page as served.
+ * The script is run, never copied: once against a stand-in cheap enough to walk
+ * a long countdown, and once in jsdom on the page as served, because only a
+ * real document shows whether the script can reach the button at all (moved
+ * above the card, it finds nothing and a stand-in still passes).
  */
 
 import { runInNewContext } from "node:vm";
@@ -31,7 +18,6 @@ import { readable, waitingButton } from "./testing/html.js";
 
 const PERSON = "owner@example.com";
 
-/** The three pages, each with the wait the door computed for it. */
 const ANSWERS: readonly (readonly [string, LinkAnswer])[] = [
   ["a link has just gone out", { sent: true, seconds: 60 }],
   ["the last link went out seconds ago", { wall: "interval", seconds: 43 }],
@@ -56,13 +42,12 @@ describe("what a merchant is served after asking for a link", () => {
     it(`serves that button pressable and carrying its wait when ${said}`, () => {
       const button = waitingButton(screenFor(answer));
 
-      // Production break: served `disabled`, this button never comes back for
-      // a browser that runs no script, and that browser's owner is locked out.
+      // Served `disabled`, the button never comes back for a browser that runs
+      // no script.
       expect(button.attributes.has("disabled")).toBe(false);
       expect(button.attributes.get("data-link-wait")).toBe(String(answer.seconds));
-      // The number is on the attribute and not in the words, because a page is
-      // a snapshot: a counter printed into the label would still say 43 in ten
-      // minutes for everybody whose browser ran nothing to move it.
+      // The number is on the attribute, not in the words: a counter printed
+      // into the label would stay frozen in a browser that ran nothing.
       expect(button.label).toBe("Send another link");
     });
   }
@@ -82,11 +67,9 @@ describe("what a merchant is served after asking for a link", () => {
   it("claims nothing about the link already gone out that the rate row does not hold", () => {
     const minute = readable(screenFor({ wall: "interval", seconds: 43 }));
 
-    // The row is an address hash, a purpose and a time. Not the destination:
-    // the earlier link may have been asked for elsewhere in the dashboard and
-    // opens there, so a merchant coming back from their shop cannot be told
-    // that the link in flight is the one they just asked for. And not
-    // delivery: the door hands a message to a provider and hears no more.
+    // The page may say only what the rate row holds: not where the earlier link
+    // leads, which may be elsewhere in the dashboard, and not delivery, which
+    // is the provider's.
     expect(minute).not.toContain("on its way");
     expect(minute).not.toContain("the last one");
   });
@@ -96,18 +79,15 @@ describe("what a merchant is served after asking for a link", () => {
     const long = readable(screenFor({ sent: true, seconds: 2_820 }));
 
     expect(short).toContain("send another link from this page");
-    // A wait this long can only be the hourly wall — the interval is a minute
-    // measured from a send a moment old — so this page's three links are gone.
-    // Inviting the press under a button greyed for forty-seven minutes is the
-    // same defect as the one the minute between links exists to remove.
+    // A wait this long can only be the hourly limit, so inviting a press under
+    // a button greyed for forty-seven minutes would be wrong.
     expect(long).not.toContain("send another link from this page");
     expect(long).toContain("three links for the hour");
   });
 
   it("does not round its words differently from the number on the button", () => {
-    // Found in review: a sixty-one-second hourly wall said "Try again in 2
-    // minutes" over a button counting "(61 s)". Nobody is sent back early, but
-    // a page that argues with itself is believed at its worst number.
+    // A sixty-one-second wait must not read "2 minutes" over a button counting
+    // "(61 s)": a page that argues with itself is believed at its worst number.
     const said = readable(screenFor({ wall: "hourly", seconds: 61 }));
 
     expect(said).toContain("Try again in 61 seconds");
@@ -116,14 +96,8 @@ describe("what a merchant is served after asking for a link", () => {
 });
 
 /**
- * A stand-in for the two properties the script touches, and the lookup that
- * reaches them.
- *
- * It is here for the clock: the countdown below is walked minute by minute
- * without waiting for any of them. What it cannot see is everything about the
- * page around the button — where the script sits, whether the selector matches
- * anything, what a real DOM does with `disabled` — and that is what the jsdom
- * tests after it are for. Neither replaces the other.
+ * Here for the clock, so the countdown is walked minute by minute without
+ * waiting. It cannot see the page around the button; the jsdom tests below can.
  */
 const standInFor = (html: string) => {
   const served = waitingButton(html);
@@ -144,7 +118,6 @@ const standInFor = (html: string) => {
   };
 };
 
-/** The script the page serves, run the way a browser reaching it would run it. */
 const run = (html: string, document: unknown): void => {
   const source = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   if (source === undefined) throw new Error("this page serves no script");
@@ -170,9 +143,8 @@ describe("the script that waits the wait out", () => {
       expect(button.disabled).toBe(false);
       expect(button.textContent).toBe("Send another link");
 
-      // And it stops touching the page. The label is moved out from under it:
-      // a counter still running would write over whatever is there, every
-      // second, for as long as the page stays open.
+      // A counter still running would write over whatever is there every
+      // second.
       button.textContent = "left alone";
       vi.advanceTimersByTime(10_000);
       expect(button.textContent).toBe("left alone");
@@ -206,18 +178,8 @@ describe("the script that waits the wait out", () => {
 });
 
 /**
- * The page in a browser, on a clock this test holds.
- *
- * jsdom parses the HTML the dashboard serves and runs the script inside it, so
- * what is under test includes the two things a stand-in cannot see: that the
- * script is placed where it can find the button at all — moved above the card
- * it finds nothing, and the countdown is silently gone — and that a real DOM
- * agrees about what `disabled` and `textContent` mean.
- *
  * The clock is replaced before the page is parsed, because an inline script
- * runs while the document is being read and there is no moment afterwards to
- * swap anything. A test that waited out a real minute would be a minute slower
- * and no more certain.
+ * runs while the document is read and there is no later moment to swap it.
  */
 const pageIn = (html: string) => {
   let now = Date.parse("2026-09-22T12:00:00Z");
@@ -244,7 +206,7 @@ const pageIn = (html: string) => {
   if (found === null) throw new Error("no button with a wait was found on the parsed page");
   return {
     button: found,
-    /** Time passes with the tab awake: every tick that falls due runs. */
+    /** The tab is awake: every tick that falls due runs. */
     pass(ms: number) {
       const until = now + ms;
       for (;;) {
@@ -259,10 +221,8 @@ const pageIn = (html: string) => {
       now = until;
     },
     /**
-     * The tab was frozen and woke: all of that time passed and one tick
-     * arrives. It is what a browser does to a background tab's timers, and it
-     * is the reason the countdown is written against a deadline instead of
-     * counting its own ticks.
+     * The tab was frozen: all that time passed and one tick arrives, as a
+     * browser does with a background tab's timers.
      */
     wake(ms: number) {
       now += ms;
@@ -290,9 +250,8 @@ describe("the script in a browser", () => {
   it("gives the button back to a tab that slept through the whole wait", () => {
     const page = pageIn(screenFor({ sent: true, seconds: 60 }));
 
-    // Production break: a counter that took a second off per tick would have
-    // fifty-nine seconds left here and hold the button for another minute,
-    // because a throttled tab gets one tick for the whole sleep and not sixty.
+    // A throttled tab gets one tick for the whole sleep, so a counter that took
+    // a second off per tick would still hold the button here.
     page.wake(70_000);
 
     expect(page.button.disabled).toBe(false);
@@ -311,8 +270,8 @@ describe("the script in a browser", () => {
 
 describe("the page a mail link lands on", () => {
   it("runs nothing at all", () => {
-    // It holds a one-time token, and ADR-0005 §4 allows a script only where a
-    // control has a wait to draw. Nothing here has one.
+    // It holds a one-time token, and a script is allowed only where a control
+    // has a wait to draw; nothing here has one.
     expect(openLinkScreen("", "a-token", "person@example.com", "sandbox")).not.toContain("<script");
   });
 });

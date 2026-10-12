@@ -1,33 +1,11 @@
 /**
- * The two screens a merchant keeps their keys on: the list, and the one page a
- * new key's secret is ever shown on.
- *
- * A key is what a merchant's own code opens the door with. ADR-0010 made each
- * one a row so that it can be revoked on its own — without touching any other
- * key, and without touching anybody's session in this dashboard — and ADR-0014 §5
- * brings that from a command somebody runs at a terminal to a screen.
- *
- * Three things about the list are decisions rather than layout. The revoked keys
- * are on it, because "which key did I turn off, and when" is a question
- * somebody has on exactly this screen and a list of only the working ones
- * answers it with silence. And every row on it is a key the merchant asked for,
- * and every one can be revoked here: the dashboard is signed in to with a
- * mailed link and calls the gateway inside the process it shares with it
- * (ADR-0030), so no row is the dashboard's own way in, and revoking one cannot
- * take the dashboard away from a merchant. The third is
- * the last call each key was seen on, which is the thing a merchant is here to
- * find out and the one place this screen can mislead them; `lastCall` below is
- * where an empty column is kept from turning into a claim about the key.
- *
- * An empty list follows from the same fact and is the ordinary state of a
- * merchant who has just registered: they have a dashboard because they signed
- * into one, and no keys because they have not put Agentify into any code of
- * their own yet. So it is the first thing most merchants see here, and it says
- * what it is rather than reporting an impossibility.
- *
- * Neither screen fetches anything or decides anything. Each is a function from
- * what the gateway answered to a page, which is what lets a test read the page
- * a merchant would be looking at.
+ * The key list and the one page a new key's secret is ever shown on. Each key
+ * is a row revocable on its own, without touching any other key or any
+ * dashboard session; the dashboard signs in by mailed link and calls the
+ * gateway in-process, so no key is the dashboard's own way in and revoking one
+ * cannot lock a merchant out. Revoked keys stay on the list, because "which key
+ * did I turn off, and when" is asked on exactly this screen. An empty list is
+ * the ordinary state of a merchant who has just registered.
  */
 
 import type { MerchantKey } from "@nuanu-ai/agentify-contracts";
@@ -54,25 +32,11 @@ const keyRow = (base: string, entry: MerchantKey): Row => {
 };
 
 /**
- * When something last called with this key, in the words a merchant reads.
- *
- * This is the column the screen is worth opening for — a merchant with three
- * keys is asking which of them is safe to turn off, and nothing else on the row
- * answers that. So it is also the column where being wrong costs the most, and
- * the whole of the danger is in the empty one.
- *
- * The gateway did not check whether anybody has called with a key; it wrote
- * down the calls it saw. Those are different claims, and a key made before it
- * started writing carries the same blank as a key nobody has ever used. So the
- * words here say what is true of both — there is no record — and stop. "Never
- * used" would be the confident version of a sentence nobody checked, on the
- * page where acting on it turns off a key that may be in the merchant's own
- * worker. Which of the two blanks a row is showing is not on the wire, and the
- * note under the table says so rather than the row pretending to know.
- *
- * The instant goes through `moment` like every other instant on these screens.
- * A second way of writing a time would put two formats on one page and a
- * merchant comparing them.
+ * The column a merchant opens this screen for, deciding which key is safe to
+ * turn off. The gateway records the calls it saw; a key made before it started
+ * recording has the same blank as a key never used, and the wire does not say
+ * which. So the words say there is no record, never "never used", and the note
+ * under the table says the blank covers both.
  */
 const lastCall = (entry: MerchantKey): Cell =>
   entry.last_used_at === null
@@ -80,58 +44,35 @@ const lastCall = (entry: MerchantKey): Cell =>
     : momentCell(entry.last_used_at);
 
 /**
- * The empty answer, named once because the note under the table quotes it.
- *
- * Written out in both places it would drift, and the drift is not cosmetic: the
- * note is the only thing that tells a merchant this blank covers two situations
- * and which one they are looking at cannot be known. A word in the table that
- * the explanation below no longer mentions is a word with nothing explaining
- * it.
+ * Named once because the note under the table quotes it, and that note is the
+ * only thing explaining what the blank covers.
  */
 const NO_CALLS_RECORDED = "No calls recorded";
 
 /**
- * What a merchant can do to one key from this list, which is sometimes nothing.
- *
- * A key that is already revoked shows nothing at all: there is no undo — a
- * revoked key never works again — and a control that looked like one would be a
- * promise the gateway does not make. Every other row gets the control, because
- * every other row is a working key the merchant issued and the gateway takes
- * this call for any of them.
+ * A revoked key never works again, so it gets no control: anything there would
+ * promise an undo the gateway does not make.
  */
 const keyControl = (base: string, entry: MerchantKey): string => {
   if (entry.disabled_at !== null) {
     return "";
   }
-  // Named "Revoke" rather than "Disable", because it does not come back and the
-  // word people already use for a credential that does not come back is this
-  // one, and the page says so in words beside the table as well.
-  //
-  // Two presses, and the first one only opens the second. A details element
-  // does that without a script, so a stray tap on a phone or a page whose
-  // script did not load cannot revoke anything on its own.
+  // "Revoke", not "Disable", because it does not come back. Two presses, the
+  // first only opening the second: a details element does that without a
+  // script, so a stray tap or a page whose script did not load cannot revoke
+  // anything.
   return `<details class="confirm-revoke"><summary class="confirm-open button button-compact button-secondary">Revoke</summary>
 <div class="confirm-pop"><p>This key will stop working for good.</p><form class="inline" method="post" action="${escaped(base)}/keys/${encodeURIComponent(entry.id)}/disable">
 <button class="button button-compact button-primary" type="submit">Yes, revoke</button></form></div></details>`;
 };
 
 /**
- * What this list is of, which is the sentence the empty one turns on.
- *
- * Said on the screen whether or not there is anything below it, because a
- * merchant in front of no rows is answered by what the list is rather than by
- * what is missing from it.
+ * Said whether or not there are rows, so an empty list is answered by what the
+ * list is rather than by what is missing.
  */
 const WHAT_A_KEY_IS = "Your code uses these keys to connect to Agentify.";
 
-/**
- * What revoking does, beside the controls that do it rather than in the lede.
- *
- * It was four sentences at the top of the screen, read once by somebody who had
- * come to look at a list. What a merchant needs is the consequence at the
- * moment they are deciding which row to press, so it sits under the table the
- * Revoke buttons are in.
- */
+/** Under the table, beside the Revoke buttons, where the decision is made. */
 const WHAT_REVOKING_DOES =
   "A revoked key stops working at once and for good. Your other keys keep working, and your" +
   " dashboard sign-in does not change. You can create a new key to replace it.";
@@ -140,8 +81,8 @@ export const keysScreen = (
   viewer: Viewer,
   keys: readonly MerchantKey[],
   problem?: string,
-  // Arrived from "Create an API key" elsewhere: the page opens on the form.
-  // Autofocus scrolls to it; a #fragment in the address would switch it off.
+  // Autofocus scrolls to the form; a #fragment in the address would switch it
+  // off.
   startNew = false,
 ): string => {
   const { base } = viewer;
@@ -207,16 +148,11 @@ ${
 };
 
 /**
- * The one page a key's secret appears on, ever.
- *
- * It is answered straight from the post rather than after a redirect, which is
- * the one place in this dashboard that happens. A redirect cannot carry the
- * secret: putting it in the address would write it into the browser's history
- * and into every log between here and there, and keeping it anywhere to hand to
- * the next request would be storing the thing we have just promised not to
- * store. Once this page is drawn it replaces its history entry with a harmless
- * GET target, so a reload returns to the list rather than sending the form and
- * issuing another key.
+ * Answered straight from the POST rather than after a redirect, the one place
+ * in the dashboard that does: a redirect cannot carry the secret without
+ * writing it into history and logs, or storing it for the next request. Once
+ * drawn, the page replaces its history entry with a harmless GET target, so a
+ * reload returns to the list instead of issuing another key.
  */
 export const newKeyScreen = (viewer: Viewer, label: string, secret: string): string => {
   const { base } = viewer;

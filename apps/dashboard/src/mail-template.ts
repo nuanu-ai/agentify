@@ -1,10 +1,7 @@
 /**
- * The visual frame shared by the dashboard's two transactional messages.
- *
  * Email clients disagree about stylesheets and fonts, so the layout is a
- * presentation table with inline styles and a system-font stack. The wordmark
- * is text and the action remains a visible link: neither depends on an image,
- * a downloaded font or CSS arriving from somewhere else.
+ * presentation table with inline styles and a system-font stack; nothing
+ * depends on an image, a downloaded font or external CSS.
  */
 
 export interface TransactionalEmail {

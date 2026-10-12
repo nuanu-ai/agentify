@@ -1,35 +1,21 @@
 /**
- * A WooCommerce shop's own catalogue, read through its Store API and written
- * out as cards our publish door would recognise.
+ * A WooCommerce shop's catalogue, read through its keyless Store API
+ * (`/wp-json/wc/store/v1/products`), written out as cards. Nothing here talks
+ * to a shop (`woo-shop.ts` fetches), so every decision is a function of a
+ * document.
  *
- * The Store API is the half of WooCommerce that needs no key at all: a shop
- * serves `/wp-json/wc/store/v1/products` to anybody, out of the box, and that
- * is where the products a merchant is asking us to sell come from
- * (`docs/research/33-woo-connect-probe.md`). Nothing here talks to a shop —
- * `woo-shop.ts` does the fetching — so every decision in this file is a
- * function of a document and can be read back off a test.
+ * A price is a number and a scale, never a number alone. The Store API writes
+ * minor units with `currency_minor_unit` beside them, so `"12000"` is $120.00
+ * at scale two and ¥12000 at scale zero, while `wc/v3` writes decimals: a
+ * product's price as typed (`"25"`, `"19.9"`) and order totals at the shop's
+ * decimals (`"25.00"`). Assuming the scale is wrong by a factor of a hundred,
+ * silently, in the direction of somebody's money.
  *
- * Two rules run through it.
- *
- * **A price is a number and a scale, never a number.** The Store API writes a
- * price as a string of minor units with `currency_minor_unit` beside it, so
- * `"12000"` is a hundred and twenty dollars at a scale of two and twelve
- * thousand yen at a scale of zero. `wc/v3`, which is what we create the order
- * through, writes the same price as a decimal, and in two ways: a product's
- * price as the merchant typed it, `"25"` or `"19.9"`, and an order's totals at
- * the shop's number of decimals, `"25.00"`. A converter that reads the number
- * and assumes the scale is wrong by a factor of a hundred for every ordinary
- * currency, silently, in the direction of somebody's money.
- *
- * **Nothing the merchant wrote is edited to fit.** A description too long for
- * our own catalogue is carried across whole and refused at the publish, where
- * the merchant reads the refusal in our own words and can go and shorten it in
- * their shop. Cutting it here would publish prose under their name that they
- * never wrote, and they would have no way of finding out. The same goes for a
- * product this cannot map at all: it is left out and named, rather than
- * published as something approximate. Reading the shop's HTML as the text its
- * page shows is not an edit — it is the one reading of the page a person makes
- * too — and it is `html-text.ts`'s, shared with any connector that reads HTML.
+ * Nothing the merchant wrote is edited to fit. A description too long for the
+ * catalogue is carried whole and refused at publish, where the merchant can
+ * shorten it in their shop; cutting it here would publish prose under their
+ * name they never wrote. A product that cannot be mapped is left out and named,
+ * never published as something approximate.
  */
 
 import { createHash } from "node:crypto";
@@ -43,33 +29,26 @@ import { z } from "zod";
 import { type HtmlAsText, plainTextOfHtml } from "./html-text.js";
 
 /**
- * One product as the Store API serves it — the fields we read, and no claim
- * about the rest.
- *
- * Loose rather than strict, and that is the difference between a shop on a
- * WooCommerce we have seen and a shop on the next one. The document carries
- * dozens of fields we have no use for, and a strict schema would refuse a whole
- * merchant's catalogue the day WooCommerce adds one more.
+ * Loose, so the day WooCommerce adds a field it does not refuse a whole
+ * merchant's catalogue.
  */
 export const StoreProductSchema = z.looseObject({
   id: z.number().int(),
   name: z.string(),
-  /** The merchant's own code for the product. Empty on a product with none. */
+  /** Empty on a product with none. */
   sku: z.string().default(""),
-  /** `simple`, `variable`, `grouped`, `external` — WooCommerce's own word. */
   type: z.string(),
-  /** The shop's long prose for the product, as HTML. */
+  /** As HTML. */
   description: z.string().default(""),
   short_description: z.string().default(""),
   is_purchasable: z.boolean(),
   is_in_stock: z.boolean(),
   status: z.string().default("publish"),
   /**
-   * Whether the product is virtual and whether it is a download. The Store
-   * API's list does not carry either, so the import writes both from the
-   * protected product check (`inspectProductInTheShop`) before a product
-   * reaches `cardsFromTheShop`; the defaults are what an unchecked product
-   * reads as, and an unchecked product is refused for its check's reason.
+   * The Store API's list carries neither, so the import fills both from the
+   * protected product check (`inspectProductInTheShop`) before
+   * `cardsFromTheShop`; an unchecked product reads as these defaults and is
+   * refused for its check's reason.
    */
   virtual: z.boolean().default(false),
   downloadable: z.boolean().default(false),
@@ -89,29 +68,20 @@ export const StoreProductSchema = z.looseObject({
   prices: z.looseObject({
     price: z.string(),
     currency_code: z.string(),
-    /** How many of the digits in `price` are fractional. */
+    /** How many digits of `price` are fractional. */
     currency_minor_unit: z.number().int(),
   }),
 });
 
 export type StoreProduct = z.infer<typeof StoreProductSchema>;
 
-/** Every product the Store API answered a page with. */
 export const StoreProductsSchema = z.array(StoreProductSchema);
 
 /**
- * A price in minor units, written as the decimal our own contract carries, or
- * null where the shop sent something that is not a price at all.
- *
- * The scale is read rather than assumed, which is the whole of this function.
- * Null rather than a fallback for anything unreadable: every alternative to
- * null here is a number that ends up on a card somebody sells at, and a price
- * we invented is worse than a product we did not import.
- *
- * Nothing is rounded and nothing is parsed into a floating point number on the
- * way through. The digits the shop sent are the digits that come out, with a
- * dot moved into them — which is what keeps `"0.10"` from becoming
- * `"0.1000000000000000055"`.
+ * The scale is read, never assumed. Null rather than a fallback, because every
+ * alternative is a number a card would sell at. Nothing is rounded or parsed as
+ * a float: the shop's digits come out with a dot moved into them, so `"0.10"`
+ * cannot become `"0.1000000000000000055"`.
  */
 export const decimalOfMinorUnits = (minor: string, scale: number): string | null => {
   if (!/^\d+$/.test(minor)) {
@@ -128,44 +98,32 @@ export const decimalOfMinorUnits = (minor: string, scale: number): string | null
 };
 
 /**
- * The decimal places this connector sells at: a US dollar's two. It is the
- * `currency_minor_unit` the Store API has to answer for a product to be
- * imported, and both that and the decimals WooCommerce writes an order's
- * totals at come from one setting of the shop's, its number of decimals.
+ * The `currency_minor_unit` the Store API must answer for a product to be
+ * imported; it and the decimals of an order's totals come from the shop's one
+ * number-of-decimals setting.
  */
 export const USD_SCALE = 2;
 
 /**
- * A price the way WooCommerce stores what a merchant typed: digits, or digits,
- * a dot and more digits, where the digits before the dot may be missing.
  * WooCommerce keeps ".99" as typed and drops a trailing dot, so "5." never
- * arrives and is not a price here either.
+ * arrives and is not a price here.
  */
 export const TYPED_PRICE = /^(?=\.?\d)(\d*)(?:\.(\d+))?$/;
 
 /**
- * A price as a merchant typed it into WooCommerce, written at two decimal
- * places, or null where that would take rounding or the text is not a decimal.
- *
- * WooCommerce keeps a product's price the way it was typed — it turns the
- * shop's decimal separator into a dot and pads nothing — so `wc/v3` answers
- * `"25"` and `"19.9"` for prices the Store API and every order total write as
- * twenty-five and nineteen dollars ninety. The card, the quote and the order
- * are compared with those totals character for character, so this is the one
- * form they all carry.
- *
- * Padding is exact, and so are writing the zero a merchant left off before
- * the dot, dropping a leading zero and dropping a zero past the second place. Dropping any other digit is rounding, and a rounded price is a
- * price the merchant did not set, which is why `"25.001"` is null rather than
- * `"25.00"`.
+ * WooCommerce keeps a price as typed, so `wc/v3` answers `"25"` and `"19.9"`
+ * where the Store API and order totals write 25.00 and 19.90. The card, the
+ * quote and the order are compared with those totals character for character,
+ * so this is the one form they all carry. Padding, adding a leading zero, and
+ * dropping leading zeros or zeros past the second place are exact; dropping any
+ * other digit is rounding, so `"25.001"` is null rather than `"25.00"`.
  */
 export const usdAmountOf = (typed: string): string | null => {
   const written = TYPED_PRICE.exec(typed);
   if (written === null) {
     return null;
   }
-  // Leading zeros go, and a whole part left empty — "0.99", or ".99" as it
-  // was typed — is the zero it stands for, exactly.
+  // A whole part left empty, as in ".99", is the zero it stands for.
   const whole = (written[1] ?? "").replace(/^0+/, "") || "0";
   const fraction = written[2] ?? "";
   if (/[1-9]/.test(fraction.slice(USD_SCALE))) {
@@ -175,32 +133,25 @@ export const usdAmountOf = (typed: string): string | null => {
 };
 
 /**
- * A US dollar amount at the two decimals this connector sells at, as whole
- * cents, or null where it is not one. Sums of money are made in cents: a
- * parcel's price is its goods and its shipping added, and twenty dollars and
- * ten cents added in floating point is not always twenty dollars and ten cents.
+ * Sums of money are made in cents: a parcel's price is goods plus shipping, and
+ * floating-point addition does not always give back the cents it was given.
  */
 export const centsOf = (amount: string): bigint | null =>
   /^\d+\.\d{2}$/.test(amount) ? BigInt(amount.replace(".", "")) : null;
 
-/** Whole cents written back as the dollar amount the contract carries. */
 export const amountOfCents = (cents: bigint): string =>
   decimalOfMinorUnits(cents.toString(), USD_SCALE) ?? "";
 
-/** A finding the door words as a clause, written as a sentence of its own. */
 const sentenceOf = (clause: string): string =>
   `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`;
 
-/** One product turned into a card, with the product it came from named. */
 export interface ImportedCard {
-  /** The shop's own identifier, which is the card's `merchant_item_id`. */
+  /** Also the card's `merchant_item_id`. */
   readonly id: string;
-  /** What the merchant sees this product called in their shop. */
   readonly title: string;
   readonly card: CardInput;
 }
 
-/** One product that stayed in the shop, and the reason in words. */
 export interface SkippedProduct {
   readonly id: string;
   readonly title: string;
@@ -213,14 +164,10 @@ export interface ImportedCatalogue {
 }
 
 /**
- * What the agent is handed when the sale goes through.
- *
- * One field, and it is the one fact a buyer can act on afterwards: the number
- * the shop itself put on their order. With it they can ask the merchant about
- * the order, and the merchant can find it on the screen they already use. A
- * card has to declare at least one field that always arrives, and inventing a
- * second one we might not be able to fill would be a promise made on the
- * merchant's behalf.
+ * The shop's own order number: with it the buyer can ask the merchant, who
+ * finds the order on the screen they already use. A card must declare at least
+ * one field that always arrives; a second we might not fill would be a promise
+ * made on the merchant's behalf.
  */
 const WHAT_THE_BUYER_RECEIVES = {
   download_url: {
@@ -238,23 +185,16 @@ const WHAT_THE_BUYER_RECEIVES = {
 } as const;
 
 /**
- * The time to hand a parcel to a carrier that every parcel card from a shop
- * names: seven days, counted from the charge.
- *
- * It is Agentify's number, not the merchant's estimate. WooCommerce has no
- * field for it, so this is a stand-in: it holds while parcels sell on the test
- * channel only, and from the day they sell on the live channel the time to
- * ship has to come from the merchant (ADR-0023). The import screen tells the
- * merchant, because after these seven days an order not shipped reads as a
- * refund owed.
+ * Agentify's number, not the merchant's estimate: WooCommerce has no field for
+ * it. It holds while parcels sell in test mode only; selling them live needs
+ * the time to ship from the merchant. The import screen says so, because an
+ * order not shipped after it reads as a refund owed.
  */
 export const SHIP_WITHIN_SECONDS = 7 * 24 * 60 * 60;
 
 /**
- * The cards a shop's catalogue becomes, and the products that stayed behind.
- *
- * Order is preserved so that a merchant reading the two lists against their own
- * catalogue screen reads them in the same order.
+ * In the shop's order, so the merchant reads both lists against their own
+ * catalogue screen.
  */
 export const cardsFromTheShop = (
   products: readonly StoreProduct[],
@@ -267,8 +207,7 @@ export const cardsFromTheShop = (
     const id = String(product.id);
     const name = plainTextOfHtml(product.name);
     const title = name.text;
-    // The shop's own name for the product where there is one, so that a line
-    // about a product nobody could map names it the way the merchant knows it.
+    // Names a product nobody could map the way the merchant knows it.
     const named = title === "" ? (product.sku === "" ? id : product.sku) : title;
     const refused = (why: string): void => {
       skipped.push({ id, title: named, why });
@@ -298,10 +237,10 @@ export const cardsFromTheShop = (
       refused("The product is not published in the shop.");
       continue;
     }
-    // Two classes, and nothing between them: a virtual download, handed to
-    // the agent, and a physical product, which a carrier takes to the buyer.
-    // A virtual product with no file has nothing to hand over and nothing to
-    // ship, and a download that is not virtual would be both at once.
+    // Two classes and nothing between: a virtual download handed to the agent,
+    // and a physical product a carrier takes. A virtual product with no file
+    // has nothing to hand over or ship; a non-virtual download would be both at
+    // once.
     const parcel = !product.virtual && !product.downloadable;
     if (!parcel && !product.virtual) {
       refused(
@@ -335,8 +274,8 @@ export const cardsFromTheShop = (
       continue;
     }
     if (product.prices.currency_minor_unit !== USD_SCALE) {
-      // Named as the setting rather than as the prices: a whole-dollar shop
-      // that retyped every price with cents would be refused exactly the same.
+      // Named as the setting rather than the prices: a whole-dollar shop that
+      // retyped every price with cents would be refused all the same.
       refused(
         `The shop's catalogue writes prices with ${product.prices.currency_minor_unit} decimal` +
           ` places, and this connector sells at ${USD_SCALE}. Set WooCommerce → Settings → General →` +
@@ -362,9 +301,9 @@ export const cardsFromTheShop = (
       );
       continue;
     }
-    // The door's own price rule, in its own words, so a product it would refuse
-    // is named here as left in the shop instead. Only zero can reach it: the
-    // currency and the two decimals are settled above.
+    // The contract's own price rule, so a product it would refuse is named here
+    // as left in the shop. Only zero can reach it; currency and decimals are
+    // settled above.
     const unsellable = priceProblemsOf({ amount, currency });
     if (unsellable.length > 0) {
       refused(unsellable.map((problem) => sentenceOf(problem.message)).join(" "));
@@ -427,14 +366,17 @@ export const cardsFromTheShop = (
   return { cards, skipped };
 };
 
-/** A card key that cannot silently switch shops when two shops share product id 42. */
+/**
+ * Includes the shop, so a card cannot silently switch shops when two shops
+ * share product id 42.
+ */
 export const merchantItemIdFor = (shopOrigin: string, productId: string): string => {
   const origin = new URL(shopOrigin).origin.toLowerCase();
   const fingerprint = createHash("sha256").update(origin).digest("hex").slice(0, 16);
   return `woo_${fingerprint}_${productId}`;
 };
 
-/** The Woo product behind a card, only when the card is bound to this shop. */
+/** Only when the card is bound to this shop. */
 export const productIdFromMerchantItem = (
   shopOrigin: string,
   merchantItemId: string,
@@ -448,12 +390,9 @@ export const productIdFromMerchantItem = (
 };
 
 /**
- * The prose a card's description is taken from.
- *
- * The long description first, because that is the field a shop writes what the
- * buyer actually gets into, and the short one after it — a shop that put
- * everything in the excerpt is a shop whose products would otherwise all be
- * refused for having no description at all.
+ * The long description first, since that is where a shop says what the buyer
+ * gets; the short one otherwise, so a shop that wrote only excerpts is not
+ * refused for having no description.
  */
 const firstProseOf = (product: StoreProduct): HtmlAsText => {
   const long = plainTextOfHtml(product.description);
@@ -461,14 +400,9 @@ const firstProseOf = (product: StoreProduct): HtmlAsText => {
 };
 
 /**
- * Why a product whose words are still not plain text, once its HTML is read,
- * stays in the shop.
- *
- * This is the merchant's own text rather than anything of the shop's markup:
- * a page that shows `<header>` or `&#038;` to a person shows it because the
- * merchant wrote it there as text. So the sentence says what was found, in the
- * publish door's own words, and where to change it — rather than sending the
- * card to be refused in words about HTML the merchant never wrote as HTML.
+ * The page shows `<header>` or `&#038;` because the merchant wrote it as text,
+ * so the sentence names what was found and where to change it, rather than
+ * sending the card to be refused for HTML the merchant never wrote as HTML.
  */
 const stillNotPlainText = (what: "name" | "description", found: readonly string[]): string =>
   `Read the way the shop's page shows it, this product's ${what} carries ${found.join("; and ")}.` +

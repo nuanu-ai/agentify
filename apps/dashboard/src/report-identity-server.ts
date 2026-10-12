@@ -1,11 +1,9 @@
 /**
- * The dashboard's second listener: the internal route the scanner asks over.
- *
- * It publishes no port and is reached by service name on the compose network,
- * behind a secret only the two processes hold (ADR-0026 §2). The scanner asks it
- * three things (ADR-0026 §2): send a link for this address with this
- * destination; whose session is this cookie, and is its account an operator
- * (§6); and, for a privacy deletion, remove this person if they own no
+ * The internal route the scanner asks over. It publishes no port, is reached by
+ * service name on the compose network, and sits behind a secret only the two
+ * processes hold. The scanner asks three things: send a link for this address
+ * with this destination; whose session is this cookie, and is its account an
+ * operator; and, for a privacy deletion, remove this person if they own no
  * merchant.
  */
 
@@ -27,8 +25,8 @@ export const REPORT_IDENTITY_PATH = "/internal/report-identity";
 export const REPORT_IDENTITY_PORT = 3002;
 
 /**
- * The largest body the route reads: a cookie header of the longest length the
- * contract carries, with room for the JSON around it.
+ * A cookie header of the longest length the contract carries, with room for the
+ * JSON around it.
  */
 const MAX_BODY_BYTES = 16 * 1024;
 const REQUEST_TIMEOUT_MS = 20_000;

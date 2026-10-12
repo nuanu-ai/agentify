@@ -1,25 +1,16 @@
 /**
- * The operations that keep the accounts there are.
- *
- * None of them makes an account. An account comes into being one way: a person
- * types their address, opens the link the dashboard mails to it, and the dashboard
- * makes the account when the link is consumed (ADR-0026 §1); a merchant is made
- * when that person presses the dashboard's one control (ADR-0014). What is left
- * here is what a signed-in person cannot do for themselves: listing who can
- * sign in, ending every session a person has, and the flag that opens the
- * operator's dashboard (ADR-0026 §6).
+ * What a signed-in person cannot do for themselves: list who can sign in, end
+ * every session a person has, and set the operator flag. None of these creates
+ * an account; an account is made when its person consumes a sign-in link.
  */
 
 import { emailAs, type Identity } from "./identity.js";
 import { printable } from "./printable.js";
 
 /**
- * A shape an address has to have before anything is done with it.
- *
- * Deliberately not an attempt at the real grammar of an address, which is
- * larger than anybody thinks. What it catches is the mistakes somebody actually
- * makes at a terminal — a missing half, a space in the middle, a bare word —
- * and nothing here ever sends anything to the address anyway.
+ * Not the real grammar of an address: it catches the mistakes made at a
+ * terminal (a missing half, a space, a bare word), and nothing here sends
+ * anything to the address.
  */
 const LOOKS_LIKE_AN_ADDRESS = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 
@@ -42,13 +33,9 @@ const USAGE = [
 const NO_SUCH_TABLE = "42P01";
 
 /**
- * Whether this is the database saying the dashboard's tables are not there.
- *
- * The store never lets the driver's own exception out — its message is the SQL
- * it tried followed by every bound parameter — so what arrives here is a
- * sentence and the database's own code carried beside it, and the code is what
- * this reads. It lives in this file rather than in the wiring next door because
- * this is where the sentences an operator reads are, and where they are tested.
+ * The store never lets the driver's exception out, since its message carries
+ * every bound parameter; what arrives is a sentence with the database's code
+ * beside it, and the code is what this reads.
  */
 const missingTables = (thrown: unknown): boolean =>
   typeof thrown === "object" &&
@@ -56,30 +43,20 @@ const missingTables = (thrown: unknown): boolean =>
   "code" in thrown &&
   String((thrown as { code: unknown }).code) === NO_SUCH_TABLE;
 
-/** The terminal this command is run at, handed in rather than reached for. */
 export interface Terminal {
-  /** One line to whoever is watching. */
   readonly say: (line: string) => void;
   /**
-   * The moment this run happens at, with the obvious default.
-   *
-   * So that a test asking what the listing says about a session can put itself
-   * at a moment when that session is alive. Reading the wall clock here instead
-   * made one test fail every day after nine in the evening, which is a test
-   * that reports on the hour rather than on the code.
+   * Handed in so a test can place itself at a moment when a session is alive,
+   * rather than depending on the hour it runs at.
    */
   readonly now?: () => Date;
 }
 
 /**
- * Runs one command. The answer is the exit code.
- *
- * One failure is answered here rather than thrown: a database that has never
- * had the dashboard's migrations run against it. It is the first thing a person
- * meets on a new machine, and the database's own sentence for it names a table
- * they have never heard of and does not say what to run. Everything else goes
- * up as it is — an unfamiliar failure with a sentence invented over it is worse
- * than an unfamiliar failure.
+ * Returns the exit code. Only a database the dashboard's migrations have never
+ * run against is answered here rather than thrown, because the database's own
+ * sentence for it does not say what to run; every other failure goes up as it
+ * is.
  */
 export async function runAccount(
   argv: readonly string[],
@@ -88,15 +65,10 @@ export async function runAccount(
 ): Promise<number> {
   const print = terminal.say;
   const now = terminal.now ?? (() => new Date());
-  // Everything this command prints goes through one rendering, rather than the
-  // half-dozen places that print an address, because forgetting one of those is
-  // the whole failure. What it takes out is the characters a terminal obeys
-  // instead of showing: an escape that clears the line it is on, a carriage
-  // return that writes over the row above, an override that reverses the
-  // direction text reads in. An address carrying one arrives either from
-  // somebody's shell or from a row written by hand, and a list of accounts
-  // where one row can hide another cannot answer "who can sign into this
-  // dashboard", which is the only question it is for.
+  // Every line goes through `printable`, because an address can carry
+  // characters a terminal obeys instead of showing (an escape that clears the
+  // line, a carriage return over the row above, a direction override), and a
+  // listing where one row can hide another cannot answer who can sign in.
   const say = (line: string): void => print(printable(line));
   try {
     return await dispatch(argv, identity, say, now);
@@ -143,15 +115,10 @@ async function dispatch(
 }
 
 /**
- * Sets or clears the flag that opens the operator's dashboard (ADR-0026 §6).
- *
- * Only an account can carry it, and an account is written when its person
- * signs in, so an address nobody has signed in as is refused rather than
- * remembered: a privilege granted before the mailbox is proved, and kept apart
- * from the row it belongs to, is what the decision set out not to have.
- *
- * No session is ended either way. The flag is read with the session on every
- * request, so the person's next page already follows it.
+ * Only an existing account can carry the flag, so an address nobody has signed
+ * in as is refused rather than remembered: a privilege must not be granted
+ * before the mailbox is proved. No session is ended either way, because the
+ * flag is read with the session on every request.
  */
 async function flagOperator(
   identity: Identity,
@@ -179,8 +146,7 @@ async function flagOperator(
     );
     return 0;
   }
-  // Said as a condition, because the person may not be signed in now, and the
-  // flag waits for a session to read it.
+  // Said as a condition: the person may not be signed in now.
   say(`${email} is an operator. /admin draws the operator's dashboard for them from their`);
   say("next request, whenever they are signed in.");
   return 0;
@@ -191,8 +157,8 @@ async function revokeSessions(
   say: (line: string) => void,
   address: string,
 ): Promise<number> {
-  // Asked before it is done, because ending nothing and there being nobody are
-  // two different answers and only one of them means somebody mistyped.
+  // Asked first, because "nothing to end" and "nobody by that address" are
+  // different answers and only one means a typo.
   if ((await identity.byEmail(address)) === null) {
     say(`Nobody has an account at ${address.trim()}, so there are no sessions to end.`);
     return 1;
@@ -219,20 +185,15 @@ async function listAccounts(
     return 0;
   }
 
-  // Rendered before it is measured, not after: the column is as wide as what a
-  // person will see, and an address that grew when it was rendered would
-  // otherwise push its own row out of line.
+  // Rendered before it is measured, so the column is as wide as what a person
+  // sees.
   const rows = listed.map((row) => ({ ...row, email: printable(row.email) }));
   const widest = Math.max(...rows.map((row) => row.email.length));
   for (const row of rows) {
     const open = row.sessions === 1 ? "1 session open" : `${row.sessions} sessions open`;
-    // The merchant's identifier, which says which catalogue this person's
-    // screens show. A person with none is authenticated P1 whose setup has not
-    // attached a merchant yet.
+    // A person with no merchant is signed in but has not finished setup.
     const whose = row.merchant ?? "no merchant, setup pending";
-    // Whether the address has been confirmed by consuming a link.
     const address = row.confirmed ? "address confirmed" : "address not confirmed";
-    // Whether this person may read the operator's dashboard.
     const role = row.operator ? "operator" : "not an operator";
     say(
       `${row.email.padEnd(widest)}  made ${row.createdAt.toISOString().slice(0, 10)}  ${open}  ${address}  ${role}  ${whose}`,

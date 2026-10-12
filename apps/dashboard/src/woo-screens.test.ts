@@ -1,15 +1,9 @@
 /**
- * The import screen over the one list the HTTP tests cannot produce.
- *
- * A gateway that is not there refuses nothing, and a gateway that is there
- * refuses only what its rules refuse: one import in the HTTP tests gives a page
- * with either kind of stopped product, never both, because the harness's
- * gateway is up or gone for the whole import. The page a merchant reads
- * after a bad afternoon has both, and the promise it has to keep is that the
- * two are told apart — the product they can repair in their shop under the
- * door's own sentence, and the product nobody read under what came back
- * instead. The screen is a pure function of the outcomes, so the list is built
- * here by hand, in the shapes the import handler makes.
+ * One HTTP import gives either kind of stopped product, never both, because the
+ * harness's gateway is up or gone for the whole import. The page must tell the
+ * two apart (a product repairable in the shop under the gateway's own sentence,
+ * and a product nobody read), so the list is built here by hand in the shapes
+ * the import handler makes.
  */
 
 import { describe, expect, it } from "vitest";
@@ -20,15 +14,8 @@ import { wooImportScreen } from "./woo-screens.js";
 const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: "owner@example.com", confirmed: true };
 
 /**
- * The invitation to go and repair something, found by its shape rather than by
- * a whole sentence nobody is testing.
- *
- * It used to be spelled out in full, so a copy edit to a sentence this test has
- * no opinion about would have broken a test about the order of two sections.
- * It cannot be shortened all the way to `/import again/i`, which is what a
- * first reading suggests: the "No verdict" block's own line reads "Import again
- * later", and that regex would then match in the half of the page where the
- * invitation must not appear, failing on a page that is correct.
+ * Not `/import again/i`: the "No verdict" block reads "Import again later",
+ * which would match where the invitation must not appear.
  */
 const SENT_TO_THE_SHOP = /shop and import again/i;
 
@@ -55,9 +42,9 @@ describe("what the import screen says about a product the door never answered ab
     expect(text).toContain("1 refused");
     expect(text).toContain("1 got no verdict");
 
-    // The unanswered product stands under its own heading and nowhere else,
-    // after the refused one and its invitation to change the shop, and that
-    // invitation is not repeated over it.
+    // The unanswered product stands under its own heading only, after the
+    // refused one, and the invitation to change the shop is not repeated over
+    // it.
     const unanswered = text.indexOf("No verdict");
     expect(unanswered).toBeGreaterThan(-1);
     const before = text.slice(0, unanswered);

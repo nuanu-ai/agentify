@@ -1,46 +1,17 @@
 /**
- * The messages the dashboard sends when the gateway asks it to tell a merchant
- * of a change (ADR-0019).
+ * The messages a merchant receives when the gateway reports a change to their
+ * payout wallet or keys.
  *
- * Four kinds: a first payout wallet set, a replacement that is waiting, a
- * waiting change that was cancelled, and a new key for the merchant's own
- * code. Each says what happened, who asked, and where in the dashboard to
- * look. Who asked is what the gateway knows of the call: the account a
- * dashboard session was signed in as, which is how a wallet is changed
- * (ADR-0019) and a key is usually issued, or the key a call over the API was
- * made with. None of them claims a person, because a session somebody else
- * took is signed in as the owner all the same, and a message that said "you
- * did this" would tell the owner to stand down on the one day they must not.
- * The one the rest exist around is the replacement, and it has three things to
- * get right.
- *
- * When. The gateway counts the forty-eight hours from the moment every message
- * was handed over, which is after this one is written, so the message cannot
- * know the exact moment. It says "not before" the moment it can name, which is
- * true of every message sent, and the wallet section of Settings shows the
- * exact one.
- *
- * What decides it. A message about a change the gateway then refused to record
- * is possible and safe, but only if the message says the change happens only
- * if the wallet section of Settings shows it — so it says that, and says what
- * to do if the reader did not ask for it.
- *
- * What it carries. A plain link to Settings and nothing that opens anything:
- * no token, no sign-in link. A person who is signed out signs in the
- * ordinary way and lands on that screen. A message that could open a session
- * would turn every forwarded or intercepted copy of it into a way into the
- * merchant's dashboard, on the one day somebody is trying to move their money.
- *
- * A key that issued a new one is named the way the merchant's list of keys
- * names it: its label, with its identifier beside it, so the row can be found
- * and revoked.
- *
- * What a message advises has to work in the state it describes. A waiting
- * change can be cancelled, and the cancel signs every other session out. After
- * a first wallet or a cancel nothing waits, so what works is stopping the
- * selling at once, signing out every other device, and then setting an
- * address, which waits and is announced. The two controls are named from
- * `control-labels.ts`, the file the screens draw them from.
+ * None of them claims a person did it: a stolen session is signed in as the
+ * owner all the same, and "you did this" would tell the owner to stand down on
+ * the day they must not. A replacement wallet says "not before" the earliest
+ * moment it can name, because the gateway's forty-eight hours start after every
+ * message is handed over, and says the change happens only if Settings shows
+ * it. A message carries a plain link to Settings and never a token or sign-in
+ * link, so a forwarded or intercepted copy opens nothing. What a message
+ * advises has to work in the state it describes: a waiting change can be
+ * cancelled; when nothing waits, the advice is to stop selling, sign out every
+ * other device, then set an address of one's own.
  */
 
 import type { Announcement, AskedInTheDashboard, AskedWith } from "@agentify/gateway/announcements";
@@ -49,48 +20,34 @@ import type { Message } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
 import { moment } from "./words.js";
 
-/** Where the screens a message points at are, from the reader's machine. */
 export interface Screens {
-  /** The settings screen, which carries the payout wallet and its cancel control. */
   readonly wallet: string;
-  /** The screen the merchant's own keys are listed and revoked on. */
   readonly keys: string;
 }
 
 /**
- * A key's label as data rather than as words of ours.
- *
- * Somebody holding one of the merchant's keys chose it, and that somebody may
- * be the person the message is warning about. It arrives on one line; here a
- * zero-width space goes after every character a mail client builds a link or
- * an address out of, so "confirm at https://…" in a label is shown as the
- * characters it is and never becomes somewhere to click. It is always quoted,
- * and always beside the key's identifier, which is what finds the key.
+ * A key's label was chosen by whoever holds the key, who may be the person the
+ * message warns about. A zero-width space after every character a mail client
+ * builds a link or an address from keeps it from becoming somewhere to click;
+ * it is always quoted, beside the key's identifier.
  */
 const inert = (label: string): string => label.replace(/[.:/@]/g, (mark) => `${mark}\u200B`);
 
-/**
- * Who asked for something the wallet section of Settings does, as a phrase that
- * follows "was asked for" or "was set".
- */
 const askedIn = (asked: AskedInTheDashboard): string =>
   `in the dashboard, from a session signed in as ${asked.email}`;
 
-/** Who asked for a new key: as above, or a key the reader finds on their list. */
 const askedBy = (asked: AskedWith): string =>
   asked.kind === "merchant_code"
     ? `with the key ${asked.id}, named "${inert(asked.label)}", one of the keys issued for your own code`
     : askedIn(asked);
 
-/** What to do about a waiting change, if the reader did not ask for it. */
 const IF_NOT_YOU =
   "If nobody at your business did this, somebody else may be signed in to your dashboard: cancelling the change in the Payout wallet section of Settings signs every other session out.";
 
 /**
- * What works when nothing waits, in the order it works: the stop, which is
- * immediate; the sign-out of every other device, so a session that is not the
- * owner's cannot undo what comes next; and an address of one's own, which
- * waits and is announced. The two controls are named as the screens name them.
+ * The order matters: the stop is immediate; signing out every other device
+ * keeps a session that is not the owner's from undoing what comes next; an
+ * address of one's own waits and is announced.
  */
 const PAUSE_THEN_SET = (settings: string): string =>
   `Somebody else may be signed in to your dashboard. First press ${STOP_ALL_SELLING} on the Cards screen, which stops new sales at once. Then press ${SIGN_OUT_EVERY_OTHER_DEVICE} in Settings, which ends every other session of your account: ${settings}. Then set your own address there; that waits forty-eight hours and is announced, so keep selling stopped until it applies.`;
@@ -194,8 +151,8 @@ function written(
   return {
     to,
     subject: content.subject,
-    // The URL stands on a line of its own, so that a client that draws no
-    // button and a person copying it by hand both get the whole of it.
+    // The URL stands on a line of its own, so a client that draws no button and
+    // a person copying it by hand both get the whole of it.
     body: `Agentify\n\n${content.title}\n\n${content.lead}\n\n${content.paragraphs.join("\n\n")}\n\n${content.action}:\n\n${content.link}`,
     html: transactionalEmailHtml({
       preview: content.lead,

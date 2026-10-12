@@ -1,21 +1,13 @@
 /**
- * The converter between a WooCommerce shop's own catalogue and our cards.
- *
- * The scale test is the one that matters most and it is why this file exists
- * before the screens do. A Store API price is a string of minor units with the
- * scale beside it — `"12000"` at `currency_minor_unit: 2` is a hundred and
- * twenty dollars — and a converter that reads the number without the scale is
- * wrong by a factor of a hundred, quietly, on every ordinary currency
- * (`docs/research/33-woo-connect-probe.md`). Wrong in the direction that sells
- * a hundred-and-twenty-dollar product for one dollar twenty, or asks for twelve
- * thousand.
+ * The scale tests matter most: a Store API price is minor units with the scale
+ * beside it, and a converter that ignores the scale sells a $120 product for
+ * $1.20, or asks for twelve thousand.
  */
 
 import { CardSchema } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { cardsFromTheShop, decimalOfMinorUnits, type StoreProduct } from "./woo-catalog.js";
 
-/** One Store API product, with the awkward parts overridable per test. */
 const product = (overrides: Partial<StoreProduct> = {}): StoreProduct => ({
   id: 11,
   name: "Canvas tote bag",
@@ -55,8 +47,8 @@ describe("a price in minor units", () => {
   });
 
   it("is the number itself where the currency has no minor unit", () => {
-    // Yen and the like. A scale of zero is a real answer and not a missing one,
-    // so it must not be treated as "assume two".
+    // A scale of zero is a real answer, not a missing one, so it must not
+    // become "assume two".
     expect(decimalOfMinorUnits("500", 0)).toBe("500");
     expect(decimalOfMinorUnits("0", 0)).toBe("0");
   });
@@ -69,17 +61,14 @@ describe("a price in minor units", () => {
   });
 
   it("carries a scale that is not two", () => {
-    // Three minor digits is the case a converter written against dollars gets
-    // wrong by a factor of ten rather than a hundred, which is the size of
-    // mistake nobody notices in a list.
+    // Three minor digits is where a converter written for dollars is wrong by a
+    // factor of ten, a mistake nobody notices in a list.
     expect(decimalOfMinorUnits("1234", 3)).toBe("1.234");
     expect(decimalOfMinorUnits("1234", 4)).toBe("0.1234");
   });
 
   it("is an amount our own contract accepts", () => {
-    // The point of the converter is a card that publishes, so what comes out
-    // is held to the rule the publish door holds a price to rather than to a
-    // shape written out here.
+    // Held to the contract's price rule rather than a shape written out here.
     for (const [minor, scale] of [
       ["12000", 2],
       ["5", 2],
@@ -101,8 +90,8 @@ describe("a price in minor units", () => {
   });
 
   it("says nothing about a number it cannot read", () => {
-    // Null rather than a guess. Every one of these would otherwise become a
-    // price on a card somebody sells at.
+    // Null rather than a guess: each would otherwise become a price somebody
+    // sells at.
     expect(decimalOfMinorUnits("", 2)).toBeNull();
     expect(decimalOfMinorUnits("12.00", 2)).toBeNull();
     expect(decimalOfMinorUnits("-500", 2)).toBeNull();
@@ -136,9 +125,8 @@ describe("turning a shop's products into cards", () => {
   });
 
   it("titles the card with the name the shop shows rather than the references it is sent in", () => {
-    // The Store API passes a product name through wptexturize and
-    // convert_chars, so the ampersand a merchant typed arrives as `&#038;` and
-    // an apostrophe as `&#8217;`. The first name is the one a live shop serves.
+    // The Store API passes names through wptexturize and convert_chars; the
+    // first name is the one a live shop serves.
     const { cards } = cardsFromTheShop([
       product({ id: 12, name: "Coffee &#038; Brunch Gift Card" }),
       product({ id: 13, name: "Chef&#8217;s Table Gift Card" }),
@@ -183,18 +171,17 @@ describe("turning a shop's products into cards", () => {
   });
 
   it("does not shorten a description the shop wrote long", () => {
-    // The door refuses a description over five hundred characters and the
-    // merchant reads that refusal. Cutting it here would publish prose the
-    // merchant never wrote under their own name.
+    // Cutting it here would publish prose the merchant never wrote under their
+    // name.
     const long = "a".repeat(900);
     const { cards } = cardsFromTheShop([product({ description: `<p>${long}</p>` })]);
     expect(cards[0]?.card.description).toHaveLength(900);
   });
 
   it("names the setting for a price at another scale, and the currency for another currency", () => {
-    // A whole-dollar shop is not fixed by retyping its prices with cents, so
-    // the refusal names the one setting that changes the scale. A shop in
-    // euros is not fixed by that setting, so its refusal does not name it.
+    // Retyping prices with cents does not fix a whole-dollar shop, so the
+    // refusal names the one setting that changes the scale; a shop in euros is
+    // not fixed by that setting, so its refusal does not name it.
     const { skipped } = cardsFromTheShop([
       product({ id: 1, prices: { price: "25", currency_code: "USD", currency_minor_unit: 0 } }),
       product({ id: 2, prices: { price: "2500", currency_code: "EUR", currency_minor_unit: 2 } }),
@@ -207,10 +194,8 @@ describe("turning a shop's products into cards", () => {
   });
 
   it("leaves a product priced at zero in the shop, in the door's own words", () => {
-    // Agentify sells nothing at zero, and its door refuses such a card. The
-    // import names the product as left in the shop, with the reason the door
-    // would have given, rather than sending it to be refused. A price of one
-    // cent is the other side of the line and becomes a card.
+    // Nothing sells at zero, so the product is named as left in the shop with
+    // the reason publishing would give; one cent is the other side of the line.
     const { cards, skipped } = cardsFromTheShop([
       product({ id: 1, prices: { price: "0", currency_code: "USD", currency_minor_unit: 2 } }),
       product({ id: 2, prices: { price: "1", currency_code: "USD", currency_minor_unit: 2 } }),
@@ -290,9 +275,8 @@ describe("turning a shop's products into cards", () => {
   });
 
   it("makes a card the door accepts out of the shapes a live shop sends", () => {
-    // The name and the prose as WordPress sends them: an ampersand as a
-    // number, paragraphs, a newline between them, an apostrophe as a number,
-    // and a name typed by hand.
+    // The name and prose as WordPress sends them: numbered references,
+    // paragraphs and a hand-typed name.
     const { cards, skipped } = cardsFromTheShop([
       product({
         id: 12,
@@ -311,9 +295,8 @@ describe("turning a shop's products into cards", () => {
   });
 
   it("leaves a product whose page shows markup as text in the shop, and says what it found", () => {
-    // What the page shows is what the card would say, and the door refuses it.
-    // The product is named here, with what was found, rather than sent to be
-    // refused in words about writing HTML the merchant never wrote.
+    // The product is named with what was found rather than sent to be refused
+    // for HTML the merchant never wrote.
     const { cards, skipped } = cardsFromTheShop([
       product({ id: 1, description: "<p>Adds a &lt;header&gt; block to the theme.</p>" }),
       product({ id: 2, name: "Coffee &amp;amp; Brunch" }),
@@ -337,15 +320,13 @@ describe("turning a shop's products into cards", () => {
 });
 
 describe("a physical product, which a carrier takes to the buyer", () => {
-  /** The same product as a parcel: neither virtual nor downloadable, and no file. */
   const parcel = (overrides: Partial<StoreProduct> = {}): StoreProduct =>
     product({ virtual: false, downloadable: false, downloads: [], ...overrides });
 
   it("becomes a parcel's card, priced at purchase with seven days to ship and no result", () => {
     // The card's price is the goods alone; the price check answers the whole,
-    // shipping to the buyer's place included (ADR-0033). The seven days are
-    // the connector's stand-in for a time the merchant never stated
-    // (ADR-0023), and a card naming a result would be refused at the door.
+    // shipping included. The seven days stand in for a time the merchant never
+    // stated, and a card naming a result would be refused.
     const { cards, skipped } = cardsFromTheShop([parcel()]);
 
     expect(skipped).toStrictEqual([]);

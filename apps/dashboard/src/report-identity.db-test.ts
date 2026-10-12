@@ -99,18 +99,13 @@ if (databaseUrl === null) {
     return token;
   }
 
-  /** The cookie header a browser holds after the press sets these lines. */
   const cookieFrom = (lines: readonly string[]): string =>
     lines.map((line) => line.split(";")[0] ?? "").join("; ");
 
   /**
-   * A link now, whatever this address asked for a moment ago.
-   *
-   * The door keeps a minute between two links to one address. These tests are
-   * about what happens to a link once it exists, so every send already on
-   * record is dated a minute further back before the next one is asked for,
-   * which is the minute a person would have waited. It leaves them inside the
-   * rolling hour, so the three an hour still count the links that went out.
+   * A minute has to pass between two links to one address; these tests are
+   * about a link once it exists, so earlier sends are dated a minute back. They
+   * stay inside the rolling hour, so the hourly limit still counts them.
    */
   async function rewindSends(): Promise<void> {
     await pool.query("update dashboard_link_sends set sent_at = sent_at - $1::interval", [
@@ -118,7 +113,6 @@ if (databaseUrl === null) {
     ]);
   }
 
-  /** A link from the dashboard's sign-in page, on an address already written to. */
   async function dashboardLink(
     identity: ReturnType<typeof identityFor>,
     messages: Message[],
@@ -204,9 +198,9 @@ if (databaseUrl === null) {
     });
 
     it("rolls the whole press back when the request cannot be written onto the session", async () => {
-      // A session that opened without the request it was asked for would name
-      // nothing, and the request would wait for a visit that cannot finish it.
-      // So the token, the person and the session are one act with it.
+      // A session opened without its request would name nothing, and the
+      // request would wait for a visit that cannot finish it, so the token, the
+      // person and the session are written in one transaction with it.
       const messages: Message[] = [];
       const identity = identityOn(messages);
       const token = await sendReport(identity, messages);

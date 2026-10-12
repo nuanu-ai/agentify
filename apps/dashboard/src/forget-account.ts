@@ -1,37 +1,16 @@
 /**
- * What `pnpm forget <email>` does on the test deployment: it removes one
- * address's dashboard account and the merchant that account names, in one
- * transaction, so that the address signs in next time as a newcomer.
+ * Removes one address's dashboard account and the merchant it names in one
+ * transaction, so the address next signs in as a newcomer. The account row
+ * takes its sessions, credentials and WooCommerce rows by cascade; the
+ * merchant's cards are deleted first, because the gateway's schema does not let
+ * a merchant with cards go; the link-send counters are cleared so the next link
+ * can be asked for at once.
  *
- * The account row takes with it, through the cascades the dashboard's schema
- * declares, the address's sessions, its component credentials and every
- * WooCommerce row that hangs off it: the connected shop, a Connect still
- * waiting, the quotes and the shop orders. The operator flag is a column on
- * that row and goes with it. The merchant row takes its keys by cascade, and
- * its payout wallet, with any change waiting on it, is on the row itself; its
- * cards are deleted first, because the gateway's schema does not let a
- * merchant with cards go. The link sends the dashboard counts against an
- * address, for its own sign-in and for the report links it sends on the
- * scanner's behalf, are cleared under the keys it writes them with, so the next
- * link can be asked for at once. The scanner's own limit on registrations per
- * address is the scanner's, and this does not touch it.
- *
- * Two things refuse it, and both refuse before anything is written. A merchant
- * with an order or a receipt has money history, and money history is not
- * deleted to make a test repeatable. A merchant another account also names is
- * that account's merchant too, and removing it would leave that account bound
- * to nothing.
- *
- * Some things are left where they are on purpose. A one-time link still in the
- * mailbox stays: it can only open the address as a newcomer, and it runs out
- * within the hour. The scanner's reports belong to the address rather than to
- * the account, and the scanner has its own deletion for them. The merchant's
- * queue on the gateway carries envelopes for orders only, and a merchant that
- * gets this far has none.
- *
- * Whether this may run at all is not decided here: `forget.ts` refuses every
- * deployment whose payment network is not a test network before it opens a
- * connection.
+ * It refuses before writing anything when the merchant has an order or a
+ * receipt (money history is never deleted to make a test repeatable) or when
+ * another account names the same merchant. A one-time link still in the mailbox
+ * is left: it can only open the address as a newcomer. Whether this may run at
+ * all is decided in `forget.ts`, which refuses every non-test payment network.
  */
 
 import type { Pool, PoolClient } from "pg";
@@ -88,8 +67,8 @@ async function forgetIn(client: PoolClient, email: string, authSecret: string): 
   let merchant: Extract<Outcome, { kind: "forgotten" }>["merchant"] = null;
   if (account.merchantId !== null) {
     const id = account.merchantId;
-    // Locked, so an order or a card written for this merchant while this runs
-    // waits for the answer rather than slipping in after the count.
+    // Locked, so an order or a card written for this merchant meanwhile waits
+    // rather than slipping in after the count.
     const present =
       (await client.query("select id from merchants where id = $1 for update", [id])).rowCount ===
       1;
@@ -130,9 +109,9 @@ async function forgetIn(client: PoolClient, email: string, authSecret: string): 
     ).rows[0]?.shopUrl ?? null;
   await client.query("delete from dashboard_accounts where id = $1", [account.id]);
 
-  // The sign-in door keys its sends with the dashboard's own secret and the
-  // report door with the digest key it keeps in the database; a database whose
-  // report door never sent anything has no digest key and no such rows.
+  // Sign-in sends are keyed with the dashboard's secret and report-link sends
+  // with the digest key kept in the database; a database that never sent a
+  // report link has no digest key and no such rows.
   const digestKeys = (
     await client.query<{ digestKey: string }>(
       `select digest_key as "digestKey" from dashboard_report_identity_secrets`,
@@ -146,12 +125,9 @@ async function forgetIn(client: PoolClient, email: string, authSecret: string): 
 }
 
 /**
- * Forgets the account at this address and says what went, or why nothing did.
- *
- * A failure before the commit is a transaction the database rolled back, and
- * it is said as that. A failure during the commit is the one moment this side
- * cannot know which way it went, and it is said as that too: the command is
- * safe to run again, because it either finishes or finds no account.
+ * A failure during the commit is the one moment this side cannot know which way
+ * it went, and it is said so; running the command again is safe, because it
+ * either finishes or finds no account.
  */
 export async function runForget(
   pool: Pool,

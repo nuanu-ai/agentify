@@ -1,11 +1,6 @@
 /**
- * The two ways a message leaves the dashboard.
- *
- * Both are driven the way the dashboard drives them: one message in, and then the
- * question of where it came out. The provider is a real HTTP server on a
- * loopback port rather than a stubbed `fetch`, because what this file is about
- * is the document that goes over the wire and a stub cannot be wrong about it
- * in the way a real request can.
+ * The provider is a real HTTP server on a loopback port rather than a stubbed
+ * `fetch`, because what matters is the document that goes over the wire.
  */
 
 import { createServer, type Server } from "node:http";
@@ -20,7 +15,6 @@ const MESSAGE: Message = {
   html: '<a href="https://agentify.example/sign-in/open?token=abc">Open your dashboard</a>',
 };
 
-/** Everything the process said while `during` ran. */
 const logged = async (during: () => Promise<void>): Promise<string> => {
   const lines: string[] = [];
   const collect = (...parts: unknown[]) => lines.push(parts.map(String).join(" "));
@@ -35,7 +29,6 @@ const logged = async (during: () => Promise<void>): Promise<string> => {
   return lines.join("\n");
 };
 
-/** A provider on a loopback port, answering however the test says. */
 interface Provider {
   readonly url: string;
   readonly asked: { path: string; authorization: string; body: string }[];
@@ -88,23 +81,17 @@ const provider = async (status = 200, answerAfterMs = 0): Promise<Provider> => {
 
 describe("a dashboard with no mail provider", () => {
   it("writes the whole message down, with the address it was for and the link in it", async () => {
-    // This is the entire flow on a laptop: whoever is developing the dashboard
-    // reads the link out of their own terminal and follows it. A log line that
-    // said a message had been sent, without saying where or what, would leave
-    // them with a flow that cannot be walked at all.
+    // On a laptop the developer reads the link out of their own terminal, so
+    // the log line must say where and what.
     const postman = postmanFor({ mailUrl: SANDBOX_MAIL, mailApiKey: null, mailFrom: "x" });
 
     const said = await logged(async () => {
-      // Taken, because the log is the only sink there is here: the message
-      // reached everything a message can reach on a laptop, and a caller told
-      // otherwise would hide the link from the one person who has to follow it.
+      // Taken: on a laptop the log is the only sink there is.
       await expect(postman(MESSAGE)).resolves.toBe("accepted");
     });
 
     expect(said).toContain("owner@example.com");
     expect(said).toContain("https://agentify.example/sign-in/open?token=abc");
-    // And it says out loud that nothing was sent, so nobody reading this log
-    // goes looking in a mailbox for it.
     expect(said).toMatch(/not sent|no mail provider/i);
   });
 
@@ -144,10 +131,8 @@ describe("a dashboard with a mail provider", () => {
   });
 
   it("records provider acceptance without the recipient or action URL", async () => {
-    // Written down as well as answered. The log is what a reader goes through
-    // afterwards, and one that wrote down failures alone would leave them
-    // unable to tell a message that went to the provider from one that was
-    // never asked for at all.
+    // Written down as well as answered, so a reader of the log can tell a
+    // message that went to the provider from one never asked for.
     const sending = await provider();
     const postman = postmanFor({
       mailUrl: sending.url,
@@ -165,10 +150,8 @@ describe("a dashboard with a mail provider", () => {
   });
 
   it("does not throw when the provider refuses, because somebody is mid-registration", async () => {
-    // Every send in this dashboard happens beside something a person just did
-    // successfully. A provider's bad afternoon must not become a red page on
-    // top of a registration that worked, because that tells the person the
-    // wrong thing about their own account.
+    // Every send happens beside something a person just did successfully, so a
+    // provider failure must not become an error page on top of it.
     const sending = await provider(422);
     const postman = postmanFor({
       mailUrl: sending.url,
@@ -177,24 +160,21 @@ describe("a dashboard with a mail provider", () => {
     });
 
     const said = await logged(async () => {
-      // Answered rather than thrown, and the answer is the one word a caller
-      // can act on: nothing here reached anybody, so nothing above may say it
-      // did.
+      // Answered rather than thrown: nothing reached anybody, so nothing above
+      // may say it did.
       await expect(postman(MESSAGE)).resolves.toBe("refused");
     });
 
     expect(said).toContain("422");
     expect(said).not.toContain("owner@example.com");
     expect(said).not.toContain("token=abc");
-    // And the refusal is the whole of what the log says about this message. A
-    // second line beside it claiming the message went out is worse than no
-    // line at all: it sends whoever is reading to a mailbox that will never
-    // hold it.
+    // A second line claiming the message went out would send a reader to a
+    // mailbox that will never hold it.
     expect(said).not.toMatch(/handed to the mail provider|was sent/);
   });
 
   it("does not throw when nothing answers at all", async () => {
-    // A port with nothing behind it, which is a provider that is down.
+    // A port with nothing behind it: a provider that is down.
     const sending = await provider();
     await sending.close();
     const postman = postmanFor({
@@ -209,10 +189,8 @@ describe("a dashboard with a mail provider", () => {
 
     expect(said).toContain("could not be reached");
     expect(said).not.toContain("owner@example.com");
-    // And the link is not written down a second time by the failure. It is the
-    // one thing in the message that is worth something on its own, and an
-    // exception from a request that failed mid-flight carries the whole
-    // document it was sending.
+    // The link is worth something on its own, and an exception from a failed
+    // request carries the whole document it was sending.
     expect(said).not.toContain("token=abc");
   });
 

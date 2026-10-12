@@ -1,10 +1,9 @@
 /**
- * Private exact-order recovery. It never scans WooCommerce or retries itself.
- *
- * Run beside the application that is already up, it builds the gateway's
- * application in its own process on the same database, with a queue that
- * writes and does not consume (ADR-0030), and reads and delivers the one order
- * as the merchant on the account that connected the shop.
+ * Operator recovery of one exact order; it never scans WooCommerce or retries
+ * itself. Run beside the running application, it builds the gateway's
+ * application in its own process on the same database, with a queue that writes
+ * and does not consume, and acts as the merchant on the account that connected
+ * the shop.
  */
 
 import { loadConfig as gatewayConfigOf, openCommandApplication } from "@agentify/gateway";

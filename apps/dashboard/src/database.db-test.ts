@@ -1,13 +1,7 @@
 /**
- * The dashboard's database, renamed from the dashboard's old name on a database
- * that already holds people.
- *
- * Every table, index, key and constraint the dashboard made was named for the
- * cabinet. They take the dashboard's name; the history its migrations keep does
- * not, because every revision ever released has to find it under one name (see
- * `database.ts`). These tests hold the rename on a database migrated under the
- * old names, which is what both channels are, and what an older revision's
- * migrator does with it afterwards.
+ * The rename migration, on a database that already holds people under the
+ * `cabinet` names. Every object takes the dashboard's name except the migration
+ * history, which every revision has to find under one name (see `database.ts`).
  */
 
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -29,12 +23,11 @@ const databaseUrl = await readyDatabase(WANTED);
 const here = dirname(fileURLToPath(import.meta.url));
 const dashboardMigrations = join(here, "..", "drizzle");
 
-/** The migration that renames everything, and so the last one the old names knew nothing of. */
 const THE_RENAME = "0013_dashboard_names";
 
 /**
- * The dashboard's migrations as they stood before the rename, applied the way
- * they were applied then: into the history under its old name.
+ * Applies the migrations before the rename into the history's table, as a
+ * database migrated under the old names has them.
  */
 async function migrateAsBeforeTheRename(pool: ReturnType<typeof connect>): Promise<void> {
   const folder = await mkdtemp(join(tmpdir(), "dashboard-migrations-"));
@@ -66,9 +59,7 @@ if (databaseUrl === null) {
   const pool = connect(databaseUrl);
 
   /**
-   * Every object in the database whose name still says cabinet, with what kind
-   * of object it is: `r` a table, `v` a view, `i` an index, `S` a sequence, `c`
-   * a constraint.
+   * Object kinds: `r` table, `v` view, `i` index, `S` sequence, `c` constraint.
    */
   const namedForTheCabinet = async (): Promise<string[]> => {
     const { rows } = await pool.query<{ name: string }>(
@@ -81,10 +72,6 @@ if (databaseUrl === null) {
     return rows.map((row) => row.name).sort();
   };
 
-  /**
-   * What stays named for the cabinet: the history, with its key and sequence,
-   * and nothing else.
-   */
   const ONLY_THE_HISTORY = [
     "S drizzle.cabinet_migrations_id_seq",
     "c cabinet_migrations_pkey",
@@ -134,14 +121,12 @@ if (databaseUrl === null) {
       expect(await historyLength("cabinet_migrations")).toBe(await journalLength());
       const accounts = await pool.query("select email from dashboard_accounts");
       expect(accounts.rows).toStrictEqual([{ email: "kept@example.com" }]);
-      // The log of links sent is emptied rather than carried: its rows are
-      // keyed by a hash made with the old name, and kept they would count toward
-      // no limit and `pnpm forget` would not find them.
+      // Emptied rather than carried: its rows are keyed by a hash made with the
+      // old name, so kept they would count toward no limit and `pnpm forget`
+      // would not find them.
       const sends = await pool.query("select id from dashboard_link_sends");
       expect(sends.rows).toStrictEqual([]);
 
-      // The next release finds its history where this one left it, and has
-      // nothing to do.
       await migrateAccounts(pool, dashboardMigrations);
       expect(await historyLength("cabinet_migrations")).toBe(await journalLength());
     });
@@ -154,10 +139,9 @@ if (databaseUrl === null) {
     });
 
     it("leaves an older revision's migrator nothing to apply, so it builds no empty tables beside the real ones", async () => {
-      // A revision from before the rename, put on the test channel or a laptop
-      // after it, finds the history where it always was, sees that everything
-      // it knows of has run, and applies nothing; its code then fails on tables
-      // that are not there instead of serving empty ones beside the real ones.
+      // An older revision finds the history where it always was, applies
+      // nothing, and then fails on missing tables instead of serving empty ones
+      // beside the real ones.
       await migrateAsBeforeTheRename(pool);
       await pool.query(
         `insert into cabinet_accounts (id, email, email_verified, created_at, updated_at)
@@ -172,7 +156,6 @@ if (databaseUrl === null) {
       const accounts = await pool.query("select email from dashboard_accounts");
       expect(accounts.rows).toStrictEqual([{ email: "kept@example.com" }]);
 
-      // And the next release forward finds everything where it left it.
       await migrateAccounts(pool, dashboardMigrations);
       expect(await namedForTheCabinet()).toStrictEqual(ONLY_THE_HISTORY);
       expect(await historyLength("cabinet_migrations")).toBe(await journalLength());

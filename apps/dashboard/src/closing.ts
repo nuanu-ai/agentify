@@ -1,14 +1,9 @@
 /**
- * Closing one of the dashboard's doors at shutdown, within a bound.
- *
- * `close` alone stops taking new connections and waits for the open ones to
- * end, and a browser that keeps reusing a keep-alive connection can keep one
- * open for as long as it likes: Node goes on answering on a connection that was
- * busy when the door closed. The gateway stops only after these doors, since it
- * shares their process (ADR-0030), so that wait would keep every parked
- * purchase and every merchant's parked poll waiting until the process was
- * killed. So the idle connections close at once, a page already being answered
- * is given the grace to finish, and whatever is still open after it is cut.
+ * `close` alone waits for every open connection to end, and a browser reusing a
+ * keep-alive connection can hold one open indefinitely. The gateway shares this
+ * process and stops only after these listeners, so that wait would hold every
+ * parked purchase until the process was killed: idle connections close at once,
+ * a page being answered gets the grace period, and the rest is cut.
  */
 
 import type { Server } from "node:http";

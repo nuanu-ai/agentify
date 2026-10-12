@@ -1,14 +1,6 @@
 /**
- * The half of Connect that happens before any key exists: what a shop address
- * has to be, what the authorize URL carries, and the preflight that stops a
- * merchant being sent to their own front page.
- *
- * The preflight is here because of the sharpest edge the probe found. A shop
- * with plain permalinks does not answer `/wc-auth/v1/authorize` with a 404 or
- * an error — it redirects once and serves its ordinary front page with a 200,
- * so a merchant presses Connect, lands on their own shop, and has nothing to
- * report except that it did not work
- * (`docs/research/33-woo-connect-probe.md`). The only way to tell that apart
+ * A shop with plain permalinks answers `/wc-auth/v1/authorize` with one
+ * redirect and its ordinary front page with a 200, so the only way to tell it
  * from a working shop is to ask before redirecting anybody.
  */
 
@@ -23,7 +15,6 @@ import {
 
 const isTheGrantScreen = (url: string) => inspectGrantScreen(url, fetch);
 
-/** A stand-in shop, answering one scripted response at every address. */
 const shopAnswering = async (
   answer: (path: string) => {
     status: number;
@@ -69,9 +60,8 @@ describe("the address a merchant types", () => {
   it("refuses a shop on plain http, and says what that would cost them", () => {
     const wrong = whatIsWrongWithTheShopUrl("http://shop.example.com");
     expect(wrong).not.toBeNull();
-    // The reason is the merchant's own secret in the clear on every order, and
-    // it is said rather than left as "https only": a merchant who reads only
-    // the rule goes looking for a way round it.
+    // The reason is said, not only the rule: a merchant who reads only "https
+    // only" goes looking for a way round it.
     expect(wrong).toMatch(/https/);
   });
 
@@ -82,8 +72,8 @@ describe("the address a merchant types", () => {
   });
 
   it("refuses an address carrying a query or a fragment", () => {
-    // Both would be swallowed when the path of an endpoint is appended, so a
-    // shop typed this way would be reached at an address nobody meant.
+    // Both would be swallowed when an endpoint's path is appended, reaching an
+    // address nobody meant.
     expect(whatIsWrongWithTheShopUrl("https://shop.example.com/?a=1")).not.toBeNull();
     expect(whatIsWrongWithTheShopUrl("https://shop.example.com/#x")).not.toBeNull();
   });
@@ -109,8 +99,8 @@ describe("the state token", () => {
 
 describe("the preflight", () => {
   it("passes a shop whose wc-auth answers", async () => {
-    // A shop with pretty permalinks and nobody signed in sends the browser on
-    // to wc-auth's own sign-in page, which is the shape this has to accept.
+    // Pretty permalinks with nobody signed in send the browser to wc-auth's
+    // sign-in page, which must be accepted.
     shop = await shopAnswering((path) =>
       path.startsWith("/wc-auth/v1/login")
         ? { status: 200, body: '<body class="wc-auth wp-core-ui"><form>Sign in</form></body>' }
@@ -121,13 +111,11 @@ describe("the preflight", () => {
   });
 
   it("refuses a shop that served its front page instead", async () => {
-    // Plain permalinks: one redirect, then the shop's own home page with a
-    // 200. Nothing about it says it went wrong.
-    // The path and not the whole address: written against the address, the
-    // query string kept it from ever ending in a slash, and this shop
-    // redirected forever instead of serving the front page once. The probe
-    // that mutates the check found that — the refusal was coming from the
-    // redirect ceiling rather than from reading what the shop served.
+    // Plain permalinks: one redirect, then the shop's home page with a 200.
+    // Matched on the path rather than the whole address, or the query string
+    // would keep it from ending in a slash and the stand-in would redirect
+    // forever, failing on the redirect limit instead of on what the shop
+    // served.
     shop = await shopAnswering((url) =>
       new URL(url, "http://shop").pathname.endsWith("/")
         ? {
@@ -138,17 +126,14 @@ describe("the preflight", () => {
     );
     const looked = await isTheGrantScreen(`${shop.url}/wc-auth/v1/authorize?x=1`);
     expect(looked.ok).toBe(false);
-    // The merchant can only act on this if it names the setting, in the words
-    // WordPress uses for it.
+    // The merchant can act on this only if it names the setting in WordPress's
+    // words.
     expect(looked.ok === false && looked.why).toMatch(/permalink/i);
   });
 
   it("asks first whether the address is the shop where nothing on the page looks like WordPress", async () => {
-    // A site on something else answers the authorize address with its own
-    // page or a 404, and so does a WordPress shop on a server that answers
-    // with its own 404 page when permalinks are Plain. Nothing on such a page
-    // says which of the two it is, so the owner is asked to check the address
-    // first and told the permalink setting is the cause if it is the shop.
+    // Another site and a WordPress server's own 404 under plain permalinks look
+    // the same, so the owner is asked to check the address first.
     for (const answer of [
       { status: 200, body: "<html><title>A landing page</title><body>Hello</body></html>" },
       { status: 404, body: "<html><body>Not found</body></html>" },
@@ -165,8 +150,8 @@ describe("the preflight", () => {
   });
 
   it("goes straight to the permalink setting where the page is plainly WordPress", async () => {
-    // A theme's files or WordPress's own: either is the shop answering with
-    // one of its pages, and the address is not in doubt.
+    // A theme's files or WordPress's own: the shop answering with one of its
+    // pages.
     for (const asset of [
       "/wp-content/themes/storefront/style.css",
       "/wp-includes/js/jquery/jquery.min.js",
@@ -187,11 +172,9 @@ describe("the preflight", () => {
   });
 
   it("refuses a front page that happens to quote the address we asked for", async () => {
-    // A WordPress theme echoing the request URI — a canonical link, a search
-    // heading, an admin-bar edit link — puts the words "wc-auth" on the shop's
-    // own front page. Checked for the bare word, such a shop passes and its
-    // merchant is sent to their own front page: the trap, with the guard
-    // against it satisfied by the trap itself.
+    // A theme echoing the request URI puts "wc-auth" on the shop's front page;
+    // checked for the bare word, the shop passes and the merchant is sent to
+    // their own front page.
     shop = await shopAnswering((url) => ({
       status: 200,
       body: `<html><head><link rel="canonical" href="https://shop.example.com${url}"></head><body><h1>Nothing found for ${url}</h1></body></html>`,
@@ -201,9 +184,7 @@ describe("the preflight", () => {
   });
 
   it("carries back what wc-auth said when it refused the request itself", async () => {
-    // A missing parameter is our defect and not the merchant's shop, so the
-    // shop's own sentence is what comes back rather than a lecture about
-    // permalinks.
+    // A missing parameter is our defect, so the shop's own sentence comes back.
     shop = await shopAnswering(() => ({
       status: 401,
       body: "<p>Error: Missing parameter callback_url.</p>",
@@ -219,8 +200,8 @@ describe("the preflight", () => {
   });
 
   it("does not follow a redirect off the shop", async () => {
-    // A shop that sends us somewhere else entirely is not a shop whose grant
-    // screen we reached, however friendly the page at the other end is.
+    // A shop that sends us elsewhere is not a shop whose grant screen we
+    // reached.
     shop = await shopAnswering(() => ({
       status: 302,
       location: "https://example.invalid/wc-auth/v1/login/",

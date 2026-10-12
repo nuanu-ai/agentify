@@ -1,17 +1,9 @@
 /**
- * The two sentences that cannot be reached through the real gateway yet.
- *
- * Stage one marks every order as a test, so a list mixing test money with real
- * money is a shape the HTTP tests cannot produce — and it is the shape that
- * arrives the day stage two lands, on the screen a merchant reads for money
- * they have been sent. A branch that has never run is a branch nobody has
- * checked, and this is the one whose failure mode is a merchant counting test
- * purchases as takings.
- *
- * The screens are pure functions of the documents the gateway answered with,
- * which is what lets this be done honestly: the documents below are built by
- * the contract's own schemas, so a shape this file accepts is a shape the wire
- * can carry. Nothing is stubbed — there is nothing here to stub.
+ * Sentences the real gateway cannot reach yet: while every order is a test, a
+ * list mixing test and real money cannot be produced over HTTP, and its failure
+ * would be a merchant counting test purchases as takings. The screens are pure
+ * functions of the gateway's documents, and the documents here are built by the
+ * contract's own schemas, so nothing is stubbed.
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
@@ -28,13 +20,12 @@ import { settingsScreen } from "./seller-name.js";
 import { signInScreen } from "./sign-in.js";
 import { readable } from "./testing/html.js";
 
-/** A page is drawn for somebody now, and every screen says who (ADR-0026 §3). */
+/** Every screen says who it is drawn for. */
 const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: "owner@example.com", confirmed: true };
 
 describe("what a page says about the stack it belongs to", () => {
   it("says nothing settles here on the laptop", () => {
-    // Production break: the sandbox sign-in page could omit the statement that
-    // no payment settles here, misleading a person who reads it as a receipt.
+    // The sandbox sign-in page must say that no payment settles here.
     const html = signInScreen("", "sandbox");
 
     expect(html).toContain(`${SURFACE_MARKER_ATTRIBUTE}="sandbox"`);
@@ -42,7 +33,7 @@ describe("what a page says about the stack it belongs to", () => {
   });
 
   it("says payments settle with test funds on the test site", () => {
-    // Production break: the test-site page could omit its test-funds warning.
+    // The test-site page must carry its test-funds warning.
     const html = signInScreen("", "test");
 
     expect(html).toContain(`${SURFACE_MARKER_ATTRIBUTE}="test"`);
@@ -50,21 +41,20 @@ describe("what a page says about the stack it belongs to", () => {
   });
 
   it("says nothing at all on the live one, and still names itself", () => {
-    // The marker names the mode rather than merely existing. An absence cannot
-    // tell a correct live page from a layout that forgot to render — on the
-    // one site where the money is real.
+    // The marker names the mode rather than merely existing: an absence cannot
+    // tell a correct live page from one that failed to render.
     const html = signInScreen("", "live");
 
     expect(html).toContain(`${SURFACE_MARKER_ATTRIBUTE}="live"`);
     expect(readable(html)).not.toContain(SURFACE_WORDS.test);
     expect(readable(html)).not.toContain(SURFACE_WORDS.sandbox);
-    // Not merely wordless: no banner element either. The styled one is a tinted
-    // panel, so an empty one is a band across a live page.
+    // No banner element either: an empty styled one is a band across a live
+    // page.
     expect(html).not.toContain('class="stack-note"');
   });
 
   it("carries the same marker on a signed-in page", () => {
-    // Production break: authenticated pages could silently lose the stack label.
+    // Pages behind the sign-in must carry the stack label too.
     const html = page({
       base: "",
       who: "owner@example.com",
@@ -131,9 +121,8 @@ const receipt = (id: string, test: boolean) => ({
 
 describe("the receipts of sales that went out", () => {
   it("counts a parcel handed to a carrier beside goods handed over, and says which it is", () => {
-    // A shipped parcel is a sale: the money is the merchant's and the receipt
-    // is written (ADR-0033). It is counted with the delivered ones, under a
-    // label that does not call a parcel with a carrier delivered.
+    // A shipped parcel is counted with the delivered ones, under a label that
+    // does not call a parcel with a carrier delivered.
     const receipts: ReceiptList = ReceiptListSchema.parse({
       receipts: [receipt("rcp_1", false), { ...receipt("rcp_2", false), outcome: "shipped" }],
     });
@@ -166,15 +155,10 @@ describe("a list where some of the money was real and some was not", () => {
     const rows = html.slice(html.indexOf("<tbody>")).split("<tr");
 
     expect(readable(html)).toContain("1 receipt here is a test purchase");
-    // One row carries the mark and the other does not: a page that marked both
-    // or neither would be useless on exactly the day this matters.
-    //
-    // The mark is found by its word rather than by the class it is drawn with.
-    // That class is a small pill, and the page carries a second one now — the
-    // note beside the address saying nobody has confirmed it — so the class
-    // stopped being the name of one thing on this page. It is still spelled
-    // differently enough that the old assertion would pass; what changed is
-    // that it would be passing by accident.
+    // One row carries the mark and the other does not; a page that marked both
+    // or neither would be useless on exactly the day this matters. The mark is
+    // found by its word, not its class, because the page uses that class for
+    // another pill too.
     expect(rows.filter((row) => row.includes(">test<"))).toHaveLength(1);
   });
 
@@ -194,10 +178,8 @@ describe("a list where some of the money was real and some was not", () => {
 });
 
 describe("whether a live merchant is approved", () => {
-  // Selling live needs the operator's approval, and the merchant could not see
-  // whether they had it: every screen said it could not tell. The dashboard
-  // reads it now, so a live merchant is told which of the two they are, and a
-  // card off sale for want of it says that is why.
+  // A live merchant is told whether they have the operator's approval, and a
+  // card off sale for want of it says so.
   const live = (approved: boolean): Viewer => ({
     ...SEEN_BY,
     mode: "live",
@@ -230,8 +212,8 @@ describe("whether a live merchant is approved", () => {
 
   it("says on an empty Cards page that publishing waits for the approval", () => {
     // Without the approval every live publish is refused, so an unapproved
-    // merchant's Cards page is the empty one, and it is where they look for
-    // why nothing they publish appears.
+    // merchant's Cards page is the empty one, where they look for why nothing
+    // appears.
     const none = MerchantCardListSchema.parse({ ...cards, cards: [] });
 
     expect(readable(cardsScreen(live(false), none, "https://agentify.ad"))).toMatch(

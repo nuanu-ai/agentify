@@ -1,16 +1,13 @@
 /**
- * The configuration, which is an external boundary like any other.
- *
- * Only the values that decide where a merchant's browser is sent, or that the
- * dashboard cannot work at all without, are checked here. A wrong port fails
- * loudly on the first request; a wrong mount point fails quietly, by pointing
- * every link and every redirect at somewhere the dashboard is not.
+ * Only the values that decide where a merchant's browser is sent, or without
+ * which the dashboard cannot work at all, are checked here: a wrong mount point
+ * fails quietly, by pointing every link and redirect somewhere the dashboard is
+ * not.
  */
 
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 
-/** What a deployment has to set for the dashboard to be able to do anything. */
 const REQUIRED = {
   DATABASE_URL: "postgres://agentify:agentify@postgres:5432/agentify",
   AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
@@ -41,10 +38,7 @@ describe("what the dashboard will not start without", () => {
   });
 
   it("refuses to start with nothing to sign a session with", () => {
-    // The component that signs people in has a fallback of its own, and a
-    // deployment that leaned on it would be running on a value written in
-    // somebody else's public source. So the dashboard asks for one rather than
-    // taking whatever is there, and stops when there is none.
+    // The sign-in component's own fallback is a value written in public source.
     const { AUTH_SECRET: _absent, ...withoutSecret } = given();
 
     expect(() => loadConfig(withoutSecret)).toThrow(/AUTH_SECRET/);
@@ -52,19 +46,15 @@ describe("what the dashboard will not start without", () => {
   });
 
   it("refuses to start with no database to keep its accounts and sessions in", async () => {
-    // ADR-0026 §2 puts the people who sign in, and their sessions, in rows. With
-    // no database there is nowhere to look one up, so every visitor would be a
-    // stranger — a dashboard that renders a sign-in form and can never accept one.
+    // With no database there is nowhere to look a session up, so the dashboard
+    // would draw a sign-in form it can never accept.
     const { DATABASE_URL: _absent, ...withoutDatabase } = given();
 
     expect(() => loadConfig(withoutDatabase)).toThrow(/DATABASE_URL/);
   });
 
   it("does not refuse a key it is handed anyway, because it is not its business", () => {
-    // A deployment that has not had the variable taken out of its compose file
-    // yet must still come up. What used to be checked here — a floor under the
-    // key's length — is checked where a key is now taken in, which is the
-    // command that makes an account.
+    // A leftover variable in a compose file must not stop the dashboard.
     expect(() => loadConfig(given({ MERCHANT_API_KEY: "short" }))).not.toThrow();
   });
 });
@@ -78,8 +68,8 @@ describe("the dashboard is told which stack it is in front of", () => {
   };
 
   it("runs the same derivation its gateway runs", () => {
-    // Production break: the dashboard could label a stack differently from its
-    // gateway, so a merchant would read a false statement about their money.
+    // Otherwise the dashboard could label a stack differently from its gateway
+    // and tell a merchant something false about their money.
     expect(loadConfig(required).surfaceMode).toBe("sandbox");
     expect(
       loadConfig({ ...required, FACILITATOR_URL: "https://x402.org/facilitator" }).surfaceMode,
@@ -94,28 +84,24 @@ describe("the dashboard is told which stack it is in front of", () => {
   });
 
   it("refuses to start when it was handed no chain", () => {
-    // Production break: a dashboard could start without the chain it describes.
     const { PAYMENT_NETWORK, ...withoutChain } = required;
     expect(() => loadConfig(withoutChain)).toThrowError(/PAYMENT_NETWORK.*not set/s);
   });
 
   it("refuses to start when it was handed no facilitator", () => {
-    // Production break: a dashboard could start without the facilitator it describes.
     const { FACILITATOR_URL, ...withoutFacilitator } = required;
     expect(() => loadConfig(withoutFacilitator)).toThrowError(/FACILITATOR_URL.*not set/s);
   });
 
   it("gives neither a default, unlike the gateway", () => {
-    // The gateway defaulting towards play money is the safe direction for a
-    // process that moves it. A live dashboard falling back to a test chain would
-    // print, over a merchant's real receipts, that none of this money is real.
+    // A live dashboard falling back to a test chain would print, over a
+    // merchant's real receipts, that none of the money is real.
     expect(() =>
       loadConfig({ DATABASE_URL: required.DATABASE_URL, AUTH_SECRET: required.AUTH_SECRET }),
     ).toThrow();
   });
 
   it("refuses a chain on neither written list", () => {
-    // Production break: a page could claim a mode for a chain the contract rejects.
     expect(() => loadConfig({ ...required, PAYMENT_NETWORK: "eip155:1" })).toThrow();
   });
 });
@@ -127,14 +113,9 @@ describe("where the dashboard thinks it is mounted", () => {
   });
 
   it("refuses a value that would send every link to another host", () => {
-    // "//evil.com" is a path to a regular expression and a protocol-relative
-    // URL to a browser. Accepted, every redirect leaves the origin and every
-    // stylesheet link points at somebody else's server — with a merchant's
-    // session cookie riding along on the redirect they follow.
-    // Both spellings. The URL standard treats a backslash after the first
-    // slash exactly as a second slash, so `new URL("/\\evil.com", origin)`
-    // resolves to https://evil.com/ in every browser — a lookahead that only
-    // covered "/" left the same hole open under a different character.
+    // "//evil.com" is a protocol-relative URL to a browser, and a backslash
+    // after the first slash counts as a second slash, so each would send every
+    // redirect, with the session cookie following it, to another host.
     for (const bad of ["//evil.com", "//evil.com/dashboard", "/\\evil.com", "/\\\\evil.com"]) {
       expect(() => loadConfig(given({ BASE_PATH: bad })), bad).toThrow(/BASE_PATH/);
     }
@@ -143,8 +124,8 @@ describe("where the dashboard thinks it is mounted", () => {
 
   it("refuses a mount point that is not one", () => {
     // A trailing slash would double up against every path built from it, a
-    // query or a fragment is not a mount point at all, and a bare word is a
-    // relative path that means something different on every page.
+    // query or fragment is not a mount point, and a bare word is a relative
+    // path.
     for (const bad of [
       "/dashboard/",
       "dashboard",
@@ -157,7 +138,6 @@ describe("where the dashboard thinks it is mounted", () => {
   });
 
   it("names every problem at once rather than one per restart", () => {
-    // The engineer bringing the dashboard up learns the whole list in one go.
     const thrown = (): string => {
       try {
         loadConfig({ BASE_PATH: "//evil.com", COOKIE_SECURE: "no" });
@@ -176,41 +156,28 @@ describe("where the dashboard thinks it is mounted", () => {
 
 describe("where the dashboard's two messages go", () => {
   it("sends nothing anywhere unless a deployment says where", () => {
-    // The whole flow — registering, confirming, losing a password — walks on a
-    // laptop with no provider account, no domain and no network, because the
-    // sandbox word writes every message to the log instead of sending it.
     const config = loadConfig(given());
     expect(config.mailUrl).toBe("sandbox:log");
     expect(config.mailFrom).toMatch(/^Agentify </);
   });
 
   it("refuses a real credential beside the word that means nothing is sent", () => {
-    // The mistake worth catching is a production environment file copied onto a
-    // sandbox. A credential exists only to talk to a provider, so beside an
-    // address that sends nothing it is somebody's leftovers rather than a
-    // choice — and left unnoticed it sits there until one other line changes.
+    // Most likely a production environment file copied onto a sandbox.
     expect(() => loadConfig(given({ MAIL_API_KEY: "re_a_real_looking_key" }))).toThrow(
       /MAIL_API_KEY/,
     );
   });
 
   it("reads a credential set to nothing the way it reads one never set", () => {
-    // The spelling a deployment actually uses. A compose file hands a service a
-    // fixed list of names, so "no provider here" is the name with nothing after
-    // it rather than a deleted line — and read as a credential of length zero it
-    // is refused and the whole stack will not come up. It did, once, for exactly
-    // this: `MAIL_API_KEY=` in the sandbox's own compose file.
+    // A compose file writes "no provider here" as the name with nothing after
+    // it.
     expect(loadConfig(given({ MAIL_API_KEY: "", MAIL_FROM: "" })).mailUrl).toBe("sandbox:log");
-    // And nothing is loosened for what is really there: a credential of one
-    // character is still a credential, and beside the sandbox word it is still
-    // somebody's leftovers.
+    // A one-character credential is still a credential.
     expect(() => loadConfig(given({ MAIL_API_KEY: " " }))).toThrow(/MAIL_API_KEY/);
   });
 
   it("refuses a provider it could not authenticate against, or send from", () => {
-    // A dashboard that appears to send mail and silently does not is discovered
-    // by a merchant who has lost a password and is waiting for a link that was
-    // never accepted.
+    // A provider with no key would appear to send mail and silently not.
     expect(() =>
       loadConfig(
         given({
@@ -232,10 +199,8 @@ describe("where the dashboard's two messages go", () => {
   });
 
   it("refuses to send real mail whose links point at the reader's own computer", () => {
-    // The public address defaults to a laptop so that the dashboard runs with
-    // nothing set. A deployment that turns mail on and leaves it there would
-    // send every merchant a link into their own machine, and the merchant
-    // reading it would have no way of knowing that is what happened.
+    // The localhost default would send every merchant a link into their own
+    // machine.
     expect(() =>
       loadConfig(
         given({
@@ -258,17 +223,15 @@ describe("where the dashboard's two messages go", () => {
     );
 
     expect(config.mailUrl).toBe("https://api.resend.com");
-    // The trailing slash comes off, because a path is joined onto this and two
-    // slashes in the middle of a link is a link somebody has to think about.
+    // A path is joined onto this, so a trailing slash would double up.
     expect(config.publicBaseUrl).toBe("https://agentify.example");
   });
 });
 
 describe("what the configuration says about itself", () => {
   it("does not put the database password into the sentence it throws", () => {
-    // The startup failure goes to a log, and a log goes places the environment
-    // does not. A message quoting the value that was wrong would carry the one
-    // secret left in this file into every one of them.
+    // A startup failure goes to a log, so it names the variable and never the
+    // secret's value.
     const thrown = (): string => {
       try {
         loadConfig({
@@ -287,8 +250,6 @@ describe("what the configuration says about itself", () => {
   });
 
   it("does not put what it signs sessions with into the sentence it throws", () => {
-    // The same rule as the line above, for the other secret in this file. A
-    // startup failure is printed by whatever is watching the process.
     const thrown = (): string => {
       try {
         loadConfig({

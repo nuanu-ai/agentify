@@ -1,11 +1,8 @@
 /**
- * The private production approval operation at its application boundary.
- *
- * The directory and gateway are ports here so these tests can prove the two
- * things the command itself owns: it refuses every uncertain identity before a
- * write, and it tells the operator exactly which existing seller the one-way
- * gateway operation changed. PostgreSQL coverage exercises the real resolver
- * and store together in approval-directory.db-test.ts.
+ * The directory and the gateway are stand-ins here, so these tests hold what
+ * the command owns: every uncertain identity is refused before a write, and the
+ * operator is told which existing seller the one-way grant changed. The real
+ * resolver and store run together in approval-directory.db-test.ts.
  */
 
 import { describe, expect, it } from "vitest";

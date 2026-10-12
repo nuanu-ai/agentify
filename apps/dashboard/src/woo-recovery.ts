@@ -1,9 +1,8 @@
 /**
- * One explicit operator recovery for one paid WooCommerce order.
- *
- * This is deliberately not a scanner. A definite pre-create refusal may make
- * one POST after the merchant reconnects the same shop. An uncertain create
- * may only bind the exact Woo order id an operator supplied and verified.
+ * Deliberately not a scanner. A definite refusal before the order was created
+ * may make one POST after the merchant reconnects the same shop; an uncertain
+ * create may only bind the exact WooCommerce order id an operator supplied and
+ * verified.
  */
 
 import { createHash } from "node:crypto";
@@ -56,9 +55,9 @@ export const recoverWooOrder = async (
   if (record === null) return refused("No recoverable WooCommerce order has that id.");
   if (record.facts.kind === "parcel") {
     // Recovery makes or binds a download's order. A placed parcel is a sale
-    // taken on and followed in its shop; one refused before its order was made
-    // has no address left to make one with (ADR-0032); and one whose order may
-    // exist is settled with the merchant in their shop.
+    // already taken on and followed in its shop; one refused before its order
+    // was made has no address left to make one with; one whose order may exist
+    // is settled with the merchant in their shop.
     return refused(
       record.phase === "placed"
         ? "This command recovers downloads only. This parcel's WooCommerce order is placed, and" +

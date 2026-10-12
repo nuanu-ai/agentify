@@ -1,6 +1,5 @@
 import { printable } from "./printable.js";
 
-/** The dashboard-owned identity seam used by the private production operator. */
 export type ApprovalDirectoryEntry =
   | { readonly email: string; readonly binding: "unbound" }
   | { readonly email: string; readonly binding: "bound"; readonly merchantId: string };

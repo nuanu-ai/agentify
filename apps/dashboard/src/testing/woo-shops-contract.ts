@@ -1,11 +1,7 @@
 /**
- * What a store of WooCommerce connections has to do, whichever one it is.
- *
- * Two implementations satisfy it — the memory one the offline suite runs on and
- * the Postgres one a deployment runs on — and the two are held to this one list
- * rather than to two copies of it, because the properties that matter are the
- * ones that are easiest to have in one and not the other: a token that works
- * once, and a sale that is placed in somebody's shop once.
+ * Both stores, memory and Postgres, are held to this one list, because the
+ * properties that matter are the easiest to have in one and not the other: a
+ * token that works once, and a sale placed in somebody's shop once.
  */
 
 import { describe, expect, it } from "vitest";
@@ -35,11 +31,8 @@ const PERMISSION: WooPermission = {
 };
 
 /**
- * Who the rows belong to.
- *
- * The Postgres implementation has foreign keys onto the accounts table, so the
- * suite running against a database makes the accounts first and passes their
- * identifiers in. The memory one has no such need and passes anything.
+ * The Postgres store has foreign keys onto the accounts table, so its suite
+ * makes accounts first and passes their identifiers in.
  */
 export interface ContractAccounts {
   readonly one: string;
@@ -83,9 +76,9 @@ export const wooShopsContract = (
         expect(connected?.revision).toBe("a-token");
         expect((await shops.connectionOf(accounts.one))?.shopUrl).toBe("https://shop.example.com");
         expect(await shops.grantFor(accounts.one)).toBeNull();
-        // The callback is unauthenticated by nature, so this is the whole of
-        // what stops somebody who saw a token planting a second pair of keys
-        // on that account afterwards.
+        // The callback is unauthenticated by nature, so this is all that stops
+        // somebody who saw a token from planting a second pair of keys on that
+        // account.
         expect(await shops.connectFromGrant("a-token", keys, NOW)).toBeNull();
       });
     });
@@ -100,9 +93,9 @@ export const wooShopsContract = (
           expiresAt: MUCH_LATER,
         });
 
-        // Sequential calls pass with a read followed by a write, and these do
-        // not: two callbacks in flight together would both read a live row
-        // and both write a connection.
+        // Sequential calls pass with a read followed by a write; two callbacks
+        // in flight together would both read a live row and both write a
+        // connection.
         const connected = await Promise.all(
           Array.from({ length: 10 }, () => shops.connectFromGrant("a-token", keys, NOW)),
         );
@@ -164,9 +157,8 @@ export const wooShopsContract = (
     });
 
     it("hands back the Connect an account is waiting on, with the moment it started", async () => {
-      // The promise: a merchant whose keys never arrived can be told so. The
-      // screens read this, and without the moment there is no way to tell "a
-      // minute ago, wait" from "a quarter of an hour ago, press Connect again".
+      // Without the moment, a screen cannot tell "a minute ago, wait" from "a
+      // quarter of an hour ago, press Connect again".
       await using(async (shops, accounts) => {
         await shops.beginGrant({
           token: "a-token",
@@ -219,9 +211,8 @@ export const wooShopsContract = (
     });
 
     it("still hands back a Connect whose time is up, because that is the case worth saying", async () => {
-      // Not filtered here. A Connect that expired with no keys is exactly the
-      // one a merchant needs a sentence about, and the clock is read by the
-      // screen rather than by the store.
+      // Not filtered here: an expired Connect with no keys is exactly the one a
+      // merchant needs a sentence about, and the screen reads the clock.
       await using(async (shops, accounts) => {
         await shops.beginGrant({
           token: "a-token",
@@ -270,8 +261,8 @@ export const wooShopsContract = (
     });
 
     it("replaces a connection rather than keeping two", async () => {
-      // A merchant who connects a second shop meant to move, and two rows would
-      // be two shops to place every order in.
+      // Connecting a second shop means moving; two rows would be two shops to
+      // place every order in.
       await using(async (shops, accounts) => {
         await shops.connect(connection(accounts.one, "https://first.example.com"));
         await shops.connect(connection(accounts.one, "https://second.example.com"));
@@ -386,11 +377,9 @@ export const wooShopsContract = (
     });
 
     it("gives one sale to one attempt when several arrive at the same moment", async () => {
-      // A redelivery landing while the first attempt is still in flight. Two
-      // attempts that both read "nobody has this" and both went on to call the
-      // shop would be two orders in a merchant's shop for one payment, which is
-      // the thing this ledger exists to stop — and the sequential cases above
-      // cannot see it.
+      // A redelivery landing while the first attempt is in flight: two attempts
+      // that both read "nobody has this" would place two orders for one
+      // payment.
       await using(async (shops, accounts) => {
         const claims = await Promise.all(
           Array.from({ length: 10 }, () => shops.claimOrder(accounts.one, "ord_1", FACTS, NOW)),
@@ -400,8 +389,8 @@ export const wooShopsContract = (
     });
 
     it("hands a repeat the order the shop already made", async () => {
-      // A delivery is at least once. Without this, the second hand-over of one
-      // sale is a second order in the merchant's shop to pick, pack and post.
+      // Delivery is at least once; without this a second hand-over is a second
+      // order in the merchant's shop.
       await using(async (shops, accounts) => {
         await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
         await shops.recordOrder(
@@ -419,9 +408,8 @@ export const wooShopsContract = (
     });
 
     it("hands a repeat of a parcel's sale the shop's order, with nothing to deliver", async () => {
-      // A parcel's order in the shop is the whole result: there is no
-      // permission to keep, and the address is never kept. A repeat is the
-      // order taken on again, never a second order.
+      // A parcel's order in the shop is the whole result: no permission is kept
+      // and the address never is. A repeat is the same order taken on again.
       await using(async (shops, accounts) => {
         const parcel = { ...FACTS, kind: "parcel" as const };
         await shops.claimOrder(accounts.one, "ord_1", parcel, NOW);
@@ -449,8 +437,8 @@ export const wooShopsContract = (
         await shops.claimOrder(accounts.other, "ord_3", parcel, NOW);
         await shops.recordOrder("ord_3", { id: "w_ord_3", number: "31", permission: null }, NOW);
 
-        // With where it was sold and when, which is what decides whether it
-        // is still read: in the shop connected now, and not for ever.
+        // Where and when it was sold decide whether it is still read: in the
+        // shop connected now, and not for ever.
         expect(await shops.parcelsToFollow(accounts.one)).toEqual([
           { orderId: "ord_1", wooOrderId: "w_ord_1", shopOrigin: FACTS.shopOrigin, placedAt: NOW },
           { orderId: "ord_2", wooOrderId: "w_ord_2", shopOrigin: FACTS.shopOrigin, placedAt: NOW },
@@ -460,7 +448,8 @@ export const wooShopsContract = (
         // Ended once: a second ending of either kind changes nothing.
         expect(await shops.endParcel("ord_1", "closed", LATER)).toBe(false);
         expect(await shops.parcelsToFollow(accounts.one)).toEqual([]);
-        // An ended parcel is still a sale the shop holds, and is never placed again.
+        // An ended parcel is still a sale the shop holds, and is never placed
+        // again.
         expect(await shops.knownOrder("ord_1")).toEqual({
           kind: "placed_parcel",
           id: "w_ord_1",

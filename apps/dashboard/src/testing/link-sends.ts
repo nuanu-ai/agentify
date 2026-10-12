@@ -1,17 +1,9 @@
 /**
- * The clock a test moves when it needs two links for one address.
- *
- * A minute has to pass between two links to the same address, which is a rule
- * about time and nothing else. A test that is about something further down the
- * flow — a token, a session, a command that counts sessions — needs the second
- * link without waiting a real minute for it, and the rows the memory store
- * keeps are the only clock it can reach. Moving every send back by the
- * interval puts the address back where it was before the last link went out,
- * and leaves it inside the rolling hour, so the three-an-hour wall keeps
- * counting the links that were actually sent.
- *
- * The tests about the walls themselves do not use this: they ask twice and
- * read the answer.
+ * A minute has to pass between two links to one address. A test about something
+ * further down the flow needs the second link without waiting: moving every
+ * send back by the interval keeps the sends inside the rolling hour, so the
+ * hourly limit still counts them. Tests of the limits themselves do not use
+ * this.
  */
 
 import { LINK_MIN_INTERVAL_MS } from "../identity.js";

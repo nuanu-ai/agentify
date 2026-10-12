@@ -1,21 +1,9 @@
 /**
- * The screens a merchant connects a WooCommerce shop on.
- *
- * Four of them: before the shop knows anything about us, the moment the
- * merchant's browser comes back through the return address, the import, and
- * the block on the integrations screen that says which of those the account is
- * in. None of them fetches anything or decides anything, which is what lets a
- * test read the page a merchant would be looking at.
- *
- * The one thing these pages are careful about is what they claim. A merchant
- * comes back from their own shop having pressed Approve, and the shop's
- * redirect says `success=1` — but that is the shop telling the browser what it
- * did, and the keys travel separately, on a request from the shop's own server
- * to ours. The redirect is a claim and the row is the evidence: anybody can
- * type `success=1` into an address bar, and a post that never got through
- * leaves the same nothing here as a post never made. So the return page says
- * what is actually here rather than what the redirect claims, and where nothing
- * is here it says that, rather than "it failed" — which it does not know.
+ * The shop's `success=1` redirect is the shop telling the browser what it did;
+ * the keys travel separately, posted from the shop's server to ours, and
+ * anybody can type `success=1` into an address bar. So these pages say what our
+ * rows hold, never what the redirect claims, and where nothing arrived they say
+ * that rather than "it failed", which is not known.
  */
 
 import type { SurfaceMode } from "@agentify/core";
@@ -27,12 +15,8 @@ import { PRODUCTS_AT_MOST } from "./woo-shop.js";
 import { UNSET_WORDS, type Unset } from "./words.js";
 
 /**
- * A connected shop as a screen may know it.
- *
- * Three fields, and a shape of its own rather than the stored row for one
- * reason: the row also holds the shop's key and its secret, and the rule that
- * those never reach a page is worth holding in a type rather than in whoever
- * writes the next screen remembering it (ADR-0023).
+ * A shape of its own rather than the stored row, which also holds the shop's
+ * key and secret: a type keeps those off every page.
  */
 export interface ConnectedShop {
   readonly shopUrl: string;
@@ -41,113 +25,68 @@ export interface ConnectedShop {
 }
 
 /**
- * Where this account's WooCommerce channel has got to, in the four states a
- * merchant can be in and can be told apart.
- *
- * Four of them, not two, and the two in the middle are what this shape exists
- * for. A merchant presses Connect, approves in their own shop, and their shop
- * then posts the keys to us from its own server — a request that can simply
- * not arrive, and when it does not, our rows look no different from a merchant
- * who never pressed the button. "Not connected" would cover both "you have not
- * tried" and "you tried and nothing came", and those have different next
- * moves: one is press the button, the other is wait, and then press it again.
- *
- * What the rows do not say is why nothing came. A merchant who declined in
- * their shop, one who closed its screen, and one whose shop tried to post and
- * failed all leave the same nothing here, so the third state names none of
- * them: the one thing it knows is that no keys arrived in the time we hold a
- * Connect open.
- *
- * The clock is read before this is built, not after, so that both screens draw
- * one answer rather than each doing its own arithmetic on a row.
+ * "Not connected" would cover both "you have not tried" and "you tried and
+ * nothing came", and the next moves differ: press the button, or wait and then
+ * press again. The rows do not say why nothing came (declined, screen closed,
+ * or a failed post all look the same), so that state names no cause. The clock
+ * is read before this is built, so every screen draws one answer.
  */
 export type ShopState =
-  /** The keys arrived. This is the only state in which anything can be sold. */
+  /** The only state in which anything can be sold. */
   | { readonly kind: "connected"; readonly shop: ConnectedShop }
-  /** Approved or not, the fifteen minutes are still running. Wait, or reload. */
+  /** The fifteen minutes are still running, approved or not. */
   | {
       readonly kind: "waiting";
       readonly shopUrl: string;
       readonly startedMinutesAgo: number;
     }
-  /** The fifteen minutes ran out with no keys written down here. Why is not known here. */
+  /** The fifteen minutes ran out with no keys here; why is not known. */
   | { readonly kind: "unanswered"; readonly shopUrl: string }
-  /** Nothing was ever started. */
   | { readonly kind: "none" };
 
 /**
- * What the settings block is drawn from: where the channel is, or that where
- * it is could not be read just now.
- *
- * The fifth case is a state of what we know, not of the channel, and it stays
- * out of `ShopState` because the shop screen is never drawn without a read. A
- * read that fails there is the page failing, and a type that let the shop
- * screen be handed "unread" would be a state it has no honest sentence for.
- * The integrations screen is different: its other subject is the SDK, and our
- * own shops table being down must not stand between a merchant and the guide
- * and the key for that. So the block is drawn with the fifth case, saying so, rather than
- * dropped — a block that simply vanishes reads as "no shop is connected" to a
- * merchant who connected one yesterday, and "I don't know" has to be
- * distinguishable from "there is none".
+ * `unread` is a state of what we know, not of the channel, and stays out of
+ * `ShopState` because the shop screen is never drawn without a read. The
+ * integrations screen also serves the SDK, so it draws this case and says so: a
+ * block that vanished would read as "no shop is connected" to a merchant who
+ * connected one, and "I don't know" must be distinguishable from "there is
+ * none".
  */
 export type ShopTile = ShopState | { readonly kind: "unread" };
 
-/** What the page is drawn from: where the channel is, and anything just refused. */
 export interface WooView {
-  /** Where this account's channel has got to, read off our own rows. */
+  /** Read off our own rows. */
   readonly state: ShopState;
-  /** What the merchant has yet to set, as the gateway answered when the page was drawn. */
+  /** As the gateway answered when the page was drawn. */
   readonly unset?: readonly Unset[];
   /**
-   * What a press of Import was refused for, where this page is the answer to
-   * one: what was unset at that moment, before the shop was read.
+   * Where this page answers a press of Import: what was unset at that moment,
+   * before the shop was read.
    */
   readonly refused?: readonly Unset[];
-  /** What was wrong with what the merchant just typed, where anything was. */
   readonly problem?: string;
-  /** What they typed, so a refusal leaves the box as they left it. */
+  /** So a refusal leaves the box as they left it. */
   readonly typed?: string;
   /**
-   * Whether the browser reached this page through the return address.
-   *
-   * That is the whole of what it means. The return route sets it for any
-   * browser with a session, whatever query it carried or none, so a merchant
-   * who typed the address in sets it as surely as a shop that sent them — and
-   * a real return sets it only where the cookie travels (ADR-0026 §2). It changes
-   * what the page says and nothing about what it claims: the state above is
-   * read off our own rows either way.
+   * Set by the return route for any browser with a session, whatever query it
+   * carried, so typing the address in sets it too. It changes what the page
+   * says, never what it claims: the state is read off our rows either way.
    */
   readonly cameBack?: boolean;
 }
 
-/** How long ago a Connect was pressed, as a merchant would say it. */
 const minutesAgo = (minutes: number): string =>
   minutes < 1 ? "less than a minute ago" : `${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
 
 /**
- * The two sentences a Connect that produced no keys is worth.
- *
- * They are two and not one because the merchant's move differs. Inside the
- * fifteen minutes the answer is to wait. Past them the request is not coming
- * on this Connect — a post arriving now would meet an expired token and be
- * refused — and the answer is to press Connect again.
- *
- * Neither sentence names a cause, because none is known here. Past the
- * fifteen minutes there are three ways it can have gone: the merchant
- * declined, and their shop sent the browser back with nothing posted; they
- * closed the shop's screen; or they approved and the shop's post to us
- * failed. The rows hold the same nothing in all three, and "your shop could
- * not reach us", which the second sentence once said, was the third guess
- * presented as the fact — it sent a merchant who had declined off to repair a
- * firewall that was fine. What the sentence may say is the one thing that is
- * WooCommerce's own behaviour rather than a guess about the merchant's
- * network: a shop whose post fails, or whose post our own door refuses, shows
- * the merchant an error on its own screen and deletes the key it minted
- * (`class-wc-auth.php`, `post_consumer_data` and `maybe_delete_key`). So a
- * merchant who saw an error there was stopped at the post, and one who was
- * sent back here, or who closed the page, never sent anything. What the
- * error says is not promised: on a post our door refused, WooCommerce's
- * message names nothing.
+ * Two sentences because the move differs: inside the fifteen minutes, wait;
+ * past them a post would meet an expired token, so press Connect again. Neither
+ * names a cause, because the rows hold the same nothing whether the merchant
+ * declined, closed the screen, or approved and the shop's post failed. What may
+ * be said is WooCommerce's own behaviour: a shop whose post fails or is refused
+ * shows an error on its own screen and deletes the key it minted
+ * (`class-wc-auth.php`, `post_consumer_data` and `maybe_delete_key`). What that
+ * error says is not promised.
  */
 const noKeysYet = (state: ShopState, action = ""): string => {
   if (state.kind === "waiting") {
@@ -169,19 +108,12 @@ ${action}
 };
 
 /**
- * What a supported product is, said once on the origin.
- *
- * It was said three times — here, in the import form beside it, and again in
- * the settings block on another screen — which is three copies of one rule and
- * two of them free to go stale. This is the copy that stays, because this is
- * the page the Connect and the Import are on; the integrations block links here.
- * There is no WooCommerce page in the portal and this pass does not make one:
- * the connector is experimental and is not the acceptance gate for anything.
+ * Said once, here, where Connect and Import are; the integrations block links
+ * here.
  */
 const WHAT_CONNECTING_DOES = `<p>This experimental WooCommerce connector currently works in test mode only. It imports published simple products priced in USD, with no stock management, from a shop whose tax calculation is turned off, in two narrow configurations. A virtual download with one protected file and unlimited downloads is handed to the agent once it is paid for. A physical product, neither virtual nor downloadable, is sold as a parcel: the agent pays its price plus your shop's own cheapest shipping rate to the buyer's place, and your shop gets a paid order carrying the buyer's shipping address.</p>
   <p class="quiet">Connecting gives Agentify access to your shop, and importing publishes supported products as cards. You approve access in WooCommerce; Agentify never asks for your shop password.</p>`;
 
-/** The page a merchant connects from, and comes back to. */
 export const wooScreen = (viewer: Viewer, view: WooView): string => {
   const { base } = viewer;
   const body = `
@@ -198,7 +130,7 @@ ${view.cameBack === true && view.state.kind === "connected" ? KEYS_ARRIVED : ""}
     : `${noKeysYet(
         view.state,
         // Only the wait has a next step of its own; a Connect that ran out is
-        // answered by the form right under it.
+        // answered by the form below it.
         view.state.kind === "waiting"
           ? `    <div class="connect-actions"><a class="button button-secondary" href="${escaped(base)}/woocommerce">Check again</a></div>`
           : "",
@@ -219,21 +151,10 @@ ${view.cameBack === true && view.state.kind === "connected" ? KEYS_ARRIVED : ""}
 };
 
 /**
- * What the page adds when the browser came through the return address and the
- * keys are here: the sentence a merchant went out to their shop for.
- *
- * It is drawn off the row, never off the redirect. WooCommerce puts
- * `success=1` or `success=0` on its redirect and the return route reads
- * neither, so nothing here knows what the shop said, and a merchant signed in
- * on this browser reaches this page by typing the address in as surely as by
- * being sent. In every other state the arrival adds nothing. "Your shop says
- * it approved", which the page once said there, was the redirect's claim
- * presented as read — drawn over a redirect saying `success=0` and over no
- * redirect at all — and its honest replacement, "your browser arrived through
- * the return address", was a sentence the page had to disclaim in the next
- * one, and said nothing the block below does not. That block is drawn off our
- * rows and is the same sentence on a reload and on the integrations screen, so
- * what a merchant reads on coming back is what they read tomorrow.
+ * Drawn off the row, never off the redirect: the return route reads neither
+ * `success=1` nor `success=0`, and a signed-in merchant reaches this page by
+ * typing the address as surely as by being sent. What a merchant reads on
+ * coming back is what the block below says on a reload or tomorrow.
  */
 const KEYS_ARRIVED = `  <div class="callout done">
     <div class="what">Your shop is connected: the keys came directly from its server.</div>
@@ -241,30 +162,15 @@ const KEYS_ARRIVED = `  <div class="callout done">
 `;
 
 /**
- * What the return address answers a browser that arrives carrying no session.
+ * The session cookie is `SameSite=Lax`, so a signed-in browser coming back from
+ * its shop is sent on into the dashboard before this is drawn. What arrives
+ * here came back without a session (it ended meanwhile, or the shop was opened
+ * in another browser), and a sign-in form here would read as a failed connect.
  *
- * The session cookie is `SameSite=Lax` (ADR-0026 §2), so the navigation back
- * from the merchant's own shop carries it, and a signed-in browser is sent on
- * into the dashboard before this is drawn. What arrives here is a browser that
- * came back without one: the session ended while the merchant was in their
- * shop, or the shop was opened in another browser. Behind the sign-in gate
- * that ends a working flow on a sign-in form, and a merchant reads the form as
- * the connect having failed — which is what happened, twice, when this flow
- * was walked by hand while the cookie was still `Strict`.
- *
- * So the page is drawn for anybody, and every word of it is chosen so that
- * anybody may read it. It says what this address is for, which is true of the
- * address rather than of the visitor; it does not say that a connection
- * happened, because for whoever typed the address in by hand none did, and
- * because what the shop's `success=1` claims is not something we have seen. It
- * names no account, no shop and no key, and the same page is served whether
- * this dashboard holds a connection or holds nothing — a stranger who walks up to
- * this address learns that the address exists, and that is all there is here to
- * learn.
- *
- * The next click goes to the dashboard, whose ordinary sign-in gate meets a
- * browser without a session. The page does not ask for another email or
- * interpret the untrusted redirect query.
+ * So the page is for anybody and every word may be read by anybody: it says
+ * what this address is for, not that a connection happened, names no account,
+ * shop or key, and is the same whatever this dashboard holds. It asks for no
+ * email and does not interpret the untrusted redirect query.
  */
 export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
   bare(
@@ -283,7 +189,6 @@ export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
     null,
   );
 
-/** The box the shop's address is typed into. */
 const theForm = (base: string, view: WooView): string => `  <div class="lede">
     <div>
       <h2>Connect your shop</h2>
@@ -302,13 +207,9 @@ const theForm = (base: string, view: WooView): string => `  <div class="lede">
 `;
 
 /**
- * What a connected shop looks like, and the two things to do with it.
- *
- * The refusal is drawn here as well as in the form next door, and the two are
- * not one line in one place because they are about different things. On the
- * form it is about what somebody just typed; here it is about what the shop
- * answered when we went to read it, and there is no box on this page for it to
- * sit under.
+ * The refusal is drawn here as well as on the form because it is about
+ * something different: what the shop answered when we read it, not what was
+ * just typed.
  */
 const theConnection = (
   base: string,
@@ -347,23 +248,13 @@ const theConnection = (
 `;
 
 /**
- * What stands between this merchant and any card an import could publish,
- * said beside the button that would otherwise find out card by card.
- *
- * The publish door refuses every card of a merchant who has not set these, and
- * its sentence ends by naming an API route, which is right for an engineer
- * holding a response and means nothing to a merchant who connected a shop and
- * wrote no code. So the line names the thing as the settings screen names it
- * and links there. It is drawn before the press as well as after it, so the
- * merchant can learn it without pressing; after a refused press it says that
- * nothing was imported, and names what was unset at that moment rather than at
- * the redraw. Only that answer is an alert: the same line on the page before
- * the press is a standing notice, and a screen reader announcing it on every
- * visit would make the one announcement that matters indistinguishable.
- *
- * The connector is not offered on the live channel, so the operator's
- * approval, which only that channel asks for, is never what stands in the way
- * here.
+ * The gateway refuses every card of a merchant who has not set these, in a
+ * sentence naming an API route, which means nothing to a merchant with no code.
+ * So the line names the setting as Settings does and links there, before the
+ * press as well as after. After a refused press it says nothing was imported
+ * and names what was unset at that moment. Only that answer is an alert; a
+ * standing notice announced on every visit would drown it. The connector is not
+ * offered on live, so the operator's approval never stands in the way here.
  */
 const beforeImporting = (base: string, view: WooView): string => {
   const refused = view.refused ?? [];
@@ -378,39 +269,34 @@ const beforeImporting = (base: string, view: WooView): string => {
     : `<p class="problem">Import publishes nothing until you set ${what} in ${settings}.</p>`;
 };
 
-/** A product an import sent through the publish door, named as the shop names it. */
 interface Sent {
-  /** The shop's own identifier for the product. */
+  /** The shop's own identifier. */
   readonly id: string;
-  /** The product's name in the shop. */
   readonly title: string;
 }
 
-/** The door took it: our catalogue identifier for the card. */
+/** Our catalogue identifier for the card. */
 interface Published extends Sent {
   readonly published: string;
 }
 
-/** The door refused it: what it said, word for word, one finding per field. */
+/** Word for word, one finding per field. */
 interface Refused extends Sent {
   readonly problems: readonly string[];
 }
 
-/** The door never answered about it: what came back instead of an answer. */
+/** What came back instead of an answer. */
 interface Unanswered extends Sent {
   readonly failed: string;
 }
 
-/** Import stopped before this product was sent through the publish door. */
 interface NotAttempted extends Sent {
   readonly notAttempted: true;
 }
 
 /**
- * What came of one product sent through the publish door: one of three, and
- * never none of them. The third is the one a merchant cannot repair in their
- * shop, and it is a shape of its own so that no screen can fold it into the
- * one they can.
+ * A product the publish step never answered about is a shape of its own, so no
+ * screen can fold it into the refusals a merchant can repair in their shop.
  */
 export type ImportOutcome = Published | Refused | Unanswered | NotAttempted;
 
@@ -421,16 +307,9 @@ export interface ImportView {
 }
 
 /**
- * What an import came to, answered as a page rather than as a redirect.
- *
- * The one screen in this dashboard besides the new-key page that answers a form
- * post with a page, and for the same kind of reason: a redirect can carry a
- * flag and this has to carry a list. Every refusal here is the publish door's
- * own sentence about one field of one card, which is the only thing that tells
- * a merchant what to go and change in their shop — folded into "some cards were
- * refused" it would be a page saying something went wrong and nothing else.
- * And a product the door never answered about is listed apart from those,
- * because its next move is not in the shop at all.
+ * Answered with a page rather than a redirect, because it has to carry a list:
+ * each refusal is the publish step's own sentence about one field of one card,
+ * the only thing that tells a merchant what to change in their shop.
  */
 export const wooImportScreen = (viewer: Viewer, view: ImportView): string => {
   const went = view.outcomes.filter((one): one is Published => "published" in one);
@@ -463,7 +342,7 @@ ${went.length === 0 ? "" : publishedBlock(went)}${refused.length === 0 ? "" : re
   });
 };
 
-/** One line of counts, written so that none of the four is hidden. */
+/** None of the four counts is hidden. */
 const summaryOf = (
   published: number,
   refused: number,
@@ -482,12 +361,9 @@ const summaryOf = (
 };
 
 /**
- * The cards the door took, named for what the door did and not for what it
- * did not. The answer to a publish carries the catalogue identifier and
- * nothing about selling, and a card the merchant paused stays paused through a
- * publish — so "on sale" here would be this page's guess, made over the one
- * card a merchant went out of their way to hold back. Where the selling state
- * is drawn is the cards screen, and the line under the heading says so.
+ * Named for what publishing did and no more: its answer says nothing about
+ * selling, and a card the merchant paused stays paused, so "on sale" would be a
+ * guess. The cards screen draws the selling state, and the heading says so.
  */
 const publishedBlock = (outcomes: readonly Published[]): string => `  <div class="lede">
     <div>
@@ -504,12 +380,8 @@ const publishedBlock = (outcomes: readonly Published[]): string => `  <div class
 `;
 
 /**
- * The cards the door refused, with its own words under each one.
- *
- * Word for word, and not summarised. What the merchant does next is go into
- * their shop and change the thing named — a description over five hundred
- * characters, a title the catalogue will not carry — and a paraphrase of ours
- * would be a second description of a rule that already has one.
+ * Word for word: the merchant's next move is to change the named thing in their
+ * shop, and a paraphrase would be a second description of a rule that has one.
  */
 const refusedBlock = (outcomes: readonly Refused[]): string => `  <div class="lede">
     <div>
@@ -529,17 +401,11 @@ const refusedBlock = (outcomes: readonly Refused[]): string => `  <div class="le
 `;
 
 /**
- * The products the door never answered about, apart from the ones it refused.
- *
- * A refusal is a sentence about a field of the product, and the merchant's
- * next move is in their shop. These are not that: the product may be perfect
- * for all anybody knows, because nobody read it — the gateway was not there,
- * or answered with something that is not its answer to a publish, a refusal
- * of the key among them — and no move in the shop helps. Folded into the list
- * above, this page sent a merchant to edit a product nobody had read. The
- * line printed under each product says "the gateway", which to a WooCommerce
- * merchant is the payment plugin on their own Payments tab, so the paragraph
- * binds the word before the line is read.
+ * Nobody read these products (the gateway was unreachable or answered with
+ * something else, a refused key among them), so no edit in the shop helps and
+ * they are listed apart from the refusals. "The gateway" means the WooCommerce
+ * payment plugin to a WooCommerce merchant, so the paragraph defines the word
+ * before the lines use it.
  */
 const unansweredBlock = (outcomes: readonly Unanswered[]): string => `  <div class="lede">
     <div>
@@ -572,12 +438,9 @@ const notAttemptedBlock = (outcomes: readonly NotAttempted[]): string => `  <div
 `;
 
 /**
- * The products that never became a card at all.
- *
- * A different list from the one above and deliberately not folded into it. A
- * refused card is a product we could describe and our own door would not take;
- * these are products this dashboard could not read as a card in the first place,
- * and the merchant's move is different in each case.
+ * Not folded into the refused list: those are products the gateway would not
+ * take, these are products that could not be read as a card at all, and the
+ * merchant's move differs.
  */
 const skippedBlock = (skipped: readonly SkippedProduct[]): string => `  <div class="lede">
     <div>
@@ -594,34 +457,16 @@ const skippedBlock = (skipped: readonly SkippedProduct[]): string => `  <div cla
 `;
 
 /**
- * The block on the integrations screen that says where the channel has got to.
- *
- * It draws the state rather than a standing invitation, and that is the whole
- * of why it reads rows. A merchant comes back from approving in their own shop,
- * opens Integrations, and finds out there whether it took; a block that says
- * "connect a WooCommerce shop" over a shop that is already connected is not
- * merely out of date, it is this page telling them the Connect failed and
- * sending them round the loop again.
- *
- * The same four states as the shop screen and the same sentences for the two
- * that are neither connected nor nothing, because this is the screen a merchant
- * looks at after being sent here from the return page, and being told two
- * different things by two pages about one row is worse than being told nothing.
- * What a merchant does about any of it — the import, the disconnect, the form
- * that starts another Connect — is on the shop screen, and this block is the
- * way in from all four. The fifth case, `unread`, is this screen's alone: the
- * rows could not be read just now, and the block says so rather than going
- * away, because a block that vanishes reads as "no shop is connected".
- *
- * A shop that granted less than read and write is said here too, for the same
- * reason the third state exists: that channel cannot deliver a single order,
- * and a line reading only "connected" over it is this page being reassuring
- * about something that is broken.
+ * Draws the state rather than a standing invitation: "connect a WooCommerce
+ * shop" over a connected shop would tell a merchant their Connect failed. The
+ * same states and sentences as the shop screen, since two pages saying
+ * different things about one row is worse than saying nothing; every action is
+ * on the shop screen. `unread` is this screen's alone. A grant less than read
+ * and write is said too: that channel cannot deliver a single order.
  */
 export const wooSettingsBlock = (base: string, state: ShopTile): string => {
-  // The unread state is the one with no link to the shop screen. That page
-  // needs the same read and would answer with an error page, so a link would
-  // be the integrations screen offering something that cannot be drawn.
+  // No link to the shop screen when unread: that page needs the same read and
+  // would answer with an error.
   const said =
     state.kind === "unread"
       ? `<p>Whether a shop is connected to this account could not be read just now.</p>

@@ -1,9 +1,7 @@
 /**
- * The production approval seam over the real dashboard and gateway tables.
- *
- * This file owns a database no other suite uses. It proves the targeted
- * dashboard lookup and the gateway's atomic one-way grant compose through one
- * pool, including preservation of the first timestamp on a repeated command.
+ * Uses a database no other suite uses. The dashboard lookup and the gateway's
+ * atomic one-way grant run through one pool, and a repeated command keeps the
+ * first timestamp.
  */
 
 import { spawnSync } from "node:child_process";
