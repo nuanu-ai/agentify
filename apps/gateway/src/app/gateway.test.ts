@@ -4,6 +4,7 @@ import {
   CARD_REJECTED,
   CatalogPageSchema,
   PublishResultSchema,
+  ReceiptSchema,
   WorkerPollResponseSchema,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -2734,8 +2735,11 @@ describe("the merchant's list of orders", () => {
 
 describe("the test mark on an order and its receipt", () => {
   /** One whole synchronous sale on a gateway configured this way. */
-  const soldOn = async (overrides: Record<string, string>) => {
+  const soldOn = async (overrides: Record<string, string>, transaction?: string) => {
     const harnessed = await started(overrides);
+    if (transaction !== undefined) {
+      harnessed.facilitator.willSettle({ settled: true, transaction });
+    }
     const itemId = await published(harnessed, syncCard);
 
     const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
@@ -2762,6 +2766,16 @@ describe("the test mark on an order and its receipt", () => {
     const sold = await soldOn({ PAYMENT_NETWORK: "eip155:84532" });
 
     expect(sold.receipt?.transaction).toBe("0xtx1");
+  });
+
+  it("leaves the transfer off a receipt where the payment layer named it with nothing", async () => {
+    // A receipt the contract refuses would break the merchant's whole list of
+    // receipts, not just this one.
+    const sold = await soldOn({ PAYMENT_NETWORK: "eip155:84532" }, " ");
+
+    expect(sold.receipt).not.toBeNull();
+    expect(ReceiptSchema.safeParse(sold.receipt).success).toBe(true);
+    expect(sold.receipt?.transaction).toBeUndefined();
   });
 
   it("is true on a test environment", async () => {
