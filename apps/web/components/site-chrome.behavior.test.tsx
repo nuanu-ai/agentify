@@ -67,6 +67,27 @@ describe("the header's doors", () => {
     expect(container.querySelector('form[action="/dashboard/sign-out"]')).toBeNull();
   });
 
+  it("says it cannot tell who is visiting when the answer is not one it knows", async () => {
+    for (const body of [
+      { status: "signed_in", operator: false },
+      { status: "signed_in", email: "", operator: false },
+      { status: "signed_in", email: "owner@example.com", operator: "no" },
+      { status: "somebody" },
+      null,
+    ]) {
+      visitorIs(200, body);
+      const { container } = render(<SiteDoors />);
+
+      expect(
+        await screen.findByText(/cannot tell who is visiting/i),
+        JSON.stringify(body),
+      ).toBeTruthy();
+      expect(container.querySelector('form[action="/dashboard/sign-out"]')).toBeNull();
+      vi.restoreAllMocks();
+      cleanup();
+    }
+  });
+
   it("says the same when the question itself fails on the way", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
 

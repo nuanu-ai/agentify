@@ -47,6 +47,31 @@ describe("pending scan browser handoff", () => {
     expect(storage.getItem(PENDING_SCAN_STORAGE_KEY)).toBeNull();
   });
 
+  it("keeps the address it was given without the spaces around it", () => {
+    const storage = new MemoryStorage();
+    savePendingScan(storage, { ...request, url: "  example.com  " });
+    expect(readPendingScan(storage)?.url).toBe("example.com");
+  });
+
+  it.each([
+    ["a segment the product does not know", { segment: "wholesale" }],
+    ["an empty address", { url: "   " }],
+    ["an address longer than a scan takes", { url: `example.com/${"a".repeat(2048)}` }],
+    ["no variant", { variant: "" }],
+    ["an idempotency key too short to be one", { idempotencyKey: "short" }],
+    ["a landing path that is not a path", { landingPath: "https://elsewhere.example/" }],
+    ["a field the hand-off never writes", { extra: "x" }],
+    ["a field of the wrong kind", { landingSearch: 5 }],
+  ])("refuses to keep a request with %s, and reads none back", (_case, change) => {
+    const storage = new MemoryStorage();
+    expect(() =>
+      savePendingScan(storage, { ...request, ...change } as PendingScanRequest),
+    ).toThrow();
+    storage.setItem(PENDING_SCAN_STORAGE_KEY, JSON.stringify({ ...request, ...change }));
+    expect(readPendingScan(storage)).toBeNull();
+    expect(storage.getItem(PENDING_SCAN_STORAGE_KEY)).toBeNull();
+  });
+
   it("clears the request after the server accepts it", () => {
     const storage = new MemoryStorage();
     savePendingScan(storage, request);
