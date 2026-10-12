@@ -12,7 +12,7 @@ const LEVELS: PublicShareSnapshot["level"][] = [
 ];
 
 // Words that would be either an unsupportable promise or a false certification
-// claim. The provocative tone must never cross into these (brand §11 + truth).
+// claim. The provocative tone must never cross into these.
 const FORBIDDEN = /guarantee|ranking|\btraffic\b|\bsales\b|#1|in chatgpt/i;
 
 function snap(overrides: Partial<PublicShareSnapshot> = {}): PublicShareSnapshot {

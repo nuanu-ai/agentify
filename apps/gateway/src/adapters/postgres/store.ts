@@ -1,22 +1,12 @@
 /**
- * The store, on one Postgres, through drizzle (ADR-0003 §6).
+ * The store, on one Postgres, through drizzle. `withOrder` holds an order with
+ * a row lock (`select ... for update`) inside a transaction, so two events
+ * about one order queue up instead of racing; different orders never wait for
+ * each other.
  *
- * It keeps the same promises the in-memory adapter does, and one of them is the
- * only reason this is not a set of four queries. `withOrder` holds an order
- * still while a decision is made about it, and here that hold is a row lock
- * inside a transaction — `select ... for update` — so two events about one
- * order queue up in the database rather than racing through it. The in-memory
- * adapter gets the same guarantee from a chain of promises, which is what the
- * same thing looks like in one process.
- *
- * The hold is per order and not over the table: two different orders never wait
- * for each other, because two different rows are two different locks.
- *
- * The scoping is the other thing worth reading before a query here is changed.
- * Every read a merchant makes carries `merchant_id` in its predicate, so a row
- * belonging to somebody else is not filtered out after the fact — it is never
- * selected, which is also what makes "not yours" and "not there" the same
- * answer from where the caller stands.
+ * Every read a merchant makes carries `merchant_id` in its predicate, so
+ * another merchant's row is never selected, and "not yours" and "not there"
+ * are the same answer.
  */
 
 import { isOpen, MERCHANT_SELLING, type MerchantSelling } from "@agentify/core";
@@ -49,15 +39,9 @@ import { cards, merchantKeys, merchants, orders, paymentClaims, receipts } from 
 
 /**
  * How an envelope that has to be written with an order gets onto a merchant's
- * stream (ADR-0013).
- *
- * Two calls rather than one, and the second is not an afterthought. `within`
- * writes the job as part of the transaction the order is being written in, so
- * the two commit or roll back together; nothing can see that job until the
- * commit, a poll parked in this process included. `committed` is what tells
- * those parked polls to look again, and it runs after the transaction has
- * actually committed — woken any earlier they would fetch, find nothing, and
- * have spent the wake that ADR-0004 §4 exists to give them.
+ * stream. `within` writes the job in the order's transaction, so the two
+ * commit or roll back together; `committed` wakes parked polls only after the
+ * commit, since before it they would find nothing.
  */
 export interface Envelopes {
   within(
@@ -67,9 +51,8 @@ export interface Envelopes {
     afterMs?: number,
   ): Promise<void>;
   /**
-   * Deletes the envelopes on a merchant's stream that carry a parcel's address
-   * (ADR-0032) as part of the same transaction, so the order that says the
-   * address was erased and the queue that no longer holds it commit together.
+   * Deletes the envelopes that carry a parcel's address in the same
+   * transaction as the order recording the erasure, so the two commit together.
    */
   forgetWithin(
     tx: DrizzleTransactionLike,
@@ -77,16 +60,12 @@ export interface Envelopes {
     orderId: string,
     priceQuestion: string | null,
   ): Promise<void>;
-  /** The transaction those envelopes were written in has committed. */
   committed(merchantIds: readonly string[]): void;
 }
 
 /**
- * The answer for a store that was built without one.
- *
- * The command-line verbs make a store to list merchants and issue keys with,
- * and none of them writes an order. Refusing out loud is the alternative to a
- * store that quietly drops a merchant's work.
+ * For a store that writes no orders, such as the command-line verbs'. It
+ * refuses out loud rather than dropping a merchant's work.
  */
 export const noEnvelopes: Envelopes = {
   async within(_tx, _merchantId, envelope) {
@@ -102,21 +81,12 @@ export const noEnvelopes: Envelopes = {
   committed() {},
 };
 
-/**
- * Somewhere a statement can be run: the pool, or a transaction on it. Drizzle
- * hands the two the same query builder, and the difference is the only thing
- * this file cares about.
- */
+/** Somewhere a statement can be run: the pool, or a transaction on it. */
 type Queries = NodePgDatabase | Parameters<Parameters<NodePgDatabase["transaction"]>[0]>[0];
 
 /**
- * The drizzle handle together with the pool it was built over, which is what
- * `drizzle(pool)` hands back.
- *
- * The pool is named in the type because one method needs a connection it can
- * keep rather than a statement it can run: a session-level advisory lock
- * belongs to the session that took it, and a pool would hand the unlock to a
- * different one.
+ * The drizzle handle together with its pool. The pool is needed because a
+ * session-level advisory lock must be released on the connection that took it.
  */
 export type Database = NodePgDatabase & { readonly $client: Pool };
 
@@ -126,10 +96,8 @@ export class PostgresStore implements Store {
   readonly #envelopes: Envelopes;
 
   /**
-   * A store on this database, and the one way to make one: a failure of the
-   * database leaves it without the values bound to the statement
-   * (`database-failure.ts`, ADR-0032). A constructor anybody could call would
-   * be a store that forgot to.
+   * The only way to make a store: database failures leave it stripped of the
+   * values bound to the statement (`database-failure.ts`).
    */
   static over(db: Database, ids: Ids, envelopes: Envelopes = noEnvelopes): PostgresStore {
     return failingWithoutValues(new PostgresStore(db, ids, envelopes), "the store");
@@ -147,7 +115,6 @@ export class PostgresStore implements Store {
     merchant: { readonly id: string; readonly name: string },
     at: number,
   ): Promise<StoredMerchant | null> {
-    // A merchant nobody has paused is selling, which is what a new row says.
     const [row] = await this.#db
       .insert(merchants)
       .values({
@@ -159,9 +126,7 @@ export class PostgresStore implements Store {
       })
       .onConflictDoNothing({ target: merchants.id })
       .returning();
-    // Nothing came back: the identifier is taken, and this wrote nothing over
-    // whatever was there. The sandbox's seed at its second start is one way to
-    // get here; a generated identifier colliding is the other.
+    // Nothing came back: the identifier is taken and nothing was overwritten.
     return row === undefined ? null : storedMerchantOf(row);
   }
 
@@ -174,9 +139,8 @@ export class PostgresStore implements Store {
     id: string,
     at: number,
   ): Promise<{ merchant: StoredMerchant; changed: boolean } | null> {
-    // The predicate and write are one statement. Two operators arriving
-    // together cannot both replace the instant: one writes, and the other sees
-    // no row to update after the first commits.
+    // One statement, so two operators granting at once cannot both replace
+    // the instant.
     const [granted] = await this.#db
       .update(merchants)
       .set({ liveApprovedAt: new Date(at) })
@@ -186,9 +150,8 @@ export class PostgresStore implements Store {
       return { merchant: storedMerchantOf(granted), changed: true };
     }
 
-    // Distinguishes an idempotent repeat from a merchant that is not there.
-    // `updated_at` is absent from both writes on purpose: this grant has its
-    // own immutable instant and changes no merchant-owned setting.
+    // Tells a repeat from a missing merchant. `updated_at` is deliberately not
+    // written: the grant has its own instant and changes no merchant setting.
     const existing = await this.merchantById(id);
     return existing === null ? null : { merchant: existing, changed: false };
   }
@@ -226,10 +189,9 @@ export class PostgresStore implements Store {
     next: StoredPayoutWallet & { readonly address: string },
     at: number,
   ): Promise<StoredMerchant | "moved" | null> {
-    // One statement: the comparison and the write are the database's single
-    // act, so two changes read from one row cannot both be recorded. Compared
-    // with `is not distinct from` because "none" is one of the values being
-    // compared, and `=` against a null answers nothing.
+    // Compare and write in one statement, so two changes read from one row
+    // cannot both be recorded. `is not distinct from`, because `=` against a
+    // null answers nothing.
     const [row] = await this.#db
       .update(merchants)
       .set({
@@ -253,8 +215,7 @@ export class PostgresStore implements Store {
     if (row !== undefined) {
       return storedMerchantOf(row);
     }
-    // Nothing matched: either the row holds something else by now, or there is
-    // no such merchant. The caller answers the two differently.
+    // Nothing matched: the row has moved, or there is no such merchant.
     return (await this.merchantById(id)) === null ? null : "moved";
   }
 
@@ -267,23 +228,12 @@ export class PostgresStore implements Store {
     },
     at: number,
   ): Promise<StoredKey> {
-    // A key naming a merchant that is not there is refused by the foreign key
-    // rather than written: a key that opens a door onto nothing is worse than
-    // a command that failed.
+    // The two uniqueness rules are told apart by name: a taken identifier is
+    // our generator colliding, a taken digest is the same secret written
+    // twice by racing writers.
     //
-    // The two uniqueness rules are answered one at a time and by name, because
-    // they are two different things to have gone wrong. An identifier already
-    // taken is our own generator having collided, which is a defect in us. A
-    // digest already taken is the same secret being written twice, which is
-    // what the command that issues keys asks `keyByDigest` about before it
-    // writes — and this is the rule standing behind that check when two writes
-    // race.
-    //
-    // Nothing thrown from here carries the digest, and that is the point rather
-    // than a nicety. The driver's own refusal holds it twice — among the bound
-    // parameters of the statement, and in the detail line naming the value that
-    // clashed — so passing that error along, or hanging it on one of ours as a
-    // cause, publishes the secret the first time two writes collide.
+    // Never rethrow or wrap the driver's error here: it carries the digest in
+    // its parameters and its detail line.
     let row: typeof merchantKeys.$inferSelect | undefined;
     try {
       [row] = await this.#db
@@ -317,14 +267,9 @@ export class PostgresStore implements Store {
   }
 
   async noteKeyUse(id: string, at: number): Promise<void> {
-    // One statement, and the rule about going backwards is in its predicate
-    // rather than in a read followed by a write. Two gateways write this from
-    // two clocks and neither waits for the other, so a read here would be a
-    // window in which the newer instant lands and is then written over by the
-    // older one — which is the failure this is for, arrived at more slowly.
-    //
-    // A key that is not there matches nothing and that is the answer: it went
-    // with its merchant between the door reading it and this being sent.
+    // Never-backwards is in the predicate, not a read then a write: two
+    // gateways with two clocks write this without waiting for each other. A
+    // key that is gone matches nothing, which is fine.
     await this.#db
       .update(merchantKeys)
       .set({ lastUsedAt: new Date(at) })
@@ -337,9 +282,8 @@ export class PostgresStore implements Store {
   }
 
   async workingKey(digest: string): Promise<StoredKey | null> {
-    // The disabled ones are excluded in the predicate rather than read back and
-    // checked, so there is one answer and one shape of answer for every key
-    // that does not open the door — never issued and revoked alike.
+    // Disabled keys are excluded in the predicate, so a revoked key and one
+    // never issued get the same answer.
     const [row] = await this.#db
       .select()
       .from(merchantKeys)
@@ -358,12 +302,8 @@ export class PostgresStore implements Store {
   }
 
   async keysOf(merchantId: string): Promise<readonly StoredKey[]> {
-    // Oldest first, and the identifier settles a tie. Without the second column
-    // two keys stamped in the same millisecond come back in whatever order the
-    // planner chose that time, which is a merchant's list of keys reordering
-    // itself between two visits with nothing having changed — and it is what
-    // makes an assertion about this list pass in memory and fail against a
-    // database.
+    // The identifier breaks ties, so keys made in the same millisecond keep a
+    // stable order.
     const rows = await this.#db
       .select()
       .from(merchantKeys)
@@ -375,9 +315,7 @@ export class PostgresStore implements Store {
   async disableKey(id: string, at: number): Promise<StoredKey | null> {
     const [row] = await this.#db
       .update(merchantKeys)
-      // The first revocation is the true one. Written as a plain assignment, a
-      // second run of the command would move the instant somebody is
-      // reconstructing an incident from.
+      // The first revocation instant is kept; a second run must not move it.
       .set({ disabledAt: revokedAt(at) })
       .where(eq(merchantKeys.id, id))
       .returning();
@@ -385,11 +323,8 @@ export class PostgresStore implements Store {
   }
 
   async disableKeyOf(merchantId: string, id: string, at: number): Promise<StoredKey | null> {
-    // The merchant is in the predicate, so a key this call may not touch is
-    // never selected rather than selected and then refused — which is what
-    // makes "not yours" and "not there" one answer from where the caller
-    // stands, and leaves no window between finding out whose the key is and
-    // writing to it.
+    // The merchant is in the predicate: another merchant's key is answered as
+    // missing, with no window between checking ownership and writing.
     const [row] = await this.#db
       .update(merchantKeys)
       .set({ disabledAt: revokedAt(at) })
@@ -406,10 +341,8 @@ export class PostgresStore implements Store {
     at: number,
     integration: Integration = "api",
   ): Promise<StoredCard> {
-    // Republishing under the same merchant key changes the card that is there.
-    // The insert names the identifier it would use, and the conflict clause is
-    // what keeps the existing one instead — so a card that is already there
-    // never changes the address agents already hold.
+    // Republishing keeps the existing card's identifier, so the address agents
+    // hold does not change.
     const [row] = await this.#db
       .insert(cards)
       .values({
@@ -421,18 +354,15 @@ export class PostgresStore implements Store {
         integration,
       })
       .onConflictDoUpdate({
-        // The merchant is half of the target, so a publish only ever edits the
-        // publisher's own card. Targeting the identifier alone would hand the
-        // second merchant to use a "sku-1" the first merchant's card.
+        // The merchant is half of the target, or a second merchant's "sku-1"
+        // would overwrite the first merchant's card.
         target: [cards.merchantId, cards.merchantItemId],
-        // `paused` is deliberately not in this set. A merchant editing a price
-        // is not asking for a product they took off sale to go back on it, and
-        // a pause that evaporated on the next publish would put stock they do
-        // not have in front of an agent.
+        // `paused` is deliberately not reset: republishing must not put a
+        // product the merchant took off sale back on it.
         set: { card, asOf: new Date(at) },
-        // A card stays with the integration that first published it. Through
-        // the other one the conflict updates nothing and returns no row, in
-        // the same statement, so two publishes racing cannot move it either.
+        // A card keeps the integration that first published it: through the
+        // other one the conflict updates nothing and returns no row, in the
+        // same statement, so racing publishes cannot move it either.
         setWhere: eq(cards.integration, integration),
       })
       .returning();
@@ -466,9 +396,8 @@ export class PostgresStore implements Store {
   }
 
   async catalogEntries(): Promise<readonly CatalogEntry[]> {
-    // One statement rather than the cards and then a word per merchant: the
-    // catalog is read on every agent's first call, and a query per merchant
-    // behind it grows with the number of merchants for no reason.
+    // One join rather than a query per merchant: the catalog is read on every
+    // agent's first call.
     const rows = await this.#db
       .select({
         card: cards,
@@ -499,9 +428,7 @@ export class PostgresStore implements Store {
     const [row] = await this.#db
       .update(cards)
       .set({ paused })
-      // Both halves in the predicate: another merchant's card is not updated
-      // and not reported, so this answers exactly what a card that is not there
-      // answers.
+      // Another merchant's card is answered as missing.
       .where(and(eq(cards.id, id), eq(cards.merchantId, merchantId)))
       .returning();
     return row === undefined ? null : storedCardOf(row);
@@ -515,9 +442,7 @@ export class PostgresStore implements Store {
       .limit(1);
 
     if (row === undefined) {
-      // Every key names a merchant that exists and every card carries one, so
-      // there is no ordinary way here. Answering "open" would be selling on
-      // behalf of somebody nobody can find.
+      // Never answer "open" for a merchant nobody can find.
       throw new Error(
         `there is no merchant ${merchantId}, so there is no word for whether they are selling`,
       );
@@ -626,22 +551,14 @@ export class PostgresStore implements Store {
       if (refused === null) {
         throw thrown;
       }
-      // Which rule refused is read rather than assumed, and the reason is that
-      // `orders` has one uniqueness rule today. A second one added tomorrow
-      // would otherwise be answered "already written down" — a confident wrong
-      // sentence about somebody's order, and the kind that survives review
-      // because it reads plausibly.
+      // Which rule refused is checked, not assumed, so a uniqueness rule added
+      // later is not misreported as a duplicate order.
       if (refused.constraint !== ORDER_IDENTIFIER_TAKEN) {
         throw new Error(unknownRuleRefused(`writing the order ${record.order.id}`, refused));
       }
-      // The in-memory store says exactly this, so a caller written against the
-      // offline suite meets the same failure here.
-      //
-      // The driver's own error is deliberately not carried as a cause. Its
-      // message is the statement followed by every bound parameter, and one of
-      // those is the whole order document — which holds, among other things,
-      // whatever the agent presented to pay with. Naming the rule is the whole
-      // of what there was to diagnose.
+      // The same words as the in-memory store. The driver's error is not
+      // carried as a cause: its parameters hold the whole order, payment
+      // included.
       throw new Error(`the order ${record.order.id} is already written down`);
     }
   }
@@ -683,67 +600,24 @@ export class PostgresStore implements Store {
   }
 
   async runAlone<T>(name: string, work: () => Promise<T>): Promise<Ran<T>> {
-    // An advisory lock, and one connection held for as long as the work runs.
-    // The connection is the whole reason this is not two statements on the
-    // pool: a session lock belongs to the session that took it, and a pool
-    // hands out whichever connection is free, so an unlock issued on a
-    // different one would release nothing and the work would be blocked until
-    // the process ended.
+    // A session advisory lock on one connection held for the whole run: the
+    // unlock must go out on the session that took the lock, and a transaction
+    // lock would keep a transaction idle for the length of the work. The
+    // connection comes from the same pool the work queries through, with no
+    // timeout on waiting for it, so a deployment that shrinks the pool must
+    // count it in.
     //
-    // A session lock rather than a transaction one, because the alternative
-    // means holding a transaction open for the length of the work — an idle
-    // transaction keeping a snapshot alive for as long as a sweep takes — and
-    // the work here writes through other connections anyway.
-    //
-    // Which is the other thing to know about the connection: it comes out of
-    // the same pool the work then queries through, and it is held for the whole
-    // run. Nothing sets a timeout on waiting for one, so on a pool too small to
-    // spare it the work would wait rather than fail, and would wait on a
-    // connection only it could release. The default pool has room and a sweep
-    // is one connection; a deployment that tightens the pool should count this
-    // one in.
-    //
-    // The key is hashed from a name of ours under a prefix of ours, and what a
-    // collision with somebody else's key would cost is worth having the right
-    // way round. pg-boss takes advisory locks in this same database, and both
-    // kinds share one key space — a session lock and a transaction lock on the
-    // same number are the same lock — so a collision costs whichever side
-    // arrives second. Reaching a key pg-boss holds, we are told no and skip the
-    // run. Reaching a key we hold, pg-boss waits rather than asks:
-    // `pg_advisory_xact_lock` inside a transaction that sets `lock_timeout` to
-    // thirty seconds, so its create-queue or migration sits behind our session
-    // for the length of a sweep and then fails on the timeout. Both halves are
-    // real and the second is the worse one, which is why ours is the session
-    // that has to be considerate.
-    //
-    // The prefix on the name is not what keeps us apart from pg-boss. It goes
-    // through `hashtext` with everything else, so it reserves no region of the
-    // key space; what it does is keep our own names from colliding with each
-    // other.
-    //
-    // What does keep us apart is arithmetic nobody arranged. The single-argument
-    // lock takes a 64-bit key, and `hashtext` is 32-bit, so ours are widened and
-    // land only where the high word is all zeroes or all ones. pg-boss derives
-    // its keys from a hash spread over the whole range. So a collision needs one
-    // of its dozen or so keys to fall into that narrow band — around one chance
-    // in four billion each. It is not ruled out, and it does not need to be:
-    // what a collision costs is written above.
+    // pg-boss takes advisory locks in the same key space. If it ever reached a
+    // key we hold, its operation would wait for our run and then fail on its
+    // thirty-second lock timeout. A collision is about one chance in four
+    // billion per pg-boss key, because `hashtext` keys widened to 64 bits land
+    // in a narrow band; the `agentify.` prefix only separates our own names.
     const client = await this.#db.$client.connect();
     let broken: unknown = null;
 
-    // Nothing is listened for on this client here, and that is deliberate rather
-    // than an omission. A checked-out client carries no error listener of the
-    // pool's — pg-pool takes its own off on the way out and hands it back only
-    // on release — so a fatal while a client is pinned would be an `error` event
-    // with nobody listening, which in Node is an uncaught exception and a dead
-    // process. `connect()` covers that for every client the pool hands out, on
-    // `acquire` and `release`, because this is not the only place that pins one:
-    // every drizzle transaction does, `withOrder` is a drizzle transaction, and
-    // the payment path got there first. A second listener here would log the
-    // same failure twice and say nothing the first one did not.
-    //
-    // What this still needs to know is whether the connection can be given back,
-    // and that is answered below by the unlock rather than by an event.
+    // No error listener is attached here: `connect()` attaches one to every
+    // checked-out client, without which a fatal on a pinned client would kill
+    // the process.
 
     try {
       const taken = await client.query<{ got: boolean }>(
@@ -757,74 +631,32 @@ export class PostgresStore implements Store {
       try {
         return { ran: true, result: await work() };
       } finally {
-        // Let go however the work ended. A lock left behind on a live
-        // connection outlives the failure that caused it and would keep every
-        // later run out for as long as the process lives.
-        //
-        // Its own failure is said out loud and dropped, never thrown. This runs
-        // in a `finally`, so a rejection here would replace whatever the work
-        // returned or threw: a sweep that finished would be reported as a
-        // failure and its work handed out again, and a sweep that failed would
-        // have its own reason swallowed and the connection's put in its place.
-        // Neither is a thing to learn from a log afterwards. And a lock that
-        // could not be released has usually been released already, by the
-        // backend going away, which is also what broke the connection.
+        // Release however the work ended, or every later run is kept out. A
+        // failed unlock is logged, never thrown: in a `finally` it would
+        // replace the work's own result or failure.
         try {
           await client.query("select pg_advisory_unlock(hashtext($1))", [`agentify.${name}`]);
         } catch (thrown) {
           console.error(`[gateway] could not let go of ${name}`, thrown);
-          // And the connection goes with the failure, which is the only thing
-          // that actually frees the name. An unlock can fail on a session that
-          // is still perfectly alive — a statement timeout is enough — and then
-          // the lock is still held, by a client about to go back into the pool
-          // holding it. Every later run is told the name is taken and does
-          // nothing, which reads in the log exactly like a healthy skip, and
-          // this is the safety net for effects that went missing. Marking the
-          // connection broken makes the release below end the session instead,
-          // and a session ending is what a session lock is released by.
-          //
-          // Without this it self-heals eventually: the pooled connection is
-          // reaped on the idle timeout, about ten seconds on a quiet gateway.
-          // On a busy pool, or one with a minimum size or a longer idle timeout
-          // set, that reaping does not come and the name stays wedged for the
-          // life of the process.
-          //
-          // One thing it does not close. Postgres counts advisory locks, so a
-          // session that took the same name twice needs two unlocks; if the
-          // leaking connection were drawn again before it was destroyed and
-          // granted the name a second time, a single unlock would only
-          // decrement. That cannot happen on this path — the client is never
-          // back in the pool between the failure and the release — and it is an
-          // argument for ending the session rather than against it, since
-          // ending the session releases every count at once.
+          // An unlock can fail on a live session (a statement timeout) and leave
+          // the lock held by a client about to return to the pool, so every
+          // later run would skip silently. Marking the connection broken makes
+          // the release below end the session, which frees the lock.
           broken = thrown;
         }
       }
     } finally {
-      // A client whose lock could not be let go is released with the failure,
-      // which asks the pool to end the session rather than hand the client to
-      // the next caller still holding the name.
-      //
-      // Said plainly because a probe found it out: for a connection that is
-      // already gone the pool would discard the client anyway, since it also
-      // drops one that is no longer queryable. What the argument adds is the
-      // case that connection cannot cover — a session that is alive, queryable,
-      // and holding a lock it refused to release.
+      // Released with the failure, the pool ends the session instead of handing
+      // on a client that still holds the lock.
       client.release(broken === null ? undefined : (broken as Error));
     }
   }
 
   async deliveredWithoutReceipt(): Promise<readonly StoredOrder[]> {
-    // The absence is asked in the predicate rather than by reading the orders
-    // and then the receipts, so what comes back is the size of what is wrong
-    // and not the size of the history — normally nothing at all.
-    //
-    // What that does not do is bound the reading. There is no index on `state`
-    // and the one on `open` leads with the merchant, so this walks the orders
-    // table and so does `openOrders` above. Once a day, unpaged, which is
-    // nothing at a pilot's volume and is the first thing to look at when the
-    // table is large: the answer is an index, and it is not here yet because
-    // adding one is a change to the schema rather than to this file.
+    // The missing receipt is asked in the predicate, so the answer is the size
+    // of what is wrong, normally nothing. The read is not bounded: with no
+    // index on `state`, this and `openOrders` scan the orders table. Add an
+    // index when the table grows large.
     const rows = await this.#db
       .select()
       .from(orders)
@@ -850,16 +682,12 @@ export class PostgresStore implements Store {
     change: (found: StoredOrder) => Promise<OrderChange<T>> | OrderChange<T>,
     scope?: MerchantScope,
   ): Promise<OrderLookup<T>> {
-    // Which streams were written to inside the transaction, so that the polls
-    // parked on them can be woken once it has committed and not before.
+    // Streams written to inside the transaction, woken only after the commit.
     const streams: string[] = [];
     const lookup = await this.#db.transaction(async (tx): Promise<OrderLookup<T>> => {
-      // The lock is taken on the row itself, so a second decision about this
-      // order waits here rather than reading the same order and writing over
-      // whatever the first one decided. Where a merchant is named, whose order
-      // it is is part of the same predicate as the lock: a stranger's order is
-      // never selected, never locked and never reported, so there is no window
-      // between finding out whose it is and acting on it.
+      // The row lock makes a second decision about this order wait here.
+      // Where a merchant is named it is in the same predicate, so a stranger's
+      // order is never selected or locked.
       const [row] = await tx
         .select()
         .from(orders)
@@ -877,12 +705,9 @@ export class PostgresStore implements Store {
 
       const decided = await change(row.record);
 
-      // The writes that must not be lost go in this transaction, so that a
-      // process that dies mid-flight either did both or did neither (ADR-0013).
-      // pg-boss takes a handle in its send options whose whole contract is
-      // running one statement, and `fromDrizzle` makes one out of this
-      // transaction — so the job insert is on this connection, inside this
-      // transaction, and rolls back with the order if anything below fails.
+      // The writes that must not be lost go in this transaction, so a process
+      // that dies mid-flight did all of them or none, the queue's job inserts
+      // included.
       for (const write of decided.alongside ?? []) {
         switch (write.kind) {
           case "receipt":
@@ -904,14 +729,10 @@ export class PostgresStore implements Store {
       }
 
       if (decided.save !== undefined) {
-        // The merchant is taken from the row rather than from what came back.
-        // It is settled at the birth of an order and never again, and this is
-        // where that is actually kept: a save carrying a different one would
-        // otherwise write the new merchant into the document while the column
-        // — which every one of a merchant's own reads filters on — kept the
-        // old. The two readers would then disagree, and the split is exactly
-        // the one that puts an order in one merchant's list while its envelopes
-        // go on another's stream.
+        // The merchant always comes from the row, never from the save: an
+        // order's merchant never changes, and a document disagreeing with the
+        // column would list an order under one merchant while its envelopes
+        // went to another.
         const next = rowFor({ ...decided.save, merchantId: row.merchantId });
         await tx
           .update(orders)
@@ -926,22 +747,16 @@ export class PostgresStore implements Store {
       return { found: true, result: decided.result };
     });
 
-    // Committed: the jobs written above are visible now, so a poll parked in
-    // this process is told to look rather than waiting out its polling
-    // interval. Nothing depends on this happening — another process finds the
-    // work by polling — which is why it is after the transaction and not in it.
+    // Committed, so the jobs are visible: wake this process's parked polls.
+    // Other processes find the work by polling.
     this.#envelopes.committed(streams);
     return lookup;
   }
 
   async claimPayment(fingerprint: string, orderId: string): Promise<PaymentClaim> {
-    // One statement, and the primary key is the decision. Two requests
-    // presenting the same payment at the same instant both arrive here and the
-    // database picks between them; the loser's conflict clause writes the
-    // holder's own identifier back over itself, so what comes out is the row
-    // that stands either way. Doing it as an insert and then a read would leave
-    // a gap between the two, and a branch for a row that vanished in it — a
-    // branch nothing could ever reach or test.
+    // One statement; the primary key decides between two requests presenting
+    // the same payment at once. The conflict clause rewrites the holder's own
+    // identifier, so the row that stands always comes back.
     const [row] = await this.#db
       .insert(paymentClaims)
       .values({ fingerprint, orderId, claimedAt: new Date() })
@@ -954,14 +769,12 @@ export class PostgresStore implements Store {
     if (row === undefined) {
       throw new Error(`claiming a payment for ${orderId} wrote and read no row`);
     }
-    // The same order presenting the same payment again is the ordinary retry
-    // the portal promises is safe, and it still owns it.
+    // The same order presenting the same payment again is a safe retry.
     return row.orderId === orderId ? { claimed: true } : { claimed: false, heldBy: row.orderId };
   }
 
   async releaseClaim(fingerprint: string, orderId: string): Promise<void> {
-    // Both halves of the key in the predicate, so a fingerprint another order
-    // holds is left where it is even if this one asks for it by mistake.
+    // A claim another order holds is never released by this one.
     await this.#db
       .delete(paymentClaims)
       .where(and(eq(paymentClaims.fingerprint, fingerprint), eq(paymentClaims.orderId, orderId)));
@@ -982,11 +795,9 @@ export class PostgresStore implements Store {
   }
 
   /**
-   * The one statement that writes a receipt, on whichever handle it is given —
-   * the pool for a caller of its own, or the transaction an order is being
-   * written in. One statement rather than two, so that a receipt written beside
-   * an order and a receipt written by the sweep cannot come to disagree about
-   * whose sale it was.
+   * The one statement that writes a receipt, on the pool or inside an order's
+   * transaction, so receipts written by either path agree about whose sale it
+   * was.
    */
   async #putReceiptWithin(on: Queries, merchantId: string, receipt: Receipt): Promise<void> {
     await on
@@ -994,10 +805,8 @@ export class PostgresStore implements Store {
       .values({ orderId: receipt.order_id, merchantId, receipt, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: receipts.orderId,
-        // The merchant is not in this set. A receipt belongs to whoever made
-        // the sale, and writing it again — which is what the machine does when
-        // an order moves on, and what the sweep does for one that has none — is
-        // not an occasion for it to change hands.
+        // The merchant is never rewritten: a receipt belongs to whoever made
+        // the sale.
         set: { receipt, updatedAt: sql`now()` },
       });
   }
@@ -1022,36 +831,22 @@ export class PostgresStore implements Store {
 }
 
 /**
- * The uniqueness rules this store has a sentence for, by the names they carry
- * in the database.
- *
- * Two of the three are Postgres's own for a column declared `primary key`; the
- * third is spelled out in `drizzle/0003_merchant_tenancy.sql`. They are matched
- * by name rather than guessed at from the order the rules happen to be checked
- * in, and a name that changed would turn the shared store contract red rather
- * than quietly turning every refusal into the vague one — the suite asserts the
- * sentence each of these produces.
+ * The uniqueness rules this store has a sentence for, by their names in the
+ * database. Renaming one in a migration must be matched here.
  */
 const ORDER_IDENTIFIER_TAKEN = "orders_pkey";
 const KEY_IDENTIFIER_TAKEN = "merchant_keys_pkey";
 const KEY_DIGEST_TAKEN = "merchant_keys_digest_unique";
 
 /**
- * The uniqueness rule that turned a write away, where that is what happened,
- * and nothing where the failure was something else.
- *
- * SQLSTATE 23505 is what Postgres raises for a primary key or a unique index
- * refusing a row. It is looked for down the chain of causes rather than on the
- * exception itself, because drizzle wraps what the driver threw in one of its
- * own and hands the original along as `cause`. The rule's name is read from the
- * driver's own field beside it and never out of the message: the message is
- * English a server's locale may not be writing, and it carries the values that
- * clashed.
+ * The uniqueness rule (SQLSTATE 23505) that turned a write away, found down
+ * the chain of causes because drizzle wraps the driver's error, or null. The
+ * name comes from the driver's field, never the message, which may be
+ * localised and carries the values that clashed.
  */
 function uniquenessRefused(thrown: unknown): { readonly constraint: string | null } | null {
   let at = thrown;
-  // Bounded rather than a walk, so a cause that pointed back at itself is not a
-  // failure that hangs the gateway instead of reporting itself.
+  // Bounded, so a cause that points back at itself cannot hang.
   for (let deep = 0; deep < 8; deep += 1) {
     if (typeof at !== "object" || at === null) {
       return null;
@@ -1066,22 +861,14 @@ function uniquenessRefused(thrown: unknown): { readonly constraint: string | nul
 }
 
 /**
- * What to say when a uniqueness rule refused a write and this code has no
- * sentence for that rule.
- *
- * It says which rule, and says outright that it cannot say what was already
- * there. The alternative is picking the likeliest of the table's rules and
- * writing a sentence about it, which is a confident wrong answer — and the one
- * thing worse than an error nobody can act on is an error everybody acts on
- * incorrectly. The rule's name is a schema identifier and carries nothing of
- * whatever the caller was trying to write.
+ * The sentence for a uniqueness rule this code does not know: it names the
+ * rule and says it cannot say what was already there, rather than guessing.
  */
 function unknownRuleRefused(what: string, refused: { readonly constraint: string | null }): string {
   const rule = refused.constraint === null ? "a rule the driver did not name" : refused.constraint;
   return `${what} was refused by ${rule}, and this code cannot say what was already there`;
 }
 
-/** One card row as the rest of the gateway reads it. */
 function storedCardOf(row: {
   id: string;
   merchantId: string;
@@ -1100,7 +887,6 @@ function storedCardOf(row: {
   };
 }
 
-/** The three wallet columns of a merchant row, as one value. */
 interface WalletColumns {
   payoutWallet: string | null;
   pendingPayoutWallet: string | null;
@@ -1108,12 +894,9 @@ interface WalletColumns {
 }
 
 /**
- * The wallet columns as the rest of the gateway reads them.
- *
- * Half a waiting change is refused by the table's own check, so the one case
- * left here — an address with no instant or the reverse — is a database this
- * gateway did not migrate, and it is read as nothing waiting rather than as a
- * change taking effect at an instant nobody wrote.
+ * The wallet columns as one value. The table refuses half a pending change; if
+ * one appears anyway it is read as nothing pending, never as a change taking
+ * effect at an instant nobody wrote.
  */
 function payoutWalletOf(row: WalletColumns): StoredPayoutWallet {
   return {
@@ -1128,7 +911,6 @@ function payoutWalletOf(row: WalletColumns): StoredPayoutWallet {
   };
 }
 
-/** One merchant row as the rest of the gateway reads it. */
 function storedMerchantOf(
   row: WalletColumns & {
     id: string;
@@ -1154,15 +936,9 @@ function storedMerchantOf(
   };
 }
 
-/** One key row as the rest of the gateway reads it. The digest stays behind. */
 /**
- * What a revocation writes into `disabled_at`: this instant, unless something
- * is already there.
- *
- * A coalesce rather than an assignment, in both of the calls that revoke, so
- * that a second one does not move the instant somebody reconstructing an
- * incident is working from. It is one expression rather than two because the
- * two calls differ in who may make them and not in what they write.
+ * What a revocation writes into `disabled_at`: this instant, unless one is
+ * already there, so a second revocation never moves the first instant.
  */
 const revokedAt = (at: number) => sql`coalesce(${merchantKeys.disabledAt}, ${new Date(at)})`;
 
@@ -1185,11 +961,8 @@ function storedKeyOf(row: {
 }
 
 /**
- * The selling word out of a text column, or a refusal.
- *
- * A word the machine does not know reached the column — a hand-edited row, or a
- * value from a version of this code that is not this one. Guessing here would
- * be guessing about whether somebody is selling.
+ * The selling word out of a text column. An unknown word throws rather than
+ * guessing whether somebody is selling.
  */
 function sellingWordOf(word: string): MerchantSelling {
   if (!(MERCHANT_SELLING as readonly string[]).includes(word)) {
@@ -1223,50 +996,15 @@ function rowFor(record: StoredOrder) {
 }
 
 /**
- * One pool for the process, and the drizzle handle over it.
+ * One pool for the process, and the drizzle handle over it. Every pool must be
+ * built here, tests included.
  *
- * The pool is an event emitter that reports failures of idle connections, and
- * an unhandled one of those is an uncaught exception and a dead process. That
- * matters more here than in most services: every parked purchase and every
- * parked worker lives in this process's memory, so a database hiccup that
- * killed it would drop every agent mid-purchase rather than degrading anything.
- * It is logged and the pool goes on; a failure that actually stops the work
- * surfaces on the next query, where somebody is waiting for an answer.
- *
- * The connections that are checked out are the other half of that, and they are
- * the half that is easy to miss. The pool's listener above is on idle
- * connections only: pg-pool takes it off a client on the way out and puts it
- * back on release, so for as long as somebody holds a client there is nobody
- * listening to it. A fatal in that window — an administrator terminating a
- * backend, a failover, a pooler dropping a session — is an `error` event with no
- * listener, which is the uncaught exception this whole function exists to avoid,
- * arrived at down the other road.
- *
- * That window is not rare and it is not short. Every drizzle transaction is a
- * checked-out client, `withOrder` is a drizzle transaction, and the callback
- * inside it arms the order's deadlines — a round trip on the queue's own pool,
- * during which this connection is pinned with no query in flight for a fatal to
- * surface through. The sweep's advisory lock is the same shape and holds for
- * longer. So the guard is here, on the pool, rather than at either of them: one
- * listener attached to every client that leaves and taken off every client that
- * comes back, which covers the two that exist today and whatever pins a client
- * next.
- *
- * The two moments are the right ones and the order in pg-pool is what makes
- * them safe. `acquire` is emitted before the pool strips its own listener, and
- * the strip names that listener, so ours is attached first and survives it.
- * `release` is emitted after the pool has put its own back on, so ours comes off
- * a client that is already covered again. Neither edge leaves a gap.
- *
- * Logged and nothing more. What to do about a broken connection is the
- * caller's: a query in flight rejects on its own, and the pool discards a client
- * that is no longer queryable when it is released.
- *
- * The pool options are here for the tests, which need pools of one connection to
- * say anything about which session holds what. They go through this function
- * rather than building their own, because a pool built any other way is a pool
- * without these listeners — and a test running unguarded is a test that cannot
- * see the thing it was written for.
+ * An unhandled `error` event kills the process, and with it every parked
+ * purchase and worker. The pool's own listener covers idle connections only;
+ * pg-pool removes it from a client while it is checked out (in every drizzle
+ * transaction and the sweep's lock), so a listener of ours is attached on
+ * `acquire` and removed on `release`. pg-pool's event order leaves no gap at
+ * either edge. Failures are only logged: a query in flight rejects on its own.
  */
 export function connect(
   databaseUrl: string,
@@ -1277,9 +1015,7 @@ export function connect(
     console.error("[gateway] an idle database connection failed", error);
   });
 
-  // One function for the whole pool rather than one per checkout: removal is by
-  // identity, so attaching and detaching the same function keeps the count at
-  // one however many clients are out at once.
+  // One shared function, since listeners are removed by identity.
   const noticeTheFailure = (failed: unknown) => {
     console.error("[gateway] a database connection somebody was holding failed", failed);
   };

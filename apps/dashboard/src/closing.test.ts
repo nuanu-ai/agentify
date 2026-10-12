@@ -1,13 +1,3 @@
-/**
- * The dashboard's doors closing at shutdown, within a bound.
- *
- * The gateway shares the dashboard's process (ADR-0030) and stops only once the
- * dashboard's doors have closed, so a door that never closes keeps every
- * parked purchase and every merchant's parked poll from being let go until the
- * process is killed. A browser that keeps a connection busy must not be able
- * to hold it open, and a page already being answered still gets its answer.
- */
-
 import { once } from "node:events";
 import { Agent, createServer, request, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -44,9 +34,9 @@ const get = (port: number, agent: Agent): Promise<number> =>
 
 describe("the dashboard's doors closing at shutdown", () => {
   it("settle within their grace while a browser keeps reusing its connection", async () => {
-    // The connection is busy when the door closes, and the browser asks again
-    // on it as soon as each answer arrives: Node goes on answering there, so a
-    // close that only waits would wait for as long as the browser keeps asking.
+    // The browser asks again on the busy connection as soon as each answer
+    // arrives, so a close that only waits would wait for as long as the browser
+    // keeps asking.
     const { server, port } = await serving(100);
     const browser = new Agent({ keepAlive: true, maxSockets: 1 });
     let asking = true;

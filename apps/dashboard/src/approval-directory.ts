@@ -1,8 +1,6 @@
 /**
- * The dashboard side of production approval identity.
- *
- * Email stays here. The gateway receives only the merchant identifier already
- * bound to exactly one dashboard account.
+ * The email address stays on the dashboard side: the gateway receives only the
+ * merchant identifier bound to exactly one dashboard account.
  */
 
 import type { Pool } from "pg";

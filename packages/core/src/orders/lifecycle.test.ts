@@ -9,18 +9,14 @@ import { moneyInvariantViolations } from "./money.js";
 import { outcomeFor } from "./outcome.js";
 
 /**
- * One order, from the intent to buy to the receipt, built here from scratch:
- * no fixtures, no shared builders, nothing this file did not put together
- * itself. The fixtures make the other tests short, and short tests can agree
- * with each other about a mistake; this one walks the machine the way the
- * gateway will and asks at every step whether what came back is what a person
- * would expect to see.
+ * One order from the intent to buy to the receipt, built without the shared
+ * fixtures so that this walk cannot agree with the other tests about a mistake.
+ * It asks at every step whether what came back is what a person would expect to
+ * see.
  *
- * The product is the one the canon uses for the asynchronous mode in its own
- * check against a real merchant: an eSIM that is paid for at once and
- * provisioned afterwards (`docs/research/16-order-state-machine.md`,
- * "Проекция на Freeland"). The hiccup in the middle — a provisioning API that
- * was down when the order first arrived — is not from any table in the portal.
+ * The product is an eSIM in the asynchronous mode, paid for at once and
+ * provisioned afterwards, as a real merchant sells it. The provisioning outage
+ * in the middle is invented for this walk.
  */
 
 const NOON = 1_772_000_000_000;
@@ -66,16 +62,14 @@ function step(order: Order, event: OrderEvent): { order: Order; effects: readonl
         result.rejection.message,
     );
   }
-  // Whatever else a step does, it may not leave the money and the state
-  // disagreeing. Checking it here rather than at the end catches the step that
-  // did it rather than the one that inherited it.
+  // Checking after every step catches the step that broke the money invariant
+  // rather than the one that inherited it.
   expect(moneyInvariantViolations(result.order), `after ${event.kind}`).toStrictEqual([]);
   return { order: result.order, effects: result.effects };
 }
 
 describe("one eSIM, bought and provisioned, with the provisioner down at first", () => {
   it("walks from the intent to buy to the receipt", () => {
-    // The agent found the card and its parameters passed the card's schema.
     // The card carries a price check, so nothing is quoted yet.
     const created = createOrder(PURCHASE);
     expect(created.ok).toBe(true);
@@ -85,15 +79,14 @@ describe("one eSIM, bought and provisioned, with the provisioner down at first",
     expect(created.order.price).toBeNull();
     expect(created.effects).toStrictEqual([{ kind: "request_quote" }]);
     expect(outcomeFor(created.order)).toBe("in_progress");
-    // Even here the order is on a clock, and it is the one that bounds how
-    // long we wait for the merchant to name a price — not the life of a price
-    // he has not named yet.
+    // Even here the order is on a clock: the one bounding how long we wait for
+    // the merchant to name a price.
     expect(deadlines(created.order)).toStrictEqual([
       { kind: "quote_response", at: NOON + 5 * SECOND },
     ]);
 
-    // The merchant answers. He has the eSIM and it costs fifty cents more than
-    // the card's snapshot said, so the sale goes at his number.
+    // The merchant's price is fifty cents above the card's snapshot, so the
+    // sale goes at his number.
     const quoted = step(created.order, {
       kind: "quote_answered",
       at: NOON + SECOND,
@@ -109,17 +102,16 @@ describe("one eSIM, bought and provisioned, with the provisioner down at first",
       { kind: "quote_expiry", at: NOON + SECOND + 2 * MINUTE },
     ]);
 
-    // The agent's payment checks out. This is an eSIM, so the money moves at
-    // the purchase and not after the goods.
+    // This is an eSIM, so the money moves at the purchase and not after the
+    // goods.
     const verified = step(quoted.order, { kind: "payment_verified", at: NOON + 2 * SECOND });
 
     expect(verified.order.state).toBe("quoted");
     expect(verified.order.payment).toBe("settling");
     expect(verified.effects).toStrictEqual([{ kind: "execute_payment" }]);
-    // The price stops being what this order is waiting on the moment the
-    // settle is in flight, so nothing can expire it out from under the money.
-    // What the order waits on now is the answer about the charge, and that has
-    // a clock of its own.
+    // Once the settle is in flight the price no longer bounds the order, so
+    // nothing can expire it out from under the money. The order now waits on
+    // the answer about the charge, which has a clock of its own.
     expect(deadlines(verified.order)).toStrictEqual([
       { kind: "settle_response", at: NOON + 2 * SECOND + 30 * SECOND },
     ]);
@@ -152,8 +144,8 @@ describe("one eSIM, bought and provisioned, with the provisioner down at first",
 
     expect(again.order.dispatch.attempts).toBe(2);
 
-    // This time the handler takes the order on: the profile will be issued,
-    // but not in this answer.
+    // This time the handler takes the order on; the profile will be issued
+    // later, not in this answer.
     const accepted = step(again.order, { kind: "handler_accepted", at: NOON + 8 * SECOND });
 
     expect(accepted.order.dispatch.accepted).toBe(true);
@@ -162,11 +154,10 @@ describe("one eSIM, bought and provisioned, with the provisioner down at first",
     ]);
     expect(outcomeFor(accepted.order)).toBe("in_progress");
 
-    // The queue delivers at least once, and here is what that costs. A third
-    // delivery was already on its way when the second was taken on, so the
-    // order arrives at a second worker of the merchant's while the first is
-    // still provisioning. The order is open, so this hand-over is an ordinary
-    // one: it is counted, and the worker is told the work is his.
+    // The queue delivers at least once. A third delivery was already on its way
+    // when the second was taken on, so a second worker receives the order while
+    // the first is still provisioning. The order is open, so this hand-over is
+    // counted and the worker is told the work is his.
     const duplicate = step(accepted.order, { kind: "order_dispatched", at: NOON + 10 * MINUTE });
 
     expect(duplicate.order.dispatch.attempts).toBe(3);
@@ -180,7 +171,7 @@ describe("one eSIM, bought and provisioned, with the provisioner down at first",
       { kind: "answer_merchant", answer: { ok: true, result: "accepted" } },
     ]);
 
-    // Twenty minutes later the profile exists and the merchant says so. Well
+    // Twenty minutes later the profile exists and the merchant says so, well
     // inside his four hours.
     const delivered = step(acceptedAgain.order, { kind: "deliver_called", at: NOON + 20 * MINUTE });
 
@@ -193,11 +184,10 @@ describe("one eSIM, bought and provisioned, with the provisioner down at first",
     expect(outcomeFor(delivered.order)).toBe("delivered");
     expect(deadlines(delivered.order)).toStrictEqual([]);
 
-    // The second worker finishes a minute later and calls in with the profile
-    // it made. The order is closed by then, and it is told the state the order
-    // is in rather than that its delivery landed: the buyer keeps the profile
-    // the first one carried, and no second one is written down against the
-    // order.
+    // The second worker calls in a minute later with the profile it made. The
+    // order is closed by then, so it is told the order's state rather than that
+    // its delivery landed: the buyer keeps the first profile, and no second one
+    // is recorded against the order.
     const answeredAgain = step(delivered.order, {
       kind: "handler_delivered",
       at: NOON + 21 * MINUTE,
@@ -208,8 +198,8 @@ describe("one eSIM, bought and provisioned, with the provisioner down at first",
       { kind: "answer_merchant", answer: { ok: true, result: "already_delivered" } },
     ]);
 
-    // And the merchant's own retry of the deliver call after a broken
-    // connection gets the same success back, with no second profile issued.
+    // The merchant's own retry of the deliver call after a broken connection
+    // gets the same success back, with no second profile issued.
     const deliveredTwice = step(answeredAgain.order, {
       kind: "deliver_called",
       at: NOON + 22 * MINUTE,
@@ -224,9 +214,9 @@ describe("one eSIM, bought and provisioned, with the provisioner down at first",
   });
 
   it("would have owed the buyer a refund had the four hours run out instead", () => {
-    // The same order, taken to the same point and then left. This is the arm
-    // of the story where the merchant's side never comes back, and it is the
-    // one that has to leave a record rather than a closed order.
+    // The same order, taken to the same point and then left. The merchant's
+    // side never comes back, and the order must end in a debt rather than a
+    // quiet closure.
     const created = createOrder(PURCHASE);
     expect(created.ok).toBe(true);
     if (!created.ok) return;
@@ -259,8 +249,8 @@ describe("one eSIM, bought and provisioned, with the provisioner down at first",
     ]);
     expect(outcomeFor(late.order)).toBe("refund_due");
 
-    // And a profile that shows up an hour late still closes the debt, because
-    // the buyer paid for goods and late goods beat a refund.
+    // A profile that shows up an hour late still closes the debt: the buyer
+    // paid for goods, and late goods beat a refund.
     const rescued = step(late.order, { kind: "deliver_called", at: NOON + 5 * HOUR });
 
     expect(rescued.order.state).toBe("delivered");

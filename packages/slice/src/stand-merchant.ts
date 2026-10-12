@@ -40,7 +40,6 @@ export type OrderMood =
   | "answer_wrong_shape"
   | "ask_me";
 
-/** The moods that decide on their own, which is every one but `ask_me`. */
 export type DecidedMood = Exclude<OrderMood, "ask_me">;
 
 export type QuoteMood = "price" | "unavailable" | "say_nothing";

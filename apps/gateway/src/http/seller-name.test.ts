@@ -1,19 +1,13 @@
 /**
  * The name buyers read beside a merchant's products, over the real HTTP
- * surface.
+ * surface. It travels: a payment challenge carries it, and a discovery
+ * catalogue lists the seller under it.
  *
- * It is the one thing a merchant sets about themselves rather than about a
- * card, and it is the name that travels: a payment challenge carries it, and a
- * discovery catalogue lists the seller under it. Everything here goes through
- * `serve`, so the door, the mounting loop and the flows all run, and what is
- * asserted is the answer a merchant's own dashboard would receive.
- *
- * The rule these tests exist for most is the one that costs somebody else
- * money: a card published by a merchant who has set no name would reach a
- * buyer's agent inside a payment request that names nobody as the seller. That
- * has been shipped here once. So the refusal is asserted together with its
- * opposite — a merchant who has a name publishes — because either half alone
- * would pass against a gateway that refused everything or refused nothing.
+ * A card published by a merchant with no name would reach a buyer's agent
+ * inside a payment request that names nobody as the seller. The refusal is
+ * asserted together with its opposite, a named merchant publishing, because
+ * either half alone passes against a gateway that refuses everything or
+ * nothing.
  */
 
 import type { Card } from "@nuanu-ai/agentify-contracts";
@@ -66,11 +60,9 @@ const setSellerName = async (served: Served, key: string, name: string | null) =
   served.call("POST", "/v0/seller-name", { body: { seller_name: name }, headers: bearer(key) });
 
 /**
- * A merchant listed under nothing, made the only way one comes to exist: by
- * registering in the dashboard, with a key for their own code issued from
- * there. The harness names the merchants it seeds, because a merchant with no
- * name publishes nothing and almost every test here sells something; this is
- * the state a real merchant is in between signing up and choosing.
+ * A merchant listed under no name, as a real one is between signing up and
+ * choosing. The harness names the merchants it seeds, because a merchant with
+ * no name cannot publish.
  */
 const nameless = async (harnessed: Harness): Promise<{ merchantId: string; key: string }> => {
   const merchantId = await harnessed.gateway.registerMerchant();
@@ -79,12 +71,9 @@ const nameless = async (harnessed: Harness): Promise<{ merchantId: string; key: 
 };
 
 /**
- * Somewhere for this merchant's money to go, which a registered merchant also
- * arrives without.
- *
- * It is here so that the refusals below are about the name and nothing else:
- * this gateway settles for real, so a merchant with no wallet is refused at the
- * publish too, and a test that left it out would pass on the wrong reason.
+ * A payout wallet, which a registered merchant also lacks. This gateway settles
+ * for real, so without one a publish is refused for the wallet, and a test
+ * about the name would pass for the wrong reason.
  */
 const payableAt = async (harnessed: Harness, merchantId: string): Promise<void> => {
   const paid = await harnessed.gateway.setPayoutWallet(
@@ -97,10 +86,8 @@ const payableAt = async (harnessed: Harness, merchantId: string): Promise<void> 
 
 describe("the name a merchant is listed under", () => {
   it("reads back nothing for a merchant nobody has named", async () => {
-    // Null is the answer, not an empty string and not a 404. A merchant who has
-    // no name has a settings page to draw, and the shape it draws from has to
-    // say "there is none" in a way a reader cannot mistake for "I could not
-    // find you".
+    // Null, not an empty string and not a 404: "there is none" must not read
+    // as "I could not find you".
     const { served, harnessed } = await started();
     const { key } = await nameless(harnessed);
 
@@ -123,13 +110,9 @@ describe("the name a merchant is listed under", () => {
   });
 
   it("refuses to take a name away, and says what to do instead", async () => {
-    // The one thing this call will not do. A merchant with no name has nobody
-    // for a payment request to name as the seller, so every card of theirs
-    // comes off sale — an end to their selling arriving under the name of
-    // editing a setting, and from a screen where nothing said that is what the
-    // button meant. What they were actually reaching for, stopping their
-    // selling, is a control they already have and one that leaves their cards
-    // where they can find them again.
+    // Without a name every card of theirs comes off sale, which editing a
+    // setting must not do by surprise. Pausing is the control for stopping
+    // selling, and it leaves the cards where they are.
     const { served, harnessed } = await started();
     await setSellerName(served, harnessed.merchant.key, "Someone's shop");
 
@@ -259,9 +242,8 @@ describe("the site of a merchant's own shop", () => {
     served.call("POST", "/v0/seller-name", { body: { seller_site: site }, headers: bearer(key) });
 
   it("is given where the name is set, and read back with it", async () => {
-    // ADR-0034: the merchant gives the shop's site wherever they set the name
-    // they sell under. The name a request leaves out stays as it was, so a
-    // dashboard can give the site without sending the name again.
+    // The name a request leaves out stays as it was, so a dashboard can give
+    // the site without sending the name again.
     const { served, harnessed } = await started();
     await setSellerName(served, harnessed.merchant.key, "Someone's shop");
 
@@ -315,11 +297,10 @@ describe("the site of a merchant's own shop", () => {
   });
 
   it("reads back a name stored before the plain-text rule, rather than failing every answer that carries it", async () => {
-    // The rule is the door's, as the card's words are (ADR-0017): a name
-    // written before it may carry markup, and every answer is held to its
-    // contract on the way out, so a reader holding it to the door's rule would
-    // fail the merchant's whole catalog, every order status and their own
-    // settings over one old row.
+    // The plain-text rule is checked on the way in only. A name stored earlier
+    // may carry markup, and every answer is held to its contract on the way
+    // out, so holding reads to the rule would fail the merchant's whole
+    // catalog, every order status and their own settings over one old row.
     const { served, harnessed } = await started();
     await harnessed.store.setServiceName(harnessed.merchant.id, "A &amp; <b>B</b>", 1);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
@@ -408,10 +389,6 @@ describe("publishing before a name has been chosen", () => {
     served.call("POST", "/v0/catalog/publish", { body: card, headers: bearer(key) });
 
   it("refuses a merchant who has set no name, and says where to set one", async () => {
-    // The rule this file exists for. A card published by a merchant with no
-    // name reaches a buyer's agent inside a payment request that names no
-    // seller at all, and the agent is invited to pay somebody the request does
-    // not name. This gateway has shipped that once.
     const { served, harnessed } = await started();
     const { key } = await nameless(harnessed);
 
@@ -441,13 +418,8 @@ describe("publishing before a name has been chosen", () => {
   });
 
   it("lets a merchant publish as soon as they set one", async () => {
-    // The road out of the refusal, walked end to end. A rule a merchant cannot
-    // get past is not a rule, it is a wall.
-    //
-    // The wallet is set alongside because a merchant made by registering is
-    // missing that too, and this gateway settles for real: the name is what
-    // this test is about, and being refused for the other reason would say
-    // nothing about it either way.
+    // The wallet is set first so that the refusal below can only be about the
+    // name.
     const { served, harnessed } = await started();
     const { merchantId, key } = await nameless(harnessed);
     await payableAt(harnessed, merchantId);
@@ -486,15 +458,10 @@ const sellerInTheChallenge = async (
 };
 
 /**
- * One card on sale whose merchant is listed under no name.
- *
- * The road here is the only one there is, and it is a real one: a merchant
- * publishes under a name, and somebody at a terminal then runs
- * `merchant listed-as <id> --none` — the verb that exists for a name that
- * should never have been listed. The route a merchant has refuses to take a
- * name away and the publish door refuses to make a card without one, so this is
- * the state, reached the way it is reached, with the call the command makes
- * underneath.
+ * One card on sale whose merchant is listed under no name. The merchant's own
+ * route will not clear a name and publishing needs one, so the only way here is
+ * an operator running `merchant listed-as <id> --none` after the publish; this
+ * makes the call that command makes.
  */
 const soldUnderNoName = async (
   harnessed: Harness,
@@ -512,12 +479,9 @@ const soldUnderNoName = async (
 
 describe("a card whose merchant is listed under no name", () => {
   it("tells an agent it is not on sale rather than inviting it to pay a seller nobody names", async () => {
-    // The finding this describe exists for. The name is not decoration: it is
-    // what the payment request calls the seller, and the challenge simply
-    // leaves the field out when there is none — so an agent would be invited to
-    // pay somebody the request does not name, which this gateway has shipped
-    // once already. Off sale is the truth and it is a word the agent's own
-    // client already reads.
+    // The challenge leaves the seller out when there is no name, so an agent
+    // would be invited to pay somebody the request does not name. Off sale is
+    // the truth, and a word the agent's client already reads.
     const { served, harnessed } = await started();
     const { itemId } = await soldUnderNoName(harnessed, served);
 
@@ -574,12 +538,9 @@ describe("a card whose merchant is listed under no name", () => {
   });
 
   it("stops selling in the sandbox too, where a missing wallet is excused and a missing name is not", async () => {
-    // The two merchant-shaped reasons a card comes off sale are not one rule.
-    // A sandbox settles against nothing, so there is no money to send and no
-    // address to be missing — that is why a local stack sells with no wallet
-    // configured anywhere. The name is not about money: a sandbox challenge
-    // names its seller exactly as a real one does, and nothing sells under
-    // nobody's name.
+    // A sandbox settles against nothing, so a missing wallet is excused there.
+    // The name is not about money: a sandbox challenge names its seller as a
+    // real one does.
     const { served, harnessed } = await started({ FACILITATOR_URL: SANDBOX_FACILITATOR });
     const { itemId } = await soldUnderNoName(harnessed, served);
 

@@ -1,16 +1,10 @@
 /**
- * The commands that look after the merchants there are and their keys.
- *
- * The one thing worth more than the rest: nothing here makes a merchant or
- * issues a key. A merchant comes into being when a person opens the link mailed
- * to them and presses the dashboard's one control (ADR-0014), and a key for a
- * merchant's own code is issued from their dashboard, where it is announced
- * (ADR-0019). So every merchant and key below is arranged through the store and
- * the gateway's own functions, the way a registration or the keys route writes
- * them, and never through the command under test.
- *
- * The rest is what somebody does at a terminal: naming a merchant who is not
- * there, disabling a key twice, running a verb with half its arguments.
+ * The terminal commands that look after merchants and their keys. Nothing here
+ * makes a merchant or issues a key: a merchant comes into being when a person
+ * opens the link mailed to them and presses the dashboard's one control, and a
+ * key is issued from the merchant's dashboard, where it is announced. So every
+ * merchant and key below is arranged through the store and the gateway's own
+ * functions, never through the command under test.
  */
 
 import { describe, expect, it } from "vitest";
@@ -19,14 +13,12 @@ import { issueKey } from "./app/merchants.js";
 import { runMerchant } from "./merchant-command.js";
 import { countedIds } from "./testing/harness.js";
 
-/** A store, the identifiers, a fixed clock, and everything the command said. */
 function aTerminal() {
   const store = new MemoryStore(countedIds());
   const said: string[] = [];
   const at = Date.parse("2026-08-27T12:00:00.000Z");
-  // One generator across every write, because that is what a process has: two
-  // of them would issue two keys under one identifier, which a database
-  // refuses.
+  // One generator across every write, as in a process: two would issue two
+  // keys under one identifier, which a database refuses.
   const ids = countedIds();
   const run = (...argv: string[]) =>
     runMerchant(
@@ -35,7 +27,6 @@ function aTerminal() {
       () => at,
       (line) => said.push(line),
     );
-  /** A merchant, written the way a registration writes one. */
   const aMerchant = async (name: string): Promise<string> => {
     const made = await store.addMerchant({ id: ids("mch"), name }, at);
     if (made === null) {
@@ -43,7 +34,6 @@ function aTerminal() {
     }
     return made.id;
   };
-  /** A key for the merchant's own code, issued the way the keys route issues one. */
   const aKey = async (merchantId: string, label: string): Promise<string> =>
     (await issueKey(store, ids, merchantId, label, at, "test")).secret;
   return { store, said, at, ids, run, aMerchant, aKey, text: () => said.join("\n") };
@@ -66,11 +56,9 @@ describe("the merchants there are", () => {
   });
 
   it("shows what buyers read, for the merchants who have chosen it", async () => {
-    // The list is what somebody at a terminal reads to find a merchant, and the
-    // name that identifies one to everybody else is the name their products are
-    // sold under. A merchant who registered has no name of their own worth
-    // printing — nobody typed one — so a list that showed only that column
-    // would read identically down every row of them.
+    // A registered merchant's own name is one nobody typed, so a list showing
+    // only that column would read the same down every row; the name their
+    // products are sold under is what identifies them.
     const terminal = aTerminal();
     const merchantId = await terminal.aMerchant("Someone's shop");
     await terminal.run("listed-as", merchantId, "The shop on the corner");
@@ -81,10 +69,8 @@ describe("the merchants there are", () => {
   });
 
   it("still names a merchant who has chosen none, rather than leaving the row blank", async () => {
-    // The other half. A merchant with no listing name is the ordinary state
-    // between registering and choosing, and their row still has to say which
-    // merchant it is — otherwise the change above would have replaced one name
-    // with nothing at all for every merchant who has not chosen yet.
+    // No listing name is the ordinary state between registering and choosing
+    // one.
     const terminal = aTerminal();
     await terminal.aMerchant("Someone's shop");
 
@@ -95,12 +81,9 @@ describe("the merchants there are", () => {
 });
 
 /**
- * What `list` alone printed.
- *
- * Read off the lines this one run added rather than off everything the terminal
- * has ever said: the verb that sets a listing name prints that name back, so a
- * test reading the whole transcript would find it there and pass against a
- * listing that shows nothing of the sort.
+ * What `list` alone printed. Not the whole transcript: the verb that sets a
+ * listing name prints it back, so a test reading everything would pass against
+ * a listing that shows nothing of the sort.
  */
 async function theListing(terminal: ReturnType<typeof aTerminal>): Promise<string> {
   const before = terminal.said.length;
@@ -123,12 +106,8 @@ describe("listing a merchant's keys", () => {
   });
 
   it("says which of a merchant's keys anything is still calling with", async () => {
-    // The operator's question about a key is the merchant's question about
-    // theirs — is anything still calling with this — and the answer is wanted
-    // before anything is revoked.
-    //
-    // The call is put on a different day from the one the keys were made on, so
-    // that a line printing the wrong instant in the right place cannot pass.
+    // The call is on a different day from the keys' creation, so a line
+    // printing the wrong instant in the right place cannot pass.
     const terminal = aTerminal();
     const merchantId = await terminal.aMerchant("Someone's shop");
     await terminal.aKey(merchantId, "the worker's");
@@ -142,9 +121,8 @@ describe("listing a merchant's keys", () => {
       terminal.said.find((line) => line.includes(label)) ?? `no line for ${label}`;
     expect(lineFor("the worker's")).toContain("2026-08-29");
     expect(lineFor("the one nobody calls")).not.toContain("2026-08-29");
-    // And the blank claims a missing record rather than an absent call: the
-    // gateway wrote down the calls it saw, and a key older than the writing
-    // looks exactly like this one.
+    // A blank claims a missing record, not an absent call: a key older than the
+    // recording of calls looks exactly like this one.
     expect(lineFor("the one nobody calls")).not.toMatch(/never/i);
     expect(lineFor("the one nobody calls")).toMatch(/record/i);
   });
@@ -163,11 +141,10 @@ describe("disabling a key", () => {
     expect(await terminal.run("disable", first?.id ?? "")).toBe(0);
 
     expect(terminal.text()).toContain("1 other key");
-    // Read again after the command: the rows taken before it are what the
-    // keys were, and say nothing about what disabling did to them.
+    // Read again: the rows taken before the command say nothing about what it
+    // did.
     const after = await terminal.store.keysOf(merchantId);
     expect(after.find((key) => key.id === first?.id)?.disabledAt).toBe(terminal.at);
-    // And the other one is untouched, which is the whole reason a key is a row.
     expect(after.find((key) => key.id === second?.id)?.disabledAt).toBeNull();
 
     terminal.said.length = 0;
@@ -200,9 +177,8 @@ describe("the name a merchant is listed under", () => {
   });
 
   it("refuses a name the catalog would cut down, and says why", async () => {
-    // The whole point of holding it here: the catalog drops what it cannot
-    // render and tells nobody, so a merchant would trade under a word they did
-    // not choose and never find out.
+    // The catalog silently drops what it cannot render, so a merchant would
+    // trade under a word they did not choose and never find out.
     const terminal = aTerminal();
     const merchantId = await terminal.aMerchant("A merchant");
 
@@ -214,11 +190,9 @@ describe("the name a merchant is listed under", () => {
   });
 
   it("takes it away when nothing is named, and says the cards come off sale with it", async () => {
-    // What the verb now does, and the person running it has to be told: a card
-    // sells only under a name, because that name is what the payment request
-    // calls the seller. So `--none` is not merely a row edited — it is this
-    // merchant's whole catalog off sale, and somebody who reads "nothing about
-    // the seller goes out" and walks away has been told the small half of it.
+    // A card sells only under a name, because the payment request names the
+    // seller by it. So `--none` takes the merchant's whole catalog off sale, and
+    // the person running it has to be told.
     const terminal = aTerminal();
     const merchantId = await terminal.aMerchant("A merchant");
     await terminal.run("listed-as", merchantId, "Freeland");
@@ -248,11 +222,6 @@ describe("the name a merchant is listed under", () => {
 });
 
 describe("what the terminal does not make", () => {
-  // A merchant comes into being one way: a person opens the link mailed to
-  // their address and presses the dashboard's one control (ADR-0014), and a key
-  // for a merchant's own code is issued from their dashboard, where it is
-  // announced (ADR-0019). The terminal looks after what exists and makes
-  // neither.
   it("makes no merchant, and says what the verbs are", async () => {
     const terminal = aTerminal();
 
@@ -275,9 +244,9 @@ describe("what the terminal does not make", () => {
 
 describe("the address a merchant is paid at", () => {
   it("is not written from a terminal, so every change reaches the call that announces it", async () => {
-    // A change of the wallet waits and is announced before anything is written
-    // (ADR-0019), which holds only while the gateway sees every change. A verb
-    // here that wrote it would be the one change nobody was told about.
+    // A wallet change waits and is announced before anything is written, which
+    // holds only while the gateway sees every change; a verb here would be the
+    // one change nobody was told about.
     const terminal = aTerminal();
     const merchantId = await terminal.aMerchant("A merchant");
 

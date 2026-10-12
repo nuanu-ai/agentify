@@ -1,23 +1,13 @@
 /**
- * A database failure, as it may leave the store or the queue (ADR-0032).
+ * A database failure, as it may leave the store or the queue.
  *
- * Every caller of the store and the queue logs what they throw, and the logs
- * outlive anything this gateway erases — a buyer's parameters now, and a
- * parcel's address once the gateway holds one. Both libraries underneath put
- * those values into their failures by default. Drizzle wraps every failed
- * statement in an error whose message is the statement followed by all of its
- * parameters, and keeps the parameters on the error as well: for an order, the
- * whole order document. Postgres quotes the failing row in the detail of a
- * refused write, and can quote a value in the message itself ("invalid input
- * syntax for type …"). Neither can be told not to.
- *
- * So a failure of the database leaves as a new error that says what failed
- * and the database's own identifiers for why — its error code and the names
- * of the constraint, table and column — and nothing else: not the driver's
- * sentence, not the statement, not its cause. A failure that is not the
- * database's is left exactly as it was, because the store also runs a caller's
- * own decision inside its transaction, and what that decision throws is the
- * caller's words.
+ * Callers log what the store and the queue throw, and logs outlive anything the
+ * gateway erases. Drizzle puts every statement parameter (a whole order, a
+ * buyer's address) into its errors, and Postgres quotes values in its messages
+ * and details; neither can be told not to. So a database failure leaves as a
+ * new error carrying only what failed and the database's identifiers (code,
+ * constraint, table, column). Any other failure, such as one thrown by a
+ * caller's own decision inside a transaction, is left as it was.
  */
 
 /** What a refusal may name: identifiers the database gives, never a value. */
@@ -29,10 +19,8 @@ interface Named {
 }
 
 /**
- * Drizzle's wrapper round a failed statement, known by its shape: the statement
- * and its parameters, and the driver's failure as its cause. By shape rather
- * than by class, because this repository installs more than one copy of the
- * library and a wrapper from another copy is not an instance of this one's.
+ * Drizzle's wrapper round a failed statement, recognised by shape rather than
+ * by class because the repository installs more than one copy of the library.
  */
 function isStatementWrapper(thrown: unknown): thrown is { readonly cause?: unknown } {
   return (
@@ -45,8 +33,8 @@ function isStatementWrapper(thrown: unknown): thrown is { readonly cause?: unkno
 
 /**
  * A refusal raised by the database server: it has a severity and a code. Not
- * necessarily an `Error` — pg-boss spreads one into a plain object before it
- * reports a worker's failure, detail and all.
+ * necessarily an `Error`; pg-boss spreads one into a plain object, detail and
+ * all.
  */
 function isServerRefusal(thrown: unknown): thrown is Named {
   return (
@@ -57,9 +45,7 @@ function isServerRefusal(thrown: unknown): thrown is Named {
   );
 }
 
-/** A failure of the database that names what failed, and carries no value. */
 export class DatabaseFailure extends Error {
-  /** The database's own code for the failure, or the connection's, where it gave one. */
   readonly code: string | undefined;
 
   constructor(doing: string, named: Named) {
@@ -79,13 +65,12 @@ export class DatabaseFailure extends Error {
 }
 
 /**
- * The failure as it may leave: a database's failure without its values, and
- * any other exactly as it was thrown.
+ * A database's failure without its values; any other failure exactly as it
+ * was thrown.
  */
 export function withoutValues(thrown: unknown, doing: string): unknown {
   if (isStatementWrapper(thrown)) {
-    // The cause is the driver's refusal or the connection's failure; only
-    // their identifiers are read, and neither is kept.
+    // Only the cause's identifiers are read; the cause itself is not kept.
     const cause: unknown = thrown.cause;
     return new DatabaseFailure(
       doing,
@@ -99,14 +84,9 @@ export function withoutValues(thrown: unknown, doing: string): unknown {
 }
 
 /**
- * The object, with every failure of the database stripped of its values on its
- * way out of any method.
- *
- * A wrapper around the whole object rather than a line in each method, because
- * a method added later is covered without anybody remembering to. Each method
- * runs on the object itself, so its private fields are where it expects them.
- * Every method that reaches the database is asynchronous, so a failure arrives
- * as a rejection, and that is the only place one is looked for.
+ * The object, with every database failure stripped of its values on its way
+ * out of any method, including methods added later. Only rejections are
+ * rewritten, since every method that reaches the database is asynchronous.
  */
 export function failingWithoutValues<T extends object>(target: T, what: string): T {
   return new Proxy(target, {

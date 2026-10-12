@@ -19,11 +19,8 @@ import { buildApp, refusal } from "./server.js";
 import { ORDER_ID_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
 
 /**
- * The two files that hold every refusal this gateway sends, as text.
- *
- * Read rather than imported, because what one case below asks is which codes
- * are written down in them — a question about the source and not about a value
- * either file exports.
+ * The files that hold every refusal this gateway sends, read as source text
+ * because one case below asks which codes are written in them.
  */
 const routesSource = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
 const serverSource = readFileSync(new URL("./server.ts", import.meta.url), "utf8");
@@ -33,13 +30,8 @@ const merchantAnswersSource = readFileSync(
 );
 
 /**
- * The key the harness's own merchant holds, named rather than spelled again.
- *
- * It used to be a second copy of the same string, and the day the door began
- * reading a prefix off it the two came apart and every call in this file was
- * refused. The harness is where the seeded merchant's key is decided, and the
- * environment is named here because every harness in this file is a test one —
- * a file that overrode the chain would have to say so, which is the point.
+ * The seeded merchant's key, taken from the harness rather than spelled again,
+ * so the two cannot drift apart.
  */
 const KEY = theMerchantKey("test");
 const PAY_TO = "0x0000000000000000000000000000000000000001";
@@ -81,17 +73,10 @@ const publish = async (served: Served, card: Card): Promise<string> => {
 
 describe("the surface is the table", () => {
   it("serves every call the contract says may be served", async () => {
-    // A call agreed and never implemented is not what this catches: the
-    // mounting loop throws at start-up for that one, and the case below says
-    // so. What is left over is narrower and has nowhere else to be found — an
-    // address express mounts and then does not match against its own literal
-    // path. A pattern the router reads differently from the string it was
-    // written as answers "no such call" at the very address the contract
-    // publishes, and every route in the table is walked here because the one
-    // that grows such a pattern is not knowable in advance.
-    //
-    // The poll window is a millisecond here so that the one call in the table
-    // designed to be held open does not hold this test open with it.
+    // Catches a route express mounts but does not match at its own literal path,
+    // which would answer "no such call" at the address the contract publishes.
+    // The poll window is a millisecond so the long-poll route does not hold the
+    // test open.
     const { served } = await started({ WORKER_POLL_WAIT_MS: "1" });
 
     for (const [, route] of mountableRoutes()) {
@@ -100,8 +85,7 @@ describe("the surface is the table", () => {
         headers: asMerchant,
         ...(route.request === undefined ? {} : { body: {} }),
       });
-      // A route that is mounted may perfectly well answer "no such order"; what
-      // it must never answer is that there is no call at this address.
+      // "No such order" is fine; "no call at this address" is not.
       expect(
         (answered.body as { error?: { code?: string } })?.error?.code,
         `${route.method} ${route.path}`,
@@ -110,21 +94,11 @@ describe("the surface is the table", () => {
   });
 
   it("puts the merchant's door on the merchant's calls and on no other", async () => {
-    // The check that has to run over the whole table rather than over one
-    // route. Every call is made with no key at all: the merchant's are turned
-    // away and nothing else is, so a door attached to an address prefix turns
-    // some route into one its own caller can never open, and this test dies the
-    // moment it does. The prefixes and the doors line up in today's table, which
-    // is what makes the mistake inviting rather than what makes it safe: the
-    // alignment is not written down anywhere and the next route need not keep
-    // it.
-    //
-    // What is asserted for a route that takes no key is that it was not turned
-    // away, rather than that it did not answer 401. The difference is the whole
-    // value of the assertion: a check attached to a prefix is as likely to be
-    // somebody else's middleware answering 403, or redirecting to a sign-in, as
-    // it is to be a copy of this gateway's own refusal, and a test written
-    // against the one number would let the other two through.
+    // Every call is made with no key: the merchant's are turned away and nothing
+    // else is. It runs over the whole table because a key check attached to an
+    // address prefix happens to line up with today's routes, and the next route
+    // need not. Any turn-away counts, not just 401: a prefix check may be someone
+    // else's middleware answering 403 or redirecting to a sign-in.
     const turnedAway = new Set([401, 403, 407, 302, 303, 307]);
     const { served } = await started({ WORKER_POLL_WAIT_MS: "1" });
 
@@ -142,11 +116,9 @@ describe("the surface is the table", () => {
   });
 
   it("will not mount a route whose door nobody has chosen, whoever hands it over", async () => {
-    // The list the gateway mounts from already leaves these out, and that is
-    // one filter away from not doing so. This is the second half of the same
-    // promise, at the place the mistake would land: a route marked undecided is
-    // refused here even when it is handed over by name, so a door nobody chose
-    // cannot be opened by editing a list.
+    // The mounted list already filters these out; this holds even when one is
+    // handed over by name, so a door nobody chose cannot be opened by editing a
+    // list.
     const { harnessed } = await started();
 
     expect(() =>
@@ -157,10 +129,8 @@ describe("the surface is the table", () => {
   });
 
   it("will not start when the table names a call nothing serves", async () => {
-    // The loop mounts from the table, so a call added to the contract and never
-    // implemented has to stop the process rather than quietly answer nothing.
-    // The route below stands in for that call; the guard it trips is the one
-    // that runs over the real table on every start.
+    // The route below stands in for a call added to the contract and never
+    // implemented; the same guard runs over the real table on every start.
     const { harnessed } = await started();
 
     expect(() =>
@@ -169,20 +139,10 @@ describe("the surface is the table", () => {
   });
 
   it("answers the health check while the process is up, with no key on it", async () => {
-    // The one address the surface serves that the contract's table does not
-    // name, and the promise is a deployment's rather than an agent's:
-    // `compose.yaml` puts a container health check on it, and whatever routes
-    // in front of the gateway will too. A key check grown onto it, or an
-    // answer whose shape changed, takes a working gateway out of rotation
-    // without anything about the table looking wrong.
-    //
-    // What is pinned is exactly what the route promises today and no more: the
-    // process is up and answering. It is not a statement that the gateway can
-    // do its work — a gateway whose queue schema has been dropped out from
-    // under it goes on answering this while logging that the relation does not
-    // exist, which is written down at adapters/postgres/adapters.db-test.ts.
-    // Deepening the check into a real readiness probe is a product decision
-    // nobody has taken, so this test does not pretend it was.
+    // `compose.yaml` and whatever routes in front of the gateway health-check
+    // this address, so a key check or a changed answer here takes a working
+    // gateway out of rotation. It promises only that the process is up: a
+    // gateway whose queue schema was dropped still answers 200 here.
     const { served } = await started();
 
     const answered = await served.call("GET", "/healthz");
@@ -192,9 +152,8 @@ describe("the surface is the table", () => {
   });
 
   it("leads an agent that asks the storefront's own root to the catalogue", async () => {
-    // An agent given only the site tries the obvious addresses first, and the
-    // storefront's root is one of them. It answered that there was no call
-    // there, which an agent reads as there being nothing to buy.
+    // An agent given only the site tries the root first, and "no call here"
+    // reads to it as nothing to buy.
     const { served } = await started();
 
     const answered = await served.call("GET", "/x402");
@@ -204,14 +163,9 @@ describe("the surface is the table", () => {
   });
 
   it("has nothing at the versioned addresses the storefront used to answer at", async () => {
-    // The storefront moved out from under `/v0` and the old addresses were
-    // removed rather than redirected. A redirect would be the expensive
-    // mistake: a discovery catalog keys a listing on the address it was given,
-    // so an old address that still answered would go on being listed, and the
-    // identity this product is found under would be two strings instead of
-    // one. What an agent holding a stale address gets is the same answer any
-    // other address nobody serves gets — no such call here — which is a fact
-    // it can act on rather than a door that half works.
+    // Removed, not redirected: a discovery catalog keys a listing on the address
+    // it was given, so an old address that still answered would keep a second
+    // identity listed for the same product.
     const { served } = await started();
     const itemId = await publish(served, syncCard);
 
@@ -237,11 +191,9 @@ describe("the surface is the table", () => {
 
 describe("what a call answers with", () => {
   it("refuses to send a document the contract would not recognise", async () => {
-    // The answer goes out held to the same schema the SDK holds it to. A
-    // response that does not match is a lie the other side would reject anyway,
-    // and failing here is how it is found before somebody's integration finds
-    // it. The route below is the catalog with a different document named
-    // against it, which is what a drift between the two sides would look like.
+    // Responses are held to the schema the SDK reads them with. The route below
+    // names a different document for the catalog, as a drift between the two
+    // sides would.
     const { harnessed } = await started();
 
     const app = buildApp(harnessed.gateway, [
@@ -261,10 +213,8 @@ describe("what a call answers with", () => {
     try {
       const answered = await fetch(`http://127.0.0.1:${port}/x402/catalog`);
       expect(answered.status).toBe(500);
-      // Retryable, and it is the one refusal on this surface that is. Nothing
-      // was decided here — the call fell over inside us — so the caller who
-      // makes it again is not repeating a mistake, they are making the call
-      // they were owed the first time.
+      // The only retryable refusal on this surface: the call failed inside us,
+      // so making it again is not repeating a mistake.
       expect((await answered.json()) as { error: { code: string } }).toMatchObject({
         error: { code: "gateway_failed", retryable: true },
       });
@@ -274,12 +224,9 @@ describe("what a call answers with", () => {
   });
 
   it("will not let a refusal's own detail take the place of its reason", () => {
-    // The detail a refusal carries comes from somewhere else — a payment
-    // layer, a validator, a schema's findings — and a field called "message"
-    // is exactly what such a place calls its own text. Spread over the two
-    // required fields it would replace the sentence the caller was meant to
-    // read, and nothing would say the real one ever existed: the parameter is
-    // typed unknown, so a string fits it and the compiler is content.
+    // Detail comes from elsewhere and often carries its own "message". The
+    // parameter is typed unknown, so the compiler would let it overwrite the
+    // refusal's own sentence.
     const refused = refusal("payment_not_verified", "the payment layer would not vouch for this", {
       message: "the facilitator's own words about its own call",
       retryable: true,
@@ -291,11 +238,8 @@ describe("what a call answers with", () => {
   });
 
   it("tells a caller a definitive refusal is definitive, on the wire", async () => {
-    // The other side of the flag, and the side that pays for itself. An
-    // address that is not a call will not become one between two attempts, and
-    // a caller that read "retryable" as a suggestion to try again would sit in
-    // a loop against a door with nothing behind it. Read off the body a client
-    // actually receives, because that is the only place the promise is kept.
+    // A missing route will not appear between attempts, so a caller told
+    // "retryable" would loop forever. Read off the body a client receives.
     const { served } = await started();
 
     const answered = await served.call("GET", "/v0/nothing-is-here");
@@ -311,17 +255,9 @@ describe("what a call answers with", () => {
   });
 
   it("sends every code the contract publishes, and publishes every code it sends", () => {
-    // The published list of error codes is a promise to a consumer that
-    // switches over it: these are the refusals this gateway sends. Half of that
-    // promise the compiler keeps, and keeps completely — refusal() takes an
-    // ErrorCode and nothing else, so a refusal under a name the contract has
-    // not got stops the build at the line that invented it.
-    //
-    // The half left over is the one the compiler cannot see: a code in the list
-    // that this gateway no longer sends. Nothing goes red when a refusal is
-    // deleted, and what is left behind is a name a consumer writes a branch for
-    // and waits forever to reach. So the three files that hold every refusal
-    // are read, and each published code has to be written in one of them.
+    // The compiler already rejects a code the contract lacks, since refusal()
+    // takes an ErrorCode. What it cannot see is a published code nothing sends,
+    // which a consumer writes a branch for and never reaches.
     const written = [routesSource, serverSource, merchantAnswersSource].join("\n");
     const unsent = ERROR_CODES.filter((code) => !written.includes(`"${code}"`));
 
@@ -371,9 +307,8 @@ describe("the merchant's door", () => {
 
 describe("what a call may carry", () => {
   it("refuses a body that is not the document the table names, and says what is wrong", async () => {
-    // The mounting loop holds every body to the schema the table names for its
-    // route, so a merchant sending the wrong document learns it here rather
-    // than by watching a flow behave strangely further in.
+    // Every body is held to its route's schema, so a wrong document is refused
+    // at the door rather than misbehaving further in.
     const { served } = await started();
 
     const answered = await served.call("POST", "/v0/quotes/prc_1/answer", {
@@ -408,11 +343,9 @@ describe("what a call may carry", () => {
   });
 
   it("refuses a price answer it could not charge, in the words a merchant's worker prints", async () => {
-    // The promise: the answer to a price question is held to the rule a card's
-    // price is held to at publication. An answer of nothing, in a currency with
-    // no rate to charge it at, or written without its cents, is refused before
-    // it can price a sale — and the refusal's own sentence names what was wrong,
-    // because that sentence is the one line of it a merchant's worker log shows.
+    // A price answer is held to the rule a card's price is held to at
+    // publication. The message names the bad value because it is the one line a
+    // merchant's worker log shows.
     const { served } = await started();
 
     const refused: [price: unknown, field: string, found: string][] = [
@@ -443,9 +376,8 @@ describe("what a call may carry", () => {
   });
 
   it("takes a price answer a payment can be taken at, the portal's own example among them", async () => {
-    // The other side of the same rule. Nothing is held under prc_1, so each of
-    // these is taken and prices nothing — which is what `used: false` says, and
-    // is a different answer from a refusal.
+    // Nothing is held under prc_1, so each answer is taken and prices nothing:
+    // `used: false`, which is not a refusal.
     const { served } = await started();
     const portal: unknown = JSON.parse(
       readFileSync(
@@ -476,11 +408,9 @@ describe("what a call may carry", () => {
   });
 
   it("reads back a card stored before the door refused its price", async () => {
-    // The rule is the door's and not the stored card's. Every answer that
-    // carries a card is held to the contract on its way out, so a rule written
-    // into the card's schema would turn the whole list of any merchant who
-    // published a zero before the rule existed into a failure — for a card
-    // they could otherwise see, pause and replace.
+    // The price rule lives at the door, not in the card schema. Responses are
+    // validated on the way out, so a schema rule would fail the whole list of a
+    // merchant holding a zero-priced card stored before the rule.
     const { harnessed, served } = await started();
     await harnessed.store.publishCard(
       harnessed.merchant.id,
@@ -550,20 +480,16 @@ describe("the payment challenge", () => {
     );
     expect(challenge.x402Version).toBe(2);
     expect(challenge.accepts[0]?.amount).toBe("80000000");
-    // The address is the seller's own and not the one this gateway is
-    // configured with, which is the operator's; `payout-wallet.test.ts` is
-    // where that is the subject rather than a field being read back.
+    // The seller's own wallet, not the operator's configured address;
+    // `payout-wallet.test.ts` covers this properly.
     expect(challenge.accepts[0]?.payTo).toBe(harnessed.merchant.wallet);
     expect(challenge.accepts[0]?.network).toBe("eip155:84532");
-    // No order was opened by a call that cannot be a purchase.
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
   it("asks for the smallest price the door takes, exactly", async () => {
-    // The promise: a price the door took is a price the payment edge can
-    // charge. The finest the door takes is one unit of the token a buyer pays
-    // in, and the challenge asks for exactly that unit — one place further and
-    // the card would have been refused at publication rather than here.
+    // The finest price publication accepts is one unit of the payment token,
+    // and the challenge must ask for exactly that unit.
     const { served } = await started();
     const itemId = await publish(served, {
       ...syncCard,
@@ -598,10 +524,8 @@ describe("the payment challenge", () => {
   });
 
   it("names, on a GET, the method and body a purchase is made with", async () => {
-    // The declaration a GET carries is what an agent reads before it buys, and
-    // the promise is that a purchase made the way it says opens an order. A
-    // declaration naming GET would send the agent back to the probe, which
-    // reads no payment; one went there on 2026-09-10.
+    // An agent buys the way a GET's declaration says. One naming GET would send
+    // it back to the probe, which reads no payment.
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
 
@@ -625,12 +549,9 @@ describe("the payment challenge", () => {
   });
 
   it("answers a POST that brought no document as it answers a GET: a price, and no order", async () => {
-    // The catalog's validator asks with a POST that carries nothing, and so
-    // does everything built on the official x402 server: an unpaid call is
-    // answered with the challenge before any body is read. Ours refused that
-    // call with a 400 for the document it did not bring, which kept every
-    // POST probe of ours out of the catalog
-    // (docs/research/26-discovery-method-on-get.md).
+    // The catalog's validator, like everything built on the official x402
+    // server, probes with an empty POST and expects the challenge before any
+    // body is read. A 400 here keeps the product out of the catalog.
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
 
@@ -646,13 +567,9 @@ describe("the payment challenge", () => {
   });
 
   it("answers an unpaid POST that carries an empty document the same way", async () => {
-    // This is the validator's own probe, byte for byte: a POST declaring a
-    // JSON body and carrying none, which the body parser hands over as an
-    // empty document. Held as the purchase it was refused with a 400, and the
-    // stand was refused by the catalog on 2026-09-10 for exactly that. An
-    // unpaid call is the probe whatever it carries; the document is read when
-    // there is a payment to read it for, or when it is the purchase and can
-    // be priced as one.
+    // The validator's own probe: a POST declaring a JSON body and carrying none,
+    // which the parser hands over as an empty document. Unpaid, it is a probe
+    // and not a purchase.
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
 
@@ -667,11 +584,9 @@ describe("the payment challenge", () => {
   });
 
   it("refuses an unpaid POST whose document is of some other shape, naming the fields", async () => {
-    // An empty document is nothing and gets the probe's answer; a document of
-    // the wrong shape is a mistake, and the agent is told which fields before
-    // it signs anything — the same moment it would learn that its parameters
-    // do not fit the card. Answering it with a price would make the two
-    // neighbouring mistakes two different journeys.
+    // A wrong document, unlike an empty one, is a mistake: the agent is told
+    // which fields before it signs anything, as it would be for parameters that
+    // do not fit the card.
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
 
@@ -686,10 +601,9 @@ describe("the payment challenge", () => {
   });
 
   it("refuses a body it could not read as JSON by saying so, not by pricing it", async () => {
-    // The body parser leaves a body under any other content-type unread, and
-    // unread looks the same as absent. Absent is the probe; a body that was
-    // sent and not read is a mistake, and the words name the mistake rather
-    // than a field that is missing from a document that was never read.
+    // The parser leaves a body of another content-type unread, which looks like
+    // an absent body, and an absent body is the probe. The refusal names the
+    // content-type rather than a missing field.
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
 
@@ -705,9 +619,8 @@ describe("the payment challenge", () => {
   });
 
   it("refuses a paid POST whose document is not the purchase, naming the fields", async () => {
-    // A payment is what makes the document matter: with one on the call the
-    // gateway is about to open an order, and a document that is not the
-    // purchase is a mistake the agent can fix, so it is told which fields.
+    // With a payment on the call an order is about to open, so a document that
+    // is not the purchase is refused with its fields named.
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
 
@@ -723,13 +636,9 @@ describe("the payment challenge", () => {
   });
 
   it("tells a GET that brought a payment that the purchase is a POST", async () => {
-    // A GET reads no payment: it is the probe, and a probe has no body to open
-    // an order with. An agent that paid the probe used to get back the same
-    // bare challenge a crawler gets, and could not tell its payment being
-    // ignored from its payment having failed. One did, on 2026-09-10, and
-    // stopped. The error line is where a challenge says why this call did not
-    // return the resource (research note 25), so it says it here — and only here: the
-    // bare probe keeps the words every other shelf uses.
+    // A GET is the probe and reads no payment. Without this line an agent that
+    // paid it cannot tell its payment being ignored from its payment failing.
+    // The unpaid probe's error line stays as it is.
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
     const probed = await served.call("GET", `/x402/${itemId}/purchase`);
@@ -794,14 +703,9 @@ describe("the payment challenge", () => {
   });
 
   it("says so when a payment header could not be read at all", async () => {
-    // A header that will not decode is answered the same way as one naming an
-    // order we are not holding — a fresh price the agent can pay against — and
-    // it used to be answered the same way as no header at all: a bare 402 with
-    // nothing on it. An agent presenting a payment and getting back a price
-    // with no word about the payment has no way to tell that its own encoding
-    // is what went wrong, and every retry it makes fails the same way. The
-    // error line is where a challenge says why this call did not return the
-    // resource (research note 25), so it says it here.
+    // Answered with a fresh price, like a header naming an order we are not
+    // holding. Without a word about the payment the agent cannot tell that its
+    // own encoding is at fault, and every retry fails the same way.
     const { served } = await started();
     const itemId = await publish(served, syncCard);
 
@@ -818,10 +722,8 @@ describe("the payment challenge", () => {
   });
 
   it("says nothing about a payment when none was presented", async () => {
-    // The other half of the line above, and the reason it is a test rather
-    // than an assumption: an agent opening its first purchase presented
-    // nothing, so a challenge telling it that its payment could not be read
-    // would be a claim about a payment that never existed.
+    // The negative control: a first call presents no payment, so a word about
+    // one would be a claim about a payment that never existed.
     const { served } = await started();
     const itemId = await publish(served, syncCard);
 
@@ -837,12 +739,10 @@ describe("the payment challenge", () => {
   });
 
   it("reads a payment that is not one without falling over", async () => {
-    // The decoder is a base64 JSON parse with no schema behind it, so a header
-    // naming a real order and carrying nothing else reaches every line that
-    // reads a payment. It used to reach one that assumed a payload was there
-    // and answered "something here is broken" — which tells an agent to give up
-    // on a route that works. What it gets now is the ordinary answer to a
-    // payment the payment layer will not have: the purchase did not happen.
+    // The decoder is a base64 JSON parse with no schema, so a header naming a
+    // real order and nothing else reaches every line that reads a payment. It
+    // must get the ordinary refusal, not a failure that tells the agent the
+    // route is broken.
     const { served, harnessed } = await started();
     harnessed.facilitator.willRefuseVerification("signature", "that is not a payment");
     const itemId = await publish(served, syncCard);
@@ -912,10 +812,9 @@ describe("a purchase over HTTP, from the catalog to the goods", () => {
 
 describe("what an agent is told when the money is not settled", () => {
   it("does not answer a synchronous purchase with a success it has no goods for", async () => {
-    // The one way here is the case that most needs saying: a charge that went
-    // out and never reported back. Answered 200, an agent reads "your purchase
-    // is being worked on" for an order nothing is working on, while holding
-    // nothing and not knowing whether it was charged.
+    // A charge that went out and never reported back. Answered as in progress,
+    // an agent would wait on an order nothing is working on, not knowing whether
+    // it was charged.
     const { served, harnessed } = await started({
       QUOTE_RESPONSE_MS: "50",
       SYNC_RESPONSE_MS: "200",
@@ -954,10 +853,9 @@ describe("what an agent is told when the money is not settled", () => {
   });
 
   it("says an order closed before it was priced is closed, not still waiting", async () => {
-    // The document this call answers in carries a sale price, and an order the
-    // merchant said was out of stock never got one. Saying it is "still waiting
-    // for its price" would be a positive false statement about a purchase that
-    // is over.
+    // This document carries a sale price, and an order refused before pricing
+    // never got one. "Still waiting for its price" would be false about a
+    // purchase that is over.
     const { served, harnessed } = await started({ QUOTE_RESPONSE_MS: "10" });
     const itemId = await publish(served, {
       ...syncCard,
@@ -982,10 +880,9 @@ describe("what an agent is told when the money is not settled", () => {
   });
 
   it("leaves an order closed before it was priced out of the list, and still answers the list", async () => {
-    // Every row of the list is written in a document that carries a sale
-    // price. An order that never had one is not a row with the card's number
-    // standing in for it, and it is not a list that fails for everyone because
-    // of it: it is left out, and read one at a time by its identifier.
+    // Each row carries a sale price. An order that never had one is left out,
+    // rather than shown at the card's price or failing the whole list, and can
+    // still be read by its identifier.
     const { served, harnessed } = await started({ QUOTE_RESPONSE_MS: "10" });
     const itemId = await publish(served, {
       ...syncCard,
@@ -1031,14 +928,10 @@ describe("whose purchase it is", () => {
   const BUYER = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const STRANGER = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-  // Two payments for one order, presented over HTTP and released into the
-  // ownership decision at the same instant, so what settles it is the in-lock
-  // guard and not which request the runtime happened to schedule first. Held
-  // verifications keep both calls at the decision until each has reached it;
-  // asserting a fixed winner instead would pass or fail on the machine's
-  // timing, which is how these two once went green locally and red on a
-  // faster runner. The larger sync budget keeps the parked calls alive across
-  // the hold.
+  // Both payments are held at verification and released together, so the
+  // in-lock ownership guard decides and not scheduling. The tests must not
+  // assert which one wins: that depends on the machine. The larger sync budget
+  // keeps the parked calls alive across the hold.
   const RACE_TIMING = {
     QUOTE_RESPONSE_MS: "50",
     SYNC_RESPONSE_MS: "300",
@@ -1074,11 +967,9 @@ describe("whose purchase it is", () => {
   };
 
   it("hands the goods to exactly one of two racing payments and refuses the other", async () => {
-    // An order's identifier is not a secret the way a password is: this gateway
-    // puts it in the challenge itself. In the synchronous mode the goods reach
-    // an agent through the call it is parked on and nowhere else, so a second
-    // call under the same order must not take the first one's place — exactly
-    // one wins, the other is told this order is already somebody's.
+    // The order identifier is public: it is in the challenge. Synchronous goods
+    // reach only the parked call, so a second call under the same order must not
+    // take the first one's place.
     const { served, harnessed } = await started(RACE_TIMING);
     const itemId = await publish(served, syncCard);
 
@@ -1103,11 +994,9 @@ describe("whose purchase it is", () => {
   });
 
   it("charges exactly one payment, the one the winner owns", async () => {
-    // Between a verification and a charge the order sits waiting, and a
-    // presentation landing in that window used to replace the authorisation
-    // that would be executed. The merchant then produced the goods and was paid
-    // with somebody else's payment, while the winner's own was never charged.
-    // Whichever of the two wins, the single charge is that one's payment.
+    // A presentation landing between another's verification and its charge must
+    // not replace the authorisation to be charged, or the goods are paid for
+    // with somebody else's payment.
     const { served, harnessed } = await started(RACE_TIMING);
     const itemId = await publish(served, syncCard);
 
@@ -1166,13 +1055,9 @@ describe("whose purchase it is", () => {
   });
 
   it("lets the buyer who owns an order drive the payment home with a second authorisation", async () => {
-    // The portal's promise for a synchronous delivery whose charge did not
-    // execute: the purchase did not happen, and a repeat drives the payment
-    // home. A repeat is a second authorisation, not the same one again — a
-    // fresh nonce, a different signed thing, a different fingerprint — and what
-    // makes it the same buyer's is the wallet it was signed from. Nothing else
-    // in the exchange carries that, so the gateway has to be told it by the
-    // payment layer, and the payment layer reads it off the payment.
+    // A repeat is a fresh authorisation with its own nonce and fingerprint. Only
+    // the signing wallet makes it the same buyer's, and the gateway learns that
+    // wallet from the payment layer.
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
     harnessed.facilitator.willSettle(
@@ -1214,11 +1099,8 @@ describe("whose purchase it is", () => {
   });
 
   it("refuses a second wallet's payment for an order that is already somebody's", async () => {
-    // The other side of the repeat, and the reason a repeat cannot simply be
-    // waved through: an order's identifier travels — in a challenge, on the
-    // merchant's stream, in a receipt — and holding one is not being the agent
-    // whose purchase it is. A different wallet gets the refusal the contract
-    // names, in the words it names.
+    // An order's identifier travels in challenges, on the merchant's stream and
+    // in receipts, so holding one does not make a wallet the buyer.
     const { served, harnessed } = await started();
     const itemId = await publish(served, {
       ...syncCard,
@@ -1243,8 +1125,7 @@ describe("whose purchase it is", () => {
       error: {
         code: "not_this_purchase",
         message: "this order already belongs to another payment",
-        // The order is somebody else's; presenting this payment again gets the
-        // same answer for as long as that stays true, which is for good.
+        // The order stays somebody else's, so this answer never changes.
         retryable: false,
       },
     });
@@ -1255,10 +1136,8 @@ describe("whose purchase it is", () => {
 
 describe("the worker's calls over HTTP", () => {
   it("hands nothing to a poll whose worker has gone, and keeps it for the next", async () => {
-    // A worker that stops cuts its poll off, and the gateway used to go on
-    // holding it open: whatever arrived in the meantime was taken off the
-    // stream for nobody, and an event, which is sent once, was lost with it.
-    // A poll the worker has left takes nothing, and the next poll has it.
+    // A poll the worker abandoned must take nothing off the stream: an event is
+    // sent once, and one drawn for nobody is lost.
     const { served, harnessed } = await started();
     const itemId = await publish(served, {
       ...syncCard,
@@ -1294,11 +1173,10 @@ describe("the worker's calls over HTTP", () => {
   });
 
   it("takes nothing into a poll whose key is revoked while it waits", async () => {
-    // Revoking a key is the merchant saying that code is not to have their
-    // orders any more. A poll the key had opened before kept waiting, and the
-    // next order to arrive went to the code the merchant had just cut off. A
-    // poll whose key is revoked ends with nothing, and the order waits for a
-    // key that still works.
+    // Revoking a key cuts that code off from the merchant's orders, including
+    // a poll it already holds open: otherwise the next order to arrive would
+    // go to the code the merchant had just cut off. The order waits for a key
+    // that still works.
     const { served, harnessed } = await started();
     const itemId = await publish(served, {
       ...syncCard,
@@ -1337,7 +1215,7 @@ describe("the worker's calls over HTTP", () => {
   it("refuses the code's poll while its merchant sells through a shop, for good", async () => {
     // Answered empty, a worker whose merchant connected a shop would look
     // healthy and idle for as long as anybody let it run; the refusal is what
-    // its log shows (ADR-0036).
+    // its log shows.
     const { served, harnessed } = await started();
     await harnessed.gateway.sellThrough(harnessed.merchant.id, "woocommerce");
 
@@ -1396,11 +1274,9 @@ describe("the worker's calls over HTTP", () => {
   });
 
   it("answers a poll with one envelope, whatever the worker asks for", async () => {
-    // The wait for a handler's answer starts when an order is handed over, and
-    // a worker works what it is handed one at a time; handed several, the ones
-    // at the back would be waiting out the calls ahead of them. So a worker
-    // asking for a thousand is answered with one, as the contract leaves the
-    // gateway free to do, and the next one waits for the next poll.
+    // The answer wait starts at hand-over and a worker handles orders one at a
+    // time, so handing out several would run the clock on orders queued behind
+    // others. The contract lets the gateway return fewer than asked.
     const { served, harnessed } = await started();
     const itemId = await publish(served, {
       ...syncCard,
@@ -1432,11 +1308,9 @@ describe("the worker's calls over HTTP", () => {
   });
 
   it("answers a recorded acceptance as a success, in the body and in the status", async () => {
-    // Both halves matter and they have to agree. An SDK reads the body and
-    // reports anything but a success to the merchant; a client library reads
-    // the status and retries what looks like a failure. A landed acceptance
-    // that says no in either place turns an order going through into a problem
-    // in the merchant's log, or into a retry loop.
+    // An SDK reads the body and a client library reads the status. An
+    // acceptance that says no in either becomes a false problem in the
+    // merchant's log, or a retry loop.
     const { served, harnessed } = await started();
     const itemId = await publish(served, {
       ...syncCard,
@@ -1459,12 +1333,8 @@ describe("the worker's calls over HTTP", () => {
   });
 
   it("still says no in the status when the answer route refuses one", async () => {
-    // The other half of the promise above, and what makes it mean anything: a
-    // success reads as one because a refusal does not. Nothing has been paid
-    // for this order, so there is no work to take on and the machine turns the
-    // answer away — and a client library that reads the status rather than the
-    // body has to see that, or it records an order as under way that the
-    // gateway never accepted.
+    // The negative control: the order is unpaid, so the acceptance is refused,
+    // and a client that reads only the status has to see that.
     const { served, harnessed } = await started();
     const itemId = await publish(served, {
       ...syncCard,
@@ -1480,14 +1350,9 @@ describe("the worker's calls over HTTP", () => {
     });
 
     expect(early.status).toBe(409);
-    // Refused, and the order was not taken on — that is what this pins. The
-    // code itself is deliberately not pinned: it is the machine's own word
-    // rather than one of the three the contract promises, and `results.ts`
-    // calls that set open and free to change, so asserting it here would
-    // certify a stability the contract declines to offer. Nor is `retryable`
-    // pinned, because on this fixture it is not true in the sense the field
-    // promises: the order is merely unpaid, and the identical call succeeds
-    // once the buyer pays. The flag has two values where the truth has three.
+    // Neither the code nor `retryable` is pinned. The code is the machine's own,
+    // which the contract leaves free to change, and neither value of `retryable`
+    // is right for an order that is merely unpaid.
     expect(early.body).toMatchObject({ ok: false });
     expect((await harnessed.store.orderById(offered.order.order.id))?.order.dispatch.accepted).toBe(
       false,
@@ -1495,9 +1360,8 @@ describe("the worker's calls over HTTP", () => {
   });
 
   it("refuses a body that is not JSON in the shape everything else refuses in", async () => {
-    // The parser turns it away before any route runs, so without an answer of
-    // our own it comes back as express's HTML page — from a surface whose every
-    // other refusal is a document, to a client that only reads documents.
+    // The parser rejects it before any route runs; without our own handler
+    // express answers with an HTML page.
     const { served } = await started();
 
     const answered = await served.call("POST", "/v0/quotes/prc_1/answer", {
@@ -1518,13 +1382,9 @@ describe("the worker's calls over HTTP", () => {
   });
 
   it("says a body was too large rather than that it could not be read", async () => {
-    // The promise: an error text is a claim somebody else's agent acts on. A
-    // body that is perfectly good JSON and merely over the limit, answered
-    // "could not be read as JSON", sends that agent to re-encode a document it
-    // already got right, and it will get the same answer every time. The two
-    // cases arrive from the parser as one throw and the fork that tells them
-    // apart is the only place they are still distinguishable — the test above
-    // holds the other side of that fork.
+    // Good JSON over the limit, answered "could not be read as JSON", sends an
+    // agent to re-encode a document it got right. The parser throws both as one
+    // error, and only the fork tells them apart.
     const { served } = await started();
 
     const answered = await served.call("POST", "/v0/quotes/prc_1/answer", {
@@ -1541,22 +1401,14 @@ describe("the worker's calls over HTTP", () => {
   });
 
   it("tells the refusals at the door apart, and says the true one about each", async () => {
-    // The promise: an error is a claim somebody else's agent acts on, and by
-    // the time these leave the parser they are one throw with a word on it.
-    // The fork in front of them is the only place they are still separate
-    // things, so each one answered in another one's words sends that agent to
-    // repair something that was never broken — and, in most of the cases here,
-    // to do it forever, because the answer will not change however many times
-    // it tries.
-    //
-    // They are read against one gateway. A test that watched only the branch
-    // it was written for would miss a fork widened until it swallows its
-    // neighbours, which is the same defect pointing the other way.
+    // The parser throws all of these as one error and the fork is the only
+    // place they are told apart; an agent given another case's words repairs
+    // what was never broken. They are checked together so that a branch widened
+    // to swallow its neighbours fails too.
     const { served } = await started();
 
-    // A body that really was gzip and arrived cut in half — a dropped upload,
-    // the ordinary accident. Valid gzip up to the byte it stops at, which is
-    // what makes it the caller's mishap rather than a lie about the header.
+    // Real gzip cut in half, as a dropped upload would be: the caller's mishap,
+    // not a false header.
     const wholeGzip = gzipSync(JSON.stringify({ available: true }));
     const halfGzip = wholeGzip.subarray(0, Math.floor(wholeGzip.length / 2));
 
@@ -1576,9 +1428,8 @@ describe("the worker's calls over HTTP", () => {
       return { status: answered.status, ...error };
     };
 
-    // None of these is a failure of ours, so none of them may be written to
-    // the log as one. An operator who greps for that line and finds somebody
-    // else's broken upload goes looking for a defect in this process.
+    // None of these is our failure, so none may be logged as one: an operator
+    // grepping for it would hunt a defect that is not there.
     const complaints: string[] = [];
     const realError = console.error;
     console.error = (...args: unknown[]) => {
@@ -1595,37 +1446,26 @@ describe("the worker's calls over HTTP", () => {
     try {
       notJson = await refusedFor({}, "{ this is not json");
       tooLarge = await refusedFor({}, JSON.stringify({ note: "x".repeat(300_000) }));
-      // `compress` is a content coding the HTTP specification registers and
-      // this parser has no decompressor for. Gzip, deflate and brotli it does
-      // inflate, so a body under any of those never reaches that branch.
+      // `compress` is a registered coding the parser cannot inflate; a body
+      // under gzip, deflate or brotli never reaches this branch.
       encodingRefused = await refusedFor({ "content-encoding": "compress" }, "{}");
       encodingBroken = await refusedFor({ "content-encoding": "gzip" }, halfGzip);
-      // A different header and a different refusal: the charset named on the
-      // content-type rather than the coding the body arrived under. The parser
-      // has a word of its own for this one too, and the bytes are never turned
-      // into text, so nothing about the JSON is known here either.
+      // The charset on the content-type rather than the content coding: a
+      // refusal of its own, and the bytes are never decoded.
       charsetRefused = await refusedFor(
         { "content-type": "application/json; charset=utf-77" },
         "{}",
       );
-      // The negative control for the branch above it. This body declares the
-      // very same header and decompresses perfectly; what is wrong is the JSON
-      // inside it. A fork that read the header instead of the failure would
-      // call this undecodable and be wrong about a document it had in its hand.
+      // Negative control for the broken gzip: same header, decompresses fine,
+      // bad JSON inside. A fork reading the header instead of the failure would
+      // call this undecodable.
       goodGzipBadJson = await refusedFor(
         { "content-encoding": "gzip" },
         gzipSync("{ this is not json"),
       );
-      // The floor under all of them, and the negative control for the second
-      // half of the undecodable branch. Express turns away a path parameter it
-      // cannot percent-decode shapelessly — a status blaming the caller, and no
-      // word saying what happened — and this request declares no encoding at
-      // all and carries a body that is fine. It must not collect the encoding
-      // answer, which would be that answer handed to somebody who sent no
-      // encoding; and it must not collect the 500, because a refusal that
-      // blames the caller is not a failure of ours whatever raised it. What is
-      // left is the honest generic: refused before we began, for a reason we
-      // have no name for.
+      // Express refuses a path it cannot percent-decode with a bare 4xx. With no
+      // encoding and a good body, this must get neither the encoding answer nor
+      // a 500, only the generic refusal.
       brokenPath = await refusedFor({}, "{}", "/v0/quotes/%ZZ/answer");
     } finally {
       console.error = realError;
@@ -1648,10 +1488,8 @@ describe("the worker's calls over HTTP", () => {
       status: 415,
       code: "encoding_unsupported",
     });
-    // The subject, because an agent not told what was refused has only the body
-    // left to suspect and the body was fine; and the way out, because sending
-    // it uncompressed is the one thing that always works and the caller should
-    // not have to find that by trying encodings against a live gateway.
+    // Names the header, since the body was fine, and the way out: send it
+    // uncompressed.
     expect(encodingRefused.message).toContain("content-encoding");
     expect(encodingRefused.message).toContain("uncompressed");
     expect(encodingRefused.message).not.toContain("could not be read as JSON");
@@ -1669,11 +1507,8 @@ describe("the worker's calls over HTTP", () => {
       status: 400,
       code: "body_undecodable",
     });
-    // Again the header, since that and the bytes are the two candidates and we
-    // hold neither: what is known is that they disagree. "Nothing was decided"
-    // under a 5xx was the old answer and the worst of the four, because a 5xx
-    // is the one answer an agent is right to retry, and the retry carries the
-    // same broken bytes.
+    // The header and the bytes disagree and we cannot tell which is wrong. Not
+    // a 5xx: an agent would retry it with the same broken bytes.
     expect(encodingBroken.message).toContain("content-encoding");
     expect(encodingBroken.message).not.toContain("nothing was decided");
 
@@ -1681,9 +1516,7 @@ describe("the worker's calls over HTTP", () => {
       status: 400,
       code: "call_refused",
     });
-    // It says only what it is entitled to say. Naming a cause here would be a
-    // guess dressed as a finding, and the caller acting on it would go looking
-    // wherever the guess pointed.
+    // No cause is named: it would be a guess the caller then acts on.
     expect(brokenPath.message).not.toContain("nothing was decided");
 
     expect(complaints.filter((line) => line.includes("failed before it reached a route"))).toEqual(
@@ -1705,11 +1538,9 @@ describe("the worker's calls over HTTP", () => {
 });
 
 describe("the merchant's own catalog and the pause switch", () => {
-  // The promise: a merchant can see their cards, stop selling one or all of
-  // them, and start again — and a pause stops new orders without touching the
-  // orders already open. The words come back the way the machine keeps them,
-  // because a screen and a machine that disagree about whether a product is on
-  // sale is the one thing a switch like this must never do.
+  // A pause stops new orders and leaves open ones alone. Answers report state
+  // as the machine keeps it, so a screen never disagrees with it about
+  // whether a product is on sale.
   const vpnCard: Card = {
     merchant_item_id: "vpn-monthly",
     title: "VPN, one month",
@@ -1774,9 +1605,8 @@ describe("the merchant's own catalog and the pause switch", () => {
   });
 
   it("does not touch an order that was already open when the pause began", async () => {
-    // The whole shape of a pause, and the thing a merchant most needs to be
-    // true: the guard is at the birth of an order and nowhere else, so a sale
-    // already under way completes exactly as it would have.
+    // The pause guards the birth of an order and nothing after it, so a sale
+    // already under way completes as it would have.
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
     const priced = await buy(served, itemId);
@@ -1888,12 +1718,9 @@ describe("the merchant's own catalog and the pause switch", () => {
   });
 
   it("does not put a merchant who has left back on sale", async () => {
-    // Leaving is not a heavier pause, and this switch does not undo one: a
-    // departure closed the orders that were open and left refunds owed, and
-    // resuming would return the merchant to the catalog with none of it
-    // unwound. Nothing in the pilot sets "departed", so the guard is reached
-    // through the store rather than through a route — the same reason
-    // `sellingFor`'s departed branch is tested directly.
+    // A departure closed the open orders and left refunds owed; resuming would
+    // put the merchant back on sale with none of it unwound. No route sets
+    // "departed", so the store sets it here.
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
     await harnessed.store.setSelling(harnessed.merchant.id, "departed");
@@ -2015,11 +1842,9 @@ describe("a product that is declared and a product that is not", () => {
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
     expect(challenge.extensions?.bazaar).toBeTypeOf("object");
-    // This exact string is the product's identity in every catalog that lists
-    // it, so it is pinned character for character rather than matched loosely.
-    // It carries no version segment, and that is the point of the address
-    // rather than an accident of it: a listing outlives the protocol, which
-    // says its own version in the challenge above and not in the path.
+    // The product's identity in every catalog, so pinned exactly. It carries no
+    // version segment: a listing outlives the protocol version, which the
+    // challenge states instead.
     expect(challenge.resource.url).toBe(`http://localhost:3000/x402/${itemId}/purchase`);
   });
 
@@ -2077,14 +1902,6 @@ describe("a product that is declared and a product that is not", () => {
         .serviceName,
     ).toBe("The pilot merchant");
   });
-
-  // There was a test here for the challenge of a card whose merchant had been
-  // stripped of their name: it asserted the seller field was left out rather
-  // than sent empty. There is no such challenge any more — a card whose
-  // merchant is listed under nobody is off sale, and the purchase is refused
-  // before anything is written (`http/seller-name.test.ts`). The rule it was
-  // really about, that an absent name is an absent field rather than an empty
-  // one, is where it belongs: `packages/contracts/src/card.test.ts`.
 
   it("names the same resource however the address was typed", async () => {
     // The resource identity is what a listing is keyed on, and a query string

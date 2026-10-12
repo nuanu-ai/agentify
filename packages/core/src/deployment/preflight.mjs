@@ -1,19 +1,12 @@
 /**
- * What a release channel has to be before anything starts.
+ * What a release channel has to be before anything starts. It reads the output
+ * of `docker compose config --format json`, which resolves every variable
+ * without starting a container, and lists everything wrong with it.
  *
- * It reads one document — `docker compose config --format json`, which
- * resolves every variable without starting a container — and answers with a
- * list of everything wrong with it. Deterministic logic over text, which is
- * why it is here and tested rather than inside the shell script that runs it.
- *
- * The last group is a list of equality checks against values anybody can read
- * in `compose.yaml`. It prints no secret and asserts nothing about strength —
- * only that the string in front of it is not the one we published to the
- * world. It stops there deliberately: whether the live site is open to
- * registrations is the operator's line in a file, and a release that tracked
- * whether the first sale had happened yet, in order to permit or forbid that
- * line, would be a state machine about our own intentions rather than a check
- * on a configuration.
+ * The checks against values published in `compose.yaml` print no secret and
+ * judge no strength, only that the value is not the published one. Whether the
+ * live site is open to registrations is deliberately not checked: that is the
+ * operator's line in a file, not a property of the configuration.
  */
 
 /** What each channel declares itself to be. */
@@ -79,8 +72,8 @@ export function problemsWith(channel, resolved) {
   }
 
   const problems = [];
-  // The gateway and the dashboard, in one process and one environment
-  // (ADR-0030): a variable here means one thing to both.
+  // The gateway and the dashboard run in one process with one environment, so a
+  // variable here means one thing to both.
   const app = envOf(resolved, "app");
   const web = envOf(resolved, "web");
   const scanner = envOf(resolved, "scanner");
@@ -156,8 +149,8 @@ export function problemsWith(channel, resolved) {
         "postgres: production needs a distinct URL-safe password of at least 24 characters",
       );
     } else {
-      // One database for every process that has one (ADR-0003): a service
-      // left naming another would start against a database nothing migrates.
+      // Every process with a database uses this one: a service left naming
+      // another would start against a database nothing migrates.
       const databaseUrl = `postgres://agentify:${password}@postgres:5432/agentify`;
       for (const service of [
         "migrate",
@@ -204,14 +197,12 @@ export function problemsWith(channel, resolved) {
     }
   }
 
-  // A merchant comes into being one way: a person opens the link mailed to
-  // their address and presses the one control the dashboard offers (ADR-0014,
-  // ADR-0026 §4). A key the gateway seeds at start-up is a second way, kept in
-  // a file and written back into the database at every start, so a deployed
-  // channel seeds nothing; the laptop's stack is the one that does.
-  // deploy/compose.public.yaml gives the seed nothing whatever a host's file
-  // says, so a rendered one is a file after it that put a key back. The value
-  // is never repeated, since it opens a merchant.
+  // A merchant comes into being only when a person opens the link mailed to
+  // their address and presses the dashboard's one control. A seeded key would
+  // be a second way, written back into the database at every start, so only the
+  // laptop's stack seeds one. deploy/compose.public.yaml empties the seed
+  // whatever a host's file says, so a value here means a file rendered after it
+  // put a key back. The value is never repeated, since it opens a merchant.
   if ((app.SANDBOX_MERCHANT_KEY ?? "") !== "") {
     problems.push(
       "app: SANDBOX_MERCHANT_KEY is set, and a deployed channel seeds no merchant: a " +
@@ -229,11 +220,11 @@ export function problemsWith(channel, resolved) {
     }
   }
 
-  // The scanner's private identity route (ADR-0026). Every service of a
-  // channel shares one network and one database account, so what keeps a
-  // person's identity with the dashboard is the credential that route asks for:
-  // the scanner holds it and nothing else does, and it opens no other door.
-  // The dashboard's half lives in the application, where the dashboard runs.
+  // The scanner's private identity route. Every service of a channel shares one
+  // network and one database account, so what keeps a person's identity with
+  // the dashboard is the credential that route asks for: only the scanner holds
+  // it, and it opens no other door. The dashboard's half of the route lives in
+  // the application.
   const identity = app.REPORT_IDENTITY_SECRET ?? "";
   if (identity.length < 32) {
     problems.push(

@@ -1,17 +1,7 @@
 /*
- * The two families, served from this origin.
- *
- * They were loaded from Google's font host until the local stack had to come
- * up with no network at all: a page that fetches its faces from outside falls
- * back to system fonts on a laptop with the wire pulled, which is exactly the
- * machine somebody is shown the product on. The second reason is the one a
- * merchant would care about — a stylesheet fetched from another host tells
- * that host the origin of every visit, and the dashboard is a private console.
- *
- * Latin and Latin Extended only. Cyrillic and Greek are not here because
- * nothing on these surfaces is written in them today; a page that needs them
- * adds the subsets rather than falling back silently, which is what the
- * unicode-range on each face makes visible.
+ * The two families, served from this origin so that pages render offline and
+ * no font host learns who visits the dashboard. Latin and Latin Extended only;
+ * a page that needs another script adds its subsets.
  *
  * Schibsted Grotesk and IBM Plex are under the SIL Open Font License 1.1.
  * The files are Fontsource distributions, subset by subset, unmodified.

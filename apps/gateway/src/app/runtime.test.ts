@@ -1,25 +1,11 @@
 /**
- * The fold from four facts to the one word the order machine is given.
- *
- * A merchant can stop selling altogether, can take one card off sale, can have
- * nowhere for the money to go, can be listed under no name for the sale to be
- * made under, and can lack the operator's live grant — and the machine has
- * exactly one guard for all five. `sellingFor` is where they become the one;
- * the last three reach it through `sellableBy`, because from the order's side
- * they are one fact: this merchant cannot make a sale. Which of those three a
- * deployment asks for is the rule in the core (`readinessOf`), tested there.
- *
- * What is here is only what a purchase cannot reach. Every combination a
- * merchant can actually get into is bought against over HTTP — the two switches
- * in `http/server.test.ts`, the missing name in `http/seller-name.test.ts`, the
- * missing address in `http/payout-wallet.test.ts` and the missing grant in
- * `http/live-approval.test.ts` — where the answer is a price or a refusal
- * rather than a word, and a fold that got any of them wrong dies there. Two cases are left, and neither can be
- * reached over HTTP: nothing in the pilot sets a merchant to `departed`, so a
- * defect in that branch would sit in the code with every route green and
- * surface the day departure is wired up as a merchant who had left going on
- * selling; and no route can ask for a combination the type admits and the
- * product does not yet produce, which is what the totality loop is for.
+ * The fold from a merchant's and a card's state to the one word the order
+ * machine is given. Which merchant facts a deployment asks for is the core's
+ * `readinessOf`, tested there, and every combination a merchant can reach is
+ * bought against over HTTP, where a wrong fold dies. What is left here is what
+ * no route can reach: nothing sets a merchant to `departed` yet, so a defect in
+ * that branch would stay green until departure is wired up, and a merchant who
+ * had left would then go on selling.
  */
 
 import type { Card } from "@nuanu-ai/agentify-contracts";
@@ -47,12 +33,10 @@ const stored = (paused: boolean): StoredCard => ({
 
 describe("what the order machine is told about one card", () => {
   it("keeps a merchant who left apart from one who is merely paused", () => {
-    // Leaving is not a heavier pause. A pause takes the cards off sale and the
-    // orders already accepted play out; leaving closes those orders and leaves
-    // the merchant owing refunds on whatever was paid for and not delivered.
-    // Read as paused, a departure would tell everything downstream — the
-    // rejection an agent gets, the word on a screen — that it can be undone by
-    // pressing resume, which it cannot.
+    // Leaving is not a heavier pause: a pause lets accepted orders play out,
+    // while leaving closes them and leaves the merchant owing refunds. Read as
+    // paused, a departure would tell everything downstream that resume undoes
+    // it, which it cannot.
     expect(sellingFor("departed", stored(false), true, "api")).toBe("departed");
     expect(sellingFor("departed", stored(true), true, "api")).toBe("departed");
     // And a merchant who left with no address to be paid at has still left:

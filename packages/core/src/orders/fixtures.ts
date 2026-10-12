@@ -1,14 +1,8 @@
 /**
- * Order fixtures for the tests of this package. Nothing here is exported from
- * the package index on purpose: the gateway builds orders out of real
- * purchases, and a builder that quietly guesses defaults has no business
- * standing next to someone else's money.
- *
- * Every number below is a test value and nothing more. The real ones live in
- * the gateway's configuration: the portal publishes the deadlines and the
- * attempt count as that deployment's settings, and only the pauses between the
- * attempts stay ours. None of them belongs to this package either way, which is
- * why the machine takes them as a policy instead of carrying constants.
+ * Order fixtures for this package's tests, deliberately not exported from the
+ * package index: a builder that guesses defaults has no place next to real
+ * purchases. Every number here is a test value; the real deadlines and attempt
+ * counts are the gateway's configuration.
  */
 
 import type { CreateOrderInput, MerchantSelling, PriceCheck } from "./create.js";
@@ -79,18 +73,16 @@ export function newOrder(
 }
 
 /**
- * One event of every kind, for the sweeps that walk every pairing of a state
- * and an event. The values carry no meaning of their own — what a sweep is
- * about is the pairing — but two of them are load-bearing and would be easy to
- * change without noticing.
+ * One event of every kind, for the sweeps over every pairing of a state and an
+ * event. Two values are load-bearing and easy to break without noticing.
  *
- * The quoted price is in the card's own currency. A quote in another one is
- * refused rather than taken, so a sample in euros would quietly make the one
- * pairing that prices an order illegal and every sweep would go on passing.
+ * The quoted price is in the card's own currency. A quote in another currency
+ * is refused, so a sample in euros would make the one pairing that prices an
+ * order illegal while every sweep went on passing.
  *
- * The expiry is far enough out that any deadline it names has genuinely come
- * due; an instant that had not would be turned back as premature everywhere
- * and the sweeps would exercise the guard instead of the machine.
+ * The expiry is far enough out that any deadline it names is due. An earlier
+ * instant would be turned back as premature everywhere, and the sweeps would
+ * exercise that guard instead of the machine.
  */
 export function sampleEvent(kind: OrderEventKind): OrderEvent {
   switch (kind) {
@@ -142,9 +134,8 @@ const PAID_ASYNC: readonly OrderEvent[] = [
 ];
 
 /**
- * One order in each state, every one of them walked there through legal events
- * only. Building the samples this way is itself the proof that no state in the
- * vocabulary is decoration: a state nothing can reach would fail here first.
+ * One order in each state, each walked there through legal events only, so a
+ * state nothing can reach fails here first.
  */
 export function reach(state: OrderState): Order {
   switch (state) {

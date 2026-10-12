@@ -1,18 +1,14 @@
 /**
- * The one dashboard identity surface used by its server-rendered pages.
- *
- * Better Auth, verification rows and database locks stay behind this port. A
- * page can ask for or open a link, read or end a session, and finish the one
- * merchant binding. What the scanner asks over the internal route is on the
- * operator-facing `Identity` in `identity.ts` and does not make this larger.
+ * The identity port the server-rendered pages use; Better Auth, verification
+ * rows and database locks stay behind it. What the scanner asks over the
+ * internal route is on `Identity` in `identity.ts` and does not widen this.
  */
 
-/** The merchant an account belongs to. */
 export interface AccountMerchant {
   readonly id: string;
 }
 
-/** A dashboard person. A null merchant is the authenticated P1 state. */
+/** A null merchant means signed in but not yet set up. */
 export interface Person {
   readonly id: string;
   readonly email: string;
@@ -21,16 +17,9 @@ export interface Person {
 }
 
 /**
- * The dashboard screens a link asked for on the sign-in page may lead to, each
- * by the address it is served at; "default" is the person's start, which for a
- * merchant is the card list.
- *
- * One list, read wherever a section travels: the gate that names the one a
- * signed-out person was going to, the sign-in form that carries it, the link's
- * stored claim that keeps it, and the redirect that follows it. The
- * navigation's tabs are typed from it. Anything else a browser sends is the
- * start, so it can lead nowhere this list does not name; a stored claim naming
- * anything else opens nothing.
+ * Read wherever a destination travels: the gate, the sign-in form, the link's
+ * stored claim and the redirect. Anything else a browser sends becomes the
+ * start, and a stored claim naming anything else opens nothing.
  */
 export const DASHBOARD_DESTINATIONS = [
   "default",
@@ -44,36 +33,23 @@ export const DASHBOARD_DESTINATIONS = [
 
 export type DashboardDestination = (typeof DASHBOARD_DESTINATIONS)[number];
 
-/** A section a browser named, or the start for anything else. */
 export const dashboardDestinationIn = (value: unknown): DashboardDestination =>
   DASHBOARD_DESTINATIONS.find((destination) => destination === value) ?? "default";
 
-/**
- * Every place a link may lead once it is opened: a dashboard screen, or the full
- * report of one named scan for a link the scanner asked for. A closed set,
- * recorded with the token when the link is asked for (ADR-0026 §1).
- */
+/** A closed set, recorded with the token when the link is asked for. */
 export type LinkDestination = DashboardDestination | Readonly<{ report: string }>;
 
 /**
- * Which of the two walls in front of a link refused this request.
- *
- * They are waits of different orders — under a minute against the better part
- * of an hour — and a screen that cannot tell them apart has to guess, which on
- * a page that says how long to wait means saying something untrue. So the
- * answer names the wall it hit.
+ * The waits differ by an order of magnitude (under a minute against most of an
+ * hour), so a page that says how long to wait has to know which one it hit.
  */
 export type LinkWall = "interval" | "hourly";
 
 /**
- * What became of a request for a link, and when this address may ask again.
- *
- * Both answers carry that moment, because both leave a wait behind them. A
- * refusal's wait is the wall it hit. An accepted request's is the wall in
- * front of the next link, which is usually the minute the door keeps between
- * two of them and is the rest of the hour when the link that just went out was
- * this address's third. A caller told "accepted" and left to assume the minute
- * draws a page that invites a press it knows will be refused.
+ * Both answers carry the moment the address may ask again: a refusal's is the
+ * limit it hit; an accepted request's is usually the minute, and the rest of
+ * the hour when this was the address's third link. A caller left to assume the
+ * minute would invite a press it knows will be refused.
  */
 export type LinkRequestResult =
   | Readonly<{ status: "accepted"; retryAt: Date }>
@@ -101,16 +77,11 @@ export type AttachMerchantResult =
   | Readonly<{ status: "person-missing" }>;
 
 /**
- * A live session: whose it is, whether that person is an operator, which
- * request its link was asked for, and what reading it asked of the browser.
- *
- * The operator flag is read with the session every time, so a flag set or
- * cleared at the terminal holds from the next request (ADR-0026 §6). The
- * request is the scanner's full-report request the link that opened this
- * session was asked for, and null for any other session. The lines renew the
- * session's cookie when the reading moved the session's end, which happens at
- * most once a day, and are empty otherwise. Whoever answers the browser passes
- * them on as they are.
+ * The operator flag is read with the session every time, so a change at the
+ * terminal holds from the next request. `request` is the scanner's full-report
+ * request whose link opened this session, null otherwise. The cookie lines
+ * renew the session when the reading moved its end (at most once a day) and are
+ * empty otherwise; whoever answers the browser passes them on as they are.
  */
 export type LiveSession = Readonly<{
   person: Person;
@@ -120,8 +91,8 @@ export type LiveSession = Readonly<{
 }>;
 
 /**
- * How a session is read. `renew: false` reads it without moving its end, for
- * an answer that cannot pass a renewed cookie on to the browser.
+ * `renew: false` reads a session without moving its end, for an answer that
+ * cannot pass a renewed cookie on to the browser.
  */
 export type SessionReading = Readonly<{ renew?: boolean }>;
 
@@ -130,8 +101,8 @@ export interface DashboardIdentity {
 
   requestLink(email: string, destination: DashboardDestination): Promise<LinkRequestResult>;
   /**
-   * The address a live link would sign in, read without spending it, or null
-   * for a link that no longer opens anything.
+   * Read without spending the link; null for a link that no longer opens
+   * anything.
    */
   addressOfLink(token: string): Promise<string | null>;
   openLink(token: string): Promise<DashboardLinkResult>;
@@ -146,21 +117,22 @@ export interface DashboardIdentity {
 
   /**
    * Ends every session of every account naming this merchant except the ones
-   * this cookie header carries, and says how many ended.
+   * the `keep` Cookie header carries, and returns how many ended. `keep` is the
+   * raw Cookie header of the presser's request, not a token: anything else
+   * keeps nothing and signs the presser out too.
    *
-   * What a cancelled wallet change does (ADR-0019): the change may have been
-   * asked for from a session somebody else holds, and the person who pressed
-   * cancel is the one known to be the owner, so theirs is the one left.
+   * For a cancelled wallet change: the change may have been asked for from a
+   * session somebody else holds, and the person who pressed cancel is the one
+   * known to be the owner, so theirs is the one kept.
    */
   endOtherSessionsOfMerchant(merchantId: string, keep: string | undefined): Promise<number>;
 
   /**
-   * Ends every live session of this one account except the ones this cookie
-   * header carries, and says how many ended.
-   *
-   * What "sign out every other device" on the settings screen does (ADR-0026
-   * §3): another account naming the same merchant is somebody else's, and
-   * their sessions are not this person's to end.
+   * Ends every live session of this one account except the ones the `keep`
+   * Cookie header carries, and returns how many ended. `keep` is the raw Cookie
+   * header of the presser's request, not a token: anything else keeps nothing
+   * and signs the presser out too. Another account naming the same merchant is
+   * somebody else's, and its sessions are not this person's to end.
    */
   endOtherSessionsOfPerson(personId: string, keep: string | undefined): Promise<number>;
 }

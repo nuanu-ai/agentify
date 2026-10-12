@@ -1,23 +1,17 @@
 /**
- * One list, three readers, each asked in its own words.
+ * One list of chains, three readers, each asked in its own words: the gateway's
+ * derivation, the ordinary smoke command and the bootstrap spending gate. If
+ * any of them classified a chain differently, the one who would notice is a
+ * person spending real money on a run that thought it was on a testnet.
  *
- * The gateway's derivation, the ordinary smoke command and the bootstrap
- * spending gate each decide something about a chain, and they used to decide
- * it from two copies of one set. Two copies that move independently is the
- * exact disagreement this change removed, and this is what holds them
- * together afterwards: if a chain is ever classified differently by any of the
- * three, the one who would otherwise notice is a person spending real money on
- * a run that thought it was on a testnet.
- *
- * Every assertion below goes through a command's own decision function rather
- * than through the set they share. Asking the set would prove that the set is
+ * Every assertion goes through a command's own decision function rather than
+ * through the set they share; asking the set would prove only that the set is
  * the set.
  *
- * The last describe is about the same chain deciding one further thing. It is
- * not a fourth reader of the list — it consumes the gateway's own derivation —
- * but it is the place that derivation is spent furthest from where it is made,
- * and the only place where getting it wrong takes a whole run down instead of
- * refusing it.
+ * The last describe consumes the gateway's derivation rather than the list. It
+ * is where that derivation is spent furthest from where it is made, and the
+ * only place where getting it wrong takes a whole run down instead of refusing
+ * it.
  */
 
 import { isTestnetChain, LIVE_CHAINS, TESTNET_CHAINS } from "@agentify/core";

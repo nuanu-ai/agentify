@@ -6,13 +6,9 @@ import { ErasedShipToSchema, localityOf, ShipToLocalitySchema, ShipToSchema } fr
 import { errorOf, expectMissingFieldRejected } from "./testing/expect-schema.js";
 
 /**
- * The address a parcel goes to (ADR-0032), in the Agentic Commerce Protocol's
- * names, because that is the address an agent already writes.
- *
- * The door checks the shape and no more: whether a state or a postal code is
- * needed for this country, and whether the merchant ships there at all, is the
- * merchant's to answer, in their price check. A rule written here instead
- * would be a per-country table this contract does not keep.
+ * The address a parcel goes to, in the Agentic Commerce Protocol's names. Only
+ * the shape is checked: whether a state or postal code is needed, and whether
+ * the merchant ships there, is the merchant's to answer in their price check.
  */
 
 /** An address in a real place, with the person and the number taken out of it. */
@@ -33,8 +29,7 @@ describe("where a parcel goes", () => {
   });
 
   it("takes an address with no second line, no state and no postal code", () => {
-    // Many countries have no states, and some have no postal codes; whether
-    // this one needs them is the merchant's to say, not the door's.
+    // Many countries have no states, and some have no postal codes.
     const { line_two: _second, state: _state, postal_code: _postal, ...least } = address;
 
     expect(ShipToSchema.parse(least)).toStrictEqual(least);
@@ -66,8 +61,8 @@ describe("where a parcel goes", () => {
   });
 
   it("refuses a field the address does not have, such as a company", () => {
-    // The second line holds a company; a field of our own beside the
-    // protocol's would be one an agent never fills in.
+    // The second line holds a company; a field beside the protocol's would be
+    // one an agent never fills in.
     expect(ShipToSchema.safeParse({ ...address, company: "Nuanu" }).success).toBe(false);
   });
 });
@@ -75,7 +70,7 @@ describe("where a parcel goes", () => {
 describe("where a parcel goes, as its price is asked", () => {
   it("is the locality and nothing about who receives it", () => {
     // A price question reaches a merchant for purchases never made, and a
-    // shipping rate needs the place, not the person (ADR-0032).
+    // shipping rate needs the place, not the person.
     expect(localityOf(address)).toStrictEqual({
       country: "ID",
       state: "BA",

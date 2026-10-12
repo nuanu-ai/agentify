@@ -6,96 +6,54 @@
  *
  * Usage: pnpm mutate <package> [--file <package-relative-path>]...
  *
- * A package is a directory under `packages/` or `apps/` that holds a
- * `package.json`, and <package> is its name, exactly as `ls` prints it. The
- * door accepts nothing else: not a path, not `.` or `..`, which `basename`
- * would let through. `scripts/stryker.vitest.config.ts` lists the packages by
- * the same definition; if it changes, it changes in both.
+ * <package> is the name of a directory under `packages/` or `apps/` that holds
+ * a `package.json`, exactly as `ls` prints it: not a path, not `.` or `..`.
+ * `scripts/stryker.vitest.config.ts` uses the same definition; if it changes,
+ * it changes in both.
  *
- * Stryker is a triage tool here, not a gate: the run prints the clear-text
- * table and writes the JSON report, and someone reads the survivors. A
- * survivor worth acting on is confirmed by applying that mutation by hand and
- * running `pnpm test`, the whole offline suite, judged by its exit code: there
- * is no narrower commerce or scanner test command, and the sandbox run is
- * already the narrow check. It is run from the root of the checkout, from
- * which Stryker copies the checkout
- * into a sandbox, mutates the copies and runs vitest there. Nothing it does
- * reaches the checkout, and a run killed half-way leaves nothing behind but
- * its sandbox in the operator storage directory. Its `inPlace` mode, the one the spike
- * (`docs/research/27-stryker-spike.md`) had to use, is the opposite: it
- * rewrites the tree itself and leaves it dirty when the process dies.
+ * Stryker is a triage tool here, not a gate: someone reads the survivors, and
+ * one worth acting on is confirmed by applying the mutation by hand and running
+ * `pnpm test`. Stryker mutates a copy of the checkout in a sandbox, so a run
+ * killed half-way leaves only its sandbox behind. Its `inPlace` mode rewrites
+ * the tree itself and leaves it dirty when the process dies.
  *
  * Why each option is what it is:
  *
- * - The tsconfig rewrite is switched off, by naming a `tsconfigFile` that
- *   exists nowhere. That rewrite is the one place Stryker loads TypeScript,
- *   and it calls `parseConfigFileTextToJson`, which the workspace's
- *   TypeScript 7 no longer exports. Its only job is to fix `extends` and
- *   `references` paths that would leave the sandbox; none of ours do, every
- *   `extends` here points at `tsconfig.base.json` inside the copy. Vite does
- *   read the nearest tsconfig for each `.ts` file it transforms, and would
- *   fail the dry run aloud with a `TSCONFIG_ERROR` if one pointed outside
- *   the sandbox. It runs only when the named file is among
- *   the files Stryker copies, so a name that matches nothing skips it, and
- *   Stryker needs no TypeScript of its own: a second TypeScript in the graph
- *   made pnpm re-resolve gateway's production peers (`viem`, `@x402/*`) into
- *   several flavours, which a test tool has no business doing.
- * - The runner named in `plugins`. The default `@stryker-mutator/*` glob is
- *   resolved next to the installed `core`, and under pnpm nothing else is
- *   installed there.
- * - The root of the checkout as the working directory. Stryker's sandbox is a
- *   copy of everything under the directory it runs from, plus a symlink for
- *   every `node_modules` beneath it. Run from `packages/core` the sandbox
- *   would hold core alone: not the vitest config, not the network guard it
- *   loads, none of the tests in gateway and slice that import core. Run from
- *   the root, all of them are copied and the runner selects the commerce or
- *   scanner suite for the target package. The one thing the copy gets wrong, a workspace
- *   symlink that leads back to the real checkout, is corrected by
- *   `scripts/stryker.vitest.config.ts`, which is why that file is passed as
- *   the vitest config rather than `vitest.config.ts` directly.
- * - What git ignores stays out of the sandbox. Stryker's crawl does not read
- *   `.gitignore`: on its own it skips `node_modules` and `.git` and copies
- *   the rest, an `.env` and every agent worktree under `.claude/worktrees/`
- *   included, and a killed run leaves that copy on the disk. `ignorePatterns`
- *   is therefore what `git ls-files --ignored` names at the moment of the
- *   run, so the two cannot drift. Each entry is a literal path, so the
- *   characters minimatch reads as a pattern are escaped in it. Untracked
- *   files that git does not ignore are copied, as they would be run by
- *   `pnpm test`.
- * - Everything Stryker writes goes to the operator storage directory: the sandbox
- *   (`tempDirName`) and the report (`jsonReporter.fileName`) are absolute
- *   paths under STORAGE, because the root disk is small and because a file
- *   that appears inside the checkout is a file `git status` has to explain.
- * - One run at a time. A second Stryker sweeping the sandboxes directory
- *   while the first is testing mutants does not fail the first: it leaves it
- *   hanging, with hundreds of mutants counted as survivors because no test
- *   was left to run against them. So a run takes a lock under STORAGE with
- *   its PID, a second run is refused at the door by name of the first, and
- *   sandboxes left by killed runs are swept only once the lock is held. A
- *   lock whose process is gone is stale and is taken over.
- * - The previous report is removed before the run. A killed or failed run
- *   writes no report, and a report that survived such a run is by its path
- *   indistinguishable from a fresh one; the file exists only when a run has
+ * - `tsconfigFile` names a file that exists nowhere, which switches off
+ *   Stryker's tsconfig rewrite. The rewrite calls `parseConfigFileTextToJson`,
+ *   which the workspace's TypeScript 7 does not export, and nothing here needs
+ *   it: every `extends` points at `tsconfig.base.json` inside the copy. It also
+ *   spares Stryker a TypeScript of its own, and a second one in the graph makes
+ *   pnpm re-resolve the gateway's production peers (`viem`, `@x402/*`).
+ * - The runner is named in `plugins`: the default glob resolves next to the
+ *   installed `core`, where pnpm installs nothing else.
+ * - It runs from the root of the checkout, because the sandbox copies only the
+ *   directory Stryker runs from; run from `packages/core` it would lack the
+ *   vitest config, its network guard and the tests elsewhere that import core.
+ *   A workspace symlink in the copy still leads to the real checkout, which
+ *   `scripts/stryker.vitest.config.ts` corrects; that is why it is the vitest
+ *   config here.
+ * - `ignorePatterns` is what `git ls-files --ignored` names at run time, as
+ *   escaped literal paths. Stryker's crawl does not read `.gitignore` and would
+ *   otherwise copy an `.env` and every agent worktree, and a killed run leaves
+ *   that copy on disk.
+ * - The sandbox and the report go under STORAGE, outside the checkout: the root
+ *   disk is small, and a file inside the checkout is one `git status` has to
+ *   explain.
+ * - One run at a time, by a PID lock under STORAGE. A second run sweeping the
+ *   sandboxes does not fail the first but leaves it hanging, with hundreds of
+ *   mutants counted as survivors. A lock whose process is gone is taken over,
+ *   and leftover sandboxes are swept only once the lock is held.
+ * - The previous report is removed first, so a report exists only when a run
  *   completed.
- * - The narrow mode. Static mutants, those that only run when a module is
- *   loaded, cost a full reload of the environment and all of the tests each;
- *   `ignoreStatic` skips them, string literals are excluded as a class, and
- *   coverage is taken per test so that a mutant runs only the tests that
- *   reach it. On core this is the difference between five minutes and more
- *   than fifteen. The price is that the state machine's transition table,
- *   which is built at load time, goes unmutated.
- * - The clear-text report lists the mutants that survived, each with its
- *   diff and the tests that ran against it, and the score table; the list of
- *   every test in the dry run, twelve hundred lines that say nothing about a
- *   mutant, is switched off.
- * - Tracked `.ts` and `.tsx` production files are mutated, with tests and
- *   fixtures excluded. `apps/web` has production roots under `app`,
- *   `components`, `content` and `lib`; other workspaces use `src`. Repeated
- *   `--file` narrows that production scope without accepting an untracked or
- *   out-of-package path. `preflight.mjs` in core is
- *   spawned as a child process by its test, where a mutant switched on in this
- *   process is not seen, so mutating it would only report survivors that are
- *   not holes.
+ * - `ignoreStatic`, no string-literal mutants and per-test coverage keep a run
+ *   short. The price is that the state machine's transition table, built at
+ *   load time, goes unmutated.
+ * - Tracked production `.ts` and `.tsx` files are mutated: `apps/web` has its
+ *   roots under `app`, `components`, `content` and `lib`, the other packages
+ *   under `src`. Repeated `--file` narrows that scope and refuses an untracked
+ *   or out-of-package path. `preflight.mjs` in core is left out: its test runs
+ *   it as a child process, which never sees a mutant switched on here.
  */
 
 import { execFileSync } from "node:child_process";
@@ -119,7 +77,6 @@ const SCANNER_PACKAGES = new Set([
   "packages/remediation",
 ]);
 
-/** The workspace packages: directories under packages/ and apps/ that hold a package.json. */
 function workspacePackages() {
   return ["packages", "apps"].flatMap((group) =>
     readdirSync(path.join(ROOT, group), { withFileTypes: true })

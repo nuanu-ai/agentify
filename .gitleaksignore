@@ -1,5 +1,5 @@
-# Exact historical findings from Gitleaks 8.30.1 before this gate was added.
-# These are fixture and test values. A new commit gets a new fingerprint and fails.
+# Findings in existing commits, all fixture and test values. A new commit gets a
+# new fingerprint and fails.
 05ebbbaed59a06dc58dda8d63feac19b99dd7540:packages/slice/src/buyer.test.ts:generic-api-key:31
 1e00109d8c5fbc3346302ad6f61e6db7bcfc31a9:packages/slice/src/buy.ts:generic-api-key:33
 1e22798e7698dc01c5ee236e05cb9c7eff147762:packages/core/src/deployment/fixtures/live-channel.json:generic-api-key:222
@@ -50,8 +50,7 @@ fb086fcb85cdc593df246a35378551feb2425549:packages/core/src/deployment/fixtures/l
 fb086fcb85cdc593df246a35378551feb2425549:packages/core/src/deployment/fixtures/test-channel.json:generic-api-key:222
 fb086fcb85cdc593df246a35378551feb2425549:packages/core/src/deployment/fixtures/test-channel.json:generic-api-key:296
 fbdfc4092e6f6abf584307d60a0b413b75b2b529:packages/slice/src/bootstrap-command.test.ts:generic-api-key:58
-# The first local-devnet account's public, valueless key in a catalog test, since
-# replaced by a computed one; the commit stays in the branch's history.
+# A local-devnet account's public, valueless key in a catalog test.
 7d3322e319a4ec9b583265540cc72cbc2d84dbe7:packages/slice/src/catalog-reading.test.ts:generic-api-key:19
 # The same public key in the smoke's test, since replaced by a generated one;
 # the commit stays in the branch's history.

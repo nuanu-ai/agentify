@@ -1,19 +1,9 @@
 /**
- * The Agentify gateway: the 402 edge, the order queue and the receipts.
- *
- * It is an interpreter and not a second brain. The order machine in
- * `@agentify/core` decides everything about an order — whether a silence sells,
- * whether the money moves, whether there is another delivery — and everything
- * here loads an order, hands it one event, writes down what comes back and
+ * The Agentify gateway: the 402 edge, the order queue and the receipts. The
+ * order machine in `@agentify/core` decides everything about an order; the
+ * gateway loads the order, hands it one event, stores what comes back and
  * carries out the effects. The HTTP surface is mounted from the table in
- * `@nuanu-ai/agentify-contracts` rather than transcribed, so the addresses both sides use
- * cannot come apart.
- *
- * Three ports hold all the IO. Behind them in a deployment sit one Postgres,
- * pg-boss and the official x402 facilitator client (ADR-0003 §6 and §9);
- * behind them in a test sit three implementations in memory, which is what
- * lets the whole of the application logic be tested for free, offline and the
- * same way every time.
+ * `@nuanu-ai/agentify-contracts`, so both sides use the same addresses.
  */
 
 export { ScriptedFacilitator } from "./adapters/memory/facilitator.js";

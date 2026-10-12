@@ -8,45 +8,27 @@ import type { Order } from "./model.js";
 import { outcomeFor } from "./outcome.js";
 
 /**
- * The portal's tables are the contract the merchant reads, and the charter
- * makes them test cases of this machine: documentation and code are not
- * allowed to drift apart quietly. Every row below is encoded as a scenario and
- * cited by its own first cell, and the guard at the bottom of this file reads
- * the portal back and fails if the rows moved.
+ * The portal's tables are the contract the merchant reads, so their rows are
+ * test cases of this machine. Every row below is a scenario named by its own
+ * first cell, and the guard at the bottom reads the portal back and fails if
+ * the rows moved.
  *
- * What a scenario asserts is the one thing this file is here for: `outcomeFor`,
- * the word the agent is handed for his purchase, checked against the sentence
- * the row gives him. The state the machine moved to, the effects it asked the
- * gateway for and the record it wrote down are `machine.test.ts`'s subject and
- * are pinned there. Asserting them here again cost more than it saved — the
- * same mutation failed in two files at once and neither said which promise it
- * had broken, the portal's or the machine's. Where a row promises something no
- * outcome can express — which event reaches the merchant's subscription,
- * whether a repeat under the same key is safe — the scenario says that too,
- * because nothing else does.
+ * A scenario asserts `outcomeFor`, the word the agent is handed, against the
+ * sentence the row gives him. The state, the effects and the record are pinned
+ * in `machine.test.ts` and not again here, so a failure says which promise
+ * broke, the portal's or the machine's. Where a row promises something no
+ * outcome can express, such as which event reaches the merchant's subscription
+ * or whether a repeat under the same key is safe, the scenario checks that too.
  *
- * The parser is deliberately tiny. It finds the section by its heading, takes
- * the first table in it, and returns one named column of every row. If it ever
- * needs to be cleverer than that, the portal has grown a structure that the
- * tests should be reading differently anyway.
+ * A row is pinned by its first cell only: a row added, removed or renamed on
+ * the portal fails here until somebody decides which scenario it is. The rest
+ * of the row is prose, checked as the machine fact it states, so a sentence
+ * reworded without changing its meaning does not fail. Where a cell lists more
+ * than the scenarios here name, such as the four ways an order comes to need
+ * a refund, the rest is checked in `machine.test.ts` and not in this file.
  *
- * A row is pinned by its first cell and no further. That cell says which case
- * the row is about, and pinning it is what enrolls the row: one added, removed
- * or renamed on the portal fails here until somebody decides which scenario it
- * is. The columns after it are the row's prose — where the money is, what the
- * agent is told, what running out of one clock costs — and they were pinned
- * word for word for a while, which made this file the place a copyeditor's
- * semicolon broke the build.
- *
- * What those columns promise is checked as the machine fact it is, in the
- * scenarios above: against `outcomeFor`, and against the effects the machine
- * asks the gateway for, the events it sends among them. So a sentence that stops being
- * true fails where it is read against the code, and a sentence that says the
- * same thing in other words does not fail at all. Where a cell enumerates more
- * than the scenarios below name — the four ways an order comes to need a
- * refund is the one — the rest is `machine.test.ts`'s to hold, and pinning the
- * sentence here never checked them either. It froze the wording and called it
- * cover.
+ * The parser is deliberately tiny: it finds a section by its heading, takes the
+ * first table in it and returns one named column.
  */
 
 const ORDERS_PAGE = readFileSync(
@@ -130,7 +112,7 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
 
   it(`${ENDINGS[1]}: the money is the merchant's, and the agent is told the parcel shipped`, () => {
     // Not "delivered": nothing reached the agent, and the shipment is the last
-    // thing anybody here knows about the parcel (ADR-0033).
+    // thing anybody here knows about the parcel.
     const parcel = walk(
       newOrder("async", {
         mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
@@ -156,17 +138,13 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
 
   it(`${ENDINGS[2]}: nothing moved, and the agent sees a refusal`, () => {
     // Four different failures, and the row promises the agent one word for all
-    // of them. The machine keeps them apart — the merchant's own metrics need
-    // the difference — and this is where the four are held to the single word
-    // the page gives the buyer.
+    // of them. The machine keeps them apart for the merchant's own metrics;
+    // this is where they are held to the single word the page gives the buyer.
     //
-    // The row's other half — that a refusal of the merchant's own reaches the
-    // agent with his code and his message — is not held here, and saying where
-    // it is held is cheaper than leaving somebody to look. The words live on
-    // the closure this machine writes, and the document that carries them to
-    // the agent is built in the gateway, which this package does not see:
-    // `apps/gateway/src/http/order-status.test.ts` is where the promise is
-    // read against the answer an agent actually gets.
+    // The row's other half, that a merchant's own refusal reaches the agent
+    // with his code and message, is held in
+    // `apps/gateway/src/http/order-status.test.ts`, where the agent's answer is
+    // built.
     const noStock = must(newOrder("async", { priceCheck: "merchant" }), {
       kind: "quote_answered",
       at: T0 + 1,
@@ -232,12 +210,10 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
   });
 
   it(`${ENDINGS[8]}: the agent is told the outcome is unknown, not that he was refused`, () => {
-    // The row's own promise to the agent: "the outcome of the payment is not
-    // known", not "refused" — and a repeat under the same key is safe. The two
-    // are different answers to an agent deciding whether to go and buy the same
-    // thing somewhere else, and the machine may not give the cheaper one when
-    // it does not know. This is where that is held: the page can say it in
-    // whatever words it likes, and the word the code hands out is checked here.
+    // The row promises "the outcome of the payment is not known", not
+    // "refused". To an agent deciding whether to buy the same thing elsewhere
+    // these are different answers, and the machine may not give the cheaper one
+    // when it does not know.
     const unresolved = walk(newOrder("async"), [
       { kind: "payment_verified", at: T0 + 1 },
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
@@ -271,10 +247,9 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
 
   it(`${ENDINGS[7]}: where the charge went unanswered instead, the repeat waits`, () => {
     // The other half of the portal's "You delivered and the payment did not
-    // execute", and the half the page used to leave out. The same merchant
-    // event carries both, so the page sends the merchant to the order's own
-    // word to tell them apart — and the two words have to be the two below,
-    // or a merchant follows the wrong paragraph.
+    // execute". The same merchant event carries both, so the page sends the
+    // merchant to the order's own word to tell them apart, and the two words
+    // have to be the two below or a merchant follows the wrong paragraph.
     const { order } = must(reach("fulfilled"), {
       kind: "deadline_expired",
       at: T0 + 999_999,
@@ -398,10 +373,9 @@ describe('apps/docs/orders.md, "Events on the same subscription"', () => {
   });
 
   it(`${EVENTS[0]}: sent when the merchant left with the money and the goods undelivered`, () => {
-    // The third cause in the row, and the one the row used to leave out. A
-    // departure closes the open orders, and one that took money and delivered
-    // nothing leaves a debt behind exactly as a passed deadline does — so the
-    // merchant is owed the same notice, and it is the same event.
+    // A departure closes the open orders, and one that took money and delivered
+    // nothing leaves a debt exactly as a passed deadline does, so the merchant
+    // is owed the same notice by the same event.
     const { effects } = must(paidAsync(), { kind: "merchant_departed", at: T0 + 5 });
 
     expect(effects).toContainEqual({ kind: "emit_merchant_event", event: "order.refund_due" });

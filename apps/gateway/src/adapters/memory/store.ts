@@ -1,29 +1,10 @@
 /**
- * The store, in memory.
- *
- * This is not a stub for the real one: it is the adapter the whole of the
- * application logic is tested against, so it has to keep the same promises the
- * Postgres one does. Three of them are load-bearing and two are about
- * `withOrder`.
- *
- * An order is held still while a decision is made about it, and the hold is per
- * order rather than over the whole store — two different orders never wait for
- * each other, and the same order never has two decisions in flight. The
- * Postgres adapter gets this from a row lock inside a transaction; here it is a
- * queue of promises per identifier, which is the same guarantee in the one
- * process this map lives in.
- *
- * And what goes in comes out unchanged. Orders are frozen on the way in,
- * because a caller that kept a reference and edited it afterwards would be
- * editing the database — which the Postgres adapter would simply ignore, and
- * the difference between the two would show up as a test that passes here and
- * a purchase that fails there.
- *
- * The third is the scoping. Every read that names a merchant filters on it
- * here exactly as the Postgres adapter filters in SQL, and for the same reason:
- * this is the adapter the two-merchant tests run against, so a filter missing
- * here is a filter nothing would catch until somebody's catalog turned up in
- * somebody else's dashboard.
+ * The store in memory. The application logic is tested against it, so it keeps
+ * the Postgres adapter's promises: an order is held per order while a decision
+ * is made (a promise queue per identifier where Postgres takes a row lock),
+ * orders are frozen on the way in so a caller editing a kept reference cannot
+ * edit the store, and every read that names a merchant filters on it exactly
+ * as the SQL does, because the two-merchant tests run here.
  */
 
 import { isOpen, type MerchantSelling } from "@agentify/core";
@@ -49,40 +30,28 @@ import {
 } from "../../ports/store.js";
 
 /**
- * Where this store puts an envelope that has to be written with an order.
- *
- * It is in two halves for the same reason the Postgres adapter's is. Taking the
- * envelope can refuse, and it does so here, before anything about the order is
- * written; putting it where a worker can reach it happens in the call this
- * hands back, after the order is written. In a deployment the two halves are
- * one transaction and the database provides both properties at once. Here they
- * are two maps in one process, and the ordering is what stands in for it.
- *
- * One half without the other is a real failure rather than a nicety. Taking it
- * after the order is written leaves a record saying something happened when
- * nothing did. Making it visible before means a worker can be handed an
- * envelope for a change to an order that is not written down yet — and while an
- * order envelope is safe there, because acting on one comes back through the
- * store's own hold, a merchant event is not: the poll hands one over without
- * touching the order at all.
+ * Where this store puts an envelope that must be written with an order. `stage`
+ * takes the envelope, and may refuse, before the order is written; the call it
+ * returns makes the envelope visible to workers after. Postgres gets both from
+ * one transaction, and here the ordering stands in for it: taking the envelope
+ * late leaves an order claiming a hand-over that never happened, and showing
+ * it early lets the poll hand over a merchant event for an order not yet
+ * written.
  */
 export interface Envelopes {
   stage(merchantId: string, envelope: WorkerEnvelope, afterMs?: number): Promise<() => void>;
   /**
-   * Lets go of the envelopes that carry a parcel's address (ADR-0032), in the
-   * same two halves: anything that would refuse refuses here, and the call it
-   * hands back takes them off the stream once the order that says the address
-   * was erased is written.
+   * Lets go of the envelopes that carry a parcel's address in the same two
+   * halves: anything that would refuse refuses here, and the returned call
+   * takes them off the stream once the order recording the erasure is written.
    */
   forget(merchantId: string, orderId: string, priceQuestion: string | null): Promise<() => void>;
 }
 
 /**
- * The answer for a store that was built without one.
- *
- * Most of the stores made in this repository serve a command somebody typed or
- * a test about the catalog, and none of those ever writes an order. Refusing
- * out loud is the alternative to a store that quietly drops a merchant's work.
+ * For a store built without a stream, which only commands and catalog tests
+ * use: writing an order there refuses out loud rather than dropping a
+ * merchant's work.
  */
 const noEnvelopes: Envelopes = {
   async stage(_merchantId, envelope) {
@@ -97,19 +66,14 @@ const noEnvelopes: Envelopes = {
   },
 };
 
-/** What a merchant's row holds here, with the selling word that may move. */
 interface MerchantRow {
   readonly id: string;
   readonly name: string;
   readonly createdAt: number;
   selling: MerchantSelling;
-  /** The name this seller is listed under in a catalog, where one is named. */
   serviceName: string | null;
-  /** The site of this seller's own shop, where one was given. */
   sellerSite: string | null;
-  /** Where this merchant's sales are paid, and any change waiting beside it. */
   payoutWallet: StoredPayoutWallet;
-  /** The first operator grant for live publication, where one was made. */
   liveApprovedAt: number | null;
   /** The integration this merchant sells through now. */
   integration: Integration;
@@ -117,15 +81,12 @@ interface MerchantRow {
 
 export class MemoryStore implements Store {
   readonly #merchants = new Map<string, MerchantRow>();
-  /** Every key ever issued, by its identifier. The secrets are not here. */
   readonly #keys = new Map<string, StoredKey>();
-  /** The digest of a key to the key it belongs to, which is how a door reads. */
   readonly #keysByDigest = new Map<string, string>();
   readonly #cards = new Map<string, StoredCard>();
   /**
-   * A merchant's own key for a product, to the catalog identifier we issued.
-   * The map key carries the merchant, because a merchant's identifier for a
-   * product means something inside their catalog and nothing outside it.
+   * Keyed by merchant and their own product identifier, which is unique only
+   * within one merchant's catalog.
    */
   readonly #cardIdByMerchantKey = new Map<string, string>();
   readonly #orders = new Map<string, StoredOrder>();
@@ -134,7 +95,6 @@ export class MemoryStore implements Store {
   readonly #paymentClaims = new Map<string, { orderId: string; at: number }>();
   /** The tail of the queue of decisions waiting on each order. */
   readonly #locks = new Map<string, Promise<unknown>>();
-  /** Work being run alone right now, by the name it was asked for under. */
   readonly #running = new Set<string>();
   readonly #ids: Ids;
   readonly #now: Clock;
@@ -224,9 +184,8 @@ export class MemoryStore implements Store {
     if (row === undefined) {
       return null;
     }
-    // Nothing is awaited between the comparison and the write, so in one
-    // process this is the conditional update the database makes in one
-    // statement.
+    // Nothing may be awaited between the comparison and the write, or this
+    // stops being the conditional update the database makes in one statement.
     if (!sameWallet(row.payoutWallet, expected)) {
       return "moved";
     }
@@ -244,16 +203,12 @@ export class MemoryStore implements Store {
     at: number,
   ): Promise<StoredKey> {
     if (!this.#merchants.has(key.merchantId)) {
-      // A key naming a merchant that is not there is a defect in whatever
-      // asked for it, and the database refuses the same thing with a foreign
-      // key. Written down here, it would be a key that opens a door onto
-      // nothing.
+      // The database refuses this with a foreign key; written down here, it
+      // would be a key that opens a door onto nothing.
       throw new Error(`there is no merchant ${key.merchantId} for a key to belong to`);
     }
-    // Two keys under one identifier is a primary key violation in the database
-    // and would be a silent overwrite here — one merchant's key replaced by
-    // another's, with the first still in somebody's configuration and no longer
-    // opening anything.
+    // The database refuses a duplicate identifier; a map would silently
+    // replace one merchant's key with another's.
     if (this.#keys.has(key.id)) {
       throw new Error(`the key ${key.id} is already written down`);
     }
@@ -276,13 +231,12 @@ export class MemoryStore implements Store {
   async noteKeyUse(id: string, at: number): Promise<void> {
     const found = this.#keys.get(id);
     if (found === undefined) {
-      // Gone with its merchant between the door reading it and this being
-      // written. Nothing is owed to a row that is not there.
+      // Removed with its merchant after the door read it; nothing to write.
       return;
     }
     if (found.lastUsedAt !== null && found.lastUsedAt >= at) {
-      // An older call arriving after a newer one, which two gateways on two
-      // clocks produce. The mark goes forwards or it stays.
+      // Two gateways on two clocks can deliver an older call after a newer
+      // one; the mark only moves forwards.
       return;
     }
     this.#keys.set(found.id, Object.freeze({ ...found, lastUsedAt: at }));
@@ -301,11 +255,8 @@ export class MemoryStore implements Store {
   }
 
   async keysOf(merchantId: string): Promise<readonly StoredKey[]> {
-    // Sorted rather than left in the order the map holds them, so that this
-    // answers with what the database answers with. The two agreeing is what
-    // makes a test about a merchant's list of keys mean the same thing in both
-    // places; left to insertion order, this one would pass on an assertion the
-    // other fails whenever two keys share an instant.
+    // Sorted as the database sorts, so a test about a merchant's keys means
+    // the same in both adapters even when two keys share an instant.
     return [...this.#keys.values()]
       .filter((key) => key.merchantId === merchantId)
       .sort((one, other) => one.createdAt - other.createdAt || (one.id < other.id ? -1 : 1));
@@ -318,16 +269,14 @@ export class MemoryStore implements Store {
 
   async disableKeyOf(merchantId: string, id: string, at: number): Promise<StoredKey | null> {
     const found = this.#keys.get(id);
-    // Another merchant's key is not found rather than refused, which is what
-    // makes a refusal say nothing about whose keys exist. Postgres does the same
-    // thing with a predicate; here it is this line.
+    // Another merchant's key is not found rather than refused, so a refusal
+    // says nothing about whose keys exist.
     if (found === undefined || found.merchantId !== merchantId) {
       return null;
     }
     return this.#revoke(found, at);
   }
 
-  /** The write both of them make. The first revocation is the true one. */
   #revoke(found: StoredKey, at: number): StoredKey {
     const stored: StoredKey = Object.freeze({ ...found, disabledAt: found.disabledAt ?? at });
     this.#keys.set(found.id, stored);
@@ -342,9 +291,6 @@ export class MemoryStore implements Store {
     at: number,
     integration: Integration = "api",
   ): Promise<StoredCard> {
-    // Republishing under the same merchant key changes the card that is there
-    // rather than adding a second one, which is what the portal promises and
-    // why the catalog identifier survives the edit.
     const owned = catalogKey(merchantId, card.merchant_item_id);
     const existing = this.#cardIdByMerchantKey.get(owned);
     const before = existing === undefined ? undefined : this.#cards.get(existing);
@@ -353,8 +299,8 @@ export class MemoryStore implements Store {
       return before;
     }
     const id = existing ?? this.#ids("item");
-    // A pause survives the edit. A merchant changing a price is not asking for
-    // a product they took off sale to go back on it.
+    // A pause survives a republish: editing a price never puts a product back
+    // on sale.
     const paused = before?.paused ?? false;
     const stored: StoredCard = Object.freeze({
       id,
@@ -392,8 +338,8 @@ export class MemoryStore implements Store {
 
   async setCardPaused(merchantId: string, id: string, paused: boolean): Promise<StoredCard | null> {
     const found = this.#cards.get(id);
-    // Another merchant's card is not found, which is the same answer as a card
-    // that is not there: pausing is not a way of discovering what exists.
+    // Another merchant's card is not found, the same answer as a card that is
+    // not there, so pausing cannot discover what exists.
     if (found === undefined || found.merchantId !== merchantId) {
       return null;
     }
@@ -484,43 +430,27 @@ export class MemoryStore implements Store {
     change: (found: StoredOrder) => Promise<OrderChange<T>> | OrderChange<T>,
     scope?: MerchantScope,
   ): Promise<OrderLookup<T>> {
-    // Each order's decisions run one after another. The tail of the chain is
-    // kept rather than the head, so an order nobody is currently deciding about
-    // costs one settled promise and not a walk through everything that ever
-    // happened to it.
+    // Each order's decisions run one after another. Only the tail of the chain
+    // is kept, so an idle order costs one settled promise.
     const previous = this.#locks.get(id) ?? Promise.resolve();
     const mine = previous.then(async (): Promise<OrderLookup<T>> => {
       const found = this.#orders.get(id);
-      // The ownership is read under the same hold as everything else, so a
-      // merchant's call can never move a stranger's order and there is no
-      // window between learning whose it is and acting on it.
+      // Ownership is read under the same hold, so there is no window between
+      // learning whose the order is and acting on it.
       if (found === undefined || (scope !== undefined && found.merchantId !== scope.merchantId)) {
         return { found: false };
       }
 
       const decided = await change(found);
 
-      // Three steps, and the Postgres adapter gets all three from one
-      // transaction. Everything that has to go with the order is taken first,
-      // so anything that would refuse refuses before a word about the order is
-      // written; then the order is written; then what was taken becomes visible
-      // to anybody else. Both other orderings are wrong, and differently: doing
-      // it all after the order leaves a record saying something happened when
-      // nothing did, and making it visible before the order lets a worker be
-      // handed an envelope for a change that is not written down.
-      //
-      // That last one is why this is three steps and not two. An order envelope
-      // would have been safe either way, because acting on one comes back
-      // through this very hold; a merchant event would not, because the poll
-      // hands one over without touching the order at all.
-      // The envelopes are taken before the receipts, and the order is the whole
-      // of what makes a half-written list impossible here. Taking an envelope
-      // is the step that can refuse; writing a receipt is a map that cannot. So
-      // with the envelopes first, anything that refuses does so while nothing
-      // at all has been written, and a list is either wholly taken or wholly
-      // not. Reversed, a receipt would already be written when the envelope
-      // beside it refused, and this adapter would keep a promise the Postgres
-      // one keeps and the port makes.
+      // Three steps, which Postgres gets from one transaction: take everything
+      // that goes with the order, so anything that would refuse does so before
+      // the order is written; write the order; then make what was taken
+      // visible. Writing the order first could leave it claiming an effect that
+      // never happened, and making envelopes visible first lets the poll hand
+      // over a merchant event for an order not yet written. Envelopes are taken
+      // before receipts because taking an envelope can refuse and writing a
+      // receipt cannot, so a refusal leaves nothing written.
       const alongside = [...(decided.alongside ?? [])].sort(
         (one, other) => rankOf(one) - rankOf(other),
       );
@@ -530,18 +460,14 @@ export class MemoryStore implements Store {
       }
 
       if (decided.save !== undefined) {
-        // The merchant comes from the order that was read and not from the
-        // save, exactly as the Postgres adapter takes it from the row: a sale
-        // belongs to whoever made it, settled at the birth of the order and
-        // never again. There the column would have kept the old merchant while
-        // the document took the new one, and the two readers would disagree
-        // about whose order it is; here it would simply change hands. Neither
-        // is a thing a decision about an order gets to do.
+        // The merchant comes from the order that was read, not from the save,
+        // as the Postgres adapter takes it from the row: no decision may change
+        // whose sale it is.
         this.#orders.set(id, Object.freeze({ ...decided.save, merchantId: found.merchantId }));
       }
 
-      // Written down: what was taken above is now somebody else's to see. None
-      // of these can refuse, which is what makes the order safe to have written.
+      // None of these can refuse, which is what makes the order safe to have
+      // written first.
       for (const arrive of arrivals) {
         arrive();
       }
@@ -562,10 +488,8 @@ export class MemoryStore implements Store {
   }
 
   async runAlone<T>(name: string, work: () => Promise<T>): Promise<Ran<T>> {
-    // One process, so a name held in memory is the same guarantee the advisory
-    // lock gives across several. It is taken before anything is awaited, which
-    // is what makes it a lock at all here: two callers starting in the same
-    // turn both reach this line before either yields.
+    // The name is taken before anything is awaited, which is what makes it a
+    // lock: two callers starting in the same turn cannot both pass this check.
     if (this.#running.has(name)) {
       return { ran: false };
     }
@@ -573,7 +497,6 @@ export class MemoryStore implements Store {
     try {
       return { ran: true, result: await work() };
     } finally {
-      // Let go however it ended. Work that threw is work nobody is doing.
       this.#running.delete(name);
     }
   }
@@ -585,23 +508,11 @@ export class MemoryStore implements Store {
   }
 
   /**
-   * Takes one write that goes with an order, and hands back the call that makes
-   * it visible.
-   *
-   * A receipt is visible the moment it is written rather than held back with
-   * the envelopes, and the reason is narrow: writing it is the step that cannot
-   * refuse, so holding it would buy nothing against a half-written list. What
-   * it costs is a window — a microtask, between this and the order being
-   * written — in which somebody asking for the receipt of an order would be
-   * handed one saying `delivered` while the order still says otherwise. Nothing
-   * looks: a receipt is read by the agent's answer to its own purchase and by a
-   * merchant's list, both of which arrive long afterwards, and neither is woken
-   * by a receipt appearing. It is a smaller window than the alternative and not
-   * a closed one.
-   *
-   * It goes through the store's own method rather than into the map behind its
-   * back, so there is one place a receipt is written and one rule about whose
-   * it is.
+   * Takes one write that goes with an order and returns the call that makes it
+   * visible. A receipt is visible as soon as it is written, since writing it
+   * cannot refuse, so for a microtask before the order is written a reader
+   * could see a `delivered` receipt for an order that still says otherwise. It
+   * goes through `putReceipt` so a receipt's merchant is decided in one place.
    */
   async #takeWithTheOrder(write: WithTheOrder): Promise<() => void> {
     switch (write.kind) {
@@ -623,14 +534,14 @@ export class MemoryStore implements Store {
       this.#paymentClaims.set(fingerprint, { orderId, at: this.#now() });
       return { claimed: true };
     }
-    // The same order presenting the same payment again is the ordinary retry
-    // the portal promises is safe, and it still owns it.
+    // The same order presenting the same payment again is an ordinary retry,
+    // and it still owns it.
     return held.orderId === orderId ? { claimed: true } : { claimed: false, heldBy: held.orderId };
   }
 
   async releaseClaim(fingerprint: string, orderId: string): Promise<void> {
-    // Only the holder lets go. A fingerprint some other order holds is left
-    // where it is, so this can never hand one buyer's signature to another.
+    // Only the holder lets go, so this can never hand one buyer's signature to
+    // another.
     if (this.#paymentClaims.get(fingerprint)?.orderId === orderId) {
       this.#paymentClaims.delete(fingerprint);
     }
@@ -650,10 +561,8 @@ export class MemoryStore implements Store {
   // --- receipts -------------------------------------------------------------
 
   async putReceipt(merchantId: string, receipt: Receipt): Promise<void> {
-    // The merchant is written once and never again. The machine writes a
-    // receipt again as an order moves on, and that is not an occasion for the
-    // sale to belong to somebody else — the Postgres adapter leaves the column
-    // out of its upsert for the same reason, and the two have to agree.
+    // A receipt is rewritten as its order moves on, but keeps the merchant it
+    // was first written with, as the Postgres upsert leaves that column out.
     const held = this.#receipts.get(receipt.order_id);
     this.#receipts.set(receipt.order_id, {
       merchantId: held?.merchantId ?? merchantId,
@@ -672,12 +581,9 @@ export class MemoryStore implements Store {
   }
 
   /**
-   * The word one merchant is selling under.
-   *
-   * A merchant that is not there at all is a defect rather than a case: every
-   * key names a merchant that exists, and every card and order carries one. It
-   * throws instead of answering "open", because answering would be selling on
-   * behalf of somebody nobody can find.
+   * A missing merchant is a defect, since every key, card and order names one
+   * that exists, so this throws rather than answer "open" for somebody nobody
+   * can find.
    */
   #sellingOf(merchantId: string): MerchantSelling {
     const row = this.#merchants.get(merchantId);
@@ -688,27 +594,20 @@ export class MemoryStore implements Store {
   }
 }
 
-/**
- * Which of the writes that go with an order is taken first: the ones that can
- * refuse, before the ones that cannot.
- */
+/** Writes that can refuse are taken before those that cannot. */
 function rankOf(write: WithTheOrder): number {
   return write.kind === "receipt" ? 1 : 0;
 }
 
-/** A merchant's own identifier for a product, inside the merchant it belongs to. */
 function catalogKey(merchantId: string, merchantItemId: string): string {
-  // A separator neither half can carry. The identifier a merchant uses for a
-  // product may hold a space and a slash — "SKU 100/1" is one of the contract's
-  // own examples — so joining on anything printable is a way for two different
-  // pairs to come out as the one string.
+  // A separator neither half can carry: a merchant's product identifier may
+  // hold spaces and slashes ("SKU 100/1"), so a printable separator could make
+  // two different pairs one string.
   return `${merchantId}\u0000${merchantItemId}`;
 }
 
-/** Paid nowhere, with nothing waiting: where every merchant starts. */
 const NO_WALLET: StoredPayoutWallet = { address: null, pending: null };
 
-/** Whether two readings of a wallet are the same row: both halves, and the instant. */
 function sameWallet(one: StoredPayoutWallet, other: StoredPayoutWallet): boolean {
   return (
     one.address === other.address &&

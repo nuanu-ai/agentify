@@ -1,59 +1,26 @@
 /**
  * The client a merchant's engineer holds: a catalog, an order desk, and one
- * place to say what this process answers.
+ * place to say what this process answers. Every method here is one a page of
+ * the documentation tells a merchant to call, and the documentation's examples
+ * are compiled against these types by a test.
  *
- * The shape of it is the portal's, not this file's. Every method here exists
- * because a page of the documentation tells a merchant to call it, with the
- * arguments that page passes and answering with what that page reads — and the
- * examples on those pages are compiled against these types by a test, so the
- * code a merchant copies out of the documentation is code that builds.
+ * One stream carries orders, price questions and order events, so there is one
+ * way to register a handler, `on(kind, handler)`, and one lifecycle, `start`
+ * and `stop`.
  *
- * Three kinds travel one stream, so there is one way to register a handler for
- * one of them — `on(kind, handler)` — and one lifecycle, `start` and `stop`,
- * for the loop that carries all three. What a handler receives carries the
- * calls that answer it, and that is the part worth reading before changing
- * anything here, because two things that look alike are deliberately not.
+ * Two families of calls on an order look alike and are not. `delivered`,
+ * `refused` and `accepted` build the answer a handler returns and send
+ * nothing; returning it is what makes forgetting to answer, or answering
+ * twice, impossible. `deliver`, `refuse` and `accept` send: they are the
+ * asynchronous merchant's calls, made later from anywhere in their code, and
+ * they are on every order this client hands back, including `orders.forId`
+ * for a process that kept only the identifier.
  *
- * `order.delivered(...)`, `order.refused(...)` and `order.accepted()`
- * build the answer and send nothing; the handler still returns it. A bot
- * library lets a handler reply and forget, and forgetting there costs a
- * message; forgetting here is an order nobody answered — redelivered, a
- * delivery attempt spent, and in the asynchronous mode a debt to a buyer at
- * the end of it. Returning the answer is what makes forgetting impossible and
- * answering twice impossible.
- *
- * `order.deliver(...)`, `order.refuse(...)` and `order.accept(...)` are the
- * other thing: they send. They are the asynchronous merchant's closure verbs,
- * made hours later and from anywhere in their code, and they exist on the
- * order rather than beside it so that a merchant never holds an identifier of
- * ours. The same calls are on every order this client hands back — off the
- * stream, off `orders.get`, off `orders.list`, and off `orders.forId` for the
- * process that kept nothing but the identifier — because a process that
- * restarted has no object left to hold, and that is exactly the moment
- * juggling identifiers would come back.
- *
- * One rule runs through the whole surface and it is worth stating once. What
- * the contract gives a call a failure branch for is returned, never thrown,
- * and every one of those answers is the same envelope: `ok` says which it was,
- * a card that was not published comes back with its findings under `problems`,
- * and an order call that did not go through comes back as an error with a flag
- * saying whether repeating it could help. A merchant's integration code is
- * expected to read those and branch on them.
- *
- * What is thrown is what has no branch to be read on, and it is two kinds. A
- * client built wrong — no key, an address that is not one, a handler
- * registered twice — is a `TypeError` at the line that is wrong, before
- * anything leaves the process. A call that went out and produced no answer of
- * the kind its route promises, where the route has nowhere to put one, is a
- * `AgentifyError` carrying the same code vocabulary the returned failures use.
- *
- * The one place that rule needed a decision rather than a reading is a
- * `deliver` or a `refuse` whose answer never arrived, or arrived in words this
- * package cannot read. The contract has a branch for it — an error with a flag
- * saying whether calling again could change the outcome is exactly the shape
- * of "the connection dropped, call again" — so it comes back through that
- * branch, under a code this package produces and the gateway never sends. The
- * three codes and what separates them are written down beside them below.
+ * What the contract gives a failure branch is returned, never thrown, in one
+ * envelope whose `ok` says which it was. What has no branch is thrown: a client
+ * built wrong is a `TypeError` before anything leaves the process, and a call
+ * that went out and produced no answer its route can carry is an
+ * `AgentifyError` under the same codes.
  */
 
 import type {
@@ -95,37 +62,22 @@ import {
 
 export interface ClientOptions {
   /**
-   * The merchant's API key.
-   *
-   * It admits `undefined` because the thing a merchant actually writes is
-   * `process.env.AGENTIFY_API_KEY`, which is `string | undefined` in every
-   * strict TypeScript project there is. Refusing that at the type level would
-   * teach every merchant to silence it with a non-null assertion, which turns
-   * an unset variable into an authorisation failure much later. It is refused
-   * here instead, at the line that is wrong, with a sentence that names what
-   * is missing.
+   * The merchant's API key. `undefined` is accepted by the type, since that is
+   * what `process.env.AGENTIFY_API_KEY` is, and refused when the client is
+   * built with a `TypeError` naming what is missing.
    */
   readonly apiKey: string | undefined;
 
   /**
-   * Where the gateway is: `https://test.agentify.ad` while the merchant
-   * is building, `https://agentify.ad` once they are live.
+   * Where the gateway is: `https://test.agentify.ad` while the merchant is
+   * building, `https://agentify.ad` once they are live.
    *
-   * Optional, and there is deliberately no default behind it. Both addresses
-   * are settled and this package still refuses to pick one, because which of
-   * them a process talks to is not a convenience — it is the difference
-   * between a sale and a rehearsal (ADR-0020). A default would be right for
-   * whoever wrote it and wrong for somebody's production the first time a
-   * deployment inherited it, and that is a mistake nothing downstream can
-   * catch: every answer from the other site parses perfectly.
-   *
-   * Leaving it out builds a client, exactly as the quickstart's first step
-   * says it does, and every call that would have to reach the gateway fails
-   * with a sentence naming what is missing and both addresses to choose
-   * between. That is where the failure belongs: the documentation tells the
-   * merchant that the first call is what checks whether they can reach us.
-   * Giving a wrong address, on the other hand, is refused here and now — a
-   * value that is not an address at all cannot become one later.
+   * There is no default on purpose: which of the two a process talks to is the
+   * difference between a sale and a rehearsal, and every answer from the wrong
+   * one parses perfectly. Left out, the client is still built, and every call
+   * that has to reach the gateway throws a `TypeError` naming both addresses.
+   * A value that is not an http or https address is refused when the client
+   * is built.
    */
   readonly baseUrl?: string | undefined;
 }
@@ -133,16 +85,10 @@ export interface ClientOptions {
 /**
  * The calls every order carries, wherever the merchant got it from.
  *
- * The first three build an answer and send nothing: they are what a handler
- * returns, and the return is what this SDK posts. The last three send, and
- * they are the calls an asynchronous merchant makes later — after the supplier
- * answered, from another part of their code, from another process life.
- *
- * There are three of each because the two halves are not the same set of
- * choices seen twice. A synchronous handler chooses between delivering and
- * refusing on the spot; an asynchronous one accepts and then, eventually,
- * delivers or refuses. Accepting from outside a handler exists for the
- * merchant who decides later, in another part of their code.
+ * `delivered`, `refused` and `accepted` build an answer and send nothing: they
+ * are what a handler returns, and the SDK posts the return. `deliver`,
+ * `refuse` and `accept` send, and are what an asynchronous merchant calls
+ * later, from another part of their code or another process.
  */
 export interface OrderCalls {
   /** The goods, as the handler's answer. Building one sends nothing. */
@@ -159,48 +105,45 @@ export interface OrderCalls {
   accepted(): HandlerAnswer;
 
   /**
-   * The goods for an order taken on earlier. Idempotent by the order's own
-   * identifier, so repeating it after a dropped connection does no work twice.
+   * The goods for an order taken on earlier. Idempotent by the order's
+   * identifier, so repeating it after a dropped connection delivers nothing
+   * twice and charges nothing twice.
    */
   deliver(delivery: Delivery): Promise<OrderCallResponse>;
 
-  /** A final "this cannot be delivered" for an order already taken on. */
+  /**
+   * A final "this cannot be delivered" for an order already taken on. Unlike
+   * `deliver`, it is not promised to be safe to repeat: when it fails, and
+   * above all with `outcome_unknown`, read the order back with `orders.get`
+   * before sending it again.
+   */
   refuse(refusal: Refusal): Promise<OrderCallResponse>;
 
-  /** Takes the order on from outside a handler. Repeats are ordinary. */
+  /** Takes the order on from outside a handler. Repeating it is harmless. */
   accept(): Promise<OrderAcceptResponse>;
 }
 
 /**
- * The least an order can be and still be answerable: its identifier, and the
- * calls that close it.
- *
- * It is what `orders.forId` hands back, and it is the shape a merchant's own
- * function should take when all it does is close an order — every richer order
- * below satisfies it.
+ * The least an order can be and still be answered: its identifier and the
+ * calls that close it. It is what `orders.forId` returns, and the type to take
+ * in a function that only closes orders.
  */
 export type OrderHandle = { readonly id: string } & OrderCalls;
 
 /**
- * An order off the stream, with the calls that close it.
- *
- * "Live" is the whole of the difference from the plain document: this object
- * holds the client that produced it, so it can call home on its own and the
- * merchant never writes an identifier of ours as an argument.
+ * An order off the stream, with the calls that close it. It holds the client
+ * that produced it, so the merchant never passes an identifier back.
  */
 export type LiveOrder = Order & OrderCalls;
 
-/** The same, read back from our record, so it also says where the order stands. */
+/** An order read back from Agentify, with where it stands and the calls that close it. */
 export type LiveOrderWithStatus = OrderWithStatus & OrderCalls;
 
 /**
- * The two answers a price question has, built from the question itself.
- *
- * `as_of` is what separates "I went and looked" from "here is what was in the
- * cache", and the gateway reads it to decide how far it trusts the answer. Left
- * out, it is the moment the answer is built — which is the truth for a price
- * computed on the spot, and is why a merchant answering from a cache passes the
- * moment that cache was filled instead.
+ * The two answers a price question has. `asOf` is when the answer was true,
+ * which separates "I went and looked" from "here is what was in the cache";
+ * left out, it is the moment the answer is built, so a merchant answering
+ * from a cache passes the moment that cache was filled.
  */
 export interface QuoteCalls {
   available(price: Money, asOf?: string): QuoteResponse;
@@ -217,22 +160,9 @@ export type OrderHandler = (order: LiveOrder) => HandlerAnswer | Promise<Handler
 export type QuoteHandler = (question: LiveQuoteRequest) => QuoteResponse | Promise<QuoteResponse>;
 
 /**
- * Everything a merchant's process can be asked to answer, by the word they
- * register it under.
- *
- * A map rather than four methods, because the stream is one stream and this is
- * the list of what travels on it. The day the contract carries a fourth kind —
- * the confirmation request, whose shape it does not carry yet — `REGISTERED_AS`
- * in `worker.ts` gains its word, and from that word every list in this file
- * follows: what `on` accepts, what `start` counts as an answer, and the
- * sentence that names a missing registration. What does not follow is what
- * answers it, so this map gains an entry and the worker's dispatch gains an
- * arm, and both refuse to compile until they do.
- *
- * `problem` is on the same list although nothing on the wire carries it. It is
- * one registration per process, exactly like the other three, and a second
- * place to register one of four things would put back the split this surface
- * exists to remove.
+ * Everything a merchant's process can be asked to answer, by the word it is
+ * registered under. `problem` is not on the wire; it is where the worker
+ * reports what went wrong, registered like the others.
  */
 export interface Handlers {
   order: OrderHandler;
@@ -241,17 +171,14 @@ export interface Handlers {
   problem: ProblemReporter;
 }
 
-/** The word for the reporter, which nothing on the wire carries. */
 const PROBLEM = "problem";
 
 export type HandlerKind = StreamHandlerKind | typeof PROBLEM;
 
 /**
- * Whether a type is a union of more than one thing.
- *
- * Here for one purpose, at `on` below: to tell a kind that is one kind from a
- * kind that is any of several, because only the first can say which handler is
- * the right one.
+ * Whether a type is a union of more than one thing. `on` uses it to refuse a
+ * kind that could be any of several, since only one kind says which handler
+ * is right.
  */
 type IsUnion<Kind, Each = Kind> = Kind extends unknown
   ? [Each] extends [Kind]
@@ -260,12 +187,9 @@ type IsUnion<Kind, Each = Kind> = Kind extends unknown
   : never;
 
 /**
- * The words `on` accepts, as a map over the kinds themselves.
- *
- * A merchant working outside TypeScript, or one who wrote `orders`, would
- * otherwise register a handler that is never called and hear nothing about it.
- * Written as a mapped type so that a kind the stream grows and this file
- * forgets stops it compiling.
+ * The words `on` accepts. A merchant outside TypeScript, or one who wrote
+ * `orders`, would otherwise register a handler that is never called. As a
+ * mapped type, it stops compiling when a kind is added and this is not.
  */
 const HANDLER_KINDS: { readonly [Kind in HandlerKind]: true } = Object.freeze({
   order: true,
@@ -274,13 +198,10 @@ const HANDLER_KINDS: { readonly [Kind in HandlerKind]: true } = Object.freeze({
   problem: true,
 });
 
-/**
- * Every word `on` accepts, in the order this file lists them, for the sentence
- * a merchant reads when they wrote one that is not on the list.
- */
+/** Every word `on` accepts, for the sentence that refuses one that is not. */
 const everyKind = (): string[] => Object.keys(HANDLER_KINDS).map((kind) => `'${kind}'`);
 
-/** The words that answer something on the stream, which `problem` does not. */
+/** The kinds that answer something on the stream, which `problem` does not. */
 const streamKinds = (): StreamHandlerKind[] => Object.values(REGISTERED_AS);
 
 export interface CatalogNamespace {
@@ -288,53 +209,41 @@ export interface CatalogNamespace {
    * Publishes one product, or says what is wrong with the card.
    *
    * Publishing again under the same `merchant_item_id` changes that card
-   * rather than adding a second one, so a publish script can be run as often
-   * as a merchant likes.
+   * rather than adding a second, so a publish script can be run as often as
+   * a merchant likes. A refused card comes back as `ok: false` with every
+   * finding under `error.problems`.
    *
-   * The card is taken as it may be written rather than as it is stored, which
-   * is what `CardInput` is: the price as one string or as two fields, a
-   * declared field as its type word or written out, the fulfillment mode left
-   * off a card that delivers in the answer to the purchase. Every one of those
-   * is opened out when the card is accepted, so a card read back afterwards is
-   * in the one canonical form.
+   * The card may use the short forms `CardInput` allows: the price as one
+   * string, a declared field as its type word, the fulfillment mode left off.
+   * They are opened out on acceptance, so a card read back is in the
+   * canonical form. Throws `AgentifyError` when the call fails without a
+   * publish result, such as a refused key or an answer that could not be read.
    */
   publish(card: CardInput): Promise<PublishResult>;
 }
 
 export interface OrdersNamespace {
   /**
-   * The calls for an order named by its identifier, without asking us
-   * anything.
-   *
-   * This is the one place an identifier of ours is written by a merchant, and
-   * it is here for the process that kept nothing else: a job queued against
-   * our identifier, a row in their own database. It reaches no gateway, which
-   * is the point — `get` below would tell them more about the order, and
-   * during an outage it cannot tell them anything at all, while a delivery
-   * that comes back as "the network failed, call again" is exactly the answer
-   * they need to keep retrying.
+   * The calls for an order named by its identifier, without asking Agentify
+   * anything. It is for a process that kept only the identifier, such as a job
+   * queued against it. Because it makes no call, it works during an outage,
+   * when a delivery that comes back as "call again" is the answer needed.
    */
   forId(orderId: string): OrderHandle;
 
   /**
-   * One order and the state it is in, with the calls that close it.
-   *
-   * A round trip, and what it buys is the order itself: its parameters, what
-   * it was sold for, and where it stands.
+   * One order and the state it is in, with the calls that close it. Throws
+   * `AgentifyError` when the call fails, including an unknown order.
    */
   get(orderId: string): Promise<LiveOrderWithStatus>;
 
   /**
-   * Orders and the states they are in; with `open`, only the ones this worker
-   * should walk.
-   *
-   * The list is what a process reads after a restart: the orders it was handed
-   * and has not finished, each able to be delivered or refused on the spot,
-   * together with the two that stay open once the purchase itself is over — an
-   * order owing a refund, and one delivered that was never paid for. An order
-   * that was priced and never paid is not on it. That one never reached the
-   * handler, and making the goods for it would be making them for a purchase
-   * that did not happen; it stays readable by its identifier through `get`.
+   * Orders and the states they are in. With `open: true`, only the ones a
+   * restarted worker should walk: orders it was handed and has not finished,
+   * an order owing a refund, and one delivered but never paid for. An order
+   * that was priced and never paid never reached the handler, so it is not on
+   * that list; `get` still reads it. Throws `AgentifyError` when the call
+   * fails.
    */
   list(query?: { readonly open?: boolean }): Promise<readonly LiveOrderWithStatus[]>;
 }
@@ -344,25 +253,16 @@ export interface AgentifyClient {
   readonly orders: OrdersNamespace;
 
   /**
-   * Registers what this process answers for one kind.
+   * Registers what this process answers for one kind: `'order'`, `'quote'`,
+   * `'event'` or `'problem'`.
    *
-   * Once per kind: a second registration is refused rather than replacing the
-   * first, because one message goes to one handler and a silently replaced
-   * handler is a process that has stopped answering without saying so.
+   * Once per kind: a second registration throws a `TypeError` rather than
+   * silently replacing the first. Handlers may be registered before or after
+   * `start`, and survive `stop`.
    *
-   * Handlers may be registered before or after `start`; the loop reads them
-   * when an envelope arrives, not when it begins.
-   *
-   * The condition on the second parameter is what makes the two halves agree,
-   * and it is worth the sentence it costs. Written plainly as
-   * `(kind: Kind, handler: Handlers[Kind])`, a call whose kind is not a
-   * literal — a loop over `['order', 'quote']`, a kind held in a variable —
-   * infers `Kind` as the union, and `Handlers[Kind]` is then the union of
-   * handlers, so an order handler registered under `'quote'` type-checks. It
-   * fails at the first price question, where the handler calls a method the
-   * question does not have, and every sale of that card quietly falls back to
-   * the card's own price. So a kind that is not one kind admits no handler at
-   * all, and the call has to be narrowed to one of them first.
+   * The kind must be one literal kind. A kind held in a variable or a loop
+   * over several admits no handler, because a union would let an order handler
+   * type-check under `'quote'` and fail at the first price question.
    */
   on<Kind extends HandlerKind>(
     kind: Kind,
@@ -370,59 +270,43 @@ export interface AgentifyClient {
   ): void;
 
   /**
-   * Opens the subscription and returns once it is running.
+   * Opens the subscription and returns once it is running. It is outgoing, so
+   * nothing of the merchant's has to be reachable from outside, and one
+   * subscription carries orders, price questions and order events together.
    *
-   * The subscription is outgoing — this side opens it, and nothing of the
-   * merchant's has to be reachable from outside. It carries the orders, the
-   * price questions and the order events together, so a process needs one of
-   * these and not three.
+   * Throws a `TypeError` when no gateway address was given, when the client is
+   * already started or still stopping, or when nothing is registered to
+   * answer.
    */
   start(): Promise<void>;
 
   /**
-   * Stops the subscription and waits for it to finish. Safe to call twice, and
-   * safe to call on a client that was never started.
+  /**
+   * Stops the subscription and waits for it to finish. Safe to call twice,
+   * and on a client that was never started. Handlers stay registered.
    *
-   * Two things are abandoned rather than finished, and they are not abandoned
-   * on the same terms. A poll parked at the gateway is dropped, and the
-   * gateway stops it and keeps whatever arrives for the next poll; only
-   * something taken in the instant before the drop is lost, and that is an
-   * order, which comes again, or an event, which is sent once — the list of
-   * open orders is what finds a refund owed whose event went missing.
-   * An answer already on its way — a delivery the handler produced a moment
-   * ago — is dropped too, and there the honest thing to say is that nobody on
-   * this side knows whether it arrived first: the order may already be closed
-   * by it, or may come back. The merchant is told which of their orders that
-   * happened to, because on their side the work happened.
+   * A poll parked at the gateway is dropped; anything taken in the instant
+   * before is an order, which comes again, or an event, which is sent once.
+   * An answer already on its way is dropped too, and nobody on this side knows
+   * whether it arrived: the order may be closed by it or may come back. The
+   * merchant's problem reporter is told which orders that happened to.
    *
-   * Stopping does not drain. The contract has a word for a poll that asks for
-   * whatever is queued right now and comes straight back, and it is not what a
-   * worker shutting down wants: draining pulls more work into a process that
-   * is going away.
-   *
-   * The handlers survive it. A supervisor that stops a client and starts it
-   * again is running the same process, and having to register everything a
-   * second time would be a second place for the two to disagree.
+   * Stopping does not drain the queue, which would pull more work into a
+   * process that is going away.
    */
   stop(): Promise<void>;
 }
 
 /**
- * The three codes an order call comes back under when the gateway produced no
- * answer this package can read.
+ * The codes an order call or an `AgentifyError` carries when the gateway
+ * produced no answer this package can read. The SDK produces them; the
+ * gateway never sends them.
  *
- * The contract's list of error codes is open exactly so that a case nobody
- * anticipated reaches the merchant in its own words instead of being flattened
- * into the nearest of three. These are three of those, and they are produced
- * here rather than on the wire.
- *
- * Three and not one because the difference is the whole of what a merchant
- * needs at that moment, and they are about their own books. A call that never
- * arrived certainly changed nothing. A call answered in words we could not
- * read reached us and may well have done its work; what is missing is what it
- * said. And a call that was sent into silence — the connection broke, the
- * worker was shut down mid-flight — is neither of those, and saying it did not
- * arrive would be inventing the one fact the merchant came here for.
+ * `call_did_not_reach_us`: the call certainly changed nothing.
+ * `answer_not_understood`: the call reached the gateway and may have done its
+ * work; what it said could not be read. `outcome_unknown`: the call was sent
+ * into silence, such as a dropped connection or a worker shut down
+ * mid-flight, and nobody on this side knows whether it arrived.
  */
 export const CALL_DID_NOT_REACH_US = "call_did_not_reach_us";
 export const ANSWER_NOT_UNDERSTOOD = "answer_not_understood";
@@ -435,29 +319,17 @@ const CODE_FOR: Readonly<Record<Reach, string>> = {
 };
 
 /**
- * What is thrown where a route has no failure branch to hand a merchant back.
+ * What is thrown where a call has no failure branch to return: publishing a
+ * card, reading one order, listing orders.
  *
- * Three of this client's calls answer with a document or with nothing at all —
- * publishing a card, reading one order, listing them — so a call that produced
- * no document has nowhere in the contract to be returned. It is thrown, and
- * this is what it is thrown as.
+ * `code` is the gateway's own code where it refused in words this package
+ * recognises, and otherwise `call_did_not_reach_us`, `answer_not_understood`
+ * or `outcome_unknown`. `route` names the call as the contract's route table
+ * does, so a `catch` can tell the calls apart without reading the message.
  *
- * It carries what the returned failures carry, because the two are the same
- * facts about the same calls and a merchant should not have to learn a second
- * vocabulary for the half of them that throws. `code` is the gateway's own word
- * where the gateway refused in words we recognise, and otherwise one of the
- * three this package produces — `call_did_not_reach_us`, `answer_not_understood`,
- * `outcome_unknown`. `failedCall` below makes that same choice for the order
- * calls, so a refusal has one name on both roads. `route` is the call it
- * happened on, under the name the
- * contract's own table gives it, so a `catch` can say which of three it was
- * without reading the sentence.
- *
- * What is not this: a client built wrong. A missing key, a `baseUrl` that is
- * not an address, a handler registered twice and a kind nothing delivers are
- * mistakes in the merchant's own code, made before anything left the process,
- * and they stay `TypeError`. A merchant catching this class is catching calls
- * that went out.
+ * A client built wrong (a missing key, a `baseUrl` that is not an address, a
+ * handler registered twice) throws `TypeError` instead, before anything leaves
+ * the process.
  */
 export class AgentifyError extends Error {
   /** Why the call did not go through, for the code that branches on it. */
@@ -467,15 +339,9 @@ export class AgentifyError extends Error {
   readonly route: string;
 
   /**
-   * Whether making the same call again could get past this.
-   *
-   * Here for the same reason the code is: the calls that throw and the calls
-   * that return are the same calls failing the same ways, and a merchant who
-   * had to work out from a `catch` what a returned error would have told them
-   * outright is being charged twice for one lesson. The gateway's own answer
-   * where the gateway refused in words, and true where nothing readable came
-   * back — which is a statement about what this package knows, not a promise
-   * that the call will work.
+   * Whether making the same call again could get past this: the gateway's own
+   * answer where it refused in words, and true where nothing readable came
+   * back, which says what this package knows, not that the call will work.
    */
   readonly retryable: boolean;
 
@@ -491,35 +357,15 @@ export class AgentifyError extends Error {
 /**
  * What an order call hands back when it produced no answer of its own.
  *
- * `code` is the gateway's own word where the gateway refused in words we
- * recognise, and otherwise one of the three this package produces for a
- * silence. The two halves of the answer have to say the same thing: a refusal
- * quoted in the message and filed under `answer_not_understood` is the message
- * arguing with the code, and the code is the half a program reads. It is the
- * same choice `document` makes for the calls that throw, so one refusal has one
- * name whether the merchant catches it or branches on it.
+ * `code` is the gateway's own where it refused in words this package
+ * recognises, and otherwise one of the three codes for a silence, the same
+ * choice `AgentifyError` makes. `retryable` is the gateway's own answer where
+ * it gave one, and true where nothing readable came back, since that is a
+ * statement about what this package knows, not about the order.
  *
- * `retryable` says whether calling again could change the outcome, and it has
- * two sources because there are two situations. Where the gateway refused in
- * words, the answer is the gateway's own: it is the side that knows whether
- * the door is shut or was merely shut a moment ago, and this package does not
- * improve on what it was told. Where no answer arrived, or none that could be
- * read, there is nothing to defer to and the answer is true — none of those
- * three is a state of the order, and none will still be true in a minute if a
- * network settled or a proxy went away.
- *
- * The fallback is `true` and not `false` on purpose. It is reached only when
- * this package could not read an answer, which is a statement about our
- * knowledge and not about the order; saying "do not call again" there would be
- * this package inventing the one fact the merchant came for.
- *
- * The sentence about repeating safely is added where two things hold at once:
- * the contract says the call may be repeated — delivering is idempotent by the
- * order's identifier, and taking an order on happens again on every
- * redelivery, while refusing is documented as neither — and calling again
- * could get anywhere. Offering "you may safely repeat this" under a refusal
- * that will answer the same way for ever is an invitation to do something
- * pointless, and it reads as encouragement.
+ * The sentence saying the call may be repeated safely is added only where the
+ * call is idempotent (delivering, accepting; not refusing) and repeating it
+ * could get anywhere.
  */
 const failedCall = (repeatIsSafe: boolean, failure: TransportFailure): CallError => {
   const retryable = failure.refusal?.retryable ?? true;
@@ -535,17 +381,12 @@ const failedCall = (repeatIsSafe: boolean, failure: TransportFailure): CallError
 };
 
 /**
- * The reporter a client gets when the merchant registered none.
- *
- * A library writing to the console is a small rudeness. A worker that stopped
- * on a contract mismatch and said nothing to anybody is a merchant learning
- * about it from a buyer, and between the two this is the cheaper one.
+ * The reporter a client gets when the merchant registered none. A worker that
+ * stopped and told nobody is worse than a library writing to the console.
  */
 const reportToConsole: ProblemReporter = (problem: WorkerProblem): void => {
-  // The exception goes out beside the sentence rather than inside it. The
-  // message already carries what the exception says; what it cannot carry is
-  // the stack, and the stack is the whole of what a merchant debugging their
-  // own handler is looking for.
+  // The exception goes out beside the sentence, because its stack is what a
+  // merchant debugging their own handler needs.
   if (problem.cause === undefined) {
     console.error(`[agentify] ${problem.kind}: ${problem.message}`);
     return;
@@ -555,34 +396,17 @@ const reportToConsole: ProblemReporter = (problem: WorkerProblem): void => {
 };
 
 /**
- * What a key says about the world it was issued in, read from its own prefix.
+ * What a key says about the deployment it was issued for, read from its
+ * prefix: every key carries its environment as its prefix.
  *
- * ADR-0020 is what makes reading it here legitimate rather than clever: every
- * key carries the environment it was issued in as its prefix, and whoever holds
- * a key can read that prefix. So a worker learns which deployment it joined
- * without a field on the wire, a line in a response document or a step in a
- * handshake — none of which this adds.
+ * This copies a rule whose home is `keyPrefixFor` in
+ * `packages/core/src/deployment/environment.ts`, which this published package
+ * cannot depend on. `which-world.test.ts` builds keys with core's own function
+ * and checks these sentences, so a prefix changed on one side fails the tests;
+ * change both together.
  *
- * The rule's home is `packages/core/src/deployment/environment.ts`, where
- * `keyPrefixFor` writes these prefixes and `environmentOfKeyPrefix` reads them.
- * The two strings below are a second copy of that rule and not a use of it,
- * because this package cannot depend on that module at runtime: it is private
- * to the workspace and unpublished, and the dependency tree a merchant installs
- * is a recorded decision (ADR-0003 §8) that does not grow to reach it.
- *
- * A copy is a thing that drifts, and these two must not. What holds them
- * together is `which-world.test.ts`: it builds its keys out of core's own
- * `keyPrefixFor` and asserts the sentences written here, so a prefix changed on
- * one side and not the other fails `pnpm test` instead of going quiet in
- * somebody's log. That import is dev-time and reaches nothing published — the
- * tarball ships `dist`, and the build leaves the tests out. Changing either
- * side means changing both in the same commit.
- *
- * A key matching neither prefix says nothing at all, which is the third case
- * ADR-0020 names: a key naming no environment, or one that is not ours. There is nothing to fall back to. Guessing is wrong in both directions
- * — telling a merchant their money is play when it is real, or the other way
- * round — and no line at all is better than a wrong claim about whose money is
- * at stake.
+ * A key matching neither prefix gets no line at all: guessing would risk
+ * telling a merchant their money is play when it is real, or the reverse.
  */
 const WHAT_THE_KEY_SAYS: Readonly<Record<string, string>> = Object.freeze({
   csk_test_: "with a test key: the money there is not real",
@@ -603,12 +427,9 @@ const keyOf = (apiKey: string | undefined): string => {
 };
 
 /**
- * The address as given, checked as far as it can be checked without using it.
- *
- * A value that is not an address is refused at once: it will not become one
- * later, and the line that produced it is the line to fix. An address that was
- * not given at all is a different matter, and it is kept as the sentence that
- * will be raised by the first call that needs it — see `baseUrl` above.
+ * The address as given, checked as far as it can be without using it. A value
+ * that is not an http or https address is refused at once; an address not
+ * given at all is refused by the first call that needs it.
  */
 const addressOf = (baseUrl: string | undefined): string => {
   if (baseUrl === undefined) return "";
@@ -650,14 +471,11 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
   };
 
   /**
-   * The handlers, and the loop that dispatches to them.
-   *
-   * The registry belongs to the client and not to any one loop, which is what
-   * lets a merchant stop and start again on the handlers they already
-   * registered. `worker` is the loop currently running, if one is; it also
-   * ends on its own when the gateway turns out to speak another dialect, which
-   * is why every reader asks it whether it is still running rather than
-   * assuming that a worker that exists is a worker that polls.
+   * The handlers, and the loop that dispatches to them. The registry belongs
+   * to the client, so a stopped client starts again on the same handlers.
+   * `worker` is the loop currently running, if any; it can also end on its
+   * own when the gateway speaks another contract version, so readers ask it
+   * whether it is still running.
    */
   const registry: HandlerRegistry = { problem: reportToConsole };
   const registered = new Set<HandlerKind>();
@@ -669,24 +487,10 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
 
   /**
    * The one line this package writes uninvited: where this worker is pointed
-   * and whether the money there is real.
-   *
-   * Once per client and not once per start. The key cannot change under a
-   * client and neither can the address, so a second line would carry no second
-   * fact — and a supervisor that stops and starts a worker on a schedule would
-   * turn it into the kind of line people learn to scroll past. The question is
-   * closed even where the answer is silence: a key naming no environment is
-   * asked about once and never again.
-   *
-   * It goes to the console because that is where this package already writes
-   * when nobody gave it anywhere else to write, and at the informational level
-   * because that is what it is. `console.error` would put it in front of every
-   * log collector as a fault on a worker that has just started correctly, which
-   * is a false alarm and the one thing this line must never look like.
-   *
-   * It is not a `WorkerProblem`: the merchant's reporter is for what went
-   * wrong, and a process counting problems should not have to filter out the
-   * one that means everything is fine.
+   * and whether the money there is real. Once per client, since neither the
+   * key nor the address can change. It goes to `console.info` because it is
+   * not a fault, and it is not a `WorkerProblem`, since the reporter is for
+   * what went wrong.
    */
   const sayWhichWorld = (): void => {
     if (worldIsSaid) return;
@@ -708,12 +512,9 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
     reachable();
 
     if (route === "deliver_order") {
-      // The road the worker's own warning does not cover, and the one a
-      // merchant delivering asynchronously takes. See `droppedFieldWarning`:
-      // the field goes no further than the gateway's parse, and without this
-      // the merchant's handler had no way to learn that what it sent is not
-      // what went out. A warning and not a refusal — the rest of the delivery
-      // is good, and the call is the merchant's to make.
+      // `droppedFieldWarning` covers the asynchronous delivery too: the field
+      // goes no further than the gateway's parse, and this is the merchant's
+      // only way to learn so. A warning, not a refusal; the rest is good.
       const dropped = droppedFieldWarning(orderId, body as Delivery);
 
       if (dropped !== null) reportSafely(registry.problem, dropped);
@@ -734,21 +535,16 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
       body: {},
     });
 
-    // Accepting the same order again is ordinary: an order is taken on afresh
-    // on every redelivery, so a repeat does no work twice.
+    // Accepting the same order again is harmless: an order is taken on afresh
+    // on every redelivery.
     return answer.ok ? answer.document : { ok: false, error: failedCall(true, answer.failure) };
   };
 
   /**
-   * The calls one order answers to, closed over that order's identifier and
-   * over this client.
-   *
-   * This closure is the whole mechanism. The identifier is captured here, once,
-   * at the moment the order was read — off the stream or out of our record —
-   * and never travels back through a merchant's hands, where it could be the
-   * wrong string. What holds the client is the same closure: `orderCall` and
-   * `acceptCall` above are this client's, so an order kept in a merchant's map
-   * for four hours still knows which gateway to call and with whose key.
+   * The calls one order answers to, closed over its identifier and this
+   * client. The identifier is captured once, when the order was read, and
+   * never passes back through the merchant's hands, and an order kept for
+   * hours still knows which gateway to call and with whose key.
    */
   const callsFor = (orderId: string): OrderCalls => ({
     delivered: (delivery) => ({ delivered: delivery }),
@@ -792,12 +588,8 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
     if (!answer.ok) {
       const { failure } = answer;
 
-      // The gateway's own word wherever it wrote one, and one of ours only
-      // where it did not. A refusal we recognise carries the reason a merchant
-      // can act on, and replacing it with "we could not read the answer" would
-      // throw away the one thing they came here for. The same holds for its
-      // answer about calling again — this is the rule `failedCall` applies for
-      // the calls that return, applied here so the two roads agree.
+      // The gateway's own code and retry answer wherever it wrote them, ours
+      // only where it did not, as `failedCall` does for the calls that return.
       throw new AgentifyError(
         failure.refusal?.code ?? CODE_FOR[failure.reach],
         failure.route,
@@ -822,9 +614,8 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
 
       list: async (query) => {
         const listed = await document("list_orders", {
-          // The wire carries the two words rather than a boolean, because a
-          // query string carries text. The merchant writes the boolean their
-          // language has and this is where the two meet.
+          // The wire carries the words "true" and "false", because a query
+          // string carries text.
           query: query?.open === undefined ? {} : { open: query.open ? "true" : "false" },
         });
 
@@ -845,15 +636,13 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
         );
       }
 
-      // Narrowed off the generic so that the switch below is exhaustive over
-      // the kinds rather than over whatever this call was instantiated with.
+      // Narrowed off the generic so the switch is exhaustive over the kinds.
       const which: HandlerKind = kind;
 
       switch (which) {
         case "order": {
-          // The merchant's handler is wrapped rather than registered as it
-          // stands: the loop reads a plain order off the envelope, and the
-          // calls that close it are this client's to attach.
+          // Wrapped so the order the loop reads off the envelope gets this
+          // client's calls attached.
           const answering = handler as Handlers["order"];
 
           registry.order = (arrived) => answering(withCalls(arrived));
@@ -877,9 +666,8 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
           return assertEveryKindIsRegistered(which);
       }
 
-      // Written down only once everything that could refuse this call has
-      // passed, so a call that threw leaves no trace and the same call made
-      // again succeeds.
+      // Recorded only after everything that could refuse has passed, so a call
+      // that threw leaves no trace.
       registered.add(which);
     },
 
@@ -898,10 +686,8 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
         );
       }
 
-      // Read off the vocabulary rather than written out, so a kind the stream
-      // grows is counted as an answer here without anybody remembering to add
-      // it — a process that answered only the new kind would otherwise be
-      // refused a start on the grounds that it answers nothing.
+      // Read off the vocabulary, so a kind the stream grows counts as an
+      // answer without anybody remembering to add it here.
       if (!streamKinds().some((kind) => registry[kind] !== undefined)) {
         throw new TypeError(
           `this client has nothing registered to answer with: register at least one of ${streamKinds()
@@ -912,9 +698,8 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
         );
       }
 
-      // After every refusal above and before the loop: a start that threw
-      // opened nothing, and a line saying otherwise would be the first thing a
-      // merchant read on the way to an exception.
+      // After every refusal above: a start that threw opened nothing and must
+      // not say otherwise.
       sayWhichWorld();
 
       worker = startWorker(gateway, registry);
@@ -923,17 +708,12 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
     stop: async () => {
       const owned = worker;
 
-      // A client that was never started has nothing to stop, and saying so by
-      // returning is what lets a shutdown routine call this unconditionally.
+      // A client never started has nothing to stop, so a shutdown routine can
+      // call this unconditionally.
       if (owned === undefined) return;
 
-      // One promise for every caller — a shutdown routine and a signal handler
-      // both calling stop() is ordinary — and what it buys is the bookkeeping
-      // rather than the waiting. Each of them would wait out the same loop
-      // either way, because the worker's own stop() awaits the one promise the
-      // loop ends on. What must happen once is the clearing below: two of them
-      // racing it is two of them deciding whether this client still has a
-      // worker, and the last one to answer wins.
+      // One promise for every concurrent caller, so the clearing below happens
+      // once rather than racing over whether this client still has a worker.
       stopping ??= owned.stop().finally(() => {
         if (worker === owned) worker = undefined;
         stopping = undefined;

@@ -32,9 +32,9 @@ describe("browser observation worker env", () => {
   });
 
   // A browser mode that is switched on pays for runs at Apify, so it starts
-  // only when it can say whose account, which Actor and which build. Each refusal names the setting that is missing, and the one that
-  // starts is there so that a check refusing everything cannot pass for one
-  // that refuses the right thing.
+  // only when it can say whose account, which Actor and which build. Each
+  // refusal names the missing setting, and the case that starts guards
+  // against a check that refuses everything.
   const active = {
     ...base,
     APIFY_BROWSER_ENABLED: "true",

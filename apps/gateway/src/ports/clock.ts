@@ -1,11 +1,7 @@
 /**
- * The two things the domain refuses to produce for itself.
- *
- * `@agentify/core` reads no clock and invents no identifier: every event
- * carries the instant it happened at, so the same inputs always produce the
- * same order. That discipline only holds if the instant comes from somewhere,
- * and this is where. Both are parameters rather than imports so a test can
- * hold time still and name every order it makes.
+ * The clock and the identifiers, which `@agentify/core` never produces for
+ * itself so the same inputs always produce the same order. They are passed in
+ * so a test can hold time still and name every order it makes.
  */
 
 import { randomUUID } from "node:crypto";
@@ -19,13 +15,10 @@ export type Ids = (kind: string) => string;
 export const systemClock: Clock = () => Date.now();
 
 /**
- * Identifiers that carry what they name. The kind is a courtesy to whoever
- * reads a log — "ord_" in front of a number is the difference between finding
- * an order and searching for a string — and the rest is random, because an
- * identifier a stranger can guess the next of is an identifier that leaks how
- * much we sold.
+ * Identifiers prefixed with their kind. The rest is random so that nobody can
+ * guess the next one or infer how much was sold.
  */
 export const randomIds: Ids = (kind) => `${kind}_${randomUUID().replaceAll("-", "")}`;
 
-/** The instant, written the way every document on the wire writes one. */
+/** The instant as an ISO 8601 timestamp, as every document on the wire has it. */
 export const asTimestamp = (at: number): string => new Date(at).toISOString();

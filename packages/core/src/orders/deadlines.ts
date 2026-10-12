@@ -1,42 +1,26 @@
 /**
  * Which clocks are running on an order right now.
  *
- * The gateway schedules its timers off this list and the machine checks
- * against it: a deadline that is not in the list cannot expire an order, and
- * one that is in it cannot expire it before its time. Those two rules together
- * close a money hole that is easy to miss — a quote timing out while the settle
- * of that very order is already on its way, or a timer that fired twice
- * closing an order whose merchant is still honestly inside his deadline.
+ * The gateway schedules its timers off this list and the machine checks against
+ * it: a deadline not in the list cannot expire an order, and one in it cannot
+ * expire it early. That keeps a quote from timing out while its settle is
+ * already on its way, and a timer that fired twice from closing an order whose
+ * merchant is still inside his deadline.
  *
- * Every open state in which the machine is waiting for somebody has exactly
- * one clock on it, and the reason is `docs/research/16-order-state-machine.md`:
- * an overdue order does not hang, it goes to an honest ending and the agent is
- * told which.
+ * Every open state in which the machine waits for somebody has exactly one
+ * clock, so an overdue order goes to an ending the agent is told rather than
+ * hanging. Three open states deliberately carry none: `refund_due` and
+ * `delivered_unpaid` are debts a deadline cannot settle, and an order whose
+ * charge never reported back waits for the payment layer, which alone has that
+ * fact.
  *
- * Three open states carry no clock, and each is a deliberate exception rather
- * than a gap. `refund_due` and `delivered_unpaid` are the two the portal calls
- * unclosed: the purchase is over and what is left is a debt in one direction
- * or the other, which a deadline cannot settle. And an order whose charge
- * never reported back waits for the payment layer to speak, because that is a
- * fact only the payment layer has and another clock would only re-guess it.
- *
- * Three of the clocks start at instants worth naming out loud. Both of the
- * clocks on the goods run from the moment the order became paid, which in the
- * two modes is a different fact about the money: synchronously it is the
- * payment checking out, because nothing has moved yet and the goods are what
- * moves it; asynchronously it is the settle, because the buyer's money is at
- * risk from then on and it is that risk the deadline bounds. And the settle's
- * own deadline runs from the moment the payment was handed over for execution.
- *
- * Neither of the first two runs from the opening of the order, and that is a
- * lesson rather than a preference. The synchronous one used to, and an agent
- * that read the price, decided, and paid twenty seconds later — legitimately,
- * inside the life of its quote — arrived at an order whose whole answer had
- * already run out before there was anything to hand the merchant. He delivered,
- * the money moved, and the agent was told its purchase was still in progress
- * and given nothing. Before the payment an order is held by the life of its
- * price and by nothing else; the merchant cannot be on a clock for goods
- * nobody has paid for yet.
+ * Both clocks on the goods run from the moment the order became paid: in the
+ * synchronous mode that is the payment checking out, in the asynchronous mode
+ * the settle, since the buyer's money is at risk from then on. Neither runs
+ * from the opening of the order, or an agent that pays late but inside its
+ * quote's life would find the merchant's whole answer window already spent. The
+ * settle's own deadline runs from the moment the payment was handed over for
+ * execution.
  */
 
 import { assertNever } from "../index.js";
@@ -46,12 +30,10 @@ export function deadlines(order: Order): readonly Deadline[] {
   // While the payment is being executed, that is the only thing the order is
   // waiting on, whichever state it is sitting in.
   if (order.payment === "settling") {
-    // A settling order with no start time cannot have come out of this
-    // package, but it can come out of a store, and it is the one order that
-    // must never lose its clock: nothing but the settle's own outcome can move
-    // it, and without a clock nothing will ever produce that outcome. So it is
-    // already overdue — we cannot say it is not — and `moneyInvariantViolations`
-    // says the same thing in words.
+    // A settling order without a start time cannot come out of this package but
+    // can come out of a store. Nothing but the settle's own outcome can move
+    // it, so it is treated as already overdue rather than left without a clock;
+    // `moneyInvariantViolations` reports the same order.
     const startedAt = order.timestamps.settleStartedAt;
     return [
       {
@@ -66,10 +48,9 @@ export function deadlines(order: Order): readonly Deadline[] {
 
   switch (order.state) {
     case "created":
-      // The price has not come back yet. Running out of this one is the
-      // merchant's silence, and silence is answered by mode rather than by
-      // closing the order — which is why it is not the life of a price that
-      // was never quoted.
+      // The price has not come back yet. Running out of this clock is the
+      // merchant's silence, which is answered by mode rather than by closing
+      // the order, so it is not the life of a price that was never quoted.
       return [
         {
           kind: "quote_response",
@@ -143,10 +124,9 @@ export function deadlines(order: Order): readonly Deadline[] {
 export function fulfillmentDeadline(order: Order): readonly Deadline[] {
   const paidAt = order.timestamps.paidAt;
   if (paidAt === null) {
-    // A paid order with no record of when it was paid cannot come out of this
-    // package, but it can come out of a store, and there is nothing honest to
-    // start the merchant's clock from: a guess is the mistake the header
-    // describes. Unlike the stranded settle above, the merchant's own answer
+    // A paid order without a paid time cannot come out of this package but can
+    // come out of a store, and there is nothing honest to start the merchant's
+    // clock from. Unlike the stranded settle above, the merchant's own answer
     // can still move this order, so it is left to him rather than made overdue.
     return [];
   }

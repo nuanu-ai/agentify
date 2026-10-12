@@ -5,9 +5,9 @@ import { CLOSED_ORDER_STATES, isOpen, modeOf, OPEN_ORDER_STATES, ORDER_STATES } 
 
 describe("the order vocabulary", () => {
   it("splits every state into exactly one of open and closed", () => {
-    // The merchant asks us for his unclosed orders after a restart, and the
-    // agent asks whether his purchase is over. A state that belongs to both
-    // sets, or to neither, makes one of those two answers a lie.
+    // A state in both sets, or in neither, makes either the merchant's list of
+    // unclosed orders after a restart or the agent's "is my purchase over"
+    // answer wrong.
     const open = new Set<string>(OPEN_ORDER_STATES);
     const closed = new Set<string>(CLOSED_ORDER_STATES);
 
@@ -18,9 +18,8 @@ describe("the order vocabulary", () => {
   });
 
   it("reads each published fulfillment mode as a pair of switches", () => {
-    // The three modes of the card are not three machines: they are the two
-    // switches of `docs/research/16-order-state-machine.md`. If this drifts,
-    // a card sold as `sync` starts taking money before the goods exist.
+    // If this drifts, a card sold as `sync` starts taking money before the
+    // goods exist.
     expect(modeOf("sync")).toStrictEqual({ needsConfirmation: false, settle: "after_fulfillment" });
     expect(modeOf("async")).toStrictEqual({ needsConfirmation: false, settle: "on_purchase" });
     expect(modeOf("confirm")).toStrictEqual({ needsConfirmation: true, settle: "on_purchase" });
@@ -36,8 +35,6 @@ describe("the order vocabulary", () => {
 
 describe("creating an order", () => {
   it("asks the merchant for a price when the card carries a price check", () => {
-    // Promise to the agent: a card with a live price check is never sold off a
-    // stale snapshot without asking first.
     const created = createOrder(createInput("sync", { priceCheck: "merchant" }));
 
     expect(created.ok).toBe(true);
@@ -48,7 +45,6 @@ describe("creating an order", () => {
   });
 
   it("prices a static card off its own snapshot and goes straight to a quote", () => {
-    // Canon: "статичные товары живут снапшотом без проверки" (ADR-0002 §2).
     const created = createOrder(createInput("sync"));
 
     expect(created.ok).toBe(true);
@@ -69,8 +65,6 @@ describe("creating an order", () => {
   });
 
   it("carries the test flag through to the order", () => {
-    // The handler is entitled to route a test order into its own circuit; it
-    // can only do that if the flag survives creation.
     const created = createOrder(createInput("async", { test: true }));
 
     expect(created.ok).toBe(true);
@@ -79,7 +73,7 @@ describe("creating an order", () => {
   });
 
   it("takes no new order while the merchant is paused", () => {
-    // Pause is not leaving: new purchases stop, and that is the whole of it.
+    // Pausing is not leaving: new purchases stop, and nothing else changes.
     const created = createOrder(createInput("async", { selling: "paused" }));
 
     expect(created.ok).toBe(false);
@@ -96,9 +90,8 @@ describe("creating an order", () => {
   });
 
   it("starts every order with untouched money and no closure", () => {
-    // Nothing in creation may move money or claim an outcome: the fifth gate
-    // wants "I do not know yet" to be distinguishable from "I know there is
-    // none".
+    // Creation moves no money and claims no outcome, so "not known yet" stays
+    // distinguishable from "known to be none".
     const created = createOrder(createInput("async"));
 
     expect(created.ok).toBe(true);

@@ -1,9 +1,9 @@
 <?php
 
 // One physical product and the shipping zones that price it, for trying a
-// parcel through the Agentify connector (ADR-0023). It can be run on its own
-// against a shop that already holds the rest of the seed, and running it again
-// changes nothing: the product is found by its SKU and each zone by its name.
+// parcel through the Agentify connector. It can be run on its own against a
+// shop that already holds the rest of the seed, and running it again changes
+// nothing: the product is found by its SKU and each zone by its name.
 //
 // The product is the second class the connector imports: a published,
 // in-stock simple product in US dollars that is neither virtual nor

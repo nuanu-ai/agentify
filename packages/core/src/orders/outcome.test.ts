@@ -11,9 +11,8 @@ import {
 } from "./outcome.js";
 
 /**
- * The projection an agent reads. The promise it carries is the fifth gate: the
- * status says exactly what the machine knows, and "I do not know yet" has to be
- * a different word from "I know there is none".
+ * The status an agent reads says exactly what the machine knows: "not known
+ * yet" is a different word from "known to be none".
  */
 describe("what the agent is told an order came to", () => {
   it("says the answer is not in yet while the order is still moving", () => {
@@ -39,9 +38,6 @@ describe("what the agent is told an order came to", () => {
   });
 
   it("tells a refusal apart from a deadline, and both from a confirmation refused", () => {
-    // Three rows of the portal's table of endings, and they are three
-    // different sentences to the agent: a refusal with a reason, an order
-    // closed on time, and a merchant who said he would not fulfill.
     expect(outcomeFor(reach("failed"))).toBe("rejected");
     expect(outcomeFor(reach("rejected"))).toBe("rejected");
     expect(outcomeFor(reach("expired"))).toBe("expired");
@@ -49,10 +45,9 @@ describe("what the agent is told an order came to", () => {
   });
 
   it("does not tell the agent a purchase failed when it does not know", () => {
-    // The fifth gate on the most visible artifact there is. A charge the
-    // payment network never answered about is not a refusal: the agent's
-    // wallet may be lighter, and an agent told "the purchase did not happen"
-    // will go and buy the same thing somewhere else without checking.
+    // A charge the payment network never answered about is not a refusal: the
+    // agent's wallet may be lighter, and an agent told the purchase did not
+    // happen will buy the same thing elsewhere without checking.
     const unresolved = walk(newOrder("async"), [
       { kind: "payment_verified", at: T0 + 1 },
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
@@ -64,9 +59,9 @@ describe("what the agent is told an order came to", () => {
   });
 
   it("does not say the answer is still on its way once it has stopped asking", () => {
-    // The goods are made and the charge went quiet. Nothing is asking the
-    // payment network again, so "in progress" would be a claim that an answer
-    // is still coming. The merchant's restart list reads this same word.
+    // Nothing is asking the payment network again, so "in progress" would claim
+    // an answer is still coming. The merchant's restart list reads this same
+    // word.
     const silent = walk(reach("fulfilled"), [
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
     ]);
@@ -90,9 +85,6 @@ describe("what the agent is told an order came to", () => {
 
   it("carries the difference all the way out to the agent, not only inside", () => {
     // One charge was reported as failed and the other never reported at all.
-    // The order has always carried that difference for the dispute, the error
-    // text and the merchant's reconciliation; now the agent hears it too,
-    // because he is the one whose wallet the answer is about.
     const silent = walk(reach("fulfilled"), [
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
     ]);
@@ -105,12 +97,9 @@ describe("what the agent is told an order came to", () => {
 
   it("turns a charge that finally reports in into the debt it is", () => {
     // The order was closed as refused because the payment network went silent,
-    // and then it answered: the money had moved after all. The machine reopens
-    // the order as a debt and tells the merchant so. The agent has to be told
-    // the same thing. "Nobody can say whether you were charged" about an order
-    // the machine has just written a refund against is the fifth gate turned
-    // inside out — ignorance claimed where there is knowledge — and it hides a
-    // debt owed to the buyer behind a word that sounds like bad luck.
+    // and then the money turned out to have moved. The machine reopens the
+    // order as a debt, and the agent must be told that too: "nobody can say
+    // whether you were charged" would hide a debt owed to the buyer.
     const silent = walk(newOrder("async"), [
       { kind: "payment_verified", at: T0 + 1 },
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
@@ -120,25 +109,23 @@ describe("what the agent is told an order came to", () => {
 
     const owed = walk(silent, [{ kind: "payment_settled", at: T0 + 1_000_000 }]);
 
-    // The machine keeps the old closure on purpose: it is the record of why
-    // the order was closed in the first place. The projection may not read
-    // that record as a claim that the money is still lost.
+    // The machine keeps the old closure as the record of why the order was
+    // first closed. The projection must not read it as the money still being
+    // lost.
     expect(owed.state).toBe("refund_due");
     expect(owed.payment).toBe("settled");
     expect(owed.closure).toStrictEqual({ cause: "payment_outcome_unknown" });
     expect(outcomeFor(owed)).toBe("refund_due");
 
-    // And once the debt is paid back, that is what the agent hears — not that
-    // the machine still does not know where his money went.
     const repaid = walk(owed, [{ kind: "refund_settled", at: T0 + 1_000_001 }]);
 
     expect(outcomeFor(repaid)).toBe("refunded");
   });
 
   it("keeps an unpaid quote off the list a restarted worker walks, and keeps one he took on", () => {
-    // Both read `in_progress` to the buyer. Only one of them is the merchant's
-    // to finish. A list that holds both is how a restart delivers goods for a
-    // purchase that was never paid.
+    // Both read `in_progress` to the buyer, but only one is the merchant's to
+    // finish. A list holding both makes a restart deliver goods for a purchase
+    // that was never paid.
     const unpaid = reach("quoted");
     const takenOn = walk(reach("dispatched"), [{ kind: "handler_accepted", at: T0 + 4 }]);
     const handed = reach("paid");
@@ -190,12 +177,10 @@ describe("what the agent is told an order came to", () => {
 });
 
 /**
- * Why an order ended, where its merchant did not say. One status word can
- * cover endings that call for different next steps — a product that is gone,
- * a price check nobody answered, a charge that did not go through — and an
- * agent that cannot tell them apart either gives up on a seller worth trying
- * again or keeps trying one that will never sell. The merchant's own words
- * stay in the refusal and are never given a reason of ours.
+ * One status word can cover endings that call for different next steps: a
+ * product that is gone, a price check nobody answered, a charge that did not go
+ * through. The merchant's own words stay in the refusal and are never given a
+ * reason of ours.
  */
 describe("why an order ended, where its merchant did not say", () => {
   it("names the endings that one status word would otherwise blur", () => {

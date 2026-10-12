@@ -13,11 +13,10 @@
 #
 # On PRODUCTION it also installs the off-host backup (deploy/README.md,
 # "Backups"): restic where the host has none, agentify-backup every ten
-# minutes, agentify-backup-check for a restore rehearsal a person runs,
-# agentify-backup-credentials and their units, and it removes the interim cron
-# job. It refuses until
-# /etc/agentify/backup.env is root's with mode 600. TEST takes no backups,
-# since its data is test data.
+# minutes, agentify-backup-check for a restore rehearsal a person runs, and
+# agentify-backup-credentials with their units, and removes any leftover
+# interim backup cron job. It refuses until /etc/agentify/backup.env is root's
+# with mode 600. TEST takes no backups, since its data is test data.
 set -euo pipefail
 
 channel="${1:-}"

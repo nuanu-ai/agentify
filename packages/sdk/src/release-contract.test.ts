@@ -1,12 +1,11 @@
 /**
- * One application tag, `app-v<release>`, is the acceptance that puts a revision
- * on production (ADR-0016) and publishes whatever SDK and contracts versions
- * that revision carries and the registry does not yet hold. These tests
- * execute the same resolver as the publish workflow: a tag that is not the
- * application's, an unreleased manifest, a prerelease or a third public
- * package must stop before authentication and before `npm publish`. The
- * number in the tag is the application's and says nothing about the SDK
- * version, which comes from the manifest alone.
+ * One application tag, `app-v<release>`, puts a revision on production and
+ * publishes whatever SDK and contracts versions that revision carries and the
+ * registry does not yet hold. These tests run the publish workflow's own
+ * resolver: a tag that is not the application's, an unreleased manifest, a
+ * prerelease or a third public package must stop before authentication and
+ * before `npm publish`. The tag's number is the application's; the SDK version
+ * comes from the manifest alone.
  */
 
 import { execFileSync, spawnSync } from "node:child_process";

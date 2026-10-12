@@ -1,19 +1,12 @@
 /**
- * The listing check, tested without the network.
+ * The listing check, tested without the network. The command must never report
+ * a pass it did not see: a refused probe, a probe whose endpoint never answered
+ * and a probe that came back unreadable are three different things, and only
+ * the first says the resource is wrong.
  *
- * There is one promise here worth more than the rest, and it is not about the
- * catalog: the command must never report a pass it did not see. A probe that
- * was refused, a probe whose endpoint never answered and a probe that came back
- * with something nobody can read are three different things, and only one of
- * them is a resource that is wrong. Folded together, the last two would print
- * as a green tick over a validation that never happened — which is exactly the
- * claim this command exists to make and therefore the one it must never fake.
- *
- * The live call is `pnpm smoke:listing`. Nothing here goes near it: the
- * validation endpoint is Coinbase's, and a case that reached it would take
- * `pnpm test` off the network-free, deterministic footing `vitest.config.ts`
- * puts it on. The cases at the bottom do open a socket, to this process, and
- * stub the probe.
+ * The validation endpoint is Coinbase's, so the live call belongs to
+ * `pnpm smoke:listing`. The cases at the bottom open a socket only to this
+ * process, and stub the probe.
  */
 
 import { createServer, type Server } from "node:http";
@@ -151,10 +144,9 @@ describe("asking the catalog whether it would take our resources", () => {
   });
 
   it("says nothing was proven when the endpoint could not be reached", async () => {
-    // Not a failure of the resource, and not a pass. The distinction is the
-    // whole point: from a laptop the gateway is not reachable from the
-    // internet, and a run that printed a tick here would be the clearest
-    // possible claim beyond the evidence.
+    // Not a failure of the resource, and not a pass: from a laptop the gateway
+    // is not reachable from the internet, and a tick here would claim what
+    // nobody saw.
     const run = aRun({
       answers: () => ({ kind: "unreachable", why: "fetch failed: ENOTFOUND" }),
     });
@@ -199,8 +191,8 @@ describe("asking the catalog whether it would take our resources", () => {
 
   it("knocks on the door itself, with the plain unpaid GET an agent's own fetch is", async () => {
     // The validator is only ever asked with POST, so nothing in its answer says
-    // the deployed door answers a GET at all — and a GET is what an agent
-    // reading the resource by hand sends. One did, on 2026-09-10.
+    // the deployed door answers a GET at all, and a GET is what an agent
+    // reading the resource by hand sends.
     const run = aRun({ answers: () => accepted });
 
     expect(await run.run("https://agentify.example")).toBe(0);
@@ -223,10 +215,9 @@ describe("asking the catalog whether it would take our resources", () => {
   });
 
   it("counts a door whose challenge names GET as the purchase as a refusal", async () => {
-    // The 2026-09-10 incident, whole: the declaration on a GET said the
-    // purchase was a GET, an agent paid with one, and a GET reads no payment —
-    // no order, no receipt, the buyer's reserve left hanging. The validator
-    // cannot see this, because it is never asked with GET.
+    // An agent that pays with the GET such a declaration names gets no order
+    // and no receipt, because a GET reads no payment. The validator cannot see
+    // this: it is never asked with GET.
     const run = aRun({
       answers: () => accepted,
       door: () => ({ kind: "answered", status: 402, challenge: challengeNaming("GET") }),
@@ -257,10 +248,8 @@ describe("asking the catalog whether it would take our resources", () => {
   });
 
   it("says nothing was proven when the door itself could not be reached", async () => {
-    // Same line the validator's silence gets, and for the same reason: an
-    // unreachable door says nothing about the resource behind it, and a run
-    // that printed a tick here would be the claim this command exists not to
-    // make.
+    // Same line the validator's silence gets: an unreachable door says nothing
+    // about the resource behind it.
     const run = aRun({
       answers: () => accepted,
       door: () => ({ kind: "unreachable", why: "fetch failed: ECONNREFUSED" }),
@@ -314,12 +303,9 @@ describe("asking the catalog whether it would take our resources", () => {
   });
 
   it("reports an identifier it cannot build an address from, and keeps going", async () => {
-    // A catalog is an answer from somewhere else, and an identifier in it may
-    // be something no address can be made of — a dot, which is a step through a
-    // path rather than a value in it. That threw out of the loop and off the
-    // top of the command, which is the failure this whole way of reading was
-    // meant to remove. It is one line of the report now, and the products after
-    // it are still checked.
+    // An identifier in a catalog may be something no address can be made of,
+    // such as a dot, which is a step through a path rather than a value in it.
+    // It costs one line of the report, and the products after it are checked.
     const run = aRun({
       catalog: { items: [card("."), card("itm_2")] },
       answers: () => accepted,
@@ -369,9 +355,9 @@ describe("asking the catalog whether it would take our resources", () => {
   });
 
   it("says up front that an address which is not https will get no verdict", async () => {
-    // Measured against the live endpoint: it refuses an http resource outright
-    // with a 400 and no verdict. Without this line a run against the local
-    // sandbox is two identical refusals and no explanation.
+    // The live endpoint refuses an http resource outright with a 400 and no
+    // verdict. Without this line a run against the local sandbox is two
+    // identical refusals and no explanation.
     const run = aRun({ answers: () => accepted });
 
     await run.run("http://localhost:3000", "itm_1");
@@ -400,22 +386,14 @@ describe("asking the catalog whether it would take our resources", () => {
 
 describe("reading a running gateway over a real socket", () => {
   /**
-   * Everything above fakes the ways out, which leaves the parts that talk to a
-   * gateway untested: what a catalog answer has to look like, what is printed
-   * when the answer is not a catalog, and whether the door's own challenge is
-   * really read off the wire. This serves the answers over a real socket
-   * instead — the server is this process, on a port the operating system
-   * picks, and it is closed after every case.
+   * The parts that talk to a gateway: what a catalog answer has to look like,
+   * what is printed when it is not one, and whether the door's challenge is
+   * really read off the wire. The server is this process, on a port the
+   * operating system picks.
    *
-   * The real way out is used for the gateway and never for the validator, and
-   * that split is the whole reason this reads the way it does. The probe goes to
-   * Coinbase's validation endpoint, and a suite that reached it would stop
-   * being free, deterministic and able to run without a network — which
-   * `vitest.config.ts` says in as many words is what `pnpm test` has to be.
-   * Written with the whole of the real way out, the two cases below that get
-   * as far as probing made four calls to that endpoint on every run of the
-   * suite, and went green either way, so nothing would ever have said so.
-   * `pnpm smoke:listing` is where that call belongs.
+   * Only the gateway side is real. A real probe would call Coinbase's
+   * validation endpoint on every run of the suite and the cases would pass
+   * either way, so nothing would say so.
    */
   let server: Server | null = null;
   /** What actually arrived, so a case can hold the command to the call it made. */
@@ -461,10 +439,8 @@ describe("reading a running gateway over a real socket", () => {
   });
 
   /**
-   * The command reading a catalog for real, and answering its own probes.
-   *
-   * The catalog is the part under test here. The probe is stubbed with a fixed
-   * answer rather than left real, because the real one leaves this machine.
+   * The command reading a catalog for real, with the probe stubbed because the
+   * real one leaves this machine.
    */
   const run = async (base: string) => {
     const said: string[] = [];
@@ -485,13 +461,10 @@ describe("reading a running gateway over a real socket", () => {
   });
 
   it("reads a catalog from a gateway newer than this checkout", async () => {
-    // The one this was getting wrong. The catalog document says in its own
-    // description that it grows a paging field the day paging is designed, and
-    // this command runs from somebody's local copy against a deployment that
-    // may be ahead of it. Held to the whole document, a good catalog from a
-    // newer gateway would be refused with a list of complaints about fields
-    // this copy has never heard of — and the command would report that it
-    // checked nothing, about a gateway that was working.
+    // The catalog document grows fields (it promises a paging field), and this
+    // command runs from a local copy against a deployment that may be ahead of
+    // it. Held to the whole document, a good catalog from a newer gateway would
+    // be refused, and the command would report that it checked nothing.
     const base = await serving({
       body: JSON.stringify({
         items: [{ ...card("itm_1"), badges: ["new"] }],
@@ -506,9 +479,8 @@ describe("reading a running gateway over a real socket", () => {
   });
 
   it("says what it could not read when something else answers instead", async () => {
-    // A proxy, a login page, a maintenance stub — anything in front of the
-    // gateway answering for it. The sentence is the point: without it this came
-    // out as a stack trace about a property of undefined.
+    // A proxy, a login page, a maintenance stub: anything answering in front of
+    // the gateway gets a sentence, not a stack trace.
     const base = await serving({ body: JSON.stringify({ error: "unauthorized" }) });
 
     const { code, text } = await run(base);

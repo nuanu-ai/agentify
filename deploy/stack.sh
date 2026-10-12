@@ -4,12 +4,11 @@
 #   sudo deploy/stack.sh test ps
 #   sudo deploy/stack.sh production logs --tail 100 app
 #
-# A channel is one Compose project with one environment file (ADR-0016), and
-# this is the only place that spells either out: activation, the nightly
-# privacy job and a person on the host all reach the same stack through it.
-# It describes the checkout it lives in. That checkout's directory is the
-# project directory, and the images are the ones deploy/activate.sh recorded
-# for it in deploy/images.env when it activated that revision.
+# A channel is one Compose project with one environment file, and this is the
+# only place that spells either out: activation, the nightly privacy job and a
+# person on the host all reach the same stack through it. It describes the
+# checkout it lives in, with the images deploy/activate.sh recorded in
+# deploy/images.env for that revision.
 #
 # Both channels are the project agentify, each on its own host, so a container
 # is agentify-<service>-1 wherever it runs.

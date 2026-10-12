@@ -1,14 +1,8 @@
 /**
- * A card for a parcel at the gateway (ADR-0033): who may publish one, and on
- * which channel.
- *
- * A parcel's merchant gives the site of their shop, because a parcel that does
- * not arrive is a question its buyer takes there. And a parcel sells on the
- * test channel only: on the live one the refund of a lost parcel, the
- * merchant's view of whom to pay back and the rule about who may read a
- * tracking number are not running yet, so the card is refused there, in words
- * that say why. What the gateway does with a published one is what the rest of
- * the mode is built on: the order is held to the card's time to ship.
+ * A card for a parcel at the gateway: who may publish one, and on which
+ * channel. A parcel sells on the test channel only: the live one does not yet
+ * refund a lost parcel, show the merchant whom to pay back, or limit who may
+ * read a tracking number.
  */
 
 import {

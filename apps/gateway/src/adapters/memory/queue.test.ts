@@ -14,7 +14,7 @@ const envelope = (id: string): WorkerEnvelope => ({
   },
 });
 
-/** Whose stream. Every call names one, because there is one stream per merchant. */
+/** Whose stream: there is one per merchant, so every call names one. */
 const A = "mch_a";
 const B = "mch_b";
 
@@ -34,10 +34,9 @@ describe("MemoryQueue delivery", () => {
   });
 
   it("wakes a parked poll the moment something is published", async () => {
-    // ADR-0004 §4: a worker that is connected and waiting receives a message
-    // with no polling lag, because the poll is parked server-side. That is what
-    // keeps the price question of a synchronous purchase — the one an agent is
-    // sitting on — bounded by the network rather than by a poll interval.
+    // A parked poll keeps the price question of a synchronous purchase, which
+    // an agent is waiting on, bounded by the network rather than by a poll
+    // interval.
     const queue = await started();
     const parked = queue.draw(A, 10, 25_000);
 
@@ -60,8 +59,8 @@ describe("MemoryQueue delivery", () => {
   });
 
   it("comes straight back with whatever is queued when no wait is asked for", async () => {
-    // A worker shutting down asks for a drain, and a drain that parked for
-    // twenty-five seconds would hold the shutdown open for twenty-five seconds.
+    // A drain asks for no wait, and one that parked for twenty-five seconds
+    // would hold its caller for twenty-five seconds.
     const queue = await started();
     await queue.publish(A, envelope("env_1"));
 
@@ -93,10 +92,9 @@ describe("MemoryQueue delivery", () => {
   });
 
   it("does not put a drawn envelope back on the stream by itself", async () => {
-    // Whether an unanswered delivery is repeated is the order machine's
-    // decision: it is the one that knows how many attempts are left and
-    // whether another could still land inside the deadline. A queue with its
-    // own opinion would be a second one over the top of it.
+    // Repeating an unanswered delivery is the order machine's call: only it
+    // knows how many attempts are left and whether another could still land
+    // inside the deadline.
     const queue = await started();
     await queue.publish(A, envelope("env_1"));
 
@@ -120,10 +118,9 @@ describe("MemoryQueue delivery", () => {
   });
 
   it("gives two deliveries of one envelope two handles", async () => {
-    // Nothing here offers a drawn envelope again, but one envelope still
-    // reaches a stream twice: the poll puts back the one whose hand-over it
-    // could not record. A shared handle would let the answer to one of those
-    // two arrivals finish the other, which nobody has answered.
+    // One envelope can reach a stream twice: the poll puts back one whose
+    // hand-over it could not record. A shared handle would let the answer to
+    // one arrival finish the other, which nobody has answered.
     const queue = await started();
     await queue.publish(A, envelope("env_1"));
     await queue.publish(A, envelope("env_1"));
@@ -133,11 +130,9 @@ describe("MemoryQueue delivery", () => {
   });
 
   it("never hands one merchant's envelope to another merchant's worker", async () => {
-    // One stream per merchant, and not one stream filtered on the way out: a
-    // filter would have to draw a stranger's envelope in order to look at it,
-    // and a drawn envelope is one its own merchant is not offered until it is
-    // finished. So the promise is two things at once — B never sees A's
-    // envelope, and A still finds it afterwards.
+    // Not one shared stream filtered on the way out: a filter would have to
+    // draw a stranger's envelope to look at it, hiding it from its own
+    // merchant. So B never sees A's envelope, and A still finds it afterwards.
     const queue = await started();
     await queue.publish(A, envelope("env_1"));
 
@@ -146,10 +141,9 @@ describe("MemoryQueue delivery", () => {
   });
 
   it("does not send another merchant's parked worker back to an empty stream", async () => {
-    // Waking every parked poll on every publish would have each of them come
-    // back with nothing, over and over, on a busy gateway. Coming back with
-    // nothing is also what B's poll does when its wait runs out, so what tells
-    // the two apart is when it comes back: still parked after A's publish.
+    // Waking every parked poll on every publish would send each back empty,
+    // over and over, on a busy gateway. B's poll also comes back empty when its
+    // wait runs out, so the test tells the two apart by timing.
     const queue = await started();
     let back = false;
     const parkedOnB = queue.draw(B, 10, 1_000).finally(() => {
@@ -207,9 +201,8 @@ describe("MemoryQueue letting go of a parcel's address", () => {
   });
 
   it("forgets an order's hand-overs and its price question wherever they wait, and nothing else", async () => {
-    // ADR-0032: once the merchant has the address, no envelope that carries any
-    // of it is left for a worker to be handed. A hand-over waiting out a delay
-    // is one of them, and must not arrive after the gateway let go. The events
+    // Once the merchant has the address, no envelope carrying any of it may
+    // still reach a worker, a hand-over waiting out a delay included. Events
     // about the order carry no address and stay, as does everybody else's work.
     const queue = await started();
     await queue.publish(A, question("env_q1", "prc_1"));
@@ -336,28 +329,24 @@ describe("MemoryQueue holding an order", () => {
   });
 
   it("counts an envelope waiting out a delay, which is one that will be handed over", async () => {
-    // The sweep sends a paid order out again only when the stream is holding
-    // nothing for it, because the machine counts every hand-over and the count
-    // is what its attempt cap reads. A delayed envelope is going to arrive —
-    // the poll puts one back with a wait when it meets a charge in flight, and
-    // the order is in `paid` while that happens — so an order with one is not
-    // an order that has reached nobody. Missed, the sweep would spend one of
-    // that order's deliveries on a hand-over already on its way.
+    // The sweep resends a paid order only when the stream holds nothing for
+    // it, since every hand-over counts against the attempt cap. The poll puts
+    // an envelope back with a wait when it meets a charge in flight; missed
+    // here, the sweep would spend one of the order's attempts on a hand-over
+    // already on its way.
     const queue = await started();
     await queue.publish(A, orderEnvelope("env_1", "ord_waiting"), 60_000);
 
     expect(await queue.holdsOrder(A, "ord_waiting")).toBe(true);
 
-    // And it is still true once it has landed and is there to be drawn.
     await vi.advanceTimersByTimeAsync(60_000);
     expect(await queue.holdsOrder(A, "ord_waiting")).toBe(true);
   });
 
   it("stops counting one that a worker has drawn, and never counts an event", async () => {
-    // Two halves of the same honesty. A drawn envelope is in nobody's stream
-    // and this says so, which is why the sweep has patience as well as this
-    // question; and an event about an order is not the order, because nothing
-    // ever re-sends an event and nothing should be told otherwise.
+    // A drawn envelope is in nobody's stream, which is why the sweep also waits
+    // before resending. Nothing ever re-sends an event, so an event about an
+    // order does not count as holding it.
     const queue = await started();
     await queue.publish(A, orderEnvelope("env_1", "ord_1"));
     expect(await queue.holdsOrder(A, "ord_1")).toBe(true);
@@ -371,9 +360,8 @@ describe("MemoryQueue holding an order", () => {
   });
 
   it("answers about one merchant's stream and not another's", async () => {
-    // The streams are separate things, and an order on A's stream is not one B
-    // is holding. Answered across the two, a sweep would leave an order alone
-    // because somebody else's stream had something on it.
+    // Answered across streams, the sweep would leave an order alone because
+    // somebody else's stream had something on it.
     const queue = await started();
     await queue.publish(A, orderEnvelope("env_1", "ord_1"));
 

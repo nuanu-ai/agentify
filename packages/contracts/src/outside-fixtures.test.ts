@@ -1,35 +1,23 @@
 /**
- * The contract run against a catalog that is not the portal's.
+ * The contract run against a real merchant's catalog rather than the
+ * documentation's example: a rented phone number sold synchronously, an eSIM
+ * plan whose profile arrives later, and a VPN subscription at a fixed price.
  *
- * Every other test in this package works from the same example the
- * documentation works from, which is exactly the way a set of schemas can look
- * complete and still not fit anything real. The products below are the pilot
- * merchant's, as recorded in `docs/research/11-freeland-api-facts.md`: a
- * rented phone number sold synchronously, an eSIM plan whose profile arrives
- * later, and a VPN subscription at a fixed price.
+ * Taken from the merchant's API: the three products and their modes, the
+ * number's price of $8.75 (supplier cost plus a markup) and its documented
+ * limits, the VPN's $5 a month and its single subscription link, the eSIM
+ * delivery fields (ICCID, the LPA string, the iOS link) and the supplier
+ * running out of profiles.
  *
- * What comes from that record and what does not is worth separating, because
- * this file's whole argument is that it is not working from invented material.
+ * Constructed, and this list is the whole of it: the eSIM plan's price of
+ * $18.90, its identifier, title, description and delivery deadline of 900
+ * seconds; the phone number's `phone_number` result field, which is not taken
+ * from the merchant's API; and every identifier, timestamp and title on this
+ * page. They are plausible and none is a quotation.
  *
- * From the record: the three products and their modes, the number's price of
- * $8.75 (supplier cost plus a markup) and its documented limits, the VPN's $5
- * a month and its single subscription link, the eSIM delivery fields (ICCID,
- * the LPA string, the iOS link) and the supplier running out of profiles.
- *
- * Constructed, because the record does not carry them, and this list is the
- * whole of it: the eSIM plan's price of $18.90, its identifier, its title and
- * its description, and its delivery deadline of 900 seconds; the phone
- * number's `phone_number` result field, whose exact shape the same note lists
- * among its own gaps; and every identifier, timestamp and title on this page.
- * They are built to be plausible and none of them is a quotation.
- *
- * The test walks one purchase end to end — the card, the price question, the
- * order, the handler's answer, the receipt, and the event that follows when a
- * delivery does not happen — because a vocabulary that only works one document
- * at a time is not a contract. The last section walks the same three products
- * across the HTTP surface, for the same reason one step further out: a route
- * table that only carries the example it was written against is a table nobody
- * has tried.
+ * One purchase is walked end to end, from card to receipt and the event that
+ * follows a delivery that did not happen, and then the same products across
+ * the HTTP surface.
  */
 
 import { describe, expect, it } from "vitest";
@@ -57,11 +45,8 @@ import { QuoteRequestSchema, QuoteResponseSchema } from "./quote.js";
 import { ReceiptSchema } from "./receipt.js";
 
 /**
- * Whether the schema accepts the value — and, when it does not, why.
- *
- * A boolean alone would report "expected false to be true" from the one test
- * that runs a whole catalog through, leaving the reader to find the field
- * themselves.
+ * Whether the schema accepts the value and, when it does not, why, so a
+ * failure names the field instead of "expected false to be true".
  */
 const verdictOf = (schema: z.ZodType, value: unknown): string => {
   const result = schema.safeParse(value);
@@ -69,11 +54,8 @@ const verdictOf = (schema: z.ZodType, value: unknown): string => {
 };
 
 /**
- * The body a route takes, insisted on rather than fallen back from.
- *
- * Written as `route.request ?? SomeSchema`, these checks would go on passing
- * against a table that had lost the body entirely — the fallback swallows the
- * one mutation it invites.
+ * The body a route takes, insisted on: `route.request ?? SomeSchema` would go
+ * on passing against a table that had lost the body.
  */
 const bodyOf = (route: RouteDefinition): z.ZodType => {
   expect(route.request, `${route.method} ${route.path} carries no request body`).toBeDefined();
@@ -81,12 +63,8 @@ const bodyOf = (route: RouteDefinition): z.ZodType => {
 };
 
 /**
- * The three products, declared once.
- *
- * Each describe below reads the same object, and so does the section that
- * walks them across the HTTP surface. Copied per section, a change to one
- * would silently not be a change to the others, and the claim that the surface
- * carries these products would quietly stop being true.
+ * The three products, declared once and read by every section, so that a
+ * change to one is a change everywhere.
  */
 
 const numberCard = {
@@ -133,9 +111,8 @@ const vpnCard = {
 };
 
 describe("a rented phone number, sold synchronously", () => {
-  // The merchant's price is their supplier's cost plus a markup, so it is
-  // asked for at the moment of purchase. Their "no SIM available" is a
-  // refusal before any money moves, which is what the synchronous mode is for.
+  // The price is the supplier's cost plus a markup, so it is asked at
+  // purchase; "no SIM available" is a refusal before any money moves.
   const card = numberCard;
 
   it("is a card an agent can buy from", () => {
@@ -143,8 +120,7 @@ describe("a rented phone number, sold synchronously", () => {
   });
 
   it("checks a purchase against what the card declared", () => {
-    // Through the card rather than the raw compiler: the card is the only
-    // place that knows which of its two declarations is which.
+    // Through the card, the only place that knows which declaration is which.
     const check = purchaseCheckFor(CardSchema.parse(card));
 
     expect(verdictOf(check, { country: "GB", period: "MONTHLY" })).toBe("accepted");
@@ -211,7 +187,7 @@ describe("a rented phone number, sold synchronously", () => {
 
 describe("an eSIM plan, whose profile arrives later", () => {
   // The purchase names a plan and nothing else, so the card takes no
-  // parameters at all — the case the portal's own example never exercises.
+  // parameters: a case the documentation's example never exercises.
   const card = esimCard;
 
   it("is a card with no purchase parameters and a delivery deadline of its own", () => {
@@ -258,9 +234,8 @@ describe("an eSIM plan, whose profile arrives later", () => {
   });
 
   it("turns into a refund owed when the supplier has no SIM left", () => {
-    // Their API answers a purchase it cannot fulfil with a plain refusal, and
-    // here the money has already moved — so the merchant hears both the
-    // refusal they sent and the debt it created.
+    // A refusal after the money moved: the merchant hears both the refusal
+    // and the debt it created.
     expect(
       verdictOf(HandlerAnswerSchema, {
         refused: { code: "out_of_stock", message: "У поставщика не осталось профилей этого плана" },
@@ -280,8 +255,7 @@ describe("an eSIM plan, whose profile arrives later", () => {
 });
 
 describe("a VPN subscription at a price that does not move", () => {
-  // A fixed price and nothing to ask about: no price check, no deadlines, and
-  // the order that follows carries no price_id because no question was asked.
+  // A fixed price: no price check, no deadlines, and no price_id on the order.
   const card = vpnCard;
 
   it("is a complete card without a price check", () => {
@@ -297,8 +271,7 @@ describe("a VPN subscription at a price that does not move", () => {
         amount: "5",
         currency: "USDT",
         at: "2026-08-26T12:30:00Z",
-        // Sold from the card, so the price is as fresh as the card is: this is
-        // the moment it was last published.
+        // Sold from the card, so this is when its price was last published.
         as_of: "2026-08-20T09:00:00Z",
       },
       test: false,
@@ -328,11 +301,8 @@ describe("a VPN subscription at a price that does not move", () => {
 });
 
 describe("the HTTP surface, carrying this catalog rather than the portal's", () => {
-  // The route table and the envelope are the two shapes both our own programs
-  // read, and every other test of them works from one example. Here the three
-  // products above go through the surface the same way a real day would move
-  // them: published, listed to an agent, drawn off the worker stream, answered
-  // for.
+  // The three products through the route table and the envelope, as a real
+  // day would move them: published, listed, drawn off the stream, answered.
 
   const number = CardSchema.parse(numberCard);
   const esim = CardSchema.parse(esimCard);
@@ -435,9 +405,8 @@ describe("the HTTP surface, carrying this catalog rather than the portal's", () 
   });
 
   it("returns the rented number from a synchronous handler, at the address the table names", () => {
-    // The pilot's default mode, and the one the surface could not carry until
-    // the answer route existed: here the handler's return is the delivery and
-    // the refusal, and the explicit deliver and refuse calls do not apply.
+    // In synchronous fulfillment the handler's return is the delivery and the
+    // refusal, sent to the answer route; deliver and refuse do not apply.
     const address = expandPath(API_ROUTES.answer_order.path, { order_id: "ord_1c42fa" });
     const delivered = { phone_number: "+447700900123" };
 
@@ -454,8 +423,8 @@ describe("the HTTP surface, carrying this catalog rather than the portal's", () 
       }),
     ).toBe("accepted");
 
-    // And the handler that started in time and finished late is told the work
-    // was not wasted, rather than told it failed.
+    // A handler that started in time and finished late is told the work was
+    // not wasted.
     expect(
       verdictOf(OrderCallResponseSchema, { ok: true, result: "purchase_already_closed" }),
     ).toBe("accepted");
@@ -479,18 +448,17 @@ describe("the HTTP surface, carrying this catalog rather than the portal's", () 
         "https://esimsetup.apple.com/esim_qrcode_provisioning?carddata=LPA:1$rsp.example.com$0A1B2C3D",
     };
 
-    // The delivery is the card's own declaration, so the surface's document and
-    // the card's compiled check have to agree about it.
+    // The surface's document and the card's compiled check must agree about
+    // the delivery.
     expect(verdictOf(bodyOf(API_ROUTES.deliver_order), delivered)).toBe("accepted");
     expect(verdictOf(deliveryCheckFor(esim), delivered)).toBe("accepted");
     expect(verdictOf(OrderCallResponseSchema, { ok: true, result: "delivered" })).toBe("accepted");
   });
 
   it("refuses the supplier's empty stock as a failure the merchant can act on", () => {
-    // Their API answers a purchase it cannot fulfil with a plain refusal, and
-    // the money has already moved on this mode — so the refusal call succeeds
-    // and the debt arrives as an event, while a second attempt after the refund
-    // was paid out is the failure that says retrying changes nothing.
+    // In this mode the money has already moved, so the refusal succeeds and
+    // the debt arrives as an event; a second attempt after the refund was paid
+    // out fails as not worth retrying.
     expect(
       verdictOf(bodyOf(API_ROUTES.refuse_order), {
         code: "out_of_stock",

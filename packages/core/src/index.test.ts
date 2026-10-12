@@ -9,10 +9,9 @@ const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.
 
 describe("@agentify/core", () => {
   it("stops the work on an unhandled variant and names it", () => {
-    // We fool the types exactly the way life does: the value arrived from the
-    // database, and the case analysis knows nothing about it. The core's
-    // promise is a visible refusal instead of quietly carrying on with an
-    // order nobody handled.
+    // The value arrives from the database, which the case analysis knows
+    // nothing about. The promise is a visible refusal rather than carrying on
+    // with an order nobody handled.
     const fromDatabase = "refunded" as never;
 
     expect(() => assertNever(fromDatabase, "order status")).toThrowError(/order status/);
@@ -20,21 +19,16 @@ describe("@agentify/core", () => {
   });
 
   it("drags in not a single runtime dependency", () => {
-    // The core is pure logic: it can be run in a test, in a script and in
-    // someone else's environment without installing anything at all
-    // (ADR-0003 §2).
+    // The core runs in a test, a script or someone else's environment without
+    // installing anything.
     expect(manifest.dependencies ?? {}).toStrictEqual({});
   });
 
   it("hands its consumers everything they need, and nothing more", () => {
-    // Two ways to fail, and the second is why this is an equality rather than a
-    // loop of `typeof`. A name missing means a consumer is reaching into the
-    // package's internals for something that was meant to be on the surface. A
-    // name that is here and not below means a function nobody outside this
-    // package calls, and every one of those is surface a stranger's engineer is
-    // now obliged to read. `effectsOnQuoted` and `isArmed` sat there for a
-    // while, and the comment that used to be here explained them instead of
-    // taking them off — so the rule is a machine now.
+    // An equality rather than a loop of `typeof`. A missing name means a
+    // consumer reaches into the package's internals; an extra one is a function
+    // nobody outside calls, which is surface a stranger's engineer must now
+    // read.
     const called = [
       "createOrder",
       "transition",
@@ -52,7 +46,7 @@ describe("@agentify/core", () => {
       "modeOf",
       "isOpen",
       // Whether a parcel's order still holds its buyer's address: the gateway's
-      // last check before it writes one down (ADR-0032).
+      // last check before it writes one down.
       "holdsShipTo",
       "assertNever",
       // What a merchant must have before their cards are sold: asked by the

@@ -93,11 +93,8 @@ const publish = (served: Served, key: string, body: unknown) =>
   served.call("POST", "/v0/catalog/publish", { body, headers: bearer(key) });
 
 /**
- * A card that predates approval, as the migration leaves it.
- *
- * The publish door cannot create this state, so the row is written directly.
- * That is the production state this guard is for: existing cards remain in the
- * store, while every buying projection reads the newly denied merchant.
+ * A card whose merchant is not approved, the state the migration left existing
+ * cards in. The publish door cannot create it, so the row is written directly.
  */
 const existingCardWithoutApproval = async (
   harnessed: Harness,
@@ -112,9 +109,9 @@ const existingCardWithoutApproval = async (
 };
 
 /**
- * An order accepted before the approval column existed, attached to a merchant
- * the migration leaves unapproved. The real order machine creates the record;
- * only its stable ownership is changed to model the historical row.
+ * An order accepted before approval existed, owned by a merchant the migration
+ * left unapproved. The order machine makes the record; only its owner is
+ * rewritten.
  */
 const acceptedOrderWithoutApproval = async (
   harnessed: Harness,

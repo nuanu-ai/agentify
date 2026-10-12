@@ -1,27 +1,9 @@
 /**
- * The queue, in memory.
- *
- * It keeps the two promises the flows are written against. A poll is held open
- * until an envelope arrives or the window closes, and a worker that is already
- * parked when one is published receives it with no polling lag at all — which
- * is ADR-0004 §4, and the reason the latency-critical case is a parked request
- * rather than a poll interval.
- *
- * A stream belongs to one merchant. There is one of them per merchant rather
- * than one queue everybody draws from, because a worker that had to draw an
- * envelope in order to see whose it was would already have taken it out of the
- * reach of the worker it was meant for.
- *
- * And a drawn envelope goes invisible rather than back on the stream. Nothing
- * in here decides that an unanswered delivery should be repeated: that fact
- * reaches the order machine as a reminder, the machine works out whether
- * another attempt fits inside the deadline and how long the wait before it is,
- * and the attempt itself arrives back here as an ordinary publish. A queue
- * that redelivered on its own would be a second opinion about the same order,
- * with its own backoff and its own patience, over the top of one that counts.
- *
- * The waiting is `setTimeout`, so a test drives it with vitest's fake timers
- * and nothing here has to keep a clock of its own.
+ * The queue, in memory. A worker already parked when an envelope is published
+ * receives it at once, with no polling lag. Each merchant has a stream of
+ * their own, and a drawn envelope never returns to it on its own: the order
+ * machine decides any redelivery. Waiting is `setTimeout`, so tests drive it
+ * with fake timers.
  */
 
 import type { WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
@@ -30,13 +12,11 @@ import type { Envelopes } from "./store.js";
 
 type Waiter = () => void;
 
-/** One merchant's stream: what is waiting on it and who is waiting for it. */
 interface Stream {
   readonly ready: WorkerEnvelope[];
   /**
-   * Published with a delay and not arrived yet. It is on the stream in every
-   * sense that matters to somebody asking whether an order is still waiting to
-   * be handed over, and out of reach of a worker until its moment.
+   * Published with a delay and not arrived yet: counted by `holdsOrder`, out of
+   * a worker's reach until its moment.
    */
   readonly held: Set<WorkerEnvelope>;
   readonly waiters: Set<Waiter>;
@@ -44,17 +24,11 @@ interface Stream {
 
 export class MemoryQueue implements Queue {
   /**
-   * One stream per merchant, which is what makes a worker unable to reach
-   * anybody else's envelopes at all.
-   *
-   * It is separate streams rather than one stream that is filtered on the way
-   * out, and the difference matters: a filter would have to draw a stranger's
-   * envelope in order to look at it, and a drawn envelope is one nobody else is
-   * offered until it is finished. Merchant A polling would quietly swallow
+   * One stream per merchant. A single filtered stream would have to draw a
+   * stranger's envelope to look at it, and merchant A polling would swallow
    * merchant B's orders.
    */
   readonly #streams = new Map<string, Stream>();
-  /** Deliveries drawn and not yet answered, by the handle that answers them. */
   readonly #inFlight = new Map<string, { merchantId: string; envelope: WorkerEnvelope }>();
   readonly #timers = new Set<ReturnType<typeof setTimeout>>();
   #fire: ((reminder: Reminder) => Promise<void>) | null = null;
@@ -73,17 +47,11 @@ export class MemoryQueue implements Queue {
   }
 
   /**
-   * Takes an envelope for a stream without putting it there, and hands back the
-   * call that puts it there.
-   *
-   * It exists for one caller: the store, writing an envelope that has to land
-   * with the order implying it (ADR-0013). In a deployment those two are one
-   * transaction and nothing sees the envelope until it commits. Here there is
-   * no transaction, and the two halves are what stands in for one — anything
-   * that would refuse refuses in this call, before the order is written, and
-   * the envelope becomes visible in the call this hands back, after it. Without
-   * the split, a worker could be handed an envelope for a change to an order
-   * that the store had not written down yet.
+   * Takes an envelope for a stream and hands back the call that makes it
+   * visible. The memory store uses the two halves in place of a transaction:
+   * anything that would refuse refuses here, before the order is written, and
+   * the envelope appears only after, so no worker sees an envelope for an
+   * order change not yet written.
    */
   async stage(merchantId: string, envelope: WorkerEnvelope, afterMs?: number): Promise<() => void> {
     const stream = this.#streamOf(merchantId);
@@ -94,8 +62,7 @@ export class MemoryQueue implements Queue {
       }
       stream.held.add(envelope);
       this.#later(() => {
-        // Gone from what is held means forgotten while it waited, and a
-        // forgotten envelope does not arrive afterwards.
+        // Gone from `held` means forgotten while it waited: it must not arrive.
         if (stream.held.delete(envelope)) {
           this.#arrive(merchantId, envelope);
         }
@@ -104,15 +71,10 @@ export class MemoryQueue implements Queue {
   }
 
   /**
-   * Lets go of every envelope on one merchant's stream that carries any of a
-   * parcel's address (ADR-0032): the order's hand-overs and the price question
-   * named, whether a worker could draw them now or they are waiting out a
-   * delay. The events about the order carry no address and stay. One already
-   * drawn is in a worker's hands, and what this process keeps of it goes when
-   * that delivery is answered; nothing here outlives the process anyway.
-   *
-   * It cannot refuse, and the store calls it once the order that says the
-   * address was erased is written, in the same span as the write.
+   * Drops every undrawn envelope on the stream that carries a parcel's address:
+   * the order's hand-overs and the named price question, delayed ones
+   * included. Events carry no address and stay. It cannot refuse; the store
+   * calls it with the write that records the address as erased.
    */
   forget(merchantId: string, orderId: string, priceQuestion: string | null): void {
     const carries = (envelope: WorkerEnvelope): boolean =>
@@ -132,9 +94,8 @@ export class MemoryQueue implements Queue {
   }
 
   /**
-   * This queue as the store's way of writing with an order. Each call goes
-   * through the queue rather than being bound to its method, so a test that
-   * replaces `stage` replaces the one the store uses too.
+   * This queue as the store's way of writing with an order. Calls go through
+   * the queue at call time, so a test that replaces `stage` affects the store.
    */
   envelopes(): Envelopes {
     return {
@@ -147,9 +108,7 @@ export class MemoryQueue implements Queue {
 
   async holdsOrder(merchantId: string, orderId: string): Promise<boolean> {
     const stream = this.#streamOf(merchantId);
-    // Both what a worker could draw now and what is waiting out a delay. An
-    // envelope somebody has already drawn is in neither, which is the same
-    // answer the real queue gives and for the same reason.
+    // A drawn envelope is in neither, as with the real queue.
     return [...stream.ready, ...stream.held].some(
       (envelope) => envelope.kind === "order" && envelope.payload.id === orderId,
     );
@@ -170,16 +129,13 @@ export class MemoryQueue implements Queue {
     }
 
     await this.#park(merchantId, waitMs, gone);
-    // A worker that left while this waited takes nothing: what arrived is kept
-    // on the stream for the poll that comes after it.
+    // A worker that left takes nothing; what arrived stays for the next poll.
     return gone?.aborted ? [] : this.#take(merchantId, max);
   }
 
   async finish(merchantId: string, handle: string): Promise<void> {
-    // A handle that is not there is not an error: it is the second answer to a
-    // delivery that was already answered, and the portal promises a merchant
-    // that repeating a call is safe. A handle another merchant holds is left
-    // exactly where it is, so one worker cannot finish another's delivery.
+    // An unknown handle is a repeated answer, which merchants are promised is
+    // safe. Another merchant's handle is left alone.
     if (this.#inFlight.get(handle)?.merchantId === merchantId) {
       this.#inFlight.delete(handle);
     }
@@ -190,12 +146,8 @@ export class MemoryQueue implements Queue {
   }
 
   /**
-   * One delivery of a reminder, and another after it if the handler threw.
-   *
-   * pg-boss does this with its own retries and this does it with a timer, and
-   * the two have to come to the same thing: a reminder is the only thing that
-   * ever declares an overdue order, so a port that promised the retry and had
-   * one adapter keeping it would be a promise nobody could rely on.
+   * One delivery of a reminder, and another after it if the handler threw, as
+   * pg-boss's retries do.
    */
   #deliver(reminder: Reminder, afterMs: number, attempt: number): void {
     this.#later(() => {
@@ -218,19 +170,13 @@ export class MemoryQueue implements Queue {
     this.#fire = fire;
   }
 
-  /**
-   * In memory this records what would be run and never runs it. Nothing in an
-   * offline suite waits a day, and a fake day would be a schedule that fires on
-   * a timer this adapter's tests then have to reason about.
-   */
+  /** Records what would run daily and never runs it. */
   async everyDay(name: string, work: () => Promise<unknown>): Promise<void> {
     this.daily.set(name, work);
   }
 
   async start(): Promise<void> {
     if (this.#fire === null) {
-      // A queue started with nowhere to put reminders would swallow every
-      // deadline in the system, and would do it silently.
       throw new Error("the queue has nowhere to put reminders and will not start");
     }
     this.#running = true;
@@ -263,8 +209,7 @@ export class MemoryQueue implements Queue {
   #arrive(merchantId: string, envelope: WorkerEnvelope): void {
     const stream = this.#streamOf(merchantId);
     stream.ready.push(envelope);
-    // Only this merchant's parked workers are woken. Waking everybody would
-    // send every other poll back to an empty stream for nothing.
+    // Only this merchant's parked workers are woken.
     for (const wake of stream.waiters) {
       wake();
     }

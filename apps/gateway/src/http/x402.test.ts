@@ -15,8 +15,7 @@ import { atomicUnits, PaymentEdge, paymentFingerprint } from "./x402.js";
 
 describe("a price in the token's own units", () => {
   it("writes an exact amount, whatever the price looked like", async () => {
-    // Money never becomes a float on the way through. Every one of these is a
-    // charge somebody would notice being wrong by a factor of ten.
+    // Money never becomes a float on the way through.
     expect(atomicUnits("80.00", 6)).toBe("80000000");
     expect(atomicUnits("0.001", 6)).toBe("1000");
     expect(atomicUnits("12", 6)).toBe("12000000");
@@ -26,12 +25,9 @@ describe("a price in the token's own units", () => {
   });
 
   it("charges in the places the door lets a price be written to, on every chain it can charge on", () => {
-    // The promise: a price the publish door took is a price this edge can
-    // charge. The door reads its limit from the contract and this edge reads
-    // the token's own places from the payment library, per chain, so the two
-    // numbers are held equal here for every chain a deployment may name that
-    // has a token to charge in. A chain with none cannot charge anything, and
-    // is not what this is about.
+    // The publish door reads its limit from the contract and this edge reads
+    // the token's places from the payment library, so the two are held equal
+    // for every chain that has a token to charge in.
     const charged = [...TESTNET_CHAINS, ...LIVE_CHAINS].flatMap((chain) => {
       try {
         return [[chain, getDefaultAsset(chain as `${string}:${string}`).decimals]];
@@ -56,13 +52,9 @@ describe("a price in the token's own units", () => {
 });
 
 /**
- * The address the merchant behind these challenges is paid at.
- *
- * Every challenge in this file is written for one seller, and it is theirs. The
- * gateway's own configured address is a different string wherever the two are
- * both in play, so a challenge that quietly used ours instead would be visible
- * rather than indistinguishable. It is written the way a wallet shows it,
- * because that is the form the store hands the edge.
+ * The seller's payout address. It differs from the gateway's own wherever both
+ * are in play, so a challenge that used the wrong one shows. Mixed case, the
+ * form the store hands the edge.
  */
 const SELLERS_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 
@@ -101,8 +93,7 @@ describe("what an agent is asked to pay", () => {
   });
 
   it("pays the seller rather than the address this gateway is configured with", () => {
-    // The whole of the arrangement in one assertion. The gateway has an address
-    // and it is the operator's; a challenge that named it would be inviting an
+    // The configured address is the operator's; naming it would invite an
     // agent to pay the operator for somebody else's product.
     const ours = "0x0000000000000000000000000000000000000001";
 
@@ -128,9 +119,8 @@ describe("what an agent is asked to pay", () => {
   });
 
   it("will not stand its own address in for a seller who has set none", () => {
-    // Not a default and not a fallback. The address in the configuration is the
-    // operator's, and a sale paid into it is a merchant's takings going to
-    // somebody else, on a chain, with nobody the wiser.
+    // A sale paid into the operator's address is a merchant's takings gone to
+    // somebody else, on chain, with nobody the wiser.
     const ours = "0x0000000000000000000000000000000000000001";
 
     expect(() =>
@@ -139,10 +129,8 @@ describe("what an agent is asked to pay", () => {
   });
 
   it("stands it in for a seller with none in the sandbox, where no money moves", () => {
-    // The one place the placeholder is used. There is no chain behind this
-    // facilitator and nothing to send, and a challenge still has to name an
-    // address — so a local stack sells with nothing configured about a
-    // merchant's chain identity.
+    // No money moves in the sandbox, but a challenge still has to name an
+    // address.
     const ours = "0x0000000000000000000000000000000000000001";
 
     expect(
@@ -155,8 +143,8 @@ describe("what an agent is asked to pay", () => {
   });
 
   it("will not ask for money with nowhere at all to send it", () => {
-    // The sandbox with no address configured either. Whoever brings this one up
-    // has a variable to set, and the sentence is what says which.
+    // The sandbox with no address configured either; the refusal names the
+    // variable to set.
     expect(() =>
       edge(null, SANDBOX_FACILITATOR).requirementsFor(
         { amount: "1.00", currency: "USD" },
@@ -176,12 +164,8 @@ describe("what an agent is asked to pay", () => {
 });
 
 describe("the merchant's key", () => {
-  // What used to be here was a test that one key matched another in constant
-  // time. It retired with the variable it certified: the door is a lookup by
-  // digest now (ADR-0010), so nothing compares a secret against a secret. What
-  // replaced it is in `tenancy.test.ts` — a key nobody was issued is refused, a
-  // key somebody disabled is refused in the same words, and two merchants' keys
-  // never resolve to each other.
+  // Keys are looked up by digest, so no secret is compared against another;
+  // how keys are refused is tested in `tenancy.test.ts`.
   it("reads a bearer token however the scheme is spelled, and nothing else", () => {
     expect(bearerIn("Bearer abc")).toBe("abc");
     expect(bearerIn("bearer abc")).toBe("abc");
@@ -226,11 +210,9 @@ describe("one payment, one fingerprint", () => {
   });
 
   it("is one fingerprint however the hex is spelled", () => {
-    // The signature is over decoded bytes, so 0xABCD and 0xabcd are one nonce
-    // to the token contract, to the facilitator and to the signature. Two
-    // fingerprints here would be a replay guard an attacker defeats by holding
-    // down the shift key: present the same authorisation twice, flip a case
-    // bit, and both orders verify.
+    // The signature is over decoded bytes, so 0xABCD and 0xabcd are one nonce.
+    // Two fingerprints would let one authorisation pay for two orders by
+    // flipping a case bit.
     const shouted = fingerprintOf(signed(authorised()));
     const whispered = fingerprintOf(
       signed(
@@ -245,26 +227,18 @@ describe("one payment, one fingerprint", () => {
   });
 
   it("is one fingerprint however the amounts are written, and whatever they are called", () => {
-    // 1000000, "1000000" and "0xF4240" are one number to the chain, and a
-    // scheme may write that number under any of these names. This is the
-    // branch for a payload that carries neither an authorisation pair nor a
-    // signature, where the whole payload is the key: an authorisation whose
-    // validBefore arrives as a number in one presentation and as a string in
-    // another is one authorisation, and two fingerprints for it is one
-    // authorisation buying two orders.
+    // The branch where the whole payload is the key, with neither an
+    // authorisation pair nor a signature. 1000000, "1000000" and "0xF4240" are
+    // one number to the chain; two fingerprints for them is one authorisation
+    // buying two orders.
     //
-    // The names are written out rather than read from the set the code uses. A
-    // test that read that set would go on passing if a name were dropped from
-    // it, which is the direction that costs money — the names it stopped
-    // normalising would each split one authorisation into two fingerprints.
-    // The other direction is left unguarded on purpose: a name added to the set
-    // only merges more spellings, and merging never lets one payment buy twice.
+    // The names are written out rather than read from the code's set, so a
+    // name dropped from the set fails here. A name added only merges more
+    // spellings, which never lets one payment buy twice.
     const names = ["value", "amount", "validAfter", "validBefore", "maxAmount"];
 
-    // The plain decimal is written with leading zeros so that it is not already
-    // in its own normalised form. Against "1000000" the decimal arm of asAmount
-    // is exercised and cannot fail: deleting it changes nothing, because the
-    // text and the number it stands for are the same string.
+    // Leading zeros, so the decimal text is not already in its normalised form
+    // and the decimal arm of asAmount can fail.
     for (const name of names) {
       const asText = fingerprintOf(signed({ proof: { [name]: "0001000000" } }));
 
@@ -275,17 +249,12 @@ describe("one payment, one fingerprint", () => {
   });
 
   it("merges a number and its text only as far as a JSON number is exact", () => {
-    // The merge holds to the last integer a JSON number carries exactly and
-    // stops there. Past 2^53 the number that arrives is no longer the integer
-    // it was written as, and putting it through BigInt would assert an equality
-    // nobody can check.
-    //
-    // The cost of stopping is real and is pinned here rather than left to be
-    // discovered: an amount that large and its own text are two fingerprints.
-    // One token of an eighteen-decimal asset is such an amount. No scheme this
-    // gateway speaks reaches this branch — an EIP-3009 payload is keyed on its
-    // payer and nonce long before the payload itself is read — so this is the
-    // bound as it stands, not a bound anybody has had to choose.
+    // Past 2^53 a JSON number is no longer the integer it was written as, so
+    // merging it with its text would assert an equality nobody can check. The
+    // cost is pinned here: such an amount, one token of an eighteen-decimal
+    // asset, and its own text are two fingerprints. No scheme this gateway
+    // speaks reaches this branch; an EIP-3009 payload is keyed on its payer
+    // and nonce first.
     const exact = String(Number.MAX_SAFE_INTEGER);
     const beyond = "1000000000000000000";
 
@@ -298,19 +267,17 @@ describe("one payment, one fingerprint", () => {
   });
 
   it("merges two spellings of one number and not two different values", () => {
-    // The normalisation exists to make one payment one key. It may not go
-    // further and make two payments one: no token records a negative amount, so
-    // -5 and "-5" are two pieces of junk rather than one number, and merging
-    // them would have the second payment refused as a replay of the first.
+    // No token records a negative amount, so -5 and "-5" are two pieces of
+    // junk rather than one number; merging them would refuse the second
+    // payment as a replay of the first.
     expect(fingerprintOf(signed({ proof: { value: -5 } }))).not.toBe(
       fingerprintOf(signed({ proof: { value: "-5" } })),
     );
   });
 
   it("survives an amount that is not a whole number", () => {
-    // The decoder guarantees nothing about the payload, so a fraction under one
-    // of these names arrives from an agent like anything else. BigInt refuses
-    // it by throwing, and a throw here is a crash where a refusal belongs.
+    // The decoder guarantees nothing about the payload, and BigInt throws on a
+    // fraction: a crash where a refusal belongs.
     expect(() => fingerprintOf(signed({ proof: { value: 1.5 } }))).not.toThrow();
   });
 
@@ -333,14 +300,8 @@ describe("one payment, one fingerprint", () => {
   });
 
   it("does not key on a nonce that has no payer beside it", () => {
-    // The chain keys on the pair — authorizationState[authorizer][nonce] — so a
-    // nonce alone is not a key. Keyed on the nonce without the payer, the first
-    // agent to use a nonce would block every other payer who picked the same,
-    // and a client that counts from one picks exactly those. The proof is that
-    // a nonce with no `from` beside it falls through to the signature the
-    // authorisation carries, and the nonce then changes nothing: two such
-    // payments differing only in nonce are one payment, and both are the same
-    // payment as the bare signature.
+    // The chain keys on payer and nonce together, so a nonce with no `from`
+    // beside it falls through to the signature and changes nothing.
     const withNonce = (nonce: string) =>
       signed({ signature: "0xdeadbeef", authorization: { to: "0xbbbb", value: "1", nonce } });
     const bareSignature = signed({ signature: "0xdeadbeef" });
@@ -350,10 +311,8 @@ describe("one payment, one fingerprint", () => {
   });
 
   it("does not key on a payer that has no nonce beside it", () => {
-    // The symmetric edge. A payer without a nonce is not half of a key either:
-    // it falls through to the signature, and two different payers with no nonce
-    // are one payment, the same as the bare signature. Keyed on the payer
-    // alone, one payer could spend once and never again.
+    // Keyed on the payer alone, one payer could spend once and never again, so
+    // a payer with no nonce falls through to the signature too.
     const withPayer = (from: string) =>
       signed({ signature: "0xdeadbeef", authorization: { from, to: "0xbbbb", value: "1" } });
     const bareSignature = signed({ signature: "0xdeadbeef" });
@@ -396,9 +355,8 @@ describe("one payment, one fingerprint", () => {
 
   it("does not move with the protocol version the agent types", () => {
     // Nothing checks that field: the decoder is a base64 JSON parse with no
-    // schema behind it. Digested, it would let an agent make as many
-    // fingerprints out of one authorisation as it liked by counting upwards,
-    // which is the two-orders-one-signature hole reopened by one integer.
+    // schema behind it. Digested, it would let one authorisation make a new
+    // fingerprint, and buy a new order, for every number an agent typed.
     const two = fingerprintOf(signed(authorised()));
     for (const version of [1, 3, 0, 99]) {
       expect(fingerprintOf({ ...signed(authorised()), x402Version: version })).toBe(two);
@@ -453,21 +411,15 @@ describe("one payment, one fingerprint", () => {
     expect(fingerprintOf(signed({ signature: "0xdeadbeee" }))).not.toBe(shouted);
 
     const byPayload = fingerprintOf(signed({ proof: { b: "0xFF", a: 1 } }));
-    // The same payload written in another order, and in another case, is the
-    // same payment.
     expect(fingerprintOf(signed({ proof: { a: 1, b: "0xff" } }))).toBe(byPayload);
     expect(fingerprintOf(signed({ proof: { a: 2, b: "0xff" } }))).not.toBe(byPayload);
   });
 });
 
 describe("the discovery declaration a challenge carries", () => {
-  // The promise: an agent that has never heard of us can find this product in
-  // a catalog it already walks, and what it reads there is the product it can
-  // then buy. Nothing offline can say the catalog will accept it — that is a
-  // live call and it lives in `pnpm smoke:listing` — but two things can be
-  // checked here, and both are checked with the catalog's own code: that the
-  // declaration is consistent with the schema it ships alongside itself, and
-  // that nothing we send about the seller gets dropped on the way in.
+  // Whether the catalog accepts the declaration is a live call, made by
+  // `pnpm smoke:listing`. Here the catalog's own code checks that the
+  // declaration holds against its schema and drops nothing about the seller.
   const card = CardSchema.parse({
     merchant_item_id: "access-monthly",
     title: "Доступ к сервису на один месяц",
@@ -507,10 +459,9 @@ describe("the discovery declaration a challenge carries", () => {
     challenge({ serviceName: "The pilot merchant" }).extensions?.bazaar as DiscoveryExtension;
 
   it("names the resource at the address this gateway was configured with", () => {
-    // Not the address the request arrived at. Behind a terminator that is
-    // http:// and carries whatever query string the caller wrote, and the
-    // resource identity is what a listing is keyed on: two spellings would be
-    // two listings, or one that flickers between them.
+    // Not the address the request arrived at: behind a TLS terminator that is
+    // http:// with the caller's query string, and a listing is keyed on the
+    // resource, so two spellings would be two listings.
     expect(challenge({ serviceName: null }).resource.url).toBe(
       "https://agentify.example/x402/itm_4d21bb/purchase",
     );
@@ -525,9 +476,8 @@ describe("the discovery declaration a challenge carries", () => {
   });
 
   it("loses nothing about the seller to the catalog's own sanitiser", () => {
-    // This is the catalog's code, not a copy of its rules: what it drops here
-    // is what would silently vanish from a listing. A name or a tag it did not
-    // hand back would be a merchant trading under a word they did not choose.
+    // The catalog's own sanitiser: whatever it drops would silently vanish
+    // from the listing.
     const { resource } = challenge({ serviceName: "The pilot merchant" });
 
     expect(sanitizeResourceServiceMetadata(resource)).toStrictEqual({
@@ -537,11 +487,8 @@ describe("the discovery declaration a challenge carries", () => {
   });
 
   it("loses nothing at the edge of what our own schemas allow", () => {
-    // The control the first version of this test was missing: not a value that
-    // comfortably passes, but the largest one our schemas accept — five tags at
-    // the full length, a name at the full length — put through the catalog's
-    // own sanitiser. Anything it hands back short of what went in is a rule of
-    // theirs our schemas do not have, and a merchant would be the last to know.
+    // The largest values our schemas accept. Anything the sanitiser hands back
+    // short of what went in is a rule of the catalog's that our schemas lack.
     const wide = CardSchema.parse({
       ...JSON.parse(JSON.stringify(card)),
       tags: ["a", "b", "c", "d", "e"].map((letter) => letter.repeat(32)),
@@ -573,12 +520,9 @@ describe("the discovery declaration a challenge carries", () => {
   });
 
   it("describes the purchase an agent actually makes, and never the probe", () => {
-    // A GET is the probe a crawler makes, and what the probe gets back is what
-    // an agent reads before it buys. A declaration that named GET there would
-    // say that paying the probe delivers the product, and it does not: the GET
-    // branch reads no payment. An agent took that word literally on 2026-09-10
-    // (docs/research/26-discovery-method-on-get.md). So there is one shape, the
-    // purchase, and the challenge has no way of asking for the other.
+    // The probe is a GET, and what it returns is what an agent reads before it
+    // buys. A declaration naming GET would say paying the probe delivers the
+    // product, and agents take that literally; the GET branch reads no payment.
     const info = declaration().info as unknown as {
       input: Record<string, unknown>;
       output?: { example?: unknown };
@@ -601,11 +545,9 @@ describe("the discovery declaration a challenge carries", () => {
   });
 
   it("gives two requests for one product the same declaration", () => {
-    // Byte for byte, from two edges built separately over a card parsed twice,
-    // so nothing here is two readings of one object. A listing is keyed on the
-    // resource, and anything that varied between two challenges for the same
-    // card — an instant, a counter, a value read off the request — would be two
-    // listings for one product, or one that flickers between them.
+    // Two edges over a card parsed twice, so this is not one object read twice.
+    // Anything that varied between challenges for one card, such as an instant
+    // or a counter, would split or flicker its listing.
     const twice = () => {
       const parsed = CardSchema.parse(JSON.parse(JSON.stringify(card)));
       return JSON.stringify(
@@ -624,8 +566,8 @@ describe("the discovery declaration a challenge carries", () => {
   });
 
   it("still says which order it is for", () => {
-    // The declaration is added beside what was already there, not instead of
-    // it: the order identifier travels in `extra` and is what a payment names.
+    // The order identifier travels in `extra` beside the declaration; it is
+    // what a payment names.
     const forOrder = decodePaymentRequiredHeader(
       edge().challengeFor({ amount: "5.00", currency: "USD" }, "ord_1", {
         itemId: "itm_4d21bb",
@@ -640,11 +582,9 @@ describe("the discovery declaration a challenge carries", () => {
 });
 
 describe("a parcel's challenge", () => {
-  // The price on a parcel's card is the goods alone, and the purchase is priced
-  // for the address it names, shipping included. An agent choosing by the
-  // catalogue number would otherwise be surprised by the sum it is asked for,
-  // so the challenge says which it is reading, in this gateway's own words and
-  // not in the merchant's description.
+  // A parcel's card price is the goods alone; the purchase adds shipping to the
+  // address it names. The challenge says which the agent is reading, in the
+  // gateway's own words rather than the merchant's description.
   const parcel = CardSchema.parse({
     merchant_item_id: "coffee-1kg",
     title: "Coffee beans, one kilogram",
@@ -693,32 +633,12 @@ describe("a parcel's challenge", () => {
 
 describe("the shape a live validation once accepted", () => {
   /**
-   * What this test is, said plainly, because it would be easy to read it as
-   * more than it is.
-   *
-   * The spike that preceded this work put a public resource in front of the
-   * CDP validation endpoint and was answered `valid: true`. That resource is a
-   * POST resource whose paid address also answers GET — the same arrangement
-   * ours has — and the endpoint echoed back the declaration it accepted, on
-   * each method. The object below is the schema half of that echo, copied from
-   * the answer.
-   *
-   * This compares the shape of what we emit against the shape of what was
-   * accepted: which fields are present at which paths, not what is in them,
-   * since the two describe different products. It is a comparison against
-   * something that passed once. It is not a validation, it says nothing about
-   * what the endpoint would do today, and it cannot: that is `pnpm
-   * smoke:listing`, which makes the call.
-   *
-   * Only the schema half is recorded. The declaration half was here too, and
-   * everything it could catch is caught by the tests above it, which say the
-   * same things about our own declaration in our own words rather than by
-   * comparison with a fixture describing somebody else's product.
-   *
-   * It is here for one fact that is invisible without it: the dialect is named
-   * once, at the root. The rest differs from ours legitimately — the spike wrote
-   * its body schema by hand and ours is rendered from the card's own check, so
-   * ours says `type` and closes the object where the spike's said neither.
+   * The schema half of a declaration the CDP validation endpoint once accepted
+   * for a POST resource whose paid address also answers GET, as ours does.
+   * Comparing shapes against it is not a validation; `pnpm smoke:listing`
+   * makes the live call. It is kept for one fact: the dialect is named once, at
+   * the root. The rest legitimately differs, since that body schema was written
+   * by hand and ours is rendered from the card.
    */
   const acceptedSchemaOnPost = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -807,11 +727,9 @@ describe("the shape a live validation once accepted", () => {
   };
 
   it("names the schema dialect where the accepted shape names it, and nowhere else", () => {
-    // Ours is built partly from a document rendered on its own — the purchase
-    // body — and a document rendered on its own names its dialect at the top.
-    // Nested inside another schema that is a second declaration, in a place the
-    // accepted shape has none. It is dropped on the way in, and the accepted
-    // schema recorded above is what says where it belongs.
+    // The purchase body schema is rendered on its own and names its dialect;
+    // nested, that would be a second declaration where the accepted shape has
+    // none, so it is dropped.
     const dialectsIn = (schema: unknown) =>
       skeleton(schema).filter((path) => path.includes("$schema"));
 

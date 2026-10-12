@@ -176,8 +176,9 @@ describe("exact Woo order recovery", () => {
   });
 
   it("leaves a recovery unresolved while the shop does not answer, rather than refused", async () => {
-    // Refused says the product no longer matches, which nobody knows of a shop
-    // that timed out. Unresolved is what lets the same recovery be asked again.
+    // "Refused" would say the product no longer matches, which nobody knows of
+    // a shop that timed out; "unresolved" lets the same recovery be asked
+    // again.
     const shops = await setup("precreate_refused");
     const test = parts(shops, {
       inspectProduct: async () => ({
@@ -290,8 +291,8 @@ describe("exact Woo order recovery", () => {
 
 describe("a parcel's order", () => {
   it("is not recovered: its address was erased when it became a refund owed", async () => {
-    // Recovery creates or binds an order from what was kept, and of a parcel
-    // nothing of where it goes is kept (ADR-0032).
+    // Nothing of where a parcel goes is kept, so recovery has nothing to create
+    // an order from.
     const shops = memoryWooShops();
     await shops.recordPrecreateRefusal("acc_1", "ord_1", { ...FACTS, kind: "parcel" }, NOW);
 
@@ -307,9 +308,8 @@ describe("a parcel's order", () => {
 
 describe("a parcel's order the shop holds", () => {
   it("is not recovered, and the operator is not told to withhold it", async () => {
-    // A placed parcel is a sale taken on, followed in the shop until it is
-    // completed. Recovery has nothing to do with it, and must not read as a
-    // reason not to ship it.
+    // A placed parcel is a sale taken on, followed in the shop until completed;
+    // recovery must not read as a reason not to ship it.
     const shops = memoryWooShops();
     await shops.claimOrder("acc_1", "ord_1", { ...FACTS, kind: "parcel" }, NOW);
     await shops.recordOrder("ord_1", { id: "30", number: "30", permission: null }, NOW);

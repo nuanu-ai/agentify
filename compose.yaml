@@ -1,66 +1,44 @@
-# The whole thing, on one command.
-#
-# ADR-0005 §1: `docker compose up` brings up everything a merchant's engineer
-# would look at — the scanner at the front page, the documentation, the
-# dashboard and the gateway, all on http://localhost:8080, with one Postgres
-# behind them (ADR-0003 §6) holding one database, `agentify`.
-# Nothing here needs a build on the host first: the documentation is built
-# inside its image, and the three services that share one image — the
-# migration, the application (the gateway and the dashboard in one process,
-# ADR-0030) and the mock merchant — run their TypeScript through tsx, the same
-# way `pnpm --filter @agentify/app start` does on a laptop. The scanner is a Next.js build and its worker is compiled,
-# so those two come out of images of their own.
+# The whole stack on one command: the scanner at the front page, the
+# documentation, the dashboard and the gateway, all on http://localhost:8080,
+# with one Postgres holding one database, `agentify`. Nothing needs a build on
+# the host first.
 #
 #   docker compose up --build
 #   open http://localhost:8080
 #
 # The database volume outlives `docker compose down`; `down -v` starts from
-# nothing. Migrations run as their own service before the gateway, so an
-# existing database is brought up to date rather than found to be a version
-# behind on the first query. There are two of those services, one for the
-# gateway's and the dashboard's migrations and one for the scanner's, because
-# the scanner's are built into another image; all three sets go into the one
-# database, each with a history of its own.
+# nothing. Migrations run as their own services before the applications: one
+# for the gateway's and the dashboard's tables, one for the scanner's, which
+# are built into another image. All go into the one database, each set with
+# its own history.
 #
-# A volume made before the scanner's tables joined that database still holds
-# them in a second one, `agentify_scanner`, and the first start of this file
-# would build empty scanner tables beside them. `docker compose down -v` once
-# starts from nothing.
+# An older volume may still hold the scanner's tables in a second database,
+# `agentify_scanner`; this file ignores it and builds empty scanner tables in
+# `agentify`. `docker compose down -v` once starts from nothing.
 #
-# The suite that needs a real database runs against a database of its own,
-# `agentify_test`, on this same server. It needs the server and nothing else
-# from this file:
+# The database test suite runs against a database of its own, `agentify_test`,
+# on this same server, and needs nothing else from this file:
 #
 #   docker compose up -d --wait postgres
 #   pnpm test:db
 #
-# `--wait` holds the command until the healthcheck below has passed, and naming
-# the service matters: `docker compose up -d` with nothing after it starts
-# every service in this file. Nothing needs to be set for the suite to find its
-# database — it makes it if it is not there — as long as the server is on the
-# 5432 this file publishes it on. A host that publishes it somewhere else names it in
-# AGENTIFY_TEST_DATABASE_URL, which the suite reads from the command rather than
-# from the `.env` below. Pointing either that or DATABASE_URL at `agentify` is
-# refused rather than obeyed, because that is the database the dashboard is
-# showing and this suite empties what it is given.
+# Name the service: `up -d` alone starts everything. The suite creates its
+# database when it is missing, as long as the server is on 5432; a host that
+# publishes it elsewhere names it in AGENTIFY_TEST_DATABASE_URL, read from the
+# command line rather than from `.env`. Pointing that or DATABASE_URL at
+# `agentify` is refused, because the suite empties what it is given. Two runs
+# at once against one database pull the ground out from under each other.
 #
-# Two runs of the suite at once still interfere: they share the names of the
-# tables they empty and the schemas they drop, so each pulls the ground out from
-# under the other. One run at a time, per database.
+# Submit an address on the front page and the worker runs the scan; the report
+# asks for an email before it opens in full, and that link is answered by the
+# dashboard's private identity route. Every message goes to the dashboard's
+# log here.
 #
-# The front page is the scanner, the same way it is on both deployed channels.
-# Submit an address there and the worker behind it runs the scan; the report it
-# writes asks for an email before it opens in full, and that link is answered by
-# the dashboard's private identity route rather than by a second account system
-# (ADR-0026). The message goes to the dashboard's log here, like every other one,
-# and the door the reader walks through afterwards is the dashboard's own.
-#
-# Open http://localhost:8080/dashboard/sign-in and request a link for your email.
-# This local sandbox writes the message to the dashboard log. Open the link and
-# press its confirmation button, which makes your account; then press the one
-# control the dashboard offers, "Open my seller dashboard", which makes your
-# merchant. That is the one way in, here and on both deployed channels
-# (ADR-0014): no command makes an account or a merchant.
+# To sign in, open http://localhost:8080/dashboard/sign-in, request a link,
+# open it from the dashboard's log and press its confirmation button, which
+# makes your account; then press "Open my seller dashboard", which makes your
+# merchant. That is the only way in, here and on both deployed channels: no
+# command makes an account or a merchant.
 #
 # The operator's commands look after the accounts there are:
 #
@@ -69,82 +47,72 @@
 #
 # `list` inspects accounts and `revoke` ends their sessions.
 # `operator you@example.com` lets an address that has signed in once read the
-# operator's dashboard at /admin, and `--off` takes that away (ADR-0026 §6).
+# operator's dashboard at /admin, and `--off` takes that away.
 #
-# Nothing is bought by itself. The merchant publishes its catalogue and waits;
-# a purchase is an explicit command, so a sale in the dashboard is one somebody
-# made:
+# Nothing is bought by itself. A purchase is an explicit command, so a sale in
+# the dashboard is one somebody made:
 #
 #   pnpm buy                      # the first card in the catalogue
 #   pnpm buy esim                 # the asynchronous one
 #
-# The passwords and the key are in this file and that is deliberate. This
-# stack holds a developer's own test orders and talks to a test network, and a
-# secret that has to be found somewhere else to bring up a sandbox is a secret
-# people paste into chat. Nothing here is a value any deployment reuses.
+# The passwords and keys in this file are deliberate sandbox values: this stack
+# holds a developer's test orders on a test network, and no deployment reuses
+# any of them.
 #
 # ## The same file on a server
 #
 # Every value a deployment has to change is a variable with the laptop's answer
-# as its default, and a deployment sets them in a `.env` beside this file rather
-# than editing a copy of it — the same shape deploy/Caddyfile already uses.
+# as its default, set in a `.env` beside this file rather than in a copy of it.
 #
 #   AGENTIFY_SITE_ADDRESS   what Caddy listens on            :8080
 #   AGENTIFY_PUBLIC_ORIGIN  what a browser types             http://localhost:8080
-#   AGENTIFY_WEB_PUBLISH    the published port of the door   8080:8080
+#   AGENTIFY_WEB_PUBLISH    the web port published here      8080:8080
 #   AGENTIFY_COOKIE_SECURE  Secure on the session cookie     false
 #   AGENTIFY_FACILITATOR_URL  how payments are facilitated   sandbox:scripted
 #   AGENTIFY_PAYMENT_NETWORK  the chain payments use         eip155:84532
 #   CDP_API_KEY_ID             Coinbase facilitator key ID   absent
 #   CDP_API_KEY_SECRET         Coinbase facilitator secret   absent
 #   AGENTIFY_SURFACE_MODE     what the static pages say       sandbox
-#   AGENTIFY_POSTGRES_PUBLISH  the published port of the     5432:5432
-#                           database, or a narrower bind
+#   AGENTIFY_POSTGRES_PUBLISH  the database port published   5432:5432
+#                           here, or a narrower bind
 #   TOKEN_HMAC_SECRET       what signs a report link         a sandbox value
 #   REPORT_IDENTITY_SECRET  what the scanner shows the       a sandbox value
 #                           dashboard's private route
 #
-# The scanner's remaining settings — who the operator is, which analytics
-# datasets may be named, the bot check, the paid surfaces — are the names its
-# own processes read, unprefixed, each with a laptop's answer as its default.
-# They are written out in that service below rather than listed here, because
-# the list would be a second copy of the same thing.
+# The two *_PUBLISH variables move the ports of a stack run from this file
+# alone. The deployed channels replace them in their overlays instead:
+# deploy/compose.public.yaml publishes no database port, the test channel's
+# deploy/compose.agentify-test.yaml binds the web door to
+# AGENTIFY_TEST_LISTEN_ADDRESS, and deploy/compose.hetzner-commerce.yaml
+# publishes no web port, its edge being the only public listener.
 #
-# The first three move together and there is no arithmetic between them: an
-# origin behind an edge that terminates TLS elsewhere is not derivable from a
-# published port. Setting one and forgetting another is the mistake this file
-# has already made once — a challenge naming a door that answers nothing — so
-# they are written next to each other in one file where the mismatch is visible.
+# The scanner's remaining settings are the unprefixed names its own processes
+# read, written out in its service below with the laptop's defaults.
+#
+# The first three move together and none can be derived from another: behind
+# an edge that terminates TLS, the origin has nothing to do with the published
+# port. Set one and forget another, and payment challenges name a door that
+# answers nothing.
 #
 # On a host reached over https, AGENTIFY_COOKIE_SECURE must be "true".
 #
-# Two more variables belong to this laptop alone, and on it they are one
-# string, `csk_test_local-sandbox-merchant-key`: AGENTIFY_SEED_KEY, the key the
-# gateway writes at start-up, and AGENTIFY_MERCHANT_KEY, the key the mock
-# merchant sells with. Seeding is what makes `docker compose up` come up
-# selling with nothing run by hand: at start the gateway hangs a row for that
-# key on the sandbox's merchant, if there is not one there already. A second
-# boot writes nothing, and a key disabled at a terminal is left disabled —
-# revoking one is not a thing a restart undoes. Named with nothing after it,
-# `AGENTIFY_SEED_KEY=`, the gateway seeds nothing, reads that the same as a
-# name never set, and says at start-up which of the two it did.
+# Two more variables belong to the laptop alone, and here they are one string,
+# `csk_test_local-sandbox-merchant-key`: AGENTIFY_SEED_KEY, the key the gateway
+# makes sure exists at start-up so the stack comes up selling, and
+# AGENTIFY_MERCHANT_KEY, the key the mock merchant sells with. A second boot
+# writes nothing, and a key disabled at a terminal stays disabled. Named with
+# nothing after it, `AGENTIFY_SEED_KEY=`, the gateway seeds nothing and says so
+# at start-up.
 #
-# A deployed channel does neither. deploy/compose.public.yaml puts nothing in
-# place of the seed and runs no mock merchant, because a merchant there comes
-# into being one way: a person opens the link mailed to their address and
-# presses the dashboard's one control (ADR-0014). A key kept in a host's file
-# would be a second way, and one that cannot go away: disabling its row stops
-# it opening anything, but the string is handed to the gateway at every start,
-# and a database brought up from nothing is seeded off that same line again.
-# The public overlay gives the seed nothing whatever a channel's file says, and
-# the release's preflight refuses a rendered one.
+# A deployed channel does neither: deploy/compose.public.yaml empties the seed
+# and runs no mock merchant. A key kept in a host's file would be a way in that
+# cannot be revoked, because it is handed to the gateway at every start and
+# seeded into every fresh database. The release's preflight refuses a rendered
+# seed.
 
-# One image behind three of the services below. They are three entry points
-# into one workspace and share every dependency below their own file, so which
-# one a container is is decided at `command` — and naming the image explicitly
-# is what makes that true in practice as well as on paper. Without it compose
-# builds the same Dockerfile once per service and tags the result once per
-# service, which is gigabytes of identical layers where one copy would do.
+# One image behind three services, which pick their role at `command`. The
+# explicit image name is what makes them share it: without one, Compose builds
+# and tags the same Dockerfile once per service.
 x-app: &app
   build:
     context: .
@@ -152,9 +120,7 @@ x-app: &app
   image: "${AGENTIFY_APP_IMAGE:-agentify-app}"
   restart: unless-stopped
 
-# The same arrangement on the scanner's side: its worker and its migration are
-# two entry points into one build, so they share one image and decide which one
-# they are at `command`.
+# The scanner's worker and its migration share one image the same way.
 x-scanner-app: &scanner-app
   build:
     context: .
@@ -171,25 +137,16 @@ services:
       POSTGRES_PASSWORD: agentify
       POSTGRES_DB: agentify
     ports:
-      # Published so that `pnpm test:db` and a psql from the terminal reach this
-      # server. They reach a different database on it: the suite empties what it
-      # is given, and `agentify` is what the dashboard is showing.
-      #
-      # A deployment binds it to the loopback instead — `127.0.0.1:55432:5432`
-      # — because the password above is in a repository and nothing off the host
-      # has any business reaching this database. Not left empty: compose refuses
-      # an empty entry rather than dropping it, so the variable always names a
-      # mapping and a deployment's answer is a narrower one. A suite run from a
-      # terminal on such a host is told the port it moved to in
-      # AGENTIFY_TEST_DATABASE_URL; the release script runs it inside this
-      # network, where the port above is not involved at all.
+      # Published so that `pnpm test:db` and psql from the terminal reach this
+      # server; the suite uses a database of its own on it, never `agentify`.
+      # Compose refuses an empty entry, so AGENTIFY_POSTGRES_PUBLISH always names a
+      # mapping; deploy/compose.public.yaml removes the port altogether.
       - "${AGENTIFY_POSTGRES_PUBLISH:-5432:5432}"
     volumes:
       - agentify-postgres:/var/lib/postgresql/data
-      # Makes the test suites' databases beside `agentify` on a volume that is
-      # new. On one that is not — which is every volume that has ever run this
-      # stack — Postgres does not look at this directory at all, and the suites
-      # make their own databases instead. See deploy/postgres-init/.
+      # Creates the test suites' databases on a new volume only. On an existing one
+      # Postgres ignores this directory and the suites create their own. See
+      # deploy/postgres-init/.
       - ./deploy/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       # The gateway's first query is what would otherwise discover that the
@@ -199,17 +156,12 @@ services:
       timeout: 3s
       retries: 15
 
-  # Its own service rather than a line in the application's startup: a
-  # migration that runs inside the process it is migrating for runs once per
-  # replica and races itself. Here it runs to completion, and the application
-  # waits for it.
+  # Its own service rather than part of the application's start-up: a migration
+  # inside the process it migrates for runs once per replica and races itself.
   #
-  # Two sets of migrations run here, the gateway's tables and the dashboard's.
-  # They keep separate histories although the two now run in one process,
-  # because the migrator compares with the newest entry of the history it is
-  # given and would take the other set's entry for its own (ADR-0003 §2,
-  # ADR-0026 §2); they are one service because they are one image and one
-  # thing to wait for.
+  # The gateway's and the dashboard's tables keep separate histories, because the
+  # migrator compares with the newest entry of the history it is given and would
+  # take the other set's entry for its own.
   migrate:
     <<: *app
     command: ["pnpm", "db:migrate"]
@@ -220,111 +172,68 @@ services:
         condition: service_healthy
     restart: "no"
 
-  # The gateway and the dashboard, in one process (ADR-0030). The gateway is the
-  # money path: the merchant API under /v0 and the storefront an agent buys at
-  # under /x402. The dashboard is the merchant's pages and the people who sign
-  # in to them. Each keeps its own listener, so Caddy sends /v0, /x402 and
-  # /healthz to 3000 and /dashboard to 3001 as before; 3002 is the scanner's
-  # route to the dashboard, which nothing publishes. The gateway tells a
-  # merchant of a change through the dashboard by a call inside the process.
-  # Both read this one environment, so a variable here means one thing to both.
+  # The gateway and the dashboard in one process, each on its own listener:
+  # Caddy sends /v0, /x402 and /healthz to 3000 and /dashboard to 3001; 3002 is
+  # the scanner's route to the dashboard and is never published. Both read this
+  # one environment, so a variable here means one thing to both.
   app:
     <<: *app
     command: ["pnpm", "--filter", "@agentify/app", "start"]
     environment:
-      # One Postgres for everything (ADR-0003 §6): the gateway's orders,
-      # receipts and queue, and the dashboard's people and their sessions.
+      # One Postgres for everything: the gateway's orders, receipts and queue,
+      # and the dashboard's people and their sessions.
       DATABASE_URL: postgres://agentify:agentify@postgres:5432/agentify
-      # The key this sandbox comes up selling with. Keys are rows in the
-      # database (ADR-0010), and this is not one the gateway compares anything
-      # against: on start it makes sure a row for this key exists on the
-      # merchant every card, order and receipt here belongs to, so that the
-      # mock merchant below is recognised without anybody running a command.
-      # A second boot writes nothing, and a key disabled at a terminal stays
-      # disabled. It is the laptop's alone: deploy/compose.public.yaml puts
-      # nothing in its place, because on a deployed channel a merchant comes
-      # into being only through the link mailed to a person and the dashboard's
-      # one control (ADR-0014). Set to nothing, this process writes no key and
-      # every key is one somebody issued.
+      # On start the gateway makes sure a row for this key exists on the sandbox
+      # merchant, so the mock merchant below is recognised without anybody running a
+      # command. Laptop only; see the header.
       #
-      # The dash carries no colon on purpose: `${VAR-default}` gives the default
-      # only when nobody named the variable, so a deployment naming it with
-      # nothing after it gets nothing rather than the sandbox's key back.
+      # No colon in the default, on purpose: `${VAR-default}` gives the default only
+      # when the variable is unset, so a deployment naming it empty gets nothing
+      # rather than the sandbox's key.
       SANDBOX_MERCHANT_KEY: "${AGENTIFY_SEED_KEY-csk_test_local-sandbox-merchant-key}"
-      # The address a merchant and an agent reach this stack at, which is the
-      # door Caddy answers and not a port this process listens on. A payment
-      # challenge tells an agent to come back to it and a catalogue keys a
-      # listing on it, and the dashboard builds the links in its messages on
-      # it, since a message is read on another machine.
-      #
-      # It follows the published port on a laptop, because a challenge left at
-      # 8080 while the stack moved to another port names a door that answers
-      # nothing. Behind an edge that terminates TLS somewhere else it stops
-      # following the port at all — the origin is https on 443 and the host
-      # publishes whatever it publishes — which is why a deployment names the
-      # origin itself rather than a number this line does arithmetic on. A
-      # deployment that sends real mail and leaves this at the laptop's answer
-      # is refused at startup, because every link it sent would point at the
-      # reader's own computer.
+      # The address merchants and agents reach this stack at: Caddy's door, not
+      # this process's port. Payment challenges, catalogue listings and mailed links
+      # are built on it. A deployment names the origin itself, because behind a TLS
+      # edge it has nothing to do with the published port; one that sends real
+      # mail with the laptop's value is refused at start-up.
       PUBLIC_BASE_URL: "${AGENTIFY_PUBLIC_ORIGIN:-http://localhost:${AGENTIFY_HOST_PORT:-8080}}"
-      # The laptop's values are the defaults, and they are the reason this is a
-      # variable at all: no chain behind this stack (ADR-0020), so a purchase
-      # completes here with no network, no wallet and no faucet. A public
-      # deployment names its own pair in its `.env`, and the release preflight
-      # holds each channel to the pair it declared — because a test chain must
-      # keep accepting the scripted facilitator, so the runtime cannot make
-      # this check for itself. The gateway settles with them; the dashboard
-      # only describes them, and gives them no defaults of its own.
+      # The laptop's defaults have no chain behind them, so a purchase completes
+      # with no network, wallet or faucet. A deployment names its own pair, and the
+      # release preflight holds each channel to it; the runtime cannot, because a
+      # test chain must keep accepting the scripted facilitator. The dashboard only
+      # describes these and has no defaults of its own.
       FACILITATOR_URL: "${AGENTIFY_FACILITATOR_URL:-sandbox:scripted}"
       PAYMENT_NETWORK: "${AGENTIFY_PAYMENT_NETWORK:-eip155:84532}"
-      # Absent on a laptop and on the test site, which settle through
-      # facilitators that ask for nothing, and required on a live chain, where
-      # the gateway refuses to start without both (ADR-0020). The dash carries
-      # no colon for the reason SANDBOX_MERCHANT_KEY gives above, and the name
-      # with nothing after it reads as no credential at all — which is what
-      # every stack but the live one hands this service.
+      # Required on a live chain, where the gateway refuses to start without both;
+      # empty everywhere else. No colon, as above: empty means no credential.
       CDP_API_KEY_ID: "${CDP_API_KEY_ID-}"
       CDP_API_KEY_SECRET: "${CDP_API_KEY_SECRET-}"
-      # A challenge has to name somewhere for the money to go or it cannot be
-      # built at all, so this is here to give the document a shape where the
-      # merchant selling has set no address of their own — which is what a stack
-      # brought up from nothing looks like, and is allowed only here (ADR-0019).
-      # Nothing ever arrives at it: it is the second well-known local-devnet
-      # account, public and valueless, and this gateway settles against nothing.
+      # A challenge cannot be built without a destination, and a fresh stack's
+      # merchant has set none; only the sandbox may fall back like this. It is a
+      # well-known local-devnet account, public and valueless, and nothing settles
+      # here.
       PAY_TO_ADDRESS: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
-      # What the scanner presents on the private identity route, and the reason
-      # the dashboard opens a listener on 3002 at all (ADR-0026). This service
-      # and the scanner are the only ones that hold it, and it is theirs alone:
-      # handed the session secret as well, the dashboard refuses to start
-      # rather than sharing one credential between two doors. Nothing publishes 3002, so the route is reachable from this
-      # stack's own network and from nowhere else.
+      # What the scanner presents on the dashboard's private identity route (3002,
+      # never published). It must not equal AUTH_SECRET or MAIL_API_KEY: the
+      # dashboard refuses to start rather than share one credential between two
+      # doors.
       REPORT_IDENTITY_SECRET: "${REPORT_IDENTITY_SECRET:-a-sandbox-report-identity-secret-nobody-should-reuse}"
-      # What signs a merchant's session cookie. The component behind the sign-in
-      # ships a fallback of its own, and a deployment that leans on it signs
-      # sessions with a value out of somebody else's public source — so the
-      # dashboard refuses to start without this one rather than quietly taking
-      # theirs. The value below is this sandbox's, in this file, for the reason
-      # every other secret here is in this file; a deployment sets its own.
-      # Changing it signs everybody out and does nothing worse: an account is
-      # reached again by signing in.
+      # Signs merchants' session cookies. The dashboard refuses to start without it
+      # rather than fall back to the sign-in library's own default, which is public.
+      # Changing it signs everybody out and does nothing worse.
       AUTH_SECRET: "${AGENTIFY_AUTH_SECRET:-a-sandbox-secret-nobody-should-reuse-anywhere}"
-      # How a message leaves, or that it does not. `sandbox:log` writes every
-      # message into this service's log with its recipient and its link, so the
-      # whole email-link sign-in flow is
-      # walked on a laptop with no account, no domain and no network. The same
-      # shape as the gateway's facilitator: one field, one value, and a
-      # configuration naming a real provider cannot also be pretending.
+      # `sandbox:log` writes every message, with its recipient and link, into this
+      # service's log, so email-link sign-in works with no mail account and no
+      # network. A configuration naming a real provider cannot also be the sandbox.
       MAIL_URL: "${MAIL_URL:-sandbox:log}"
       MAIL_API_KEY: "${MAIL_API_KEY:-}"
       MAIL_FROM: "${MAIL_FROM:-Agentify <no-reply@localhost>}"
-      # Off by default, because this stack is plain http on localhost, where a
-      # Secure cookie is never sent back and nobody can sign in at all. Anywhere
-      # the dashboard is reached over https this is "true", and a server that
-      # leaves it off is handing a merchant's session to anybody on the path.
+      # Off because a Secure cookie is never sent back over plain http, so nobody
+      # could sign in locally. Wherever the dashboard is reached over https this must
+      # be "true", or a merchant's session is exposed to anybody on the path.
       COOKIE_SECURE: "${AGENTIFY_COOKIE_SECURE:-false}"
-      # Caddy passes /dashboard through without stripping it, so the dashboard
-      # sees the path the browser asked for and builds its links from the same
-      # string (deploy/Caddyfile).
+      # Caddy passes /dashboard through unstripped, and the dashboard builds its
+      # links from the same string.
       BASE_PATH: /dashboard
     depends_on:
       postgres:
@@ -344,78 +253,42 @@ services:
         ]
       interval: 3s
       timeout: 3s
-      # Fifteen and not twenty, because of the line below it. A process starting
-      # through tsx refuses connections for the first few seconds and those
-      # refusals are not news, so `start_period` stops them being counted — but
-      # it also postpones the verdict by its own length, and the verdict is what
-      # `web` waits for before it comes up without this service. Fifteen retries
-      # after a fifteen-second grace is the same minute a dependency had to
-      # become healthy in before either line was here.
+      # start_period hides the first seconds, while tsx refuses connections, but
+      # it also delays the verdict `web` waits for; fifteen retries after it keep
+      # that wait at about a minute.
       retries: 15
       start_period: 15s
 
-  # A merchant on the other side, so the surface has something to show. It is
-  # the mock merchant of the offline gate — the same two cards, the same price
-  # desk, the same handlers — pointed at this gateway instead of one booted in
-  # its own process, which makes it the code a merchant's engineer would write
-  # rather than a demonstration written to look like it.
+  # A merchant on the other side, so there is something to sell: the offline
+  # gate's mock merchant, pointed at this gateway, written as a merchant's
+  # engineer would write it.
   merchant:
     <<: *app
     command: ["pnpm", "--filter", "@agentify/slice", "serve"]
     environment:
       GATEWAY_URL: http://app:3000
-      # The same key the gateway seeds above: one merchant, one key, and on a
-      # laptop one string in both places. Left behind when the other became a
-      # variable, this service would go on presenting a key the gateway no
-      # longer knows and the catalogue would come up empty.
-      #
-      # The dash carries no colon for the reason SANDBOX_MERCHANT_KEY gives
-      # above, and the two part company on what an empty value then means:
-      # seeding set to nothing writes no key, and this one stops the merchant. Named with nothing after it, it refuses to start —
-      # "MERCHANT_API_KEY is not set … there is no default for it" — which is
-      # what a deployment that emptied the variable should get, rather than the
-      # key printed in this file quietly selling on a server.
+      # The same key the gateway seeds above; if the two differ, the catalogue
+      # comes up empty. No colon, as above, but here empty means the merchant
+      # refuses to start ("MERCHANT_API_KEY is not set") rather than selling on a
+      # server with the key printed in this file.
       MERCHANT_API_KEY: "${AGENTIFY_MERCHANT_KEY-csk_test_local-sandbox-merchant-key}"
     depends_on:
       app:
         condition: service_healthy
     healthcheck:
-      # This one has no port to ask. The merchant is a long poll and nothing
-      # else, so `running` was the whole of what this service ever said, and it
-      # says that just as readily about a process whose worker ended on a
-      # version mismatch and has been deaf ever since. So the process writes one
-      # line about its own subscription and this reads it: the line has to say
-      # it is selling, and the file has to have been written recently enough
-      # that the loop writing it is still turning. Either alone can be true
-      # while the other is not — a frozen process leaves a `selling` line behind
-      # it, and a fresh file may say it is not getting through.
+      # The merchant is a long poll with no port to ask, so it writes one line about
+      # its subscription to a file and this reads it. Healthy needs both a `selling`
+      # line and a file fresh enough to show the loop still turns: a frozen process
+      # leaves a stale `selling` line, and a fresh file may say it is not getting
+      # through. The path is built from the runtime's tmpdir both here and in
+      # packages/slice/src/serve.ts. The line is printed whatever the outcome, so
+      # .State.Health.Log says why.
       #
-      # The path is spelled here and in packages/slice/src/serve.ts, and neither
-      # of them spells the directory: both ask the runtime for it, so the two
-      # agree under whatever TMPDIR this service is given. Fifteen seconds is
-      # generous against a line rewritten twice a second; it is a bound on a
-      # stalled process, not a timing budget.
+      # Strings are joined with `+`, not template literals: Compose substitutes
+      # `${...}` in this value before Node sees it.
       #
-      # It prints the line before it exits, whichever way it exits, because a
-      # probe that fails silently reproduces the complaint that this whole
-      # healthcheck is the answer to: `docker inspect` would say `unhealthy`
-      # and give no reason, which is `running` again in a different word. What
-      # it prints lands in .State.Health.Log, so the reason is in the same place
-      # as the verdict.
-      #
-      # The strings are joined with `+` and not written as template literals,
-      # which is not a matter of taste: compose substitutes `${...}` in this
-      # value before Node ever sees it, so a template literal here becomes an
-      # empty string and a warning at every `docker compose config`.
-      #
-      # What this can and cannot claim is written where the line is produced,
-      # and the short of it is that a `selling` line means no poll has failed
-      # in the last ninety seconds, not that the catalogue is still on the
-      # shelf. The cost of that window is worth knowing before it surprises
-      # somebody: a gateway restarted on purpose leaves this service red for up
-      # to ninety seconds afterwards, because a worker that has just been
-      # refused cannot tell a restart from an outage until the quiet has gone
-      # on long enough to mean something.
+      # `selling` means no poll failed in the last ninety seconds, so a gateway
+      # restarted on purpose leaves this service red for up to ninety seconds.
       test:
         - CMD
         - node
@@ -434,33 +307,19 @@ services:
           }
       interval: 5s
       timeout: 3s
-      # Three in a row rather than one, and what they buy is narrower than it
-      # looks. They do not bridge a dropped poll: one of those holds the line at
-      # `doubting` for the whole window above, which is eighteen probes and not
-      # three. What they cover is the probe itself failing to run — this spawns
-      # a Node process every five seconds, and on a loaded machine one of those
-      # can lose the three-second timeout while the merchant is perfectly well.
-      # Nothing else is left to flap: the line is swapped into place by a rename
-      # rather than a truncating write, so a probe can no longer catch the file
-      # half written.
+      # Three, to absorb a probe that loses its timeout on a loaded machine. A
+      # dropped poll is not what they cover: that keeps the line at `doubting` for
+      # the whole ninety-second window.
       retries: 3
-      # The same grace its neighbours have, and for the same reason: this
-      # process comes up through tsx, and it publishes its catalogue before it
-      # writes the file at all.
+      # It starts through tsx and publishes its catalogue before it first writes
+      # the file.
       start_period: 15s
 
-  # The scanner's tables, in the one database beside the gateway's and the
-  # dashboard's, with their history in `drizzle.scanner_migrations`. Its own
-  # service for the reason the commerce migration is one: a migration that runs
-  # inside the process it is migrating for runs once per replica and races
-  # itself. It is a service apart from `migrate` because the scanner's
+  # The scanner's tables, in the same database, with their history in
+  # `drizzle.scanner_migrations`. Separate from `migrate` because the scanner's
   # migrations are built into the scanner's image and the app image leaves them
-  # out.
-  #
-  # There is no service after it that prepares the queue. The queue lives in
-  # the one `pgboss` schema the gateway's does, and both the process that
-  # writes to it and the process that reads it ask for it by name at start — an
-  # insert into pg-boss's own table that says nothing the second time.
+  # out. No service prepares the queue: it lives in the gateway's `pgboss`
+  # schema, and both its writer and its reader create it idempotently at start.
   scanner-migrate:
     <<: *scanner-app
     command: ["node", "packages/scanner-database/dist/migrate-cli.js"]
@@ -486,9 +345,8 @@ services:
       # workers answering to one name look like one worker restarting. Each
       # deployment names its own; this is the laptop's.
       WORKER_ID: "${WORKER_ID:-agentify-local-1}"
-      # Two rather than the four a server runs: a laptop running this beside
-      # six other containers has better uses for its cores, and a scan is
-      # mostly waiting on somebody else's site.
+      # Two rather than a server's four: a laptop has other uses for its cores, and
+      # a scan is mostly waiting on somebody else's site.
       SCANNER_CONCURRENCY: "${SCANNER_CONCURRENCY:-2}"
       # Which datasets the analytics may name. The release holds the test
       # channel to this exact set of answers, so a test stack cannot write into
@@ -523,10 +381,8 @@ services:
       scanner-migrate:
         condition: service_completed_successfully
 
-  # The page a visitor lands on. Deployed, the scanner answers `/` and its own
-  # paths while /dashboard, /docs, /v0, /x402 and /healthz go to the commerce
-  # services by path (ADR-0005 §1) — so it answers `/` here too, and the route
-  # table in front of it is the one both channels run.
+  # The front page, here as on both deployed channels, with the same route
+  # table in front of it.
   scanner:
     build:
       context: .
@@ -543,16 +399,11 @@ services:
       # to one line here; a deployment sets both.
       TOKEN_HMAC_SECRET: "${TOKEN_HMAC_SECRET:-a-sandbox-token-hmac-secret-nobody-should-reuse}"
       EMAIL_ENCRYPTION_KEY: "${EMAIL_ENCRYPTION_KEY:-}"
-      # On, so that the whole path a reader walks works from this one command:
-      # a scan, a report, an address confirmed through the dashboard's private
-      # route, and the dashboard door opening for the person who confirmed it.
-      # Both halves of that route are below and neither is a port anybody
-      # outside this network can reach.
-      #
-      # A deployment is the other way round. What a public site accepts is the
-      # operator's line in a file rather than something inherited from how the
-      # stack is packaged, so deploy/compose.public.yaml turns this off again
-      # and a channel whose environment file says nothing stays closed.
+      # On, so the whole path a reader walks works from this one command: a scan, a
+      # report, an address confirmed through the dashboard's private route, and the
+      # dashboard opening for that person. deploy/compose.public.yaml turns it off
+      # for deployments, where what a public site accepts from strangers is the
+      # operator's decision.
       REGISTRATION_ENABLED: "${REGISTRATION_ENABLED:-true}"
       DASHBOARD_IDENTITY_URL: http://app:3002
       REPORT_IDENTITY_SECRET: "${REPORT_IDENTITY_SECRET:-a-sandbox-report-identity-secret-nobody-should-reuse}"
@@ -592,11 +443,9 @@ services:
       app:
         condition: service_started
 
-  # What deletes what the retention policy says is over. It runs on a schedule
-  # on a server and never by itself, so it is given a profile nothing enables:
-  # it is here rather than in a deployment file because the schedule runs the
-  # image this file names, and a job described somewhere else is a job that
-  # drifts from the stack it empties.
+  # Deletes what the retention policy says is over. It runs on a server's
+  # schedule and never by itself, so its profile is one nothing enables; it is
+  # defined here so the schedule runs the image this file names.
   #
   #   docker compose --profile jobs run --rm scanner-privacy
   scanner-privacy:
@@ -631,45 +480,31 @@ services:
     image: "${AGENTIFY_WEB_IMAGE:-agentify-web}"
     restart: unless-stopped
     ports:
-      # The host side is a variable because a laptop is not ours alone: an ssh
-      # tunnel or another project can already hold 8080, and a tunnel bound to
-      # 127.0.0.1 wins over Docker's wildcard for anything typed as localhost —
-      # so the stack looks broken while being perfectly healthy. Set
-      # AGENTIFY_HOST_PORT to move it; the inside of the network never changes.
-      #
-      # It moves the stack and nothing else. The buy command above runs on the
-      # host rather than in this file and reads none of these variables: it goes
-      # to http://localhost:8080 unless GATEWAY_URL sends it somewhere else.
+      # AGENTIFY_HOST_PORT moves the host side when 8080 is taken: an ssh tunnel on
+      # 127.0.0.1:8080 wins over Docker's wildcard and makes a healthy stack look
+      # broken. `pnpm buy` runs on the host and does not follow it; point it with
       #
       #   GATEWAY_URL=http://localhost:8090 pnpm buy
       #
-      # A deployment sets the whole mapping instead, because both halves move at
-      # once: Caddy listens on 443 rather than 8080 as soon as the address below
-      # is a hostname, and the host side is one interface rather than every one
-      # — `192.0.2.10:443:443` is a door open to the edge that passes SNI to it
-      # and to nothing else on the machine.
-      #
-      # The mapping moves the door and not the address the stack names itself
-      # by, which follows AGENTIFY_PUBLIC_ORIGIN or AGENTIFY_HOST_PORT and cannot
-      # be read out of a mapping. Set AGENTIFY_PUBLIC_ORIGIN beside it, or every
-      # status_url, payment challenge and dashboard link keeps naming localhost on
-      # AGENTIFY_HOST_PORT, 8080 by default — on a laptop, possibly a stack that
-      # is not this one.
+      # AGENTIFY_WEB_PUBLISH replaces the whole mapping, for instance with one
+      # interface (`192.0.2.10:443:443`), since Caddy listens on 443 once its
+      # address is a hostname; the deployed channels replace it in their overlays
+      # instead (see the variables at the top). The mapping does not change the
+      # address the stack names itself by: set AGENTIFY_PUBLIC_ORIGIN as well, or
+      # every status_url, payment challenge and dashboard link keeps naming
+      # localhost.
       - "${AGENTIFY_WEB_PUBLISH:-${AGENTIFY_HOST_PORT:-8080}:8080}"
     environment:
       # A bare port locally, which is what keeps Caddy's automatic HTTPS off; a
       # hostname on a server, which is what turns it on. deploy/Caddyfile says
       # why TLS-ALPN is the only challenge that can reach it here.
       AGENTIFY_SITE_ADDRESS: "${AGENTIFY_SITE_ADDRESS:-:8080}"
-      # The selector is mandatory in Caddy so that no stack can fall back to a
-      # front page nobody chose. There is one product and one front page, and
-      # it is the scanner's, here and on both deployed channels.
+      # Mandatory in Caddy, so that no stack falls back to a front page nobody
+      # chose.
       AGENTIFY_FRONT_PAGE: scanner_front_page
-      # What the portal says about this stack. It is a variable
-      # rather than a derivation because Caddy cannot read a CAIP-2 identifier
-      # and cannot hold the list of chains (deploy/Caddyfile). Two fields can
-      # disagree, so the release checks this one against the channel before
-      # anything starts and against the rendered pages afterwards.
+      # Set by hand because Caddy cannot derive it from the chain, so the release
+      # checks it against the channel before anything starts and against the
+      # rendered pages afterwards.
       AGENTIFY_SURFACE_MODE: "${AGENTIFY_SURFACE_MODE:-sandbox}"
     volumes:
       # The routing and the shared assets are mounted over the copies baked
@@ -677,27 +512,17 @@ services:
       # documentation is not: it is a build, and it comes from the image.
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./packages/visual/public:/srv/assets:ro
-      # Where Caddy keeps the certificate and the ACME account key. A named
-      # volume rather than the container's own layer because recreating the
-      # container is a thing that happens, and a certificate authority counts
-      # issuances: five for the same name in a week, and the sixth is refused
-      # for the rest of it. Locally this directory stays empty — a bare port
-      # runs no ACME at all.
+      # Where Caddy keeps its certificate and ACME account key. A named volume,
+      # because containers get recreated and the certificate authority refuses a
+      # sixth issuance for the same name within a week. Empty locally: a bare port
+      # runs no ACME.
       - agentify-caddy:/data
-    # Waited for, but not required. Caddy in front of a process that has not
-    # finished starting answers 502 to the first person who looks, so waiting
-    # for a health check rather than for a container is right — and a service
-    # that never becomes healthy must not take this one down with it. Without
-    # `required: false`, `docker compose up` aborts the whole command with
-    # "dependency failed to start", and the door does not open at all: nothing
-    # answers, not even to say which service is the broken one.
-    #
-    # What that costs is larger than it used to be, and worth saying plainly.
-    # A dead scanner takes the front page with it, because the front page is
-    # the scanner; /dashboard, /v0 and /x402 go with the application's. What
-    # survives any of them is /docs, which this server reads off its own disk.
-    # Each comes back by itself when its process does, because Caddy resolves
-    # the service name per request rather than at startup.
+    # Waited for, but not required: without `required: false`, one service that
+    # never turns healthy aborts `docker compose up` and nothing answers at all,
+    # not even to say which service is broken. A dead scanner still takes the
+    # front page with it, and a dead application /dashboard, /v0 and /x402; /docs
+    # survives. Each comes back by itself, because Caddy resolves service names
+    # per request.
     depends_on:
       app:
         condition: service_healthy

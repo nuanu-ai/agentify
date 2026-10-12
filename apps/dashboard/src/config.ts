@@ -1,21 +1,8 @@
 /**
- * What the dashboard has no right to start without.
- *
- * The environment is an external boundary like any other, so it goes through a
- * zod schema (ADR-0003 §5) and the process names every problem at once rather
- * than one per restart.
- *
- * There is a database address here and the dashboard's own tables are what it
- * is for: the people who sign into the dashboard, their sessions, their
- * merchant binding, the one-time links they are sent (ADR-0026 §2) and a
- * connected WooCommerce shop. Every card, order and receipt on every screen
- * comes from the gateway's application, which runs in this process and is
- * handed to the dashboard there (ADR-0030), so nothing here says where the
- * gateway is or how to reach it.
- *
- * Process secrets are read and never printed. The sentences this file throws
- * name the variable that is wrong and not the value it held, because a startup
- * failure goes to a log and a log goes places the environment does not.
+ * The environment goes through a schema, and the process names every problem at
+ * once rather than one per restart. Secrets are read and never printed: a
+ * startup failure names the variable that is wrong and never its value, because
+ * a log goes places the environment does not.
  */
 
 import { type SurfaceMode, surfaceModeOf } from "@agentify/core";
@@ -25,7 +12,6 @@ import { isSandboxMail, SANDBOX_MAIL } from "./mail.js";
 const absentOrWrong = (whenWrong: string) => (issue: { input: unknown }) =>
   issue.input === undefined ? "the variable is not set" : whenWrong;
 
-/** The same shape the gateway holds its own database address to. */
 function isPostgresUrl(value: string): boolean {
   if (!URL.canParse(value)) {
     return false;
@@ -43,79 +29,48 @@ function isHttpUrl(value: string): boolean {
 }
 
 /**
- * The shortest secret the dashboard will sign a session with.
- *
- * Thirty-two characters is what `openssl rand -base64 32` produces and it is
- * the length the sentence below tells an operator to make. The floor is on what
- * a deployment is allowed to hand us rather than a claim about strength: what it
- * catches is a placeholder somebody left in a file, not a weak choice by
- * somebody who read the sentence.
+ * The length `openssl rand -base64 32` produces. It catches a placeholder left
+ * in a file, not a weak choice.
  */
 const SHORTEST_SECRET = 32;
 
 /**
- * Addresses a link in a message must not be built on.
- *
- * A message goes to somebody else's machine, and a link on this list is an
- * address that means "this machine" wherever it is read. It is a real mistake
- * and not a theoretical one: the public address defaults to localhost so that
- * the dashboard runs on a laptop with nothing set, and a deployment that turns
- * mail on without setting it would send every merchant a link into their own
- * computer.
+ * Addresses that mean "this machine" wherever a message is read. The public
+ * address defaults to localhost for laptops, so a deployment that turns mail on
+ * without setting it would send every merchant a link into their own computer.
  */
 const NOWHERE_ELSE = new Set(["localhost", "127.0.0.1", "[::1]", "::1", "0.0.0.0"]);
 
 const environmentSchema = z.object({
   /**
-   * The chain and facilitator its gateway was given. Neither has a default
-   * here: this process describes money but does not move it, so falling back
-   * to play money could put a false sentence over real receipts.
+   * Neither has a default: this process describes money without moving it, and
+   * falling back to play money could put a false sentence over real receipts.
    */
   PAYMENT_NETWORK: z.string({
     error: absentOrWrong("must be a CAIP-2 chain such as eip155:84532"),
   }),
   FACILITATOR_URL: z.string({ error: absentOrWrong("must be a string") }),
-  /**
-   * Where the dashboard's own accounts and sessions live.
-   *
-   * The same Postgres as everything else (ADR-0003 §6), with the identity
-   * component's own rows in it. Without one there is nowhere to look a session up, so
-   * every visitor would be a stranger — a dashboard that draws a sign-in form and
-   * can never accept one.
-   */
   DATABASE_URL: z
     .string({ error: absentOrWrong("must be a string") })
     .refine(isPostgresUrl, "must be an address of the form postgres://user@host:port/database"),
 
   /**
-   * Where the dashboard is mounted, when it is not at the root of its origin.
-   *
-   * ADR-0005 §1 puts it at `/dashboard` behind Caddy, and every link and form on
-   * every page is built from this. Without it the dashboard works at the root and
-   * sends a merchant to `/cards` from `/dashboard/cards`, which is a different
-   * place and answers nothing.
+   * Every link and form on every page is built from this; without it a merchant
+   * at `/dashboard/cards` would be sent to `/cards`.
    */
   BASE_PATH: z
     .string()
-    // A second separator after the first is refused, and a backslash counts as
-    // one: "//evil.com" is a path to a regular expression and a
-    // protocol-relative URL to a browser, and "/\evil.com" is the same URL to
-    // every browser there is, because the URL standard treats the two slashes
-    // interchangeably. Either would send every redirect and every stylesheet
-    // link to another host — with a merchant's session riding along on the
-    // redirect they follow. A backslash is refused anywhere in the value for
-    // the same reason: nothing in a mount point needs one.
+    // A second slash or a backslash after the first is refused: "//evil.com"
+    // and "/\evil.com" are protocol-relative URLs to a browser, and would send
+    // every redirect, with the merchant's session following it, to another
+    // host.
     .regex(/^(?:|\/(?![/\\])[^\s?#\\]*[^\s?#/\\])$/, 'must be empty or a path such as "/dashboard"')
     .default(""),
 
   /**
-   * Whether the session cookie is marked Secure.
-   *
-   * It defaults to off because the dashboard is developed over plain http on
-   * localhost, where a Secure cookie is simply never sent back and nobody can
-   * sign in at all. Anywhere the dashboard is reachable over https this is on,
-   * and the deployment that forgets it is handing a merchant's session to
-   * anybody on the path.
+   * Off by default because a Secure cookie is never sent back over plain http
+   * on localhost. Anywhere reachable over https it must be on, or the session
+   * cookie travels in clear.
    */
   COOKIE_SECURE: z
     .enum(["true", "false"])
@@ -123,19 +78,10 @@ const environmentSchema = z.object({
     .transform((value) => value === "true"),
 
   /**
-   * What the dashboard signs a session cookie with.
-   *
-   * There is no default and there deliberately is not one. The component that
-   * signs in for us has its own fallback, and a deployment that leaned on it
-   * would be running on a secret written in somebody else's public source — so
-   * the dashboard asks for one rather than accepting whatever is there, and stops
-   * when there is none.
-   *
-   * Changing it signs everybody out and nothing worse: a session is still a row
-   * that can be ended on its own, so this secret is not the only way to revoke
-   * one. What it buys is that a cookie somebody wrote by hand is refused before
-   * a single query is made, which is why the value never leaves this process and
-   * never appears in a message this file throws.
+   * No default, deliberately: the sign-in component has its own fallback, which
+   * is a secret written in public source. Changing it signs everybody out and
+   * nothing worse; it lets a hand-written cookie be refused before any query,
+   * so the value never leaves this process.
    */
   AUTH_SECRET: z
     .string({ error: absentOrWrong("must be a string") })
@@ -144,7 +90,7 @@ const environmentSchema = z.object({
       `must be at least ${SHORTEST_SECRET} characters; make one with: openssl rand -base64 32`,
     ),
 
-  /** Dedicated bearer for the unproxied scanner-to-dashboard identity route. */
+  /** Bearer for the unproxied scanner-to-dashboard identity route. */
   REPORT_IDENTITY_SECRET: emptyIsAbsent(
     z
       .string()
@@ -155,19 +101,11 @@ const environmentSchema = z.object({
   ),
 
   /**
-   * The address a merchant reaches this dashboard at, from their own machine.
-   *
-   * It is what the one-time links in mail are built on, and that is its only
-   * use — nothing else in the dashboard needs to know its own address, because
-   * every link on every page is relative. Behind a reverse proxy the address
-   * this process sees is not the address the merchant typed, so it is
-   * configuration rather than something read off a request.
-   *
-   * The default is a laptop, which is where the dashboard is developed and where
-   * `sandbox:log` prints the link into the terminal of the person who is about
-   * to click it. A deployment that sends real mail is refused with this
-   * unchanged, below, because every link it sent would point at the reader's own
-   * computer.
+   * The address a merchant reaches this dashboard at, used only to build the
+   * links in mail; every link on a page is relative. Behind a proxy the address
+   * this process sees is not that one, so it is configured rather than read off
+   * a request. A deployment sending real mail is refused while it is still the
+   * localhost default.
    */
   PUBLIC_BASE_URL: z
     .string({ error: absentOrWrong("must be a string") })
@@ -176,13 +114,9 @@ const environmentSchema = z.object({
     .transform((value) => value.replace(/\/+$/, "")),
 
   /**
-   * Where a message goes, or the one address that means nowhere at all.
-   *
-   * One field with one value, the way the gateway names its facilitator: a
-   * deployment that names a provider cannot also be in the sandbox, because
-   * there is no second flag to disagree with the first. With the sandbox word
-   * every message is written to the log with its recipient and its link, so the
-   * whole flow walks with no account, no domain and no network.
+   * One value rather than a provider plus a sandbox flag, so the two cannot
+   * disagree. The sandbox word writes every message, recipient and link
+   * included, to the log.
    */
   MAIL_URL: z
     .string({ error: absentOrWrong("must be a string") })
@@ -192,37 +126,20 @@ const environmentSchema = z.object({
     )
     .default(SANDBOX_MAIL),
 
-  /**
-   * What the provider is called with. Nothing to set in the sandbox.
-   *
-   * Set to nothing reads the same as never set, and that spelling is the one a
-   * deployment actually uses: a compose file hands every service a fixed list
-   * of names, so "no provider here" is written as the name with nothing after
-   * it rather than by deleting the line. Read as a key of length zero it is
-   * refused and the dashboard does not start, which is a stack that will not come
-   * up for a variable nobody meant to set. The gateway's seed key learned the
-   * same lesson this morning.
-   */
+  /** Nothing to set in the sandbox. */
   MAIL_API_KEY: emptyIsAbsent(z.string().min(1)),
 
   /**
-   * What a message says it is from.
-   *
-   * Nothing reads mail sent back to it — there is no inbox behind this address
-   * and no bounce anybody looks at — so the address itself has to say so. A deployment that sends real mail has to name one; the sandbox does
-   * not, because the log is not delivered to anybody.
+   * Required when real mail is sent. Nothing reads replies, so the address
+   * itself should say so.
    */
   MAIL_FROM: emptyIsAbsent(z.string().min(1)),
 });
 
 /**
- * A variable set to nothing, read the way a variable nobody set is read.
- *
- * Not a convenience. Every one of these arrives through a compose file, which
- * hands a service a fixed list of names — so the way a deployment says "not
- * this one" is the name with nothing after it, and a schema that reads that as
- * a value refuses it and stops the process. What is left after the transform is
- * the ordinary shape: absent, or a value the rule below has looked at.
+ * A compose file hands a service a fixed list of names, so "not this one" is
+ * written as the name with nothing after it; reading that as a value would
+ * refuse it and stop the process.
  */
 function emptyIsAbsent(rule: z.ZodType<string, string>) {
   return z
@@ -243,24 +160,16 @@ export interface DashboardConfig {
   readonly basePath: string;
   readonly cookieSecure: boolean;
   readonly databaseUrl: string;
-  /** What a session cookie is signed with. Never printed, never on a page. */
+  /** Never printed, never on a page. */
   readonly authSecret: string;
-  /** Dedicated bearer for the optional private report identity listener. */
   readonly reportIdentitySecret: string | null;
-  /** What the dashboard's one-time links are built on. */
   readonly publicBaseUrl: string;
   readonly mailUrl: string;
   readonly mailApiKey: string | null;
   readonly mailFrom: string;
 }
 
-/**
- * What a message says it is from when nothing sends one.
- *
- * Only ever used where `MAIL_URL` is the sandbox word, where the message is
- * written to a log rather than delivered. It says out loud that nobody reads
- * replies, which is the same thing the deployed address is asked to say.
- */
+/** Used only in the sandbox, where messages go to the log. */
 const NOBODY_READS_THIS = "Agentify <no-reply@localhost>";
 
 /** Each chain a deployment may run on, and where a transaction on it is looked at. */
@@ -285,16 +194,13 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
   }
 
   const values = parsed.data;
-  // A chain on neither written list leaves no honest mode to render.
+  // A chain on neither known list leaves no honest mode to render.
   const surfaceMode = surfaceModeOf(values.PAYMENT_NETWORK, values.FACILITATOR_URL);
   const sandboxMail = isSandboxMail(values.MAIL_URL);
   const problems: string[] = [];
 
-  // The same door the gateway keeps between its sandbox and a real facilitator:
-  // a credential exists only to talk to a provider, so beside an address that
-  // sends nothing it is somebody's leftovers rather than a choice. The mistake
-  // worth catching is a production environment file copied onto a sandbox,
-  // where it would otherwise sit unused until somebody changed one other line.
+  // A credential beside the sandbox address is leftovers, most likely a
+  // production environment file copied onto a sandbox, and is refused.
   if (sandboxMail && values.MAIL_API_KEY !== undefined) {
     problems.push(
       `MAIL_URL is ${JSON.stringify(SANDBOX_MAIL)}, which sends nothing anywhere, and` +
@@ -303,10 +209,8 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     );
   }
 
-  // And the door the other way. A provider address with nothing to authenticate
-  // against it is a dashboard that appears to send mail and silently does not,
-  // which is the shape of failure a merchant discovers only when the sign-in
-  // link they are waiting for never arrives.
+  // A provider with no key would appear to send mail and silently not, which a
+  // merchant discovers only when their sign-in link never arrives.
   if (!sandboxMail && values.MAIL_API_KEY === undefined) {
     problems.push(
       `MAIL_URL names a mail provider and MAIL_API_KEY is not set, so nothing would be accepted` +
@@ -321,9 +225,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     );
   }
 
-  // A real provider on a public address that means "this machine". Every link
-  // in every message would point at the reader's own computer, and the merchant
-  // reading it would have no way of knowing that is what happened.
+  // Every link in every message would point at the reader's own computer.
   if (!sandboxMail && NOWHERE_ELSE.has(new URL(values.PUBLIC_BASE_URL).hostname)) {
     problems.push(
       `MAIL_URL names a mail provider and PUBLIC_BASE_URL is ${JSON.stringify(values.PUBLIC_BASE_URL)},` +

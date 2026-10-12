@@ -17,7 +17,7 @@ It resolves the name with `git ls-remote` against the public repository, finds
 the revision's five images by the digests its image build published, fetches
 the revision, and runs that revision's deploy/activate.sh with the images
 pinned by those digests. It needs no GitHub credential and holds no host
-credential for GitHub (ADR-0016). The channel and the repository come from
+credential for GitHub. The channel and the repository come from
 /etc/agentify/release.json, which deploy/install.sh writes.
 
 The images are read by the rule in the header of .github/workflows/images.yml:

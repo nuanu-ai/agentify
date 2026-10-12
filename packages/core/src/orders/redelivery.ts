@@ -1,29 +1,18 @@
 /**
- * Whether an undelivered order gets another delivery, and how long the wait
- * before it is.
+ * Whether an undelivered order gets another delivery, and after how long.
  *
- * The three answers a handler can give are a fulfillment, a refusal and an
- * acceptance. Anything else — an exception inside the handler, a process that
- * died, a connection that broke — is not an answer at all, and the order is
- * simply delivered again. That is why a temporary failure has to be thrown
- * rather than refused: a refusal is understood as a final "this cannot be
- * fulfilled" and closes the order.
+ * A handler answers with a fulfillment, a refusal or an acceptance. Anything
+ * else (an exception, a dead process, a broken connection) is no answer, and
+ * the order is delivered again. A temporary failure must therefore be thrown
+ * rather than refused: a refusal is final and closes the order.
  *
- * The repeating is not endless. It stops when the policy's attempts are spent
- * and, sooner than that, when the next attempt would land past the mode's own
- * deadline: the worker does not start the handler after the deadline, so a
- * delivery that could only arrive late is not attempted at all.
+ * Delivery stops when the policy's attempts are spent or, sooner, when the next
+ * attempt would land past the mode's deadline, since the worker never starts
+ * the handler after it. There is no jitter and no clock, so the same numbers
+ * always replay to the same decision.
  *
- * There is no jitter here and no clock. The gateway is free to spread its own
- * load, but a decision that could not be replayed from the same numbers would
- * make the machine untestable, and the delay is part of what an order does
- * with someone else's money.
- *
- * The numbers themselves belong to the policy, not to this file. How many times
- * we try is published — the portal names it as the gateway's own setting,
- * along with the deadlines a repeat runs into — while the pauses between the
- * attempts stay ours: a merchant sizes nothing against them, because the
- * repeating is automatic and is bounded by the two numbers that are named.
+ * The attempt count is published to merchants as the gateway's setting; the
+ * pauses between attempts are not, and nobody sizes anything against them.
  */
 
 import type { RedeliveryPolicy } from "./model.js";

@@ -14,8 +14,7 @@ const typesOf = (table: Record<ParamType, unknown[]>): [ParamType, unknown[]][] 
 
 describe("field spec", () => {
   // The promise: a card declares each purchase parameter with a type, whether
-  // it is required, and words a program-buyer can read. A field spec that gets
-  // through without a type is a card that cannot be checked against anything.
+  // it is required, and words a buying program can read.
   it("accepts the spec the portal writes", () => {
     const field = { type: "string", required: true, title: "Куда прислать доступ" };
     expect(FieldSpecSchema.parse(field)).toStrictEqual(field);
@@ -30,8 +29,8 @@ describe("field spec", () => {
   });
 
   it("refuses a type the compiler cannot turn into a check", () => {
-    // Every accepted type has a validator behind it. A card that declares
-    // `type: 'date'` would promise the agent a check nobody performs.
+    // Every accepted type has a check behind it; `type: 'date'` would promise
+    // the agent a check nobody performs.
     const message = errorOf(FieldSpecSchema, { type: "date" });
     expect(message).toContain("string");
     expect(message).toContain("integer");
@@ -67,9 +66,8 @@ describe("param spec", () => {
   });
 
   it("refuses a name that cannot safely become a property", () => {
-    // A spec name becomes a key in JSON on both sides and a segment of the
-    // error path a merchant reads. Dots collide with that path notation and
-    // spaces make the name unquotable in an error.
+    // A name becomes a JSON key and a segment of the error path a merchant
+    // reads, so dots and spaces are refused.
     for (const name of ["", " ", "Not Ok", "a.b", "1st", "-x", "_hidden"]) {
       expect(
         ParamSpecSchema.safeParse({ [name]: { type: "string" } }).success,
@@ -79,12 +77,9 @@ describe("param spec", () => {
   });
 
   it("cannot carry the one name that is dropped rather than refused", () => {
-    // The promise: nothing named `__proto__` reaches the compiler, where
-    // assigning it would set a prototype instead of declaring a field. The
-    // mechanism is zod's, not ours — it removes the key before the name check
-    // ever runs, so the spec comes back without it rather than refused, and
-    // the whole reason is written down at PROTOTYPE_KEY_IS_DROPPED. This test
-    // exists to notice if that ever stops being true.
+    // The promise: nothing named `__proto__` reaches the compiler, where it
+    // would set a prototype instead of declaring a field. zod removes the key
+    // before the name check runs; this test notices if that stops being true.
     const spec = ParamSpecSchema.parse(
       JSON.parse(
         `{"email": {"type": "string"}, "${PROTOTYPE_KEY_IS_DROPPED}": {"type": "string"}}`,
@@ -101,9 +96,8 @@ describe("param spec", () => {
 });
 
 describe("the compiler from a spec to a validator", () => {
-  // The promise: a card's declaration of its purchase parameters is the same
-  // check the gateway runs on the agent's purchase and the same check the
-  // delivery is held to. One spec, one meaning, in the gateway and in the SDK.
+  // The promise: one declaration means one check, the same in the gateway on
+  // the agent's purchase and in the SDK on the delivery.
 
   const accepted: Record<ParamType, unknown[]> = {
     string: ["", "buyer@example.com"],
@@ -148,20 +142,17 @@ describe("the compiler from a spec to a validator", () => {
   });
 
   it("lets a purchase leave out a field with no required flag", () => {
-    // The portal writes `required: true` where it means it, so silence means
-    // the other thing. A default of "required" would break every card whose
-    // author left the flag off.
+    // The documentation writes `required: true` where it means it, so silence
+    // in a purchase means optional.
     const validator = paramSpecToValidator({ note: { type: "string" } }, "purchase");
     expect(validator.safeParse({}).success).toBe(true);
     expect(validator.safeParse({ note: "for a friend" }).success).toBe(true);
   });
 
   it("holds a delivery to every field the card declared", () => {
-    // The other direction of the same flag. A card's result is what the agent
-    // reads before paying to decide what it is buying, so a declared field is
-    // one that arrives. Reading silence as "optional" here would let a
-    // merchant deliver an empty object against a card advertising three
-    // fields, and the promise the agent paid on would be unenforceable.
+    // In a result, a declared field is one that arrives; reading silence as
+    // optional would let an empty object be delivered against a card
+    // advertising three fields.
     const validator = paramSpecToValidator(
       { access_url: { type: "string" }, expires_at: { type: "string" } },
       "delivery",
@@ -188,13 +179,10 @@ describe("the compiler from a spec to a validator", () => {
   });
 
   it("refuses a value the card never declared", () => {
-    // The decision behind this test: undeclared keys are refused, not
-    // stripped and not passed through. Stripping would be truncation the
-    // agent is never told about; passing through would hand the merchant's
-    // handler fields the card never promised, which is both a lie about the
-    // card and a way to smuggle input into someone else's code. The same rule
-    // holds for a delivery, where an undeclared field means the agent paid
-    // for a result different from the one it read before paying.
+    // Undeclared keys are refused, not stripped (truncation nobody is told
+    // about) and not passed through (fields the card never promised, handed to
+    // someone else's code). In a delivery, an undeclared field means the agent
+    // got something other than what it read before paying.
     for (const direction of ["purchase", "delivery"] as const) {
       const validator = paramSpecToValidator(
         { email: { type: "string", required: true } },
@@ -206,12 +194,9 @@ describe("the compiler from a spec to a validator", () => {
   });
 
   it("drops a delivered field named __proto__ instead of reporting it", () => {
-    // The portal promises that a delivery reaches the agent as the merchant
-    // wrote it. This is the one exception, and it is zod's: the key is removed
-    // before any check of ours runs, so it is neither delivered nor refused.
-    // Nothing in a card can declare such a field, so a merchant only reaches
-    // this by sending one nobody asked for — but the loss is silent, and this
-    // test is here so it stays known rather than surprising.
+    // The one exception to "a delivery reaches the agent as written": zod
+    // removes the key before any check runs. No card can declare it; this test
+    // keeps the silent loss known.
     const validator = paramSpecToValidator({ access_url: { type: "string" } }, "delivery");
     const delivered = validator.parse(
       JSON.parse('{"access_url": "https://example.com/a", "__proto__": {"x": 1}}'),
@@ -221,10 +206,8 @@ describe("the compiler from a spec to a validator", () => {
   });
 
   it("refuses a delivered string with nothing in it, and says which field", () => {
-    // The promise this holds: a card declaring an access code and a delivery
-    // carrying `""` are the same outcome for the buyer as a delivery carrying
-    // nothing at all. Caught in one case and not the other, the check would
-    // read as enforcing a promise it does not enforce.
+    // A delivered `""` is the same outcome for the buyer as nothing at all, so
+    // both are refused.
     const validator = paramSpecToValidator({ access_code: { type: "string" } }, "delivery");
 
     for (const nothing of ["", " ", "\t\n "]) {
@@ -239,9 +222,8 @@ describe("the compiler from a spec to a validator", () => {
   });
 
   it("holds a delivered field that may be absent to the same rule when it is there", () => {
-    // `required: false` says the field may not arrive, not that it may arrive
-    // empty. Left out is a complete delivery; present and blank is a field
-    // that claims to be there and is not.
+    // `required: false` means the field may be left out, not that it may
+    // arrive blank.
     const validator = paramSpecToValidator(
       { note: { type: "string", required: false } },
       "delivery",
@@ -252,9 +234,8 @@ describe("the compiler from a spec to a validator", () => {
   });
 
   it("lets a purchase parameter be an empty string, because that is the agent's to choose", () => {
-    // The other half of the asymmetry, and the reason it is not a bug. Input
-    // the agent left blank is input; refusing it would be this package
-    // inventing a requirement no card asked for.
+    // Input the agent left blank is input; refusing it would invent a
+    // requirement no card asked for.
     const validator = paramSpecToValidator({ note: { type: "string" } }, "purchase");
     expect(validator.safeParse({ note: "" }).success).toBe(true);
   });

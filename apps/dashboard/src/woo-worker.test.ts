@@ -1,17 +1,9 @@
 /**
- * What happens to a paid order on a card that came from a WooCommerce shop.
- *
- * The whole path is here and nothing in the middle of it is stubbed: a real
- * gateway on in-memory adapters, a card converted from a shop's own catalogue
- * and published through the ordinary publish door, a purchase made over HTTP
- * with a payment, and a shop answering on loopback. What the last test asserts
- * is the sentence the work exists for — after a paid order on a woo-imported
- * card, a paid order exists in the shop, and the buyer is handed its number.
- *
- * The shop here is a small server rather than a WooCommerce. What it stands in
- * for is measured: `docs/research/33-woo-connect-probe.md` records a real shop
- * answering `POST wc/v3/orders` with `set_paid: true` under 201, with the order
- * then agreeing with itself in four independent places.
+ * The whole path with nothing in the middle stubbed: a real gateway on
+ * in-memory adapters, a card converted from a shop's catalogue and published
+ * normally, a purchase over HTTP with a payment, and a shop on loopback. The
+ * shop stands in for a real one answering `POST wc/v3/orders` with `set_paid:
+ * true` under 201.
  */
 
 import { createServer, type Server } from "node:http";
@@ -48,10 +40,8 @@ import {
   turnOnce,
 } from "./woo-worker.js";
 
-/** The shop showing this product as the one download it sells. */
 const showing = (product: EligibleWooProduct): ProductInspection => ({ ok: true, product });
 
-/** The shop answering, and ruling the product out. */
 const RULED_OUT: ProductInspection = {
   ok: false,
   why: "This product cannot be imported: it is out of stock.",
@@ -107,7 +97,6 @@ const anOrder = (overrides: Partial<Order> = {}): Order => ({
   ...overrides,
 });
 
-/** A shop that always accepts, remembering what it was sent. */
 const aShopThatAccepts = () => {
   const placed: SoldItem[] = [];
   let next = 12;
@@ -173,9 +162,9 @@ describe("one paid order, in the merchant's own shop", () => {
   });
 
   it("refuses an order whose price is not the shop's price, and places nothing", async () => {
-    // The download can be the one the price was bound to and the money still
-    // be wrong: a sale charged at a price the shop does not ask any more is
-    // not one to put in somebody's shop on their behalf.
+    // The download can be the bound one and the money still wrong: a sale
+    // charged at a price the shop no longer asks is not put in somebody's shop
+    // on their behalf.
     const shops = memoryWooShops();
     const shop = aShopThatAccepts();
 
@@ -192,11 +181,10 @@ describe("one paid order, in the merchant's own shop", () => {
   });
 
   it("refuses an order the shop said nothing about, and says the shop did not answer", async () => {
-    // The refusal is what makes the buyer's refund due, and its words reach the
-    // buyer's agent. A shop that timed out has said nothing about the product,
-    // so the reason is that the shop did not answer and not that the product
-    // stopped being sold. The refusal is recorded like any other, so the
-    // existing recovery can still finish the sale later.
+    // The refusal's words reach the buyer's agent. A shop that timed out has
+    // said nothing about the product, so the reason is that the shop did not
+    // answer. The refusal is recorded like any other, so recovery can still
+    // finish the sale.
     const shops = memoryWooShops();
     const shop = aShopThatAccepts();
 
@@ -232,9 +220,8 @@ describe("one paid order, in the merchant's own shop", () => {
   });
 
   it("places one order for a sale handed over twice", async () => {
-    // Delivery is at least once and this is the whole reason the ledger
-    // exists: a second hand-over must not become a second thing the merchant
-    // picks, packs and posts.
+    // Delivery is at least once: a second hand-over must not become a second
+    // parcel the merchant packs.
     const shops = memoryWooShops();
     const shop = aShopThatAccepts();
     const parts = filling(shops, shop.place);
@@ -267,10 +254,8 @@ describe("one paid order, in the merchant's own shop", () => {
   });
 
   it("refuses the sale when the shop says no, without quoting the shop to the buyer", async () => {
-    // A WordPress refusal carries whatever the plugin that raised it chose to
-    // say, and on a shop with debugging on that is a file path. The reader here
-    // is a stranger's agent, which can do nothing with a merchant's internals
-    // but forward them.
+    // A WordPress refusal can carry a file path on a shop with debugging on,
+    // and the reader here is a stranger's agent that could only forward it.
     const shops = memoryWooShops();
     const answer = await fillFromTheShop(
       anOrder(),
@@ -311,9 +296,8 @@ describe("one paid order, in the merchant's own shop", () => {
   });
 
   it("answers nothing at all when the shop did not answer either", async () => {
-    // Not a refusal: a refusal closes the sale for good. Nothing is answered,
-    // so the gateway hands the order over again, which is the one path back to
-    // a sale that can still go through.
+    // A refusal would close the sale for good; answering nothing lets the
+    // gateway hand the order over again.
     const shops = memoryWooShops();
     const answer = await fillFromTheShop(
       anOrder(),
@@ -325,9 +309,9 @@ describe("one paid order, in the merchant's own shop", () => {
   });
 
   it("will not place a second order for an attempt whose outcome nobody knows", async () => {
-    // The process died with a request already on its way to the shop. Whether
-    // that shop holds an order for this sale is not knowable from here, and
-    // ordering again is the one move that is certainly wrong.
+    // The process died with a request on its way to the shop. Whether the shop
+    // holds an order is not knowable here, and ordering again is the one move
+    // certainly wrong.
     const shops = memoryWooShops();
     const shop = aShopThatAccepts();
     const parts = filling(shops, shop.place);
@@ -342,14 +326,14 @@ describe("one paid order, in the merchant's own shop", () => {
 
     expect(shop.placed).toHaveLength(0);
     expect(again).not.toBeNull();
-    // And it says which of the two it is: not "there is no such order", but
-    // "an order may be there and nothing here can tell".
+    // Not "there is no such order", but "an order may be there and nothing here
+    // can tell".
     expect(again && "refused" in again && again.refused.message).toMatch(/ord_1/);
   });
 
   it("refuses a connection whose keys cannot write", async () => {
-    // The order path is the second guard after a quote-time refusal: a stale
-    // paid envelope still must not make a Woo order on read-only credentials.
+    // The second guard after a quote-time refusal: a stale paid envelope must
+    // not make an order on read-only credentials.
     const shops = memoryWooShops();
     const shop = aShopThatAccepts();
     const answer = await fillFromTheShop(
@@ -445,7 +429,6 @@ describe("the whole way through, against a real gateway", () => {
     shopServer = null;
   });
 
-  /** A WooCommerce answering `wc/v3` on loopback, remembering what it was sent. */
   const aShopOnAPort = async (
     emptySuccessfulBody = false,
   ): Promise<{ url: string; orders: Record<string, unknown>[] }> => {
@@ -502,9 +485,8 @@ describe("the whole way through, against a real gateway", () => {
     // What pressing Connect does before the merchant is sent to their shop.
     expect((await gateway.sellThrough("woocommerce")).ok).toBe(true);
 
-    // The catalogue, converted and published through the door every other card
-    // goes through. No leniency of its own: a card refused here is a card the
-    // merchant is shown the refusal for.
+    // Published through the same path as every other card, with no leniency of
+    // its own.
     const { cards } = cardsFromTheShop([aProduct()], shop.url);
     const card = cards[0];
     expect(card).toBeDefined();
@@ -550,8 +532,8 @@ describe("the whole way through, against a real gateway", () => {
       }),
     });
 
-    // The buyer's side: the sale went through and they hold the number of an
-    // order in a shop they have never heard of.
+    // The buyer holds the number of an order in a shop they have never heard
+    // of.
     expect(bought.status).toBe(200);
     const started = bought.body as AgentOrderStatus;
     const read = await served.call("GET", `/x402/orders/${started.order_id}/status`);
@@ -562,8 +544,8 @@ describe("the whole way through, against a real gateway", () => {
     expect(JSON.stringify(durable)).not.toContain("download_url");
     expect(JSON.stringify(durable)).not.toContain(MERCHANT_EMAIL);
 
-    // The merchant's side: one order in the shop, paid, carrying our own
-    // identifier so that the two systems can be reconciled by hand.
+    // One paid order in the shop, carrying our identifier so the two systems
+    // can be reconciled by hand.
     expect(shop.orders).toHaveLength(1);
     const placed = shop.orders[0] as {
       set_paid: boolean;
@@ -610,10 +592,8 @@ describe("the whole way through, against a real gateway", () => {
   });
 
   it("draws the stream of the merchant the connected account names, and nobody else's", async () => {
-    // The worker acts for the account that connected the shop, calling the
-    // gateway's application inside the process (ADR-0030). What it draws is
-    // that merchant's stream; an envelope waiting for another merchant stays
-    // where it is, for that merchant's own worker.
+    // The worker draws that merchant's stream only; another merchant's envelope
+    // stays for that merchant's own worker.
     open = await harness();
     const other = await open.addMerchant();
     const anEvent = (id: string) => ({
@@ -654,9 +634,8 @@ describe("the whole way through, against a real gateway", () => {
   });
 
   it("counts an event it drew, so the loop comes straight back for what follows", async () => {
-    // The gateway hands out one envelope a poll, so an event is often all a
-    // turn draws. Counted as nothing, it would send the loop to rest between
-    // turns as though the stream were quiet, with orders waiting behind it.
+    // One envelope per poll, so an event is often all a turn draws; counted as
+    // nothing, it would rest the loop with orders waiting behind it.
     const gateway = {
       pollWorker: async () => ({
         ok: true as const,
@@ -750,11 +729,9 @@ describe("the whole way through, against a real gateway", () => {
 });
 
 describe("a price question off the merchant's stream", () => {
-  // What the dashboard answers for the shop it stands in for when an agent
-  // asks for a price. Everything here is the code a deployment runs except the
-  // read of the product, which is the shop's answer handed in; the gateway,
-  // which records what it was told; and the store, which is the in-memory one
-  // held to the same contract as the Postgres one a deployment writes to.
+  // Everything is the deployed code except the shop's answer, a recording
+  // gateway, and the in-memory store held to the same contract as the Postgres
+  // one.
   const question = {
     merchant_item_id: merchantItemIdFor("https://shop.example.com", "11"),
     price_id: "prc_1",
@@ -771,7 +748,6 @@ describe("a price question off the merchant's stream", () => {
     fingerprint: "accepted-download-fingerprint",
   };
 
-  /** The shop's answer for the item and account it was asked about, and nothing for any other. */
   const shopShowing =
     (product: typeof inTheShop | null) =>
     async (asked: WooConnection, merchantItemId: string): Promise<ProductInspection> =>
@@ -793,8 +769,7 @@ describe("a price question off the merchant's stream", () => {
         },
       }),
       answerQuote: async (priceId: string, said: unknown) => {
-        // Answered under the price the question named, which is the only
-        // thing the gateway files a price answer against.
+        // The gateway files a price answer only under the price it named.
         answer = priceId === question.price_id ? said : `answered under ${priceId}`;
         return { ok: true as const, document: { used: true } };
       },
@@ -820,8 +795,8 @@ describe("a price question off the merchant's stream", () => {
   };
 
   it("answers with the shop's own price and binds the price to the product it read", async () => {
-    // The binding is what the order is held to later: an order paying this
-    // price is filled only against the download the agent was offered.
+    // An order paying this price is filled only against the download the agent
+    // was offered.
     const shops = memoryWooShops();
 
     expect(await answering(shops, inTheShop)).toStrictEqual({
@@ -854,9 +829,8 @@ describe("a price question off the merchant's stream", () => {
     },
   ]) {
     it(title, async () => {
-      // One store, two turns: the price question and then the order paying
-      // it, with nothing handed in for the binding. What the fill holds the
-      // order to is what the quote wrote.
+      // One store, two turns: what the fill holds the order to is what the
+      // quote wrote.
       const shops = memoryWooShops();
       const shop = aShopThatAccepts();
       const turns = [
@@ -916,9 +890,8 @@ describe("a price question off the merchant's stream", () => {
   }
 
   it("names no price when that price was already bound to another product", async () => {
-    // The shop changed the download between two answers for one price. The
-    // order comes back held to the first, so a price for the second is a price
-    // no order could be filled against.
+    // The order comes back held to the first answer, so a price for a changed
+    // download is a price no order could be filled against.
     const shops = memoryWooShops();
     await shops.recordQuote(
       "acc_1",
@@ -937,10 +910,8 @@ describe("a price question off the merchant's stream", () => {
 });
 
 describe("a parcel's price question", () => {
-  // The price of a parcel is the goods and the shop's own rate to the buyer's
-  // place together (ADR-0033): the product read the way every price question
-  // reads it, and the rate asked of the shop's cart for the place the
-  // question carries, which is the locality and nothing about who.
+  // Goods plus the shop's rate to the buyer's place, asked of the cart for the
+  // locality and nothing about who.
   const place = { country: "ID", state: "JK", city: "Jakarta", postal_code: "10110" };
   const question = {
     merchant_item_id: merchantItemIdFor("https://shop.example.com", "28"),
@@ -972,7 +943,7 @@ describe("a parcel's price question", () => {
     asked: Record<string, unknown> = question,
     quoteWithinMs?: number,
   ): Promise<unknown> => {
-    // Null until the worker answers: a question it says nothing to stays null.
+    // Stays null when the worker says nothing.
     let answer: unknown = null;
     const gateway = {
       pollWorker: async () => ({
@@ -1050,10 +1021,9 @@ describe("a parcel's price question", () => {
   });
 
   it("names no price where the shop has no rate for the place, or the shop refused it", async () => {
-    // Not available is all an agent can be told; the reason goes to the
-    // merchant's log. The shop that does not ship there and the shop that
-    // refused the place read the same to the agent. A shop that could not
-    // answer at all is a different case, and says nothing (below).
+    // "Not available" is all the agent is told; the reason goes to the
+    // merchant's log. A shop that could not answer at all is a different case
+    // (below).
     for (const read of [
       { ok: true as const, rates: [] },
       { ok: false as const, why: "The shop refused the place.", again: false },
@@ -1071,8 +1041,8 @@ describe("a parcel's price question", () => {
   });
 
   it("names no price where the product in the shop is no longer a parcel", async () => {
-    // The card ships, and a price of the goods alone would be paid for a
-    // parcel the shop now sells as something else.
+    // A price of the goods alone would be paid for a parcel the shop now sells
+    // as something else.
     const shops = memoryWooShops();
     let answer: unknown;
     const gateway = {
@@ -1136,13 +1106,10 @@ describe("a parcel's price question", () => {
   });
 
   it("says nothing when the shop is slower than the price check allows", async () => {
-    // The gateway waits five seconds for a price. A shop that answers after
-    // that answers nobody, and the worker has other questions waiting. Saying
-    // "not available" for it would tell the agent the goods are gone and send
-    // it elsewhere; saying nothing tells it the price check went unanswered,
-    // which is the truth and worth trying again later. A WooCommerce card is
-    // asynchronous or a parcel, where silence refuses the sale rather than
-    // selling at the listed price.
+    // After five seconds the gateway reads the shop as silent. Saying "not
+    // available" would send the agent elsewhere; saying nothing tells it the
+    // price check went unanswered, which is true. On a WooCommerce card silence
+    // refuses the sale rather than selling at the listed price.
     const started = Date.now();
 
     const answer = await answering(
@@ -1214,7 +1181,6 @@ describe("a parcel's paid order", () => {
     rates: [rate("Express", "12.00", "4"), rate("Standard", "5.00", "3")],
   };
 
-  /** A shop that takes every parcel's order, remembering what it was sent. */
   const aParcelShop = () => {
     const placed: ParcelSold[] = [];
     return {
@@ -1258,7 +1224,7 @@ describe("a parcel's paid order", () => {
     );
 
     expect(answer).toStrictEqual({ accepted: {} });
-    // The shop is asked for rates to the place, not the person.
+    // Rates to the place, not the person.
     expect(asked).toStrictEqual({
       country: "ID",
       state: "BA",
@@ -1280,17 +1246,16 @@ describe("a parcel's paid order", () => {
       id: "30",
       number: "30",
     });
-    // The ledger keeps the sale as a parcel's, which recovery will not try to
-    // make again, with the shop's order and nothing of where it goes.
+    // Kept as a parcel's sale, which recovery will not try again, with the
+    // shop's order and nothing of where it goes.
     const kept = await shops.recoveryOrder("ord_1");
     expect(kept?.facts.kind).toBe("parcel");
     for (const word of ADDRESS_WORDS) expect(JSON.stringify(kept)).not.toContain(word);
   });
 
   it("chooses the rate the price was paid at, not the cheapest of today", async () => {
-    // The agent was quoted the cheapest rate, and a cheaper one the shop added
-    // since must not make the paid price look wrong: the rate costing what was
-    // paid above the goods is the rate that was sold.
+    // A cheaper rate added since the quote must not make the paid price look
+    // wrong: the rate costing what was paid above the goods is the one sold.
     const shop = aParcelShop();
 
     const answer = await fillFromTheShop(
@@ -1363,8 +1328,8 @@ describe("a parcel's paid order", () => {
   });
 
   it("answers nothing and writes nothing while the shop does not answer", async () => {
-    // A parcel has days to ship, so a shop that is down for a minute is asked
-    // again on the next hand-over rather than refused for good.
+    // A parcel has days to ship, so a shop down for a minute is asked again
+    // rather than refused.
     for (const silent of [
       {
         inspectProduct: async (): Promise<ProductInspection> => ({
@@ -1474,7 +1439,6 @@ describe("following a parcel to the carrier", () => {
     shipment: { carrier: "Bali courier", tracking_number: null },
   };
 
-  /** A ledger holding one parcel the shop has, on a connected shop. */
   const withAParcel = async (soldFrom = "https://shop.example.com"): Promise<WooShops> => {
     const shops = memoryWooShops();
     await shops.connect(connection());
@@ -1498,7 +1462,6 @@ describe("following a parcel to the carrier", () => {
     return shops;
   };
 
-  /** The gateway's deliver call, answering what it is told to and remembering what it was sent. */
   const aGateway = (answer: () => unknown = () => ({ ok: true, document: { ok: true } })) => {
     const delivered: { orderId: string; shipment: unknown }[] = [];
     return {
@@ -1565,8 +1528,8 @@ describe("following a parcel to the carrier", () => {
   });
 
   it("lets go of an order the shop ended, and does not say it shipped", async () => {
-    // A cancelled order never shipped. Nothing is told to the gateway, and the
-    // order becomes a refund owed when its time to ship runs out.
+    // A cancelled order never shipped: nothing goes to the gateway, and it
+    // becomes a refund owed when its time to ship runs out.
     const shops = await withAParcel();
     const gateway = aGateway();
 
@@ -1585,7 +1548,8 @@ describe("following a parcel to the carrier", () => {
     );
     expect(await silent.parcelsToFollow("acc_1")).toHaveLength(1);
 
-    // Settling the payment is a moment the gateway asks to be called again after.
+    // Settling the payment is a moment the gateway asks to be called again
+    // after.
     const settling = await withAParcel();
     await following(
       settling,
@@ -1608,8 +1572,8 @@ describe("following a parcel to the carrier", () => {
   });
 
   it("does not read a parcel sold from a shop the account no longer connects", async () => {
-    // The order's number belongs to the shop it was placed in. Read in the
-    // shop connected now, it would be somebody else's order.
+    // The order number belongs to the shop it was placed in; read in the shop
+    // connected now, it would be somebody else's order.
     const shops = await withAParcel("https://old-shop.example.com");
     const gateway = aGateway();
     let read = 0;
@@ -1624,9 +1588,8 @@ describe("following a parcel to the carrier", () => {
   });
 
   it("still reads a parcel past its seven days, whose late shipment closes the refund owed", async () => {
-    // A shipment recorded after the time to ship still reaches the agent and
-    // closes the debt until a refund is recorded (ADR-0028), so the shop is
-    // read for it well past the seven days.
+    // A late shipment still reaches the agent and closes the debt until a
+    // refund is recorded, so the shop is read well past the seven days.
     const shops = await withAParcel();
     const gateway = aGateway();
 
@@ -1636,9 +1599,8 @@ describe("following a parcel to the carrier", () => {
   });
 
   it("lets go of a parcel not completed within thirty days of being placed", async () => {
-    // Thirty days is the longest any card may give to ship (ADR-0033), and
-    // this connector's seven are long past by then: the order is a refund
-    // owed, and the shop is not read for it again.
+    // Thirty days is the longest any card may give to ship; after that the
+    // order is a refund owed and the shop is not read again.
     const shops = await withAParcel();
     const gateway = aGateway();
     let read = 0;
@@ -1798,8 +1760,8 @@ describe("a parcel the whole way through, against a real gateway", () => {
       { priced: { params: {}, ship_to: ADDRESS }, paid: { params: {}, ship_to: ADDRESS } },
     );
 
-    // The agent paid the goods and the shop's rate together, the shop holds a
-    // paid order shipping there, and Agentify holds the address no longer.
+    // The agent paid goods and rate together, the shop holds a paid order
+    // shipping there, and Agentify no longer holds the address.
     expect(bought.status).toBe(200);
     const orderId = (bought.body as AgentOrderStatus).order_id;
     const paidFor = await gateway.getOrder(orderId);
@@ -1839,11 +1801,8 @@ describe("a parcel the whole way through, against a real gateway", () => {
 
 describe("the worker that keeps every connected shop served", () => {
   /**
-   * A gateway that answers a poll with nothing and counts who asked.
-   *
-   * The subject here is the loop rather than what one turn does with an order,
-   * so the stream is empty on purpose: what is being checked is that somebody
-   * is still drawing it.
+   * The stream is empty on purpose: what is checked is that somebody keeps
+   * drawing it.
    */
   const countingGateway = () => {
     let polls = 0;
@@ -1874,10 +1833,8 @@ describe("the worker that keeps every connected shop served", () => {
   };
 
   it("keeps serving a shop that was disconnected and connected again", async () => {
-    // The loop for one account is started once and kept in a map keyed by the
-    // account. A loop that ended by itself while its entry stayed would leave
-    // that merchant's orders drawn by nobody until the dashboard was restarted —
-    // and a merchant who disconnects and reconnects is an ordinary afternoon.
+    // A loop that ended by itself while its entry stayed would leave a merchant
+    // who disconnected and reconnected served by nobody until restart.
     const shops = memoryWooShops();
     const gateway = countingGateway();
     const worker = startWooWorker({
@@ -1938,8 +1895,8 @@ describe("the worker that keeps every connected shop served", () => {
   });
 
   it("stops at once when it is stopped while parcels are being read", async () => {
-    // A dashboard being shut down waits for this, and the next pass is
-    // minutes away: a stop that waited for it would be killed instead.
+    // Shutdown waits for this and the next pass is minutes away; a stop that
+    // waited for it would be killed instead.
     const shops = memoryWooShops();
     await shops.connect(connection());
     await shops.claimOrder(
@@ -2009,11 +1966,8 @@ describe("a shop whose Number of decimals changed after the quote", () => {
   });
 
   /**
-   * A WooCommerce on loopback answering the protected product check and the
-   * order call, with its Number of decimals as the test leaves it and every
-   * call it was asked remembered. Its order answer writes every total at that
-   * number of decimals, whatever string it was sent, which is what `wc/v3`
-   * does. The product's price is stored as a whole-dollar merchant typed it.
+   * Order answers write every total at the shop's number of decimals, as
+   * `wc/v3` does; the price is stored as a whole-dollar merchant typed it.
    */
   const aShopWritingDecimals = async (
     decimals: () => string,
@@ -2101,8 +2055,8 @@ describe("a shop whose Number of decimals changed after the quote", () => {
   };
 
   /**
-   * Filling against that shop with the real product check and the real order
-   * call; the quote's fingerprint is the one the check gave when it was taken.
+   * The real product check and order call; the quote's fingerprint is the one
+   * the check gave when the quote was taken.
    */
   const fillingAgainst = (shops: WooShops, quotedFingerprint: string | null) => ({
     shops,
@@ -2114,11 +2068,9 @@ describe("a shop whose Number of decimals changed after the quote", () => {
   });
 
   it("refuses the sale before any order is posted to the shop", async () => {
-    // A merchant who sold in whole dollars switched to two decimals to import,
-    // an agent was quoted, and the merchant switched back. Posted, the order
-    // would exist in the shop, paid, and WooCommerce's answer of "25" could
-    // never be matched with "25.00": the sale would end as an order nobody
-    // here can say was made. Refused before the post, it is a refund.
+    // The merchant switched decimals after a quote: posted, the order would
+    // exist in the shop, paid, with totals that can never be matched. Refused
+    // before the post, it is a refund.
     for (const changedTo of ["0", "3"]) {
       let decimals = "2";
       const shop = await aShopWritingDecimals(() => decimals);

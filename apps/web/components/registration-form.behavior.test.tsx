@@ -96,9 +96,7 @@ describe("asking the scanner for a verification link", () => {
   });
 
   it("files a signed-in person's own ask under their address, sends none, and says so first", async () => {
-    // The page names the address the report is filed under before the press,
-    // and the ask carries the person's own choices and no address: the
-    // session decides whose it is (ADR-0026 §1, §2).
+    // The ask carries no address: the session decides whose it is.
     const fetched = answerWith(
       200,
       { status: "report_ready", report_url: `/report/${scanId}`, email: "owner@example.com" },
@@ -130,9 +128,8 @@ describe("asking the scanner for a verification link", () => {
   });
 
   it("says it cannot tell who is visiting when the dashboard does not answer, and offers no ask", async () => {
-    // Not knowing who somebody is must not look like knowing they are nobody:
-    // a stranger's form here would send a link to whatever address is typed
-    // over a session the page could not see (ADR-0026 §2).
+    // A stranger's form here would send a link to whatever address is typed,
+    // over a session the page could not see.
     answerWith(202, { status: "verification_sent" }, { status: 503, body: { status: "unknown" } });
     sessionStorage.setItem(`agentify:scan-token:${scanId}`, "scan-token");
     render(<RegistrationForm scanId={scanId} />);

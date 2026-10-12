@@ -2,47 +2,23 @@
  * The sandbox buyer: an agent that finds a card, buys it, and reads back what
  * it got.
  *
- * The payment side is the official x402 client, driven exactly as the pilot's
- * own spike drove it: a viem account signs, `x402Client` with the exact-EVM
- * scheme turns a challenge into a signed authorisation, and
- * `wrapFetchWithPayment` makes the two-step exchange — the first request comes
- * back a 402 carrying the challenge, the second carries the signature the
- * client produced from it. None of the protocol is written here; what is
- * written here is which product to buy and what to check about the answer.
+ * The payment side is the official x402 client: a viem account signs,
+ * `x402Client` with the exact-EVM scheme turns a challenge into a signed
+ * authorisation, and `wrapFetchWithPayment` makes the two-step exchange. None
+ * of the protocol is written here. The challenge names the merchant's own
+ * address and the buyer signs a transfer to it; the buyer's spend control is a
+ * hard ceiling on any single payment, so a challenge for more is refused before
+ * anything is signed.
  *
- * The money is non-custodial by construction: the challenge names the
- * merchant's own address as where the payment goes, and the buyer signs a
- * transfer to it. On the scripted facilitator nothing moves; on the testnet it
- * is a real Base Sepolia USDC transfer from the buyer's wallet to the
- * merchant's. The buyer's own spend control is a hard ceiling on any single
- * payment, so a challenge for more than the buyer meant to spend is refused
- * before anything is signed.
- *
- * One thing here looks like carelessness and is the point of the file. The
- * addresses are written out as strings and the answers are read field by field,
- * where importing the route table and the schemas from `@nuanu-ai/agentify-contracts`
- * would be shorter and safer. This is a stranger's agent: it has the portal and
- * no package of ours, so code that leaned on our types would prove only that
- * our types agree with themselves. Written this way, a green run says the wire
- * is readable by somebody who was never given anything but the documentation.
- * The catalog page is the exception and is read against the real schema, so
- * that what an agent is handed to choose from is held to its published shape.
- *
- * The address an order is collected at is not written here at all, and that is
- * the same argument taken one step further. A stranger's agent holds the
- * answer to its purchase and cannot spell the status route from an order
- * identifier, so this buyer does not either: it asks where that answer's
- * `status_url` says. A run that collects goods is then a run in which the
- * gateway told an agent where to find them, rather than one in which our own
- * buyer knew the way.
- *
- * The risk that buys is silent drift: an address renamed in the contract leaves
- * these strings pointing at nothing, and a 404 inside a poll reads as an order
- * that never arrived. `buyer.test.ts` is what stops that — it drives this buyer
- * against a server that records the request line, and holds every address that
- * went out against the contract's own table, or, for the status, against the
- * address the purchase answer named. The staple is in the test, where
- * importing the contracts costs nothing, and not here.
+ * The addresses are written out as strings and the answers read field by field
+ * on purpose, where importing the contracts would be shorter. This is a
+ * stranger's agent, holding the portal and no package of ours, so a green run
+ * says the wire is readable from the documentation alone. The catalog page is
+ * the exception and is read against the real schema. The status address is not
+ * written at all: like a stranger's agent, this buyer asks where its purchase
+ * answer's `status_url` says. `buyer.test.ts` holds every address that goes out
+ * against the contract's route table, so a renamed route cannot leave these
+ * strings pointing at nothing unnoticed.
  */
 
 import { CatalogPageSchema, cardsOf, type PublicCard } from "@nuanu-ai/agentify-contracts";
@@ -137,15 +113,14 @@ export interface Buyer {
    * What became of an order, asked at the address its purchase answer named
    * ({@link Bought.statusUrl}) and with nothing else. It is how an agent that
    * bought a product whose goods come later collects them, and knowing the
-   * address — the order's identifier is in it — is the whole of the proof
-   * (ADR-0011): this buyer holds no key and sends none.
+   * address, which carries the order's identifier, is the whole of the proof:
+   * this buyer holds no key and sends none.
    *
-   * Anything that arrives is data, and that is the whole of the split. An
-   * identifier the gateway does not know comes back as the refusal it is; a
-   * proxy's error page comes back as its text. Only a call that never landed
-   * throws, because for a caller holding a paid order "the door said something
-   * I could not read" and "the door is gone" are different situations and want
-   * different next moves.
+   * Anything that arrives is data. An identifier the gateway does not know
+   * comes back as the refusal it is; a proxy's error page comes back as its
+   * text. Only a call that never landed throws, because for a caller holding a
+   * paid order "the door said something I could not read" and "the door is
+   * gone" want different next moves.
    */
   status(statusUrl: string): Promise<OrderStatus>;
 }

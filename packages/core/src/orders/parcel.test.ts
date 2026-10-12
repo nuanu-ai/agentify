@@ -1,13 +1,12 @@
 /**
- * A parcel's address, as the order machine keeps track of it (ADR-0032).
+ * A parcel's address, as the order machine keeps track of it.
  *
  * A buyer's address is held only while the merchant still needs it from us:
  * from the priced request until the merchant takes the order on, records its
  * shipment, or the order closes or becomes a refund owed without having been
  * taken on. The machine says the moment that happens, once, so the gateway
- * erases its copy; and an order whose copy is gone is never handed to a
- * handler again, because the handler would be handed a parcel with nowhere to
- * send it.
+ * erases its copy; and an order whose copy is gone is never handed to a handler
+ * again, because the handler would get a parcel with nowhere to send it.
  */
 
 import { describe, expect, it } from "vitest";
@@ -21,8 +20,8 @@ import { outcomeFor } from "./outcome.js";
 const PARCEL: OrderMode = { needsConfirmation: false, settle: "on_purchase", parcel: true };
 
 /**
- * A parcel as ADR-0033 sells one: its price, shipping included, is the
- * merchant's own handler's answer, so the order is born waiting for it.
+ * A parcel's price, shipping included, is the merchant's own handler's answer,
+ * so the order is born waiting for it.
  */
 const parcel = (): Order => newOrder("async", { mode: PARCEL, priceCheck: "merchant" });
 
@@ -47,9 +46,9 @@ const erasures = (effects: readonly Effect[]): number =>
 
 describe("what the agent is told about a parcel", () => {
   it("is that it shipped once its shipment is recorded, and not that it was delivered", () => {
-    // The parcel is with the carrier and the money with the merchant; nothing
-    // reached the agent, so the word for goods in hand would be a claim
-    // beyond what anybody here knows (ADR-0033).
+    // The parcel is with the carrier and the money with the merchant. Nothing
+    // reached the agent, so the word for goods in hand would claim more than
+    // anybody here knows.
     const shipped = must(takenOn(), { kind: "deliver_called", at: T0 + 60 }).order;
 
     expect(shipped.state).toBe("delivered");
@@ -172,8 +171,8 @@ describe("a parcel's address", () => {
 
 describe("a card sold as a parcel", () => {
   it("makes a parcel order, whose money moves as the asynchronous mode's does", () => {
-    // The mode a card names is what the order records at purchase (ADR-0033),
-    // so a republished card changes no order in flight.
+    // The mode a card names is recorded on the order at purchase, so a
+    // republished card changes no order in flight.
     expect(modeOf("ship")).toStrictEqual(PARCEL);
   });
 });
@@ -229,11 +228,11 @@ describe("a parcel whose address is gone", () => {
 /**
  * Every order a parcel can reach, and every event at each of them.
  *
- * The cases above name the moments ADR-0032 names; this asks the questions a
- * list of cases cannot, because it does not know which states exist. The
- * order is kept by what the machine decides on and not by its clock, so the
- * search ends, and each event arrives a step later than the last or, for an
- * expiry, long enough after it that whatever clock is running is due.
+ * The cases above name the moments by hand; this search asks what a list of
+ * cases cannot, because it does not know which states exist. The order is keyed
+ * by what the machine decides on and not by its clock, so the search ends, and
+ * each event arrives a step later than the last or, for an expiry, long enough
+ * after it that whatever clock is running is due.
  */
 describe("every parcel the machine can reach", () => {
   const ORDINARY = modeOf("async");
@@ -336,9 +335,9 @@ describe("every parcel the machine can reach", () => {
   };
 
   it("decides everything else exactly as it decides an ordinary asynchronous order", () => {
-    // ADR-0033: a parcel adds no state. Apart from the erasure and the
-    // hand-over of an order whose address is gone, the switch changes nothing
-    // the machine does, money and refusals included.
+    // A parcel adds no state. Apart from the erasure and the hand-over of an
+    // order whose address is gone, the switch changes nothing the machine does,
+    // money and refusals included.
     for (const move of moves) {
       if (move.event.kind === "order_dispatched" && !holdsShipTo(move.before)) {
         expect(move.after, where(move)).toBeNull();
@@ -365,13 +364,13 @@ describe("every parcel the machine can reach", () => {
 
 /**
  * What the compiler refuses, written as code because the compiler is the only
- * thing that can assert it. None of this runs: `tsc` fails the build the day
- * a line under a `@ts-expect-error` starts compiling.
+ * thing that can assert it. None of this runs: `tsc` fails the build the day a
+ * line under a `@ts-expect-error` starts compiling.
  *
- * A parcel's money moves as the asynchronous mode's does (ADR-0033), and the
- * type allows it nowhere else. A synchronous order keeps finished goods for a
- * repeat of the purchase, and that repeat would bring an erased address back
- * to a parcel that had let it go. Each of the two switches is held on its own.
+ * A parcel's money moves as the asynchronous mode's does, and the type allows
+ * it nowhere else. A synchronous order keeps finished goods for a repeat of the
+ * purchase, and that repeat would bring an erased address back to a parcel that
+ * had let it go. Each of the two switches is held on its own.
  */
 const compilerHoldsTheseTrue = (): void => {
   const settledAfterTheGoods = {

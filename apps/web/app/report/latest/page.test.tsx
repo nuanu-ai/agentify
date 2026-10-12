@@ -1,15 +1,11 @@
 /**
- * Where a signed-in person who owns no merchant starts (ADR-0026 §1).
+ * The dashboard sends a signed-in person who owns no merchant here when their
+ * link had no destination of its own. One who owns no report must go back to
+ * the dashboard's start, which offers the control that makes a merchant;
+ * anywhere else would leave a person who has just signed in with nowhere to go.
  *
- * The dashboard sends such a person here when their link had no destination of
- * its own, because the scanner is what knows whether they own a report. One
- * who owns none has to be sent back to the dashboard's start, which offers the
- * one control that makes a merchant; a page that sent them anywhere else, or
- * drew itself, would leave a person who has just signed in with nowhere to go.
- *
- * Who is visiting and which report is theirs are the dashboard's and the
- * database's answers, so they are given here; the redirect is Next's own,
- * read back off the error it throws the way Next reads it.
+ * The visitor and their reports are stubbed; the redirect is read back off the
+ * error Next throws, the way Next reads it.
  */
 
 import { getURLFromRedirectError } from "next/dist/client/components/redirect";

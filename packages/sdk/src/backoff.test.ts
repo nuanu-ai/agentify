@@ -19,9 +19,8 @@ describe("the delay between attempts at a gateway that is not answering", () => 
   });
 
   it("never gives up: no delay exceeds the ceiling, however long the outage runs", () => {
-    // The promise: a worker that waited out a two-hour outage comes back on
-    // its own, within a bounded time of the gateway returning, rather than
-    // having backed off to an hour between attempts.
+    // The promise: a worker that waited out a long outage comes back on its
+    // own within a bounded time of the gateway returning.
     for (const attempt of attempts) {
       for (const random of [0, 0.5, 0.999999]) {
         expect(retryDelayMs(attempt, random)).toBeLessThanOrEqual(RETRY_CEILING_MS);
@@ -30,8 +29,8 @@ describe("the delay between attempts at a gateway that is not answering", () => 
   });
 
   it("grows by the named factor until it reaches the ceiling", () => {
-    // Without growth the backoff is a fixed sleep and a queue of workers
-    // retrying in lockstep keeps a struggling gateway down.
+    // Without growth, workers retrying in lockstep keep a struggling gateway
+    // down.
     const withoutJitter = (attempt: number): number => retryDelayMs(attempt, 1);
 
     expect(withoutJitter(1)).toBe(FIRST_RETRY_MS);
@@ -41,9 +40,8 @@ describe("the delay between attempts at a gateway that is not answering", () => 
   });
 
   it("spreads two workers that failed at the same moment", () => {
-    // The promise this one keeps is about the second worker: without jitter,
-    // every worker that lost the same gateway retries in the same
-    // millisecond forever, and the gateway is hit by the whole fleet at once.
+    // Without jitter, every worker that lost the same gateway retries in the
+    // same millisecond for ever.
     const earliest = retryDelayMs(5, 0);
     const latest = retryDelayMs(5, 1);
 
@@ -52,10 +50,8 @@ describe("the delay between attempts at a gateway that is not answering", () => 
   });
 
   it("refuses an attempt number and a random draw that are not what it takes", () => {
-    // A caller that passed a zeroth attempt or a random draw out of range
-    // would get a delay that is not in the range this file promises, and
-    // nothing downstream could tell. That is a bug in the caller, so it is
-    // thrown rather than returned.
+    // A zeroth attempt or a draw out of range is a caller's bug and would give
+    // a delay outside the promised range, so it throws.
     expect(() => retryDelayMs(0, 0.5)).toThrow(/attempt/);
     expect(() => retryDelayMs(1.5, 0.5)).toThrow(/attempt/);
     expect(() => retryDelayMs(1, -0.1)).toThrow(/random/);

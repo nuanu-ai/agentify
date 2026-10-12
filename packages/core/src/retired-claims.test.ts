@@ -1,24 +1,10 @@
 /**
- * Sentences this repository has retired, and which must not come back.
- *
- * Why this is a test and not a note. One wrong clause in ADR-0004 — that
- * delivery is at-least-once with redelivery by the queue's visibility timeout —
- * propagated into the contract, the gateway, both queue adapters, the SDK, four
- * portal pages and the name of a test. It was corrected three times over two
- * days, and every round left survivors: twice in files the correcting commit
- * had open. What it cost while it stood was not tidiness — the portal told a
- * merchant to guard against receiving an event twice, which cannot happen, and
- * said nothing about the one that can be lost, which is a refund notice for a
- * buyer who paid.
- *
- * The charter's rule is that a rule moves into a machine after it has slipped
- * past people. This one slipped three times, so here it is.
- *
- * What this is not: a style checker. A phrase earns a line here only after it
- * has been believed, written down, and found to be false — and the line records
- * what the truth is, so that whoever trips it learns something rather than
- * searching for a synonym. The decision records are held to it too: a
- * corrected decision is edited in place, and git keeps what it used to say.
+ * Sentences this repository has retired, which must not come back. A phrase
+ * earns a line here only after it was believed, written down and found to be
+ * false, and the line records what is true instead, so whoever trips it learns
+ * something rather than searching for a synonym. This is not a style checker.
+ * The decision records are searched too, because a corrected decision is edited
+ * in place.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -29,12 +15,8 @@ import { describe, expect, it } from "vitest";
 const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 
 /**
- * What we search: source, the merchant's pages, the research notes and the
- * decisions.
- *
- * Walked with the standard library rather than a glob package, because a
- * dependency added for one search is a dependency somebody has to justify at
- * every release afterwards.
+ * Walked with the standard library rather than a glob package: a dependency
+ * added for one search has to be justified at every release afterwards.
  */
 const LOOK_IN = ["apps", "packages", "docs/research", "docs/decisions"];
 const READABLE = /\.(ts|md)$/;

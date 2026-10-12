@@ -1,13 +1,7 @@
 /**
- * What every flow is given, and the translations from a card to the machine's
- * vocabulary.
- *
- * The policy is built here rather than anywhere further in, because it is the
- * one place where our numbers and the merchant's meet. Ours come from the
- * configuration; his two come off the card, and where he named neither the
- * configuration says what he is held to instead. A default invented at the
- * point of use would be a deadline nobody agreed to, applied to somebody's
- * money.
+ * What every flow is given, and the translations from a card to the order
+ * machine's vocabulary. A deadline the card leaves out comes from the
+ * configuration here, never from a default invented at the point of use.
  */
 
 import type { MerchantSelling, OrderMode, OrderPolicy } from "@agentify/core";
@@ -35,7 +29,7 @@ export interface Runtime {
   readonly ids: Ids;
   /**
    * How a merchant is told of a change to their payout wallet or their keys.
-   * Asked on the live deployment and nowhere else (ADR-0019).
+   * Asked on the live deployment only.
    */
   readonly announcer: Announcer;
 }
@@ -53,8 +47,8 @@ export function policyFor(card: Card, config: GatewayConfig): OrderPolicy {
         card.confirm_deadline_seconds === undefined
           ? deadlines.defaultConfirmationResponseMs
           : card.confirm_deadline_seconds * 1_000,
-      // A parcel's is the time to hand it to a carrier, which its card always
-      // names (ADR-0033); the clock runs from the charge either way.
+      // A parcel's deadline is the time to hand it to a carrier, which its
+      // card always names; the clock runs from the charge either way.
       asyncFulfillmentMs:
         card.ship_within_seconds !== undefined
           ? card.ship_within_seconds * 1_000
@@ -67,13 +61,11 @@ export function policyFor(card: Card, config: GatewayConfig): OrderPolicy {
 }
 
 /**
- * The card with the times its orders are held to written in where the
- * merchant named none, which is how an agent reads it in the catalog.
- *
- * The gateway's own time applies to such a card's orders (`policyFor`), and a
- * card that stayed silent about it would offer an agent a promise with no
- * clock it can see. Rounded up to the second, so an agent that waits as long
- * as the card says never gives up on an order still allowed to arrive.
+ * The card as an agent reads it in the catalog: where the merchant named no
+ * deadline, the gateway's default that `policyFor` applies is written in, so
+ * the agent sees the clock its order runs on. Rounded up to the second, so an
+ * agent that waits as long as the card says never gives up on an order still
+ * allowed to arrive.
  */
 export function cardAsHeld(card: Card, config: GatewayConfig): Card {
   const { deadlines } = policyFor(card, config);
@@ -103,35 +95,16 @@ export function priceCheckOf(card: Card): "none" | "merchant" {
 }
 
 /**
- * The one word the order machine is given about whether this card may be sold.
+ * Folds a paused card, a paused catalog and a merchant who cannot sell (no
+ * payout address, no seller name) into the one word the order machine's guard
+ * reads. A merchant who cannot sell must be refused here, before an order is
+ * opened, or the order would be one nobody can pay; the operator's own address
+ * never stands in for a missing one. A departed merchant stays departed
+ * whatever the card says.
  *
- * There are two switches a merchant can press — one card off sale, or the whole
- * catalog — and a third thing that stops a sale without anybody pressing
- * anything: a merchant who cannot make one, because there is nowhere for the
- * money to go or nobody for the request to name as the seller. There is exactly
- * one guard in the machine. This is where the three become the one, and it is a
- * translation rather than a second notion of pausing: what comes out is the
- * machine's own vocabulary, and a card that comes out `paused` refuses new
- * orders through the guard that already exists, with the rejection and the
- * message that already exist.
- *
- * The merchant's own standing belongs here rather than at the purchase, and the
- * difference is a row in a database. A challenge for such a card is either
- * unwritable or untrue — there is no address to put in it and the operator's
- * own will not stand in (ADR-0019), or there is no seller to name and the field
- * is simply left out — so a purchase that checked at the till would have opened
- * the order first and failed afterwards, leaving one nobody can pay and nothing
- * will ever collect. Folded in here, the card is not offered, not listed, and
- * refused with the word an agent's client already knows.
- *
- * A departed merchant stays departed whatever a card says. Leaving is not a
- * pause a card can be excused from, and reading a card as merely paused would
- * be the difference between "no new orders" and "the open ones closed and the
- * money for the undelivered is yours to return".
- *
- * A card that the integration its merchant is not selling through published
- * is off sale the same way (ADR-0036): nothing of that integration draws the
- * merchant's stream, so an order of it would be paid for and filled by nobody.
+ * A card published through an integration the merchant is not selling through
+ * reads as paused too: nothing of that integration draws the merchant's
+ * orders, so an order for it would be paid for and filled by nobody.
  */
 export function sellingFor(
   merchant: MerchantSelling,
@@ -145,18 +118,10 @@ export function sellingFor(
 }
 
 /**
- * A merchant's wallet as it stands at one instant: the address a payment
- * request written then names, and the change still waiting beside it.
- *
- * The row is not enough on its own, and this is the whole reason the function
- * exists. A replacement on the live deployment waits forty-eight hours after it
- * is announced (ADR-0019), and nothing writes the row at the moment the wait
- * ends — no job is armed for it, because a job can be late or lost, and a sale
- * paid to the old address after the merchant was told it would move is a
- * promise broken with nothing on the row to say so. So the instant decides
- * instead: a waiting change whose moment has come is the address, and the row
- * catches up the next time it is written. Every reader of where a sale goes asks
- * this with the gateway's own clock, and nothing reads `address` off the row.
+ * The merchant's wallet as it stands at `at`. Nothing rewrites the row when a
+ * pending change's wait ends, so a pending change whose moment has come is
+ * already the address: whatever decides where a sale's money goes must ask
+ * this with the gateway's clock and never read `address` off the row.
  */
 export function payoutWalletAt(wallet: StoredPayoutWallet, at: number): StoredPayoutWallet {
   return wallet.pending !== null && wallet.pending.takesEffectAt <= at
@@ -164,24 +129,13 @@ export function payoutWalletAt(wallet: StoredPayoutWallet, at: number): StoredPa
     : wallet;
 }
 
-/** The part of a merchant's row the rule reads. */
 type MerchantStanding = Pick<StoredMerchant, "payoutWallet" | "serviceName" | "liveApprovedAt">;
 
 /**
- * What this merchant lacks on this deployment, read off their row.
- *
- * The rule is not here. It is `readinessOf` in the core, the one the dashboard
- * asks as well, so the publish door, every later sale and the merchant's own
- * screens cannot come to disagree about what a merchant must have. What is
- * here is the gateway's reading of the row, and the gateway reads every fact,
- * so nothing it asks is ever unknown.
- *
- * Why each fact is asked lives with the rule. Why each is asked here as well as
- * at the publish door is that a merchant's row changes after their cards are
- * published — a name taken away with `merchant listed-as <id> --none`, a card
- * published before live approval was asked for — and a sale whose challenge
- * named nobody, or named no address, would be an invitation to pay that nobody
- * can honour.
+ * What this merchant lacks on this deployment. The rule is `readinessOf` in the
+ * core, shared with the dashboard. It is asked at every sale as well as at
+ * publishing because a merchant's row can change after their cards are
+ * published.
  */
 export function missingFrom(
   merchant: MerchantStanding,
@@ -190,9 +144,8 @@ export function missingFrom(
   return readinessOf(
     {
       sellerName: merchant.serviceName,
-      // Whether there is an address does not turn on the instant — a waiting
-      // change replaces an address and never gives one where there was none —
-      // so this asks the row rather than the clock.
+      // A pending change never gives an address where there was none, so
+      // whether there is one is read off the row, not at an instant.
       payoutWallet: merchant.payoutWallet.address,
       liveApproval: merchant.liveApprovedAt !== null,
     },
@@ -200,13 +153,6 @@ export function missingFrom(
   ).missing;
 }
 
-/**
- * Whether this merchant could make a sale at all: the one fact the fold needs.
- *
- * From the order's side there is nothing to tell apart. Every prerequisite
- * belongs to the merchant rather than the card, and any one missing means this
- * sale cannot be made; the publish door is where they are named one by one.
- */
 export function sellableBy(merchant: MerchantStanding, config: GatewayConfig): boolean {
   return missingFrom(merchant, config).length === 0;
 }

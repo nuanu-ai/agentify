@@ -1,27 +1,23 @@
 /**
- * The staple that holds the stranger's agent to our own contract.
+ * The staple that holds a stranger's agent to our own contract.
  *
- * `buyer.ts` writes its addresses out as strings and reads the answers field by
- * field, on purpose: it stands in for an agent that has the portal and no
- * package of ours, and one that imported our route table would prove only that
- * our types agree with themselves. What that costs is drift. Rename an address
- * in `API_ROUTES` and nothing tells the buyer; the calls go on being made at a
- * path that no longer exists, and a 404 inside a poll for goods reads as an
- * order that never arrived rather than as a bug.
+ * `buyer.ts` writes its addresses out as strings and reads answers field by
+ * field on purpose: it stands in for an agent that has the portal and no
+ * package of ours. The cost is drift. Rename an address in `API_ROUTES` and
+ * nothing tells the buyer, and a 404 inside a poll for goods reads as an order
+ * that never arrived rather than as a bug.
  *
- * So the contract is imported here, in the test, where importing it costs
- * nothing — and the buyer is driven against a real server on the loopback
- * interface that records the request line rather than answering it properly.
- * What is compared is what went on the wire against what the table says, so
- * this catches a rename whichever side made it. The status address is the one
- * the buyer does not write, and what it is compared against instead is the
- * address the purchase answer named.
+ * So the contract is imported here, in the test, and the buyer is driven
+ * against a loopback server that records the request line; what went on the
+ * wire is compared with the table, which catches a rename on either side. The
+ * status address, which the buyer does not write, is compared with the address
+ * the purchase answer named.
  *
- * It holds the addresses, and the one distinction this buyer draws that no
- * gateway can be made to demonstrate: an answer that arrived and made no sense
- * against a call that never landed. What the answers have to look like when the
- * gateway is behaving is held by the schemas in `@nuanu-ai/agentify-contracts` and by
- * the offline gate in `slice.test.ts`, which buys through a real one.
+ * This file also holds the one distinction no gateway can be made to
+ * demonstrate: an answer that arrived and made no sense, against a call that
+ * never landed. What well-behaved answers look like is held by the schemas in
+ * `@nuanu-ai/agentify-contracts` and by `slice.test.ts`, which buys through a
+ * real gateway.
  */
 
 import { createServer, type Server } from "node:http";
@@ -271,13 +267,12 @@ describe("the addresses this buyer writes by hand", () => {
 
 describe("an answer that arrived against a call that never landed", () => {
   it("hands back an answer it cannot read, with the text of it, rather than throwing", async () => {
-    // The case that cost a wait its ending. Something between an agent and the
-    // gateway answers its own error page in HTML; parsed as a document that
-    // raises, it takes down the poll that a paid order was being watched
-    // through, and the address the buyer owed somebody is never printed. The
-    // money has already moved by then, so the answer nobody can read must come
-    // back as one — an answer this buyer could not read is a different thing
-    // from an answer that says the purchase is over.
+    // Something between an agent and the gateway can answer with its own error
+    // page in HTML. Parsed as a document that throws, it takes down the poll a
+    // paid order is being watched through, and the address the buyer owed
+    // somebody is never printed. The money has already moved, so an answer
+    // nobody can read must come back as one, distinct from an answer saying the
+    // purchase is over.
     const seen = await buyer.status(statusAt(baseUrl, ORDER_BEHIND_A_BAD_PROXY));
 
     expect(seen.status).toBe(502);
@@ -308,11 +303,11 @@ describe("an answer that arrived against a call that never landed", () => {
 
 describe("what this buyer never sends", () => {
   it("carries no merchant key on any call it makes", async () => {
-    // ADR-0011 in one assertion. An agent has no account, no registration and
-    // no key: the catalog and the purchase are open doors, and the order status
-    // is proved by knowing the identifier. A buyer that sent a key would be
-    // walking doors this one is not supposed to have, and the day the status
-    // route ends up behind the merchant's door nothing else here would notice.
+    // An agent has no account, no registration and no key: the catalog and the
+    // purchase are open doors, and the order status is proved by knowing the
+    // identifier. A buyer that sent a key would be walking doors this one is
+    // not supposed to have, and nothing else here would notice the status route
+    // ending up behind the merchant's door.
     await buyer.catalog();
     await buyer.buy("itm_9f2c4a", {});
     await buyer.status(statusAt(baseUrl, "ord_7c1e05"));

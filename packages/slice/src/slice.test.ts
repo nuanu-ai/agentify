@@ -1,21 +1,16 @@
 /**
- * The stage-one gate: a sandbox purchase, green from catalog to receipt.
+ * A sandbox purchase, green from catalog to receipt, walked end to end by the
+ * real parts with nothing stubbed between them. The gateway is the real gateway
+ * on its real HTTP surface, booted in this process with an in-memory store and
+ * queue and a scripted facilitator, so the suite stays free, offline and
+ * repeatable. The merchant is the real SDK answering as a merchant's own
+ * process would, and the buyer is the official x402 client signing with a
+ * throwaway key.
  *
- * Two cycles, each walked end to end by the real parts and nothing stubbed
- * between them. The gateway is the real gateway, booted in this process on the
- * real HTTP surface with its own in-memory store and queue and a scripted
- * facilitator, so the suite stays free, offline and the same every time. The
- * merchant is the real SDK — `createClient`, `on('order')`, `on('quote')` and
- * `start` — answering as a merchant's own process would. The buyer is
- * the official x402 client, signing with a throwaway key and walking the
- * offer → pay → settle exchange against the surface an agent actually calls.
- *
- * What each test asserts is the promise, not the mechanism: that an agent
- * holding only the catalog can buy a product and receive what the card said it
- * would, that the money moves the way the card's mode says it does and never
- * more than once, and that the receipt and the order status tell the truth at
- * each step. If either test goes red, a purchase that a merchant was told would
- * work does not.
+ * Each test asserts the promise, not the mechanism: an agent holding only the
+ * catalog can buy a product and receive what the card said, the money moves the
+ * way the card's mode says and never more than once, and the receipt and the
+ * order status tell the truth at each step.
  */
 
 import { ScriptedFacilitator } from "@agentify/gateway";
@@ -173,18 +168,16 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     expect(answered.delivered).toBeNull();
     expect(answered.price?.amount).toBe("8.00");
 
-    // And no settlement rides back on this answer, though the money moved. The
+    // No settlement rides back on this answer, though the money moved: the
     // payment layer signs its receipt onto the answer that follows the charge,
-    // and here the charge happened while the order was being opened rather
-    // than as the last step of the exchange. So what this agent is told about
-    // its own money is the price and the test word, and nothing else — which
-    // is what the buy command has to say rather than crediting a settlement
-    // that only the synchronous sale gets.
+    // and here the charge happened while the order was being opened. So the
+    // agent is told the price and the test word and nothing else, and the buy
+    // command must not credit a settlement that only the synchronous sale gets.
     expect(bought.settlement).toBeNull();
 
     // The merchant's own worker takes the order on. Its status to the agent is
-    // "in progress" — taken on is not delivered, and the fifth gate says an
-    // unfinished order must not read as a refused one.
+    // "in progress": taken on is not delivered, and an unfinished order must
+    // not read as a refused one.
     await waitFor(async () => {
       const stored = await booted.gateway.runtime.store.orderById(orderId);
       return (
@@ -221,36 +214,25 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     // happened here.
     expect(merchant.events).toStrictEqual([]);
 
-    // And a clean run: the merchant's worker reported nothing at all. This is
-    // the assertion the seam between the gateway and the SDK is checked at.
-    // Accepting from inside the handler posts the acceptance to the answer
-    // route like any other answer, and the worker reports to the merchant
-    // anything that route does not call a success — so a route with no word
-    // for a successful acceptance writes a problem against every asynchronous
-    // order that goes through perfectly well. An empty list is the only
-    // assertion that keeps saying so; a tolerated entry would let the next one
-    // through with it.
+    // A clean run, and this is where the seam between the gateway and the SDK
+    // is checked. Accepting from inside the handler posts to the answer route,
+    // and the worker reports anything that route does not call a success, so a
+    // route with no word for a successful acceptance would write a problem
+    // against every asynchronous order. Only an empty list keeps saying so; a
+    // tolerated entry would let the next one through with it.
     expect(merchant.problems).toStrictEqual([]);
   }, 20_000);
 
   it("hands the goods to the agent at the address its purchase answer named, and nowhere it had to guess", async () => {
-    // ADR-0011's door, walked by the kind of code it exists for. The test
-    // above collects the same sale through the merchant's own routes, which is
-    // the merchant's view of it; this one is the buyer's, and it is the only
-    // view an agent has.
+    // The buyer's view of the same sale, which is the only view an agent has.
+    // After paying, the agent holds the purchase answer and nothing else, so it
+    // comes back to the address that answer names; this buyer writes no status
+    // address of its own, and a gateway that named the wrong one would leave it
+    // holding a paid order it cannot collect.
     //
-    // What the agent holds after paying is the purchase answer and nothing
-    // else, so the address it comes back to is the one that answer names —
-    // this buyer writes no address for an order's status of its own, and a
-    // gateway that named the wrong one would leave it holding a paid order it
-    // cannot collect. That is the promise here, walked against a gateway that
-    // is really listening at the address it names.
-    //
-    // The merchant still has to deliver, and that call below is this test
-    // driving the world rather than the agent reading it — an agent cannot
-    // make a merchant issue anything. What is asserted is the other half:
-    // where the order stands and what the buyer ended up holding are read from
-    // `buyer.status` alone, with no key and no look inside the store.
+    // The merchant's deliver call below is this test driving the world, not the
+    // agent reading it. What is asserted is read from `buyer.status` alone,
+    // with no key and no look inside the store.
     const catalog = await buyer.catalog();
     const esim = catalog.find((card) => card.title === EUROPE_ESIM.title);
     if (esim === undefined) throw new Error("the eSIM is not in the catalog");
@@ -292,10 +274,10 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     expect(() => deliveryCheckFor(EUROPE_ESIM).parse(collected.delivered)).not.toThrow();
     expect(fields(collected.delivered).activation_code).toMatch(/^LPA:/);
 
-    // The answer is the buyer's own and not the merchant's: the fields an
-    // agent is owed and nothing beside them. A door that handed over more
-    // would be a way of reading somebody else's business off an identifier.
-    // Who sold it is among them, as the catalog shows it (ADR-0034).
+    // The answer is the buyer's own and not the merchant's: the fields an agent
+    // is owed and nothing beside them. A door that handed over more would be a
+    // way of reading somebody else's business off an identifier. Who sold it is
+    // among them, as the catalog shows it.
     expect(Object.keys(fields(collected.body)).sort()).toStrictEqual([
       "delivered",
       "order_id",
@@ -312,18 +294,15 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
   }, 20_000);
 
   it("answers a purchase with the document its status door answers with, and no other", async () => {
-    // One concept — where your order stands — and one shape for it, whichever
-    // door an agent came through. Two shapes for one thing is two readers to
-    // write and two chances to read the same sale two ways: an agent that
-    // bought and an agent that came back later were being handed different
-    // documents about the same order, and only one of them was published.
+    // One concept, where your order stands, and one shape for it whichever door
+    // an agent came through; two shapes would be two chances to read the same
+    // sale two ways.
     //
     // Both cards are walked, and the synchronous one is the half that bites.
-    // Its purchase answer carries the goods, so a fork that dropped the
-    // delivered-goods rule from one of the two builders would show up here as
-    // an order whose goods appear at one door and not at the other. Read on
-    // the eSIM alone the comparison is between two documents that both say
-    // null, and it would survive that fork without a word.
+    // Its purchase answer carries the goods, so a builder that dropped the
+    // delivered-goods rule would show here as goods at one door and not at the
+    // other. On the eSIM alone both documents say null and the comparison would
+    // prove nothing.
     const catalog = await buyer.catalog();
     const rented = catalog.find((card) => card.title === RENTED_NUMBER.title);
     const esim = catalog.find((card) => card.title === EUROPE_ESIM.title);
@@ -370,12 +349,10 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
   }, 30_000);
 
   it("hands the merchant's own key for the product and the buyer's answers through neither door", async () => {
-    // The status door was already built by addition rather than by
-    // subtraction, and the purchase was not: it answered with the merchant's
-    // own document for the order, which carries their key for the product and
-    // the parameters the buyer sent. Whoever holds an order's identifier can
-    // read that order (ADR-0011), so an answer assembled from the merchant's
-    // record hands all of it to whoever guessed one.
+    // Whoever holds an order's identifier can read that order, so an answer
+    // assembled from the merchant's record, with their key for the product and
+    // the parameters the buyer sent, would hand all of it to whoever guessed
+    // one.
     const catalog = await buyer.catalog();
     const esim = catalog.find((card) => card.title === EUROPE_ESIM.title);
     if (esim === undefined) throw new Error("the eSIM is not in the catalog");

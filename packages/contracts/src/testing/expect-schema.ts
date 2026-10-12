@@ -1,31 +1,17 @@
 /**
- * Shared assertions for the contract tests.
- *
- * Why this file exists. The charter asks every required field of a schema for
- * a negative test with an intelligible error, and a schema with ten fields
- * then wants ten near-identical tests. Written by hand ten times, one of them
- * ends up asserting nothing; written once here, the shape of the assertion is
- * the same everywhere and the message it demands is the message a merchant
- * will actually read.
- *
- * This file is not part of the published surface: nothing in `index.ts`
- * re-exports it, and its name keeps it out of the test glob.
+ * Shared assertions for the contract tests: every required field of a schema
+ * has a negative test, and each demands the error a merchant will read. Not
+ * published; its name keeps it out of the test glob.
  */
 
 import { expect } from "vitest";
 import { z } from "zod";
 
 /**
- * Drops one top-level field from an otherwise valid value and demands two
- * things of the schema: that it refuses the result, and that the error names
- * the field that went missing.
- *
- * The second half is the part that matters. "Invalid input" tells a merchant
- * that something is wrong with a card of nine fields and leaves them to guess
- * which one; naming the field turns the same failure into a one-line fix.
- *
- * Nested fields are not covered here on purpose — each nested object is a
- * schema of its own in this package and carries its own tests.
+ * Drops one top-level field from an otherwise valid value and demands that the
+ * schema refuses the result and that the error names the missing field, since
+ * "invalid input" leaves a merchant guessing which of nine fields is wrong.
+ * Nested objects are schemas of their own, with their own tests.
  */
 export const expectMissingFieldRejected = (
   schema: z.ZodType,
@@ -40,9 +26,8 @@ export const expectMissingFieldRejected = (
   expect(result.success, `the schema accepted a value without "${field}"`).toBe(false);
   if (result.success) return;
 
-  // The complaint has to be about this field, not merely to mention its name.
-  // Checking the text alone would pass `id` against a message about
-  // `order_id`, and `Order` and `Receipt` carry both.
+  // The complaint has to point at this field, not merely mention its name:
+  // `id` would pass against a message about `order_id`.
   const issues = result.error.issues;
   expect(
     issues.some((issue) => issue.path[0] === field),

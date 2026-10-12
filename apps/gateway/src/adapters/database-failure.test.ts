@@ -1,11 +1,8 @@
 /**
- * A database failure, as it leaves the store or the queue (ADR-0032).
- *
- * Every caller of either logs what it throws, and the logs outlive anything
- * this gateway erases. So a failure that leaves them says what failed and the
- * database's own reason for it, and nothing that was bound to the statement:
- * not a buyer's parameters, not an order document, not a row the database
- * quoted back.
+ * A database failure leaving the store or the queue is logged by every caller,
+ * and logs outlive anything this gateway erases. So it says what failed and the
+ * database's own reason, and nothing bound to the statement: not a buyer's
+ * parameters, not an order document, not a row the database quoted back.
  */
 
 import { inspect } from "node:util";

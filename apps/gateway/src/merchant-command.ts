@@ -1,41 +1,10 @@
 /**
- * The commands that look after the merchants there are and their keys.
- *
- * None of them makes a merchant or issues a key. A merchant comes into being
- * one way: a person opens the link mailed to their address and presses the
- * dashboard's one control, which asks the gateway for the merchant (ADR-0014).
- * A merchant issues and disables keys for their own code from their dashboard,
- * where each new key is announced to them (ADR-0019), and sets the name their
- * products are sold under there too. A merchant who has lost every key signs in
- * again, with no key, and issues a new one there.
- *
- * What is left here is what those routes deliberately cannot do: listing every
- * merchant and every key, disabling a key by naming it alone — which is what
- * the route refuses when it is the key the caller is holding — and taking a
- * listing name away, which the route refuses outright. Somebody at a terminal
- * has the whole database in front of them and needs no merchant to be scoped
- * to; that is the difference, and it is why these verbs stay.
- *
- * The listing name is the one worth reading twice, because the two sides differ
- * in what they allow rather than in who they are scoped to. A merchant sets a
- * name and changes it and can never end up with none: somebody reaching for
- * that from a dashboard wants either a different name or an end to selling, and
- * both of those are calls they already have. Here `--none` exists for the one
- * act neither of them is — a name that should never have been listed, pulled by
- * somebody with the whole database in front of them. It takes the merchant's
- * cards off sale as it goes, because a card sells only under a name, and the
- * command says so at the terminal.
- *
- * The address a merchant is paid at has no verb here at all, and that is the
- * decision rather than a gap (ADR-0019). A change of it waits and is announced
- * to the merchant before anything is written, and the gateway can hold to that
- * only if every change reaches it as the one call it announces — so the wallet
- * is set by a person signed in to the dashboard, and nowhere else, and a person
- * at a terminal who could write it would be the one change nobody was told
- * about.
- *
- * It is a tested module with the terminal handed to it rather than a script
- * that prints as it goes, for the reason the dashboard's account command is.
+ * Terminal commands over every merchant and key, for what a merchant's own
+ * dashboard deliberately cannot do: list them all, disable a key by its name
+ * alone, and take a listing name away. None of them makes a merchant or issues
+ * a key. The payout wallet has no command on purpose: a wallet change must
+ * reach the gateway as the one call that announces it to the merchant, and a
+ * terminal that could write it would make a change nobody was told about.
  */
 
 import { ZodError } from "zod";
@@ -103,11 +72,8 @@ function needs(say: (line: string) => void, verb: string, what: string, example:
 }
 
 /**
- * The word that takes a listing name away, rather than a verb of its own.
- *
- * A name is one argument, so "no name" needs some spelling, and an empty one
- * would be indistinguishable from a shell that swallowed a quote. This is a
- * word nobody would ever be listed under.
+ * An empty name would be indistinguishable from a shell that swallowed a
+ * quote, so "no name" is spelled as a word nobody would be listed under.
  */
 const NO_NAME = "--none";
 
@@ -122,9 +88,8 @@ async function setListingName(
   try {
     named = await setServiceName(store, merchantId, serviceName, now());
   } catch (thrown) {
-    // The name will not survive the catalog, and the catalog would not say so.
-    // What is printed is the rule and the name that broke it; nothing is
-    // written, so the merchant keeps whatever they were listed under before.
+    // The name would not survive the catalog, and the catalog would not say so.
+    // Nothing is written, so the merchant keeps the name they had.
     say(`That name cannot be listed: ${reasonOf(thrown)}`);
     say("Nothing was written.");
     return 1;
@@ -140,11 +105,8 @@ async function setListingName(
     return 0;
   }
 
-  // The whole of what was just done, because the row is the smaller half of it.
-  // A card sells only under a name — that name is what the payment request
-  // calls the seller — so every card this merchant has published is off sale
-  // from now, and somebody who read "nothing about the seller goes out" and
-  // walked away would find that out from the merchant.
+  // A card sells only under a name, which the payment request uses for the
+  // seller, so every card this merchant published is now off sale; say so.
   say(`${named.id} is listed under no name, so nothing about the seller goes out.`);
   say("");
   say("Every card they have published is off sale until they are listed again:");
@@ -152,7 +114,6 @@ async function setListingName(
   return 0;
 }
 
-/** What a refusal said, in the words the person at the terminal should read. */
 function reasonOf(thrown: unknown): string {
   if (thrown instanceof ZodError) {
     return thrown.issues.map((issue) => issue.message).join("; ");
@@ -174,13 +135,10 @@ async function listMerchants(store: Store, say: (line: string) => void): Promise
     const keys = await store.keysOf(merchant.id);
     const working = keys.filter((key) => key.disabledAt === null).length;
     const counted = working === 1 ? "1 key works" : `${working} keys work`;
-    // The name a merchant is known by to everybody else is the one their
-    // products are sold under, so that is the one printed where they have
-    // chosen it. Where they have not, the row falls back to the name in the
-    // merchants table and says which of the two this is — a merchant made by
-    // registering has a row name nobody typed, so a listing that showed only
-    // that column would read identically down every row of them, and being
-    // unlisted is the more useful fact anyway: it is why they cannot publish.
+    // A listed merchant is shown under the name their products are sold under.
+    // An unlisted one falls back to the row's name, which nobody typed for a
+    // merchant made by registering, and says it is unlisted: that is why they
+    // cannot publish.
     const [whichName, name] =
       merchant.serviceName === null
         ? ["unlisted", merchant.name]
@@ -193,9 +151,8 @@ async function listMerchants(store: Store, say: (line: string) => void): Promise
 }
 
 /**
- * How wide the count of working keys is printed, so the columns after it line
- * up. "12 keys work" is the widest a merchant is likely to reach; past a
- * hundred keys the row goes ragged rather than wrong.
+ * Wide enough for "12 keys work"; past a hundred keys the row goes ragged
+ * rather than wrong.
  */
 const COUNT_WIDTH = 12;
 
@@ -236,9 +193,8 @@ async function disableKey(
     return 1;
   }
 
-  // Disabling one key touches no other key of that merchant, which is the whole
-  // reason a key is a row. Said out loud, because somebody revoking a key that
-  // has leaked needs to know whether they have just locked the merchant out.
+  // Somebody revoking a leaked key needs to know whether they have just locked
+  // the merchant out.
   const others = (await store.keysOf(key.merchantId)).filter(
     (other) => other.id !== key.id && other.disabledAt === null,
   );
@@ -259,16 +215,9 @@ function standingOf(key: StoredKey): string {
 }
 
 /**
- * When anything last called with this key, in a phrase wide enough for both
- * answers.
- *
- * The blank says there is no record and not that there were no calls, because
- * those are not the same thing and only one of them was checked: a key older
- * than the column carries this blank too, and nothing distinguishes it.
- *
- * A day rather than an instant, like the two columns before it. The mark is
- * written every few minutes at best, so the seconds it carries would be a
- * precision this column does not have.
+ * "No calls recorded" means no record, not no calls: a key whose calls were
+ * never recorded reads the same. A day rather than an instant, because the
+ * mark is written every few minutes at best.
  */
 function lastCallOf(key: StoredKey): string {
   return key.lastUsedAt === null ? "no calls recorded" : `called ${dayOf(key.lastUsedAt)}`;

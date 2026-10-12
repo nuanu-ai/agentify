@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Writes the S3 key of PRODUCTION's backups into /etc/agentify/backup.env
 # without it reaching a screen: asked at prompts that show nothing, or read as
-# two lines from stdin with --stdin (deploy/README.md, "Backups"). A secret
-# pasted at a prompt that echoes lands on the screen, which is how the bucket's
-# first key leaked. The rest of the file stays; the file is replaced whole,
-# root's with mode 600.
+# two lines from stdin with --stdin (deploy/README.md, "Backups"). Never paste
+# the key at a prompt that echoes. The rest of the file stays; the file is
+# replaced whole, root's with mode 600.
 set -euo pipefail
 umask 077
 file=/etc/agentify/backup.env

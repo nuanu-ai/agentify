@@ -1,7 +1,6 @@
 /**
- * The address of a seller's own shop, held where both the card that names it
- * and a parcel's tracking page, whose host is held to the same rule, can read
- * it (ADR-0033, ADR-0034).
+ * The address of a seller's own shop. The card that names it and a parcel's
+ * tracking page, whose host is held to the same rule, both read it from here.
  */
 
 import { z } from "zod";
@@ -12,26 +11,15 @@ const SITE_FORM =
 
 /**
  * The address of a seller's own shop on the web, where an agent takes what an
- * order cannot answer (ADR-0034).
+ * order cannot answer.
  *
- * Only an https origin, because anything after the host — a path, a query, a
- * fragment — would be text of the merchant's own reaching every agent that
- * reads the card, which is the free text the decision refuses. The host is the
- * one part the merchant writes, so it is held to a domain name too: labels of
- * letters, digits and hyphens, at most 253 characters, ending in a zone of
- * letters or a punycode one. Anything a URL parser keeps as written would
- * otherwise pass — a sentence of instructions, a quote, a host of any length —
- * and so would a single word or an IP address, which point other people's
- * agents into somebody's own network. What the pattern cannot do is tell a
- * public name from a private one: a name in a zone kept for local networks,
- * or a public one whose address leads into one, passes, and so does a
- * hyphenated sentence of up to 253 characters that is a valid name. That is
- * why an agent is told, beside every site, that nobody checked it.
- *
- * The pattern says all that in a form the JSON Schema export keeps, and it
- * stops the check where it fails, so an address copied with a slash at the end
- * is told once. Asking the URL parser for the origin catches what the pattern
- * leaves, such as a punycode label the parser would write differently.
+ * Only an https origin is accepted, `https://shop.example`, because anything
+ * after the host would be the merchant's own text reaching every agent that
+ * reads the card. The host must be a domain name: a single word or an IP
+ * address is refused, since either can point other people's agents into
+ * somebody's own network. The check cannot tell a public name from a private
+ * one, so an agent is told beside every site that nobody checked where it
+ * leads.
  */
 export const SellerSiteSchema = z
   .string()
@@ -39,6 +27,8 @@ export const SellerSiteSchema = z
     /^https:\/\/(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{1,59})$/,
     { message: SITE_FORM, abort: true },
   )
+  // The pattern is what the JSON Schema export carries; the URL parser catches
+  // what the pattern cannot, such as a punycode label it would write differently.
   .refine((site) => {
     try {
       return new URL(site).origin === site;

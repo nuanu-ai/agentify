@@ -564,8 +564,8 @@ const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
     });
   // A generic Link: rel=alternate is not evidence of a working Markdown
   // representation (it is commonly a locale, feed, or XML alternate). The
-  // v1 artifact set does not fetch a declared .md alternate, so only a real
-  // Markdown response can earn partial credit here.
+  // scan does not fetch a declared .md alternate, so only a real Markdown
+  // response can earn partial credit here.
   if (markdown.status >= 200 && markdown.status < 300 && correctType)
     return result({
       id: 7,
@@ -1213,11 +1213,9 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     ttfbMs: 0,
     errorCode: robotsBlockedCode,
   };
-  // A store's structured data and feed may live only on its product pages.
-  // A product page the scanner could not read, because robots.txt kept it
-  // off, the request failed or the page answered with an error status, is
-  // read by no check, and a verdict that the store's data is absent is not
-  // established: it says why instead.
+  // A store's structured data and feed may live only on its product pages, so
+  // a product page the scanner could not read leaves that data unassessed,
+  // with the reason, rather than absent.
   const representative = targetContentAllowed ? artifacts.representative : undefined;
   const productUnread =
     representative && (inaccessible(representative) || representative.status >= 400)

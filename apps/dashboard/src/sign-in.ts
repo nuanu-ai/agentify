@@ -1,9 +1,7 @@
 /**
- * The dashboard's one public door: an address and a one-time link.
- *
- * Asking for a link never says whether the address is new or already belongs
- * to a merchant. Opening the URL only draws a form. The token is spent by the
- * explicit POST from that form, so a mail preview cannot sign anybody in.
+ * Asking for a link never says whether the address is new or already belongs to
+ * a merchant. Opening the link only draws a form; the token is spent by the
+ * POST from that form, so a mail preview cannot sign anybody in.
  */
 
 import type { SurfaceMode } from "@agentify/core";
@@ -16,14 +14,10 @@ const destinationInput = (destination: DashboardDestination): string =>
     : `<input type="hidden" name="destination" value="${escaped(destination)}">`;
 
 /**
- * The sign-in form, with what went wrong and why the person is here kept apart.
- *
- * A problem is a refusal of something they did — an address of the wrong
- * shape, a change that was lost — and is drawn as one, under the box. A reason
- * is why they are looking at this page at all, such as a session that ran its
- * course, and is the card's first line in the ordinary voice: drawn red under
- * an empty box it reads as a fault in a box nobody has typed in yet, which is
- * the opposite of what that sentence is for.
+ * A problem is a refusal of something the person did and is drawn under the
+ * box. A reason is why they are on this page at all, such as an expired
+ * session, and is the card's first line in the ordinary voice: drawn red under
+ * an empty box it would read as a fault in a box nobody has typed in.
  */
 export const signInScreen = (
   base: string,
@@ -56,18 +50,10 @@ ${brandLockup("/")}
   );
 
 /**
- * What the door answered, as the screen needs it: a wait, and which wall.
- *
- * Every answer carries a wait, because every answer leaves one: a refusal's is
- * the wall it hit, and an accepted request's is the wall in front of the next
- * link. Which arm this is has a key of its own rather than a key missing,
- * because "accepted" written as the absence of a wall is a shape where a
- * forgotten field reads as good news.
- *
- * The wall is named rather than inferred from the seconds, because the two
- * refusals are waits of different orders and the sentences that explain them
- * have nothing in common: a minute is a link already gone out, an hour is an
- * allowance spent. A screen given seconds alone would have to guess.
+ * Accepted carries a key of its own rather than the absence of a limit, so a
+ * forgotten field cannot read as good news. The limit is named rather than
+ * inferred from the seconds, because a minute (a link already sent) and an hour
+ * (an allowance spent) need different sentences.
  */
 export type LinkAnswer =
   | Readonly<{ sent: true; seconds: number }>
@@ -77,25 +63,15 @@ const counted = (amount: number, unit: string): string =>
   `${amount} ${unit}${amount === 1 ? "" : "s"}`;
 
 /**
- * How long a wait is still one somebody watches a number tick away.
- *
- * Below it the button counts seconds, above it whole minutes. The waits this
- * page draws are of two orders — the interval is a minute, waited out in front
- * of the screen, and a spent hourly allowance can be most of an hour, which
- * nobody sits through — so the line has to fall between them. Ninety seconds
- * is above every interval wait and below any hourly one long enough to walk
- * away from, and a seconds counter that runs for half an hour is a stopwatch
- * rather than a control.
+ * Below this the button counts seconds, above it whole minutes. Ninety seconds
+ * is above every one-minute wait and below any hourly wait long enough to walk
+ * away from.
  */
 const SECONDS_WORTH_WATCHING = 90;
 
 /**
- * A wait in words, by the rule the button counts it down with.
- *
- * Both readings of the same number are on the page at once, so they cannot be
- * allowed to round differently: a sentence saying "try again in 2 minutes"
- * over a button saying "(61 s)" is a page arguing with itself, and a person
- * reading it believes whichever is worse for them.
+ * The sentence and the button show the same number and must round the same way,
+ * or the page argues with itself.
  */
 const waitInWords = (seconds: number): string =>
   seconds > SECONDS_WORTH_WATCHING
@@ -103,22 +79,12 @@ const waitInWords = (seconds: number): string =>
     : counted(Math.max(1, Math.ceil(seconds)), "second");
 
 /**
- * The dashboard's one script: the resend button waiting its wait out.
- *
- * ADR-0005 §4 — the page works without it. The button is served pressable and
- * this takes it away; a browser that runs nothing is left with exactly the
- * button that was there before, the press reaches the door, and the door
- * refuses it in words. It cannot be the other way round: nothing on a page
- * whose script did not run can lift a `disabled` attribute, so a button served
- * disabled would be dead in the browser of the one person who most needs it —
- * somebody who cannot get into their dashboard and has just been told to wait.
- *
- * So the whole of it is taking a button away and giving it back. It reads the
- * wait from the button's own attribute rather than being written per request,
- * which is why nothing here is interpolated from anybody's input and why there
- * is one copy of these bytes for every page. It counts against a deadline
- * rather than trusting its own ticks, because a background tab's timers are
- * throttled and a counter built on them hands the button back late.
+ * The page works without it: the button is served pressable and this takes it
+ * away, because nothing can lift a `disabled` attribute where the script did
+ * not run, and a button served disabled would be dead for the person most in
+ * need of it. It reads the wait from the button's own attribute, so nothing in
+ * it comes from anybody's input, and counts against a deadline because a
+ * background tab's timers are throttled.
  */
 const COUNTDOWN = `<script>
 (() => {
@@ -149,31 +115,16 @@ const COUNTDOWN = `<script>
 </script>`;
 
 /**
- * The non-enumerating answer to a request for a link, accepted or refused.
+ * Never says whether the address is known. The resend is on every version of
+ * the page: an accepted request cannot know the message arrived, and a refused
+ * one must leave something to come back to; a refusal only changes whether it
+ * can be pressed yet. Only the hourly page prints its wait in words, because a
+ * person leaves the page for it.
  *
- * The resend is on all three versions of this page. An accepted request needs
- * it because the one thing this page cannot know is whether the message
- * arrived; a refused one needs it because a page that answers a refusal by
- * removing the control leaves somebody who has just been told to wait with
- * nothing to come back to when the wait is over. What the refusal changes is
- * not whether the button is there but whether it can be pressed yet, and that
- * is what the script above says with a number the person can watch run out.
- * Both versions keep the way out for somebody who mistyped their address.
- *
- * Only the hourly page prints its wait in words as well. Its wait is one a
- * person leaves the page for, so the number has to survive being carried away;
- * the minute's does not, and a number printed into that sentence would be
- * wrong before the sentence was read, so that page says the rule instead and
- * leaves the counting to the button.
- *
- * What the interval page may say is bounded by what the rate row holds, which
- * is an address hash, a purpose and a time. Not the destination: the link
- * already gone out may have been asked for somewhere else in the dashboard and
- * opens where it was asked for, so this page cannot tell somebody it is the
- * link they just asked for. And not delivery: the door hands a message to a
- * provider and learns nothing after that, so "on its way" is a claim about
- * somebody else's system. The page says a link went to this address, which is
- * what the row knows.
+ * The minute's page may say only what the rate row holds: not where the earlier
+ * link leads, since it may have been asked for elsewhere, and not delivery,
+ * since the provider's side is unknown here. It says a link went to this
+ * address.
  */
 export const linkRequestedScreen = (
   base: string,
@@ -184,11 +135,9 @@ export const linkRequestedScreen = (
 ): string => {
   const wall = "wall" in answer ? answer.wall : null;
   const heading = wall === "hourly" ? "Try again later" : "Check your mail";
-  // A wait longer than the one a person watches can only be the hourly wall:
-  // the interval is a minute from a send a moment old. So on the page for a
-  // link that did go out, a long wait is this address's three spent, and the
-  // invitation to send another from this page would be an invitation to wait
-  // most of an hour for the button under it.
+  // A wait longer than the counted seconds can only be the hourly limit, so on
+  // the page for a link that went out, inviting another send would mean most of
+  // an hour's wait.
   const afterTheSend =
     answer.seconds > SECONDS_WORTH_WATCHING
       ? "If nothing has arrived in a minute, look in your spam folder. That was the last of this address's three links for the hour, so the next one waits for the hour to turn over."
@@ -229,12 +178,9 @@ ${COUNTDOWN}
 };
 
 /**
- * A handover that failed, said without claiming to know what became of it.
- *
- * The postman answers "refused" both for a provider that rejected the message
- * and for one that never answered inside the timeout, and a message of the
- * second kind may well have been delivered. What this dashboard does know is
- * that it cannot confirm the send and that the attempt wrote nothing down.
+ * "Refused" covers both a provider that rejected the message and one that did
+ * not answer in time, and the second may have delivered it. What is known is
+ * that the send cannot be confirmed and nothing was written.
  */
 export const mailUnavailableScreen = (base: string, mode: SurfaceMode): string =>
   bare(
@@ -253,11 +199,9 @@ ${brandLockup("/")}
   );
 
 /**
- * The page every mailed link lands on: one control, and the address it signs in.
- *
- * Drawing it spends nothing; the press does. The address is on it because a
- * link for somebody else's address, sent to a victim, would otherwise sign
- * them in as that somebody without their noticing (ADR-0026 §1).
+ * Drawing it spends nothing; the press does. The address is shown because a
+ * link for somebody else's address, sent to a victim, would otherwise sign them
+ * in as that somebody without their noticing.
  */
 export const openLinkScreen = (
   base: string,
@@ -283,11 +227,8 @@ ${brandLockup("/")}
   );
 
 /**
- * One refusal for a malformed, expired, already-used or unknown link.
- *
- * It is drawn only for a browser with no live session, which is sent to its
- * own start instead, so it has nobody to name and says nothing about whose the
- * link was.
+ * Drawn only for a browser with no live session, so it names nobody and says
+ * nothing about whose the link was.
  */
 export const refusedLinkScreen = (base: string, mode: SurfaceMode): string =>
   bare(
@@ -309,11 +250,8 @@ ${brandLockup("/")}
   );
 
 /**
- * The screen a signed-in person without a merchant is offered (ADR-0026 §4).
- *
- * One control, and only its same-origin press makes the merchant. A press that
- * did not come to a merchant leaves the person here, signed in, to press
- * again.
+ * Only the same-origin press makes the merchant; a press that did not make one
+ * leaves the person here, signed in, to press again.
  */
 export const merchantSetupScreen = (
   base: string,

@@ -312,8 +312,8 @@ describe("the shape of the machine", () => {
 
 describe("pricing the purchase", () => {
   it("takes the merchant's price over the card's snapshot", () => {
-    // ADR-0002 §2: the live answer outranks the snapshot and carries its own
-    // `as_of`, which is what the receipt later points at.
+    // The live answer outranks the snapshot and carries its own `as_of`, which
+    // is what the receipt later points at.
     const { order, effects } = must(newOrder("sync", { priceCheck: "merchant" }), {
       kind: "quote_answered",
       at: T0 + 1,
@@ -372,7 +372,7 @@ describe("pricing the purchase", () => {
   });
 
   it("closes the purchase before any money when the goods are not there", () => {
-    // Portal, "Товар кончился": said in time, the buyer's money does not move.
+    // Goods reported gone in time: the buyer's money does not move.
     const { order } = must(newOrder("async", { priceCheck: "merchant" }), {
       kind: "quote_answered",
       at: T0 + 1,
@@ -385,9 +385,9 @@ describe("pricing the purchase", () => {
   });
 
   it("sells a synchronous card at its snapshot price when the check goes silent", () => {
-    // ADR-0002 §3, open failure: the merchant's live answer still stands
-    // between the price and the money, so a second of silence must not cancel
-    // a sale that can be carried out honestly at a known price.
+    // The merchant's live answer still stands between the price and the money,
+    // so a second of silence must not cancel a sale that can be carried out
+    // honestly at a known price.
     const { order, effects } = must(newOrder("sync", { priceCheck: "merchant" }), {
       kind: "quote_silent",
       at: T0 + 1,
@@ -410,10 +410,10 @@ describe("pricing the purchase", () => {
   });
 
   it("treats running out of patience with the price check as the same silence", () => {
-    // The wait for an answer and the life of an answer are two different
-    // waitings. Running out of the first one is the merchant being silent, and
-    // ADR-0002 §3 answers silence by mode: it must not close a synchronous
-    // purchase that is supposed to go on to a sale at the card's own price.
+    // The wait for an answer and the life of an answer are two different waits.
+    // Running out of the first is the merchant being silent, which is answered
+    // by mode: it must not close a synchronous purchase that should go on to a
+    // sale at the card's own price.
     const sync = must(newOrder("sync", { priceCheck: "merchant" }), {
       kind: "deadline_expired",
       at: T0 + TEST_POLICY.deadlines.quoteResponseMs,
@@ -433,9 +433,8 @@ describe("pricing the purchase", () => {
   });
 
   it("refuses to start an asynchronous purchase when the check goes silent", () => {
-    // ADR-0002 §3, closed failure: here the money moves before the merchant is
-    // asked anything, so an open failure would manufacture debts to buyers
-    // while the refund mechanism is still unchosen.
+    // Here the money moves before the merchant is asked anything, so failing
+    // open would manufacture debts to buyers.
     const { order } = must(newOrder("async", { priceCheck: "merchant" }), {
       kind: "quote_silent",
       at: T0 + 1,
@@ -457,24 +456,18 @@ describe("the synchronous mode: refusal before the charge", () => {
   });
 
   it("rejects a purchase whose payment did not verify and records what the layer said", () => {
-    // `rejected` is also what a merchant's "there is none" and a charge that
-    // did not go through leave behind, so the state alone does not say why
-    // this purchase stopped. The closure does — "why an order stopped where it
-    // stopped", in the model's words — and whoever opens the record afterwards
-    // reads it there: the store keeps the order whole, closure included. A
-    // rejected order with no cause and no reason behind it would read as "I
-    // know there is none" where the truth is "I did not write it down". Every
-    // reason the layer can give is sent, so what is pinned is that the record
-    // carries the layer's word and not one word the test happened to choose.
+    // `rejected` also follows a merchant's "there is none" and a charge that
+    // did not go through, so the state alone does not say why this purchase
+    // stopped; the closure does, and the store keeps it with the order. A
+    // rejected order with no cause would read as "I know there is none" where
+    // the truth is "I did not write it down". Every reason the layer can give
+    // is sent, so the record must carry the layer's word and not one the test
+    // happened to choose.
     //
-    // Nothing in the gateway sends this event into a quoted order today: the
-    // purchase door verifies before it touches the order and answers the
-    // agent's bad payment itself, leaving the order open on its own deadline
-    // (`payPurchase`; the runner's `verify_payment` is a no-op for the same
-    // reason). The row is the machine's contract for the day a sender exists,
-    // and the record it writes has to be whole on that day. It is not idle
-    // meanwhile: the portal's ending "the payment failed its check" is held to
-    // `rejected` through this very event, in `portal-tables.test.ts`.
+    // The gateway's purchase door verifies before it touches the order, so
+    // nothing sends this event into a quoted order; the row is the machine's
+    // own contract. The portal's ending "the payment failed its check" is held
+    // to `rejected` through this event in `portal-tables.test.ts`.
     for (const reason of PAYMENT_VERIFICATION_FAILURES) {
       const { order, effects } = must(newOrder("sync"), {
         kind: "payment_verification_failed",
@@ -506,8 +499,8 @@ describe("the synchronous mode: refusal before the charge", () => {
   });
 
   it("leaves the buyer untouched when the handler refuses", () => {
-    // Portal, "Чем заказ может закончиться": you refused in the synchronous
-    // mode, the money did not move, the agent sees a refusal with a reason.
+    // You refused in the synchronous mode: the money did not move, and the
+    // agent sees a refusal with a reason.
     const { order } = must(reach("dispatched"), {
       kind: "handler_refused",
       at: T0 + 4,
@@ -632,9 +625,8 @@ describe("the asynchronous mode: the money moves first", () => {
   });
 
   it("marks the debt the moment the merchant refuses after the charge", () => {
-    // Portal, "Отказаться после того, как приняли заказ": waiting for the
-    // deadline to reach the same result by silence helps nobody — the buyer
-    // learns of the debt the minute the merchant does.
+    // Waiting for the deadline to reach the same result by silence helps
+    // nobody: the buyer learns of the debt the minute the merchant does.
     const sync = must(reach("dispatched"), {
       kind: "handler_refused",
       at: T0 + 4,
@@ -725,11 +717,10 @@ describe("the mode with confirmation: the question comes before the money", () =
   });
 
   it("closes the purchase for nothing, with the merchant's words, when his handler says he will not", () => {
-    // Portal, "Чем заказ может закончиться": a refusal, nothing charged. Why
-    // is read off the closure: the gateway fills the agent's `refusal` from a
-    // `merchant_refused` closure whatever state carries it, so a declined
-    // order with no words on it would tell him "refused, and the reason is
-    // none" where the truth is "not written down".
+    // A refusal, nothing charged. Why is read off the closure: the gateway
+    // fills the agent's `refusal` from a `merchant_refused` closure whatever
+    // state carries it, so a declined order with no words on it would tell him
+    // "refused, and the reason is none" where the truth is "not written down".
     for (const words of refusals) {
       const { order, effects } = must(reach("awaiting_confirmation"), {
         kind: "handler_refused",
@@ -858,8 +849,8 @@ describe("the mode with confirmation: the question comes before the money", () =
   });
 
   it("lets a merchant who confirmed still refuse while nothing is charged, and keeps his words", () => {
-    // Portal, "Отказаться после того, как приняли заказ": taking an order on
-    // does not bind the merchant while the order is still open.
+    // Taking an order on does not bind the merchant while the order is still
+    // open.
     for (const words of refusals) {
       const { order, effects } = must(reach("confirmed"), {
         kind: "refuse_called",
@@ -1018,7 +1009,7 @@ describe("when the time runs out", () => {
 
 describe("an order that never reached the handler", () => {
   it("is delivered again rather than closed", () => {
-    // Portal, "Обработчик упал, не ответив": an exception is not an answer.
+    // An exception is not an answer.
     const { order, effects } = must(reach("dispatched"), {
       kind: "handler_undelivered",
       at: T0 + 4,
@@ -1157,8 +1148,8 @@ describe("delivering twice, and delivering late", () => {
   });
 
   it("keeps the goods a merchant produced after the purchase was already closed", () => {
-    // Canon, "Поздняя синхронная выдача не пропадает": he started before the
-    // deadline and finished after it, and the work is not thrown away.
+    // He started before the deadline and finished after it, and the work is not
+    // thrown away.
     const closed = walk(reach("dispatched"), [
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "sync_response" },
     ]);
@@ -1426,8 +1417,8 @@ describe("an order the merchant has taken on", () => {
 
 describe("goods handed over that were never paid for", () => {
   it("records the case and tells the merchant", () => {
-    // Portal, "Выдали, а платёж не исполнился": rare, and possible only in the
-    // synchronous mode, where the money is executed last.
+    // Rare, and possible only in the synchronous mode, where the money is
+    // executed last.
     const { order, effects } = must(reach("fulfilled"), {
       kind: "payment_settle_failed",
       at: T0 + 5,
@@ -1482,9 +1473,8 @@ describe("the merchant leaves", () => {
   }
 
   it("turns an open order that was charged into a debt", () => {
-    // Portal, "Чем заказ может закончиться": for what was not delivered, the
-    // merchant refunds — so the debt has to be recorded, not swept into a
-    // terminal that claims nobody owes anything.
+    // For what was not delivered the merchant refunds, so the debt has to be
+    // recorded, not swept into a terminal that claims nobody owes anything.
     const paid = walk(newOrder("async"), [
       { kind: "payment_verified", at: T0 + 1 },
       { kind: "payment_settled", at: T0 + 2 },
@@ -1606,9 +1596,9 @@ describe("while the settle is in flight", () => {
   });
 
   it("gives the settle a deadline of its own, and closes the purchase if it is silent", () => {
-    // ADR-0002 §3: a silent decision about the charge is always a closed
-    // failure. Without a deadline here the order would wait for an answer that
-    // never comes, and the agent would be told "not yet" forever.
+    // A silent charge is always a closed failure. Without a deadline here the
+    // order would wait for an answer that never comes, and the agent would be
+    // told "not yet" forever.
     const order = settling();
 
     expect(deadlines(order)).toStrictEqual([
@@ -1643,11 +1633,10 @@ describe("while the settle is in flight", () => {
   });
 
   it("does not write the same record for a guess as for a known failure", () => {
-    // The fifth gate. Both close the purchase and neither charges the buyer,
-    // but "the payment layer told us it failed" and "the payment layer never
-    // answered" carry very different odds that the money actually moved, and
-    // an error text, a dispute and the merchant's reconciliation all read this
-    // field.
+    // Both close the purchase and neither charges the buyer, but "the payment
+    // layer told us it failed" and "the payment layer never answered" carry
+    // very different odds that the money actually moved, and an error text, a
+    // dispute and the merchant's reconciliation all read this field.
     const guessed = walk(settling(), [
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
     ]);
@@ -1766,10 +1755,9 @@ describe("while the settle is in flight", () => {
   });
 
   it("never sends a second charge while the first one's outcome is unknown", () => {
-    // The blocker this test exists for: a settle that reported nothing was
-    // recorded as a settle that failed, so a repeat of the purchase sent the
-    // money out again — unbounded, and with the first charge's fate still
-    // unknown. Repeating four times produced five charges.
+    // Recording a silent settle as a failed one would let every repeat of the
+    // purchase send the money out again, unbounded, with the first charge's
+    // fate still unknown.
     const silent = walk(reach("fulfilled"), [
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
     ]);
@@ -1828,10 +1816,10 @@ describe("while the settle is in flight", () => {
   });
 
   it("does not let a failed verification wipe the charge it knows nothing about", () => {
-    // The way round the guard that the widened walk found: a payment that did
-    // not check out never became a charge, but clearing the record on it left
-    // the order looking as though nothing were outstanding, and the next
-    // repeat sent a second charge over the first.
+    // A payment that did not check out never became a charge, but clearing the
+    // record on it would leave the order looking as though nothing were
+    // outstanding, and the next repeat would send a second charge over the
+    // first.
     const silent = walk(reach("fulfilled"), [
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
     ]);
@@ -2137,14 +2125,11 @@ describe("an order whose goods are out and whose money is not", () => {
   });
 
   it("answers nobody and writes nothing when a payment fails to verify", () => {
-    // A verification that failed belongs to the payment layer, not to any
-    // call of the merchant's: no charge was made, so there is nothing to
-    // write down, and nobody is waiting for an answer. The arm sits above the
-    // delivery calls, which answer `already_delivered`; an internal event
-    // falling into them would produce a merchant's answer for a call nobody
-    // made. Today nothing in the gateway drives this event into an order
-    // (`eventsForVerifiedPayment` in `runner.ts` builds only the verified
-    // side), so the rule is the machine's own.
+    // A verification that failed belongs to the payment layer, not to any call
+    // of the merchant's: no charge was made, so there is nothing to write down,
+    // and nobody is waiting for an answer. The arm sits above the delivery
+    // calls, which answer `already_delivered`; an internal event falling into
+    // them would produce a merchant's answer for a call nobody made.
     const unpaid = reach("delivered_unpaid");
     const { order, effects } = must(unpaid, {
       kind: "payment_verification_failed",

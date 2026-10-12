@@ -1,21 +1,12 @@
 /**
- * One palette, two files.
+ * `packages/visual/tokens.css` is the visual language, and every surface reads
+ * it except the portal: a separate project with its own build, whose theme
+ * writes the colours out again as `--agentify-*`. If this fails, the
+ * documentation renders in colours the rest of the origin no longer uses.
  *
- * `packages/visual/tokens.css` is the visual language, and every surface but
- * one reads that file itself. The portal is the exception: it is a separate
- * project with its own lockfile and its own build, and its theme writes the
- * colours out again as `--agentify-*`. That copy was held in step by a comment,
- * which is how the four stylesheets on this origin drifted apart in the first
- * place.
- *
- * If this test fails, the documentation is rendering in colours the rest of the
- * origin has stopped using — the merchant reads about the product in one palette
- * and then clicks into it in another.
- *
- * Only the light declarations are compared, because there is only one set: the
- * language is light everywhere (`packages/visual/tokens.css`). The two files are parsed rather
- * than spelled out here, so a colour the portal starts copying is compared from
- * the day it appears and nobody has to remember to add a case.
+ * Only the light declarations are compared, because the language has only a
+ * light set. The files are parsed rather than spelled out here, so a colour the
+ * portal starts copying is compared from the day it appears.
  */
 
 import { readFileSync } from "node:fs";

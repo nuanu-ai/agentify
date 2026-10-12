@@ -253,13 +253,12 @@ const readCards = async (generation: number): Promise<void> => {
 };
 
 /**
- * The merchant's own orders, through the SDK that carries them.
- *
- * Two lists, because the SDK draws the line: everything, for the table a
- * merchant reads their sales off, and `open` for the ones still owed something,
- * which the SDK's own words call what a process reads after a restart. The
- * console used to show what it happened to be holding in memory instead, and
- * that is empty after a reconnection while the gateway still has open orders.
+ * The merchant's own orders, through the SDK that carries them. Two lists,
+ * because the SDK draws the line: everything, for the table a merchant reads
+ * their sales off, and `open` for the ones still owed something, which is what
+ * a process reads after a restart. They are read from the gateway rather than
+ * kept in memory, which is empty after a reconnection while the gateway still
+ * has open orders.
  */
 const readOrders = async (generation: number): Promise<void> => {
   const [all, still] = await Promise.all([merchant.orders(), merchant.orders(true)]);
@@ -309,11 +308,9 @@ const readReceipts = async (generation: number): Promise<void> => {
 /**
  * A fetch that writes both halves of what goes through it.
  *
- * The lane is a parameter because the console calls from two seats and they
+ * The lane is a parameter because the console calls from two seats, and they
  * belong in different lanes: the agent's purchases, and the merchant-key calls
- * the SDK does not carry. Before this, only the agent's went through here, so a
- * merchant-key answer arrived in the log with no request in front of it — which
- * reads as a log out of order rather than as one missing a half.
+ * the SDK does not carry.
  *
  * Headers are never written down. The merchant key travels on every call in the
  * second lane, and the one thing recorded about the headers is whether a
@@ -636,17 +633,12 @@ const doAction = async (form: URLSearchParams): Promise<void> => {
       await readCards(generation);
       if (!connectionIsCurrent(generation)) return;
       publicItemsRead = false;
-      // Publishing answers `ok: true` or `ok: false` under a clean status, so a
-      // console that reported the call rather than its answer would say a card
-      // went up when the gateway had just refused it. The finding is what the
-      // person at the stand has to act on, so it leads; the call's own code is
-      // said beside it, because that is the word they will branch on in their
-      // own code later. The reasonless arm is not a case that happens: a
-      // refused publish carries at least one finding and the schema holds it
-      // to that. It is written because the type of an array cannot say so —
-      // reading the first element of one is `Problem | undefined` here, and the
-      // assertion that would deny it is banned — so the choice is this sentence
-      // or a worse way of not having it.
+      // Publishing answers `ok: true` or `ok: false` under a clean status, so
+      // the console reports the answer and not the call. The finding leads,
+      // because it is what the person at the stand acts on, and the call's own
+      // code is said beside it, because that is the word their code will branch
+      // on. A refused publish always carries at least one finding; the
+      // reasonless arm exists only because the type of an array cannot say so.
       if (!outcome.ok) {
         const { error } = outcome;
         const first = error.problems[0];
@@ -736,9 +728,9 @@ const doAction = async (form: URLSearchParams): Promise<void> => {
         recordAnswer(on, await buyer.askPrice(on.itemId));
         // The console says this, and the wire does not. A challenge for a card
         // alone quotes the published price and does not ask the merchant, and
-        // the gateway's own line beside it is the ecosystem's boilerplate
-        // (research note 25). Explaining that to a person is this console's job, and
-        // the flag it reads is the one the catalogue publishes for exactly this.
+        // the gateway's own line beside it is the ecosystem's boilerplate.
+        // Explaining that to a person is this console's job, and the flag it
+        // reads is the one the catalogue publishes for exactly this.
         if (askedAtPurchase) {
           beat(
             on,
@@ -953,16 +945,14 @@ const queueAction = (form: URLSearchParams): Promise<boolean> => {
 /* --- the files the product is drawn with -------------------------------- */
 
 /*
- * The surfaces share one visual language, held in one stylesheet rather than
- * copied per surface. That file is `packages/visual/tokens.css`, and the stand
- * serves the repository's own — which is the point. A second copy of the
- * palette living beside this console is exactly how one visual language becomes
- * two that look almost alike.
+ * The surfaces share one visual language in one stylesheet,
+ * `packages/visual/tokens.css`, and the stand serves the repository's own copy
+ * rather than keeping one beside it: two copies of a palette is how one visual
+ * language becomes two that look almost alike.
  *
  * The faces sit beside it in the same package, under the directory shape the
  * route table serves them at. So there are two roots under /styles/ here, and
- * the token file is named on its own rather than reached through the
- * directory.
+ * the token file is named on its own rather than reached through the directory.
  */
 const SHARED_TOKENS = fileURLToPath(new URL("../../visual/tokens.css", import.meta.url));
 const SHARED_FACES = resolve(

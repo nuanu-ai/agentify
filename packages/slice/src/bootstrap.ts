@@ -1,25 +1,16 @@
 /**
- * The bootstrap purchase, wired to the network and to a wallet.
- *
- * It buys, for real, from a running gateway, so that the products it buys are
- * catalogued by Coinbase's Bazaar — which happens on the first settle through
- * the CDP facilitator and on nothing else. Then it watches the catalog and says
- * what it saw.
+ * The bootstrap purchase, wired to the network and to a wallet. It buys for
+ * real from a running gateway so that the products are catalogued by Coinbase's
+ * Bazaar, which happens on the first settle through the CDP facilitator and on
+ * nothing else, and then watches the catalog and says what it saw.
  *
  *   AGENTIFY_SMOKE=1 GATEWAY_URL=https://agentify.example SMOKE_BUYER_KEY=0x… \
  *     pnpm smoke:bootstrap --confirm
  *
- * Nothing is spent without `--confirm`, and no run can spend more than
- * `SMOKE_TOTAL_USD`. What this file does is only the wiring; the command is in
- * `bootstrap-command.ts`, where the parts that can be got wrong without a
- * network — the caps, the gates, and what a facilitator's answer means — are
- * tested offline.
- *
- * The way out is built from settings the command has already held to shape, and
- * that order is the point: the key is read from the environment inside the
- * command, and every refusal about it — absent, malformed, or typed onto the
- * command line where `ps` shows it to the whole machine — happens before
- * anything here touches it.
+ * Nothing is spent without `--confirm`, and no run spends more than
+ * `SMOKE_TOTAL_USD`. The command itself lives in `bootstrap-command.ts` and is
+ * tested offline; it reads the key and refuses a bad one before anything here
+ * touches it.
  */
 
 import { overTheNetwork, runBootstrap } from "./bootstrap-command.js";

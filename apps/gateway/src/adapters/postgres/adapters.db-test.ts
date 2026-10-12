@@ -1,36 +1,21 @@
 /**
- * The real adapters, against a real Postgres.
+ * The real adapters, against a real Postgres. Not part of `pnpm test`: they run
+ * under `pnpm test:db`, which needs a Postgres (`docker compose up -d --wait
+ * postgres`) and skips itself with a sentence saying so when there is none. The
+ * database is `agentify_test`, this suite's own, never the one the stack runs on.
  *
- * These are not in `pnpm test`. That command is free, deterministic and works
- * without a network, and a suite that needs a database server is none of those.
- * They run under `pnpm test:db`, which needs a Postgres — `docker compose up -d
- * --wait postgres` brings one up — and skips itself with a sentence saying so
- * when there is none.
+ * What both store adapters promise is one shared suite in
+ * `testing/store-contract.ts`, run at the foot of this file. This file holds only
+ * what cannot be checked in memory: the JSONB round trip, the queue that is a
+ * table, the driver's refusals, the pool and its listeners, the advisory lock,
+ * the migrations, and above all `withOrder` under two clients that share nothing,
+ * where a row lock is what stands between two events about one order and a
+ * double charge.
  *
- * The database it runs against is `agentify_test`, which is this suite's own
- * and not the one the stack runs on: see `testing/database.ts` for what
- * happened when they were the same.
- *
- * What the two adapters both promise is not written out here. It is one suite
- * in `testing/store-contract.ts`, run at the foot of this file against a real
- * Postgres and under `pnpm test` against the maps in memory, so that a
- * difference between them is a failure rather than two test files drifting
- * apart in the same direction.
- *
- * What is left in this file is what cannot be checked in memory at all: the
- * round trip through JSONB and through a queue that is a table, the columns
- * written from the document, the driver's own refusals, the pool and its
- * listeners, the advisory lock across two connections, and the migrations. Above
- * all `withOrder` under two clients that share nothing in this process, where
- * the hold is a row lock rather than a chain of promises, and which is the thing
- * standing between two events about one order and a charge that happens twice.
- *
- * The queue's own promises — the delayed reminder, the retry after a handler
- * throws, the window after which an unanswered delivery is taken back — are
- * next door in `pgboss/queue.db-test.ts`. They cannot be checked here: this
- * file starts a gateway, a started gateway has a worker on `agentify_reminders`
- * already, and a test that waits for its own second consumer to be handed the
- * job is waiting for the queue to do the wrong thing.
+ * The queue's own promises are tested in `pgboss/queue.db-test.ts`, not here: a
+ * gateway started here already has a worker on `agentify_reminders`, so a test
+ * waiting for its own second consumer to get a job would be waiting for the queue
+ * to misbehave.
  */
 
 import { randomUUID } from "node:crypto";
@@ -58,65 +43,35 @@ import { connect, PostgresStore } from "./store.js";
 /** The merchant everything in this suite belongs to. */
 const A = "mch_a";
 
-// Made if it is not there, so that an existing volume needs nothing done to it.
+// Created if missing, so an existing volume needs nothing done to it.
 const wanted = testDatabaseUrl();
 const databaseUrl = await readyDatabase(wanted);
 
 /**
- * Where this suite's pg-boss lives, which is not where a deployment's does.
- *
- * The suite has a database of its own now, so this is belt and braces rather
- * than the thing standing between a test run and somebody's queue. It stays
- * because it is also what keeps the two db-test files out of each other's way,
- * and because `DATABASE_URL` can still be pointed at a database somebody else
- * is using.
+ * This suite's own pg-boss schema, apart from a deployment's and from the other
+ * db-test file's, because `DATABASE_URL` can still point at a database somebody
+ * else is using.
  */
 const QUEUE_SCHEMA = "pgboss_adapters";
 
 /**
- * Emptying every table this schema has, in one statement, in one place.
- *
- * The list is meant to stay complete, and it is written once because it is
- * asked for twice — the file empties them before it starts, and the shared
- * store contract empties them before each of its own cases. Two copies of a
- * list that must stay complete are one copy that will not.
- *
- * Why it is every table and not the two that hold the fixtures. A claim on a
- * payment left behind owns the fingerprint this run presents, and every
- * purchase below is refused: a suite that passes once and never again, on a
- * volume that outlives it. The merchant's row is here for the same reason
- * before it has cost anybody an afternoon — it carries whether they are
- * selling at all, so a run that ever paused them would leave every later run's
- * purchases turned away, and the failure would look like anything but its
- * cause.
- *
- * A table added to `schema.ts` belongs in this list.
+ * Every table in the schema, emptied in one statement, here before the file
+ * starts and by the store contract before each of its cases. It must be every
+ * table: a payment claim left behind owns the fingerprint the next run presents
+ * and refuses every purchase, and a merchant row left paused turns away every
+ * later run's purchases. A table added to `schema.ts` belongs in this list.
  */
 const EMPTY_EVERY_TABLE =
   "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchants";
 
 /**
- * Terminates one named backend, from a connection of its own.
- *
- * It takes the session as a number rather than going looking for it, and the
- * two versions this replaced are the reason. Terminating everything holding an
- * advisory lock took the gateway's own connections down and failed thirteen
- * tests that had nothing to do with any of it. Narrowing that to sessions whose
- * last statement was `pg_try_advisory_lock` looked exact and was not: the other
- * lock tests in this file run through the shared pool and leave its connections
- * sitting idle on exactly that statement, so the wrong one was killed depending
- * on what had run before. What is left is a pid the caller knows because it
- * asked its own single-connection pool for it.
- *
- * The answer is read rather than discarded, and that line is the whole reason
- * the tests below test anything. `pg_terminate_backend` returns false for a pid
- * that is no longer a running backend, and it is a warning rather than an
- * error, so a helper that ignores it terminates nothing and says nothing.
- * Every assertion downstream still holds in that case: no connection breaks, no
- * error is emitted, the unlock succeeds, the work returns what it returned.
- * Measured — aimed at a pid that could not exist, both tests passed. So the
- * premise they are named for is checked here, once, where the failure can still
- * be told apart from a defect in the store.
+ * Terminates one backend, named by its pid, from a connection of its own.
+ * Searching for the session instead kills the wrong one: everything holding an
+ * advisory lock includes the gateway's own connections, and the shared pool
+ * leaves idle connections whose last statement was `pg_try_advisory_lock` too.
+ * The result is checked because `pg_terminate_backend` only warns about a pid
+ * that is not running, and every assertion downstream would still pass with
+ * nothing terminated.
  */
 async function terminate(pid: number): Promise<void> {
   const pool = new Pool({ connectionString: databaseUrl ?? "", max: 1 });
@@ -136,22 +91,10 @@ async function terminate(pid: number): Promise<void> {
 }
 
 /**
- * Runs the work and hands back whatever reached Node with nobody listening for
- * it while that was going on.
- *
- * The tests that terminate a connection are about an `error` event on a client
- * no longer carrying a listener, which in Node is an uncaught exception. Left to
- * the runner that shows up as a failed run with the errors reported beside the
- * results — the run's exit code says something went wrong, but every assertion
- * in the test still passes, so the test itself is green and reports nothing.
- * That is the same shape as the helper above discarding what it was told, and
- * it is worth not having twice.
- *
- * So the test asks directly. A listener of its own is on for the length of the
- * call and off again afterwards, and what it collected is something to assert
- * about. The runner's own listener still fires as well, which is wanted: two
- * signals agreeing is better than one, and this one is the one that names the
- * test.
+ * Runs the work and returns whatever reached Node as an uncaught exception
+ * meanwhile. An `error` event on a client with no listener is one, and the
+ * runner reports it beside the results while the test itself stays green, so
+ * the test collects it to assert on.
  */
 async function whatWentUnlistened(work: () => Promise<void>): Promise<string[]> {
   const unlistened: string[] = [];
@@ -177,11 +120,7 @@ async function backendPid(of: Pool): Promise<number> {
   return pid;
 }
 
-/**
- * The address the payments below were checked against, carried onto the order
- * with them. Nothing in this file turns on which address it is; what matters
- * elsewhere is that the charge is sent to the one the payer signed for.
- */
+/** The address the payments below were checked against; nothing here turns on which. */
 const PAID_AT = "0x0000000000000000000000000000000000000009";
 
 const syncCard: Card = {
@@ -208,15 +147,11 @@ if (databaseUrl === null) {
     let pool: Pool;
     let store: PostgresStore;
     /**
-     * The pool the shared store contract runs on, kept apart from the one this
-     * file's own store and gateway share.
-     *
-     * Its size is the load-bearing part. Two of the contract's cases hold a
-     * decision open while a second decision runs, and a decision is a
-     * transaction holding a connection for as long as it lasts — so on a pool
-     * of one the second would wait for a connection rather than for a lock, and
-     * "these two orders do not wait for each other" would be answered by the
-     * pool instead of by the database.
+     * The pool the shared store contract runs on, apart from the one this file's
+     * store and gateway share. Two of the contract's cases hold a transaction
+     * open while a second runs, so on a pool of one the second would wait for a
+     * connection rather than a lock, and the pool, not the database, would
+     * answer.
      */
     let contract: ReturnType<typeof connect>;
     let queue: PgBossQueue;
@@ -238,44 +173,22 @@ if (databaseUrl === null) {
 
       const connected = connect(databaseUrl);
       pool = connected.pool;
-      // Through `connect` like every other pool here, so the contract's own
-      // connections carry the same error listeners the rest of them do. Four,
-      // which is more than the two its cases need at once and small enough that
-      // a pool exhausted by something else is still a visible failure.
+      // Through `connect`, so its connections carry the same error listeners.
+      // Four is more than the two its cases need at once and small enough that
+      // exhaustion by something else still fails visibly.
       contract = connect(databaseUrl, { max: 4 });
       // Every run starts from an empty catalog, or the counts below would be
       // reading somebody else's leftovers.
       await pool.query(EMPTY_EVERY_TABLE);
-      // And the queue's own tables, which are none of ours. They are dropped
-      // rather than emptied, dropped before the gateway is up rather than
-      // after, and dropped from an installation of this suite's own rather than
-      // from the one a deployment uses. All three are lessons from runs that
-      // failed.
-      //
-      // Emptying them is what pg-boss's own deleteAllJobs does, and it does it
-      // as `TRUNCATE pgboss.job` — an exclusive lock on a partitioned table and
-      // every partition under it. Called after the gateway has started, that
-      // lands on top of the reminder worker already polling those same
-      // partitions, and the two deadlock: `deadlock detected`, in beforeAll,
-      // taking the whole file down before a single test runs. It is a race, so
-      // it does not happen every time, which is the worst way for it to fail.
-      //
-      // Dropping the schema also clears what emptying the jobs leaves behind:
-      // the queues themselves and their schedules. `everyDay` registers a cron
-      // entry that survives on the volume, so a suite that only deleted jobs
-      // would inherit yesterday's schedules for as long as the volume lives.
-      //
-      // And it is `pgboss_adapters` rather than `pgboss` because the port this
-      // suite connects to is published for exactly this, so the database it
-      // runs against is the one the containers use. Dropping the schema a
-      // running gateway's workers are polling takes that gateway's queue out
-      // from under it — it logs `relation "pgboss.job_common" does not exist`
-      // and goes on reporting itself healthy. This suite installs its own and
-      // leaves a deployment's alone.
-      //
-      // What it costs is that pg-boss arrives at a schema that is never there
-      // yet, so its own migration of an existing installation is exercised
-      // nowhere. That is a thing to remember at the next pg-boss upgrade.
+      // The queue's tables are dropped, not emptied, and before the gateway
+      // starts: pg-boss's deleteAllJobs truncates `pgboss.job` under an
+      // exclusive lock that races the reminder worker's polling into an
+      // intermittent deadlock. Dropping also clears the queues and the cron
+      // schedules `everyDay` leaves on the volume. The schema is this suite's
+      // own because the database may be the one the containers use, and a
+      // running gateway whose schema is dropped goes on reporting itself
+      // healthy with no queue. The cost: pg-boss's migration of an existing
+      // installation is exercised nowhere, so check it at the next upgrade.
       await pool.query(`drop schema if exists ${QUEUE_SCHEMA} cascade`);
 
       boss = new PgBoss({ connectionString: databaseUrl, schema: QUEUE_SCHEMA });
@@ -285,8 +198,7 @@ if (databaseUrl === null) {
       });
       // The queue is made first because the store writes through it: an
       // envelope that must not be lost goes into the same transaction as the
-      // order that implies it (ADR-0013), which is the arrangement `start.ts`
-      // makes and the one the tests below are about.
+      // order that implies it, as `start.ts` arranges.
       store = PostgresStore.over(connected.db, countedIds(), queue.envelopes());
       facilitator = new ScriptedFacilitator();
 
@@ -303,30 +215,22 @@ if (databaseUrl === null) {
       await gateway.start();
     }, 60_000);
 
-    // Every card, order and receipt belongs to a merchant that exists, so the
-    // row is written back after each truncate rather than once: without it the
-    // first publish of the next test is refused by the foreign key, which is
-    // the schema doing its job and the fixture forgetting its own.
+    // The merchant is written back after each truncate: every card, order and
+    // receipt references it by foreign key.
     beforeEach(async () => {
       await store.addMerchant({ id: A, name: "The merchant of this suite" }, now);
-      // A card whose merchant has nowhere to be paid is not on sale outside the
-      // sandbox, and this suite's config names a real facilitator — so the
-      // merchant gets a wallet, the same way testing/harness.ts seeds its own.
+      // Outside the sandbox a card is on sale only if its merchant has a wallet,
+      // and this config names a real facilitator.
       await setPayoutWallet(store, A, "0x0000000000000000000000000000000000000001", now);
-      // And a name, for the same shape of reason one step earlier: a payment
-      // request names its seller, so a merchant listed under nobody has nothing
-      // on sale either. Without these every purchase below would be refused for
-      // a reason that has nothing to do with what it is testing.
+      // And a name, because a payment request names its seller; without one
+      // nothing is on sale.
       await store.setServiceName(A, "The merchant of this suite", now);
     });
 
     afterAll(async () => {
       await gateway.stop();
-      // Taken away again, the way the queue suite next door takes its own away,
-      // so that a developer opening this database finds the gateway's tables
-      // and not a test run's pg-boss beside them. The drop in beforeAll is what
-      // makes the suite repeatable and stays there: a run that dies in the
-      // middle leaves this behind, and the next run must not care.
+      // Dropped here so the database keeps no test run's pg-boss; the drop in
+      // beforeAll stays too, for a run that dies midway.
       await pool.query(`drop schema if exists ${QUEUE_SCHEMA} cascade`);
       await pool.end();
       await contract.pool.end();
@@ -361,11 +265,9 @@ if (databaseUrl === null) {
     });
 
     it("refuses to guess when the column holds a word the machine does not know", async () => {
-      // A hand-edited row, or a value from a version of this code that is not
-      // this one. Guessing here would be guessing about whether somebody is
-      // selling, which is the one thing this column exists to answer.
+      // A hand-edited row or a value from another version of this code.
+      // Guessing would be guessing whether somebody is selling.
       await store.setSelling(A, "paused");
-      // Named, so that the update reaches this merchant's row and nothing else.
       await pool.query("update merchants set selling = $1 where id = $2", ["sort-of", A]);
 
       await expect(store.selling(A)).rejects.toThrow(/sort-of/);
@@ -374,10 +276,10 @@ if (databaseUrl === null) {
     });
 
     describe("the birth of an order and a switch of integration", () => {
-      // ADR-0036. A birth holds its merchant's row for share while it writes,
-      // and a switch holds it for update while it counts the orders that hold
-      // it, so neither can land inside the other. The store contract runs them
-      // one after the other; only two connections can show they wait.
+      // A birth holds its merchant's row for share while it writes, and a
+      // switch holds it for update while it counts the orders that hold it, so
+      // neither can land inside the other. The store contract runs them one
+      // after the other; only two connections can show they wait.
       const settledWithin = async (pending: Promise<unknown>, ms: number): Promise<boolean> => {
         let settled = false;
         void pending.then(
@@ -445,19 +347,11 @@ if (databaseUrl === null) {
     });
 
     it("lets one of two separate database clients take an order, and makes the other wait to find out", async () => {
-      // The ownership rule, against two clients that share nothing in this
-      // process. The store contract races three calls through one store ("is
-      // held still, so two decisions cannot both write over the same read"),
-      // and a chain of promises in the adapter would pass it just as well as a
-      // row lock; the in-memory adapter passes it for exactly that reason. Here there are two pools and two connections, so the only
-      // thing that can make the second wait for the first is the database.
-      //
-      // What is being decided is the rule the gateway decides inside this same
-      // hold: an order is taken by the first verified payment, and a second
-      // buyer is turned away. Both callers read the order before either writes,
-      // if nothing holds them apart — and then both are its owner, both are
-      // sent to a merchant, and one of the two charges fails on a merchant who
-      // has already handed over the goods.
+      // Two pools and two connections, so only the database can make the second
+      // wait: a chain of promises in one adapter would pass the store contract's
+      // race just as well. Without the hold both read the order before either
+      // writes, both own it, and one charge fails after the goods are handed
+      // over.
       const published = await store.publishCard(
         A,
         { ...syncCard, merchant_item_id: "contested" },
@@ -467,15 +361,10 @@ if (databaseUrl === null) {
       if (offered.step !== "pay") throw new Error("no price was offered");
       const orderId = offered.order.order.id;
 
-      // One connection each, and that is load-bearing rather than tidy. The
-      // check below names the two backends by their identifiers, so a pool that
-      // quietly opened a second connection would leave it watching a session
-      // that is not doing the work.
-      //
-      // Through `connect` rather than built here, like every other pool a store
-      // in this file is given. That is what puts the error listener on the
-      // clients these two check out, and alice's is checked out and left idle
-      // for as long as the poll below takes.
+      // One connection each: the check below names the two backends by pid, so
+      // a second connection would leave it watching a session not doing the
+      // work. Through `connect`, so the clients carry the error listener;
+      // alice's sits idle for as long as the poll below takes.
       const alice = connect(databaseUrl, { max: 1 });
       const bob = connect(databaseUrl, { max: 1 });
       const alicePool = alice.pool;
@@ -501,24 +390,14 @@ if (databaseUrl === null) {
             reads.push(who);
             if (who === "alice") {
               letBobIn();
-              // Waited for rather than slept through: what is wanted is the
-              // moment bob's transaction is actually stuck behind alice's. It
-              // gives up rather than throwing, so that a lock that never took
-              // shows up below as two owners — the defect itself — and not as
-              // a timeout in the plumbing.
-              //
-              // The question is asked about the two backends by name, and it
-              // took three goes to get there. Counting backends waiting on any
-              // lock passed whether or not the waiter was bob. Adding the query
-              // text ruled out pg-boss, which is running against this same
-              // database and whose own fetch is a `for update`, but still
-              // passed for any two sessions contending over any row of this
-              // table — an adversarial review demonstrated exactly that with a
-              // decoy pair and no row lock at all. `pg_blocking_pids(bobPid)`
-              // naming `alicePid` cannot be produced by anybody else: it says
-              // this session is held up by that one, and the only lock alice
-              // holds is the one her `select ... for update` took on this
-              // order's row.
+              // Waited for rather than slept through, until bob's transaction
+              // is stuck behind alice's. It gives up rather than throwing, so a
+              // lock that never took shows up below as two owners, not as a
+              // timeout. The check names both backends because pg-boss runs its
+              // own `for update` on this database, and any two sessions
+              // contending over any row would pass a looser one: only alice's
+              // lock on this order's row makes `pg_blocking_pids(bobPid)` name
+              // `alicePid`.
               const until = Date.now() + 5_000;
               while (Date.now() < until && !aliceHeldBobUp) {
                 const { rows } = await pool.query<{ blockers: number[] }>(
@@ -535,11 +414,8 @@ if (databaseUrl === null) {
             if (found.paidBy !== null && found.paidBy !== who) {
               return { result: { took: false, heldBy: found.paidBy } };
             }
-            // Noted before the write goes back, so that the order of these
-            // marks says something. Alice reads first because the test starts
-            // her first; what is not arranged is that she gets all the way to
-            // deciding before bob reads at all, and without the hold she does
-            // not — bob's read lands between her read and her write.
+            // Noted before the write goes back. Alice reads first by
+            // arrangement; only the hold makes her decide before bob reads.
             reads.push(`${who} decided`);
             return { save: { ...found, paidBy: who }, result: { took: true } };
           });
@@ -550,18 +426,10 @@ if (databaseUrl === null) {
         const [first, second] = await Promise.all([aliceTaking, bobTaking]);
 
         const decided = [first, second].map((lookup) => (lookup.found ? lookup.result : null));
-        // Exactly one, and the other told whose it is. Without the hold both
-        // read an order nobody owns and both take it.
         expect(decided).toStrictEqual([{ took: true }, { took: false, heldBy: "alice" }]);
-        // And the database is what made bob wait: his session, held up by her
-        // session, on the one row she had locked.
         expect(aliceHeldBobUp).toBe(true);
-        // The marks are the same fact told as a sequence rather than as a
-        // catalogue query, and they stand on the wait above being a wait for
-        // the real lock. Without it alice polls out her five seconds, bob reads
-        // and decides while she waits, and the marks come out "alice", "bob",
-        // "bob decided", "alice decided" — both of them having read an order
-        // that was still nobody's.
+        // Without the lock bob reads and decides while alice polls, and the
+        // marks come out "alice", "bob", "bob decided", "alice decided".
         expect(reads).toStrictEqual(["alice", "alice decided", "bob"]);
         expect((await store.orderById(orderId))?.paidBy).toBe("alice");
       } finally {
@@ -581,12 +449,10 @@ if (databaseUrl === null) {
     });
 
     it("keeps the open column in step with the state inside the document", async () => {
-      // `open` is a column of its own, written from the document by `rowFor` on
-      // every insert and every update, and it is what `GET /orders?open=true`
-      // answers from. The in-memory adapter has no such column — it works the
-      // answer out from the state each time it is asked — so nothing offline
-      // can catch the two disagreeing, and a column that fell behind would
-      // quietly drop a live order out of the list the dashboard works from.
+      // `open` is a column written from the document by `rowFor`, and
+      // `GET /orders?open=true` answers from it. The in-memory adapter has no
+      // such column, so only this test catches one that fell behind and
+      // dropped a live order from the list the dashboard works from.
       const published = await store.publishCard(
         A,
         { ...syncCard, merchant_item_id: "listed" },
@@ -608,22 +474,15 @@ if (databaseUrl === null) {
       }));
 
       expect(await idsOf({ open: true })).not.toContain(orderId);
-      // Still there, though: closed is not deleted, and the unfiltered list is
-      // what somebody reconciling a day's orders reads.
+      // Closed is not deleted: reconciling a day's orders reads the full list.
       expect(await idsOf()).toContain(orderId);
     });
 
     it("leaves the row alone when a decision asked for nothing to be written", async () => {
-      // `updated_at` is written from `rowFor` on every save, and it is the only
-      // place a write with nothing to write shows up at all — the document that
-      // came back would be identical either way, so the shared suite can ask
-      // this only of the state and not of the row.
-      //
-      // What it costs to be wrong is not the column. A store that wrote on
-      // every decision is a store where a call that changed nothing puts back
-      // what it read over whatever landed in between, which is the lost update
-      // the hold exists to prevent, reached by the one call that was not trying
-      // to write.
+      // `updated_at` is the only place a write with nothing to write shows up,
+      // so the shared suite cannot ask this. A store that wrote anyway would
+      // put back what it read over whatever landed in between: the lost update
+      // the hold exists to prevent.
       const published = await store.publishCard(
         A,
         { ...syncCard, merchant_item_id: "untouched" },
@@ -646,9 +505,8 @@ if (databaseUrl === null) {
       };
 
       const before = await writtenAt();
-      // Far enough apart that two writes could not land on one instant. The
-      // column resolves to microseconds and this is twenty milliseconds, so a
-      // write that did happen has nowhere to hide.
+      // The column resolves to microseconds, so twenty milliseconds leaves a
+      // real write nowhere to hide.
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       await store.withOrder(orderId, (found) => ({
@@ -659,10 +517,7 @@ if (databaseUrl === null) {
 
       expect(await writtenAt()).toBe(before);
 
-      // The negative control, and it is what makes the line above mean
-      // anything: a decision that does ask for a write moves the column, so
-      // "unchanged" is this store keeping its word rather than this column
-      // never moving.
+      // Negative control: a decision that asks for a write does move the column.
       await store.withOrder(orderId, (found) => ({
         save: { ...found, priceId: "written on purpose" },
         result: null,
@@ -702,11 +557,10 @@ if (databaseUrl === null) {
     });
 
     describe("a failure in the database", () => {
-      // ADR-0032: no error leaving the store or the queue carries a value bound
-      // to its statement. Each test makes the database refuse a write that has
-      // a buyer's parameter in it, the way a constraint, a full disk or a type
-      // error would, and reads everything a log line could print of what came
-      // back. The refusal quotes the failing row, and the library above it
+      // No error leaving the store or the queue may carry a value bound to its
+      // statement. Each test makes the database refuse a write that has a
+      // buyer's parameter in it and reads everything a log line could print of
+      // the error: the refusal quotes the failing row and the library above it
       // repeats every parameter, so the parameter is there to leak.
       const BUYER = "buyer-ord-7c1e05@example.com";
       const MARKER = "refused-by-this-test";
@@ -773,10 +627,9 @@ if (databaseUrl === null) {
     });
 
     it("walks a parcel through the database and the queue, and keeps nothing of its address", async () => {
-      // ADR-0032 end to end on the stores that keep things: the price question
-      // and the hand-over are drawn and finished, which pg-boss keeps in its
-      // table for days, and taking the order on erases the order's copy and
-      // deletes both. Searched as text across every job on the stream, so a
+      // pg-boss keeps finished jobs for days, so taking the order on must erase
+      // the order's copy of the address and delete both the price question and
+      // the hand-over. Searched as text across every job on the stream, so a
       // field this test did not think of is found too.
       const buyer = `The buyer ${randomUUID()}`;
       const shipTo = {
@@ -846,9 +699,8 @@ if (databaseUrl === null) {
     }, 30_000);
 
     it("walks a whole synchronous sale through the database and the queue", async () => {
-      // Everything from here is the same flow the in-memory tests walk. What
-      // this adds is that it survives the round trip through JSONB and through
-      // a queue that is a table.
+      // The in-memory tests walk the same flow; this adds the round trip
+      // through JSONB and through a queue that is a table.
       const published = await store.publishCard(
         A,
         { ...syncCard, merchant_item_id: "walked" },
@@ -875,23 +727,18 @@ if (databaseUrl === null) {
       const receipt = await store.receiptForOrder(offered.order.order.id);
       expect(receipt?.outcome).toBe("delivered");
       expect(receipt?.price.amount).toBe("80.00");
-      // And it is in the list as well as findable by its order. The two are
-      // different queries and only one of them had ever been run against a
-      // database; a receipt somebody can fetch but that never appears in the
-      // list is a day's takings that does not add up.
+      // The list is a different query from the lookup, and a receipt that can
+      // be fetched but is never listed is a day's takings that does not add up.
       const listed = await store.receipts(A);
       expect(listed.map((one) => one.order_id)).toContain(offered.order.order.id);
       expect(listed.find((one) => one.order_id === offered.order.order.id)).toStrictEqual(receipt);
     }, 30_000);
     /**
      * The effects that must not be lost, against the database where the losing
-     * would happen (ADR-0013).
-     *
-     * In memory the promise is an ordering inside one process, which is a
-     * different problem from this one: here the envelope is a row pg-boss owns,
-     * written on our connection through the handle it takes in its send
-     * options, and whether it is really in our transaction is a fact about
-     * Postgres that no offline test can establish.
+     * would happen. The envelope is a row pg-boss owns, written on our
+     * connection through the handle it takes in its send options; whether it is
+     * really in our transaction is a fact about Postgres that no offline test
+     * can establish.
      */
     describe("an effect written where the state is", () => {
       /** How many jobs with this envelope's identifier are on that stream. */
@@ -938,8 +785,8 @@ if (databaseUrl === null) {
       };
 
       it("is not there at all when the write it went in with rolled back", async () => {
-        // The decisive one. The envelope goes into the transaction first and
-        // the receipt after it names a merchant that does not exist, so
+        // The envelope goes into the transaction first and the receipt after
+        // it names a merchant that does not exist, so
         // Postgres refuses the second write and takes the first down with it.
         // A pg-boss insert that had gone out on the library's own connection
         // would survive that, and the count below would be one.
@@ -1060,10 +907,10 @@ if (databaseUrl === null) {
       };
 
       it("deletes every job carrying a parcel's address with the order, finished ones included", async () => {
-        // ADR-0032: once the merchant has the address, the order's hand-overs
-        // and its price question leave the queue in the same transaction as the
-        // order that says so. The event about the order carries no address and
-        // stays, and so does another order's hand-over.
+        // Once the merchant has the address, the order's hand-overs and its
+        // price question leave the queue in the same transaction as the order
+        // that says so. The event about the order carries no address and stays,
+        // and so does another order's hand-over.
         const { order, priceId, otherOrderId } = await aStreamCarryingAnAddress("forgotten");
 
         await store.withOrder(order.id, (found) => ({
@@ -1102,16 +949,11 @@ if (databaseUrl === null) {
     });
 
     it("lets one gateway run the sweep and tells the other it is taken", async () => {
-      // The lock has to hold across processes and not merely across one,
-      // because the overlap that makes it necessary is two gateways — or one
-      // gateway handed its own job again after the queue's window ran out. So
-      // this is two stores on two pools, which is as close to two processes as
-      // one test gets, and the in-memory flag that stands in for this offline
-      // could never show it.
-      //
-      // What it costs to be wrong: both runs read the world, both find the same
-      // envelope missing, and both send it. That spends one of the order's
-      // deliveries, and the closure at the attempt cap is a refund.
+      // The lock must hold across processes: the overlap is two gateways, or
+      // one handed its own job again after the queue's window ran out, so this
+      // uses two stores on two pools. Without it both runs find the same
+      // envelope missing and both send it, spending one of the order's
+      // attempts, and closing at the attempt cap is a refund.
       const oneGateway = connect(databaseUrl, { max: 2 });
       const otherGateway = connect(databaseUrl, { max: 2 });
       const onePool = oneGateway.pool;
@@ -1144,9 +986,7 @@ if (databaseUrl === null) {
         letGo();
         expect(await first).toStrictEqual({ ran: true, result: "the one that ran" });
 
-        // And it is let go afterwards rather than held for the life of the
-        // process: the next run finds it free. A lock that leaked would stop
-        // every sweep from here on, silently.
+        // A lock that leaked would silently stop every later sweep.
         expect(await other.runAlone("a_test_sweep", async () => "free again")).toStrictEqual({
           ran: true,
           result: "free again",
@@ -1158,18 +998,11 @@ if (databaseUrl === null) {
     }, 30_000);
 
     it("does not pile a listener onto a connection every time it is handed out", async () => {
-      // The other half of the guard. It goes on when a client is checked out and
-      // comes off when it is checked back in, and without the second half every
-      // query through the pool leaves one behind. A gateway serves the same
-      // connection thousands of times a day, so the pile is unbounded: Node
-      // starts warning about a leak at eleven listeners on one emitter, and an
-      // operator gets a warning about a defect that is not there — plus, when
-      // the connection does fail, the one failure written out once per listener.
-      //
-      // One connection in the pool and twenty turns through it, which is twice
-      // what Node tolerates and needs no timing to reproduce. The warning is
-      // what is asserted on rather than a count of listeners, because the
-      // warning is the thing somebody would actually meet.
+      // The error listener goes on at checkout and must come off at check-in,
+      // or every query leaves one behind: Node warns past ten listeners on one
+      // emitter, and a failing connection is then reported once per listener.
+      // Twenty turns through one connection is twice that limit; the warning
+      // is asserted on because it is what an operator would meet.
       const guarded = connect(databaseUrl, { max: 1 });
       const complaints: string[] = [];
       const noteIt = (warning: Error) => complaints.push(warning.name);
@@ -1190,26 +1023,13 @@ if (databaseUrl === null) {
     }, 30_000);
 
     it("survives the connection holding an order's transaction being terminated under it", async () => {
-      // The same pinned-and-idle connection as the sweep below, on the path that
-      // takes money. `withOrder` runs its work inside a drizzle transaction, and
-      // a transaction is a client checked out of the pool for the length of the
-      // callback — `connect()`, the callback, `release()` in a `finally`, and no
-      // error listener anywhere in between.
-      //
-      // It is not query-bound for that whole stretch either. The runner arms the
-      // order's deadlines inside this callback, and that is a round trip on
-      // pg-boss's own pool: the transaction's client sits idle, with no query in
-      // flight for a fatal to surface through. So a backend terminated then —
-      // an administrator, a failover, a pooler dropping an idle session — emits
-      // `error` on a client nobody is listening to, which in Node is an uncaught
-      // exception and a dead process, and this is the path a purchase runs on.
-      //
-      // Three things are checked. That nothing reached Node unlistened, asked
-      // for directly rather than left to the runner's exit code — without the
-      // guard the assertions below all pass and only the run fails, which is a
-      // test reporting nothing. That the failure reaches the caller as a
-      // failure, since the transaction cannot commit on a connection that is
-      // gone. And that the decision it was carrying was not written.
+      // `withOrder` holds a pool client for the whole callback, and the client
+      // sits idle while the runner arms the order's deadlines on pg-boss's own
+      // pool. A backend terminated then (an administrator, a failover, a pooler
+      // dropping an idle session) emits `error` on that client; with no
+      // listener that is an uncaught exception and a dead process, on the path
+      // that takes money. Checked: nothing reached Node unlistened, the caller
+      // gets a failure, and the decision was not written.
       const owner = connect(databaseUrl, { max: 1 });
       const ownPool = owner.pool;
       try {
@@ -1224,39 +1044,28 @@ if (databaseUrl === null) {
 
         const own = PostgresStore.over(owner.db, countedIds());
         // One connection in the pool, so this is the one the transaction will
-        // check out and the one terminated inside it. Asked for before rather
-        // than hunted for after, which is what keeps this off everybody else's.
+        // check out and the one terminated inside it.
         const pinned = await backendPid(ownPool);
 
         const unlistened = await whatWentUnlistened(async () => {
           const deciding = own.withOrder(orderId, async (found) => {
             await terminate(pinned);
-            // Long enough for the client to notice and emit. Nothing is in
-            // flight on it while this waits, which is the whole point.
+            // Long enough for the client to notice and emit, with nothing in
+            // flight on it.
             await new Promise((resolve) => setTimeout(resolve, 250));
             return { save: { ...found, paidBy: "whoever" }, result: "decided" };
           });
 
-          // Named rather than bare, and the reason is a lesson from this very
-          // branch. `terminate` now throws when the backend it aimed at was
-          // not there — which is right — but that throw happens inside this
-          // callback, drizzle rolls it back and rethrows, and a bare
-          // `toThrow()` is satisfied by it. So a run in which nothing was
-          // terminated passed everything below, including the check that
-          // nothing went unlistened. The matcher is what makes this a test of
-          // the connection dying rather than of any failure at all.
-          // When the connection dies mid-transaction the rollback is what fails,
-          // and it leaves the store as a failure of the database, stripped of
-          // what was sent with it (ADR-0032). Matching that is still the point:
-          // the terminate helper's own complaint is not the database's, leaves
-          // untouched, and fails here instead.
+          // A named matcher, not a bare `toThrow()`: `terminate`'s own
+          // complaint is rolled back and rethrown too, and would satisfy a bare
+          // one with nothing terminated. The connection dying makes the
+          // rollback fail, which leaves the store as a database failure
+          // stripped of its parameters.
           await expect(deciding).rejects.toThrow(/the store's withOrder failed in the database/);
         });
 
         expect(unlistened).toStrictEqual([]);
 
-        // And nothing was written: a decision made on a transaction that could
-        // not commit is a decision that did not happen.
         expect((await store.orderById(orderId))?.paidBy).toBeNull();
 
         // The pool drew a fresh connection rather than handing the broken one
@@ -1268,40 +1077,23 @@ if (databaseUrl === null) {
     }, 30_000);
 
     it("survives the connection holding the lock being terminated under it", async () => {
-      // The connection is pinned out of the pool and then left idle for the
-      // whole run, with no query in flight for a fatal to surface through. A
-      // checked-out client carries no error listener — the pool takes its own
-      // off on the way out and puts it back on release — so without one of ours
-      // the `error` event a terminated backend emits is an uncaught exception
-      // and a dead process, taking every parked purchase and parked worker with
-      // it. The triggers are ordinary: an administrator, a failover, a pooler
-      // dropping an idle session, a provider's idle-session timeout.
+      // `runAlone` pins a connection and leaves it idle for the whole run, and
+      // a checked-out client carries none of the pool's error listeners, so a
+      // terminated backend would be an uncaught exception and a dead process,
+      // taking every parked purchase and worker with it. Checked: nothing
+      // reached Node unlistened, and the work's result comes back rather than
+      // the unlock's failure from its `finally`, which would report a finished
+      // sweep as failed and hand its work out again.
       //
-      // Two things are checked. That nothing reached Node unlistened, asked for
-      // directly: leaving it to the run's exit code means every assertion here
-      // passes and only the run fails, which is a test that reports nothing.
-      // And the answer: the work's own result comes back, rather than the
-      // unlock's failure — which sits in a `finally` and would otherwise
-      // replace it, reporting a sweep that finished as one that failed and
-      // handing its work out again.
-      //
-      // A pool of its own, so that what is terminated below can only ever be
-      // this test's connection. Aimed at the shared one it would take the
-      // gateway's own down with it, which is a thing this test did on the way
-      // to being written.
-      //
-      // One connection in it, and that is load-bearing rather than thrift: the
-      // second run below has to be handed the same client, so that a broken one
-      // put back in the pool is a broken one it draws. With room to spare, a
-      // client returned in that state is simply never used again and the test
-      // watches nothing.
+      // One connection, in a pool of its own: nothing else's connection is
+      // terminated, and the second run must draw the same client, so a broken
+      // one put back in the pool is the one it gets.
       const owner = connect(databaseUrl, { max: 1 });
       const ownPool = owner.pool;
       try {
         const own = PostgresStore.over(owner.db, countedIds());
         // The pool holds one connection, so this is the one `runAlone` will
-        // pin and the one terminated below. Asked for before rather than
-        // hunted for after, which is what keeps this off everybody else's.
+        // pin and the one terminated below.
         const pinned = await backendPid(ownPool);
 
         let ran: unknown;
@@ -1317,9 +1109,8 @@ if (databaseUrl === null) {
         expect(unlistened).toStrictEqual([]);
         expect(ran).toStrictEqual({ ran: true, result: "the work still finished" });
 
-        // And the store still works afterwards: the broken client was destroyed
-        // rather than handed back to the pool for somebody else's query to fail
-        // on, and the lock went with the backend.
+        // The broken client was destroyed rather than handed back to the pool,
+        // and the lock went with the backend.
         expect(await own.runAlone("a_terminated_sweep", async () => "free")).toStrictEqual({
           ran: true,
           result: "free",
@@ -1330,11 +1121,9 @@ if (databaseUrl === null) {
     }, 30_000);
 
     it("gives back the work's own failure and not the connection's", async () => {
-      // The other direction of the same `finally`. When the work fails and the
-      // unlock fails behind it, the reason that reaches whoever is reading is
-      // the work's — the connection's is logged and dropped. Swapped, an
-      // operator looking for why a sweep died would find a database error in
-      // place of the thing that actually went wrong.
+      // When the work fails and the unlock fails behind it, the work's reason
+      // is the one returned and the connection's is logged; swapped, an
+      // operator would find a database error in place of what went wrong.
       const owner = connect(databaseUrl, { max: 1 });
       const ownPool = owner.pool;
       try {
@@ -1354,15 +1143,11 @@ if (databaseUrl === null) {
     }, 30_000);
 
     it("lets go of the lock when the work it was holding for throws", async () => {
-      // A sweep that failed part-way is a sweep that has to be able to run
-      // tomorrow. Held past a failure, the lock would turn one bad run into a
-      // repair that never happens again for as long as the process lives.
-      //
-      // The second store is on a pool of its own, and that is the whole test
-      // rather than scenery. Postgres hands the same session an advisory lock
-      // it already holds without complaint, so a retry that happened to get the
-      // same connection back would be told yes whether the first run had let go
-      // or not — and this passed, wrongly, until it asked from somewhere else.
+      // Held past a failure, the lock would stop every later sweep for the life
+      // of the process. The second store has a pool of its own because
+      // Postgres grants a session an advisory lock it already holds, so asking
+      // on the same connection would succeed whether the first run let go or
+      // not.
       const its = connect(databaseUrl, { max: 1 });
       const otherPool = its.pool;
       try {
@@ -1384,24 +1169,14 @@ if (databaseUrl === null) {
     }, 30_000);
 
     it("lets go of the name when the unlock fails on a connection that is still alive", async () => {
-      // The failure the `finally` above cannot see. A terminated backend takes
-      // its locks with it, so an unlock that fails because the connection died
-      // costs nothing; an unlock that fails on a session which is still there
-      // leaves the name held by a client that goes straight back into the pool
-      // holding it. Every sweep after that is told the name is taken and does
-      // nothing, and the line it logs is the same line a healthy skip logs —
-      // so the daily safety net for effects that went missing is off, and
-      // nothing anybody reads says so.
-      //
-      // What produces it in a deployment is a statement timeout: SQLSTATE
-      // 57014, the statement cancelled, the session untouched.
-      //
-      // Here the unlock is made to fail directly rather than by racing a
-      // timeout against a function that returns in microseconds. What is
-      // substituted is only the cause — the session is a real one, it really
-      // does still hold the lock, because the unlock genuinely never ran — and
-      // what is asserted is real database state, asked from a connection that
-      // shares nothing with it.
+      // A terminated backend takes its locks with it, but an unlock that fails
+      // on a live session (a statement timeout, SQLSTATE 57014) leaves the
+      // name held by a client that goes back into the pool. Every later sweep
+      // would skip with the same line a healthy skip logs, and the daily safety
+      // net would be off with nothing saying so. The unlock is made to fail
+      // directly rather than by racing a timeout; the session and its lock are
+      // real, and the state is asked from a connection that shares nothing
+      // with it.
       const held = connect(databaseUrl, { max: 1 });
       const asking = connect(databaseUrl, { max: 1 });
       try {
@@ -1434,12 +1209,10 @@ if (databaseUrl === null) {
           result: "swept",
         });
 
-        // And the name is free again, because the connection was released with
-        // the failure and the pool ended the session rather than keeping it.
-        // Ending a session is asynchronous, so this waits — but only for two
-        // seconds, well inside the ten the pool would otherwise take to reap an
-        // idle connection. A window that reached the reaper would pass with or
-        // without the fix.
+        // The pool ends the session the failed unlock ran on. Ending is
+        // asynchronous, so this waits two seconds, well inside the ten the pool
+        // takes to reap an idle connection: a window that reached the reaper
+        // would pass even if the session were kept.
         const next = PostgresStore.over(asking.db, countedIds());
         const until = Date.now() + 2_000;
         let free = await next.runAlone("a_wedged_sweep", async () => "free");
@@ -1467,22 +1240,18 @@ if (databaseUrl === null) {
       };
 
       beforeEach(async () => {
-        // The sweep asks about every order in the gateway, so what the earlier
-        // tests in this file left behind would be swept too and the counts
-        // below would be reading their orders as well as this one's. Emptied
-        // here rather than in `beforeAll`, which runs once for the file.
+        // The sweep asks about every order, so earlier tests' orders would be
+        // counted too.
         await pool.query("truncate table receipts, orders");
-        // And the stream is drained, because the envelopes the earlier tests
-        // wrote are still on it and this one counts what arrives.
+        // Earlier tests' envelopes are still on the stream, and these tests
+        // count what arrives.
         await queue.draw(A, 100, 0);
       });
 
       it("is a no-op on the second run once the first has been acted on", async () => {
-        // Run twice against a live database, which is the thing to prove rather
-        // than to promise. Two of the three arms are no-ops for a reason in the
-        // orders themselves: the receipt is there, so the order is no longer
-        // one without a receipt; the merchant has taken the order, so it is no
-        // longer sitting in paid.
+        // Two of the three arms are no-ops on a second run for a reason in the
+        // orders themselves: an order with a receipt is not missing one, and an
+        // order the merchant has taken is not sitting in paid.
         const card = await store.publishCard(A, asyncCard, now);
         const offered = await gateway.beginPurchase(card.id, {});
         if (offered.step !== "pay") throw new Error("no price was offered");
@@ -1492,10 +1261,9 @@ if (databaseUrl === null) {
         await gateway.runner.presentVerifiedPayment(orderId, paid, paid, PAID_AT, now);
         expect((await store.orderById(orderId))?.order.state).toBe("paid");
 
-        // The envelope this sale wrote is drawn off the stream and thrown away.
-        // With the dispatch committing alongside the order there is no longer a
-        // way to make the gateway produce one without the other, so the state
-        // the sweep exists for has to be arranged.
+        // The envelope this sale wrote is drawn off and thrown away: the
+        // dispatch commits with the order, so the state the sweep exists for
+        // has to be arranged.
         expect(await queue.draw(A, 10, 2_000)).toHaveLength(1);
 
         now += gateway.runtime.config.sweepDispatchGraceMs + 60_000;
@@ -1507,8 +1275,6 @@ if (databaseUrl === null) {
         expect(first?.dispatched).toBe(1);
         expect(first?.refused).toBe(0);
 
-        // The merchant's worker takes the order, which is what the envelope was
-        // for and what makes the order no longer one that has reached nobody.
         const worker = workUntilStopped(
           { gateway, merchant: { id: A, name: "", key: "", keyId: "", wallet: "" } },
           { onOrder: () => ({ accepted: {} }) },
@@ -1539,8 +1305,8 @@ if (databaseUrl === null) {
         });
         await worker.stop();
 
-        // The receipt is taken out from under it, which is what a record from
-        // an older version of this code looks like from here.
+        // A delivered order without a receipt, as a record written by an
+        // older version of this code looks.
         await pool.query("delete from receipts where order_id = $1", [orderId]);
         expect(await store.receiptForOrder(orderId)).toBeNull();
 
@@ -1556,29 +1322,17 @@ if (databaseUrl === null) {
     });
 
     /**
-     * Everything both stores promise, against the one that a merchant's money
-     * actually rests on.
+     * Everything both stores promise, against the one a merchant's money rests
+     * on. Inside this suite because it needs the database, pools and emptied
+     * tables `beforeAll` builds; as a sibling it would run after the pools had
+     * ended.
      *
-     * Inside this suite rather than beside it, because what it needs — the
-     * migrated database, the pools, the emptied tables — is what `beforeAll`
-     * builds and `afterAll` takes down. Declared as a sibling it would run
-     * after the pools had been ended.
-     *
-     * A store and a pool of its own, and that is the part worth reading before
-     * it is changed back. The rest of this file's store shares its pool with a
-     * started gateway whose pg-boss workers are polling, and writes its
-     * envelopes onto a real stream. The contract needs neither — it never asks
-     * for a write alongside an order — and handing it that store would put its
-     * transactions and its truncates in the same pool as work nobody in the
-     * contract asked for. What the contract's pool does need is room for more
-     * than one transaction at a time: two of its cases hold a decision open
-     * while another runs, and on a pool of one they would wait for a connection
-     * rather than for a lock, which is a different thing that looks identical.
-     *
-     * Each case is given an empty store, which here means every table emptied.
-     * That takes the merchants this file's own `beforeEach` writes as well; the
-     * contract makes whatever it needs, and the next case in this file gets
-     * them back from that hook.
+     * A store and pool of its own: this file's store shares a pool with a
+     * started gateway whose pg-boss workers are polling and writes envelopes
+     * onto a real stream, and the contract's transactions and truncates must
+     * not run among that work. Each case empties every table, merchants
+     * included; the next case in this file gets them back from its
+     * `beforeEach`.
      */
     describeStore("the store on Postgres", async () => {
       await contract.pool.query(EMPTY_EVERY_TABLE);

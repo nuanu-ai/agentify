@@ -1,13 +1,7 @@
 /**
- * The block a merchant sets their payout address in, read the way they read it.
- *
- * Two promises are held here and neither is about markup. The first is that an
- * address which money could never reach is refused before anything is written,
- * and that an address a wallet handed out with capitals in it is not. The
- * second is that a saved address can be checked: the whole of it is on the
- * page, and what a merchant selects and copies off the page is the address
- * itself rather than a prettier arrangement of its characters.
- *
+ * An address money could never reach is refused before anything is written, and
+ * one a wallet handed out with capitals is not. A saved address can be checked:
+ * all of it is on the page, and what a merchant copies is the address itself.
  * The routes that save one are driven over HTTP in `server.test.ts`.
  */
 
@@ -17,11 +11,7 @@ import { payoutWalletBlock, whatIsWrongWithTheWallet } from "./payout-wallet.js"
 import type { Viewer } from "./screens.js";
 import { readable } from "./testing/html.js";
 
-/**
- * An address of the right shape, and one nobody is going to mistake for a real
- * one: the digits run 0 to 9 and then the letters a to f, twice over. It is a
- * fixture rather than an address anybody could be paid at.
- */
+/** Of the right shape, and obviously not a real address. */
 const SHAPED = "0x0123456789abcdef0123456789abcdef01234567";
 
 const looking = (payout?: Viewer["payout"]): Viewer => ({
@@ -32,27 +22,21 @@ const looking = (payout?: Viewer["payout"]): Viewer => ({
   ...(payout === undefined ? {} : { payout }),
 });
 
-/** The page as a merchant's clipboard sees it: the tags gone, nothing added. */
 const asCopied = (html: string): string => html.replaceAll(/<[^>]*>/g, "");
 
 describe("the rule an address is held to", () => {
   it("takes both of the two spellings anybody writes an address in", () => {
-    // Lower case is what a block explorer prints and what half the tooling in
-    // this world hands somebody. The mixed-case spelling is what a wallet puts
-    // on the clipboard, and its capitals are a checksum over the address
-    // itself. Refusing either would refuse addresses merchants are actually
-    // given.
+    // Lower case is what a block explorer prints; mixed case is what a wallet
+    // copies, its capitals a checksum. Both are addresses merchants are
+    // actually given.
     expect(whatIsWrongWithTheWallet(SHAPED)).toBeNull();
     expect(whatIsWrongWithTheWallet(checksummedAddressOf(SHAPED))).toBeNull();
   });
 
   it("refuses capitals that disagree with the rest, and says which failure it is", () => {
-    // The one refusal that is not about the shape. Forty characters of the
-    // right shape whose capitals do not check out mean a character in the
-    // address is wrong — and a wrong address is another perfectly good one
-    // belonging to somebody else. A merchant told "that is not an address"
-    // would re-read a spelling that looks entirely fine, so the sentence has to
-    // name the capitals.
+    // Capitals that do not check out mean a character is wrong, and a wrong
+    // address is another valid one belonging to somebody else; the sentence has
+    // to name the capitals.
     const shouted = `0x${SHAPED.slice(2).toUpperCase()}`;
 
     const said = whatIsWrongWithTheWallet(shouted);
@@ -60,8 +44,6 @@ describe("the rule an address is held to", () => {
     expect(said).not.toBeNull();
     expect(said).toMatch(/capital letters/i);
     expect(said).toMatch(/not saved/i);
-    // And it is not the sentence the wrong shape gets, or naming the capitals
-    // would be worth nothing.
     expect(said).not.toBe(whatIsWrongWithTheWallet("my wallet"));
   });
 
@@ -69,16 +51,14 @@ describe("the rule an address is held to", () => {
     const wrong = [
       "",
       "0x",
-      // One character short and one character long: the two mistakes a hand
-      // that retyped an address actually makes.
+      // One character short and one long: the mistakes of a hand that retyped
+      // it.
       SHAPED.slice(0, -1),
       `${SHAPED}0`,
-      // No 0x at the front, which is how an address arrives out of some tools.
+      // No 0x prefix, as some tools print it.
       SHAPED.slice(2),
-      // A character that is not hexadecimal at all, in the middle where an eye
-      // skates over it.
+      // A non-hexadecimal character in the middle, where an eye skates over it.
       `${SHAPED.slice(0, 20)}z${SHAPED.slice(21)}`,
-      // A whole address with something else stuck to it.
       `${SHAPED} and then some`,
       "my wallet",
     ];
@@ -95,18 +75,15 @@ describe("the block on the settings screen", () => {
   it("shows a saved address whole, so a merchant can check it against their wallet", () => {
     const block = payoutWalletBlock(looking({ wallet: SHAPED }));
 
-    // Every character of it, in order, and no ellipsis standing in for the
-    // middle: the shortening everybody reaches for is the one presentation
-    // under which a wrong address and the right one look identical.
+    // No ellipsis for the middle: that is the one presentation under which a
+    // wrong address and the right one look identical.
     expect(asCopied(block)).toContain(SHAPED);
     expect(block).not.toContain("…");
   });
 
   it("leaves no space inside the address, so copying it off the page pastes an address", () => {
-    // The groups of four are the stylesheet's gaps and not the text's. Were
-    // they real spaces, a merchant who selected the address and pasted it into
-    // a wallet would be pasting something no wallet accepts — and would have
-    // read the right address on the way to doing it.
+    // Real spaces between the groups would make a copied address something no
+    // wallet accepts.
     const copied = asCopied(payoutWalletBlock(looking({ wallet: SHAPED })));
     const shown = copied.slice(copied.indexOf("0x"), copied.indexOf("0x") + SHAPED.length);
 
@@ -114,9 +91,8 @@ describe("the block on the settings screen", () => {
   });
 
   it("asks for the address and for nothing else", () => {
-    // The address is enough to be paid with. A private key or a recovery phrase
-    // would be enough to spend with, and a second box on this block is how a
-    // merchant would come to believe we ask for one.
+    // A second box on this block is how a merchant would come to believe we ask
+    // for a key or a recovery phrase.
     const block = payoutWalletBlock(looking({ wallet: null }));
 
     expect(block.match(/<input/g)).toHaveLength(1);
@@ -132,9 +108,8 @@ describe("the block on the settings screen", () => {
   });
 
   it("says publishing is refused without an address where the door asks for one", () => {
-    // The consequence a merchant can feel, said on the one screen where the
-    // address is set: until it is, every card their code publishes comes back
-    // refused, on the test channel as on live. The sandbox asks for none.
+    // Until an address is set, every card the merchant's code publishes is
+    // refused, in test mode as in live; the sandbox asks for none.
     for (const mode of ["test", "live"] as const) {
       const text = readable(payoutWalletBlock({ ...looking({ wallet: null }), mode }));
       expect(text, mode).toMatch(/publishing a card is refused/i);
@@ -158,11 +133,9 @@ describe("the block on the settings screen", () => {
   });
 
   it("shows a refused address whole, so the merchant can read it against their wallet", () => {
-    // A refusal for capitals that disagree asks the merchant to find the one
-    // character that is wrong, and the box it was pasted into is narrower than
-    // an address on a phone. So what was refused is on the page as text, every
-    // character in order, and not only inside the box — the box's value is an
-    // attribute, which is why the clipboard's view of the page does not see it.
+    // The refused address is on the page as text, not only inside the box: the
+    // box's value is an attribute, which the clipboard's view of the page does
+    // not see.
     const shouted = `0x${SHAPED.slice(2).toUpperCase()}`;
     const block = payoutWalletBlock(
       looking({ wallet: SHAPED, problem: "It was not saved.", typed: shouted }),
@@ -178,9 +151,7 @@ describe("the block on the settings screen", () => {
   });
 
   it("draws nothing on a screen that did not ask the gateway for the address", () => {
-    // A page that did not ask must not say anything either way. Drawn from
-    // nothing, this block would tell a merchant they have set no address at the
-    // moment they are least able to check.
+    // A page that did not ask the gateway must say nothing either way.
     expect(payoutWalletBlock(looking())).toBe("");
   });
 });

@@ -1,71 +1,43 @@
 /**
  * The bootstrap purchase: the one paid call that puts a product in the catalog.
  *
- * A resource does not appear in Coinbase's Bazaar because somebody submitted it.
- * There is no form and no admin page. It appears when a paid call for that exact
- * resource settles through the CDP facilitator, and it appears per resource
- * rather than per domain — the spike that measured this
- * (`docs/research/04-spike-bazaar-listing.md`) paid for one of four resources on
- * one host and got one listing. So every product a merchant publishes needs its
- * own bootstrap purchase, and that is what this command makes.
+ * A resource does not appear in Coinbase's Bazaar because somebody submitted
+ * it. It appears when a paid call for that exact resource settles through the
+ * CDP facilitator, and per resource rather than per domain, so every product a
+ * merchant publishes needs its own bootstrap purchase. The command then watches
+ * the discovery catalog and reports what it saw; a settle the catalog does not
+ * show yet is its own verdict, not a pass.
  *
- * It then goes and looks. The spike measured about twelve minutes from settle to
- * the resource being readable in the discovery catalog, so this waits, walks the
- * catalog, and reports what it saw. What it will not do is report a listing it
- * did not read: a settle nobody can find in the catalog yet is its own verdict
- * with its own words, and it is not a pass.
+ * It spends real money on a real chain, from the wallet whose key is in the
+ * environment, paid straight to the merchant's own address. `SMOKE_MAX_USD`
+ * caps one purchase and `SMOKE_TOTAL_USD` the whole run. Only the per-purchase
+ * cap is handed to the payment client as its spend control, because the client
+ * otherwise has a hidden default of $1 a payment that silently drops anything
+ * larger before it is signed; the run total is held by this command's own
+ * check before each purchase. Without `--confirm` it reads every challenge,
+ * runs every gate, prints what a run would cost and signs nothing.
  *
- * ## What this spends
- *
- * Real money, on a real chain, from the wallet whose key is in the environment,
- * paid straight to the merchant's own address — nothing passes through us
- * (ADR-0019). Two caps stand in front of it and neither can be got past by
- * accident: `SMOKE_MAX_USD` is the ceiling on one purchase and `SMOKE_TOTAL_USD`
- * the ceiling on the whole run, and both are also handed to the payment client
- * as its own spend control, because the client has a hidden default of $1 a
- * payment that silently kills anything larger before it is ever signed.
- *
- * At the defaults — $0.05 a purchase, $0.50 for the run — a catalog of ten
- * one-cent products costs ten cents, and no run can cost more than fifty. There
- * is no default that spends anything at all: without `--confirm` this reads every
- * challenge, runs every gate, prints what a run would cost and stops before
- * anything is signed.
- *
- * ## Testnet or mainnet, and the question this command is the instrument for
- *
- * The CDP facilitator serves both, and which one a purchase lands on is the
- * gateway's own `PAYMENT_NETWORK` rather than anything set here — this end reads
- * the network out of the challenge and refuses a chain where the money is real
- * unless `SMOKE_ALLOW_MAINNET=1` says so out loud. Pointing this at a testnet
- * deployment costs nothing beyond test tokens.
- *
- * Whether that proves anything is an open question and this command is the
- * instrument for it. Both `docs/research/04-spike-bazaar-listing.md` and
- * `docs/research/00-open-questions.md` ask whether Bazaar indexes a testnet
- * settle at all or lists only mainnet; the one listing anybody has measured was
- * on Base mainnet, and the testnet case has never been run. So a run on Base
- * Sepolia that settles and never appears is exactly the measurement, and the
- * verdict for it says so in as many words rather than reading as a fault.
+ * Which chain a purchase lands on is the gateway's own `PAYMENT_NETWORK`. This
+ * end reads it from the challenge and refuses a chain where the money is real
+ * unless `SMOKE_ALLOW_MAINNET=1` says so. Whether Bazaar indexes a testnet
+ * settle at all is not known, so a Base Sepolia run that settles and never
+ * appears gets a verdict saying exactly that rather than reading as a fault.
  *
  *   AGENTIFY_SMOKE=1 GATEWAY_URL=https://agentify.example \
  *     SMOKE_BUYER_KEY=0x… pnpm smoke:bootstrap
  *   AGENTIFY_SMOKE=1 GATEWAY_URL=https://agentify.example \
  *     SMOKE_BUYER_KEY=0x… pnpm smoke:bootstrap itm_4d21bb --confirm
  *
- * The key is read from the environment and from nowhere else. It is never
- * printed, never written down, and never put on a command line: `ps` shows one
- * process's arguments to every other user on the machine, so a key passed that
- * way is a key handed out. An argument that looks like one is refused rather
- * than used.
- *
- * ## Where the verdict actually lives
+ * The key is read from the environment and from nowhere else, and is never
+ * printed or written down. A command-line argument that looks like a key is
+ * refused rather than used: `ps` shows one process's arguments to every other
+ * user on the machine.
  *
  * In version two of the protocol the body of a 402 is always `{}`. The reason a
- * payment was refused rides in the base64 `PAYMENT-REQUIRED` header, in its
- * `error` field, and the same header carries both "pay me" and "your payment was
- * rejected". A client that does not read it is blind, and the payment wrapper
- * makes that worse by throwing on its own failures while returning a silent 402
- * on the server's. Both are read here, and a refusal is reported in the
+ * payment was refused rides in the `error` field of the base64
+ * `PAYMENT-REQUIRED` header, the same header that carries the price, and the
+ * payment wrapper throws on its own failures while returning a silent 402 on
+ * the server's. Both are read here, and a refusal is reported in the
  * facilitator's own words.
  */
 
@@ -84,12 +56,11 @@ export const DISCOVERY_ENDPOINT =
 /**
  * How many records one page of the catalog is asked for.
  *
- * Measured against the live endpoint rather than read: `limit` is honoured up to
- * at least a thousand, and `offset` is quantised down to a multiple of the limit
- * — so the walk asks at exact multiples and never at an offset the endpoint
- * would round underneath it. The search and filter parameters are ignored
- * outright, which is why presence is a full walk of fifteen-odd pages and not a
- * query.
+ * Measured against the live endpoint rather than read: `limit` is honoured up
+ * to at least a thousand, and `offset` is quantised down to a multiple of the
+ * limit, so the walk asks at exact multiples and never at an offset the
+ * endpoint would round underneath it. The search and filter parameters are
+ * ignored outright, which is why presence is a full walk and not a query.
  */
 export const DISCOVERY_PAGE_SIZE = 1000;
 
@@ -101,12 +72,11 @@ export const DEFAULT_MAX_USD = "0.05";
 export const DEFAULT_TOTAL_USD = "0.50";
 
 /**
- * How long the catalog is watched, and how often.
- *
- * The spike measured about twelve minutes from settle to a resource being
- * readable in discovery. Thirty minutes covers that with room to spare and then
- * stops: a command that waited indefinitely would turn "not listed yet" into a
- * process nobody ever gets an answer out of.
+ * How long the catalog is watched, and how often. A resource has been seen to
+ * take about twelve minutes from settle to being readable in discovery; thirty
+ * minutes covers that with room to spare and then stops, because waiting
+ * indefinitely would turn "not listed yet" into a process nobody ever gets an
+ * answer out of.
  */
 export const DEFAULT_WAIT_MINUTES = 30;
 const WALK_EVERY_MS = 120_000;
@@ -338,28 +308,27 @@ export type Payment =
   | { readonly paid: "unresolved"; readonly why: string };
 
 /**
- * What a paid call actually came to, read the way the spike learned to read one.
+ * What a paid call actually came to.
  *
- * Three things make this longer than a status check, and each of them is a way a
- * run went wrong once. The body of a 402 is empty by specification, so a refusal
- * has to be decoded out of a header. The payment wrapper throws on its own
- * failures and returns a quiet 402 on the server's, so the two arrive by
- * different doors. And a gateway with no chain behind it answers a purchase
- * exactly as a real one does — same status, same document, a settlement receipt
- * and all — so the only thing that tells them apart is that the transaction it
- * names is not a transaction.
+ * Three things make this longer than a status check. The body of a 402 is empty
+ * by specification, so a refusal has to be decoded out of a header. The payment
+ * wrapper throws on its own failures and returns a quiet 402 on the server's,
+ * so the two arrive by different doors. And a gateway with no chain behind it
+ * answers a purchase exactly as a real one does, settlement receipt and all, so
+ * the only thing that tells them apart is that the transaction it names is not
+ * a transaction.
  *
- * The last one matters here more than anywhere else, because this command's whole
- * subject is a settle that a catalog will index. A sandbox settle is indexed by
- * nobody, and reported as a settle it would send somebody off to wait half an
- * hour for a listing that was never going to happen.
+ * The last matters most here, because this command's subject is a settle that a
+ * catalog will index. A sandbox settle is indexed by nobody, and reported as a
+ * settle it would send somebody off to wait half an hour for a listing that was
+ * never going to happen.
  */
 export function whatBecameOfThePayment(outcome: PurchaseOutcome, network: string): Payment {
   if (outcome.kind === "unreachable") {
-    // The fifth gate, in one branch. A call that never landed is not a call that
-    // failed: the request may have reached the gateway, the gateway may have
-    // reached the facilitator, and the money may be gone. Saying "refused" here
-    // would be telling somebody their wallet is untouched on no evidence at all.
+    // A call that never landed is not a call that failed: the request may have
+    // reached the gateway, the gateway may have reached the facilitator, and
+    // the money may be gone. Saying "refused" here would tell somebody their
+    // wallet is untouched on no evidence at all.
     return {
       paid: "unresolved",
       why: `a signed payment went out and the exchange did not come back (${outcome.why}), so whether this was charged is not known here`,
@@ -396,8 +365,7 @@ export function whatBecameOfThePayment(outcome: PurchaseOutcome, network: string
   }
 
   if (outcome.status >= 400) {
-    // The one the spike was blind to for a whole afternoon: a bare 402 with an
-    // empty body, and the verdict sitting in a header nobody read.
+    // A bare 402 with an empty body: the verdict sits in a header.
     return {
       paid: "refused",
       why: `the gateway answered ${outcome.status}: ${said(outcome.facilitatorSaid)}`,
@@ -467,22 +435,17 @@ function statusWordOf(body: unknown): string | null {
 /**
  * Whether anything this run does could put this resource in a catalog.
  *
- * The catalog fetches the resource itself — that is what makes a listing a
- * listing — and its own validation endpoint refuses anything that is not an
- * https address outright, measured rather than read (`listing-command.ts` in the
- * gateway says the same and for the same reason). So a resource whose canonical
- * address is `http://localhost:8080/...` cannot be crawled, cannot be validated
- * and will never be listed, however well the payment goes.
+ * The catalog fetches the resource itself, which is what makes a listing a
+ * listing, and its validation endpoint refuses anything that is not an https
+ * address. So a resource whose canonical address is `http://localhost:8080/...`
+ * will never be listed, however well the payment goes.
  *
  * That address is also the only thing a local sandbox says about itself on the
- * wire. A gateway with no chain behind it warns at the top of its own log and
- * nowhere else: nothing in a challenge, a catalog page or a status document
- * names its facilitator, and the "was this money real" flag every order carries
- * is set for every order at this stage of the pilot, so it distinguishes
- * nothing. What is left is the address, and it is enough for the sandbox anybody
- * actually runs, which is the one on localhost. A sandbox published at a public
- * https address is not caught here — it is caught after the purchase, by a
- * settlement whose transaction is not a transaction, having cost nothing.
+ * wire: nothing in a challenge, a catalog page or a status document names its
+ * facilitator. It is enough for the sandbox anybody actually runs, the one on
+ * localhost. A sandbox published at a public https address is not caught here
+ * but after the purchase, by a settlement whose transaction is not a
+ * transaction, having cost nothing.
  */
 export function couldEverBeListed(
   challenge: Challenge,
@@ -992,15 +955,14 @@ function settledAmount(outcome: PurchaseOutcome): bigint | null {
 /**
  * The wait, and the whole of what it can prove.
  *
- * The discovery API ignores its own search and filter parameters — measured, not
- * read — so presence in the catalog is established by walking all of it and
- * looking, once every couple of minutes until the resource turns up or the
- * ceiling runs out. Every walk is a line, because a command that goes quiet for
- * half an hour is one somebody kills.
+ * The discovery API ignores its own search and filter parameters, so presence
+ * in the catalog is established by walking all of it, once every couple of
+ * minutes until the resource turns up or the ceiling runs out. Every walk is a
+ * line, because a command that goes quiet for half an hour is one somebody
+ * kills.
  *
- * Running out is not a failure of the product and the verdict says so. The spike
- * measured twelve minutes on Base mainnet; whether a testnet settle is indexed
- * at all is an open question, and this is the instrument for it.
+ * Running out is not a failure of the product, and the verdict says so: whether
+ * a testnet settle is indexed at all is not known.
  */
 async function watchTheCatalog(
   reach: Reach,
@@ -1107,21 +1069,19 @@ async function walkOnce(
  * the public discovery endpoint.
  *
  * Everything that can go wrong on the way to a purchase is turned into an
- * outcome rather than thrown, because the caller of this is deciding what became
- * of somebody's money and "it threw" is not one of the answers it is allowed to
- * give. The two doors a failure arrives by are both watched: the client throws
- * on its own refusals — a spend control, a scheme it has no signer for — and the
- * server's refusal comes back as a quiet 402 whose only content is a header.
+ * outcome rather than thrown, because the caller is deciding what became of
+ * somebody's money and "it threw" is not an answer it may give. Both doors a
+ * failure arrives by are watched: the client throws on its own refusals (a
+ * spend control, a scheme it has no signer for), and the server's refusal comes
+ * back as a quiet 402 whose only content is a header.
  *
- * The client is given the run's own cap as its spend control, and that is not
- * belt and braces. It has a hidden default of one dollar a payment, and a
- * challenge above it is dropped before anything is signed, with no error and no
- * sign that a payment was ever attempted — the run before this one lost an
- * afternoon to exactly that.
+ * The client is given the run's own cap as its spend control because it
+ * otherwise has a hidden default of one dollar a payment, and drops a challenge
+ * above it before anything is signed, with no error and no sign a payment was
+ * attempted.
  *
- * `endpoints` exists so the walk can be exercised against a server standing in
- * this process. Nothing but a test passes it, and what a run uses is the address
- * above.
+ * `endpoints` exists so the walk can be exercised against a server in this
+ * process. Nothing but a test passes it.
  */
 export function overTheNetwork(
   settings: Settings,

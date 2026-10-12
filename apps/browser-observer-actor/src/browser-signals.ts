@@ -53,11 +53,9 @@ const decodeEntities = (value: string): string =>
 // The raw HTML is bounded only by the run's byte budget, and reading it is
 // synchronous work no deadline can interrupt. A regular expression that looks
 // for a closer from every opener is quadratic on a page of openers that never
-// close — `<!--` repeated for 256 KiB took ten seconds — so the markup is
-// walked with indexOf instead, and a construct left open ends the walk: once
-// one opener finds no closer, none after it can either. Names are compared
-// with ASCII letters folded, as the case-insensitive expressions this
-// replaces did, and nothing else is folded.
+// close, so the markup is walked with indexOf instead, and a construct left
+// open ends the walk: once one opener finds no closer, none after it can
+// either. Names are compared with ASCII letters folded and nothing else.
 
 const RAW_TEXT_ELEMENTS = ["script", "style", "noscript", "template"] as const;
 const STRUCTURED_DATA_TYPE = "application/ld+json";

@@ -1,26 +1,16 @@
 /**
- * The buy command, run as the process it is, against a gateway that is not one.
- *
- * `buy.ts` is a script with no function to call: everything it decides happens
- * between its first line and its exit code, and what it decides is what an
- * operator is told about an order that has already been paid for. So it is run
- * here whole, with the one input it takes — `GATEWAY_URL` — pointed at a
- * loopback server that answers the three calls it makes: the catalog, the
- * purchase, and the address the purchase answer named, which answers from a
+ * The buy command, run whole as the process it is, with `GATEWAY_URL` pointed
+ * at a loopback server that answers its three calls: the catalog, the purchase,
+ * and the status address the purchase answer named, which answers from a
  * script, one document per ask.
  *
- * The promise is that this buyer does not report an order as over while goods
- * can still arrive. `refund_due` is the word that taught it: an order still
- * without goods at its delivery deadline becomes a debt, the merchant can still
- * deliver after that, and a live run saw exactly that happen — the goods
- * appeared at the status address a minute after the deadline. A buyer that
- * printed "closed" at the debt and left had told its operator the purchase was
- * over while it was still going.
+ * The promise is that this buyer never reports an order as over while goods can
+ * still arrive. An order still without goods at its delivery deadline becomes
+ * `refund_due`, and the merchant can still deliver after that.
  *
- * The catalog page and every order document this server hands out are held to
- * the contract's schema, so a run that goes wrong here goes wrong for the
- * buyer's reasons and not because this file wrote an answer no gateway would
- * write.
+ * Every document this server hands out is held to the contract's schema, so a
+ * run that goes wrong here goes wrong for the buyer's reasons and not because
+ * this file wrote an answer no gateway would write.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -40,7 +30,7 @@ const ITEM = "itm_b47c5b50e4924b9c98f8c9eb10a1e925";
 const ORDER = "ord_2923c69f363f4d3088e0c6a3fee8f68d";
 const STATUS_PATH = `/x402/orders/${ORDER}/status`;
 
-/** The goods the merchant hands over late, as the live run saw them. */
+/** The goods the merchant hands over late. */
 const GOODS = {
   iccid: "8944001790160048780",
   activation_code: "LPA:1$smdp.example.com$K2-048780",
@@ -167,8 +157,8 @@ describe("the buy command watching an order whose goods come later", () => {
   });
 
   it("keeps watching through a status word it does not know, rather than calling the order over", async () => {
-    // The storefront's words grow without a version (ADR-0006 §5). A word this
-    // buyer was not built with is not an ending it knows, so it asks again.
+    // The storefront's words grow without a version. A word this buyer was not
+    // built with is not an ending it knows, so it asks again.
     script = [orderAt("on_hold"), orderAt("delivered", GOODS)];
 
     const run = await buy();

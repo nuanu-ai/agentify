@@ -69,7 +69,6 @@ async function signedIn(
   return opened.setCookies.map((line) => line.split(";")[0]).join("; ");
 }
 
-/** What one line of a listing says about this address, after the address itself. */
 const rowOf = (listed: Run, email: string): string => {
   const line = listed.said.split("\n").find((one) => one.startsWith(`${email} `));
   if (line === undefined) throw new Error(`the listing has no line for ${email}`);
@@ -100,8 +99,7 @@ describe("the passwordless account command", () => {
     const { identity, messages, rows } = store();
     await identity.make("person@example.com", MERCHANT);
     for (let index = 0; index < 2; index += 1) {
-      // Two sessions means two links, and the door keeps a minute between
-      // them; this test is about what revoking does, not about that minute.
+      // Two sessions need two links, and sign-in keeps a minute between sends.
       rewindLinkSends(rows);
       await identity.requestLink("person@example.com", "default");
       const token = new URL(
@@ -119,8 +117,6 @@ describe("the passwordless account command", () => {
   });
 
   it("flags an operator, clears the flag, and lists who is one", async () => {
-    // Being an operator is a flag on the account's row that only this command
-    // writes (ADR-0026 §6), and `list` is how a terminal answers who holds it.
     const { identity, messages, rows } = store();
     await signedIn(identity, messages, rows, "operator@example.com");
     await signedIn(identity, messages, rows, "person@example.com");
@@ -143,8 +139,6 @@ describe("the passwordless account command", () => {
   });
 
   it("moves the flag without ending a session, and the session reads it afresh", async () => {
-    // The flag is read on every request, so neither direction needs the person
-    // to sign in again, and neither signs them out.
     const { identity, messages, rows } = store();
     const cookie = await signedIn(identity, messages, rows, "operator@example.com");
 
@@ -190,9 +184,6 @@ describe("the passwordless account command", () => {
   });
 
   it("makes no account: an account is made when its person opens the mailed link", async () => {
-    // One way in (ADR-0014, ADR-0026 §1): a person types an address, opens the
-    // link mailed to it, and the dashboard makes the account. The terminal looks
-    // after accounts that exist and makes none, for a merchant or otherwise.
     const { identity, rows } = store();
 
     const tried = await running(identity, ["add", "person@example.com", MERCHANT]);
@@ -219,8 +210,8 @@ describe("the passwordless account command", () => {
 
     expect(listed.said).not.toContain("\u001b");
     expect(listed.said).toContain("\\x1b");
-    // A row written without the flag, as a hand-made or restored one can be,
-    // is nobody's operator.
+    // A row written without the flag, as a hand-made or restored one can be, is
+    // nobody's operator.
     expect(listed.said).toContain("not an operator");
   });
 });

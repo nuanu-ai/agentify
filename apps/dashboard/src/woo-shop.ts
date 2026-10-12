@@ -1,18 +1,13 @@
 /**
- * The two calls we make against a merchant's own shop.
+ * The calls made against a merchant's own shop. The Store API needs no key, so
+ * none is sent: a secret sent where it buys nothing is a secret in one more
+ * log. Order calls go to `wc/v3` with the granted keys as HTTP Basic, which
+ * WooCommerce accepts over https; the shop address must be https, so there is
+ * one scheme.
  *
- * Reading the catalogue goes to the Store API, which WooCommerce serves to
- * anybody with no authentication at all — so no key is sent, because a secret
- * sent where it buys nothing is a secret in one more log. Creating the order
- * goes to `wc/v3` with the granted key pair as HTTP Basic, which is the scheme
- * WooCommerce accepts over https (`docs/research/33-woo-connect-probe.md`); the
- * shop address is refused at the door unless it is https, so there is one
- * scheme here and not two.
- *
- * Every failure comes back as a sentence the shop itself said, with a word for
- * whether asking again could change it. Both halves are for somebody else: the
- * sentence is what a merchant reads on a screen, and the word is what decides
- * whether an order is refused for good or handed back to be delivered again.
+ * Every failure comes back as a sentence the shop said plus `again`, which
+ * decides whether an order is refused for good or handed back to be delivered
+ * again.
  */
 
 import { createHash } from "node:crypto";
@@ -35,48 +30,36 @@ import {
 } from "./woo-catalog.js";
 import { type WooRequest, wooRequest } from "./woo-request.js";
 
-/** How long we wait on a merchant's shop for one call. */
 const SHOP_ANSWERS_WITHIN_MS = 15_000;
 
-/**
- * How many products we ask for at a time.
- *
- * The Store API's own ceiling. Asking for fewer would be more round trips to
- * somebody else's server for the same catalogue.
- */
+/** The Store API's own ceiling. */
 const PER_PAGE = 100;
 
 /**
- * How many products the caller is willing to be handed, where it does not say.
- *
- * The ceiling is a parameter rather than a constant read here because the
- * caller is the one that knows what it can do with them — the import publishes
- * every one of them through the door while somebody holds a page open. Asked
- * for at all, it stops the walk as soon as it is passed: a shop with five
- * thousand products would otherwise be read whole, fifty round trips to
- * somebody else's server, and then refused for being too large.
- *
- * Ten thousand is the default and it is a guard rather than a policy: it stops
- * a shop answering a full page forever — a misconfigured proxy repeating one
- * response — from being a loop with a merchant watching it.
+ * A guard rather than a policy: it stops a shop that answers a full page
+ * forever (a misconfigured proxy repeating one response) from being an endless
+ * loop. The caller passes its own, lower ceiling.
  */
 const AT_MOST = 10_000;
 
-/** The whole-import ceiling shown to a merchant before they start. */
+/**
+ * Shown to a merchant before they start, and named on the page that refuses a
+ * larger catalogue rather than silently importing the first two hundred: every
+ * product is a separate publish call while a merchant holds the page open.
+ */
 export const PRODUCTS_AT_MOST = 200;
 
 export type CatalogueRead =
   | { readonly ok: true; readonly products: readonly StoreProduct[] }
   | { readonly ok: false; readonly why: string };
 
-/** Everything the shop needs to know us by, once a grant has been made. */
 export interface ShopKeys {
   readonly shopUrl: string;
   readonly consumerKey: string;
   readonly consumerSecret: string;
 }
 
-/** A download the connector can hand to the agent: one protected file. */
+/** One protected file handed to the agent. */
 export interface EligibleDownload {
   readonly kind: "download";
   readonly productId: string;
@@ -87,7 +70,7 @@ export interface EligibleDownload {
   readonly fingerprint: string;
 }
 
-/** A physical product the connector can sell as a parcel, for the shop to ship. */
+/** Sold as a parcel for the shop to ship. */
 export interface EligibleParcel {
   readonly kind: "parcel";
   readonly productId: string;
@@ -102,10 +85,9 @@ export type EligibleWooProduct = EligibleDownload | EligibleParcel;
 export type ProductInspection =
   | { readonly ok: true; readonly product: EligibleWooProduct }
   /**
-   * No product to sell, and why. `again` says whether the shop failed to
-   * answer rather than answered no: a shop that could not be reached or was
-   * too busy has said nothing about the product, and what is told about the
-   * sale has to say that rather than a reason that is not true.
+   * `again` says the shop failed to answer rather than answered no: it has said
+   * nothing about the product, and what is told about the sale must not give a
+   * reason that is not true.
    */
   | { readonly ok: false; readonly why: string; readonly again: boolean };
 
@@ -151,14 +133,9 @@ const ProductSchema = z.looseObject({
 const SettingSchema = z.looseObject({ value: z.union([z.string(), z.boolean()]) });
 
 /**
- * Reads every fact that makes the connector able to sell this product: as a
- * download handed to the agent, or as a parcel the shop ships.
- *
- * The product says which. A physical product is judged by the shop's shipping
- * settings and a download by its download settings, so both are asked for in
- * the one batch — one round trip whichever it turns out to be — and only the
- * answers that bear on the product's class decide anything. A shop that will
- * not show its download settings can still sell a parcel.
+ * Download and shipping settings are asked for in one batch, one round trip
+ * whichever class the product is, and only the answers bearing on its class
+ * decide; a shop that hides its download settings can still sell a parcel.
  */
 export const inspectProductInTheShop = async (
   keys: ShopKeys,
@@ -181,7 +158,7 @@ export const inspectProductInTheShop = async (
     "/wp-json/wc/v3/settings/general/woocommerce_ship_to_countries",
     "/wp-json/wc/v3/settings/shipping/woocommerce_ship_to_destination",
   ] as const;
-  /** Which of the answers above bear on each class, the product first. */
+  /** The product first. */
   const BEARING = {
     download: [0, 1, 2, 3, 4, 5, 6, 7],
     parcel: [0, 1, 2, 7, 8, 9],
@@ -210,7 +187,7 @@ export const inspectProductInTheShop = async (
       again: false,
     };
   }
-  /** One answer as a document, or undefined where it is not JSON. */
+  /** Undefined where it is not JSON. */
   const documentOf = (index: number): unknown => {
     try {
       return JSON.parse(bodies[index] ?? "");
@@ -218,7 +195,6 @@ export const inspectProductInTheShop = async (
       return undefined;
     }
   };
-  /** Whether these answers, between them, are something to judge the product by. */
   const unanswered = (indices: readonly number[]): ProductInspection | null => {
     if (indices.some((index) => worthAskingAgain(responses[index]?.status ?? 0))) {
       return {
@@ -254,9 +230,9 @@ export const inspectProductInTheShop = async (
     };
   }
   const product = parsed.data;
-  // Neither virtual nor downloadable is a parcel; everything else is judged
-  // as the download it would have to be, so a virtual product with no file
-  // is told what a download lacks.
+  // Neither virtual nor downloadable is a parcel; everything else is judged as
+  // a download, so a virtual product with no file is told what a download
+  // lacks.
   const kind = !product.virtual && !product.downloadable ? "parcel" : "download";
   const settingsUnanswered = unanswered(BEARING[kind]);
   if (settingsUnanswered !== null) return settingsUnanswered;
@@ -312,9 +288,9 @@ export const inspectProductInTheShop = async (
           " location(s))",
       );
     }
-    // A shop that forces it keeps the buyer's address as a billing address
-    // and shows no shipping address on its order screen, so the merchant
-    // would not see where the parcel goes.
+    // Such a shop keeps the buyer's address as billing and shows no shipping
+    // address on its order screen, so the merchant would not see where the
+    // parcel goes.
     if (destination === "billing_only") {
       unsupported.push(
         "the shop forces shipping to the customer billing address (WooCommerce → Settings →" +
@@ -322,12 +298,10 @@ export const inspectProductInTheShop = async (
       );
     }
   }
-  // WooCommerce writes an order's totals at this setting, and the order this
-  // creates is matched with those totals character for character. A shop at
-  // any other number is refused here, before a paid order exists there that
-  // could not be matched. It is left out of the download fingerprint below:
-  // every product that passes has the same value, and leaving it out keeps
-  // the fingerprints already recorded for accepted quotes valid.
+  // Order totals are written at this setting and matched character for
+  // character, so any other value is refused before a paid order exists that
+  // could not be matched. Left out of the download fingerprint, so fingerprints
+  // already recorded for accepted quotes stay valid.
   if (decimals !== String(USD_SCALE)) {
     unsupported.push(
       `prices are not written at ${USD_SCALE} decimals (set WooCommerce → Settings → General →` +
@@ -345,9 +319,8 @@ export const inspectProductInTheShop = async (
     return { ok: false, why: "The protected product price is not a decimal amount.", again: false };
   }
   // From here on the price is the one form the card, the quote, the order and
-  // WooCommerce's own order totals all speak. The fingerprint hashes that form
-  // too, so a price that already had two decimals hashes as it always did and
-  // "25" hashes as "25.00" does.
+  // WooCommerce's totals all use; the fingerprint hashes it too, so "25" and
+  // "25.00" hash alike and earlier digests stay valid.
   const amount = usdAmountOf(product.price);
   if (amount === null) {
     return {
@@ -360,9 +333,8 @@ export const inspectProductInTheShop = async (
     };
   }
   if (kind === "parcel") {
-    // The class is the first thing hashed, so no parcel's digest can equal a
-    // download's: a product that changed class after its quote is a product
-    // that changed.
+    // The class is hashed first, so a parcel's digest can never equal a
+    // download's: a product that changed class after its quote has changed.
     const fingerprint = createHash("sha256")
       .update(
         JSON.stringify([
@@ -427,9 +399,8 @@ export const inspectProductInTheShop = async (
       };
     }
   } catch {
-    // Not counted as silence: this request also fails on a public file too
-    // large to read, which is an answer, and the shop has just answered every
-    // other part of this check.
+    // Not silence: this also fails on a public file too large to read, which is
+    // an answer, and the shop has answered every other part of the check.
     return {
       ok: false,
       why: "The shop's raw download protection could not be verified.",
@@ -476,13 +447,11 @@ export const inspectProductInTheShop = async (
   };
 };
 
-/** One sale, as the shop has to be told about it. */
 export interface SoldItem {
-  /** Our own order identifier, which goes onto the shop's order as a thread. */
+  /** Goes onto the shop's order as the thread between the two. */
   readonly orderId: string;
-  /** The shop's own product identifier, which is the card's merchant_item_id. */
+  /** The card's `merchant_item_id`. */
   readonly productId: string;
-  /** Whose address goes on the order in the shop. */
   readonly email: string;
   /** What the buyer actually paid, which is what the shop's order records. */
   readonly price: Money;
@@ -501,22 +470,17 @@ export type OrderMade =
       readonly ok: false;
       readonly why: string;
       /**
-       * Whether making this same call again could land.
-       *
-       * True only where nothing was decided — a shop that did not answer, a
-       * shop that fell over. A shop that answered and refused says the same
-       * thing to the same call forever, and an order handed back for another
-       * attempt on one of those spends a delivery the merchant never failed.
+       * True only where nothing was decided: no answer, or a shop that fell
+       * over. A shop that refused will refuse the same call forever, and
+       * handing the order back for another attempt would spend a delivery the
+       * merchant never failed.
        */
       readonly again: boolean;
     };
 
 /**
- * The whole of a shop's public catalogue.
- *
- * Paged until a page comes back short, which is how the Store API says there is
- * no more: it carries a header with the total, and reading the header would be
- * one more thing to be wrong about on a shop behind a proxy that strips it.
+ * Paged until a page comes back short, rather than trusting the total header,
+ * which a proxy may strip.
  */
 export const catalogueOf = async (
   shopUrl: string,
@@ -562,9 +526,8 @@ export const catalogueOf = async (
 
     const read = StoreProductsSchema.safeParse(document);
     if (!read.success) {
-      // Not folded into "no products". A catalogue that is empty and a
-      // document we cannot read are different news, and a merchant told the
-      // first would go looking for products that are sitting right there.
+      // Not folded into "no products": a merchant told the catalogue is empty
+      // would go looking for products that are there.
       return {
         ok: false,
         why:
@@ -574,17 +537,12 @@ export const catalogueOf = async (
     }
 
     products.push(...read.data);
-    // The ceiling is read before the short page is, and the order of these two
-    // is the whole of whether the ceiling means anything. The other way round,
-    // a shop of two hundred and fifty products against a ceiling of two hundred
-    // answers its third page short, and the short page returns them all — so
-    // the number only ever bit on a catalogue that happened to be an exact
-    // multiple of the page size, and everything in between came over whole with
-    // nobody told.
+    // The ceiling is checked before the short page: the other way round, a
+    // catalogue of 250 against a ceiling of 200 would come back whole on its
+    // short third page.
     if (products.length > atMost) {
-      // Stopped here rather than after the whole catalogue has been read: the
-      // answer is the same either way, and the difference is how many round
-      // trips somebody else's shop makes for a refusal.
+      // Stopped here, so somebody else's shop makes fewer round trips for a
+      // refusal.
       break;
     }
     if (read.data.length < PER_PAGE) {
@@ -600,13 +558,14 @@ export const catalogueOf = async (
   };
 };
 
-/** One way the shop would ship a parcel, and what it costs. */
 export interface ShippingRate {
-  /** WooCommerce's own method, `flat_rate` and the like, which an order's shipping line names. */
+  /** `flat_rate` and the like, named by an order's shipping line. */
   readonly methodId: string;
-  /** The method's instance in the zone that matched, which the shipping line names too. */
+  /**
+   * The method's instance in the matched zone, also named by the shipping line.
+   */
   readonly instanceId: string;
-  /** What the shop calls it at its own checkout. */
+  /** As the shop's own checkout calls it. */
   readonly title: string;
   /** In US dollars at two decimals, as an order's shipping line carries it. */
   readonly cost: string;
@@ -616,10 +575,7 @@ export type RatesRead =
   | { readonly ok: true; readonly rates: readonly ShippingRate[] }
   | { readonly ok: false; readonly why: string; readonly again: boolean };
 
-/**
- * The methods that hand a parcel over at the shop rather than send it.
- * Usually the cheapest on offer, and a parcel nobody collects never leaves.
- */
+/** Usually the cheapest on offer, and a parcel nobody collects never leaves. */
 const NOT_SHIPPING = new Set(["local_pickup", "pickup_location"]);
 
 const CartRateSchema = z.looseObject({
@@ -638,23 +594,17 @@ const CartSchema = z.looseObject({
 });
 
 /**
- * What the shop would charge to ship one of this product to a place, as its
- * own checkout would work it out.
+ * WooCommerce has no endpoint that calculates a rate, so this uses the Store
+ * API cart as a browserless client can: a fresh cart whose token stands in for
+ * a nonce, the product added, the place set, the rates read off the answer.
+ * Every field of the place is sent, empty where the address has none, because a
+ * field left out keeps the shop's own base location; nothing about who is sent,
+ * and no key. The cart stays in the shop as a guest session, which WooCommerce
+ * expires after two days.
  *
- * WooCommerce has no endpoint that calculates a rate, so this asks the Store
- * API's cart the way a client with no browser can: a fresh cart, whose token
- * stands in for a browser's nonce; the product added; the place set; and the
- * rates read off the answer (`docs/research/41-woo-parcel-probe.md`). The
- * place is the locality and nothing about who: every one of its fields is
- * sent, empty where the address has none, because a field left out keeps the
- * shop's own base location. No key goes with any of it — the cart is the
- * public half of WooCommerce — and the cart is left in the shop as a guest
- * session, which WooCommerce expires after two days.
- *
- * The rates come back in the shop's own order with pickup left out. An empty
- * list is the shop saying it does not ship there; a refusal is said apart
- * from it, and in words of our own, because the shop's own message names the
- * place it refused.
+ * Rates come back in the shop's order with pickup left out. An empty list means
+ * the shop does not ship there; a refusal is said apart, in our own words,
+ * because the shop's message names the place.
  */
 export const shippingRatesInTheShop = async (
   shopUrl: string,
@@ -667,7 +617,6 @@ export const shippingRatesInTheShop = async (
     return { ok: false, why: "The card names no product in a WooCommerce shop.", again: false };
   }
   const cart = `${shopUrl}/wp-json/wc/store/v1/cart`;
-  /** One call to the cart, answered as its body, or as why there is none. */
   const ask = async (
     url: string,
     init: RequestInit,
@@ -750,8 +699,8 @@ export const shippingRatesInTheShop = async (
   }
   const [only, ...more] = read.data.shipping_rates;
   if (only === undefined || more.length > 0) {
-    // One product is one parcel. A shop that splits it, or answers with no
-    // package at all, is not pricing what this sells.
+    // One product is one parcel; a shop that splits it or answers with no
+    // package is not pricing what this sells.
     return {
       ok: false,
       why: "The shop's cart did not price this product as one parcel.",
@@ -766,8 +715,8 @@ export const shippingRatesInTheShop = async (
         ? decimalOfMinorUnits(rate.price, USD_SCALE)
         : null;
     if (cost === null) {
-      // Not left out: a rate dropped in silence could make another one look
-      // like the cheapest, and the shop would be charging what we did not say.
+      // Not dropped: a rate left out in silence could make another look
+      // cheapest, and the shop would charge what we did not say.
       return {
         ok: false,
         why: "The shop's cart offered a shipping rate that is not an untaxed US dollar amount.",
@@ -785,21 +734,12 @@ export const shippingRatesInTheShop = async (
 };
 
 /**
- * Creates one paid order in the merchant's shop.
- *
- * `set_paid` is the whole point: without it the order sits in the shop's
- * pending list and the merchant never ships it, although the buyer has paid.
- * The probe measured what the shop does with it — status `processing`, a
- * `date_paid` the shop stamps itself, and the order on the screen in wp-admin.
- *
- * It also sends two emails, one to the merchant and one to the address on the
- * order, and nothing in the request can suppress them. That is why the address
- * below is the merchant's own: see the decision record.
- *
- * The price sent is what the buyer actually paid rather than what the shop
- * charges today. The two can disagree — a merchant who changed a price after
- * the card was published — and of the two numbers, the one the shop's order
- * should record is the one the money moved for.
+ * `set_paid` moves the order to `processing` with a `date_paid` the shop
+ * stamps, so the merchant ships it; without it the order sits pending although
+ * the buyer paid. It also makes the shop send two emails, one to the address on
+ * the order, which nothing can suppress, so the order carries the merchant's
+ * own address and the buyer receives no shop mail. The price sent is what the
+ * buyer paid, not what the shop charges today.
  */
 export const createTheOrderInTheShop = async (
   keys: ShopKeys,
@@ -820,9 +760,8 @@ export const createTheOrderInTheShop = async (
   const body = {
     payment_method: "agentify",
     payment_method_title: "Agentify",
-    // The shop stores this string without checking it, and shows it on the
-    // order screen — so it is our own order identifier, which is the one thread
-    // between an order here and an order there.
+    // The shop stores and shows this string unchecked, so it carries our order
+    // identifier, the one thread between the two orders.
     transaction_id: sold.orderId,
     set_paid: true,
     currency: sold.price.currency,
@@ -858,9 +797,8 @@ export const createTheOrderInTheShop = async (
   };
   const id = typeof made.id === "number" ? String(made.id) : null;
   if (id === null) {
-    // The shop said yes and named no order. Whatever is at that address, it is
-    // not WooCommerce answering, and claiming an order number out of it would
-    // hand the buyer a string that means nothing in the merchant's shop.
+    // A yes naming no order is not WooCommerce answering, and an order number
+    // taken from it would mean nothing in the merchant's shop.
     return {
       ok: false,
       why:
@@ -923,12 +861,9 @@ export const createTheOrderInTheShop = async (
 };
 
 /**
- * Posts one paid order to the shop and reads its answer as a document.
- *
- * Every way of not getting a document back says whether asking again could
- * land, and only a shop that answered and refused says it could not. A shop
- * that said yes and sent something unreadable may already hold the order, so
- * it is not a refusal: it is the case the caller's claim exists for.
+ * Only a shop that answered and refused says asking again cannot land. A yes
+ * with an unreadable body may already hold the order, which is the case the
+ * caller's claim exists for.
  */
 const postTheOrder = async (
   keys: ShopKeys,
@@ -956,9 +891,9 @@ const postTheOrder = async (
     });
     said = await answered.text();
   } catch {
-    // Nothing was decided. It is also the one case where the order may have
-    // reached the shop and the answer may have been lost, which is why the
-    // caller keeps a record of having tried before it tries.
+    // Nothing was decided, but the order may have reached the shop with the
+    // answer lost, which is why the caller records the attempt before making
+    // it.
     return { ok: false, why: "The shop did not answer the order call.", again: true };
   }
 
@@ -973,9 +908,10 @@ const postTheOrder = async (
   try {
     return { ok: true, document: JSON.parse(said) };
   } catch {
-    // A successful HTTP status means Woo may already have committed the order.
-    // Without its body we cannot bind that order, and treating this as a final
-    // refusal would release the local claim and let redelivery POST a duplicate.
+    // A successful HTTP status means WooCommerce may already have committed the
+    // order. Without its body the order cannot be bound, and treating this as a
+    // final refusal would release the local claim and let redelivery POST a
+    // duplicate.
     return {
       ok: false,
       why: "The shop answered the order call with something that is not JSON.",
@@ -984,20 +920,22 @@ const postTheOrder = async (
   }
 };
 
-/** One parcel sold, as the shop has to be told about it. */
 export interface ParcelSold {
-  /** Our own order identifier, which goes onto the shop's order as a thread. */
+  /** Goes onto the shop's order as the thread between the two. */
   readonly orderId: string;
   readonly productId: string;
-  /** The merchant's own address, for the reason the download's order carries it. */
+  /**
+   * The merchant's own address, as on a download's order, so no shop mail
+   * reaches the buyer.
+   */
   readonly email: string;
-  /** What the buyer paid: the goods and the shipping together. */
+  /** The goods and the shipping together. */
   readonly paid: Money;
-  /** The goods alone, which is the order's product line. */
+  /** The goods alone: the order's product line. */
   readonly goods: string;
-  /** The rate the price was paid at, which is the order's shipping line. */
+  /** The order's shipping line. */
   readonly rate: ShippingRate;
-  /** Where it goes. Read into the order and not kept anywhere of ours. */
+  /** Read into the order and not kept anywhere of ours. */
   readonly address: ShipTo;
 }
 
@@ -1007,16 +945,13 @@ export type ParcelMade =
       readonly ok: false;
       readonly why: string;
       readonly again: boolean;
-      /** The shop's id for an order it made that does not match the sale, where it named one. */
+      /** Where the shop named one for an order that does not match the sale. */
       readonly id?: string;
     };
 
 /**
- * A buyer's address as a WooCommerce order's shipping block.
- *
- * One name goes whole into the first name, because a name cannot be split
- * into first and last without guessing (ADR-0032), and a part the address
- * does not have is written empty, which is how WooCommerce keeps it.
+ * The whole name goes into the first name, because splitting it would be a
+ * guess. A missing part is written empty, as WooCommerce keeps it.
  */
 const shippingOf = (address: ShipTo): Readonly<Record<string, string>> => ({
   first_name: address.name,
@@ -1029,7 +964,7 @@ const shippingOf = (address: ShipTo): Readonly<Record<string, string>> => ({
   phone: address.phone_number,
 });
 
-/** The fields of a parcel's order this reads back, and nothing else the shop would echo. */
+/** Nothing else the shop would echo is read. */
 const PARCEL_ORDER_FIELDS = [
   "id",
   "number",
@@ -1047,19 +982,14 @@ const PARCEL_ORDER_FIELDS = [
 ] as const;
 
 /**
- * Creates one paid parcel's order in the merchant's shop: the product at the
- * goods' price, the buyer's address as its shipping, and the rate the price
- * was paid at as its shipping line, with the totals adding up to what was paid.
+ * The order's totals add up to what was paid; paying moves it to `processing`.
+ * The billing address is the merchant's own, so no shop mail reaches the buyer.
  *
- * Paying moves it to `processing`, which is the shop's own word for paid and
- * waiting to be sent. The billing address is the merchant's own, as on a
- * download's order, so none of the shop's customer mail reaches the buyer.
- *
- * The answer is read back with the address in it and held to what was sent,
- * because taking the order on erases Agentify's copy (ADR-0032): an order is
- * not called placed until the shop is seen holding where it goes. The address
- * is compared where it lies and goes no further — no answer here carries any
- * of it, and neither does any sentence the shop wrote, which may name it.
+ * The answer is read back with the address and held to what was sent, because
+ * taking the order on erases Agentify's copy of the address: an order is not
+ * placed until the shop is seen holding where it goes. The address is compared
+ * and goes no further: no answer here carries it, nor any sentence the shop
+ * wrote, which may name it.
  */
 export const createTheParcelInTheShop = async (
   keys: ShopKeys,
@@ -1180,18 +1110,15 @@ const ParcelOrderSchema = z.looseObject({
   ),
 });
 
-/** What the shop says about a parcel's order since it was placed. */
 export type ShipmentRead =
-  /** Not completed yet: paid and waiting to be sent, or held. */
+  /** Paid and waiting to be sent, or held. */
   | { readonly kind: "waiting" }
-  /** Completed, with the shipment the agent is told of. */
   | { readonly kind: "shipped"; readonly shipment: Shipment }
-  /** The shop ended it without completing it, or has no such order any more. */
+  /** Ended without completing, or the order is gone. */
   | { readonly kind: "ended"; readonly status: string }
-  /** Nothing to go on this time: the shop did not answer, or said something unclear. */
+  /** The shop did not answer, or said something unclear. */
   | { readonly kind: "unknown"; readonly why: string };
 
-/** The statuses in which a WooCommerce order has ended without being completed. */
 const ENDED_UNSHIPPED = new Set(["cancelled", "refunded", "failed", "trash"]);
 
 const FollowedOrderSchema = z.looseObject({
@@ -1208,22 +1135,13 @@ const FulfilmentsSchema = z.array(
 );
 
 /**
- * Whether a parcel's order in the shop has shipped, and what the agent is
- * told about the shipment.
- *
- * WooCommerce has no "shipped". Completed is the merchant's word that the
- * order needs nothing more, and it is the one read here (ADR-0023): a parcel
- * whose order the merchant completes is a parcel they say they sent. The
- * tracking comes from WooCommerce's own fulfilments where the shop has them
- * switched on and one is fulfilled; otherwise the carrier the agent is told
- * of is the shipping method the parcel was paid to go by, and it has no
- * tracking number, because none was given.
- *
- * The order is read with the fields this needs, which leave the address out,
- * and is this sale's only if it carries the sale's own identifier.
- * What the merchant wrote is held to the shipment's rules and never cleaned:
- * a tracking address that is not one is left out, and a carrier or a number
- * that is not plain text is no shipment to record, so the order waits.
+ * WooCommerce has no "shipped": completed is the merchant's word that the order
+ * needs nothing more, and is read as sent. Tracking comes from WooCommerce's
+ * own fulfilments where switched on and fulfilled; otherwise the carrier is the
+ * shipping method paid for, with no tracking number. The fields read leave the
+ * address out. What the merchant wrote is never cleaned: a tracking address
+ * that is not one is dropped, and a carrier or number that is not plain text is
+ * no shipment, so the order waits.
  */
 export const shipmentInTheShop = async (
   keys: ShopKeys,
@@ -1234,7 +1152,7 @@ export const shipmentInTheShop = async (
   if (!/^\d+$/.test(wooOrderId)) {
     return { kind: "unknown", why: "The shop's order number is not a WooCommerce order id." };
   }
-  /** One read of the shop, as its status and its body, or nothing where it did not answer. */
+  /** Null where the shop did not answer. */
   const read = async (path: string): Promise<{ status: number; body: unknown } | null> => {
     try {
       const response = await request(`${keys.shopUrl}${path}`, {
@@ -1271,9 +1189,9 @@ export const shipmentInTheShop = async (
   if (!followed.success) {
     return { kind: "unknown", why: "The shop's order is not one this can read." };
   }
-  // The order id is the shop's, and the shop can change under it — another
-  // shop connected, or this one rebuilt and numbering from the start — so
-  // only an order carrying this sale's own identifier is this sale's.
+  // The shop's order id can be reused (another shop connected, or this one
+  // rebuilt), so only an order carrying this sale's own identifier is this
+  // sale's.
   if (followed.data.transaction_id !== orderId) {
     return { kind: "unknown", why: `The shop's order ${wooOrderId} is not this sale's.` };
   }
@@ -1286,7 +1204,7 @@ export const shipmentInTheShop = async (
   if (fulfilments === null) return { kind: "unknown", why: "The shop did not answer." };
   let fulfilled: readonly { readonly key: string; readonly value: unknown }[][] = [];
   if (fulfilments.status === 404 && codeOf(fulfilments.body) === "rest_no_route") {
-    // WooCommerce's own fulfilments are switched off, which is its default.
+    // WooCommerce's own fulfilments are off, its default.
   } else if (fulfilments.status !== 200) {
     return {
       kind: "unknown",
@@ -1331,7 +1249,7 @@ export const shipmentInTheShop = async (
   };
 };
 
-/** Reads one operator-named order; it never scans or infers that no order exists. */
+/** Never scans, and never infers that no order exists. */
 export const readTheOrderInTheShop = async (
   keys: ShopKeys,
   wooOrderId: string,
@@ -1421,33 +1339,19 @@ const ExactOrderSchema = z.looseObject({
 });
 
 /**
- * Whether a shop that answered with this status is worth asking again.
- *
- * A 5xx is the shop having a bad moment. So are the two below, and they are
- * named rather than left to fall through with the rest: a shop behind a rate
- * limiter or a proxy answers `429 Too Many Requests` and `408 Request Timeout`,
- * both of which mean "ask again in a moment" and neither of which is a 5xx.
- * Read as final, they close a sale for good and hand the buyer a refusal —
- * which is what a shop having a busy afternoon would cost its own merchant.
- *
- * Everything else is the shop having read the request and said no, and it will
- * say no again.
+ * 5xx, 429 and 408 all mean "ask again in a moment"; read as final, they would
+ * close a sale for good over a shop's busy afternoon. Anything else is the shop
+ * having read the request and said no, which it will say again.
  */
 const worthAskingAgain = (status: number): boolean =>
   status >= 500 || status === 408 || status === 429;
 
-/** The key pair as WooCommerce takes it over https. */
 const basicFor = (keys: ShopKeys): string =>
   `Basic ${Buffer.from(`${keys.consumerKey}:${keys.consumerSecret}`).toString("base64")}`;
 
 /**
- * What the shop said, out of its own error document, or the status where there
- * is nothing to read.
- *
- * WordPress refuses in a shape of its own — a code and a message — and the
- * message is written for a person. What sits between us and the shop can be a
- * proxy or a firewall with a page of its own, which is why this falls back to
- * the status rather than parsing its way into an exception.
+ * A proxy or firewall in between can answer with a page of its own, so this
+ * falls back to the status rather than parsing its way into an exception.
  */
 const whatTheShopSaid = (said: string, status: number): string => {
   try {
@@ -1456,7 +1360,7 @@ const whatTheShopSaid = (said: string, status: number): string => {
       return body.message;
     }
   } catch {
-    // Not a document. The status is the whole of what is known.
+    // Not a document; the status is all that is known.
   }
   return `the answer carried no message we could read (HTTP ${status}).`;
 };

@@ -1,17 +1,11 @@
 /**
  * The worked examples the console offers to publish.
  *
- * Three of them are files rather than copies: the portal prints the same JSON
- * on its own pages and `packages/contracts/src/portal-fixtures.test.ts` holds
- * every one of them to its schema. Read from disk here, a template that stops
- * publishing is a documented example that stopped working, which is the whole
- * reason to have the button.
- *
- * The two after them are the pilot's own products, and the last is the shape
- * the public x402 catalogue is actually full of. That one is drawn from a
- * reading of it rather than from imagination — see the note above it — because
- * an invented example that no real catalogue would carry teaches the wrong
- * thing about what this system is for.
+ * The first is the file the portal itself prints, read from disk rather than
+ * copied, and `packages/contracts/src/portal-fixtures.test.ts` holds it to its
+ * schema: a template that stops publishing is a documented example that stopped
+ * working. Three are in the shape the public x402 catalogue is mostly made of,
+ * and two are the mock merchant's own products.
  */
 
 import { readFile } from "node:fs/promises";
@@ -52,11 +46,10 @@ const written =
     JSON.stringify(card, null, 2);
 
 /**
- * The pilot's asynchronous product, with a deadline it can be watched against.
- *
- * The card as published names none, so the gateway holds it to the system
- * default — a day — and nothing on a console anybody is sitting at will ever
- * reach it. Ten seconds is short enough to watch run out.
+ * The mock merchant's asynchronous product, with a deadline it can be watched
+ * against. The card as published names none, so the gateway holds it to the
+ * system default of a day, which nobody at a console will reach; ten seconds is
+ * short enough to watch run out.
  */
 const esimWithADeadline = (): CardInput => {
   const card = structuredClone(CATALOG[1]) as Record<string, unknown>;
@@ -65,21 +58,12 @@ const esimWithADeadline = (): CardInput => {
 };
 
 /*
- * Three cards in the shape the public catalogue is actually made of.
- *
- * Read on 2026-09-01: one page of 100 records out of 14,787, and what is on it
- * is chain and market lookups — an ERC20 balance, an ENS name resolved, a block
- * height, a transaction by its hash, NFT metadata, a token price. Every one
- * synchronous, answering with JSON, at a median of 0.003 USDC, a floor of 0.001
- * and a ceiling across that page of 5.00. Beside them the pilot's own two
- * products, at three and eight dollars with one delivered later, are unlike
- * anything on that shelf — which is worth being able to see rather than be told.
- *
- * They name no merchant and copy nobody's wording. What is taken is the shape,
- * the price and the kind of thing, and each one is here because it exercises
- * something this console does differently: a card with no purchase parameters
- * at all, a card with one required parameter, and a card whose answer has
- * several fields in it.
+ * Three cards in the shape the public x402 catalogue is mostly made of:
+ * synchronous chain and market lookups answering with JSON for a fraction of a
+ * cent. They name no merchant and copy nobody's wording; only the shape, the
+ * price and the kind of thing are taken. Each exercises something the console
+ * does differently: no purchase parameters at all, required parameters, and an
+ * answer with several fields.
  */
 const BLOCK_HEIGHT: CardInput = {
   merchant_item_id: "chain-tip",

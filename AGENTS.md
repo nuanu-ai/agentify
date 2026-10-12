@@ -71,6 +71,12 @@ operator.
   commit leaves the repository in a valid state (docs read, builds build). The
   single declared exception is the red `test(...)` commit of a red→green pair,
   from the code stage onward.
+- A pull request carries a whole task, as its reader will review it. The steps
+  of one task, and the small fixes found along the way, travel as separate
+  commits on one branch rather than as a request each, so the reader merges
+  once and git can still roll back any single step. A second request is opened
+  only for work that must reach `main` on a schedule of its own, such as a fix
+  production needs now; otherwise an author has one request open at a time.
 - Remote: `github.com/nuanu-ai/agentify` (public). We push the branch when we
   commit.
 - Delivery (ADR-0016): a branch is tried on the test channel by moving the
@@ -179,8 +185,21 @@ operator.
   first consumer we do not control, and from that day it is a written
   decision, not a habit.
 - A rule is moved into a machine (a hook, CI) after it has slipped past
-  people; until then it is text. The lessons are written in the header of the
-  file that grew out of them.
+  people; until then it is text. The header of the check says what it checks
+  and what it deliberately leaves alone.
+- Code reads on its own. A comment is written for whoever reads the code
+  next, as it stands today, and says what the lines cannot say for
+  themselves: a constraint invisible at the call site, a hazard, the reason
+  the obvious simpler version is wrong. A sentence or two is the usual size,
+  and what a name or a type can say is said by the name or the type.
+- A rule the code keeps is held by a test that fails when the rule breaks,
+  and the test's name states the promise. The reasoning behind the rule lives
+  in its decision record, the measurements in research and the history in
+  git, so changing a decision means editing one record and its tests. Code
+  points to none of them by number and tells no story of how it came to be.
+- Doc comments on a published package's exports are documentation for the
+  integrator, written for them: what the call does, what it refuses and what
+  it returns.
 
 ## Research
 - Working materials live in `docs/research/`. These are drafts, they may be

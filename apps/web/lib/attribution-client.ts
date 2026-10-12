@@ -20,9 +20,8 @@ export function captureLandingAttribution(
     search: window.location.search,
   },
 ): Promise<void> {
-  // Nothing is recorded of a visit before its visitor allows measurement, so
-  // nothing is asked and nothing is kept as done: the capture is made when the
-  // choice is (`AnalyticsRuntime`).
+  // Before the visitor allows measurement nothing is sent and nothing is cached
+  // as done, so `AnalyticsRuntime` can capture once the choice is made.
   if (!measurementAllowed()) return Promise.resolve();
   const partnerClickId = adsMeasurementAllowed() ? readPartnerClickId(source.search) : undefined;
   const key = `${source.pathname}?${source.search}:${landingVariant}:partner=${partnerClickId ? "yes" : "no"}`;

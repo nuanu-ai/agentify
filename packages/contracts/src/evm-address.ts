@@ -1,66 +1,33 @@
 /**
- * The address money can be sent to on an EVM chain, and the one thing that can
- * be checked about one before it is used.
+ * The address money can be sent to on an EVM chain, and its EIP-55 checksum.
  *
- * An address is twenty bytes and nothing about those bytes is redundant, so a
- * character lost or mistyped in one produces another perfectly valid address —
- * belonging to nobody, or to somebody else, and a payment to it is gone. EIP-55
- * is the only guard anybody has against that: the capital letters in the
- * spelling a wallet shows are not decoration, they are a checksum over the
- * address itself, and a character that is wrong stops the capitals agreeing
- * with the digits. Checked here, a mistyped address is a sentence a merchant
- * reads while they still have the right one in front of them; not checked, it
- * is a stranger's wallet filling up with somebody's sales.
+ * A character lost or mistyped in an address produces another valid address,
+ * and a payment to it is gone. The capital letters a wallet shows are a
+ * checksum over the address, so a wrong character stops them agreeing with the
+ * digits. Two spellings are accepted: all lower case, which carries no
+ * checksum and is what block explorers print, and the exact checksummed form a
+ * wallet copies. Anything between the two is refused.
  *
- * Two spellings are accepted and no others. All lower case is the spelling that
- * carries no checksum at all, and it is what a block explorer prints and what
- * half the tooling in this world hands somebody, so refusing it would refuse
- * addresses that are perfectly good. The other is the exact output of the
- * checksum, which is what a wallet puts on the clipboard. Anything between the
- * two is a string that has been through something: a case-mangling copy, a
- * document that shouted it, or a keystroke in the wrong place. The refusal says
- * so and says what to do instead, because "invalid address" leaves a person
- * staring at forty characters that look fine.
- *
- * Of the two, the wallet's is the canon: the door takes both spellings and
- * everything behind it holds one (ADR-0017), and `checksummedAddressOf` below
- * is what writes it. The reason is about the person rather than about the
- * storage, and it is written where that function is.
- *
- * The hash is written out below rather than taken from a package, and that is a
- * decision rather than an oversight. This package's runtime dependency tree is
- * `zod` and nothing else, and it is the whole of what a merchant installs with
- * the SDK — ADR-0003 §8 makes every addition to it a decision of its own, and
- * that decision is not this file's to take. What is written out is therefore
- * kept as small as the job allows: twenty-four rounds of a fixed permutation
- * over one block, with no configuration and no second use, and it is pinned by
- * the vectors the standard publishes, so an implementation that is wrong
- * anywhere fails against somebody else's arithmetic rather than agreeing with
- * itself. The cost is named too: this is hand-written cryptographic code in a
- * published package, and the trigger to replace it with an audited library is
- * the first other thing in this package that needs a hash.
+ * The Keccak-256 hash is written out here rather than taken from a package so
+ * that the package's runtime dependencies stay zod alone. It is hand-written
+ * cryptographic code, kept to the one block an address needs and pinned by the
+ * standard's published test vectors; the first other need for a hash in this
+ * package is the moment to replace it with an audited library.
  */
 
 import { z } from "zod";
 
-/** How many characters an address carries after its prefix. */
 const ADDRESS_LENGTH = 40;
 
 /**
- * What an address looks like before anything is checked about its letters.
- *
- * It is a pattern rather than a set of refinements for the reason written in
- * `primitives.ts`: a rule expressed as a refinement is dropped from the JSON
- * Schema export without a word, and this half of the rule is the half a
- * generated client in another language can keep.
+ * An address's shape, as a pattern rather than a refinement so that the JSON
+ * Schema export keeps it.
  */
 const ADDRESS_SHAPE = /^0x[0-9a-fA-F]{40}$/;
 
 /**
- * How wide a block of Keccak-256 is, in bytes: the state less twice the
- * capacity the 256-bit digest asks for.
- *
- * Forty characters fit inside one, which is why nothing here loops over blocks.
+ * The rate of Keccak-256 in bytes: the state less twice the capacity the
+ * 256-bit digest asks for. Forty characters fit in one block.
  */
 const BLOCK_BYTES = 136;
 
@@ -106,24 +73,19 @@ const DESTINATIONS: readonly number[] = [
 const LANE = (1n << 64n) - 1n;
 
 /**
- * One lane of the state, by its index.
- *
- * Every index this file computes is inside the twenty-five lanes by
- * construction — they come from the fixed tables above and from loops bounded
- * by five. The fallback is what the compiler's index check asks for and is
- * never reached.
+ * One lane of the state by its index. Every index used is inside the
+ * twenty-five lanes by construction; the fallback only satisfies the
+ * compiler's index check.
  */
 const laneAt = (state: readonly bigint[], index: number): bigint => state[index] ?? 0n;
 
-/** One lane rotated left, the way the permutation rotates. */
+/** One lane rotated left. */
 const rotated = (lane: bigint, by: number): bigint =>
   ((lane << BigInt(by)) | (lane >> BigInt(64 - by))) & LANE;
 
 /**
- * The Keccak permutation, applied to the state in place.
- *
- * The four steps are the standard's own and are named after it: the column
- * parities, the rotate-and-move, the row mixing, and the round constant.
+ * The Keccak permutation, applied to the state in place: the column parities,
+ * the rotate-and-move, the row mixing, and the round constant.
  */
 function permute(state: bigint[]): void {
   for (const constant of ROUND_CONSTANTS) {
@@ -167,12 +129,8 @@ function permute(state: bigint[]): void {
 
 /**
  * The first forty hexadecimal digits of the Keccak-256 digest of an address
- * written in lower case — one digit for each character of the address, which is
- * exactly what the checksum reads.
- *
- * The input is always forty ASCII characters, so it is absorbed as one padded
- * block and squeezed once. A general implementation would carry a loop over
- * blocks and a branch neither of which anything here would ever take.
+ * body in lower case, one for each character the checksum reads. The input is
+ * always forty ASCII characters, so it is absorbed as one padded block.
  */
 function checksumDigits(body: string): string {
   const block = new Uint8Array(BLOCK_BYTES);
@@ -214,20 +172,17 @@ function checksummedBody(body: string): string {
   let written = "";
   for (let index = 0; index < ADDRESS_LENGTH; index++) {
     const character = body[index] ?? "";
-    // A digit has no capital form, so nothing has to ask whether this is a
-    // letter: capitalising "7" gives "7" back.
+    // Capitalising a digit gives it back unchanged, so no letter check is needed.
     written += Number.parseInt(digits[index] ?? "0", 16) >= 8 ? character.toUpperCase() : character;
   }
   return written;
 }
 
 /**
- * Whether the letters of this address say what the address says.
- *
- * A value whose shape is wrong is left alone rather than answered here: the
- * pattern above has already complained about it, and two complaints about one
- * string would send a merchant looking for a checksum in something that is not
- * an address at all.
+ * Whether the letters of this address agree with its checksum. A value of the
+ * wrong shape passes here, since the pattern has already refused it and a
+ * second complaint would send a merchant looking for a checksum in something
+ * that is not an address.
  */
 function carriesItsOwnChecksum(value: string): boolean {
   if (!ADDRESS_SHAPE.test(value)) {
@@ -239,26 +194,14 @@ function carriesItsOwnChecksum(value: string): boolean {
 }
 
 /**
- * One address written the way the wallet it came out of displays it: the
- * canonical form, and the one anything behind the door keeps.
+ * One address written in the checksummed mixed case a wallet displays, which
+ * is the form Agentify stores and returns, because it is the one a person can
+ * check by eye against their wallet.
  *
- * The door takes two spellings and everything behind it holds one (ADR-0017),
- * and this is the one, because it is the one a person recognises. A merchant
- * pastes forty characters out of their wallet and then reads them back on a
- * settings screen; handed the same address in lower case they cannot tell it
- * from a different address without comparing character by character, and the
- * one field in this system where that matters is the field money is sent to.
- * Lower case would be the easier canon to compute and the harder one to check
- * by eye, and the eye is the only thing checking.
- *
- * It refuses what the schema refuses rather than quietly repairing it. Given a
- * mixed-case address whose letters disagree with its digits, capitalising it
- * afresh would produce a perfectly well-formed address that nobody typed —
- * which is the exact failure the checksum exists to catch, arrived at by the
- * thing meant to enforce it.
- *
- * Given an address that is already in this form it answers with the same
- * string, so writing one down twice writes the same thing twice.
+ * Throws on an address of the wrong shape, or one in mixed case whose letters
+ * disagree with its checksum, rather than recapitalising it into a
+ * well-formed address nobody typed. An address already in this form comes back
+ * unchanged.
  */
 export function checksummedAddressOf(address: string): string {
   if (!ADDRESS_SHAPE.test(address) || !carriesItsOwnChecksum(address)) {
@@ -270,13 +213,9 @@ export function checksummedAddressOf(address: string): string {
 }
 
 /**
- * An address on an EVM chain, in one of the two spellings anybody writes one
- * in.
- *
- * It carries no chain of its own. The same twenty bytes are an address on every
- * EVM network, and which network a payment is made on is settled by the payment
- * requirements rather than by the address inside them; a schema that claimed
- * otherwise would be claiming knowledge this package does not have.
+ * An address on an EVM chain, all in lower case or in its exact checksummed
+ * mixed case. It names no chain: which network a payment is made on is set by
+ * the payment requirements, not by the address.
  */
 export const EvmAddressSchema = z
   .string()

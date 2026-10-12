@@ -1,20 +1,11 @@
 /**
- * The seam between the two stage-0 packages, held by a test.
+ * Contracts owns the wire vocabulary and the machine follows it. This file is
+ * the only place that reads both, so a drift that would leave every suite green
+ * while the gateway translates between two dialects at run time fails here.
  *
- * Contracts owns the wire vocabulary and the machine follows it — that was
- * the boundary both packages were built against, in parallel, each writing
- * its own literals from the same canon. Parallel work means the seam is
- * exactly where they can drift apart without either package noticing: every
- * suite on both sides stays green while the gateway translates between two
- * dialects at runtime. This file is the only place that reads both.
- *
- * Comparison is by set, not by sequence: each package orders its lists for
- * its own reader (the machine keeps `payment_unresolved` next to `rejected`,
- * where its contrast lives), and a failure over ordering would be a failure
- * about nothing.
- *
- * Contracts is a devDependency of core: the seam is checked at test time and
- * the merchant's tree gains nothing.
+ * Comparison is by set, not by sequence: each package orders its lists for its
+ * own reader. Contracts is a devDependency of core, so the seam is checked at
+ * test time and the merchant's tree gains nothing.
  */
 
 import {
@@ -59,14 +50,12 @@ describe("the wire vocabulary and the machine speak one language", () => {
   });
 
   it("every error the machine answers with is one the wire knows", () => {
-    // A subset and not an equality, which is a real difference and is checked
-    // rather than waved at below. The direction that matters is unchanged: a
-    // word the machine says and the wire does not know is the gateway
-    // translating between two dialects, which is what this file exists to
-    // catch. The other direction opened when the machine stopped being the
-    // only place a merchant's call is refused — the goods are held to the
-    // card that sold them before any event reaches the machine, and the
-    // machine knows nothing about cards.
+    // A subset, not an equality. A word the machine says that the wire does not
+    // know is the gateway translating between two dialects, which this file
+    // exists to catch. The other direction is open because the gateway refuses
+    // some merchant calls before any event reaches the machine: the goods are
+    // held to the card that sold them, and the machine knows nothing about
+    // cards.
     for (const code of MERCHANT_ANSWER_ERRORS) {
       expect(asSet(ORDER_CALL_ERROR_CODES)).toContain(code);
     }
@@ -81,9 +70,9 @@ describe("the wire vocabulary and the machine speak one language", () => {
       (code) => !asSet(MERCHANT_ANSWER_ERRORS).has(code),
     );
 
-    // Both are the gateway's, for the same reason: each compares what the
-    // merchant sent with something the machine never sees — the goods with the
-    // card, and a parcel's shipment with the one already recorded (ADR-0033).
+    // Both are the gateway's: each compares what the merchant sent with
+    // something the machine never sees, the goods with the card and a parcel's
+    // shipment with the one already recorded.
     expect(machineless).toStrictEqual([
       "delivery_does_not_match_card",
       "shipment_already_recorded",

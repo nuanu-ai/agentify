@@ -1,13 +1,14 @@
 /**
  * The operator's dashboard: read-only numbers about the scanner, for a session
- * whose account carries the operator flag (ADR-0026 §6).
+ * whose account carries the operator flag.
  *
- * Nothing stands in front of it. The page asks the seller dashboard on every
- * request, and anybody it does not confirm, everybody while the seller
- * dashboard cannot say
- * included, gets the site's 404 page. The refusal happens in the metadata as
- * well as in the page: metadata is resolved on its own, and a title resolved
- * for a visitor who is then refused would tell them what this page is.
+ * Nothing stands in front of /admin: the proxy's matcher does not include it
+ * and Caddy adds nothing, so this page, and any page added beside it, must
+ * refuse by itself. Anybody the seller dashboard does not confirm as an
+ * operator gets the site's 404, including everybody while the seller dashboard
+ * cannot answer. Metadata
+ * refuses too: it is resolved on its own, and a title shown to a visitor who is
+ * then refused would tell them what this page is.
  */
 
 import type { Metadata } from "next";

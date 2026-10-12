@@ -1,27 +1,16 @@
 /**
- * The application: the gateway and the dashboard in one process (ADR-0030).
+ * The application: the gateway and the dashboard in one process.
  *
- * The gateway is the money path, the merchant API under `/v0` and the
- * storefront an agent buys at under `/x402`; the dashboard is the merchant's
- * pages and the people who sign in to them. They were two processes released
- * and restarted together, writing one database as one account, so the
- * boundary between them protected little and cost a network call with a
- * credential for everything that crossed it. Here they share a process and
- * keep their own listeners: 3000 for the gateway, 3001 for the dashboard's
- * pages and 3002 for the scanner's route to the dashboard. Between them are
- * calls rather than requests, and both are handed over here: the gateway tells
- * a merchant of a change through the dashboard's way of telling, and the
- * dashboard calls the gateway's application as the merchant on the signed-in
- * account's row.
+ * The gateway serves the merchant API under `/v0` and the storefront an agent
+ * buys at under `/x402`; the dashboard serves the merchant's pages. They share
+ * the process but keep their own listeners: 3000 for the gateway, 3001 for the
+ * dashboard's pages and 3002 for the scanner's route to the dashboard. A defect
+ * in the dashboard therefore stops sales as well; orders survive in Postgres
+ * and resume after the restart.
  *
- * What one process costs is said in ADR-0030: a defect in the dashboard now
- * stops sales as well. Orders survive in Postgres and resume after the restart.
- *
- * Everything below is wiring, run through tsx like the rest of the workspace
- * (ADR-0003 §1). Both configurations are read and refused before anything
- * starts, because a gateway that started and then went down with the process
- * over the dashboard's settings would have taken work off the queue for
- * nothing, once per restart.
+ * Both configurations are read and refused before anything starts: a gateway
+ * that started and then went down over the dashboard's settings would have
+ * taken work off the queue for nothing, once per restart.
  */
 
 import { loadConfig as dashboardConfigOf } from "@agentify/dashboard/config";
@@ -33,17 +22,16 @@ const startedOrStopped = async () => {
   try {
     const gatewayConfig = gatewayConfigOf(process.env);
     const dashboardConfig = dashboardConfigOf(process.env);
-    // The gateway announces a change through the dashboard's telling, so the
-    // dashboard is made first; but the gateway starts first, because the
-    // dashboard's pages and its WooCommerce worker call its application from
-    // the moment they are up.
+    // The dashboard is made first because the gateway announces changes
+    // through it, but the gateway starts first because the dashboard's pages
+    // and its WooCommerce worker call the gateway from the moment they are up.
     const made = dashboardFor(dashboardConfig);
     const gateway = await startGateway(gatewayConfig, { announce: made.tell });
     const dashboard = made.start(gateway.application);
     return { gateway, dashboard };
   } catch (thrown) {
-    // Whole, stack and all: a configuration refused says what is wrong in its
-    // message, and a database that did not answer needs the rest.
+    // The whole error with its stack: a database that did not answer needs
+    // more than the message.
     console.error(thrown);
     process.exit(1);
   }
@@ -54,13 +42,11 @@ const { gateway, dashboard } = await startedOrStopped();
 /**
  * A shutdown in the order that lets each part finish what the others need.
  *
- * The dashboard's doors close first, and the requests in flight through them
- * end while the gateway they call still answers, within a grace a busy browser
- * cannot stretch. Then the gateway takes no new connection, and it stops at the
- * same time as the WooCommerce worker rather than after it: the worker's turn
- * may be a poll parked on the gateway, and it is the gateway's queue stopping
- * that lets every parked poll and parked purchase go, the worker's among them.
- * Only then do the connections to the database close.
+ * The dashboard's listeners close first, so the requests in flight through them
+ * end while the gateway they call still answers. The gateway then stops
+ * together with the WooCommerce worker, not after it: the worker may be parked
+ * on a poll to the gateway, and only the gateway's queue stopping releases
+ * parked polls and purchases. The database connections close last.
  */
 let stopping = false;
 const shutDown = async (signal: string): Promise<void> => {

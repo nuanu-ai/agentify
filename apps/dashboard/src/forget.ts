@@ -1,12 +1,8 @@
 /**
- * The server-side half of `pnpm forget <email>`, run inside the dashboard's
- * container on the test deployment.
- *
- * It reads the address from standard input and refuses before it opens a
- * connection unless the payment network is set, is one this repository has
- * written down, and is a test network. That is the approval command's check
- * turned round: pointed at the live deployment, this command can do nothing
- * but say no. The work itself is `forget-account.ts`.
+ * The server-side half of `pnpm forget <email>`. It refuses before opening a
+ * connection unless the payment network is set, known and a test network, so
+ * pointed at the live deployment it can only say no. The work itself is in
+ * `forget-account.ts`.
  */
 
 import { environmentOf } from "@agentify/core";
@@ -43,8 +39,8 @@ const main = async (): Promise<number> => {
     console.error("TEST forget refused: DATABASE_URL is not set.");
     return 1;
   }
-  // The sign-in door keys an address's link sends with this secret, so without
-  // it the wait before the next link could not be cleared.
+  // Sign-in sends are keyed with this secret; without it the wait before the
+  // next link could not be cleared.
   const authSecret = process.env.AUTH_SECRET;
   if (authSecret === undefined || authSecret === "") {
     console.error("TEST forget refused: AUTH_SECRET is not set.");

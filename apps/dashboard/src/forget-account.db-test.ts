@@ -1,13 +1,7 @@
 /**
- * `pnpm forget <email>` on the real dashboard and gateway tables.
- *
- * Everything an address owns is made here through the code that makes it in a
- * deployment — a sign-in link, the scanner's report link, the merchant and its
- * key, cards, a WooCommerce connection — so the test proves the command
- * removes what the product writes rather than what a fixture guessed it
- * writes. The promise it answers for is the one the command is for: after it,
- * the address asks for a link at once and signs in as a newcomer, and nobody
- * else's rows move.
+ * Everything an address owns is made through the code that makes it in a
+ * deployment, so the test proves the command removes what the product writes
+ * rather than what a fixture guessed it writes.
  */
 
 import { spawnSync } from "node:child_process";
@@ -101,7 +95,6 @@ if (databaseUrl === null) {
     return token;
   };
 
-  /** A person signed in the way a newcomer is: a link asked for, then opened. */
   const signIn = async (email: string): Promise<Person> => {
     const asked = await identity.requestLink(email, "default");
     if (asked.status !== "accepted") throw new Error(`the link was ${asked.status}`);
@@ -110,7 +103,6 @@ if (databaseUrl === null) {
     return opened.person;
   };
 
-  /** A signed-in person with a merchant of their own, a key and cards. */
   const merchantAccount = async (
     email: string,
     cards: readonly string[],
@@ -121,7 +113,6 @@ if (databaseUrl === null) {
       Date.now(),
     );
     if (merchant === null) throw new Error("the merchant was not made");
-    // A key of the merchant's own, so forgetting is seen to take keys too.
     await issueKey(store, randomIds, merchant.id, "worker", Date.now(), "test");
     const attached = await identity.attachMerchant(person.id, async () => merchant.id);
     if (attached.status !== "attached") throw new Error(`the merchant was ${attached.status}`);
@@ -214,13 +205,15 @@ if (databaseUrl === null) {
       expect(await countOf("dashboard_woo_grants", "account_id", person.id)).toBe(0);
       expect(await countOf("dashboard_woo_quotes", "account_id", person.id)).toBe(0);
 
-      // The bystander keeps everything, the wait before their next link included.
+      // The bystander keeps everything, including the wait before their next
+      // link.
       expect(await countOf("dashboard_accounts", "email", BYSTANDER)).toBe(1);
       expect(await countOf("merchants", "id", bystander.merchantId)).toBe(1);
       expect(await countOf("cards", "merchant_id", bystander.merchantId)).toBe(1);
       expect((await identity.requestLink(BYSTANDER, "default")).status).toBe("cooldown");
 
-      // Both doors let the address ask at once, and the link makes a newcomer.
+      // Both senders let the address ask at once, and the link makes a
+      // newcomer.
       expect((await identity.sendReportLink({ ...report, request: randomUUID() })).status).toBe(
         "accepted",
       );
@@ -287,8 +280,8 @@ if (databaseUrl === null) {
     it("refuses an address with no account in words, and removes nothing", async () => {
       const bystander = await merchantAccount(BYSTANDER, ["their-room"]);
 
-      // The address is echoed back, so what a terminal would obey in it is
-      // shown rather than obeyed.
+      // The address is echoed back, so what a terminal would obey in it must be
+      // shown instead.
       const refused = await forget("nobody@example.com\u001b[2J");
 
       expect(refused.code).not.toBe(0);

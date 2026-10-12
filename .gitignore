@@ -6,10 +6,8 @@
 .vscode/
 *.swp
 
-# Claude Code — local settings, agent working copies and the design notes a
-# session writes for itself are not committed. A spec under docs/superpowers is
-# scaffolding for one piece of work: what it decides belongs in docs/decisions,
-# and what it explores belongs in docs/research.
+# Claude Code: local settings, agent working copies and a session's own design
+# notes.
 .claude/settings.local.json
 .claude/worktrees/
 /.local/
@@ -31,14 +29,11 @@ output/
 .playwright-cli/
 **/*.log
 
-# pnpm keeps a content-addressed store here when a build fetches into the
-# repository rather than into the user store. It is a cache, not a source.
+# pnpm's store, when a build fetches into the repository.
 .pnpm-store/
 
 # Python bytecode caches (the deployment scripts and their tests)
 __pycache__/
 
-# The images a checkout on a host runs, which deploy/activate.sh writes when it
-# activates that revision, with the file it writes them through. A fact about
-# one host, never source.
+# Written by deploy/activate.sh on a host: the images that checkout runs.
 deploy/images.env*

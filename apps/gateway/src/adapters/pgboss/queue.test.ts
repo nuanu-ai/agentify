@@ -5,42 +5,31 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { A_NAME_PG_BOSS_ACCEPTS, ENVELOPES, PgBossQueue, REMINDERS, streamOf } from "./queue.js";
 
 /**
- * The one thing about this adapter that can be checked without a database.
- *
- * Everything else it does is pg-boss doing it, and `pnpm test` has no Postgres
- * to watch that against — the rest is covered by `pnpm test:db`. But a queue
- * name that pg-boss will not accept fails at the first call, which in
- * production is start-up and in an offline suite is nowhere.
- *
- * What this file can check is only that the names agree with the rule written
- * beside them. Whether that rule is pg-boss's rule is a question for pg-boss,
- * and it is asked in `queue.db-test.ts` — the first time anybody asked it, the
- * answer was not what the comment here had been claiming for as long as it had
- * existed.
+ * Only the queue names can be checked without a database; the rest of this
+ * adapter is pg-boss, checked under `pnpm test:db`. Here the names are held to
+ * the rule beside them, and whether that rule is pg-boss's own is asked of
+ * pg-boss in `queue.db-test.ts`.
  */
 describe("the queue names", () => {
   it("use the Agentify namespace for durable work", () => {
-    // Queue names survive process restarts in Postgres. A spelling change is a
-    // new queue with no reader for the previous one, so the exact names are a
-    // persistence boundary rather than an implementation detail.
+    // Queue names persist in Postgres: renaming one makes a new queue and
+    // leaves the old one's jobs with no reader.
     expect(ENVELOPES).toBe("agentify_envelopes");
     expect(REMINDERS).toBe("agentify_reminders");
     expect(streamOf("mch_a")).toBe("agentify_envelopes_mch_a");
   });
 
   it("give two merchants two different streams", () => {
-    // Two merchants sharing a stream is the failure ADR-0010 is about, in the
-    // one place a filter could not repair it: an envelope drawn to be looked at
-    // is one its own merchant is not offered until it is finished.
+    // A shared stream cannot be repaired by a filter: an envelope drawn by the
+    // wrong merchant is not offered to its own until it is finished.
     expect(streamOf("mch_a")).not.toBe(streamOf("mch_b"));
     expect(streamOf("mch_a")).toMatch(A_NAME_PG_BOSS_ACCEPTS);
     expect(streamOf("mch_a").startsWith(ENVELOPES)).toBe(true);
   });
 
   it("refuse a merchant whose identifier could not name a queue", () => {
-    // Left to pg-boss, this would not be a start-up error somebody sees. It
-    // would be one merchant whose orders reach nobody, discovered at the first
-    // sale, with the failure looking like a worker that is not connected.
+    // Left to pg-boss, this would surface only at the merchant's first sale,
+    // looking like a worker that is not connected.
     expect(() => streamOf("a merchant")).toThrow(/cannot name a queue/);
     expect(() => streamOf("mch:a")).toThrow(/cannot name a queue/);
     expect(() => streamOf("")).toThrow(/cannot name a queue/);
@@ -53,9 +42,8 @@ describe("what the queue reports of pg-boss's own failures", () => {
   });
 
   it("logs them without the values of the row a refused write quoted", () => {
-    // pg-boss emits a worker's failure as an event, and it can carry the job's
-    // row in its detail (ADR-0032). Whichever pg-boss a queue is made over is
-    // listened to, so a test's queue is held to it as much as a deployment's.
+    // pg-boss emits a worker's failure as an event whose detail can quote the
+    // job's row.
     const said: unknown[] = [];
     vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
       said.push(...args);

@@ -1,14 +1,6 @@
 /**
- * The account half of settings under passwordless dashboard identity.
- *
- * It carries the one control that reaches this account's other sessions:
- * signing out every other device (ADR-0026 §3). The header's sign-out ends
- * this browser's session and leaves the others alone; this one ends the others
- * and keeps this one, which is what somebody wants who left a session open on
- * a device they no longer hold, or suspects somebody else is signed in as
- * them. It ends this account's sessions and no other account's, and touches no
- * key; each device it signs out signs in again with a link sent to this
- * address.
+ * The account part of settings. Its one control ends every other session of
+ * this account and keeps this one; it touches no other account and no key.
  */
 
 import { SIGN_OUT_EVERY_OTHER_DEVICE } from "./control-labels.js";

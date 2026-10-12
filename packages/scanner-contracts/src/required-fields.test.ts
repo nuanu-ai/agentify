@@ -211,8 +211,8 @@ const contracts = [
   },
   {
     // The address is not required here: a signed-in person's own ask files the
-    // report under the session's address and sends none (ADR-0026 §2). The
-    // route refuses a stranger's ask without one, in its own words.
+    // report under the session's address and sends none. The route refuses a
+    // stranger's ask without one, in its own words.
     name: "registrationRequestSchema",
     schema: registrationRequestSchema,
     valid: {

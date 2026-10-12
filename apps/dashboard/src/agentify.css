@@ -1,23 +1,12 @@
 /*
- * What the dashboard needs on top of the shared visual language.
- *
- * The surfaces share one visual language, held in one stylesheet rather than
- * repeated per page. That file is
- * `packages/visual/tokens.css`, and it is the one this branch
- * used to carry a second copy of — with the pre-contrast-fix values, which is
- * exactly how "one visual language" becomes two that look almost alike. The
- * copy is gone: the dashboard serves the shared file itself, ahead of this one,
- * so there is a single set of tokens on disk and no way for the two surfaces to
- * drift without somebody editing the shared file.
- *
- * So nothing here declares a colour, a family, a radius or a base element rule.
- * What is here is the dashboard's own layout — its frame, its tables, its state
- * dots and its controls — which is what tokens.css means by "a rule that only
- * the dashboard needs lives with the dashboard".
+ * The dashboard's own layout on top of the shared visual language: its frame,
+ * tables, state dots and controls. Colours, families, radii and base element
+ * rules come only from `packages/visual/tokens.css`, which the dashboard serves
+ * ahead of this file; nothing here declares them.
  */
 
-/* Text runs the full width of its block: no balanced or "pretty" early
-   line breaks inherited from the shared tokens. */
+/* Text runs the full width of its block: no balanced or "pretty" early line
+   breaks inherited from the shared tokens. */
 h1,
 h2,
 h3,
@@ -26,27 +15,14 @@ p {
 }
 
 /*
- * The dashboard takes the shared base whole: 16 pixels at 1.6.
- *
- * It used to take 14 back, and the argument written here was that this is a
- * console with six-column tables a merchant scans rather than reads. The tables
- * do not support it. One of them has six columns; receipts has eight, which no
- * font size saves, and all of them already live in a scroller that is meant to
- * scroll — the `min-width` that decides when it does is in pixels and does not
- * move with the type. What the 14 actually bought was a base too small to read
- * prose at, which the file then clawed back at seventeen separate declarations
- * of 13, 13.5, 12.5, 12 and 11 pixels.
- *
- * So the base is the shared one and only the dense rows shrink, which is how
- * the scanner solves the same problem: 0.75rem in the monospaced face for a
- * column head or a caption, 0.8125rem for an identifier or an account line,
- * 0.875rem for a table and for an aside, 0.9375rem for something read
- * character by character. Nothing on these screens is written in pixels.
+ * The base is the shared one, 16px at 1.6; only dense rows shrink: 0.75rem in the
+ * monospaced face for a column head or a caption, 0.8125rem for an identifier or
+ * an account line, 0.875rem for a table or an aside, 0.9375rem for something read
+ * character by character. No type on these screens is sized in pixels.
  */
 
-/* Form controls do not inherit the page's face on their own, and the shared
-   base does not set it — the scanner keeps the same rule for the same reason
-   (apps/web/app/globals.css). */
+/* Form controls do not inherit the page's face on their own, and the shared base
+   does not set it. */
 button,
 input,
 select,
@@ -57,18 +33,10 @@ textarea {
 /* --- the frame ---------------------------------------------------------- */
 
 /*
- * One frame for every screen, and it is the shared `.container`: the tables,
- * the settings panels and the shop screen all sit inside the same width the
- * scanner lays its report out in. The dashboard used to have three — an unbounded
- * page with a fixed 32-pixel gutter repeated at twelve blocks, a 1180-pixel
- * settings grid and a shop panel that borrowed it — so on a wide monitor the
- * cards table ran edge to edge while the settings page stayed centred, which is
- * two layouts inside one product. Nothing here declares a page width any more;
- * a block that needs an inset uses the frame it is already in.
- *
- * The bar and the banner are the two things that span the window rather than
- * the frame, so each holds a `.container` of its own: a rule across the whole
- * width with its words lined up over the content under it.
+ * One frame for every screen, the shared `.container`, at the width the scanner
+ * lays its report out in; nothing here declares a page width, and a block that
+ * needs an inset uses the frame it is in. The bar and the banner span the window,
+ * so each holds a `.container` of its own to line its words up with the content.
  */
 .page {
   min-height: 100vh;
@@ -77,23 +45,13 @@ textarea {
 }
 
 /*
- * The bar is the scanner's, and the tabs are the dashboard's.
+ * The bar matches the scanner's: 68px, sticky, a translucent page colour with
+ * the content blurred behind it and one hairline under it. The tabs are the
+ * dashboard's own, with an inset rule under the current one.
  *
- * Everything around them comes from apps/web/components/site-chrome.module.css:
- * 68 pixels tall, stuck to the top, a translucent page colour with the content
- * blurred behind it and one hairline under it. What does not come from there is
- * the navigation itself, because the scanner's is marketing nav with no notion
- * of "you are here" and five destinations inside one application with a current
- * location is exactly what a tab row is for. The inset rule under the current
- * tab stays: it is the only active marker available and it is quiet.
- *
- * Every tab is always on the screen. The five of them beside the lockup, the
- * selling light and the signed-in address need about 1,050 pixels, so under
- * 1,100 the tabs take a row of their own under the other three, on every page
- * alike — the bar is one height per width rather than a height that changes as
- * you move between tabs. The
- * tabs used to scroll sideways instead, inside a strip with no scrollbar, and
- * on a phone that hid three of the five, often the one you were on.
+ * Every tab is always on screen. Beside the lockup, the selling light and the
+ * address they need about 1,050px, so under 1,100 they take a row of their own on
+ * every page, keeping the bar one height per width.
  */
 .top {
   position: sticky;
@@ -154,13 +112,9 @@ textarea {
 }
 
 /*
- * The one band on these screens that is ink rather than paper, in the colours
- * the shared file names for the scanner's footer. One row: the lockup with the
- * word in paper, the three places outside the dashboard, and the copyright in the
- * monospaced face. `margin-top: auto` is what holds it against the bottom of a
- * short page — the page is a flex column of full height, so the last child
- * taking the slack puts the band under the content rather than halfway up a
- * window with two rows on the screen.
+ * The one ink band on these screens, in the colours the shared file names for
+ * the scanner's footer. `margin-top: auto` holds it against the bottom of a short
+ * page: the page is a full-height flex column, so the last child takes the slack.
  */
 .foot {
   margin-top: auto;
@@ -205,14 +159,10 @@ textarea {
 }
 
 /*
- * The address an agent buys a card at, under its title on the cards screen.
- *
- * Text rather than a link, because asking for it without paying is answered
- * with a demand for payment carried in a header — a browser is handed a blank
- * page, and a merchant who pressed it reads that as their card being broken.
- * So it is set to be read and copied: the whole of it, in the mono face the
- * rest of the identifiers use, wrapping wherever it has to rather than pushing
- * the table wider than the screen.
+ * Text rather than a link: asking for this address without paying is answered
+ * with a payment demand in a header, so a browser shows a blank page and the
+ * card looks broken. Set to be read and copied whole, wrapping wherever it has to
+ * rather than widening the table.
  */
 .buy {
   margin-top: 3px;
@@ -231,17 +181,15 @@ textarea {
   flex-wrap: wrap;
 }
 
-/* Explanatory copy uses all space left by an action or filter. Do not force
-   desktop text into an arbitrary reading column: it creates needless line
-   breaks while half of the dashboard panel stays empty. */
+/* Explanatory copy uses all the space an action or filter leaves; a fixed reading
+   column would break lines needlessly while half the panel stays empty. */
 .lede > div:first-child {
   flex: 1 1 320px;
   min-width: 0;
 }
 
-/* The title of a screen inside the dashboard, which is a section heading rather
-   than the hero a gate page opens with, so it is calm: the scanner's report
-   uses the same size over the block it names. */
+/* A section heading rather than a gate page's hero, so it is calm: the scanner's
+   report uses the same size. */
 .lede h1 {
   font-size: 1.5rem;
 }
@@ -260,22 +208,13 @@ textarea {
 /* --- tables ------------------------------------------------------------- */
 
 /*
- * A real table, so a merchant's browser can read the columns out and their
- * find-in-page still works.
- *
- * Every column and every row's control is on the screen at every width. Where
- * the frame is wide enough for the columns this is a table; where it is not, a
- * row is drawn as a block with every value beside the head of its column, the
- * first one included, so an order's or a receipt's identifier is never read out
- * without its name. The tables used to keep a minimum
- * width and scroll sideways inside this frame instead, and nothing showed that
- * they did: the receipts ran twice as wide as a laptop's frame, and on a phone
- * the controls that pause a card or revoke a key were out of sight. The
- * scroller stays as the last resort for a value nothing here can break, not as
- * the layout.
- *
- * The width that decides is the frame's rather than the window's, so the rule
- * holds wherever a table is put.
+ * A real table, so a browser can read the columns out and find-in-page works.
+ * Every column and every row's control is on screen at every width: where the
+ * frame is too narrow for the columns, a row is drawn as a block with every value
+ * beside its column's head, the first included, so an identifier is never read
+ * out without its name. The scroller is the last resort for a value nothing can
+ * break, not the layout. The width that decides is the frame's (a container
+ * query), so the rule holds wherever a table is put.
  */
 .scroller {
   margin: 24px 0 32px;
@@ -293,9 +232,7 @@ table {
   font-size: 0.875rem;
 }
 
-/* The column head, in the treatment the scanner gives the heading over a group
-   of checks: the monospaced face, uppercase, letterspaced, muted. A long head
-   wraps rather than holding its column wider than the values under it. */
+/* A long head wraps rather than holding its column wider than its values. */
 thead th {
   background: var(--raised);
   color: var(--muted);
@@ -306,11 +243,10 @@ thead th {
   border-bottom: var(--hairline) solid var(--line);
 }
 
-/* A row is the height of a row on the scanner's report, and the rule between
-   two of them is the quiet one: a hairline strong enough to edge a card is too
-   strong repeated down a list of twenty. The frame's own inset is at the two
-   outer edges; between columns the gap is narrower, because eight columns at
-   the outer inset spend a third of a laptop's frame on padding. */
+/* The quiet hairline between rows: one strong enough to edge a card is too strong
+   repeated down a list. The frame's inset is at the outer edges only; between
+   columns the gap is narrower, or eight columns would spend a third of a laptop's
+   frame on padding. */
 tbody td {
   height: 56px;
   padding: 12px 16px;
@@ -325,8 +261,7 @@ tbody td {
   padding-right: 24px;
 }
 
-/* The inset of a row drawn as a block. While the row is a table row, padding
-   does nothing to it. */
+/* The inset of a row drawn as a block; padding does nothing to a table row. */
 tbody tr {
   padding: 14px 16px;
 }
@@ -360,16 +295,11 @@ td.ident {
 }
 
 /*
- * An identifier is copied whole, so it breaks only where the column ends and
- * nothing is inserted where it does: a double-click still selects all of it.
- *
- * Its column has a width of its own, because a column that is allowed to wrap
- * is the one a table takes room from first. An order's or a receipt's
- * identifier is thirty-six characters, and at eighteen to a line it takes two
- * lines rather than a third of the table. A merchant's own key gets twenty
- * characters, which hold a key like `rented-number-us-30d` on one line rather
- * than breaking it at every hyphen; a longer key, such as the ones the
- * WooCommerce connector writes, wraps inside that width.
+ * An identifier breaks only where its column ends and nothing is inserted, so a
+ * double-click still selects all of it. Its column has a width of its own,
+ * because a wrapping column is the one a table takes room from first: a
+ * thirty-six-character order or receipt identifier takes two lines at eighteen;
+ * twenty characters hold a key name like `rented-number-us-30d` on one line.
  */
 td.key,
 td.ident,
@@ -408,11 +338,8 @@ td.quiet {
   color: var(--muted);
 }
 
-/*
- * A moment's column is as narrow as the moment on two lines, the date over the
- * time, so the room goes to the product's name. The two halves of a moment do
- * not break inside themselves, wherever it is written.
- */
+/* As narrow as the moment on two lines, date over time, so the room goes to the
+   product's name. Neither half breaks inside itself. */
 td.moment {
   width: 1px;
 }
@@ -422,14 +349,10 @@ td.moment {
 }
 
 /*
- * The block a row becomes where its columns do not fit. The label and the value
- * are two cells of a table of their own, so a value that wraps stays in its
- * column rather than running back under the label, and that table's layout is
- * fixed, so the labels keep one width down the block whatever stands beside
- * them. In a block the value column is all the room there is, so anything in it
- * may wrap: an identifier with no card to name it, a long state, or an amount
- * beside its test mark. The label is drawn only where a rule below gives it
- * its words.
+ * The block a row becomes where its columns do not fit. Label and value are two
+ * cells of a fixed-layout table of their own, so a wrapping value stays in its
+ * column and the labels keep one width down the block. Anything in the value
+ * column may wrap. A label is drawn only where a rule below gives it words.
  */
 
 /* Wide enough for "Price true as of" on one line and narrow enough to leave a
@@ -471,9 +394,8 @@ tbody td::before {
   }
 }
 
-/* The receipts' eight columns need the whole of a laptop's frame: a little
-   under it the product name goes to three lines and then to one word a line,
-   so a table with a seventh column becomes blocks sooner. */
+/* The receipts' columns need a laptop's whole frame, so a table with a seventh
+   column becomes blocks sooner. */
 @container (max-width: 1140px) {
   .scroller:has(th:nth-child(7)) :is(table, tbody, tr) {
     display: block;
@@ -504,21 +426,11 @@ tbody td::before {
 /* --- the state badge ---------------------------------------------------- */
 
 /*
- * The scanner's badge (apps/web/components/status-badge.module.css), on the
- * dashboard's four tones. The label is the monospaced face at 0.75rem, which is
- * what tells a state apart from the sentence beside it without a colour having
- * to do the work, and the dot is 8 pixels rather than 6.
- *
- * The substantive part is the hollow one. `busy` is a sale that is under way,
- * and an outline says "not settled yet" where a filled teal circle says the
- * same thing a delivered order says and leaves the colour to carry the whole
- * difference. Everything with an ending — delivered, refused, refund due — is
- * filled. There is no pulse on the hollow dot: these pages are drawn once and
- * do not update themselves, and an animation would be the screen claiming to
- * be watching something.
- *
- * `words.ts` is untouched. The four tones are the right vocabulary; what
- * changes here is only how one is drawn.
+ * The scanner's badge on the dashboard's four tones. The monospaced label tells a
+ * state from the sentence beside it without relying on colour. `busy` is hollow:
+ * an outline says "not settled yet", where a filled dot would leave colour alone
+ * to separate it from an ending. No pulse: these pages do not update themselves,
+ * and an animation would claim the screen is watching something.
  */
 .state {
   display: inline-flex;
@@ -538,9 +450,9 @@ tbody td::before {
   background: currentColor;
 }
 
-/* `ok` is the scanner's pass, `warn` its fail, `busy` its running, and `quiet`
-   its pending — muted words over a fainter dot, so that a row nobody has to do
-   anything about does not draw the eye of somebody scanning for one that does. */
+/* `ok` is the scanner's pass, `warn` its fail, `busy` its running, `quiet` its
+   pending: muted words over a fainter dot, so a row nobody has to act on does not
+   draw the eye. */
 .state.ok {
   color: var(--pass);
 }
@@ -561,11 +473,8 @@ tbody td::before {
   color: var(--faint);
 }
 
-/*
- * The mark on a sum that was not real money. It sits beside the amount rather
- * than in a column of its own so that it cannot be scrolled out of sight on a
- * narrow screen while the number it qualifies stays visible.
- */
+/* Beside the amount rather than in its own column, so it cannot scroll out of
+   sight while the number it qualifies stays visible. */
 .tag {
   font-family: var(--font-sans);
   font-size: 0.6875rem;
@@ -582,17 +491,10 @@ tbody td::before {
 /* --- controls ----------------------------------------------------------- */
 
 /*
- * One box, where there were three: a monospaced full-width one inside the
- * sign-in card, a 340-pixel one beside the issue form's label, and the shop
- * address's. They are the shared button's counterpart and take its measures —
- * 48 pixels, the control corner, and the 1.5-pixel border that is what makes a
- * boundary visible at all. Nothing here fixes a width: a box in a flex row
- * fills the room its row has, which is what stops a 42-character wallet address
- * pushing a settings panel wider than the frame around it.
- *
- * The sign-in box is no longer monospaced. An email address is not read
- * character by character, and the face was the one thing on that page that did
- * not appear anywhere on the site a merchant had just come from.
+ * The box is the shared button's counterpart: 48px, the control corner, and the
+ * 1.5px border that makes a boundary visible at all. No fixed width: a box in a
+ * flex row fills its row, so a 42-character wallet address cannot push a panel
+ * wider than its frame.
  */
 input {
   min-width: 0;
@@ -605,9 +507,7 @@ input {
   color: var(--fg);
 }
 
-/* The label over a box, at the weight the scanner gives one. The uppercase
-   letterspaced caption it used to be is the treatment this file keeps for a
-   column head and a figure's caption, which are not things you type into. */
+/* The label over a box, at the weight the scanner gives one. */
 label {
   font-size: 0.8125rem;
   font-weight: 600;
@@ -645,9 +545,9 @@ td.control {
 
 /* --- notes and summaries ------------------------------------------------ */
 
-/* Secondary notes stay part of the reading flow instead of looking like an
-   alert. Actionable notices use a complete panel; no dashboard message uses the
-   one-sided-border callout pattern. */
+/* Secondary notes stay part of the reading flow rather than looking like an
+   alert. Actionable notices use a full panel; no message uses a one-sided-border
+   callout. */
 .note {
   margin: 0 0 32px;
   color: var(--muted);
@@ -665,8 +565,7 @@ td.control {
   line-height: 1.55;
 }
 
-/* The seller-name notice at the top of a working screen stands clear of the
-   bar above it; the heading block under it brings its own 32px. */
+/* Stands clear of the bar above; the heading block under it brings its own 32px. */
 .app-content > .callout:first-child {
   margin: 32px 0 0;
 }
@@ -677,34 +576,20 @@ td.control {
 
 .callout .what {
   font-weight: 500;
-  /*
-   * An order identifier is a long unbroken run of characters in a monospaced
-   * face, and this box has no scroller of its own the way the tables do. Left
-   * alone it is the one thing on the page that scrolls the whole document
-   * sideways on a phone.
-   */
+  /* This box has no scroller, and an unbroken identifier would otherwise scroll
+     the whole page sideways on a phone. */
   overflow-wrap: anywhere;
 }
 
-/* The consequence over the reason, told apart by size rather than by a second
-   colour: one ink on one tint is all this panel needs. */
+/* The consequence over the reason, told apart by size: one ink on one tint. */
 .callout .why {
   margin-top: 4px;
   font-size: 0.875rem;
 }
 
-/*
- * The sentence that says which stack this is, on every page but a live one:
- * a band across the whole window above the bar, in the notice pair, with its
- * words lined up over the content under it.
- *
- * It was the notice panel, rounded and ruled down its left edge, inside the
- * frame and with nothing above it — so it sat on the top edge of the window
- * with its rounded corners cut off by that edge, and on a phone its four lines
- * at the panel's padding took 120 pixels before the lockup. A band has no
- * corners for the edge to cut, and at the small print's size and a band's
- * padding it is three lines on a phone.
- */
+/* Which stack this is, on every page but a live one: a band across the window
+   above the bar, its words lined up with the content. A band has no corners for
+   the window edge to cut, and stays short on a phone. */
 .stack-note {
   border-bottom: var(--hairline) solid var(--line);
   background: var(--notice-bg);
@@ -732,8 +617,8 @@ td.control {
   margin: 24px 0 0;
 }
 
-/* Copy that explains the figures sits under them, so a merchant sees the
-   numbers first and reads what they leave out before the table. */
+/* Under the figures, so the numbers are seen first and what they leave out is
+   read before the table. */
 .summary-text {
   margin: 20px 0 0;
 }
@@ -791,20 +676,10 @@ td.control {
 
 /*
  * The pages outside the dashboard: sign in, check your mail, open the link,
- * choose a name, come back from a shop, and every error page.
- *
- * One card on the page colour, at the measures of the scanner's own
- * (apps/web/components/auth-callback.module.css): 520 pixels, the panel corner,
- * the shared soft shadow, and padding that grows with the window. The teal
- * radial gradient behind it is gone — nothing on the scanner has one, and it
- * was the first thing a merchant saw after pressing a button on a page that
- * did not.
- *
- * The lockup is above the card and not inside it, which is the scanner's
- * arrangement and also an accessibility fix: every one of these pages had a
- * logo as its only heading, so each has a real `h1` now saying which page it
- * is. The heading is a hero here and not a section title, so it takes the
- * larger step; inside the dashboard `.lede h1` is the calmer one.
+ * choose a name, come back from a shop, and every error page. One card at the
+ * scanner's measures (520px, the panel corner, the shared soft shadow, padding
+ * that grows with the window). The lockup sits above the card, and each page has
+ * its own `h1` at the hero step; inside the dashboard `.lede h1` is the calmer one.
  */
 .gate {
   min-height: 100vh;
@@ -855,38 +730,28 @@ td.control {
   }
 }
 
-/* The actions on a gate page are a column and not a row: the card is 520 wide
-   and two controls side by side in it read as one wide control cut in half.
-   Where there are two, the second is the secondary one under the first — which
-   is what "Use a different email" was not, before: it sat in a second card of
-   its own beside the first, at a different height. */
+/* A column, not a row: two controls side by side in a 520px card read as one
+   control cut in half. A second action is the secondary one under the first. */
 .gate .button {
   margin-top: 12px;
   width: 100%;
 }
 
 /* The fail colour on a sentence, for two things a merchant must not read past:
-   something they asked for that did not happen — a refusal, a change that was
-   not kept, a wait before the next link — and money that did not move, the
-   line over the orders and receipts that says the rows are test purchases, in
-   the colour of the test tag beside each amount. Why somebody is on a page is
-   neither, and is not drawn in it.
+   something they asked for that did not happen (a refusal, a change not kept, a
+   wait before the next link), and money that did not move (the test-purchase line
+   over orders and receipts). Why somebody is on a page is neither.
 
-   Written against the paragraph rather than the class alone: a gate card's
-   paragraphs and a heading block's are muted by rules of that same weight, and
-   a bare class lost to both, so these sentences came out grey at the size of
-   the small print beside them. */
+   Written against the paragraph, not the class alone, because the gate card's
+   and heading block's muted paragraph rules would otherwise win. */
 p.problem {
   margin-top: 16px;
   color: var(--fail);
   font-size: 0.875rem;
 }
 
-/* Who is signed in, at the end of the header bar, as the scanner's header
-   carries it (site-chrome.module.css `.doors`): behind a rule, in the muted
-   weight of a label, so the address does not read as a tab. Before people
-   signed in (ADR-0026) there was nobody to name: the dashboard held a merchant key and the screen
-   could not say whose hand was on the control that stops all selling. */
+/* Who is signed in, at the end of the bar: behind a rule, in the muted weight of
+   a label, so the address does not read as a tab. */
 .account {
   display: flex;
   flex-wrap: wrap;
@@ -928,8 +793,8 @@ p.problem {
   color: var(--fg);
 }
 
-/* On a phone the account wraps under the title and the light, and drops the
-   rule that set it apart from them on one row. */
+/* On a phone the account wraps under the title and the light, and drops the rule
+   that set it apart on one row. */
 @media (max-width: 480px) {
   .account {
     padding-left: 0;
@@ -941,20 +806,16 @@ p.problem {
   }
 }
 
-/* The way back from the password page, under the form. `td.quiet` above is a
-   table cell and does not apply here. */
+/* `td.quiet` above is a table cell and does not apply here. */
 p.quiet {
   margin-top: 16px;
   font-size: 0.875rem;
   color: var(--muted);
 }
 
-/* The note beside the address, on every page (ADR-0014 §4). It borrows the
-   pill above rather than a shape of its own, and takes the warn colour back
-   out of it: what that colour is for on these screens is money that did not
-   move, and a page that painted this the same amber would spend a merchant's
-   attention on a fact about their account every time they looked at a
-   receipt. */
+/* The note beside the address borrows the pill above but not the warn colour:
+   on these screens that colour means money that did not move, and painting an
+   account fact amber would spend a merchant's attention on every receipt. */
 .tag.plain {
   color: var(--muted);
   border-color: var(--line-strong);
@@ -962,22 +823,15 @@ p.quiet {
 
 /* --- the keys screen ---------------------------------------------------- */
 
-/*
- * The heading over the form that issues a key, and over each panel on the
- * settings screen. Smaller than the page's own heading and larger than the body
- * around it, because it opens a second half of one screen rather than a second
- * screen.
- */
+/* Opens a second half of one screen rather than a second screen: smaller than
+   the page heading, larger than the body. */
 h2 {
   font-size: 1.125rem;
 }
 
-/* The form that issues a key: one box and one button, side by side, sitting
-   where a table would. The same row carries every form in the dashboard, and its
-   button is the full-height one: the box is 48 pixels and so is the button, so
-   the two stand on one line the way the scanner's address box and its button
-   do. The compact button is a table row's, and beside a box it hung a third
-   lower than the box it belonged to. */
+/* One box and one button side by side, the row every form in the dashboard
+   uses. The button is the full-height one so it stands level with the 48px box;
+   the compact button belongs to table rows. */
 .issue {
   display: flex;
   align-items: flex-end;
@@ -991,38 +845,28 @@ h2 {
   margin-bottom: 8px;
 }
 
-/* The box takes the room its row has and the button sits beside it; under about
-   240 pixels of box the two stack instead. That is low enough for a settings
-   panel, half the frame wide, to keep its box and its full-height button on one
-   line, and high enough that a phone stacks them. */
+/* Under about 240px of box the two stack, low enough for a half-width settings
+   panel to keep them on one line and high enough that a phone stacks them. */
 .issue > div {
   flex: 1 1 240px;
   min-width: 0;
 }
 
-/* A key's name is a few words, so its box is sized for a few words with the
-   button beside it rather than stretched across the whole frame. */
+/* A key's name is a few words, so its box is sized for a few words. */
 .key-name > div {
   flex: 0 1 420px;
 }
 
-/* A refusal is a line of its own under the box and its button, never inside
-   the box's cell: the row lines its items up at the bottom, so a sentence in
-   that cell made the cell taller and carried the button down beside the last
-   line of red instead of beside the box it saves. */
+/* A refusal is a line of its own under the box and button, never in the box's
+   cell: the row aligns items at the bottom, so a sentence there would carry the
+   button down beside the last line of red. */
 .issue > p {
   flex-basis: 100%;
   margin: 0;
 }
 
-/*
- * The key itself, on the one page it is ever shown.
- *
- * Given a line of its own and set in the monospaced family so that it can be
- * selected in one gesture and read back character by character — it is copied
- * by hand at least once, and the shared palette's fallback stack is what makes
- * that true on a machine with no fonts of ours.
- */
+/* On its own line in the monospaced family, so it selects in one gesture and
+   reads back character by character; it is copied by hand at least once. */
 .secret {
   padding: 28px 24px;
   text-align: center;
@@ -1034,20 +878,11 @@ h2 {
 /* --- the payout address on the settings screen -------------------------- */
 
 /*
- * The address a merchant's money arrives at, shown back to them.
- *
- * Forty characters is more than anybody reads in a run, so it is set in the
- * monospaced family and broken into groups of four the way a long number is.
- * The gaps are this rule's and not the text's: the groups are spans with
- * nothing between them in the markup, so a merchant who selects the address and
- * pastes it into a wallet pastes an address rather than a spaced-out copy of
- * one that no wallet will take.
- *
- * `overflow-wrap` is here for the same reason it is on the callout above: this
- * block has no scroller of its own, and an unbroken forty-character run would
- * be the one thing on the page that scrolls the whole document sideways on a
- * phone. Wrapping happens between groups, which is where a person reading it
- * against their wallet would break it anyway.
+ * Forty characters is more than anybody reads in a run, so the address is set in
+ * groups of four. The gaps are this rule's, not the text's: the groups are spans
+ * with nothing between them, so a copied address pastes as an address. It wraps
+ * between groups, because this block has no scroller and an unbroken run would
+ * scroll the page sideways on a phone.
  */
 .saved {
   margin: 0 0 24px;
@@ -1064,10 +899,8 @@ h2 {
   text-transform: uppercase;
 }
 
-/* The address itself, whole and in fours: the saved one in the box above, and
-   the one a refusal hands back under the form, so that it too can be read
-   against a wallet at any width rather than only as far as the box it was
-   pasted into shows it. */
+/* Whole and in fours: the saved address, and the one a refusal hands back under
+   the form, which must be readable against a wallet beyond the box's width. */
 .address {
   margin-top: 10px;
   font-family: var(--font-mono);
@@ -1079,11 +912,8 @@ h2 {
   color: var(--muted);
 }
 
-/* A group is one unit on a line: the line may break between two groups and
-   never inside one. With the groups as plain spans a narrow screen broke
-   wherever the width ran out, "9f" at the end of one line and "33" at the
-   start of the next, which is the one split a person reading against their
-   wallet cannot read past. */
+/* A line may break between two groups and never inside one: a group split across
+   lines is the one break a person checking against their wallet cannot read past. */
 .address .quad {
   display: inline-block;
   margin-right: 0.5em;
@@ -1095,9 +925,8 @@ h2 {
   margin-top: 10px;
 }
 
-/* Settings are four distinct subjects. Panels keep their explanations and
-   controls together and use the width of the frame instead of leaving half of
-   it blank; on a narrow screen they return to the document order. */
+/* Panels keep their explanations and controls together and use the frame's
+   width; on a narrow screen they return to document order. */
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1129,16 +958,9 @@ h2 {
 }
 
 /*
- * One size and one step for the words in a panel. The four panels were written
- * apart and printed their sentences at three sizes — plain paragraphs at the
- * page's 16 pixels, the quiet ones at 14, some panels all of one and some a mix
- * — with 6 pixels between two sentences in one panel and 16 in the next. A
- * panel is a heading, a few sentences and a control, so every sentence in it is
- * the quiet size, a sentence apart from the one before it.
- *
- * The payout panel draws its rule as a second lede after the first, or after
- * the saved address; that lede continues the one above rather than opening a
- * section, so it takes no inset of its own.
+ * Every sentence in a panel is the quiet size, a sentence apart from the one
+ * before. The payout panel's rule is a second lede continuing the first, so it
+ * takes no inset of its own.
  */
 .settings-panel .lede p {
   margin-top: 8px;
@@ -1150,10 +972,8 @@ h2 {
   padding-top: 0;
 }
 
-/* A panel that ends in words rather than a form ends the same distance from its
-   edge a form does. Without this the last line of the shop panel sat on the
-   panel's bottom border, since it is the form below a lede that carries the
-   bottom inset and that panel has none. */
+/* A panel that ends in words ends the same distance from its edge as one that
+   ends in a form; otherwise its last line sits on the bottom border. */
 .settings-panel > .lede:last-child {
   padding-bottom: 24px;
 }
@@ -1181,9 +1001,9 @@ h2 {
   }
 }
 
-/* The dashboard's shell: the numbered sections in a sidebar beside the
-   workspace, and a bar at the top of the workspace with the screen's title,
-   the selling light and who is signed in. */
+/* The numbered sections in a sidebar beside the workspace, and a bar at the top
+   of the workspace with the screen's title, the selling light and who is signed
+   in. */
 .app-shell {
   min-height: 100vh;
   display: grid;
@@ -1382,8 +1202,8 @@ h2 {
   }
 }
 
-/* The settings layout: the two forms sit on the bottom edge of equal-height
-   panels, and the account is a strip of its own at the foot. */
+/* The forms sit on the bottom edge of equal-height panels, and the account is a
+   strip of its own at the foot. */
 .settings-panel {
   display: flex;
   flex-direction: column;
@@ -1391,10 +1211,9 @@ h2 {
 .settings-panel > .issue {
   margin-top: auto;
 }
-/* The name and the wallet panels share three rows across the pair: what the
-   panel says, the box with its button, and the refusal under it. A refusal in
-   one panel used to lift that panel's box above the other's, because each form
-   sat on its own panel's bottom edge and the red line made the form taller. */
+/* The name and wallet panels share three rows across the pair (what the panel
+   says, the box with its button, the refusal), so a refusal in one panel cannot
+   lift its box above the other's. */
 .settings-pair {
   display: grid;
   grid-row: span 3;
@@ -1441,8 +1260,7 @@ h2 {
   gap: 16px;
   padding: 16px 24px 24px;
 }
-/* On the Integrations page the ways are the panel's first thing, with no
-   heading above them to carry the top inset. */
+/* No heading above the ways to carry the top inset. */
 .settings-connect > .connect-ways:first-child {
   padding-top: 24px;
 }
@@ -1478,8 +1296,8 @@ h2 {
 .gate-skip {
   text-align: center;
 }
-/* Side by side only where each way has room for its buttons on one line;
-   on a phone the insets shrink so the longest label still fits. */
+/* Side by side only where each way has room for its buttons on one line; on a
+   phone the insets shrink so the longest label still fits. */
 @media (max-width: 1180px) {
   .connect-ways {
     grid-template-columns: minmax(0, 1fr);
@@ -1511,8 +1329,8 @@ h2 {
   }
 }
 
-/* The card counts as pills, and the empty catalogue as a panel with its ways
-   in as buttons. */
+/* The card counts as pills, and the empty catalogue as a panel with its ways in
+   as buttons. */
 .stat-pills {
   display: flex;
   flex-wrap: wrap;
@@ -1560,17 +1378,15 @@ h2 {
   }
 }
 
-/* On a phone and a tablet the sidebar is a bar that takes the height it
-   needs; on a short page the rest of the screen belongs to the content, not to
-   a stretched empty bar. */
+/* On a phone and a tablet the sidebar is a bar of the height it needs, so a short
+   page is not a stretched empty bar. */
 @media (max-width: 900px) {
   .app-shell {
     grid-template-rows: auto 1fr;
   }
 }
 
-/* On a phone the ways into an empty catalogue stand one under another at one
-   width, rather than side by side, each as wide as its words. */
+/* On a phone the ways into an empty catalogue stand one under another. */
 @media (max-width: 560px) {
   .empty-start .connect-actions {
     flex-direction: column;
@@ -1578,10 +1394,9 @@ h2 {
   }
 }
 
-/* Revoking a key is two presses: the first opens the question under the
-   button, inside the row, the second answers it (keys.ts). Inside the row
-   rather than floating over it, because the table's rounded frame clips
-   anything that hangs out of its last row. */
+/* Revoking a key is two presses: the first opens the question inside the row,
+   the second answers it. Inside the row rather than over it, because the table's
+   rounded frame clips anything hanging out of its last row. */
 .confirm-open {
   list-style: none;
   cursor: pointer;
@@ -1598,10 +1413,9 @@ h2 {
   font-size: 0.875rem;
 }
 
-/* The burger menu (html.ts, narrowMenu). Where there is no room for the
-   sidebar, the bar at the top is one row — the lockup and the burger — and the
-   sections, the documentation and the account open over the page from it,
-   instead of a strip of tabs two rows tall. */
+/* The burger menu. Where there is no room for the sidebar, the top bar is one row
+   (the lockup and the burger), and the sections, documentation and account open
+   over the page from it. */
 .app-menu {
   display: none;
 }

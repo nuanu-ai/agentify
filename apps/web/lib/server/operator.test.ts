@@ -103,8 +103,7 @@ describe("whether the operator's dashboard opens for a request", () => {
   });
 
   it("stays shut when the dashboard cannot say, whatever way it fails", async () => {
-    // Not knowing whether somebody is an operator is not knowing they are one
-    // (ADR-0026 §6): the dashboard fails closed.
+    // Not knowing whether somebody is an operator is not knowing they are one.
     for (const failing of [
       () => ({ status: 503 }),
       () => ({ status: 200, body: { status: "maybe" } }),
@@ -125,7 +124,7 @@ describe("whether the operator's dashboard opens for a request", () => {
 
   it("asks about the session's cookie alone, and moves nothing", async () => {
     // A page drawn on the server cannot hand the browser a renewed cookie, so
-    // the question it asks must not move the session's end (ADR-0026 §2).
+    // the question it asks must not move the session's end.
     const { url, asked } = await sellerDashboard();
     askingAt(url);
 

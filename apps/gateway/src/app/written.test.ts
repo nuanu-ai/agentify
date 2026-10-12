@@ -1,13 +1,13 @@
 /**
  * What this gateway writes, held shut at every depth before it is sent.
  *
- * An agent reads the catalog and an order's status open, inside and out
- * (ADR-0006 §5), so its schema cannot refuse a field that should not be there.
- * The outbound check is where one is stopped, and it stops only what its forms
- * shut: an object left open anywhere inside them is a place a merchant's key
- * or a buyer's parameter could ride out to every agent with nothing failing.
- * And a document an agent cannot read is one this gateway must not send in the
- * first place, because the agent would pass it over without a word.
+ * An agent reads the catalog and an order's status open at every depth, so its
+ * schema cannot refuse a field that should not be there. The outbound check is
+ * where one is stopped, and it stops only what its forms shut: an object left
+ * open anywhere inside them is a place a merchant's key or a buyer's parameter
+ * could ride out to every agent with nothing failing. A document an agent
+ * cannot read must not be sent either, because the agent would pass it over
+ * without a word.
  */
 
 import {
@@ -133,7 +133,7 @@ const { refusal: _noRefusal, ...unrefused } = status;
 
 const collected = { ...unrefused, status: "delivered", delivered: { code: "BRUNCH-4F2A" } };
 
-/** A parcel the merchant shipped, as its agent reads it (ADR-0033). */
+/** A parcel the merchant shipped, as its agent reads it. */
 const shipped = {
   ...unrefused,
   status: "shipped",
@@ -193,9 +193,7 @@ describe("what this gateway checks before it sends a document", () => {
   });
 
   it("refuses to send a shipment on an order whose status says it has not shipped", () => {
-    // The parcel's counterpart of the rule below: its shipment is said where
-    // its status says it shipped, and anything in that field on another word
-    // would be whatever a mistake put there.
+    // A shipment beside any other status word could only be a mistake.
     for (const word of ["in_progress", "refund_due", "delivered"]) {
       expect(sendable(AgentOrderStatusSchema, { ...shipped, status: word }), word).toBe(false);
     }
@@ -217,8 +215,7 @@ describe("what this gateway checks before it sends a document", () => {
 
   it("refuses to send goods on an order whose status says there are none", () => {
     // The goods are the buyer's only once the status says delivered; on any
-    // other word there is nothing here to hand over, and something in this
-    // field would be whatever a mistake put there.
+    // other word something in this field could only be a mistake.
     for (const word of ["rejected", "in_progress", "refund_due", "delivered_unpaid"]) {
       expect(sendable(AgentOrderStatusSchema, { ...collected, status: word }), word).toBe(false);
     }

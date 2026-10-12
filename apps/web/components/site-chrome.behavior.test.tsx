@@ -22,8 +22,6 @@ afterEach(() => {
 
 describe("the header's doors", () => {
   it("carries the signed-in address and a sign-out that posts to the dashboard", async () => {
-    // A person signed in anywhere on the site sees who they are signed in as
-    // on every page with a header, and can sign out from it (ADR-0026 §3).
     visitorIs(200, { status: "signed_in", email: "owner@example.com", operator: false });
 
     const { container } = render(<SiteDoors />);
@@ -35,8 +33,6 @@ describe("the header's doors", () => {
   });
 
   it("shows an operator the way to the dashboard", async () => {
-    // The flag rides on the same answer as the address: it is the person's
-    // own, and the header is where they find the dashboard (ADR-0026 §6).
     visitorIs(200, { status: "signed_in", email: "operator@example.com", operator: true });
 
     const { container } = render(<SiteDoors />);

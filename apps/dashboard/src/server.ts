@@ -1,37 +1,21 @@
 /**
- * The dashboard's own HTTP surface: the one-field sign-in, its one-time-link
- * landing, the screens with navigation on them, the settings, and the switches
- * that stop and start selling.
+ * The dashboard's HTTP surface, server-rendered with no client framework and no
+ * build step: every page is one GET and every change is one form post followed
+ * by a redirect, so back, reload and find-in-page work and no page needs
+ * JavaScript. Sign-in is the component's job; handlers call its server-side API
+ * with a body built from a parsed form and pass on the cookie it produces.
+ * Nothing here decides anything about a card, an order or money: each handler
+ * translates one request into calls on the gateway's application, as the
+ * merchant on the signed-in account's row.
  *
- * It is server-rendered with no client framework and no build step, which is
- * ADR-0005 §4. Every page is one GET and every change is one form post
- * followed by a redirect, so the browser's back button, its reload and its
- * find-in-page all work without anything being written to make them. Signing in
- * is a component's job now (ADR-0026 §2) and that did not change: our handlers
- * call its server-side API with a body built out of a form we parsed, and pass
- * on the cookie it produces, so nothing on any of these pages needs JavaScript.
- *
- * Nothing here decides anything about a card, an order or the money. Each
- * handler is a translation between one request and a few calls on the gateway's
- * application, made inside the process as the merchant on the signed-in
- * account's row (ADR-0030), and the pages are drawn from what those calls
- * answered, held to the contract's documents. A screen that needs something a
- * merchant's own code could need gets it as a contract route (ADR-0005 §3).
- *
- * Who is allowed in is one middleware and not a check per handler, and that is
- * ADR-0026 §7. The gate sits above every route below it, so a page added later
- * is guarded because it is a page rather than because somebody remembered. A
- * visitor with no session is sent to the sign-in from every address, including
- * the ones that do not exist; the sign-in names the section the address belongs
- * to, so the person can be returned there, which tells a stranger the names of
- * the sections and nothing that is not already in the open repository.
- *
- * What stands above the gate is written out in that decision and is short: the
- * sign-in and the sign-out, the page a mailed link lands on, the stylesheet,
- * the health probe, the shop's own callback and the address a shop sends a
- * browser back to. Each is there because a session cannot reach it, and each
- * answers the same thing to everybody — which is the property that makes the
- * list safe to add to, and the one to check before adding to it.
+ * Access is one middleware, not a check per handler, so a page added below the
+ * gate is guarded by being below it. A visitor with no session is sent to the
+ * sign-in from every address; the sign-in names the section the address belongs
+ * to, which reveals only section names already in the open repository. What
+ * stands above the gate is short and a test holds the list: sign-in and
+ * sign-out, the page a mailed link lands on, the stylesheet, the health probe,
+ * the shop's callback and the shop's return address. Each answers the same
+ * thing to everybody, which is the property to check before adding to it.
  */
 
 import { readFileSync } from "node:fs";
@@ -150,56 +134,42 @@ const mapAtMost = async <Input, Output>(
 };
 
 /**
- * How long the dashboard waits on the gateway for a payout wallet change.
- *
- * Longer than a screen's ten seconds, because on the live deployment the
- * gateway does not answer until this dashboard has handed every message to the
- * mail provider, and it gives that twenty seconds (`ANNOUNCEMENT_ANSWER_MS` in
- * the gateway, ADR-0019). A dashboard that stopped waiting first would tell a
- * person the gateway did not answer while their change was being recorded.
+ * Longer than a screen's ten seconds: on live the gateway answers only after
+ * this dashboard has handed every announcement to the mail provider, which may
+ * take twenty seconds (`ANNOUNCEMENT_ANSWER_MS` in the gateway). Stopping
+ * sooner would tell a person the gateway did not answer while their change was
+ * being recorded.
  */
 const WALLET_CHANGE_MS = 30_000;
 
 /**
- * A shape an address has to have before a merchant is made for it.
- *
- * Deliberately not an attempt at the real grammar of an address, which is
- * larger than anybody thinks. What it catches is the mistakes somebody actually
- * makes in a form — a missing half, a space in the middle, a bare word. It is
- * the same shape the account command holds an address to, for the same reason.
+ * Not the real grammar of an address: it catches the mistakes made in a form (a
+ * missing half, a space, a bare word), as the account command does.
  */
 const LOOKS_LIKE_AN_ADDRESS = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 
 /**
- * What a person is told when the gate found no session behind their click.
- *
- * The gate cannot tell them why — the session may have gone thirty days
- * without a visit or been ended from another device — so what it gives is the
- * general rule. Naming the lifetime is what makes being asked for an address
- * again read as the ordinary end of a session rather than as a fault.
+ * The gate cannot say why the session ended (thirty days without a visit, or
+ * ended from another device), so it gives the rule; naming the lifetime makes
+ * the request for an address read as an ordinary end rather than a fault.
  */
 const SESSION_ENDED =
   `Your session ended; a session lasts ${SESSION_DAYS} days from your last visit. ` +
   `Send yourself a new link to carry on.`;
 
 /**
- * What a form sent with no session cookie at all is told.
- *
  * Signing out clears the cookie in every tab, so a form pressed in another one
- * arrives with nothing to say a session was ever there, and the gate names no
- * cause. What it does know is that the person sent something and it was not
- * kept, and a merchant left to guess would take a pause for done.
+ * arrives with no sign a session existed. The person is told it was not kept,
+ * or they might take a pause for done.
  */
 const UNSAVED = "You are not signed in, so the change you submitted was not saved.";
 
 /**
- * Where a person who owns no merchant starts (ADR-0026 §1).
- *
- * The scanner's page, because the scanner is what knows whether this person
- * owns a report: it answers with the latest of them, and sends somebody who
- * owns none back to the dashboard, whose first screen offers the one control
- * that makes a merchant. Never that screen for a person with reports, and
- * never the merchant itself, which only the explicit press makes (§4).
+ * Where a person who owns no merchant starts. The scanner knows whether they own
+ * a report: it shows the latest, and sends somebody with none back to the
+ * dashboard's screen with the one control that makes a merchant. Never that
+ * screen for a person with reports, and never the merchant itself, which only
+ * the explicit press makes.
  */
 export const LATEST_REPORT = "/report/latest";
 
@@ -207,20 +177,10 @@ const dashboardPathFor = (base: string, destination: DashboardDestination): stri
   `${base}/${destination === "default" ? "cards" : destination}`;
 
 /**
- * The stylesheet the dashboard serves: the shared visual language, then the
- * dashboard's own layout. Read once at startup — neither changes while we run.
- *
- * The surfaces share one visual language, held in one stylesheet rather than
- * repeated per page, and that file is
- * `packages/visual/tokens.css`. Nothing serves it over HTTP on the deployed
- * origin, so every reader takes it at build time or off disk; the dashboard reads
- * it off disk and serves it inside its own response. That also suits how the
- * dashboard is run: it has to render correctly on its own, without Caddy in front
- * of it, which is how it is developed and how every one of its tests drives it.
- *
- * What matters is that it is one file on disk and not a copy. This branch did
- * carry a copy, with the palette from before the contrast fix, which is how one
- * visual language quietly becomes two that look almost alike.
+ * The shared visual language, then the dashboard's own layout, read once at
+ * startup. The shared file is read off disk rather than served separately, so
+ * the dashboard renders correctly on its own, without Caddy, as in development
+ * and in every test; it must stay one file, never a copy.
  */
 const TOKENS_AT = new URL("../../../packages/visual/tokens.css", import.meta.url);
 const TOKENS = readTokens();
@@ -229,11 +189,8 @@ function readTokens(): string {
   try {
     return readFileSync(TOKENS_AT, "utf8");
   } catch (thrown) {
-    // An ENOENT here is a packaging mistake — an image built from a context
-    // that leaves `packages/visual` out — and the bare exception names a path
-    // and nothing about why anybody wanted it. The configuration goes to
-    // lengths to name every problem at once; this is the same courtesy for the
-    // one file it does not read.
+    // A missing file is a packaging mistake (an image built without
+    // `packages/visual`), so the error says why the file is wanted.
     throw new Error(
       `The dashboard cannot start: it serves the shared visual language from ${TOKENS_AT.pathname},` +
         " which is not there. That file is packages/visual/tokens.css, the one place every" +
@@ -244,69 +201,39 @@ function readTokens(): string {
 }
 const STYLESHEET = `${TOKENS}\n${readFileSync(new URL("./agentify.css", import.meta.url), "utf8")}`;
 
-/** What the dashboard is built out of, beyond its configuration. */
 export interface DashboardParts {
   /**
-   * Who is signed in, and everything that follows from that.
-   *
-   * The component and the store behind it, wrapped in `identity.ts`. A
-   * deployment gives it Postgres; the dashboard's own tests give it the
-   * component's memory store, so the suite drives the real component offline.
+   * `identity.ts` over Postgres in a deployment, over the component's memory
+   * store in tests, so the suite drives the real component offline.
    */
   readonly identity: DashboardIdentity;
-  /**
-   * The money path: the gateway's application, in the process the two share
-   * (ADR-0030). Every screen calls it as the merchant on the signed-in
-   * account's row.
-   */
+  /** Called in-process as the merchant on the signed-in account's row. */
   readonly gateway: Gateway;
   /**
-   * How one account's calls are made, with the real client as the default.
-   *
-   * A function of the account rather than a client, because a client is built
-   * per request from whoever is signed in, so two people signed into one
-   * dashboard are two merchants. Only a test ever passes anything else, to have
-   * a call answered the way the gateway will not answer on command: a refusal,
-   * or a call that never finishes.
-   *
-   * The deadline is the caller's because a wallet change waits on the mail
-   * provider for longer than a screen waits (`WALLET_CHANGE_MS`). Left out, the
-   * client's own is used.
+   * Built per request from whoever is signed in, so two people signed into one
+   * dashboard are two merchants. Only tests pass another, to get a refusal or a
+   * call that never finishes. The deadline is the caller's because a wallet
+   * change waits longer than a screen does (`WALLET_CHANGE_MS`).
    */
   readonly clientFor?: (acting: Acting, answerWithinMs?: number) => GatewayClient;
   /**
-   * How a merchant is made, for a signed-in person who has none, with the real
-   * registration as the default.
-   *
-   * Its own part rather than a method on the client above, because that person
-   * is not a merchant yet and there is no merchant to bind a client to.
+   * Not a client method, because the person has no merchant yet to bind a
+   * client to.
    */
   readonly registrar?: Registrar;
   /**
-   * Where a merchant's connected WooCommerce shop is kept, for the dashboard that
-   * has one.
-   *
-   * Optional, and absent is a dashboard with no WooCommerce screens at all rather
-   * than screens that fail: a deployment without the tables has nothing to draw
-   * them from, and a page offering to connect a shop it cannot write down would
-   * be a button that loses somebody's keys.
+   * Absent means no WooCommerce screens at all rather than screens that fail: a
+   * page offering to connect a shop it cannot write down would lose somebody's
+   * keys.
    */
   readonly wooShops?: WooShops;
   /**
-   * How a merchant's own shop is reached, with the real calls as the default.
-   *
-   * The same shape as the gateway client above and there for the same reason:
-   * only a test ever passes anything else, and what a deployment runs is the
-   * two calls in `woo-shop.ts` and `woo-connect.ts`. It is a part rather than a
-   * module a test replaces because both of them reach a shop over https, and a
-   * shop these tests could stand up on a loopback port would be refused at the
-   * door before either of them ran — which is the door working correctly and a
-   * fixture that cannot be built.
+   * Only tests pass another. Both real calls reach a shop over https, and a
+   * loopback shop would be refused before either ran, so the calls are handed
+   * in rather than the shop stood up.
    */
   readonly shop?: {
-    /** Whether an authorize address actually reaches wc-auth. */
     readonly grantScreen: (authorizeUrl: string) => Promise<Preflight>;
-    /** Everything a shop offers for sale, off its Store API. */
     readonly catalogue: (shopUrl: string, atMost?: number) => Promise<CatalogueRead>;
     readonly inspectProduct: (
       keys: WooConnection,
@@ -316,44 +243,24 @@ export interface DashboardParts {
 }
 
 /**
- * The most products one import brings over.
- *
- * A number rather than paging, and it is named on the page it refuses rather
- * than being a silent cut. Every product is a separate call to the publish
- * door, made while a merchant is holding a page open, so the honest ceiling is
- * the one a page can carry — and a shop past it is told that its catalogue is
- * larger than this brings over in one go, which is a gap somebody can act on,
- * rather than being handed the first two hundred as though that were all of
- * them.
- */
-/**
- * Whose session a request arrived on.
- *
- * A map keyed by the request rather than a field written onto it: express hands
- * every middleware the same object and a property added to it is a property no
- * type knows about, so the next reader of this file would have to take the
- * dashboard's word for who is signed in.
+ * A map keyed by the request rather than a property added to it, so the type
+ * system knows who is signed in.
  */
 const people = new WeakMap<Request, Person>();
 
 /**
- * The three answers the settings screen is drawn from.
- *
- * The shop is optional and the other two are not, because the first two are
- * always asked for and the third exists only where this dashboard has somewhere
- * to keep a connection. Absent means a dashboard with no store for connections,
- * and no block about a shop. The four states of a shop that is there are
- * `ShopState`, and the fifth, `unread`, is a store that did not answer.
+ * The shop is present only where this dashboard has somewhere to keep a
+ * connection; absent draws no block about a shop. `unread` is a store that did
+ * not answer.
  */
 interface Settings {
   readonly sellerName: string | null;
   readonly sellerSite: string | null;
   readonly payoutWallet: PayoutWalletDocument;
-  /** Whether the operator has approved the merchant; read on the live channel alone. */
+  /** Read on the live channel only. */
   readonly liveApproval?: boolean;
 }
 
-/** The whole dashboard on an express app. */
 export function buildApp(config: DashboardConfig, parts: DashboardParts): Express {
   const app = express();
   const base = config.basePath;
@@ -363,9 +270,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   const viewing = (request: Request, pageBase: string, sellerName?: string | null): Viewer =>
     viewingAt(request, pageBase, config.surfaceMode, sellerName);
   /**
-   * Whether the operator has approved this merchant, on the live channel, the
-   * one place the door asks for it; elsewhere nothing is read and nothing is
-   * said about it.
+   * Read only on live, the one place publishing needs it; elsewhere nothing is
+   * read or said about it.
    */
   const approvalOn = async (gateway: GatewayClient): Promise<Answer<boolean | undefined>> =>
     config.surfaceMode === "live"
@@ -390,13 +296,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       gatewayFor(parts.gateway, acting, answerWithinMs));
   const registrar = parts.registrar ?? registrarFor(parts.gateway);
   /**
-   * The gateway as this request's merchant, the one on the signed-in
-   * account's row.
-   *
-   * Only ever called below the gate, which is what makes the merchant's absence
-   * a defect here rather than a case: the gate sends an account that names no
-   * merchant to the one control that makes it, precisely so that no handler
-   * below has to hold an opinion about a dashboard with nothing to draw.
+   * Only called below the gate, which sends an account with no merchant to the
+   * control that makes one, so a missing merchant here is a defect, not a case.
    */
   const gatewayAs = (request: Request, answerWithinMs?: number): GatewayClient => {
     const person = whoIs(request);
@@ -412,14 +313,10 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   };
 
   /**
-   * Takes the component's cookies out of the browser.
-   *
-   * Every name it sets, not the session alone: beside the session itself the
-   * component keeps two cookies of its own, and clearing only the first would
-   * leave the others in a browser for good. The clearing line carries the
-   * attributes the session was set with, because a browser replaces a cookie
-   * only with a line for the same path, and replaces a `__Host-` one only with
-   * a line that is Secure and for the whole origin (ADR-0026 §2).
+   * Every cookie the component sets, not only the session, or the others would
+   * stay for good. The clearing line carries the session's attributes, because
+   * a browser replaces a cookie only with a line for the same path, and a
+   * `__Host-` one only with a Secure line for the whole origin.
    */
   const forget = (response: Response): void => {
     for (const name of identity.cookieNames) {
@@ -433,9 +330,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   };
 
   /**
-   * Where this person starts when nothing else says where to go: the dashboard
-   * for somebody who owns a merchant, and the scanner's latest-report page
-   * for anybody else (ADR-0026 §1).
+   * A merchant's owner starts on the dashboard, anybody else on the scanner's
+   * latest-report page.
    */
   const startOf = (person: Person): string =>
     person.merchant !== null ? `${base}/cards` : LATEST_REPORT;
@@ -448,12 +344,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   };
 
   /**
-   * Puts the session the component just opened into the browser.
-   *
-   * The lines are the component's own, passed on rather than rebuilt: the four
-   * settings a merchant's session rests on are decided in one place
-   * (`identity.ts`), and a second copy of them here is a second thing to get
-   * wrong — most likely the one that only matters in production.
+   * The component's own lines, passed on rather than rebuilt: the cookie's
+   * settings are decided once, in `identity.ts`, and a second copy would be a
+   * second thing to get wrong where it matters most, in production.
    */
   const carryCookies = (response: Response, cookies: readonly string[]): void => {
     for (const line of cookies) {
@@ -462,17 +355,14 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   };
 
   app.disable("x-powered-by");
-  // No `trust proxy` here: nothing in the dashboard reads the client's address,
-  // and express's own handling of the forwarding headers would put a spoofable
-  // value behind `request.ip` and `request.secure` where nobody reading a
-  // handler would think to doubt it. The forms are the only thing a browser
-  // posts here, and they are small.
+  // No `trust proxy`: nothing reads the client's address, and express would put
+  // a spoofable value behind `request.ip` and `request.secure` where nobody
+  // reading a handler would doubt it. Only small forms are posted here.
   app.use(express.urlencoded({ extended: false, limit: "16kb" }));
   app.use(sameOriginUnder(base, config.surfaceMode));
 
-  // Under one origin the dashboard is reached at BASE_PATH, so that is where a
-  // probe looks; at the bare root it is what a container health check asks for.
-  // Both, because a probe answering 404 reads as a dead process.
+  // At BASE_PATH behind the shared origin, and at the root for a container
+  // health check: a probe answering 404 reads as a dead process.
   for (const path of new Set(["/healthz", `${base}/healthz`])) {
     app.get(path, (_request, response) => {
       response.json({ ok: true });
@@ -484,28 +374,18 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   });
 
   /**
-   * Where a merchant's WooCommerce shop delivers the keys it just minted.
+   * Above the gate because it must be: the shop's own server posts here with no
+   * cookie or key of ours. What stands in for a session is the one-time token
+   * the shop hands back as `user_id`, written when the merchant pressed
+   * Connect, bound to their account and the shop they typed, and spent on
+   * arrival. Without it anybody could put their own shop's keys on somebody
+   * else's account.
    *
-   * Above the gate, because it has to be: this is a request from the merchant's
-   * own web server, carrying no cookie of ours and no key of ours, and a route
-   * behind the sign-in would simply never be reached. What stands in for a
-   * session is the one-time token the shop hands back as `user_id` — it was
-   * written down when the merchant pressed Connect, bound to their account and
-   * to the shop they typed, and it is spent by arriving here. Without it this
-   * address is a way for anybody to put their own shop's keys on somebody
-   * else's account, which is the whole of why the token exists.
-   *
-   * The status is the answer and the body is not. WooCommerce deletes the key
-   * it minted when the post fails (`class-wc-auth.php`, `maybe_delete_key`), so
-   * a refusal here is not merely us declining to write a row: it takes the key
-   * back out of the merchant's shop. That is the right outcome for a token we
-   * do not recognise, and the reason nothing below answers 200 out of
-   * politeness.
-   *
-   * It parses its own body. Everything else in this dashboard is a form and the
-   * body parser above reads forms; this one arrives as JSON from WordPress, and
-   * a JSON parser mounted at the top would be a second parser on every form
-   * post the merchant makes.
+   * The status is the answer: WooCommerce deletes the key it minted when the
+   * post fails (`class-wc-auth.php`, `maybe_delete_key`), so a refusal takes
+   * the key back out of the shop, which is right for a token we do not
+   * recognise. Nothing below answers 200 out of politeness. It parses its own
+   * JSON body so a JSON parser is not run on every form post.
    */
   app.post(`${base}/woocommerce/callback`, express.json({ limit: "16kb" }), (request, response) => {
     void (async () => {
@@ -526,10 +406,10 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         return;
       }
 
-      // Consumed together with the connection write. A token that worked twice
-      // would let anybody who ever saw one put a second shop's keys on that
-      // account; consuming first and connecting later would let an older
-      // callback overwrite a newer Connect in between.
+      // Consumed together with the connection write: a token that worked twice
+      // would let anybody who saw one put a second shop's keys on the account,
+      // and consuming first would let an older callback overwrite a newer
+      // Connect in between.
       const connectedAt = new Date();
       const connection = await shops.connectFromGrant(
         token,
@@ -537,9 +417,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         connectedAt,
       );
       if (connection === null) {
-        // One answer for a token nobody issued, one already spent and one whose
-        // fifteen minutes are up. Telling them apart here would be answering
-        // questions about somebody else's account to whoever asked.
+        // One answer for a token nobody issued, one spent and one expired:
+        // telling them apart would answer questions about somebody else's
+        // account.
         console.log("[dashboard] a WooCommerce callback arrived with a token we do not hold");
         response.status(401).json({ ok: false });
         return;
@@ -554,8 +434,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       );
       response.json({ ok: true });
     })().catch((thrown) => {
-      // Answered as a failure so the shop takes its key back rather than
-      // leaving one nothing here knows about.
+      // A failure, so the shop takes its key back rather than keeping one
+      // nothing here knows about.
       console.error("[dashboard] a WooCommerce callback could not be written down", thrown);
       if (!response.headersSent) {
         response.status(500).json({ ok: false });
@@ -564,38 +444,20 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   });
 
   /**
-   * The address a merchant's own shop sends their browser back to.
+   * Above the gate: a browser can come back from the shop without a session (it
+   * ended meanwhile, or the shop was opened in another browser), and a sign-in
+   * form at the end of a working Connect reads as failure. A browser with a
+   * session, the ordinary case under `Lax`, is sent on into the dashboard.
+   * Without a session this route reads no row, asks the gateway nothing and
+   * draws the same page for everybody, so a stranger learns only that the
+   * address exists.
    *
-   * Above the gate, and that is the whole of this route's reason for being
-   * written out here rather than beside the shop screens. A browser can come
-   * back from the shop without a live session — the session ended while the
-   * merchant was in their shop, or the shop was opened in another browser than
-   * the one signed in here — and behind the gate a connection that worked would
-   * then end on a sign-in form, which a merchant reads as the connect having
-   * failed. It did, twice, when this flow was walked by hand, back when the
-   * cookie was `Strict` and no return carried it (ADR-0026 §7). A browser that
-   * does carry a session, which under `Lax` is the ordinary case, is sent on
-   * into the dashboard.
-   *
-   * Taking the address out from behind the gate costs nothing because there is
-   * nothing behind it to take: with no session this route reads no row, asks the
-   * gateway nothing and draws a page that is the same page for everybody. A
-   * stranger who walks up to it learns that the address exists. That is the only
-   * claim on it, and it is true before anybody has connected anything.
-   *
-   * The token still comes out of the address bar first. WooCommerce hands
-   * `user_id` back on this redirect, and in the case the page exists for — the
-   * keys never arrived — it is unspent and good for the rest of its fifteen
-   * minutes. What the redirect buys is what a redirect can buy: the address bar
-   * and the browser's back history hold the stripped address rather than the
-   * one with the token in it, and nothing the page then loads carries the token
-   * in a `Referer`. What it does not buy is the request that already happened —
-   * the token was in the address line of that one, so it is in this process's
-   * own log and in the log of anything between the merchant and us, and only
-   * spending or expiry ends that. A return that arrives with no session is
-   * the one this page is drawn for, so it is the path that has to do the
-   * stripping: a redirect to this same address with the query gone, rather
-   * than the redirect into the dashboard that a signed-in visitor gets.
+   * The token comes out of the address bar first: WooCommerce hands `user_id`
+   * back here, and when the keys never arrived it is unspent for the rest of
+   * its fifteen minutes. Redirecting to the same address without the query
+   * keeps it out of the address bar, history and any `Referer`; it cannot
+   * remove it from the logs of the request that already happened, which only
+   * spending or expiry ends.
    */
   if (wooShops !== undefined) {
     const returnPath = `${base}/woocommerce/return`;
@@ -627,9 +489,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       );
       return;
     }
-    // A session that ran its course is why the person is here, not something
-    // they got wrong, so it is the page's first line rather than a refusal.
-    // A change lost with it is a refusal: something they did was not kept.
+    // An expired session is why the person is here, so it is the page's first
+    // line; a change lost with it is a refusal.
     const problem =
       request.query.reason === "session-ended-unsaved"
         ? `${SESSION_ENDED} The change you submitted was not saved.`
@@ -666,11 +527,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       response.status(503).type("html").send(mailUnavailableScreen(base, config.surfaceMode));
       return;
     }
-    // Every answer leaves a wait behind it and the page draws it on the
-    // resend. Both waits come from the door, which read them off the same
-    // rows: this page never works one out for itself, because the only wait it
-    // could guess is the minute, and the minute is wrong on exactly the answer
-    // it would be guessing for — the link that spent this address's hour.
+    // Both waits come from the gateway's reading of the same rows; this page
+    // never works one out, because the only wait it could guess is the minute,
+    // which is wrong for the link that spent the hour.
     const seconds = Math.max(1, Math.ceil((requested.retryAt.getTime() - Date.now()) / 1_000));
     const answer: LinkAnswer =
       requested.status === "cooldown" ? { wall: requested.wall, seconds } : { sent: true, seconds };
@@ -696,15 +555,12 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     await identity.attachMerchant(person.id, registerMerchant);
 
   /**
-   * Sends a person whose link has just opened on to where it was asked for.
-   *
-   * Opening a link makes nothing (ADR-0026 §4): under Lax a link from another
-   * site arrives signed in, so a navigation that could make a merchant is one
-   * anybody could start. A link the scanner asked for goes to the report it was asked
-   * for, where the scanner finishes the request the session now names. A link
-   * with no destination of its own goes to the person's start; one asked for
-   * from a dashboard screen goes to that screen, or, for somebody with no
-   * merchant yet, to the one control that makes it.
+   * Opening a link makes nothing: under Lax a link from another site arrives
+   * signed in, so a navigation that made a merchant could be started by
+   * anybody. A link the scanner asked for goes to its report, where the scanner
+   * finishes the request the session now names; a link from a dashboard screen
+   * goes to that screen, or to the control that makes a merchant for somebody
+   * with none; any other to the start.
    */
   const sendOpenedPerson = async (
     response: Response,
@@ -724,13 +580,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   };
 
   /**
-   * The one answer to a link that no longer opens anything.
-   *
-   * A browser with a live session goes to that session's person's start, so
-   * what decides the answer is who the browser is and never whose the link
-   * was: it says nothing about the link's address (ADR-0026 §1). Anybody else
-   * gets the same refusal for a link pressed twice, one that ran out and one
-   * nobody issued.
+   * A browser with a live session goes to its own start, so the answer depends
+   * on who the browser is and never on whose the link was. Anybody else gets
+   * one refusal for a spent, expired or unknown link.
    */
   const refuseLink = async (request: Request, response: Response): Promise<void> => {
     const signedIn = await identity.whoIs(request.headers.cookie);
@@ -744,23 +596,18 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
 
   const linkResponseHeaders = (_request: Request, response: Response, next: () => void): void => {
     response.setHeader("cache-control", "private, no-store");
-    // no-referrer makes Chromium send Origin:null on the native POST, which the
-    // strict origin gate must refuse. strict-origin keeps the exact origin and
-    // sends no query token in Referer.
+    // `no-referrer` makes Chromium send `Origin: null` on the form POST, which
+    // the strict origin check must refuse; `strict-origin` keeps the exact
+    // origin and sends no query token in `Referer`.
     response.setHeader("referrer-policy", "strict-origin");
     next();
   };
 
   /**
-   * The page every mailed link lands on: one control, and the address it signs
-   * in.
-   *
-   * Opening it spends nothing, so a mail client that previews the link signs
-   * nobody in; only the same-origin press below does. It reads the link to
-   * name the address, which is what stops a link for somebody else's address,
-   * sent to a victim, from signing them in as that somebody unnoticed
-   * (ADR-0026 §1). A link that no longer opens anything is answered here the
-   * way the press would answer it.
+   * Opening spends nothing, so a mail client's preview signs nobody in; only
+   * the same-origin press does. It names the address, so a link for somebody
+   * else's address sent to a victim cannot sign them in as that somebody
+   * unnoticed.
    */
   app.get(`${base}/sign-in/open`, linkResponseHeaders, async (request, response) => {
     const token = typeof request.query.token === "string" ? request.query.token : "";
@@ -779,24 +626,20 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       await refuseLink(request, response);
       return;
     }
-    // A browser already signed in gets its new session in place of the old
-    // one rather than beside it: the old row would otherwise live on with
-    // nothing holding its cookie, and be counted as another place this
-    // account is signed in.
+    // The new session replaces the old one rather than sitting beside it;
+    // otherwise the old row would live on with nothing holding its cookie and
+    // count as another place this account is signed in.
     await identity.signOut(request.headers.cookie);
     carryCookies(response, opened.setCookies);
     await sendOpenedPerson(response, opened.person, opened.destination);
   });
 
-  // The rows go, not merely the cookies. Clearing a cookie asks the browser to
-  // forget something; anybody who copied the value still holds a session.
-  // Every identifier the request carried, not one of them: a browser sends
-  // cookies of one name longest-path first and then oldest first, so the one
-  // this person is signed in on is not necessarily the first. It signs this
-  // browser out of the whole site and leaves other devices alone, and it ends
-  // on the sign-in page with an empty field, because people mostly sign out to
-  // come back as another address (ADR-0026 §3). It stands above the gate so a
-  // tab whose session has already gone can still clear its cookie.
+  // The rows go, not only the cookies: anybody who copied a value would still
+  // hold a session. Every identifier the request carried, because a browser
+  // orders cookies of one name by path and age, so the live one need not be
+  // first. It signs this browser out of the whole site and leaves other devices
+  // alone. Above the gate so a tab whose session is gone can still clear its
+  // cookie.
   app.post(`${base}/sign-out`, async (request, response) => {
     await identity.signOut(request.headers.cookie);
     console.log("[dashboard] a session was signed out");
@@ -805,17 +648,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   });
 
   /**
-   * The gate. Everything below this line needs a session; everything above it
-   * is the sign-in and the sign-out, the page a link lands on, the stylesheet,
-   * the health probe, the shop's callback and the address a shop sends a
-   * browser back to — ADR-0026 §7's list, which a test holds.
-   *
-   * A visitor without one is sent to the sign-in from every address, which is
-   * why this is a middleware and not a check inside each handler: a page added
-   * below is guarded by being below. The sign-in names the section they were
-   * going to, so a stranger can tell the sections from other addresses; their
-   * names are no secret, being in the open repository and on every signed-in
-   * page.
+   * The gate: everything below needs a session; everything above is on the list
+   * a test holds.
    */
   app.use((request, response, next) => {
     void (async () => {
@@ -823,24 +657,19 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         const session = await identity.whoIs(request.headers.cookie);
         const reading = request.method === "GET" || request.method === "HEAD";
         if (session === null) {
-          // The cookies are cleared on the way out, so somebody whose session
-          // was ended lands on a sign-in they can use rather than being bounced
-          // through this gate again on every click.
+          // Cleared on the way out, so somebody whose session ended gets a
+          // usable sign-in rather than this gate on every click.
           const hadIdentityCookie = carriesIdentityCookie(request.headers.cookie);
           forget(response);
           const reason = reading ? "session-ended" : "session-ended-unsaved";
-          // The section an address belongs to is where the person was going —
-          // a bookmark, the screen a message links to with no token in it (the
-          // wallet after a payout wallet change, ADR-0019), or the section a
-          // form that was not saved belongs to, the wallet change posted under
-          // the settings among them — so the sign-in carries it and the link
-          // it mails returns them there. An address outside the sections leads
-          // to the start.
+          // Where the person was going (a bookmark, a screen a message links
+          // to, or the section of an unsaved form) is carried through the
+          // sign-in so the mailed link returns them there. An address outside
+          // the sections leads to the start.
           const going = dashboardDestinationIn(
             request.path.slice(`${base}/`.length).split("/", 1)[0],
           );
-          // A form sent without a cookie is told it was not kept, at every
-          // address below alike.
+          // A form sent without a cookie is told it was not kept.
           const query = [
             hadIdentityCookie ? `reason=${reason}` : reading ? "" : "reason=unsaved",
             going === "default" ? "" : `destination=${going}`,
@@ -850,21 +679,18 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
           response.redirect(303, `${base}/sign-in${query === "" ? "" : `?${query}`}`);
           return;
         }
-        // Once a day the reading moves the session's end, and the browser has
-        // to be told or its cookie runs out thirty days after sign-in however
-        // often its person came back.
+        // Once a day the read moves the session's end, and the browser must be
+        // told or its cookie expires thirty days after sign-in however often
+        // its person returns.
         carryCookies(response, session.setCookies);
-        // Every page behind the gate carries the signed-in address in its
-        // header, and a page carrying an address is never stored by a shared
-        // cache (ADR-0026 §3).
+        // Every page behind the gate shows the signed-in address, so no shared
+        // cache may store it.
         response.setHeader("cache-control", "private, no-store");
         people.set(request, session.person);
-        // A form whose page was not drawn for this person is refused before
-        // any handler reads it (DRAWN_FOR): one drawn for another address, and
-        // one that says nothing, which a form the marking missed would be, or
-        // a tab drawn before forms were marked. Refusing the silent one is
-        // what makes a miss a form that does not work rather than a form that
-        // works for whoever is signed in.
+        // A form whose page was not drawn for this person is refused before any
+        // handler reads it: one drawn for another address, and one that carries
+        // no mark at all. Refusing the unmarked one makes a missed form fail
+        // rather than work for whoever is signed in.
         const drawnFor = (request.body as Record<string, unknown> | undefined)?.[DRAWN_FOR];
         if (!reading && drawnFor !== session.person.email) {
           response
@@ -892,9 +718,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   });
 
   /**
-   * The screen a signed-in person without a merchant is offered, with the one
-   * control that makes it (ADR-0026 §4). Drawing it makes nothing: only the
-   * same-origin press below asks the gateway for the merchant.
+   * Drawing it makes nothing; only the same-origin press asks the gateway for
+   * the merchant.
    */
   app.get(`${base}/merchant`, (request, response) => {
     const person = whoIs(request);
@@ -925,16 +750,16 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       response.redirect(303, `${base}/sign-in`);
       return;
     }
-    // A press that did not come to a merchant leaves the person signed in to
-    // press again, rather than spending another link.
+    // A press that did not make a merchant leaves the person signed in to press
+    // again rather than spending another link.
     response
       .status(503)
       .type("html")
       .send(merchantSetupScreen(base, config.surfaceMode, person.email, true));
   });
   // A person without a merchant reaches only the screen above, its press and
-  // the sign-out. Every commerce route below requires the complete merchant
-  // pair, and sends anybody else to the one control that makes it.
+  // the sign-out; every commerce route below needs the complete merchant and
+  // sends anybody else to that screen.
   app.use((request, response, next) => {
     if (whoIs(request).merchant === null) {
       response.redirect(303, `${base}/merchant`);
@@ -944,14 +769,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   });
 
   /**
-   * The screen a newly attached merchant lands on.
-   *
-   * It asks the gateway for nothing. A merchant arrives here in the second
-   * after their merchant was attached, so there is no name to draw, and a call whose
-   * answer is known would be one more thing between opening the dashboard and the box
-   * they came here to fill in. Somebody who comes back to this address later
-   * gets the same form, and using it sets the name the same way the settings
-   * page does.
+   * Asks the gateway for nothing: a merchant arrives here a second after
+   * creation, with no name to draw. Coming back later gives the same form,
+   * which sets the name as settings does.
    */
   app.get(`${base}/choose-name`, (request, response) => {
     response.type("html").send(chooseNameScreen(base, config.surfaceMode, whoIs(request).email));
@@ -959,9 +779,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
 
   app.post(`${base}/choose-name`, async (request, response) => {
     const typed = nameIn(request);
-    // Empty is somebody who pressed the button with nothing in the box, and
-    // they are told so rather than sent to read the catalogue's rule — the
-    // rule is not what they broke, and the way past this screen is on it.
+    // Empty means the button was pressed with nothing in the box; the
+    // catalogue's rule is not what they broke.
     const wrong = typed === "" ? NAME_NEEDED : whatIsWrongWithTheName(typed);
     if (wrong !== null) {
       response
@@ -980,22 +799,11 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   });
 
   /**
-   * Where one account's WooCommerce channel has got to, for the two screens
-   * that draw it.
-   *
-   * One function and not two, because the settings block and the shop screen
-   * are the same four states and a merchant reads both about one row. It is the
-   * only place the clock is held against a Connect: the screens are handed a
-   * state that has already been decided, so neither of them can decide it
-   * differently.
-   *
-   * The connection wins over a Connect still on the table. A merchant who is
-   * connected and pressed Connect again for a second shop is connected until
-   * the new keys arrive, and saying otherwise would tell them their working
-   * channel had stopped.
-   *
-   * `undefined` is a dashboard with nowhere to keep a connection, which draws no
-   * block at all rather than an empty one.
+   * One function for both screens, so they cannot decide a state differently,
+   * and the only place the clock is held against a Connect. A connection wins
+   * over a pending Connect for a second shop: the merchant stays connected
+   * until new keys arrive. `undefined` means nowhere to keep a connection,
+   * which draws no block.
    */
   const shopStateFor = async (accountId: string): Promise<ShopState | undefined> => {
     const shops = wooShops;
@@ -1006,10 +814,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     if (connection !== null) {
       return {
         kind: "connected",
-        // The three fields a screen may know, never the row: the key and the
-        // secret are a stranger's credential at rest (ADR-0023), and the rule
-        // that they never reach a page is held by the screens having no way to
-        // draw them rather than by whoever writes the next one remembering.
+        // The fields a screen may know, never the row: the key and secret are a
+        // stranger's credential at rest, and screens that cannot reach them
+        // cannot draw them.
         shop: {
           shopUrl: connection.shopUrl,
           permissions: connection.permissions,
@@ -1028,27 +835,18 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     return {
       kind: "waiting",
       shopUrl: waiting.shopUrl,
-      // Rounded down, so a Connect pressed forty seconds ago is "less than a
-      // minute" rather than "one minute": a number a merchant can watch climb
-      // is worth more than one that is right on average.
+      // Rounded down, so forty seconds reads "less than a minute": a number a
+      // merchant can watch climb is worth more than one right on average.
       startedMinutesAgo: Math.floor((now - waiting.startedAt.getTime()) / 60_000),
     };
   };
 
   /**
-   * Everything the settings screen is drawn from, asked for in one place.
-   *
-   * The screen shows two things a merchant has set, and it is reached three
-   * ways: opened, and redrawn after either of its two forms was refused. Asking
-   * for each of them in each of those by hand is how one comes to be forgotten
-   * in one — and the page that results does not look broken, it looks like a
-   * merchant who has set nothing.
-   *
-   * The calls go out together rather than one after another, because a merchant
-   * waiting for a page should wait for the slowest of them rather than for their
-   * sum. Either of the gateway's failing is the whole page failing: a settings
-   * screen drawn without one of its answers would be claiming something about a
-   * field nobody asked about.
+   * In one place because the screen is reached three ways (opened, and redrawn
+   * after either form is refused), and a forgotten answer in one of them would
+   * look like a merchant who has set nothing. The calls go out together. Either
+   * gateway call failing fails the page: drawn without an answer, it would
+   * claim something about a field nobody asked about.
    */
   const settingsOf = async (request: Request): Promise<Answer<Settings>> => {
     const gateway = gatewayAs(request);
@@ -1085,12 +883,10 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     response.type("html").send(settingsScreen(viewingSettings(request, base, settings.document)));
   });
 
-  // Nothing on this page comes from the gateway, so nothing the gateway says
-  // can take it down. The shop is our own table, and a read of it that throws
-  // is logged and drawn as the block saying it could not be read rather than as
-  // no block: a block that vanishes reads as no connection to a merchant who
-  // has one, and "we could not read it" has a different next move from "there
-  // is none". A dashboard with no store for connections draws no block at all.
+  // Nothing on this page comes from the gateway, so the gateway cannot take it
+  // down. A shops read that throws is logged and drawn as "could not be read",
+  // not as no block: a vanished block reads as no connection to a merchant who
+  // has one.
   app.get(`${base}/integrations`, async (request, response) => {
     const shop = await shopStateFor(whoIs(request).id).catch((thrown: unknown): ShopTile => {
       console.error(
@@ -1106,9 +902,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       );
   });
 
-  // The address the wallet form posts to, opened again from the history or the
-  // address bar after a refusal. There is nothing to show at it on its own, so
-  // it leads to the page the form lives on.
+  // Opened from history or the address bar after a refusal; it leads to the
+  // page the form lives on.
   app.get(`${base}/settings/payout-wallet`, (_request, response) => {
     response.redirect(303, `${base}/settings`);
   });
@@ -1116,15 +911,13 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   app.post(`${base}/settings`, async (request, response) => {
     const typed = nameIn(request);
     // Empty is a merchant trying to stop being listed, and the sentence names
-    // the control that actually does that. The route below would refuse it
-    // anyway; refused here, the answer is about what they were trying to do
-    // rather than about a document the gateway would not take.
+    // the control that does that; refused here, the answer is about what they
+    // meant.
     const wrong = typed === "" ? NAME_CANNOT_BE_TAKEN_AWAY : whatIsWrongWithTheName(typed);
     if (wrong !== null) {
-      // The page is drawn from what the gateway has rather than from what was
-      // typed, the way the keys screen redraws its list after a refusal: a
-      // merchant reading a refused name in the box under "the name buyers read"
-      // is reading something they are not listed under.
+      // Drawn from what the gateway has rather than what was typed: a refused
+      // name in the box under "the name buyers read" would be a name they are
+      // not listed under.
       const settings = await settingsOf(request);
       if (!settings.ok) {
         return trouble(response, base, settings);
@@ -1141,19 +934,18 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       return trouble(response, base, set);
     }
     noted(whoIs(request), "changed the name their products are sold under");
-    // Back to the page rather than answered with one, so that a reload does not
-    // send the name again.
+    // A redirect, so a reload does not send the name again.
     response.redirect(303, `${base}/settings`);
   });
 
   app.post(`${base}/settings/site`, async (request, response) => {
     const typed = siteIn(request);
-    // Empty is a merchant trying to take the site away, which the route
-    // refuses; refused here, the sentence says what to do instead.
+    // Empty is a merchant trying to remove the site, which the gateway refuses;
+    // the sentence says what to do instead.
     const wrong = typed === "" ? SITE_CANNOT_BE_TAKEN_AWAY : whatIsWrongWithTheSite(typed);
     if (wrong !== null) {
-      // Drawn from what the gateway has, with what was typed kept in the box to
-      // be corrected, as a refused name is.
+      // Drawn from what the gateway has, with the typed value kept in the box
+      // to be corrected.
       const settings = await settingsOf(request);
       if (!settings.ok) {
         return trouble(response, base, settings);
@@ -1179,16 +971,10 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   });
 
   /**
-   * Signs out every other device of this account, from the settings screen
-   * (ADR-0026 §3).
-   *
-   * The header's sign-out ends this browser's session; this ends every other
-   * session of the same account and keeps this one, which is the answer to a
-   * session left open somewhere or held by somebody else (ADR-0019). It needs
-   * no wallet change to be waiting, ends no other account's sessions and
-   * touches no key. It stands behind the gate and, like every form here, is
-   * refused from another site. The page says how many it ended, because the
-   * count is the one thing the person could not otherwise see.
+   * Ends every other session of this account and keeps this one: the answer to
+   * a session left open somewhere or held by somebody else. It ends no other
+   * account's sessions and touches no key. The page says how many it ended, the
+   * one thing the person could not otherwise see.
    */
   app.post(`${base}/settings/sign-out-others`, async (request, response) => {
     const person = whoIs(request);
@@ -1211,7 +997,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     );
   });
 
-  /** Ends every session of the merchant but the one on this request, and says how many. */
   const signOutTheOthers = async (request: Request): Promise<number> => {
     const person = whoIs(request);
     return person.merchant === null
@@ -1219,7 +1004,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       : await identity.endOtherSessionsOfMerchant(person.merchant.id, request.headers.cookie);
   };
 
-  /** The settings screen as it now stands, with one sentence above the wallet. */
+  /** With one sentence above the wallet. */
   const withNotice = async (
     request: Request,
     response: Response,
@@ -1244,18 +1029,13 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   };
 
   /**
-   * Cancels the replacement that waits, by asking the gateway for the address
-   * that applies now, and ends every other session of the merchant (ADR-0019).
-   *
-   * Two things reach it: the cancel control, and that same address typed into
-   * the box while a change waits, which the gateway reads as the same cancel.
-   * A cancel that ended no session would leave the one that asked for the
-   * change free to ask again. Typed in, the person may not know they cancelled
-   * anything, so the screen says so; pressed, the control already did.
-   *
-   * A change that took effect between the read and the request is not
-   * cancelled: asking for the old address is then a change back, which waits
-   * and is announced, and the page and the log say that instead.
+   * Cancelling is asking the gateway for the address that applies now. Reached
+   * by the Cancel control or by typing that address while a change waits;
+   * typed, the person may not know they cancelled, so the screen says so. Other
+   * sessions end, or the one that asked for the change could ask again. A
+   * change that took effect between the read and the request is not cancelled:
+   * the old address is then a change back, which waits and is announced, and
+   * the page and log say so.
    */
   const cancelWaiting = async (
     request: Request,
@@ -1301,12 +1081,10 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   };
 
   /**
-   * A press on a page drawn while a change waited, arriving after the change
-   * took effect: the Cancel control, or the address that page showed as paid
-   * typed back into the box. Nothing takes the change back at once, so nothing
-   * is asked of the gateway; the page says when it took effect and how the
-   * old address comes back, and the other sessions end, since this is the
-   * moment an unwanted change has just landed.
+   * A press from a page drawn while a change waited, arriving after it took
+   * effect. Nothing takes the change back at once, so the gateway is not asked;
+   * the page says when it took effect and how the old address comes back, and
+   * the other sessions end, since an unwanted change has just landed.
    */
   const tookEffectBeforePress = async (
     request: Request,
@@ -1331,16 +1109,10 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   };
 
   /**
-   * Where a merchant's money arrives.
-   *
-   * Its own route rather than a second field on the one above, because they are
-   * two forms with two buttons and a merchant presses one of them. Sharing a
-   * route would mean every save of a name also rewriting an address, which is
-   * the shape that turns a typo in one box into a payment sent somewhere else.
-   *
-   * The address is checked here as well as at the gateway so that a refusal
-   * reads as a page rather than as an API answer, and so that an address of the
-   * wrong shape never leaves this process at all.
+   * Its own route rather than a second field on the name's: sharing one would
+   * make every name save also rewrite the address, which turns a typo in one
+   * box into a payment sent elsewhere. Checked here as well as at the gateway,
+   * so an address of the wrong shape never leaves this process.
    */
   app.post(`${base}/settings/payout-wallet`, async (request, response) => {
     const typed = walletIn(request);
@@ -1350,9 +1122,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       if (!settings.ok) {
         return trouble(response, base, settings);
       }
-      // The block is redrawn from the address the gateway has, so a merchant
-      // who was refused is still looking at where their money actually goes
-      // rather than at what they just mistyped.
+      // Redrawn from the address the gateway has, so a refused merchant still
+      // sees where their money actually goes.
       response
         .status(400)
         .type("html")
@@ -1361,9 +1132,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     }
 
     const gateway = gatewayAs(request, WALLET_CHANGE_MS);
-    // With a change waiting, the address that applies now is a cancel at the
-    // gateway, so it is treated as one here: the other sessions end, and the
-    // page and the log say it was cancelled rather than changed.
+    // With a change waiting, the current address is a cancel at the gateway,
+    // and is treated as one here.
     const read = await gateway.payoutWallet();
     if (!read.ok) {
       return trouble(response, base, read);
@@ -1372,9 +1142,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     if (pending !== null && applies !== null && typed.toLowerCase() === applies.toLowerCase()) {
       return await cancelWaiting(request, response, gateway, applies, pending, true);
     }
-    // The page was drawn while a change waited, that change has since taken
-    // effect, and what was typed is the address the page showed as paid: the
-    // same act as pressing Cancel on that page, answered the same way.
+    // The same act as pressing Cancel on that page, answered the same way.
     const shown = shownIn(request);
     if (
       pending === null &&
@@ -1395,8 +1163,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     if (!set.ok) {
       return trouble(response, base, set);
     }
-    // The address itself stays out of the line. It is not a secret, but this
-    // log is a process log and the record of who changed it is what it is for.
+    // The address stays out of the line: not a secret, but this log records who
+    // changed it, not what to.
     noted(
       whoIs(request),
       set.document.pending === null
@@ -1407,32 +1175,19 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   });
 
   /**
-   * Cancels a replacement wallet that waits, and signs out every session of
-   * the merchant but the one that pressed (ADR-0019).
+   * Asked as the signed-in person (a key of the merchant's code cannot set the
+   * wallet), after reading the wallet fresh rather than trusting a page that
+   * may be a day old. Other sessions end because the change may have come from
+   * one of them, but only once the press achieved something: a refused cancel
+   * leaves the change waiting, and signing people out then would take away
+   * sessions that might press again.
    *
-   * Cancelling is asking the gateway for the address that applies now, which
-   * is what the gateway reads as a cancel, and like every change of the wallet
-   * it is asked as the person signed in here: a key of the merchant's own code
-   * cannot set the wallet at all. It reads the wallet first rather than
-   * trusting a page that may be a day old.
-   *
-   * The sessions go because the change may have been asked for from one of
-   * them — a device left signed in, somebody else at the merchant — and the
-   * person pressing here is the one known to be looking. Only once something
-   * came of the press: a cancel the gateway refused leaves the change waiting,
-   * and signing people out over it would take away the sessions that might
-   * press again; a press on a stale page with nothing waiting does nothing.
-   *
-   * Two presses are not cancels, and neither is called one, on the page or in
-   * the log. The form carries the change it showed, so a press arriving after
-   * that change took effect is recognised: the money is already going to the
-   * new address, nothing takes that back at once, and the page says when it
-   * took effect and that the old address comes back only through a change
-   * that waits and is announced — and the other sessions still end, since this
-   * is the moment an unwanted change has just landed. And a change that takes
-   * effect between the read and the press turns the request for the old
-   * address into exactly such a change back, which the gateway announces and
-   * records as waiting; the page says so.
+   * The form carries the change it showed, so a press arriving after that
+   * change took effect is recognised and not called a cancel: the money already
+   * goes to the new address, and the old one comes back only through a change
+   * that waits and is announced. A change taking effect between the read and
+   * the press turns the request into exactly such a change back, and the page
+   * says so.
    */
   app.post(`${base}/settings/payout-wallet/cancel`, async (request, response) => {
     const gateway = gatewayAs(request, WALLET_CHANGE_MS);
@@ -1455,32 +1210,23 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   });
 
   /**
-   * The shop screens, and the one thing they all need.
-   *
-   * A dashboard built without a place to keep connections has no WooCommerce
-   * screens at all: the routes below are mounted only where there is a store,
-   * so a deployment whose tables are not there answers "there is no such page"
-   * rather than drawing a form whose button loses somebody's keys.
+   * Mounted only where there is a store, so a deployment without the tables
+   * answers "no such page" rather than drawing a form whose button loses
+   * somebody's keys.
    */
   const shops = wooShops;
   if (shops !== undefined) {
-    /** The address a shop is told to send a merchant back to, and the keys to. */
+    /** Where a shop sends the merchant back to, and posts the keys to. */
     const whereWeAre = `${config.publicBaseUrl}${base}`;
     const grantScreen = parts.shop?.grantScreen ?? isTheGrantScreen;
     const catalogue = parts.shop?.catalogue ?? catalogueOf;
     const inspectProduct = parts.shop?.inspectProduct ?? inspectProductInTheShop;
 
     /**
-     * The merchant as the publish door will judge them before it looks at any
-     * card: the name they are listed under, which of the things the door asks
-     * of a merchant are still unset, and which it asks that this dashboard cannot
-     * read.
-     *
-     * The rule is the door's own (`readinessOf` in the core), asked with what
-     * the gateway answers for this merchant. This dashboard is given the same
-     * chain and facilitator as its gateway, so its surface mode is the door's.
-     * The operator's approval goes in as unknown: the connector is not offered
-     * on the live channel, the one place the door asks for it.
+     * The rule is the gateway's own (`readinessOf` in the core). This dashboard
+     * has its gateway's chain and facilitator, so its surface mode is the
+     * gateway's. The operator's approval goes in as unknown: the connector is
+     * not offered on live, the only place it is asked for.
      */
     const standingOf = async (
       request: Request,
@@ -1515,7 +1261,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       };
     };
 
-    /** The page, drawn from where the channel is and from what buyers read. */
     const drawTheShop = async (
       request: Request,
       response: Response,
@@ -1542,8 +1287,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         return trouble(response, base, integration);
       }
       if (state === undefined) {
-        // Unreachable: these routes are mounted only where there is a store,
-        // and that is the one thing `shopStateFor` answers `undefined` for.
+        // Unreachable: these routes are mounted only where there is a store.
         throw new Error(
           "the shop screens ran on a dashboard with no store for connections, which means the" +
             " routes were mounted where they should not have been",
@@ -1564,11 +1308,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     };
 
     app.get(`${base}/woocommerce`, async (request, response) => {
-      // Where the redirect from the return address lands, and the only route
-      // that reads this. It is spent by being drawn: a merchant who opens this
-      // page again tomorrow is not told their browser has just come back from
-      // anywhere. The flag and not the token, which is the whole point of the
-      // redirect that set it.
+      // The only route that reads the flag the return address's redirect set,
+      // and it is spent by being drawn, so a merchant opening this page
+      // tomorrow is not told they just came back. The flag, never the token.
       const typed = typeof request.query.shop_url === "string" ? request.query.shop_url : undefined;
       await drawTheShop(request, response, {
         cameBack: request.query.from === "shop",
@@ -1586,11 +1328,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       }
       const shopUrl = shopUrlAs(typed);
 
-      // Our own address, checked before the merchant's. WooCommerce refuses a
-      // callback_url that is not https, so on a deployment whose public address
-      // is http every Connect ends at the shop's own 401 about SSL — a merchant
-      // reading a refusal about their shop for something that is ours. Said
-      // here, at the door, before anybody is sent anywhere.
+      // Our own address first: WooCommerce refuses a `callback_url` that is not
+      // https, so on an http deployment every Connect would end at the shop's
+      // own SSL refusal for something that is ours.
       if (!whereWeAre.startsWith("https://")) {
         return await drawTheShop(
           request,
@@ -1606,8 +1346,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         );
       }
 
-      // The token is minted before the shop is asked anything, so the address
-      // we check is character for character the address the browser is sent to.
+      // Minted first, so the address checked is character for character the
+      // address the browser is sent to.
       const token = theStateToken();
       const authorize = authorizeUrlFor(shopUrl, {
         appName: APP_NAME,
@@ -1616,30 +1356,29 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         callbackUrl: `${whereWeAre}/woocommerce/callback`,
       });
 
-      // Asked before anybody is sent anywhere. A shop with plain permalinks
-      // answers this address with its own front page and a 200, so a merchant
-      // sent there lands on their own shop with nothing to report.
+      // A shop with plain permalinks answers this address with its own front
+      // page and a 200, so a merchant sent there would land on their shop with
+      // nothing to report.
       const looked = await grantScreen(authorize);
       if (!looked.ok) {
         return await drawTheShop(request, response, { problem: looked.why, typed }, 400);
       }
 
       // The merchant moves to the shop here, before they are sent to it, and
-      // not when the keys arrive (ADR-0036). A switch refused at the callback
-      // could only be told to a shop's server; refused here, it is told to the
-      // merchant, beside the button. One who goes and never approves is on
-      // the shop with none connected, and the page offers the way back.
+      // not when the keys arrive: refused at the callback, the switch could
+      // only be told to the shop's server; refused here, it is told to the
+      // merchant beside the button. One who goes and never approves sells
+      // through a shop with none connected, and the page offers the way back.
       const switched = await gatewayAs(request).sellThrough("woocommerce");
       if (!switched.ok) {
         return await drawTheShop(request, response, { problem: switched.why, typed }, 409);
       }
 
-      // Written down only now: a Connect nobody could have completed is a row
-      // nobody comes back for.
+      // Written only now: a Connect nobody could complete is a row nobody comes
+      // back for.
       const person = whoIs(request);
-      // One reading of the clock for both fields, so that "started four minutes
-      // ago" and "the fifteen minutes are up" can never disagree by the width
-      // of the statement between them.
+      // One clock reading for both fields, so "started four minutes ago" and
+      // "the fifteen minutes are up" can never disagree.
       const startedAt = new Date();
       await shops.beginGrant({
         token,
@@ -1661,8 +1400,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       }
 
       // Asked before the shop is read, like the settings below: a merchant
-      // selling through their code would have every imported card refused
-      // (ADR-0036), and the shop screen offers them the switch instead.
+      // selling through their code would have every imported card refused, so
+      // the shop screen offers them the switch instead.
       const integration = await gatewayAs(request).integration();
       if (!integration.ok) {
         return trouble(response, base, integration);
@@ -1679,12 +1418,10 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         );
       }
 
-      // Asked before the shop is. The door refuses every card of a merchant
-      // missing any of these, whatever the card says, so an import that went
-      // ahead would read the shop and inspect every product for nothing, and
-      // then show the door's refusal once per product in words that name an
-      // API route. A gateway that cannot answer this would not take a card
-      // either, so that too is said before the shop is read.
+      // Asked before the shop: the gateway refuses every card of a merchant
+      // missing any of these, so importing would inspect every product for
+      // nothing and repeat the refusal per product in words naming an API
+      // route. A gateway that cannot answer this would not take a card either.
       const standing = await standingOf(request);
       if (!standing.ok) {
         return trouble(response, base, standing);
@@ -1698,9 +1435,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         return await drawTheShop(request, response, { refused: standing.document.unset }, 409);
       }
 
-      // The ceiling goes in rather than being checked on the way out, so that a
-      // catalogue too large to bring over is refused after three round trips to
-      // somebody else's shop rather than after fifty.
+      // The ceiling goes in, so a catalogue too large is refused after three
+      // round trips to somebody else's shop rather than fifty.
       const read = await catalogue(connection.shopUrl, PRODUCTS_AT_MOST);
       if (!read.ok) {
         return await drawTheShop(request, response, { problem: read.why }, 502);
@@ -1718,12 +1454,10 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
           product.prices.price,
           product.prices.currency_minor_unit,
         );
-        // Compared only at the scale the connector sells at, which is the
-        // scale the protected price is carried at. A catalogue written at
-        // another scale is refused below by cardsFromTheShop in words that
-        // name WooCommerce's Number of decimals; comparing its "25" with the
-        // protected "25.00" here would tell the merchant that two equal prices
-        // differ.
+        // Compared only at the scale the connector sells at; a catalogue at
+        // another scale is refused by `cardsFromTheShop` in words naming the
+        // shop's Number of decimals, whereas comparing "25" with "25.00" here
+        // would call two equal prices different.
         if (
           product.prices.currency_minor_unit === USD_SCALE &&
           (publicPrice !== inspected.product.price.amount ||
@@ -1736,8 +1470,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
           };
         }
         // The Store API's list does not say whether a product is virtual or a
-        // download, so the class the protected check found is written in, and
-        // it is the one the catalogue turns into a card.
+        // download, so the class the protected check found is written in.
         const checked = inspected.product;
         return {
           ...product,
@@ -1760,8 +1493,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       for (const [index, one] of cards.entries()) {
         const published = await publishedOrNot(gateway, one.card);
         if (!published.ok) {
-          // The gateway did not answer, or answered something that is not this
-          // route's document. Not a refused card, and said as what it is.
+          // The gateway did not answer, or answered with something else: not a
+          // refused card, and said as what it is.
           outcomes.push({ id: one.id, title: one.title, failed: published.why });
           outcomes.push(
             ...cards
@@ -1774,10 +1507,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
           outcomes.push({ id: one.id, title: one.title, published: published.document.id });
           continue;
         }
-        // The door's own findings, word for word. They are what tells the
-        // merchant which field of which product to change in their shop. The
-        // one exception is the shop's site, which the door asks a merchant's
-        // code to set through the API and the person here sets in Settings.
+        // The gateway's findings word for word, telling the merchant which
+        // field to change in their shop; the shop's site is the exception, set
+        // in Settings by the person here rather than through the API.
         outcomes.push({
           id: one.id,
           title: one.title,
@@ -1796,8 +1528,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         `imported ${outcomes.filter((one) => "published" in one).length} of` +
           ` ${read.products.length} products from ${connection.shopUrl}`,
       );
-      // Answered with a page rather than a redirect: a redirect carries a flag
-      // and this has to carry the door's findings, one per card.
+      // A page rather than a redirect: it carries a finding per card.
       response.type("html").send(
         wooImportScreen(viewing(request, base), {
           shopUrl: connection.shopUrl,
@@ -1822,8 +1553,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     app.post(`${base}/woocommerce/disconnect`, async (request, response) => {
       // Back to the merchant's own code first, and the keys forgotten only
       // once that held: a shop forgotten while one of its orders still waits
-      // would leave that order to nobody — a parcel's shipment is read off
-      // the shop, and only while it is connected (ADR-0036).
+      // would leave that order to nobody, since a parcel's shipment is read
+      // off the shop, and only while it is connected.
       const switched = await gatewayAs(request).sellThrough("api");
       if (!switched.ok) {
         return await drawTheShop(request, response, { leaving: switched.why }, 409);
@@ -1844,9 +1575,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
 
   app.get(`${base}/cards`, async (request, response) => {
     const gateway = gatewayAs(request);
-    // The wallet and the approval as well as the name, because a card can read
-    // paused for the want of any of them, and the control beside it says which
-    // (`cardControl`).
+    // A card can read paused for want of any of these, and the control beside
+    // it says which (`cardControl`).
     const [cards, name, wallet, approval, integration] = await Promise.all([
       gateway.cards(),
       gateway.sellerName(),
@@ -1885,8 +1615,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   });
 
   app.get(`${base}/orders`, async (request, response) => {
-    // Only the exact word narrows the list, which is what the contract says
-    // and what a merchant reconciling their books relies on.
+    // Only the exact word narrows the list, as the contract says.
     const open = request.query.open === "true";
     const gateway = gatewayAs(request);
     const [cards, orders, name, owed] = await Promise.all([
@@ -1959,8 +1688,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         return trouble(response, base, switched);
       }
       noted(whoIs(request), `${paused ? "paused" : "resumed"} the card ${itemId}`);
-      // Back to the list rather than answering the post with a page: a
-      // merchant who then reloads must not press the switch again.
+      // A redirect, so a reload does not press the switch again.
       response.redirect(303, `${base}/cards`);
     });
 
@@ -1986,9 +1714,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       );
   });
 
-  // The key page rewrites its POST history entry to this target. Reloading can
-  // therefore return to the list without issuing a second key or storing the
-  // first key's secret anywhere for another request.
+  // The new-key page replaces its POST history entry with this, so a reload
+  // returns to the list without issuing a second key or storing the secret for
+  // another request.
   app.get(`${base}/keys/new`, (_request, response) => {
     response.redirect(303, `${base}/keys`);
   });
@@ -1999,10 +1727,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     const gateway = gatewayAs(request);
 
     if (label === "") {
-      // Refused here rather than sent on, because a key with no name is a key
-      // nobody can tell from another on the very screen whose job is telling
-      // them apart before revoking one. The list is fetched again so the
-      // refusal lands on the page they were looking at.
+      // A key with no name cannot be told apart from another on the screen
+      // meant for telling them apart before revoking one. The list is fetched
+      // again so the refusal lands on the page they were looking at.
       const keys = await gateway.keys();
       if (!keys.ok) {
         return trouble(response, base, keys);
@@ -2020,9 +1747,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       return;
     }
 
-    // The rest of the rule is the contract's, asked of it rather than written
-    // out again: one line, at most the length the gateway takes, which is
-    // also how the live site's message about the key names it (ADR-0019).
+    // The rest of the rule is the contract's: one line, at most the length the
+    // gateway takes, which also keeps the live announcement naming it to one
+    // line.
     const unfit = IssueKeyRequestSchema.shape.label.safeParse(label);
     if (!unfit.success) {
       const keys = await gateway.keys();
@@ -2047,13 +1774,11 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     if (!issued.ok) {
       return trouble(response, base, issued);
     }
-    // The name and the identifier, never the secret. A log goes places the
-    // database does not, and this is the one moment the secret exists outside
-    // the merchant's own hands.
+    // The name and identifier, never the secret: a log goes places the database
+    // does not, and this is the one moment the secret exists outside the
+    // merchant's hands.
     noted(whoIs(request), `issued a key, ${issued.document.key.id}, named "${label}"`);
-    // Answered with a page rather than a redirect, which is the one place this
-    // dashboard does that. `keys.ts` says why: a redirect cannot carry the secret
-    // anywhere it would be safe to read it back from.
+    // A page rather than a redirect; `keys.ts` says why.
     response.type("html").send(newKeyScreen(viewing(request, base), label, issued.document.secret));
   });
 
@@ -2061,10 +1786,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     const keyId = request.params.key_id ?? "";
     const stopped = await gatewayAs(request).disableKey(keyId);
     if (!stopped.ok) {
-      // Including the one refusal the screen tries not to provoke: the gateway
-      // will not disable the key its caller is holding. The screen offers no
-      // control for it, and somebody who reaches this address anyway is told
-      // what the gateway said rather than shown a page implying it worked.
+      // Including the refusal the screen never offers a control for: the
+      // gateway will not disable the key its caller holds. Whoever reaches this
+      // anyway is told what the gateway said.
       return trouble(response, base, stopped);
     }
     noted(whoIs(request), `revoked the key ${keyId}`);
@@ -2084,12 +1808,10 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         next(thrown);
         return;
       }
-      // A body larger than any of these forms. It arrives from a visitor and
-      // not from a defect, so it is answered as what it is rather than as a
-      // broken dashboard — and without a stack, because a stranger who can post
-      // at this address must not be able to fill the log with them. The body
-      // parser runs above the gate, which is why a visitor with no session
-      // reaches this at all.
+      // A body larger than any form comes from a visitor, not a defect, so it
+      // is answered as such and without a stack, so a stranger cannot fill the
+      // log. The body parser runs above the gate, which is why a visitor with
+      // no session reaches this.
       if (tooLarge(thrown)) {
         response
           .status(413)
@@ -2097,17 +1819,12 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
           .send(problemPage(base, "That was larger than any form on this page sends."));
         return;
       }
-      // A defect. The merchant is told that something here is broken and
-      // nothing about what: an error text assembled out of an exception makes
-      // claims about our internals to somebody who cannot act on them.
-      // What is not said here: whether anything was changed. A call that
-      // reached the gateway, did what it was asked and then answered in a shape
-      // the contract does not recognise lands in this handler, and the change
-      // has already happened — so "nothing was changed" would be a claim this
-      // handler has no way to check, made to somebody about their own catalog.
-      // Driver and provider exceptions can carry bound values, including
-      // session tokens and merchant keys. The response already tells an
-      // operator where the failure occurred; the exception is not logged.
+      // A defect. The merchant is told something is broken and nothing about
+      // what. It does not say whether anything changed: a call that did its
+      // work and then answered in a shape the contract does not recognise lands
+      // here too. The exception is not logged, because driver and provider
+      // exceptions can carry bound values, session tokens and merchant keys
+      // among them.
       console.error("[dashboard] a request failed");
       response
         .status(500)
@@ -2125,68 +1842,11 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
 }
 
 /**
- * Turns away a form post that came from somewhere else.
- *
- * The forms this protects include "stop all selling" and the sign-in itself, so
- * a page on another site must not be able to make a browser submit one — not
- * the switches, because that is a merchant's selling, and not the sign-in,
- * because signing somebody into an account of the attacker's choosing is a way
- * of getting them to do their work in a session somebody else can read.
- * SameSite=Lax on the cookie is the first answer and the main one: a cross-site
- * POST carries no Lax cookie, exactly as it carried no Strict one (ADR-0026
- * §2). This is the second, and it exists because SameSite is scoped to the
- * registrable domain rather than to the origin — `test.agentify.ad` beside
- * `agentify.ad` is "same site", and a page there could otherwise forge every
- * switch here.
- *
- * The component that signs people in brings a check of its own, and it does not
- * replace this one. What it brings is the same idea — compare the `Origin`
- * against a list the deployment configures — and it brings it only for its own
- * endpoints, which are not mounted here at all: every call the dashboard makes is
- * from a handler, with no request behind it, so the component's middleware has
- * nothing to inspect and returns at once. Nothing in it puts a value in our
- * forms that a page on another site could not guess, so the switches, the keys
- * and the one-time-link consumption are covered by this and by nothing else.
- *
- * A missing Origin is allowed through. Browsers send it on every cross-origin
- * form post, which is the case being refused; what they historically omit it
- * on is same-origin navigation, and refusing an absent header would turn away
- * the merchant's own browser and every command-line client along with it. This
- * is a cheap second lock, not the lock.
- *
- * What is compared is the host and not the whole origin, and the scheme is
- * deliberately not part of it any more. The earlier version took the scheme out
- * of `X-Forwarded-Proto` and refused an origin that disagreed, and its own
- * comment said what that would cost: over https with a terminator that sets
- * nothing, every form post on the site is refused. On the first real
- * deployment that is what happened — a browser signing in at the public HTTPS
- * origin was told its form came from somewhere else, while
- * the identical request from a command line was let through. That difference
- * was never explained; what it showed is that the scheme half of this check
- * turns a header set by whatever is in front into a merchant who cannot reach
- * the control that stops their selling.
- *
- * Dropping it costs the distinction between a page served over http and one
- * served over https on the same host, and that distinction is already made
- * where it can be made without trusting anybody: the session cookie is
- * `Secure` wherever the dashboard is served over https (ADR-0026 §2), so a page
- * on the http origin has no session to forge a post with. A guard cannot be
- * the reason a merchant is locked out.
- */
-/**
- * Whether an `Origin` names the same host the request was addressed to.
- *
- * Both sides are parsed rather than compared as text, because both can be
- * written more than one way and only one of those ways is the same string. A
- * host header can carry a port, an origin drops the port that is default for
- * its scheme, and an IPv6 literal is full of colons that a hand-written split
- * would cut in the wrong place. `URL` settles all three, and the port is left
- * out of the comparison on purpose: it is not a boundary a browser enforces
- * — a page on another port of the same host is same-site to SameSite — so
- * requiring it to match would only produce refusals a merchant cannot act on.
- *
- * Anything unparseable is not the same host. An `Origin` of `null`, which a
- * sandboxed document sends, lands there and is refused.
+ * Both sides are parsed rather than compared as text: a host header can carry a
+ * port, an origin drops its scheme's default port, and an IPv6 literal is full
+ * of colons. The port is left out on purpose, since a browser does not treat it
+ * as a boundary. Anything unparseable, including the `null` a sandboxed
+ * document sends, is not the same host.
  */
 const sameHost = (origin: string, host: string): boolean => {
   const hostOf = (value: string): string | null => {
@@ -2196,12 +1856,29 @@ const sameHost = (origin: string, host: string): boolean => {
       return null;
     }
   };
-  // The host header is not a URL, so it is made into one before it is read.
-  // The scheme in front of it is arbitrary and never compared against anything.
+  // The host header is not a URL, so it is made into one; the scheme is
+  // arbitrary and never compared.
   const here = hostOf(`http://${host}`);
   return here !== null && hostOf(origin) === here;
 };
 
+/**
+ * Turns away a form post from another origin. The forms include "stop all
+ * selling" and the sign-in itself, and signing somebody into an attacker's
+ * account is a way to read their work. `SameSite=Lax` is the main defence; this
+ * is the second, because SameSite is scoped to the registrable domain, so a page
+ * on `test.agentify.ad` is same-site with `agentify.ad`. The sign-in component's
+ * own origin check covers only its endpoints, which are not mounted here, so the
+ * switches, the keys and link consumption are covered by this alone.
+ *
+ * A missing `Origin` is let through: browsers send it on every cross-origin form
+ * post, and refusing its absence would turn away same-origin navigations and
+ * command-line clients. Only the host is compared, never the scheme: a scheme
+ * taken from `X-Forwarded-Proto` refuses every honest post behind a terminator
+ * that does not set it, locking merchants out of the control that stops their
+ * selling. An http page on the same host has no session to forge with anyway,
+ * because the session cookie is `Secure` wherever the dashboard is on https.
+ */
 function sameOriginUnder(base: string, mode: DashboardConfig["surfaceMode"]) {
   return (request: Request, response: Response, next: () => void): void => {
     const origin = request.headers.origin;
@@ -2216,15 +1893,10 @@ function sameOriginUnder(base: string, mode: DashboardConfig["surfaceMode"]) {
       next();
       return;
     }
-    // The page says nothing about which origin would have worked, because that
-    // is an answer to somebody who is guessing. The log says everything,
-    // because the other person this refusal reaches is a merchant who did
-    // nothing wrong, and until this line existed there was no way to tell the
-    // two apart: the check refused an honest browser on the live site and the
-    // only evidence anywhere was a screenshot. What is written down is what was
-    // compared and nothing else — an origin and a host are not secrets, and
-    // both arrive from outside, so both go through the same rendering that
-    // strips what a terminal would obey instead of show.
+    // The page does not say which origin would have worked, an answer only to
+    // somebody guessing. The log records what was compared, so an honest
+    // browser refused can be told from an attacker; both values come from
+    // outside and go through `printable`.
     console.log(
       `[dashboard] a form post was refused: its origin is ${printable(origin)},` +
         ` and it was addressed to ${printable(asked ?? "nothing at all")}`,
@@ -2237,12 +1909,8 @@ function sameOriginUnder(base: string, mode: DashboardConfig["surfaceMode"]) {
 }
 
 /**
- * The person this request belongs to.
- *
- * Only ever called below the gate, which is what makes the absence a defect
- * rather than a case: a handler running without a person behind it would be a
- * page reachable by nobody in particular, and it should stop rather than draw
- * something.
+ * Only called below the gate, so a missing person is a defect and the handler
+ * stops rather than draws.
  */
 function whoIs(request: Request): Person {
   const person = people.get(request);
@@ -2256,13 +1924,8 @@ function whoIs(request: Request): Person {
 }
 
 /**
- * Who is looking at this page, where the dashboard is mounted, and what buyers
- * are told this merchant is called.
- *
- * The name is passed by the screens that asked the gateway for it and left out
- * by the ones that did not. That difference is the point: a screen drawing the
- * line about an unset name has to have asked, and a screen that has not asked
- * must not draw a line either way about it.
+ * The name is passed only by screens that asked the gateway for it: a screen
+ * that did not ask must not draw a line either way about it.
  */
 const viewingAt = (
   request: Request,
@@ -2275,12 +1938,8 @@ const viewingAt = (
 };
 
 /**
- * The same, for the one screen that also draws the payout address.
- *
- * Separate from `viewing` rather than a fourth argument to it, because every
- * other screen would then be passing an absence: a screen that has not asked
- * the gateway for the address must not be able to say anything about it, and
- * the cheapest way to hold that is for those screens to have no way to.
+ * Separate from `viewing`, so screens that did not ask the gateway for the
+ * address have no way to say anything about it.
  */
 const viewingSettingsAt = (
   request: Request,
@@ -2308,32 +1967,24 @@ const viewingSettingsAt = (
 });
 
 /**
- * The name in a form post, with the space at either end taken off.
- *
- * Trimmed rather than refused for a space, because the catalogue's rule turns a
- * padded name into two spellings of one word and a space at the front of a form
- * field is a typing accident. A field that never arrived reads the same as one
- * left empty: both are somebody who typed no name.
+ * Trimmed rather than refused, because a leading space is a typing accident and
+ * the catalogue's rule would make a padded name a second spelling. A missing
+ * field reads as an empty one.
  */
 const nameIn = (request: Request): string => {
   const form = (request.body ?? {}) as { seller_name?: unknown };
   return typeof form.seller_name === "string" ? form.seller_name.trim() : "";
 };
 
-/** The shop's site in a form post, with the space at either end taken off, as the name is. */
+/** Trimmed, as the name is. */
 const siteIn = (request: Request): string => {
   const form = (request.body ?? {}) as { seller_site?: unknown };
   return typeof form.seller_site === "string" ? form.seller_site.trim() : "";
 };
 
 /**
- * The change a cancel form showed, as it posted it, or null where it carried
- * none a cancel can be read against.
- *
- * Each value is held to the shape it was drawn in before anything reads it:
- * an address to the address rule and the moment to one a date can be made
- * of. The form is the person's own page, but a post can carry anything, and
- * these values are shown back on the page.
+ * Each value is held to its shape before anything reads it: the post can carry
+ * anything, and these values are shown back on the page.
  */
 const shownIn = (
   request: Request,
@@ -2351,13 +2002,8 @@ const shownIn = (
 };
 
 /**
- * The payout address in a form post, with the space at either end taken off.
- *
- * Trimmed rather than refused, because an address is copied out of a wallet and
- * a wallet hands it over with a newline on the end about as often as not. What
- * is inside is untouched: the capitals in an address are a check the address
- * carries on itself, and correcting the case of what somebody pasted would
- * throw that away before their own wallet could use it.
+ * Trimmed, because a wallet often hands an address over with a trailing
+ * newline. The case is untouched: the capitals are the address's own checksum.
  */
 const walletIn = (request: Request): string => {
   const form = (request.body ?? {}) as { payout_wallet?: unknown };
@@ -2365,39 +2011,24 @@ const walletIn = (request: Request): string => {
 };
 
 /**
- * One line saying who changed something.
+ * A process log, not an audit trail: it rotates, goes with the container, and
+ * is written by the process it records. Never a one-time token, a link, a
+ * session identifier or a merchant key.
  *
- * Be honest about what this is: a process log, not an audit trail. It rotates,
- * it goes with the container, and it is written by the same process it is a
- * record of. What it answers is "who stopped the selling", which before
- * there was a person in the system could not be answered at all.
- *
- * What never goes in: a one-time token or action URL, a session identifier, or
- * the merchant key. A log goes places the environment does not.
- *
- * The whole line goes through `printable` rather than the one field that
- * needed it, and that is on purpose. What made it necessary was the name a
- * merchant gives a key, which the contract deliberately leaves unbounded and
- * open to any alphabet — a name carrying a newline and a plausible sentence
- * would write a second line into the one record of who stopped the selling,
- * in this dashboard's voice and under a name of the writer's choosing. Doing it
- * here rather than at that call site means the next thing somebody
- * interpolates is covered by being here, which is the failure the account
- * command's own rendering was written against.
+ * The whole line goes through `printable`, not only the field that first needed
+ * it (a key's label, open to any alphabet and unbounded): a label with a
+ * newline and a plausible sentence would forge a second line in the record of
+ * who stopped the selling. Doing it here covers whatever is interpolated next.
  */
 const noted = (person: Person, did: string): void => {
   console.log(printable(`[dashboard] ${person.email} ${did}`));
 };
 
 /**
- * One card sent to be published, with a failure of ours read as no verdict.
- *
- * A throw from the gateway's application — a database that went away, say —
- * may come after the card was written, so it is not a refusal and not a
- * publication: the import records it as a product with no verdict, says
- * whether it was published is not known, and stops there, leaving the rest
- * not attempted, as it does when nothing answers in time. Thrown out of the
- * loop instead, it would take away the record of every card already published.
+ * A throw may come after the card was written, so it is neither a refusal nor a
+ * publication: the import records no verdict, says whether it was published is
+ * unknown, and stops, leaving the rest not attempted. Thrown out of the loop,
+ * it would lose the record of every card already published.
  */
 async function publishedOrNot(
   gateway: GatewayClient,
@@ -2415,7 +2046,6 @@ async function publishedOrNot(
   }
 }
 
-/** What a merchant is shown when a call did not come to a document. */
 function troubleAt(
   response: Response,
   base: string,
@@ -2426,18 +2056,16 @@ function troubleAt(
     return;
   }
   if (answer.status === 0) {
-    // Nothing answered in time. This is the only case in which "did not
-    // answer" is true, and it is a different thing from a refusal — a merchant
-    // told the wrong one of those goes and checks something that is working.
-    // The sentence says the rest: what was asked may still have been done.
+    // Nothing answered in time, which is not a refusal: a merchant told the
+    // wrong one checks something that works. What was asked may still have been
+    // done.
     response
       .status(504)
       .type("html")
       .send(problemPageAt(base, mode, answer.why, again(response)));
     return;
   }
-  // A refusal. Its own sentence, under its own status: nothing is claimed about
-  // what did or did not happen beyond what it said.
+  // A refusal, under its own status; nothing is claimed beyond what it said.
   response
     .status(answer.status)
     .type("html")
@@ -2445,11 +2073,8 @@ function troubleAt(
 }
 
 /**
- * Whether this is the body parser refusing a body, rather than a defect.
- *
- * `body-parser` marks its own refusals with a `type`, which is what this reads;
- * the status it carries is not enough on its own, because an exception from
- * anywhere else can have one too.
+ * `body-parser` marks its own refusals with a `type`; a status alone is not
+ * enough, since any exception can carry one.
  */
 function tooLarge(thrown: unknown): boolean {
   return (
@@ -2461,8 +2086,8 @@ function tooLarge(thrown: unknown): boolean {
 }
 
 /**
- * What was said, beginning as a sentence does. The gateway writes its refusals
- * for a program's log, in lower case, and this page is read by a person.
+ * The gateway writes refusals in lower case for a program's log; a person reads
+ * this page.
  */
 const asSentence = (said: string): string => `${said.slice(0, 1).toUpperCase()}${said.slice(1)}`;
 

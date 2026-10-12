@@ -1,29 +1,17 @@
 # The image three of compose.yaml's services run from: the application (the
-# gateway and the dashboard in one process, ADR-0030), the mock merchant, and
-# the migration that runs to completion before them.
+# gateway and the dashboard in one process), the mock merchant, and the
+# migration that runs to completion before them. Which one a container is is
+# decided at `command`, not at build time.
 #
-# One image rather than three, because they are three entry points into one
-# workspace and share every dependency below their own file. Which of them a
-# container is decides at `command`, not at build time — an image per service
-# would be the same layers three times and one more thing to keep in step.
-#
-# There is no compile step. Node runs the TypeScript through tsx, the way
-# `pnpm --filter @agentify/app start` does on a laptop (ADR-0003 §1), so
-# what runs in the container is the same source a developer edits and there is
-# no build output to be stale.
+# There is no compile step: Node runs the TypeScript through tsx, as on a
+# laptop, so there is no build output to be stale.
 
 FROM node:24.21.0-alpine
 
-# The version is pinned so the install inside the image is the install the
-# lockfile was written by. Corepack would otherwise select whatever version the
-# base image happened to provide before package.json reaches the context.
-#
-# COREPACK_HOME is set away from the home directory for a reason found by
-# running it: corepack caches the package manager it downloads under the home
-# of whoever ran it, so a pnpm fetched here as root is invisible to the `node`
-# user the container runs as — and every container start went back to the
-# network for it. A shared, world-readable cache makes the image self-contained,
-# which is what "comes up with no network" has to mean.
+# pnpm is pinned so the install inside the image matches the lockfile.
+# COREPACK_HOME is shared and world-readable because corepack caches under the
+# home of whoever ran it: a pnpm fetched here as root would be invisible to the
+# `node` user, and every container start would fetch it from the network.
 ENV COREPACK_HOME=/usr/local/share/corepack
 RUN corepack enable \
   && corepack prepare pnpm@11.12.0 --activate \

@@ -3,14 +3,11 @@
 /**
  * Who is visiting, asked from the browser, for the header and the report form.
  *
- * The page itself carries no address: it is what a shared cache may keep, and
- * the one answer carrying an address is `/api/v2/session`, which no shared
- * cache stores. That answer is also where the session's renewed cookie reaches
- * the browser (ADR-0026 §2, §3).
- *
- * Four states and not three. "Unknown" is a dashboard that did not answer, and it
- * is kept apart from a stranger on purpose: not knowing who somebody is must
- * not look like knowing they are nobody.
+ * The page itself carries no address because a shared cache may keep it; only
+ * `/api/v2/session`, which no shared cache stores, answers with one and passes
+ * the renewed session cookie on. "Unknown" is a dashboard that did not answer,
+ * kept apart from a stranger: not knowing who somebody is must not look like
+ * knowing they are nobody.
  */
 
 import { useEffect, useState } from "react";
@@ -28,10 +25,8 @@ const answerSchema = z.union([
 ]);
 
 /**
- * The question in flight, shared by every part of the page that asks it at
- * once: the header and the full-report form on a scan page want the same
- * answer, and two questions would renew the session twice in one moment. It
- * is forgotten when it settles, so a later part of the page asks afresh.
+ * Shared by every part of the page that asks at once, since two questions would
+ * renew the session twice; cleared when it settles, so a later ask goes afresh.
  */
 let inFlight: Promise<Visitor> | null = null;
 

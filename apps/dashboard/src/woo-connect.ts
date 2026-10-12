@@ -1,68 +1,37 @@
 /**
- * Connecting a WooCommerce shop: what a merchant may type, where their browser
- * is sent, and the question we ask the shop before sending anybody anywhere.
+ * WooCommerce's key grant: the merchant's browser goes to
+ * `/wc-auth/v1/authorize`, the shop's administrator approves, and the shop
+ * posts a fresh `consumer_key`/`consumer_secret` to our callback.
  *
- * WooCommerce has carried a one-click key grant since 2015. The merchant's
- * browser goes to `/wc-auth/v1/authorize` with five parameters, the signed-in
- * administrator approves, and the shop posts a freshly minted
- * `consumer_key`/`consumer_secret` to a callback address we supplied
- * (`docs/research/33-woo-connect-probe.md`). Three facts out of that probe are
- * load-bearing here and each one is a refusal in this file.
- *
- * **All five parameters, always.** `app_name`, `user_id`, `return_url`,
- * `callback_url` and `scope`. Any one of them missing is a 401 from the shop,
- * so there is one function that builds the address and it names all five.
- *
- * **`user_id` is ours to fill, and it is the only thing standing between a
- * stranger and somebody else's shop.** The callback is unauthenticated by
- * nature — WooCommerce posts it from the shop's own server, carrying no session
- * of ours — so anybody who can reach our callback address can post a key pair
- * at it. What decides whose account those keys land on is the value that comes
- * back in `user_id`, which is why it is an unguessable one-time token bound to
- * the merchant who pressed Connect, and why it is spent the moment it arrives.
- *
- * **Plain permalinks break the flow in silence.** A shop with
- * `permalink_structure` empty does not answer the authorize address with an
- * error: it redirects once and serves its own front page with a 200. A merchant
- * sent there presses Connect, lands on their shop, and has nothing to report.
- * So we ask first — {@link isTheGrantScreen} — and refuse with the name of the
- * setting rather than sending them.
+ * All five parameters are always sent; any one missing is a 401 from the shop.
+ * The callback is unauthenticated by nature (the shop's server posts it with no
+ * session of ours), so the `user_id` that comes back is the only thing deciding
+ * whose account the keys land on: it is an unguessable one-time token bound to
+ * the merchant who pressed Connect, spent the moment it arrives. A shop with
+ * plain permalinks answers the authorize address with its own front page and a
+ * 200, so the shop is asked first ({@link isTheGrantScreen}) and the setting is
+ * named rather than sending the merchant there.
  */
 
 import { randomBytes } from "node:crypto";
 import { type WooRequest, wooRequest } from "./woo-request.js";
 
-/** What the shop calls us in the key row a merchant reads afterwards. */
+/** The name in the key row the merchant reads in their shop. */
 export const APP_NAME = "Agentify";
 
 /**
- * The access we ask for.
- *
- * Read and write, because reading the catalogue is only half of it: the point
- * of connecting is that a paid order becomes an order in the merchant's shop,
- * and creating one is a write. A read-only grant would let a merchant connect,
- * import their catalogue, sell something, and discover at the first sale that
- * nothing can be delivered.
+ * Read and write: a paid order becomes an order in the merchant's shop, which
+ * is a write. A read-only grant would fail only at the first sale.
  */
 export const SCOPE = "read_write";
 
-/** How long a Connect a merchant started is worth finishing. */
 export const GRANT_MINUTES = 15;
 
 /**
- * What is wrong with the address a merchant typed, in a sentence, or null.
- *
- * The https rule is the one worth arguing for, because it is a refusal of
- * something that would otherwise work. WooCommerce picks its REST
- * authentication scheme from the shop's own `is_ssl()`: over https the granted
- * key and secret go in as HTTP Basic, and over plain http they are refused and
- * a one-legged OAuth 1.0a signature is required instead. Both were proved to
- * work on the probe stand, so this is not a limitation we ran into. It is a
- * refusal: over http we would send the merchant's own consumer secret in the
- * clear, on every order, forever — and WooCommerce will not post the keys to a
- * callback that is not https either, so half of the flow is already refused by
- * the shop. Saying so at the door is cheaper than a merchant finding out from a
- * packet capture.
+ * https is required although http would work: WooCommerce then wants an OAuth
+ * 1.0a signature instead of HTTP Basic, and we would send the merchant's
+ * consumer secret in the clear on every order. WooCommerce also refuses to post
+ * keys to a callback that is not https.
  */
 export const whatIsWrongWithTheShopUrl = (typed: string): string | null => {
   const trimmed = typed.trim();
@@ -101,32 +70,24 @@ export const whatIsWrongWithTheShopUrl = (typed: string): string | null => {
 };
 
 /**
- * The shop address as we keep it: no trailing slash, so that appending a path
- * never produces a double one.
- *
- * Only ever called on an address {@link whatIsWrongWithTheShopUrl} has passed.
+ * No trailing slash, so appending a path never produces a double one. Only
+ * called on an address {@link whatIsWrongWithTheShopUrl} has passed.
  */
 export const shopUrlAs = (typed: string): string => typed.trim().replace(/\/+$/, "");
 
-/** Everything the authorize address carries beyond the shop and the scope. */
 export interface GrantRequest {
   readonly appName: string;
   /**
-   * The one-time token that says whose Connect this is.
-   *
-   * WooCommerce calls it `user_id` and treats it as an opaque string it hands
-   * straight back, in the callback and in the return redirect. It is not an
-   * identifier of anything of ours: an account identifier here would be a value
-   * a stranger could guess and post keys against.
+   * WooCommerce calls it `user_id` and hands it straight back. It must not be
+   * an identifier of anything of ours: an account identifier would be a value a
+   * stranger could guess and post keys against.
    */
   readonly userId: string;
-  /** Where the merchant's browser comes back to. */
   readonly returnUrl: string;
-  /** Where the shop's own server posts the keys. https, on 443, 80 or 8080. */
+  /** https, on 443, 80 or 8080. */
   readonly callbackUrl: string;
 }
 
-/** The address a merchant's browser is sent to, with all five parameters. */
 export const authorizeUrlFor = (shopUrl: string, request: GrantRequest): string => {
   const query = new URLSearchParams({
     app_name: request.appName,
@@ -139,65 +100,38 @@ export const authorizeUrlFor = (shopUrl: string, request: GrantRequest): string 
 };
 
 /**
- * A token nobody can guess and nothing else has issued.
- *
- * Base64url rather than hex so that it is short enough to read in a log line
- * without being short enough to search for, and so that it survives a query
- * string with nothing encoded: WooCommerce puts this value back into a
- * redirect and into a JSON body, and a value that came back re-encoded would
- * not match the row it was written from.
+ * Base64url, so it survives a query string and a JSON body unencoded:
+ * WooCommerce hands it back in both, and a re-encoded value would not match its
+ * row.
  */
 export const theStateToken = (): string => randomBytes(32).toString("base64url");
 
-/** What the preflight came to. */
 export type Preflight = { readonly ok: true } | { readonly ok: false; readonly why: string };
 
 /**
- * The mark wc-auth leaves on a page it served.
- *
- * It is a class name and not the bare word, and the difference is the whole
- * check. WooCommerce's own templates wrap both of their screens in an element
- * carrying `wc-auth` as a class (`templates/auth/header.php`, and
- * `wc-auth-approve` on the button of the grant screen itself). The word on its
- * own appears in the address we asked for — so a WordPress theme that echoes
- * the request URI anywhere on its front page, in a canonical link, a search
- * heading or an admin-bar edit link, would carry it too. Matched on the bare
- * word, such a shop passes the preflight and its merchant is sent to their own
- * front page, which is precisely the trap this exists to close.
+ * A class name, not the bare word: `wc-auth` appears in the address we asked
+ * for, so a theme that echoes the request URI anywhere on its front page would
+ * match the bare word and send the merchant to that front page, the trap this
+ * check exists to close. WooCommerce's own templates carry it as a class.
  */
 const SERVED_BY_WC_AUTH = /class="[^"]*wc-auth/i;
 
-/** How long we wait on a shop before deciding it is not answering. */
 const SHOP_ANSWERS_WITHIN_MS = 10_000;
 
 /**
- * How many redirects we follow before deciding the shop is not taking us to
- * wc-auth.
- *
- * WordPress redirects an authorize address at most twice in the shapes the
- * probe saw — a trailing-slash canonical, and wc-auth's own hand-over to its
- * sign-in page — and following more than that would be following a shop's own
- * redirect chain to somewhere with no bearing on the question.
+ * WordPress redirects an authorize address at most twice in the shapes seen (a
+ * trailing-slash canonical, and wc-auth's hand-over to its sign-in page);
+ * beyond that we would be following the shop's own redirect chain.
  */
 const REDIRECTS_FOLLOWED = 3;
 
 /**
- * Whether this address actually reaches WooCommerce's grant screen.
- *
- * The test is the presence of wc-auth's own markup, and it is the presence of
- * something rather than the absence of something on purpose. A shop's front
- * page is a page we know nothing about: it can carry any status, any title and
- * any content, and every rule of the form "it is wrong if it says X" is a rule
- * one shop's theme breaks. What we do know is what wc-auth renders, because it
- * is WooCommerce's own template and the class name is in it.
- *
- * Nothing here is logged in, so the ordinary success is wc-auth's sign-in page
- * rather than the approval screen itself — the merchant meets that one in their
- * own browser, with their own session. Both carry the same marker.
- *
- * A redirect off the shop's own host ends it. A shop that sends us to another
- * origin has not shown us its grant screen, and following it would be asking a
- * stranger's server whether this merchant's shop is set up correctly.
+ * Tests for the presence of wc-auth's own markup, not the absence of something:
+ * a shop's front page can carry any status, title or content, but wc-auth's
+ * template is known. Nothing here is signed in, so the ordinary success is
+ * wc-auth's sign-in page, which carries the same marker. A redirect off the
+ * shop's own host ends the check rather than asking a stranger's server about
+ * this shop.
  */
 export const isTheGrantScreen = async (
   authorizeUrl: string,
@@ -223,9 +157,8 @@ export const isTheGrantScreen = async (
 
     const body = await answered.text();
 
-    // wc-auth answered and refused the request itself. That is our defect and
-    // not the merchant's shop, so their shop's own words come back rather than
-    // a sentence about permalinks they cannot act on.
+    // wc-auth refused the request itself, which is our defect, so the shop's
+    // own words come back rather than a sentence about permalinks.
     const complaint = /Error:[^<\n]*/.exec(body);
     if (answered.status === 401 && complaint !== null) {
       return {
@@ -263,16 +196,13 @@ export const isTheGrantScreen = async (
 };
 
 /**
- * The traces a WordPress page leaves: its theme and core files, served from
- * `/wp-content/` and `/wp-includes/`. A page with them is the shop answering
- * with one of its own pages. A page without them may be another site, or a
- * WordPress shop whose server answers with its own 404 page when permalinks are
- * Plain; nothing on it says which, so the owner is asked to check the address
- * first, and the setting is named as the cause if it is the shop.
+ * A page with WordPress's asset paths is the shop answering with one of its own
+ * pages. Without them it may be another site, or a WordPress server's own 404
+ * under plain permalinks; nothing says which, so the owner is asked to check
+ * the address first.
  */
 const WORDPRESS_TRACES = /\/wp-(?:content|includes)\//;
 
-/** What a merchant is told when the authorize address served something else. */
 const notTheGrantScreen = (shop: URL, body: string): string =>
   WORDPRESS_TRACES.test(body)
     ? whatAPlainPermalinkShopLooksLike(shop)
@@ -283,13 +213,8 @@ const notTheGrantScreen = (shop: URL, body: string): string =>
       " anything other than Plain, save, and press Connect again.";
 
 /**
- * What a merchant is told when the authorize address served something that is
- * not wc-auth.
- *
- * It names the setting, in WordPress's own words, because that is the one thing
- * the merchant can go and change. It does not claim that permalinks are
- * certainly the cause: the honest sentence is that the shop answered with
- * something else and this is what makes that happen.
+ * Names the setting in WordPress's own words, since that is what the merchant
+ * can change, without claiming it is certainly the cause.
  */
 const whatAPlainPermalinkShopLooksLike = (shop: URL): string =>
   `Your shop answered at ${shop.origin} with one of its own pages rather than with the screen` +

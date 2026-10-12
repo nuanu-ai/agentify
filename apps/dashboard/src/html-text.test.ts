@@ -1,28 +1,20 @@
 /**
- * A shop's HTML as the plain text a card carries.
- *
- * The promise to a merchant whose shop writes HTML: what reaches the publish
- * door is the text their own shop page shows, and it passes the door's rule
- * that a card's words are plain text — or the converter says, in words, what
- * in the text still is not, so the product is named and left in the shop
- * rather than refused for something the merchant cannot see.
- *
- * The inputs are the shapes WordPress really sends: prose wrapped in `<p>`,
- * block comments, punctuation turned into numbered references by wptexturize
- * and convert_chars, and names typed by hand.
+ * What reaches the publish step is the text the merchant's shop page shows, and
+ * it passes the contract's plain-text rule, or the converter says what in it
+ * does not, so the product is named rather than refused for something the
+ * merchant cannot see. The inputs are the shapes WordPress really sends.
  */
 
 import { notPlainTextIn } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { plainTextOfHtml } from "./html-text.js";
 
-/** The text, where the converter says it is plain; a failure naming what it found otherwise. */
 const textOf = (html: string): string => {
   const read = plainTextOfHtml(html);
   if (!read.plain) {
     throw new Error(`expected plain text from ${JSON.stringify(html)}: ${read.found.join("; ")}`);
   }
-  // Whatever the converter calls plain, the door has to agree.
+  // Whatever the converter calls plain, the contract has to agree.
   expect(notPlainTextIn(read.text, "one line"), read.text).toStrictEqual([]);
   return read.text;
 };
@@ -106,9 +98,8 @@ describe("a shop's HTML as plain text", () => {
   });
 
   it("never hands on a control character, however the shop wrote it", () => {
-    // A numbered reference to a control character decodes into one, and a NUL
-    // cannot even be stored. Written raw or as a number, what shows nothing is
-    // left out and what spaces the text is a space.
+    // Written raw or as a number, what shows nothing is left out and what
+    // spaces the text is a space.
     for (const html of [
       "Caf&#0;e",
       "Tea&#7;time",
@@ -125,23 +116,21 @@ describe("a shop's HTML as plain text", () => {
       expect(text, JSON.stringify(html)).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
     }
     expect(textOf("Tea&#9;for&#10;two&#13;")).toBe("Tea for two");
-    // A reference to nothing at all is what a browser shows for one: the
-    // replacement character, visible on the shop's page as on the card.
+    // A reference to nothing is shown as the replacement character, on the
+    // shop's page as on the card.
     expect(textOf("Caf&#0;e")).toBe("Caf\uFFFDe");
   });
 
   it("reads each reference once", () => {
-    // What the shop sends for a merchant who typed `&#038;` into their prose
-    // is `&amp;#038;`, and the page shows the six characters they typed.
+    // A merchant who typed `&#038;` gets `&amp;#038;` from the shop, and the
+    // page shows the six characters they typed.
     const read = plainTextOfHtml("Type &amp;#038; for an ampersand");
 
     expect(read.text).toBe("Type &#038; for an ampersand");
   });
 
   it("says what is still not plain text where the shop's own page shows markup as text", () => {
-    // A tag written into the prose as text, and a reference typed out, are what
-    // the page shows — and what the door refuses. The converter does not guess
-    // them away: it says what is there.
+    // The converter does not guess these away: it says what is there.
     const tag = plainTextOfHtml("<p>Adds a &lt;header&gt; block to the theme.</p>");
     const reference = plainTextOfHtml("Type &amp;#038; for an ampersand");
 
@@ -160,11 +149,10 @@ describe("a shop's HTML as plain text", () => {
   });
 
   it("takes no longer on markup built to be slow than on an ordinary page", () => {
-    // The HTML comes from a shop the merchant controls and the converter runs
-    // in the same process as the gateway, so a page crafted to make a pattern
-    // backtrack would stall everybody's sales, not only the merchant's import.
-    // A quarter of a megabyte each, the size at which a pattern that has
-    // turned quadratic takes seconds rather than milliseconds.
+    // The converter runs in the gateway's process on HTML a merchant controls,
+    // so a backtracking pattern would stall everybody's sales. A quarter of a
+    // megabyte is where a quadratic pattern takes seconds rather than
+    // milliseconds.
     const hostile = [
       `<a${" a".repeat(125_000)}`,
       "<a ".repeat(85_000),
@@ -179,9 +167,9 @@ describe("a shop's HTML as plain text", () => {
       `<a "${"x".repeat(250_000)}`,
       `<${"a".repeat(250_000)}`,
       `<a b="${"<a ".repeat(85_000)}`,
-      // Short on purpose: a pattern that lets a quotation mark be read two
-      // ways goes exponential here, and a synchronous match cannot be stopped,
-      // so a long one would hang the run instead of failing it.
+      // Short on purpose: a pattern that reads a quotation mark two ways goes
+      // exponential here, and a synchronous match cannot be stopped, so a long
+      // input would hang the run instead of failing it.
       `<a${' "x"'.repeat(20)}`,
       `<a${" 'x'".repeat(20)}`,
     ];

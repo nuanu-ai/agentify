@@ -1,11 +1,8 @@
 /**
- * The release refusing a channel that is not what it says it is.
- *
- * Everything here is text: the fixtures are what `docker compose config
- * --format json` printed for the two channels, and every case below is that
- * document with one thing changed. The doing — build, up, the curls against a
- * live host — is a shell script talking to one Docker daemon and is not
- * pretended about here.
+ * The fixtures are what `docker compose config --format json` printed for the
+ * two channels, and each case below is that document with one thing changed.
+ * Building and starting the stack is a shell script's job and is not tested
+ * here.
  */
 
 import { spawnSync } from "node:child_process";
@@ -298,9 +295,9 @@ describe("the mock merchant is not among the services", () => {
 
 describe("a deployed channel seeds no merchant", () => {
   // A merchant comes into being one way: a person opens the link mailed to
-  // their address and presses the dashboard's one control (ADR-0014). A key the
-  // gateway seeds from a host's file at every start would be a second way, and
-  // one nobody can retire without a release.
+  // their address and presses the dashboard's one control. A key the gateway
+  // seeds from a host's file at every start would be a second way, and one
+  // nobody can retire without a release.
   const CHANNELS = [
     ["production", PRODUCTION_CHANNEL, "csk_live_"],
     ["test", TEST_CHANNEL, "csk_test_"],
@@ -354,10 +351,9 @@ describe("no laptop default survived", () => {
   });
 
   it("refuses the scanner's report-link signing secret written in this repository", () => {
-    // The laptop is allowed to inherit this one, so it is printed in
-    // compose.yaml, which is to say printed on the internet. A channel that
-    // deployed it would be signing every report link with a key any reader of
-    // this repository can forge.
+    // compose.yaml prints this secret for the laptop, which is to say on the
+    // internet. A channel that deployed it would sign every report link with a
+    // key any reader of this repository can forge.
     const wrong = withEnv(
       TEST_CHANNEL,
       "scanner",
@@ -457,11 +453,10 @@ describe("no laptop default survived", () => {
 });
 
 describe("the private identity route belongs to the application and the scanner alone", () => {
-  // Every service of a channel shares one network and one database account,
-  // so what keeps a person's identity with the dashboard is that only the
-  // scanner holds the credential its private route asks for (ADR-0026). The
-  // dashboard's half of it lives in the application, the process the
-  // dashboard runs in (ADR-0030).
+  // Every service of a channel shares one network and one database account, so
+  // what keeps a person's identity with the dashboard is that only the scanner
+  // holds the credential its private route asks for. The dashboard's half of
+  // the route lives in the application, the process the dashboard runs in.
   const CHANNELS = [
     ["test", TEST_CHANNEL],
     ["production", PRODUCTION_CHANNEL],
@@ -542,8 +537,7 @@ describe("the private identity route belongs to the application and the scanner 
   });
 
   it("refuses a scanner that asks anybody but the application on its own network", () => {
-    // The service the route lived on before the two processes became one is
-    // among them: a scanner still asking it asks a name nothing answers.
+    // `dashboard:3002` is a name nothing in the stack answers.
     for (const url of [
       null,
       "https://agentify.ad/dashboard",

@@ -77,17 +77,13 @@ const migrationsFolder = fileURLToPath(
 const admin = createDatabase(connectionString, { max: 1 });
 
 /**
- * The dashboard's side of the internal route, as the scanner meets it.
- *
- * It keeps what the real dashboard keeps for these questions and nothing else:
- * the links it was asked to send, with their destination and request, and the
- * sessions those links opened. Pressing a link here stands for the press on
- * the dashboard's one-control page, which the dashboard's own suites cover; what
- * this suite is about is what the scanner does with the answers.
+ * A stand-in for the dashboard's side of the internal route. It keeps only the
+ * links it was asked to send and the sessions they opened; the dashboard's own
+ * suites cover its pages, and this suite covers what the scanner does with the
+ * answers.
  */
 type SentLink = { email: string; scanId: string; request: string };
 
-/** The name the stand-in dashboard's session cookie travels under. */
 const SESSION_COOKIE = "__Host-agentify.session_token";
 
 const sentLinks: SentLink[] = [];
@@ -114,9 +110,8 @@ function latestLink(email: string): SentLink {
 }
 
 /**
- * Presses a link as the dashboard's one-control page would: a session opens for
- * its address, naming the request it was asked for, and the browser holds its
- * cookie. Returns that browser's cookie header.
+ * Presses a link as the dashboard would: a session opens for its address,
+ * naming the request it was asked for. Returns the browser's cookie header.
  */
 function pressLink(link: SentLink): string {
   sessionSequence += 1;
@@ -144,8 +139,6 @@ async function readJson(request: IncomingMessage) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
 }
 
-// A fixture query that must find its row: an empty result is a broken test, and
-// it should say so here rather than fail later on a property of undefined.
 function onlyRow<T>(rows: readonly T[]): T {
   const [row] = rows;
   if (!row) throw new Error("a query that must return one row returned none");
@@ -199,10 +192,7 @@ async function reportFor(id: string, cookie: string | undefined) {
   return await getFullReport(id, await visitorOf(cookie));
 }
 
-/**
- * How many registrations a scan has, read from the record of them, which is
- * kept whatever the visitor chose about measurement.
- */
+/** Counted from waitlist entries, which are kept whatever the visitor chose about measurement. */
 async function registrationsFor(id: string) {
   return (
     await getDatabase().pool.query<{ count: string }>(
@@ -247,9 +237,8 @@ beforeAll(async () => {
     id: sessionId,
     anonymousIdHash: hmacHex(tokenHmacSecret, "anonymous", anonymousToken),
   });
-  // The visitor these tests follow allowed product analytics, so the funnel
-  // events their steps leave can be counted; a visitor who allowed nothing
-  // optional has a test of their own.
+  // This visitor allowed product analytics, so the funnel events their steps
+  // leave can be counted; a visitor who allowed nothing has a test of its own.
   await db.insert(consentSnapshots).values({
     id: consentId,
     sessionId,
@@ -494,8 +483,8 @@ describe("P4 dashboard-owned scanner identity", () => {
     // A scan nothing turned away does not say that something did.
     const plain = await createFreshCompletedScan("open-home-page");
     expect(await getScanStatus(plain.scan.id, plain.accessToken)).not.toHaveProperty("blocked");
-    // Nor does one that has a score: the scanner once marked a home page it
-    // could not reach the same way, and a scan graded around it was read.
+    // Nor does a scan with a score: stored scans can carry a home page marked
+    // unreachable that was graded all the same, and a graded scan was read.
     const graded = await createFreshCompletedScan("graded-around-an-outage");
     await db.insert(scanChecks).values({
       scanId: graded.scan.id,
@@ -841,8 +830,8 @@ describe("P4 dashboard-owned scanner identity", () => {
 
   it("finishes the request its own link was asked for at the session's first visit, once across tabs", async () => {
     // Wherever the navigation began: the report the link leads to, another
-    // tab on the landing page, the header's question. Every one of them may
-    // be the first, and only one of them finishes it (ADR-0026 §2).
+    // tab on the landing page, the header's question. Any of them may be the
+    // first, and only one finishes it.
     const { db } = getDatabase();
     const { scan } = await createFreshCompletedScan("first-visit");
     await copyChecks(scan.id);
@@ -896,7 +885,7 @@ describe("P4 dashboard-owned scanner identity", () => {
 
   it("never finishes a request for a session of another address", async () => {
     // The request carries what its form said, a marketing choice included, so
-    // only the address it was made for may finish it (ADR-0026 §2).
+    // only the address it was made for may finish it.
     const { db } = getDatabase();
     const { scan } = await createFreshCompletedScan("other-address");
     const email = "asked-for@example.com";
@@ -937,8 +926,8 @@ describe("P4 dashboard-owned scanner identity", () => {
   it("files a signed-in person's own ask at once, sends nothing, and leaves a stranger's waiting request alone", async () => {
     // Somebody else asked for this scan's report with this person's address
     // and a marketing choice of their own. The person's own ask, signed in,
-    // makes and finishes a request of their own with their own choices, and
-    // the stranger's waits until it expires (ADR-0026 §2).
+    // makes and finishes a request with their own choices, and the stranger's
+    // waits until it expires.
     const { db } = getDatabase();
     const { scan, accessToken } = await createFreshCompletedScan("signed-in-ask");
     await copyChecks(scan.id);
@@ -1122,10 +1111,9 @@ describe("P4 dashboard-owned scanner identity", () => {
   });
 
   it("does nothing for a press from a page loaded for another address, and says who is signed in now", async () => {
-    // People sign out to come back as another address (ADR-0026 §3), so a data
-    // page loaded for the first can still be open when the second signs in,
-    // and its press arrives with the second one's cookie. Deleting the second
-    // person's data from the first person's page is what this stops.
+    // A data page loaded for one address can still be open after a sign-out and
+    // a sign-in as another, and its press arrives with the new cookie. This
+    // stops the second person's data being deleted from the first one's page.
     const { scan } = await createFreshCompletedScan("loaded-for");
     await copyChecks(scan.id);
     const email = "loaded-for@example.com";
@@ -1143,8 +1131,7 @@ describe("P4 dashboard-owned scanner identity", () => {
           posted({ type: "deletion", signed_in_as: "first@example.com" }),
         ),
       ),
-      // A page that says nothing about whom it was loaded for is not matched
-      // either: it is what a page from before this rule sends.
+      // A page that names no address is not matched either.
       await requestDataAction(
         new NextRequest(
           "http://localhost:3000/api/v1/account/data-request",
@@ -1335,7 +1322,7 @@ describe("P4 dashboard-owned scanner identity", () => {
 
   it("tells an operator's own header that they are one", async () => {
     // The header shows an operator the way to the dashboard, and the flag
-    // rides on the answer that already carries their address (ADR-0026 §6).
+    // rides on the answer that already carries their address.
     const answered = await readVisitor(
       new NextRequest("http://localhost:3000/api/v2/session", {
         headers: { cookie: signedInAs("operator@example.com", { operator: true }) },

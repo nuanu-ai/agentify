@@ -1,12 +1,12 @@
-# The test data and application stay on the fixture host, behind its existing
-# public SNI ingress. The new hostname must be routed there before activation.
-# The listen address is that host's, not this repository's: supply it, and the
-# stack refuses to start rather than binding somewhere unintended.
+# The test channel runs on the fixture host, behind its public SNI ingress,
+# which must route test.agentify.ad here before activation. The listen address
+# is that host's, not this repository's: supply it, and the stack refuses to
+# start rather than bind somewhere unintended.
 services:
-  # The init scripts from a path no release changes, which deploy/stack.sh
-  # names and deploy/activate.sh keeps equal to the checkout's copy. Mounted
-  # from the checkout, they changed path with every revision, and Compose
-  # recreated the database on every release.
+  # The init scripts come from a path no release changes, which deploy/stack.sh
+  # names and deploy/activate.sh keeps equal to the checkout's copy. Not from the
+  # checkout: that path changes with every revision, and Compose would recreate
+  # the database on every release.
   postgres:
     volumes:
       - "${AGENTIFY_POSTGRES_INIT:?deploy/stack.sh names the database's init scripts}:/docker-entrypoint-initdb.d:ro"

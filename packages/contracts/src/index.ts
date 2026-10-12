@@ -1,24 +1,12 @@
 /**
- * Agentify contracts — the single source of truth for the card, the order, the
- * price check, the receipt and everything else that crosses the boundary
- * between us, a merchant and an agent. Everything that goes outside or arrives
- * from outside is described here by a zod schema; consumers get their types by
- * inference from the schema instead of writing them by hand (ADR-0003 §5).
+ * Agentify contracts: the zod schemas for the card, the order, the price check,
+ * the receipt and everything else that crosses the boundary between Agentify,
+ * a merchant and an agent. Types are inferred from the schemas, and
+ * `toJsonSchemas` renders them for readers outside TypeScript.
  *
- * This package owns the wire vocabulary: the field names, the values an agent
- * or a merchant can see, the refusal codes, the event names. What the gateway
- * calls things inside itself is its own business, and the two are tied
- * together where they meet rather than by one importing the other.
- *
- * Two shapes here are read by nobody outside our own two parts, and they are
- * described anyway. The worker envelope carries orders, price questions and
- * events on one stream (ADR-0004 §2), and the merchant never sees it, because
- * the SDK hands a handler an order rather than the wrapper it arrived in. The
- * route table says which calls exist, at which addresses, with which document
- * going each way. Both are formats between the gateway and the SDK, read by
- * both and owned by neither — which is the same reason a card lives here, and
- * the reason a shape agreed in two places is a shape that has already
- * disagreed once.
+ * The worker envelope and the route table are described here too, although no
+ * merchant reads them directly: they are the format between the gateway and the
+ * SDK, which both read.
  */
 
 import type { ZodType } from "zod";
@@ -304,16 +292,9 @@ export const CONTRACT_VERSION = "2";
 
 /**
  * Every schema of the public contract, under the name it is known by outside
- * TypeScript.
- *
- * The registry is what makes the contract readable by something that is not
- * this package: the JSON Schema export below walks it, and a merchant's
- * engineer working in another language reads that. It carries the building
- * blocks as well as the whole documents, because a merchant validating one
- * amount should not have to lift it out of a card.
- *
- * A schema that exists and is not here is a schema nobody outside TypeScript
- * can see, so a test holds the two in step.
+ * TypeScript. The JSON Schema export walks this registry, and it carries the
+ * building blocks as well as the whole documents, so a single amount can be
+ * validated without lifting it out of a card.
  */
 export const schemas = Object.freeze({
   acceptance: AcceptanceSchema,
@@ -399,23 +380,15 @@ export const jsonSchemaIdOf = (name: SchemaName): string =>
   `urn:agentify:contract:${CONTRACT_VERSION}:${name}`;
 
 /**
- * The whole contract as JSON Schema, one document per registry entry.
+ * The whole contract as JSON Schema, one document per registry entry, each
+ * stamped with the contract version. It is a function so that the conversion
+ * is paid for only by a caller who needs it.
  *
- * A function rather than a constant: the conversion costs something, and a
- * consumer who only needs to validate a card in TypeScript should not pay for
- * a description of everything else at import time.
- *
- * What the documents carry and what they do not is worth saying plainly,
- * because the difference is invisible from the outside. Structure crosses
- * intact — fields, types, which are required, whether unknown keys are
- * allowed, enumerations, patterns, the branches of a union. Rules that look at
- * more than one field at a time do not: JSON Schema cannot say "this field
- * only when that one has this value", and zod drops such a rule without a
- * word. Every schema that has one says so in its own `description`, which does
- * cross, so a reader of the document is told what it is not checking rather
- * than left to assume it checks everything.
- *
- * Each document is stamped with the contract version it came from.
+ * Structure crosses intact: fields, types, required keys, whether unknown keys
+ * are allowed, enumerations, patterns and the branches of a union. Rules that
+ * look at more than one field at a time do not, since JSON Schema cannot
+ * express them; every schema with such a rule says so in its `description`, so
+ * a reader is told what the document does not check.
  */
 export const toJsonSchemas = (): Record<SchemaName, JsonSchemaDocument> => {
   const documents = {} as Record<SchemaName, JsonSchemaDocument>;

@@ -1,21 +1,14 @@
 /**
- * The Agentify commerce domain core: orders, receipts, idempotency, the state machine.
- * Here lives what actually is the product, so the package knows nothing about
- * HTTP, nothing about the database and nothing about the queue — zero IO and
- * zero runtime dependencies (ADR-0003 §2 and §9). Everything external the core
- * receives as parameters and returns as values.
+ * The commerce domain core: orders and their state machine. It does no I/O and
+ * has no runtime dependencies; everything external comes in as parameters and
+ * goes out as values.
  */
 
 /**
- * The exhaustiveness guard. It goes into the default branch of a `switch` over
- * the order state: while every state is handled, TypeScript sees `never` here
- * and stays silent, and the moment a new state appears the build breaks on
- * this line instead of breaking in production on an order nobody handled.
- *
- * If the types have been fooled after all — the value came from the database
- * or over the network — the work stops with an exception that names the
- * variant itself. A silent "nothing happened" next to someone else's money is
- * inadmissible.
+ * The exhaustiveness guard for the default branch of a `switch`: a new variant
+ * breaks the build on this line instead of an order nobody handled in
+ * production. A value that fooled the types, read from the database or the
+ * network, throws with the variant named rather than passing silently.
  */
 export function assertNever(value: never, context?: string): never {
   const where = context === undefined ? "" : ` (${context})`;
@@ -42,21 +35,10 @@ export {
 export type { MerchantFacts, Readiness, Unknown } from "./merchant/readiness.js";
 export { readinessOf, UNKNOWN } from "./merchant/readiness.js";
 /**
- * The order state machine. The design it implements is
- * `docs/research/16-order-state-machine.md` with all three of its addition
- * sections, and the merchant-facing half of the same model is
- * `apps/docs/orders.md` and `apps/docs/failures.md`.
- *
- * The gateway is expected to use it like this: build an order with
- * `createOrder`, feed it events with `transition`, run the effects that come
- * back, schedule timers off `deadlines`, answer the agent with `outcomeFor`,
- * and — where it matters enough to be worth the cycles — check the order it is
- * about to write down with `moneyInvariantViolations`.
- *
- * The order fixtures used by this package's own tests are deliberately not
- * exported: an order is built out of a real purchase, and a builder that
- * quietly guesses its defaults has no business standing next to someone else's
- * money.
+ * The order state machine. The gateway builds an order with `createOrder`,
+ * feeds it events with `transition`, runs the effects that come back, schedules
+ * timers off `deadlines`, answers the agent with `outcomeFor`, and may check an
+ * order before writing it down with `moneyInvariantViolations`.
  */
 export type {
   CreateOrderInput,

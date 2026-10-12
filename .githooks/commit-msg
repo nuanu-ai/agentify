@@ -1,24 +1,13 @@
 #!/usr/bin/env bash
 #
-# Checks the commit message against the Conventional Commits format.
+# Checks the commit message against the Conventional Commits format: changesets
+# and the release breakdown read the commit type by machine.
 #
-# Why this file exists. While the repository consisted of documents, the commit
-# prefix was a courtesy: the history was read by eye, and a forgotten `docs:`
-# broke nothing. Once there is code, the history becomes a tool — `git bisect`,
-# changesets and the release breakdown work off the commit type, and they read
-# the line by machine, which does not care what was meant. The charter names
-# the threshold for moving a rule into a machine, and
-# `docs/research/15-culture-stack-position.md` named this hook in advance as
-# part of the starting machine minimum.
+# Plain bash rather than husky with commitlint: one rule does not pay for two
+# dependencies and a layer between git and the check.
 #
-# Why bash and not husky with commitlint. The check fits into twenty lines.
-# Husky and commitlint are two dependencies, a config of their own and a layer
-# between git and the check; the layer pays off when there are many rules and
-# does not pay off on one.
-#
-# How it is wired up. `pnpm install` points core.hooksPath at .githooks (the
-# prepare script in the root package.json). A one-off bypass is `git commit
-# --no-verify`: a deliberate step for one specific commit, not a setting.
+# `pnpm install` points core.hooksPath at .githooks (the prepare script in the
+# root package.json). A one-off bypass is `git commit --no-verify`.
 
 set -euo pipefail
 
@@ -27,7 +16,7 @@ message_file="$1"
 # The first meaningful line: git comments and blank lines are skipped.
 subject="$(awk '/^#/ { next } /^[[:space:]]*$/ { next } { print; exit }' "$message_file")"
 
-# Git writes its housekeeping messages itself, and rewriting them is not ours.
+# Messages git writes itself pass as they are.
 case "$subject" in
   "Merge "* | "Revert "* | "fixup!"* | "squash!"* | "amend!"*) exit 0 ;;
 esac

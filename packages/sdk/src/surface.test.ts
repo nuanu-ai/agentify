@@ -1,20 +1,10 @@
 /**
- * The surface a merchant registers on, and the objects it hands them.
- *
- * What is checked here is not the loop — that is `worker.test.ts` — but the
- * shape a merchant's engineer actually types: one `on` for every kind that
- * arrives, one `start` and one `stop`, and an order that carries the calls
- * which close it so that no identifier is ever an argument they have to keep.
- *
- * The identifier is the reason most of these tests exist. An asynchronous
- * merchant delivers hours later, from another part of their code and often
- * from another process life, and every one of those places used to be a place
- * where the wrong string could be passed back to us.
- *
- * The block at the end of this file is checked by the compiler rather than by
- * vitest, and it is there because one of the things this surface promises is a
- * promise only the compiler can keep: that the kind a handler is registered
- * under and the handler itself have to agree.
+ * The surface a merchant registers on and the objects it hands them: one `on`
+ * for every kind that arrives, one `start` and one `stop`, and an order that
+ * carries the calls which close it, so a merchant delivering hours later, from
+ * another process, never passes an identifier back. The loop itself is tested
+ * in `worker.test.ts`. The block at the end is checked by the compiler: the
+ * kind a handler is registered under and the handler must agree.
  */
 
 import type {
@@ -84,9 +74,7 @@ const clientOver = async (routes: Parameters<typeof startFakeGateway>[0]["routes
 
 describe("registering what a process answers", () => {
   it("carries all three kinds of one stream through one registration surface", async () => {
-    // The promise: a merchant writes one kind of line for every kind that can
-    // arrive, and does not have to learn that two of them live under one
-    // namespace and the third under another.
+    // The promise: one kind of line for every kind that can arrive.
     const seen: string[] = [];
 
     const agentify = await clientOver({
@@ -131,10 +119,9 @@ describe("registering what a process answers", () => {
   });
 
   it("refuses a kind nothing will ever deliver, and says which ones there are", async () => {
-    // A merchant who is not in TypeScript, or who typed `orders`, would
-    // otherwise register a handler that is never called and be told nothing.
-    // Being told the four words they may use is what turns the refusal into a
-    // fix rather than a search.
+    // A merchant outside TypeScript, or one who typed `orders`, would
+    // otherwise register a handler never called; being told the four words
+    // turns the refusal into a fix.
     const agentify = await clientOver({ poll_worker: polling() });
     const on = (agentify as unknown as { on(kind: string, handler: () => void): void }).on;
 
@@ -154,14 +141,9 @@ describe("registering what a process answers", () => {
 });
 
 describe("the lifecycle a merchant drives", () => {
-  // "Says the address is missing at the call that needs one" stood here and is
-  // gone: `client.test.ts` asks the same thing of `start()` and of the three
-  // calls besides it, so this was the shorter half of a test that already
-  // exists.
-
   it("refuses to start a worker that would answer nothing", async () => {
-    // A process that starts with no handler drains its own queue: every order
-    // arrives, nothing answers it, and a delivery attempt is spent each time.
+    // With no handler, every order arrives, nothing answers it, and a delivery
+    // attempt is spent each time.
     const agentify = await clientOver({ poll_worker: polling() });
 
     await expect(agentify.start()).rejects.toThrow(/on\(/);
@@ -172,11 +154,9 @@ describe("the lifecycle a merchant drives", () => {
   });
 
   it("dispatches to a handler registered after the loop was already running", async () => {
-    // The documented promise, and the one a merchant relies on without
-    // noticing: handlers belong to the client and the loop reads them when an
-    // envelope arrives. A loop that took a copy of them at start() would
-    // register this price handler onto nothing, and the sale would fall back
-    // to the card's own price with no problem reported.
+    // Handlers belong to the client and are read when an envelope arrives. A
+    // loop that copied them at start() would miss this price handler, and the
+    // sale would fall back to the card's price with no problem reported.
     const parked = new Promise<GatewayAnswer>(() => {});
     let releaseTheQuote: (() => void) | undefined;
     const quoteMayArrive = new Promise<void>((resolve) => {
@@ -236,8 +216,7 @@ describe("the lifecycle a merchant drives", () => {
   });
 
   it("runs again on the handlers it already has after a stop", async () => {
-    // A supervisor that restarts a worker must not have to rebuild the client
-    // and register everything a second time.
+    // A restarted worker does not rebuild the client or register again.
     let arrived = 0;
 
     const agentify = await clientOver({
@@ -285,9 +264,8 @@ describe("an order that carries the calls which close it", () => {
   });
 
   it("builds a refusal and an acceptance in the same words the contract carries", async () => {
-    // The builders are conveniences and nothing more: they produce the answer
-    // and send nothing, so a handler that builds three and returns one has
-    // answered once.
+    // The builders produce the answer and send nothing, so a handler that
+    // builds three and returns one has answered once.
     const built: unknown[] = [];
     const answers: unknown[] = [];
 
@@ -297,8 +275,7 @@ describe("an order that carries the calls which close it", () => {
         answers.push(call.body);
         return { body: { ok: true, result: "accepted" } };
       },
-      // Mounted so that a call made to one of them would be recorded rather
-      // than lost against an address the fake gateway does not serve.
+      // Mounted so that a call to one of them would be recorded, not lost.
       deliver_order: () => ({ body: { ok: true, result: "delivered" } }),
       refuse_order: () => ({ body: { ok: true, result: "refused" } }),
       accept_order: () => ({ body: { ok: true } }),
@@ -324,10 +301,8 @@ describe("an order that carries the calls which close it", () => {
     ]);
     expect(answers).toStrictEqual([{ accepted: {} }]);
 
-    // The load-bearing half: four answers were built and none of them was
-    // sent. A builder that also sent would close an order the handler was only
-    // considering, and the handler's own return would then be a second answer
-    // to an order that already had one.
+    // Four answers built, none sent: a builder that sent would close an order
+    // the handler was only considering.
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(gateway?.callsTo("deliver_order")).toStrictEqual([]);
     expect(gateway?.callsTo("refuse_order")).toStrictEqual([]);
@@ -335,8 +310,8 @@ describe("an order that carries the calls which close it", () => {
   });
 
   it("delivers later, off the retained order, without the merchant holding an identifier", async () => {
-    // The asynchronous merchant's whole day: take the order on now, deliver
-    // when the supplier answers. The only thing they kept is the order.
+    // The asynchronous merchant's day: take the order on now, deliver when the
+    // supplier answers, keeping only the order.
     const agentify = await clientOver({
       poll_worker: polling(batch(envelopes.order)),
       answer_order: () => ({ body: { ok: true, result: "accepted" } }),
@@ -392,10 +367,9 @@ describe("an order that carries the calls which close it", () => {
   });
 
   it("names the order the merchant asked for when they have only its identifier", async () => {
-    // The one place an identifier of ours is written by a merchant, and so the
-    // one place a delivery could be sent against the wrong order. It reaches
-    // no gateway to build, which is what makes it the call to use while the
-    // gateway is unreachable and a delivery still has to be retried.
+    // The one place a merchant writes an identifier. It reaches no gateway to
+    // build, so it works while the gateway is unreachable and a delivery still
+    // has to be retried.
     const agentify = await clientOver({
       deliver_order: () => ({ body: { ok: true, result: "delivered" } }),
       refuse_order: () => ({ body: { ok: true, result: "refused" } }),
@@ -417,10 +391,8 @@ describe("an order that carries the calls which close it", () => {
   });
 
   it("hands the same calls to an order read back after a restart", async () => {
-    // The process that took the order on is gone. What the merchant has is our
-    // record of it, and an order off that record has to be the same thing the
-    // handler received — otherwise a restart puts them back to carrying
-    // identifiers, which is the whole of what this surface removes.
+    // After a restart, an order read back must be the same thing the handler
+    // received, or the merchant is back to carrying identifiers.
     const agentify = await clientOver({
       list_orders: () => ({ body: { orders: [openOrder] } }),
       get_order: () => ({ body: openOrder }),
@@ -449,9 +421,8 @@ describe("an order that carries the calls which close it", () => {
   });
 
   it("makes an order off a list indistinguishable from one off the stream", async () => {
-    // Said as one assertion rather than left to be inferred from two tests
-    // passing: every call the handler's order has, the listed one has, and
-    // both send the same request for the same delivery.
+    // Every call the handler's order has, the listed one has, and both send the
+    // same request for the same delivery.
     const agentify = await clientOver({
       poll_worker: polling(batch(envelopes.order)),
       answer_order: () => ({ body: { ok: true, result: "accepted" } }),
@@ -472,9 +443,8 @@ describe("an order that carries the calls which close it", () => {
 
     const [fromList] = await agentify.orders.list({ open: true });
 
-    // Both are asked for the same thing, and what leaves for the gateway has
-    // to be the same request. Comparing the objects would compare closures;
-    // comparing what they send compares what a merchant is promised.
+    // Compared by what they send, not by object identity, which would compare
+    // closures.
     await fromStream?.deliver({ access_url: "https://a.example" });
     await fromList?.deliver({ access_url: "https://a.example" });
 
@@ -526,11 +496,9 @@ describe("a price question that carries its own answer", () => {
   });
 
   it("stamps an answer the merchant did not date with the moment they gave it", async () => {
-    // A merchant who computed the price just now has looked just now, and the
-    // gateway reads `as_of` to decide how fresh the answer is — so the one
-    // thing that must not happen is a moment taken from somewhere else. It is
-    // bracketed by real time rather than compared to a constant: what is being
-    // promised is "when you answered", and only the bracket says that.
+    // A price computed just now is as of now, since the gateway reads `as_of`
+    // for freshness. Bracketed by real time, because the promise is "when you
+    // answered".
     const bodies: Record<string, unknown>[] = [];
 
     const agentify = await clientOver({
@@ -555,8 +523,7 @@ describe("a price question that carries its own answer", () => {
     expect(stamped).toBeGreaterThanOrEqual(before);
     expect(stamped).toBeLessThanOrEqual(after);
 
-    // And not the one moment the question itself was carrying, which is the
-    // nearest wrong answer there is.
+    // Not the question's own moment, the nearest wrong answer.
     expect(bodies[0]?.as_of).not.toBe(question.expires_at);
   });
 
@@ -597,9 +564,8 @@ describe("where problems go", () => {
   });
 
   it("names the registration that is missing, and not another one", async () => {
-    // The sentence is the whole of what the merchant acts on: it tells them
-    // which line to write. Naming the wrong kind sends them to add a handler
-    // they already have while the one that is missing stays missing.
+    // The sentence tells the merchant which line to write; naming the wrong
+    // kind would send them to add a handler they already have.
     const problems: WorkerProblem[] = [];
 
     const agentify = await clientOver({
@@ -622,14 +588,10 @@ describe("where problems go", () => {
   });
 
   it("survives a reporter that fails a turn later, not only one that throws", async () => {
-    // A merchant shipping problems to an HTTP logger writes an async reporter,
-    // and TypeScript lets them: a function returning a promise satisfies a
-    // signature returning nothing. Such a reporter does not throw — it returns
-    // a promise that rejects after the call has returned, past any try/catch
-    // around it — and an unhandled rejection ends the host process under
-    // Node's default. So the merchant loses their whole worker the first time
-    // their logger is unreachable, which is most likely during the shutdown
-    // where the reporter is busiest.
+    // An async reporter satisfies a signature returning nothing, and its
+    // rejection arrives after any try/catch around the call; unhandled, it
+    // ends the host process under Node's default, most likely during shutdown
+    // when the reporter is busiest.
     const escaped: unknown[] = [];
     const noticed = (reason: unknown): void => {
       escaped.push(reason);
@@ -653,8 +615,8 @@ describe("where problems go", () => {
 
       await waitUntil(() => reported.length > 0, "the problem to reach the reporter");
 
-      // Long enough for a rejection to be noticed as unhandled, which happens
-      // a turn after the promise settles rather than at the throw.
+      // Long enough for a rejection to be noticed as unhandled, a turn after
+      // it settles.
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(escaped).toStrictEqual([]);
@@ -664,8 +626,8 @@ describe("where problems go", () => {
   });
 
   it("goes to the error console when the merchant registered none", async () => {
-    // A worker that stopped in silence is a merchant who hears about it from a
-    // buyer, and a library writing to the console is the cheaper rudeness.
+    // A worker that stopped in silence is worse than a library writing to the
+    // console.
     const written = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const agentify = await clientOver({ poll_worker: polling(batch(envelopes.order)) });
@@ -680,16 +642,13 @@ describe("where problems go", () => {
 });
 
 /**
- * What the compiler refuses, written as code because the compiler is the only
- * thing that can assert it.
- *
- * None of this runs. `tsc` is the assertion: every `@ts-expect-error` fails
- * the build the day the line under it starts compiling, and every line
- * without one fails the build the day it stops.
+ * What the compiler refuses. None of this runs: every `@ts-expect-error`
+ * fails the build the day the line under it starts compiling, and every line
+ * without one fails the day it stops.
  */
 const compilerHoldsTheseTrue = (agentify: AgentifyClient, kind: HandlerKind): void => {
-  // What a handler receives and what it may return are inferred from the kind,
-  // with no annotation anywhere. This is the whole ergonomic claim.
+  // What a handler receives and returns is inferred from the kind, with no
+  // annotation.
   agentify.on("order", (order) => order.delivered({ access_url: order.id }));
   agentify.on("quote", (question) => question.available({ amount: "1.00", currency: "USD" }));
   agentify.on("event", (event) => {
@@ -699,15 +658,12 @@ const compilerHoldsTheseTrue = (agentify: AgentifyClient, kind: HandlerKind): vo
     void problem.kind;
   });
 
-  // A handler for one kind registered under another. It would compile until
-  // the first message arrived and then die calling a method that message does
-  // not carry — every price question failing, and every sale of that card
-  // falling back to the card's own price.
+  // A handler for one kind under another would fail at the first message, and
+  // every sale of that card would fall back to the card's own price.
   // @ts-expect-error an order handler is not what answers a price question
   agentify.on("quote", (order) => order.delivered({ access_url: order.id }));
 
-  // A kind that is not known at the call site cannot say which handler is
-  // right, so it admits none.
+  // A kind not known at the call site cannot say which handler is right.
   // @ts-expect-error the kind has to be narrowed to one kind first
   agentify.on(kind, (order) => order.delivered({ access_url: order.id }));
 

@@ -1,14 +1,7 @@
 /**
- * The facilitator, scripted.
- *
- * A test says what the payment layer will answer and then reads back what it
- * was asked. The record of calls is the part that earns its keep: the one thing
- * about money that must never happen is the same order being charged twice,
- * and "it did not happen" is only checkable against a list of what was
- * actually asked for.
- *
- * The default answers are the happy ones. A test that cares about a failure
- * says so; a test about something else should not have to.
+ * The facilitator, scripted: a test says what the payment layer will answer
+ * and reads back every call it was asked, which is how "never charged twice"
+ * is checked. The default answers are the happy ones.
  */
 
 import type { PaymentVerificationFailure } from "@agentify/core";
@@ -16,40 +9,15 @@ import { decodePaymentSignatureHeader } from "@x402/core/http";
 import type { Charge, Facilitator, SettleOutcome, VerifyOutcome } from "../../ports/facilitator.js";
 
 /**
- * Who the payment layer would say paid: the wallet the authorisation names,
- * read out of the payment the agent actually sent.
+ * Who the payment layer would say paid: `payload.authorization.from` of the
+ * presented payment, verbatim and unverified, as the real exact-EVM
+ * facilitator returns it. Normalising the spelling is `walletThatPaid`'s job
+ * in `app/gateway.ts`, not this adapter's, so the sandbox is no tidier than
+ * the real layer.
  *
- * The real facilitator answers with the address that signed, and it answers
- * with the agent's own spelling of it — `@x402/evm`'s exact-EVM facilitator
- * returns `payload.authorization.from` verbatim, passing it through
- * `getAddress` for its own chain calls and comparisons but never for the value
- * it hands back. This does the same, from the same field, so the sandbox is
- * wrong in the ways a real facilitator is wrong rather than tidier than one.
- * Making one wallet one buyer is not this adapter's job and must not be, or the
- * promise would hold under the sandbox and break under the real thing:
- * `walletThatPaid` in `app/gateway.ts` reduces every layer's answer to one
- * spelling, on the way in, for all of them at once.
- *
- * So: a payment header is base64 JSON, and an EIP-3009 authorisation — what the
- * exact-EVM scheme signs for a token that supports one — names its signer at
- * `payload.authorization.from`. That is one field and this reaches exactly that
- * far. Nothing is verified, because this is the sandbox and no signature here
- * is evidence of anything.
- *
- * This used to derive the payer from the shape of the payment string — the part
- * before a `#` or `:` — which no real header has, so every fresh authorisation
- * was a fresh owner and a buyer's own repeat was refused as a stranger's.
- *
- * A payment that will not decode, and one carrying no authorisation, name
- * nobody, and `null` says so. Through the door only the second case arrives:
- * an undecodable header is refused with a fresh challenge before anything
- * calls this, so the decode branch stands for direct callers and tests, not
- * as a defence the wire exercises. It is not a refusal: the port has a word for a
- * verified payment whose payer is unnamed, the real adapter answers `null` in
- * the same place when the layer vouches without naming an address, and the
- * gateway's stand-in for it is the payment's own fingerprint. Naming a stand-in
- * here instead would make every such payment one buyer, and hand the second
- * sender the first one's purchase. A test that wants a refusal asks for one.
+ * A payment that names no signer gives `null`, as the real adapter does. Do
+ * not invent a stand-in payer here: it would make every such payment one buyer
+ * and hand the second sender the first one's purchase.
  */
 const scriptedPayer = (payment: string): string | null => {
   let signed: unknown;
@@ -92,12 +60,8 @@ export class ScriptedFacilitator implements Facilitator {
   }
 
   /**
-   * Holds every verification until the returned function is called.
-   *
-   * A concurrency test uses it to put two presentations of one order past
-   * verification at the same instant, so that what decides between them is the
-   * ownership guard under the store's lock and not the order the two calls
-   * happened to reach the facilitator in.
+   * Holds every verification until the returned function is called, so a test
+   * can put two presentations of one order past verification at once.
    */
   holdVerification(): () => void {
     let release: () => void = () => undefined;
@@ -108,11 +72,9 @@ export class ScriptedFacilitator implements Facilitator {
   }
 
   /**
-   * Holds every settlement until the returned function is called.
-   *
-   * The call is recorded before the wait, so a test can see that the charge
-   * went out and still has not come back. That is the window in which a
-   * deadline can declare a silence while the original call is in flight.
+   * Holds every settlement until the returned function is called. The call is
+   * recorded before the wait, so a test can see a charge that went out and has
+   * not come back.
    */
   holdSettle(): () => void {
     let release: () => void = () => undefined;

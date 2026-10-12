@@ -1,31 +1,11 @@
 /**
- * The rule that `pnpm test` never leaves this machine, moved into a machine.
+ * Keeps `pnpm test` on this machine: a `fetch` to anything but loopback is
+ * refused, and the failure names the test that made it. Loopback stays allowed
+ * because several suites stand up a real server in this process. Only `fetch`
+ * is covered; a raw `node:net` socket, a `node:http` agent or a database
+ * driver does not pass through here.
  *
- * `vitest.config.ts` has always said the suite is free, deterministic and works
- * without a network. It was text, and text is what it stayed until a pair of
- * tests handed a command the real way out to a validation endpoint at
- * `api.cdp.coinbase.com`. Four requests went out on every run of the suite. The
- * assertions never looked at the answers, so it passed either way — offline it
- * cost the wait for a name that does not resolve, and there is at least one
- * place on record where that host is intercepted outright.
- *
- * Nothing could have caught it. A test cannot assert that another test made no
- * request, and a reviewer reading a call site sees a plausible-looking name.
- * So this refuses the request instead — every request made through `fetch`,
- * which is the door the case that prompted this went out of and the door the
- * packages here use — and the failure names the test that made it. It is not
- * every door: a socket opened directly through `node:net`, an agent built on
- * `node:http`, a database driver dialling out, none of them pass through here,
- * and a suite in this repository already writes a request onto a raw socket.
- * What this is, then, is the near-miss caught rather than the class closed.
- *
- * Loopback is allowed and is the whole point of the exception: several suites
- * stand a real server up in this process and talk to it over a real socket,
- * which is deterministic, free and offline. What is refused is anything else.
- *
- * If a test genuinely needs to reach the outside world, it does not belong in
- * `pnpm test`. It belongs beside `pnpm smoke`, where the network is expected
- * and what it costs is accounted for.
+ * A test that genuinely needs the outside world belongs beside `pnpm smoke`.
  */
 
 import { afterEach } from "vitest";
@@ -41,9 +21,8 @@ const isLocal = (target: string): boolean => {
   try {
     parsed = new URL(target);
   } catch {
-    // Unparseable is not a host either; whatever it is, it is not a request
-    // going somewhere, and letting it through gives a clearer error than this
-    // file would.
+    // Not a URL, so not a request anywhere; the real fetch gives the clearer
+    // error.
     return true;
   }
   if (parsed.protocol === "data:" || parsed.protocol === "blob:") {
@@ -61,15 +40,10 @@ const addressOf = (input: RequestInfo | URL): string => {
 const reachesOutside = globalThis.fetch;
 
 /**
- * Where a refused request is written down as well as refused.
- *
- * Throwing alone is not enough, and the case that showed it is the one this
- * file was written for: the command that makes the request catches everything
- * on the way out, on purpose, so that one unreachable probe is a line in a
- * report rather than the end of a run. Under that, a throw here becomes a
- * verdict of "no answer", the test goes green, and the only sign left is that
- * nothing happened. So the attempt is recorded too, and the record is read
- * after each test by something no code under test can catch.
+ * Refused requests are recorded as well as thrown: code under test may catch
+ * everything (an unreachable probe becomes a "no answer" verdict and the test
+ * goes green), so the record is checked after each test, where nothing under
+ * test can catch it.
  */
 const refused: string[] = [];
 

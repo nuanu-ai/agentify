@@ -263,13 +263,11 @@ if [[ $mode == release || $mode == resume ]]; then
       from_tags="$(transition tags "$from")" to_tags="$(transition tags "$revision")"
   fi
   stack stop --timeout 60 app scanner scanner-worker
-  # A service this revision no longer defines, renamed or merged into
-  # another, is stopped by no step below and started by none, and left
-  # running it keeps the old release's code on the database and its queues
-  # while they are migrated under it. It goes with the old applications.
-  # Every profile is asked for, so that a job's service is not taken for one,
-  # and an answer without the application in it is a failure: read as it
-  # stands, it would name every container, the database's among them.
+  # A service this revision does not define is stopped and started by no step
+  # below; left running, it would keep the old code on the database while it is
+  # migrated. Every profile is asked for, so a job's service is not taken for
+  # one, and an answer without `app` in it is a failure: read as it stands, it
+  # would name every container, the database's among them.
   at "removing the services this revision no longer defines"
   defined=" $(stack --profile "*" config --services | tr '\n' ' ') "
   [[ $defined == *" app "* ]]

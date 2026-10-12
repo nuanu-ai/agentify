@@ -52,8 +52,8 @@ describe("dashboard magic links", () => {
 
     const message = messages[0] as Message;
     expect(message.subject).toMatch(/sign in/i);
-    // A client that draws no button leaves the person with the plain text, and
-    // a URL sharing a line with words is a URL somebody copies half of.
+    // A client that draws no button leaves the plain text, and a URL sharing a
+    // line with words is a URL somebody copies half of.
     expect(message.body.split("\n")).toContain(linkIn(message));
     for (const said of [message.body, message.html]) {
       expect(said).toMatch(/opens once/i);
@@ -122,8 +122,8 @@ describe("dashboard magic links", () => {
       retryAt: new Date(sentAt.getTime() + LINK_MIN_INTERVAL_MS),
     });
     expect(messages).toHaveLength(1);
-    // A request the interval refused was never a send, so it may not take one
-    // of the three the hour allows: the row count is what that costs.
+    // A request the minute refused was never a send, so it may not count toward
+    // the hourly limit.
     expect(rows.dashboard_link_sends).toHaveLength(1);
   });
 
@@ -142,11 +142,9 @@ describe("dashboard magic links", () => {
     rewindLinkSends(rows);
     const third = await identity.requestLink("person@example.com", "default");
 
-    // Production break: the third link spends the hour's allowance, and an
-    // accepted answer that still said "a minute" is a page that greys its
-    // resend for sixty seconds, hands it back, and buys the person a refusal
-    // for the rest of the hour. The wait behind a link is the wait in front of
-    // the next one, whichever wall that is.
+    // The third link spends the hour's allowance; an answer still saying "a
+    // minute" would bring the person back in sixty seconds to a refusal for the
+    // rest of the hour.
     const oldest = new Date(rows.dashboard_link_sends?.[0]?.sentAt as Date);
     expect(third).toStrictEqual({
       status: "accepted",
@@ -185,10 +183,9 @@ describe("dashboard magic links", () => {
       if (sent < 2) rewindLinkSends(rows);
     }
 
-    // The third link went out a moment ago, so both walls stand. The one the
-    // answer names is the one that is still there after the other has gone:
-    // told "forty seconds", a person presses in forty seconds and is refused
-    // for another hour.
+    // Both limits stand, and the answer names the later one: told "forty
+    // seconds", a person presses in forty seconds and is refused for another
+    // hour.
     const refused = await identity.requestLink("person@example.com", "default");
 
     expect(refused).toMatchObject({ status: "cooldown", wall: "hourly" });
@@ -206,9 +203,8 @@ describe("dashboard magic links", () => {
   });
 
   it("refuses a token whose recorded destination is outside the closed set, spending nothing", async () => {
-    // Where a link leads is one of the dashboard's screens or one scan's report,
-    // and a row naming anything else was not written by the door: it opens
-    // nothing rather than sending somebody to where it says (ADR-0026 §1).
+    // A row naming a destination outside the closed set was not written by the
+    // dashboard, and opens nothing rather than sending somebody where it says.
     const { identity, messages, rows } = memoryIdentity();
     await identity.requestLink("person@example.com", "default");
     const token = tokenIn(messages[0] as Message);

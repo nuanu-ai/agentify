@@ -1,4 +1,7 @@
-/** PostgreSQL authority for dashboard identity transactions and cutover. */
+/**
+ * PostgreSQL as the authority for dashboard identity transactions and
+ * migrations.
+ */
 
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -20,7 +23,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const migrationsIn = join(here, "..", "drizzle");
 
 const MERCHANT = "mer_the_merchant";
-/** What an account row held beside its merchant until the column was dropped. */
+/**
+ * A key as an account row held it before the migration that drops the column.
+ */
 const A_KEY_ON_THE_ROW = "the-merchants-own-key-long-enough";
 const NOW = new Date("2026-09-17T12:00:00.000Z");
 
@@ -58,10 +63,9 @@ if (databaseUrl === null) {
   }
 
   /**
-   * The whole database emptied, whatever the last test left in it. Some tests
-   * stop at a migration from before the tables took the dashboard's name, so a
-   * list of tables would miss either those or these; the database is this
-   * suite's own, so the schema goes whole.
+   * Some tests stop at a migration from before the tables were renamed, so the
+   * schema is dropped whole rather than by a list of tables; this suite owns
+   * its database.
    */
   async function emptyEverything(): Promise<void> {
     await pool.query("drop schema public cascade");
@@ -69,9 +73,9 @@ if (databaseUrl === null) {
   }
 
   /**
-   * Every checked-in migration, in order: the schema a deployment runs today,
-   * which is what the passwordless identity below is exercised against. The
-   * cutover tests stop at the migration they are about.
+   * Every checked-in migration, in order: the schema a deployment runs today.
+   * The cutover tests use `migrateThrough` instead, to stop at the migration
+   * they are about.
    */
   async function migrateEverything(): Promise<void> {
     const files = (await readdir(migrationsIn)).filter((file) => file.endsWith(".sql")).sort();
@@ -105,12 +109,8 @@ if (databaseUrl === null) {
   }
 
   /**
-   * The minute between two links to one address, moved out of the way.
-   *
-   * Every send this address has on record is dated a minute further back, so
-   * the next request is not refused by the interval and the ones already made
-   * stay inside the rolling hour they are counted in. A test that needs two
-   * links, or three, says so here rather than sleeping through the minute.
+   * Every send on record is dated a minute back, so the next request is not
+   * refused by the minute and the earlier ones stay inside the rolling hour.
    */
   async function rewindLinkSends(): Promise<void> {
     await pool.query("update dashboard_link_sends set sent_at = sent_at - $1::interval", [
@@ -226,9 +226,7 @@ if (databaseUrl === null) {
     });
 
     it("keeps the merchant on every account when the key column goes", async () => {
-      // The dashboard calls the gateway inside the process and reads no key
-      // off a row (ADR-0030), so the column that held one goes, and an
-      // account names its merchant and nothing more.
+      // An account names its merchant and nothing more; the key column goes.
       await emptyEverything();
       const files = (await readdir(migrationsIn)).filter((file) => file.endsWith(".sql")).sort();
       const dropped = files.findIndex((file) =>
@@ -276,7 +274,7 @@ if (databaseUrl === null) {
       );
 
       // The flag's own migration and nothing after it: the tables still carry
-      // the names they had then.
+      // their names from then.
       await run(files[flag] ?? "");
 
       expect(
@@ -509,11 +507,8 @@ if (databaseUrl === null) {
     });
 
     it("names a merchant's accounts and ends their sessions but the one kept", async () => {
-      // A cancelled wallet change signs out every session of every account
-      // naming the merchant but the one that pressed, and an announcement goes
-      // to those accounts and no other (ADR-0019). On PostgreSQL the account's
-      // merchant is a column the component maps, so the lookup is asked here
-      // and not only of the memory store.
+      // On PostgreSQL the account's merchant is a column the component maps, so
+      // the lookup is checked here and not only on the memory store.
       const messages: Message[] = [];
       const identity = identityOn(messages);
       const signedIn = async (email: string, merchant: string): Promise<string> => {
@@ -543,10 +538,9 @@ if (databaseUrl === null) {
     ] as const)(
       "ends %s live sessions behind more than a hundred expired rows, and counts only the live ones",
       async (_whose, reach) => {
-        // Rows of sessions that ran out are never deleted, and the store reads
-        // at most a hundred rows at a time. An account that has signed in many
-        // times has many such rows, and a sign-out that read only the first
-        // hundred would find them all expired and leave a live one signed in.
+        // Expired session rows are never deleted and the store reads at most a
+        // hundred rows at a time; a sign-out that read only the first hundred
+        // would find them all expired and leave a live one signed in.
         const messages: Message[] = [];
         const identity = identityOn(messages);
         const signedIn = async (email: string): Promise<string> => {
@@ -566,8 +560,8 @@ if (databaseUrl === null) {
                from generate_series(1, 120) as n`,
           [owner.id],
         );
-        // Rewriting the live row moves it behind the expired ones in the
-        // table, where a read that stops at a hundred rows never reaches it.
+        // Rewriting the live row moves it behind the expired ones, where a read
+        // that stops at a hundred never reaches it.
         await pool.query(
           "update dashboard_sessions set updated_at = updated_at where user_id = $1 and expires_at > now()",
           [owner.id],
@@ -613,9 +607,8 @@ if (databaseUrl === null) {
     });
 
     it("ends every other session of one account and leaves another account's alone", async () => {
-      // Signing out every other device from Settings (ADR-0026 §3). On
-      // PostgreSQL the sessions are rows the component reads by account, so
-      // the reach of the call is asked here and not only of the memory store.
+      // On PostgreSQL the sessions are rows the component reads by account, so
+      // the reach of the call is checked here and not only on the memory store.
       const messages: Message[] = [];
       const identity = identityOn(messages);
       const signedIn = async (email: string): Promise<string> => {
@@ -639,9 +632,8 @@ if (databaseUrl === null) {
     });
 
     it("keeps the operator flag off until the terminal sets it, and a session reads it afresh", async () => {
-      // Being an operator is a flag on the account's row (ADR-0026 §6). A
-      // sign-in writes the row without it; only the terminal's call moves it,
-      // and a session already open sees the move on its next reading.
+      // A sign-in writes the row without the flag; only the terminal's call
+      // sets it, and an open session sees the change on its next read.
       const messages: Message[] = [];
       const identity = identityOn(messages);
       await identity.requestLink("operator@example.com", "default");
@@ -684,8 +676,8 @@ if (databaseUrl === null) {
         wall: "interval",
         retryAt: expect.any(Date),
       });
-      // The refused request sent nothing, so it took nothing: the row count is
-      // what the three an hour are counted from.
+      // The refused request sent nothing, so it does not count toward the
+      // hourly limit.
       expect(
         (await pool.query("select count(*)::int as count from dashboard_link_sends")).rows[0],
       ).toStrictEqual({ count: 1 });
@@ -697,10 +689,8 @@ if (databaseUrl === null) {
         latest = await identity.requestLink("person@example.com", "default");
         expect(latest).toStrictEqual({ status: "accepted", retryAt: expect.any(Date) });
       }
-      // This store answers an accepted link the way the memory one does: with
-      // the wait in front of the next link. The third of the hour spent the
-      // allowance, so that wait is the hour and not the minute — a page told
-      // the minute hands its resend back sixty seconds later to be refused.
+      // The third link of the hour spent the allowance, so the wait is the rest
+      // of the hour, not the minute.
       const oldest = (await pool.query("select min(sent_at) as at from dashboard_link_sends"))
         .rows[0] as { at: Date };
       if (latest?.status !== "accepted") throw new Error("the third link should have gone out");

@@ -1,18 +1,11 @@
 /**
- * The part of jsdom the dashboard's one browser test touches.
- *
- * jsdom ships no type declarations of its own and `@types/jsdom` is a package
- * this repository does not have, so importing it is an implicit `any` and the
- * typecheck refuses. This names the four members the test uses instead of
- * pulling in a second dependency to describe the first.
- *
- * Deliberately narrow, and it stays that way. A hand-written declaration is a
- * claim about somebody else's package that nothing checks, so the less of
- * their surface it claims, the less of it can quietly become untrue — and the
- * test fails loudly at runtime if any of this stops being so.
+ * jsdom ships no types and this repository does not depend on `@types/jsdom`,
+ * so this names only the members the one browser test uses. A hand-written
+ * declaration is an unchecked claim about somebody else's package, so it stays
+ * this narrow; the test fails at runtime if any of it stops being true.
  */
 declare module "jsdom" {
-  /** The window as `beforeParse` hands it over: before any script has run. */
+  /** Before any script has run. */
   export interface JsdomWindow {
     Date: DateConstructor;
     setInterval: (handler: () => void, every?: number) => number;
@@ -23,9 +16,9 @@ declare module "jsdom" {
   }
 
   export interface JsdomOptions {
-    /** Inline scripts run only with this; without it the page is inert. */
+    /** Inline scripts run only with this. */
     runScripts?: "dangerously" | "outside-only";
-    /** The one seam before parsing, which is when an inline script runs. */
+    /** The one hook before parsing, which is when an inline script runs. */
     beforeParse?: (window: JsdomWindow) => void;
   }
 

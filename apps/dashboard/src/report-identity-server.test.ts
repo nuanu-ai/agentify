@@ -147,7 +147,7 @@ describe("the dashboard's internal route for the scanner", () => {
         "application/json",
         400,
       ],
-      // The question about a session reads the flag and has no way to carry one.
+      // The question about a session reads the flag and has no way to set one.
       [
         JSON.stringify({ operation: "session", cookie: "", renew: false, operator: true }),
         "application/json",
@@ -159,7 +159,7 @@ describe("the dashboard's internal route for the scanner", () => {
       expect(response.status, `${contentType}:${body.slice(0, 60)}`).toBe(status);
       expect(await response.text()).toBe("");
     }
-    // Nothing refused at the door reached a mailbox.
+    // Nothing refused reached a mailbox.
     expect(messages).toHaveLength(0);
   });
 
@@ -196,9 +196,9 @@ describe("the dashboard's internal route for the scanner", () => {
   });
 
   it("says whether the session's account is an operator, as the flag stands at each question", async () => {
-    // The scanner opens the operator's dashboard on this answer and nothing
-    // else (ADR-0026 §6), so a flag set or cleared at the terminal has to reach
-    // the very next question about a session that is already open.
+    // The scanner opens the operator's dashboard on this answer alone, so a
+    // flag set or cleared at the terminal has to reach the very next question
+    // about an open session.
     const messages: Message[] = [];
     const { identity, url } = await serve(async (message) => {
       messages.push(message);
@@ -223,9 +223,9 @@ describe("the dashboard's internal route for the scanner", () => {
   });
 
   it("passes the renewed cookie on when asked to renew a day-old session, and only then", async () => {
-    // A visit to a report counts toward the thirty days only if the cookie the
-    // dashboard renews reaches the browser, and the scanner can pass a line on
-    // from some of its answers and not from others (ADR-0026 §2).
+    // A visit counts toward the thirty days only if the renewed cookie reaches
+    // the browser, and the scanner passes it on from some of its answers and
+    // not others.
     const messages: Message[] = [];
     const { identity, rows, url } = await serve(async (message) => {
       messages.push(message);

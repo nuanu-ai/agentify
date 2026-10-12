@@ -1,19 +1,12 @@
 /**
- * The dashboard's way to the money path: the gateway's application, called
- * inside the process as the merchant on the signed-in account's row (ADR-0030).
- *
- * The screens are driven in `server.test.ts` over this client and the real
- * application. What is held here is what a page relies on and no screen test
- * can pin down by itself: that what goes in is held to the contract's request
- * schema before anything is done; that a refusal reaches a page in the words
- * and under the status the route at the door gives the same refusal, and a
- * wallet change's, which has no door, in words that are true about a mailbox; that a
- * call that does not finish is given up on at its deadline and said to be
- * possibly done, while a failure of ours is not dressed up as an answer; and
- * that the account a session is signed in as is the one a message names.
- *
- * The application is the real one on the gateway's in-memory harness, and the
- * route it is compared against is that harness's real HTTP surface.
+ * What a page relies on and no screen test pins down: input is held to the
+ * contract's request schema before anything is done; a refusal reaches a page
+ * in the words and status the HTTP route gives it, and a wallet change's
+ * refusal in words that are true about a mailbox; a call that does not finish
+ * is given up on at its deadline and said to be possibly done, while our own
+ * failure is not dressed up as an answer; and a message names the account the
+ * session is signed in as. The application is the real one on the gateway's
+ * in-memory harness.
  */
 
 import type { Gateway } from "@agentify/gateway";
@@ -22,7 +15,7 @@ import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { gatewayFor } from "./gateway.js";
 
-/** What makes a harness live: Base mainnet and its one facilitator. */
+/** Base mainnet and its one facilitator. */
 const LIVE = {
   PAYMENT_NETWORK: "eip155:8453",
   FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
@@ -47,7 +40,6 @@ afterEach(async () => {
   open = null;
 });
 
-/** The client of the harness's merchant, as its owner's session. */
 const asTheOwner = (harnessed: Harness, answerWithinMs?: number) =>
   gatewayFor(
     harnessed.gateway,
@@ -55,7 +47,7 @@ const asTheOwner = (harnessed: Harness, answerWithinMs?: number) =>
     answerWithinMs,
   );
 
-/** A card whose goods arrive after the purchase, which is the kind late goods are for. */
+/** Goods that arrive after the purchase, which is what late goods are for. */
 const AN_ESIM: Card = {
   merchant_item_id: "esim-7d",
   title: "A seven day eSIM",
@@ -66,7 +58,6 @@ const AN_ESIM: Card = {
   fulfill_deadline_seconds: 3_600,
 };
 
-/** A paid order of this merchant's for that card, and its identifier. */
 const aPaidOrder = async (harnessed: Harness, merchantId: string): Promise<string> => {
   const published = await harnessed.gateway.publishCard(merchantId, AN_ESIM);
   if (!published.ok) throw new Error(`the card was refused: ${JSON.stringify(published)}`);
@@ -76,7 +67,6 @@ const aPaidOrder = async (harnessed: Harness, merchantId: string): Promise<strin
   return offered.order.order.id;
 };
 
-/** The application with every call it is asked to make waiting for good. */
 const silenced = (application: Gateway): Gateway =>
   new Proxy(application, {
     get(target, property, receiver) {
@@ -85,7 +75,6 @@ const silenced = (application: Gateway): Gateway =>
     },
   });
 
-/** The application with one call answered the way a test says. */
 const answering = (application: Gateway, name: keyof Gateway, answer: () => unknown): Gateway =>
   new Proxy(application, {
     get(target, property, receiver) {
@@ -99,8 +88,8 @@ const answering = (application: Gateway, name: keyof Gateway, answer: () => unkn
 
 describe("what goes in", () => {
   it("refuses an address that is not one in the schema's words, and changes nothing", async () => {
-    // The page checks the address before sending it; this is the second line,
-    // and it says what the contract says rather than something of its own.
+    // The page checks the address first; this second check says what the
+    // contract says rather than something of its own.
     const harnessed = await started();
 
     const refused = await asTheOwner(harnessed).setPayoutWallet("0x1234");
@@ -133,8 +122,8 @@ describe("what goes in", () => {
 
 describe("a refusal", () => {
   it("reaches the page in the words and under the status the route at the door gives it", async () => {
-    // One fact, two readers: a merchant on the keys screen and their engineer
-    // reading the API are told the same thing about a key that is not there.
+    // A merchant on the keys screen and their engineer reading the API are told
+    // the same thing about a missing key.
     const harnessed = await started();
     const served = await serve(harnessed);
     if (open !== null) open.served = served;
@@ -155,8 +144,8 @@ describe("a refusal", () => {
   });
 
   it("answers an order of another merchant's as one that is not there", async () => {
-    // The same answer an identifier naming nothing gets, so reading orders is
-    // not a way of finding out what somebody else sold.
+    // The same answer an unknown identifier gets, so reading orders does not
+    // reveal what somebody else sold.
     const harnessed = await started();
     const other = await harnessed.addMerchant();
     const theirs = await aPaidOrder(harnessed, other.id);
@@ -178,11 +167,9 @@ describe("a refusal", () => {
 });
 
 describe("a wallet change the gateway would not record", () => {
-  // No route at the door makes one, so its words are the dashboard's own, and
-  // in every case nothing was written. What they claim about a mailbox is the
-  // part that has to be true: a merchant who has read a message about a change
-  // must not be told nothing was sent, and one who has none must not be sent
-  // looking for it.
+  // Nothing was written in any case. A merchant who has read a message about a
+  // change must not be told nothing was sent, and one who has none must not be
+  // sent looking for it.
   const ANOTHER_WALLET = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
 
   it("says there is nobody to tell where no account names the merchant", async () => {
@@ -253,7 +240,6 @@ describe("a wallet change the gateway would not record", () => {
 
 describe("late goods", () => {
   it("are delivered to the order they name, which then has them", async () => {
-    // What `woo:recover` does for an order whose goods the shop owed.
     const harnessed = await started();
     const orderId = await aPaidOrder(harnessed, harnessed.merchant.id);
     await workOnce(harnessed, { onOrder: () => ({ accepted: {} }) });
@@ -269,8 +255,8 @@ describe("late goods", () => {
 
 describe("a call that does not finish", () => {
   it("is given up on at its deadline, saying what was asked may have been done", async () => {
-    // The work behind it is not stopped: a database that answers late still
-    // writes. So the page must not say nothing happened.
+    // The work behind it is not stopped (a late database still writes), so the
+    // page must not say nothing happened.
     const harnessed = await started();
     const client = gatewayFor(
       silenced(harnessed.gateway),
@@ -288,9 +274,8 @@ describe("a call that does not finish", () => {
   });
 
   it("is not answered for when it fails in our own code, since it may have failed after the work", async () => {
-    // A thrown error goes on to the page's own handler, which says something in
-    // the dashboard is broken; turned into a refusal here it would have to say
-    // what was or was not done, which nobody knows.
+    // Turned into a refusal here, it would have to say what was or was not
+    // done, which nobody knows.
     const harnessed = await started();
     const client = gatewayFor(
       answering(harnessed.gateway, "setSelling", () => {

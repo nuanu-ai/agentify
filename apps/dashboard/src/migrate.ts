@@ -1,15 +1,7 @@
 /**
- * Applies the dashboard's checked-in migrations to the database DATABASE_URL
- * names.
- *
- * A step somebody takes rather than something the dashboard does on start: a
- * process that migrates on boot migrates once per replica, and the day there
- * are two of them they race each other over the same tables. In the local stack
- * this runs in the `migrate` service, before the dashboard is started.
- *
- * These are the dashboard's own identity tables and their history is kept apart
- * from the gateway's, in `drizzle.cabinet_migrations` — see `database.ts` for
- * why two migration sets cannot share one journal.
+ * A step run before the dashboard starts (the `migrate` service locally), not
+ * on boot: a process that migrates on boot migrates once per replica, and
+ * replicas race over the same tables.
  */
 
 import { dirname, join } from "node:path";

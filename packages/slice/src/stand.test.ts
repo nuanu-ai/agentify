@@ -1,10 +1,8 @@
 /**
- * The stand is local; the gateway it operates is not required to be.
- *
- * This process-level test uses 0.0.0.0 deliberately. It reaches the local
- * fake gateway, but it is not one of the hostnames the old safety policy
- * called loopback. Putting that policy back must make this test lose the
- * purchase request.
+ * The stand is local; the gateway it operates need not be. This test uses
+ * 0.0.0.0 deliberately: it reaches the local fake gateway without being a
+ * loopback hostname, so a policy that limited the stand to loopback gateways
+ * would make this test lose the purchase request.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -400,12 +398,10 @@ const quietGateway = async (): Promise<{ port: number }> => {
 describe("the parameters an agent typed", () => {
   it("are still there after asking what the product costs", async () => {
     // The promise: what you typed is what the next press sends. Asking the
-    // price is a GET that carries no parameters, so nothing about it needs
-    // them — but the box they were typed into is on the form that press
-    // submits, and a console that threw them away sent the buyer back to a
-    // placeholder and priced, opened and paid for a purchase with fields
-    // nobody meant. Losing typing is not a cosmetic fault when the next
-    // button along spends money.
+    // price is a GET that carries no parameters, but the box they were typed
+    // into is on the form that press submits, and a console that threw them
+    // away would send the buyer back to a placeholder and price, open and pay
+    // for a purchase with fields nobody meant.
     const { port } = await quietGateway();
     const { press, page } = await standFacing(port);
 
@@ -522,14 +518,11 @@ const offersToDeliverOwed = (page: string): boolean => page.includes('value="del
 describe("an order the stand closed on its own", () => {
   it("leaves the Owed panel with nothing to press, without anybody pressing Read", async () => {
     // The promise: the merchant's seat shows the orders the gateway has, not
-    // the ones it had when somebody last pressed something. "Accept, then
-    // deliver after the delay" closes the order from a timer inside this
-    // process, so nothing the operator did is there to bring the screen up to
-    // date afterwards — and the log said the goods had gone and the gateway had
-    // taken them while the panel beside it still offered Deliver now and
-    // Refuse. Pressing either sends a closing call for an order that is
-    // already closed, so the console was inviting the one mistake it exists to
-    // teach you to avoid.
+    // the ones it had at the last press. "Accept, then deliver after the delay"
+    // closes the order from a timer inside this process, so nothing the
+    // operator did brings the screen up to date. A panel still offering Deliver
+    // now and Refuse would invite a closing call for an order that is already
+    // closed.
     const owing = await gatewayOwedOneOrder();
     const { press, page } = await standFacing(owing.port);
 
@@ -640,10 +633,8 @@ const gatewayEndingAnOrderItself = async (): Promise<{
 describe("an order the gateway ended by itself", () => {
   it("leaves the Owed panel with nothing to press, without anybody pressing Read", async () => {
     // The promise as above, from the other direction: an event arrives on the
-    // subscription and nobody at the console did anything to cause it, so
-    // nothing they did afterwards is there to bring the screen up to date. The
-    // log wrote the event down and the panel beside it went on offering to
-    // deliver an order that had already ended.
+    // subscription that nobody at the console caused, and the panel must not go
+    // on offering to deliver an order that has already ended.
     const ending = await gatewayEndingAnOrderItself();
     const { page } = await standFacing(ending.port);
 

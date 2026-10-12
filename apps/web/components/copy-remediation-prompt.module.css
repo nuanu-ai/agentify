@@ -1,9 +1,7 @@
 /*
- * The component draws no box of its own: its row of buttons, its message and
- * its fallback field join the layout of whatever holds them. In a row of
- * several actions a message or a field therefore opens on a line of its own
- * under all the buttons, instead of widening one button's column and pushing
- * its neighbours about.
+ * The component draws no box of its own, so in a row of several actions its
+ * message or fallback field opens on a line of its own under all the buttons
+ * rather than widening one button's column.
  */
 .actions {
   display: flex;

@@ -30,13 +30,9 @@ jobs:
       - run: ./scripts/scan-secrets.sh . "$GITHUB_SHA"
 
   # Every check that needs the source, the dependencies or a database shares
-  # one checkout, one install and one database server. Matrix jobs used to
-  # spend almost nine minutes on setup while the checks themselves took
-  # seconds, and a second job for half the workspace spent that again and
-  # answered on a different version of Postgres than production runs. The jobs
-  # beside this one are split by what they need — a browser, the portal build,
-  # only files — never by which half of the product they check. One gate has
-  # one answer: this exact commit is fit to release, or it is not.
+  # one checkout, one install and one database server, so setup is paid once.
+  # The jobs beside this one are split by what they need — a browser, the
+  # portal build, only files — never by which half of the product they check.
   gate:
     name: gate
     needs: secret_scan
@@ -77,10 +73,9 @@ jobs:
       # makes `pnpm test:db`'s database; this makes the one the scanner's suites
       # drop and remake beside it (deploy/postgres-init/ does both on a laptop).
       #
-      # The account is the cluster's own superuser, and three of the migrations
-      # are why that matters: they put the browser-observation tables under
-      # FORCE row level security and write no policy for them, so an owner that
-      # is not a superuser is subject to a policy set that admits nobody.
+      # The account must be the cluster's superuser: migrations put the
+      # browser-observation tables under FORCE row level security with no
+      # policy, which admits no owner that is not a superuser.
       - name: give the scanner's suites their database on the same server
         env:
           PGPASSWORD: ci-only
@@ -109,12 +104,9 @@ jobs:
       # the package tsconfig that decides what ships; the latter reads the whole
       # source tree including tests and emits nothing.
       - run: pnpm build
-      # This one runs the site it has just built, so it comes after the build.
-      # It reads APP_BASE_URL to know which absolute URLs that site should be
-      # publishing in its robots and its sitemap — the built server reads the
-      # variable when it answers, not when it was built, so this step is the
-      # only one that needs it. It starts that server on loopback and asks it;
-      # it reaches nothing outside.
+      # Runs the site just built, on loopback, so it comes after the build. The
+      # built server reads APP_BASE_URL when it answers, not when it was built,
+      # for the absolute URLs in its robots and sitemap.
       - run: pnpm scanner:self-readiness
         env:
           APP_BASE_URL: https://agentify.ad
@@ -123,16 +115,14 @@ jobs:
       # The door to the operator's dashboard is Next's answer, so it is asked of
       # the build too, on a database the migrations built: /admin is the site's
       # 404 page for everybody but an operator, and the dashboard for an
-      # operator (ADR-0026 §6).
+      # operator.
       - run: pnpm scanner:test:admin-door
         env:
           MIGRATION_TEST_DATABASE_URL: postgresql://agentify:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
 
-  # The browser observer's test drives a real Chromium, and installing one with
-  # its system packages is the slowest step in this file by a wide margin:
-  # nineteen seconds on a good day and three minutes on a bad one. It runs
-  # beside the gate instead of in front of every other check, and it needs no
-  # database.
+  # Installing Chromium with its system packages is the slowest step in this
+  # file, so the browser observer's test runs beside the gate rather than in
+  # front of every other check.
   browser:
     name: browser
     needs: secret_scan
@@ -175,10 +165,8 @@ jobs:
       - run: pnpm build:portal
 
   # The decision log needs only bash and files, and the release's own tests
-  # need Docker, which the runner has. One of those renders each channel from
-  # the real compose files and runs the release's preflight over it, which is
-  # a Node script with no dependencies: Node comes from .nvmrc, as it does for
-  # the gate, and nothing is installed.
+  # need Docker, which the runner has, and Node for the release's preflight, a
+  # script with no dependencies; nothing is installed.
   decisions:
     name: decisions
     needs: secret_scan

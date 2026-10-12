@@ -5,12 +5,6 @@ import type { Effect, Order } from "./model.js";
 import { ORDER_EVENT_KINDS, ORDER_STATES } from "./model.js";
 import { moneyInvariantViolations } from "./money.js";
 
-/**
- * The invariants that make this package worth writing. Every test below is a
- * promise about somebody else's money, and every one of them names what breaks
- * for a real person if it fails.
- */
-
 const MONEY_EFFECTS: readonly Effect["kind"][] = ["execute_payment", "release_goods_to_agent"];
 
 function moved(effects: readonly Effect[]): readonly string[] {
@@ -25,9 +19,9 @@ describe("the invariants of the order's money", () => {
   });
 
   it("holds after every event the machine accepts, from every state", () => {
-    // The gateway will feed this machine pairings nobody planned. If a single
-    // one of them produced an order where the money and the state disagree, a
-    // buyer would be out of pocket with no record saying so.
+    // The gateway will feed the machine pairings nobody planned. Any one that
+    // leaves the money and the state disagreeing leaves a buyer out of pocket
+    // with no record saying so.
     let accepted = 0;
 
     for (const state of ORDER_STATES) {
@@ -45,27 +39,11 @@ describe("the invariants of the order's money", () => {
     expect(accepted).toBeGreaterThan(60);
   });
 
-  // The negative controls. Without them the invariants would be decoration and
-  // the two sweeps above would prove nothing.
-  //
-  // Each one names the rule it is about by the sentence that rule writes, and
-  // reads the whole list rather than its length. The sentence is not an
-  // implementation detail: `refuseToWriteAnImpossibleOrder` in the gateway
-  // joins these into the error a person reads when an order will not persist,
-  // and it is all that person is given to work out which of eight things went
-  // wrong.
-  //
-  // Asserting only that some rule fired cost more than it looks. Four of the
-  // eight rules could be deleted one at a time with the whole suite green,
-  // because a control that reads a length is satisfied by any other rule that
-  // fires on the same order; and seven of the eight sentences could be replaced
-  // with "xxx", the exception being the one the gateway's own test reads out of
-  // the error text.
-  //
-  // Two of the rules are narrower restatements of the first, which catches any
-  // settled order in a state that records neither goods nor a debt. They earn
-  // their place by saying something sharper about the two cases that matter
-  // most, and reading the full list is what holds them to it.
+  // Negative controls for the invariants. Each reads the whole list of broken
+  // rules rather than its length, because a control that reads a length is
+  // satisfied by any other rule that fires on the same order. The sentences are
+  // not an implementation detail: the gateway joins them into the error a
+  // person reads when an order will not persist.
 
   it("catches an order that claims a debt without a charge behind it", () => {
     const impossible: Order = { ...reach("dispatched"), state: "refund_due", payment: "none" };
@@ -102,10 +80,9 @@ describe("the invariants of the order's money", () => {
   });
 
   it("catches an order carrying on with an unaccounted charge behind it", () => {
-    // There are two places to wait for a payment layer that went quiet, and
-    // both are orders the machine has stopped moving. Anywhere else is an
-    // order going about its business with an open question about the buyer's
-    // money behind it.
+    // Only an order the machine has stopped moving may wait on a payment layer
+    // that went quiet. Anywhere else the order is carrying on with an open
+    // question about the buyer's money behind it.
     const impossible: Order = { ...reach("dispatched"), payment: "outcome_unknown" };
 
     expect(moneyInvariantViolations(impossible)).toStrictEqual([
@@ -115,9 +92,8 @@ describe("the invariants of the order's money", () => {
   });
 
   it("catches an order that moved on while its charge was still being executed", () => {
-    // The machine will not produce this, and that is exactly why the rule is
-    // here: it is the shape the gateway's own records have to be checked
-    // against. Whatever the charge does now, it happens to a decided order.
+    // The machine never produces this; the rule exists so the gateway's stored
+    // records can be checked against it.
     const dispatched = reach("dispatched");
     const impossible: Order = {
       ...dispatched,
@@ -135,14 +111,9 @@ describe("the invariants of the order's money", () => {
   });
 
   it("catches a charge in flight with no record of when it started", () => {
-    // Nothing but the settle's own outcome moves an order in this stage, and
-    // the outcome is asked for on a clock that runs from this instant. Without
-    // it the order is frozen and invisible, which is the one way an order can
-    // wait forever with the buyer's money in the air.
-    //
-    // `deadlines.test.ts` already reaches for this rule while proving that such
-    // an order keeps its clock. This is its own control, in the file the rule
-    // lives beside, and it is what pins the sentence.
+    // Only the settle's own outcome moves an order in this stage, and that
+    // outcome is asked for on a clock that runs from this instant. Without it
+    // the order waits forever, invisibly, with the buyer's money in the air.
     const fulfilled = reach("fulfilled");
     const impossible: Order = {
       ...fulfilled,
@@ -173,16 +144,6 @@ describe("a refusal before the charge never creates a debt", () => {
 });
 
 describe("money taken is always accounted for", () => {
-  // The sweep that used to open this block walked the same sixteen states and
-  // eighteen events as the one above and looked for one shape by hand: the
-  // buyer's money gone and the order closed as though nothing were owed. Every
-  // order it could have flagged breaks a rule the sweep above already reads —
-  // money settled outside the states that may hold it, and a charge in flight
-  // outside the states that may be charging — so it could only ever fail in
-  // company. Measured, on a refunded order closed as cancelled by a departure:
-  // both went red together, and deleting the hand-written one left the failure
-  // exactly where it was.
-
   it("turns the departure of a merchant who was already paid into a debt", () => {
     const paid = walk(newOrder("async"), [
       { kind: "payment_verified", at: T0 + 1 },
@@ -196,9 +157,8 @@ describe("money taken is always accounted for", () => {
 
 describe("an asynchronous purchase is never made at an unknown stock level", () => {
   it("never reaches a charge after a silent price check", () => {
-    // ADR-0002 §3: an open failure here would produce orders where the money
-    // is taken and the goods do not exist, while the refund mechanism is not
-    // even chosen yet.
+    // Failing open here would take the buyer's money for goods that do not
+    // exist.
     const { order } = must(newOrder("async", { priceCheck: "merchant" }), {
       kind: "quote_silent",
       at: T0 + 1,

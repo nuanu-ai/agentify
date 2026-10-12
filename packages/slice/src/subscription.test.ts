@@ -1,21 +1,13 @@
 /**
- * What the merchant's health signal is allowed to claim.
+ * What the merchant's health signal is allowed to claim. Every case here is a
+ * sentence somebody reads off `docker compose ps` and acts on, and a container
+ * reporting itself healthy while its subscription is dead is worse than one
+ * reporting nothing.
  *
- * Every case here is a sentence somebody reads off `docker compose ps` and acts
- * on. If one of these goes red, that sentence is wrong in the direction that
- * matters: a container reporting itself healthy while its subscription is dead
- * is worse than one reporting nothing at all, because it is the answer to the
- * question somebody thought to ask.
- *
- * The window case is the one that earned this file. The first version of this
- * signal sized its doubt to the SDK's retry backoff alone and called that the
- * longest a broken subscription could stay quiet. It is not: the worker waits
- * out its own poll deadline before it gives up on a call, and only then does it
- * rest, so a gateway that accepts connections and never answers produces
- * reports far further apart than the backoff. The signal went green in the gaps
- * and grew greener as the backoff climbed. Nothing caught it but a probe run by
- * hand, which is why the arithmetic now has a test with the two terms named
- * separately.
+ * The doubt window has to cover the worker's own poll deadline plus the rest
+ * after it, not the retry backoff alone: a gateway that accepts connections and
+ * never answers produces failure reports that far apart, and a narrower window
+ * goes green in the gaps.
  */
 
 import { WORKER_PROBLEM_KINDS, type WorkerProblem } from "@nuanu-ai/agentify";
@@ -73,13 +65,12 @@ describe("what the merchant may say about its subscription", () => {
   });
 
   it("stays stopped after a fatal problem, and says nothing more about it", () => {
-    // The order of these two is the case that matters, and it is how a real
-    // death arrives: the polls fail for a while, and then the loop ends on
-    // something fatal. A subscription that is over does not quietly become a
-    // subscription that is merely doubted, and — the part a mutation caught
-    // missing here — the quiet after it is not a recovery to announce. Saying
-    // "answering again" about a worker that will never poll again is the same
-    // lie as a green container, told in the log instead of the file.
+    // The order of these two is how a real death arrives: the polls fail for a
+    // while, and then the loop ends on something fatal. A subscription that is
+    // over does not quietly become one that is merely doubted, and the quiet
+    // after it is not a recovery to announce: "answering again" about a worker
+    // that will never poll again is the same lie as a green container, told in
+    // the log.
     const failing = readProblems([pollFailed], NOTHING_HAS_GONE_WRONG, 1_000);
     const over = readProblems([pollFailed, versionMismatch], failing.known, 2_000);
 

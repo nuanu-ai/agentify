@@ -1,34 +1,17 @@
 /**
- * A gateway made of the route table, for the tests to talk to.
+ * A gateway made of the route table, for the tests to talk to over a real
+ * socket, with no network. Everything it knows about the surface it reads from
+ * `@nuanu-ai/agentify-contracts`, so a test cannot pass against an address that
+ * no longer exists.
  *
- * It exists so that the SDK is exercised over a real socket against the real
- * addresses, with the real documents going each way, and without a network.
- * Everything it knows about the surface it reads out of `@nuanu-ai/agentify-contracts`
- * at startup: which routes may be served (`mountableRoutes`), at which
- * addresses, under which method, behind which door, and which schema each
- * body and each answer is held to. Nothing about the surface is written down
- * here a second time, so a route that moves in the table moves here too, and a
- * test cannot pass against an address that no longer exists.
+ * It is strict both ways: a request body the contract refuses gets a complaint,
+ * and a scripted answer is held to the route's document before it goes out.
+ * A test that needs to send something malformed says so by scripting `text`
+ * instead of `body`. It is not a queue: redelivery and ordering are scripted
+ * by answering differently on a later call.
  *
- * It is strict in both directions on purpose. A request whose body the
- * contract refuses is answered with a complaint rather than with the answer
- * the test wanted, so an SDK that sends a document nobody would accept fails
- * loudly here instead of on a merchant's first order. And an answer a test
- * scripts is held to the route's own document before it is sent, so a test
- * cannot prove the SDK reads something the gateway could never say. Where a
- * test needs to send something malformed on purpose — a body that is not JSON,
- * an error page from a proxy — it says so by scripting `text` instead of
- * `body`, and that text goes out untouched.
- *
- * One thing it is not: a queue. Redelivery, visibility timeouts and the order
- * of a stream are the gateway's behaviour, and a test that needs them scripts
- * them by answering differently on the second call. That keeps the double
- * honest — it models the wire, not the machine behind it.
- *
- * This file is not part of the published surface: `index.ts` does not
- * re-export it, and its name keeps it out of the test glob. It depends on
- * `node:http` and on the contracts package, so it drags nothing into a
- * merchant's tree either.
+ * Not published: `index.ts` does not export it and its name keeps it out of
+ * the test glob.
  */
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -51,11 +34,9 @@ export interface GatewayCall {
 }
 
 /**
- * What a test wants sent back.
- *
- * `body` is a document and is held to the route's own schema before it goes
- * out. `text` is bytes and is not held to anything, which is what a test uses
- * to play a broken gateway, a proxy's error page or a truncated answer.
+ * What a test wants sent back. `body` is a document, held to the route's own
+ * schema before it goes out; `text` is sent untouched, to play a broken
+ * gateway, a proxy's error page or a truncated answer.
  */
 export interface GatewayAnswer {
   readonly status?: number;
@@ -143,12 +124,9 @@ const send = (response: ServerResponse, status: number, text: string): void => {
 };
 
 /**
- * Refuses a call, having first read whatever it was carrying.
- *
- * The reading is not decoration. A response ended while the request's body is
- * still arriving leaves that body in the socket, and the next call on the same
- * connection reads it as its own — which is a state no test would ever guess
- * at from the assertion that failed.
+ * Refuses a call, having first read whatever it was carrying. A response ended
+ * while the body is still arriving leaves it in the socket, and the next call
+ * on that connection would read it as its own.
  */
 const complain = async (
   request: IncomingMessage,
@@ -263,12 +241,9 @@ export const startFakeGateway = async (options: FakeGatewayOptions): Promise<Fak
       return;
     }
 
-    // A caller that goes away — a worker stopping abandons its parked poll —
-    // ends the exchange here too. A real gateway notices the connection has
-    // gone and drops the work it was holding; a double that kept the request
-    // open would leave the server unable to answer anything else on that
-    // connection, which is a state no gateway would be in and which no test
-    // should have to reason about.
+    // A caller that goes away, such as a worker abandoning its parked poll,
+    // ends the exchange here too, as a real gateway drops work for a closed
+    // connection; otherwise that connection could answer nothing else.
     const clientLeft = Symbol("the caller went away");
     const gone = new Promise<typeof clientLeft>((resolve) => {
       response.on("close", () => resolve(clientLeft));

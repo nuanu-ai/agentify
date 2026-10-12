@@ -255,7 +255,7 @@ export function CardSignal({
               theme: "stripe",
               // Stripe Elements renders in an iframe and cannot read our CSS
               // custom properties, so these mirror --accent / --radius-control
-              // by value. Keep in sync with globals.css.
+              // by value. Keep in sync with @agentify/visual/tokens.css.
               variables: { colorPrimary: "#0f736e", borderRadius: "12px" },
             },
           }}

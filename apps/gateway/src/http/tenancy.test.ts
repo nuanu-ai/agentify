@@ -1,17 +1,13 @@
 /**
- * Two merchants, over the real HTTP surface.
+ * Two merchants, over the real HTTP surface. The failure guarded against is one
+ * merchant seeing another's money, so every test seeds two merchants and
+ * asserts about both: a scoping test with one merchant passes against an
+ * unscoped store too. A test here that still passes with a
+ * `where merchant_id = ...` taken out of the store is theatre and belongs
+ * deleted.
  *
- * This file exists because of the one failure ADR-0010 names: one merchant
- * seeing another's money. Every test below therefore seeds two merchants and
- * asserts about both of them, and that is not a stylistic preference — a
- * scoping test that seeds one merchant proves nothing at all, because the
- * unscoped implementation this change replaces passes it. If a test here can
- * still pass with a `where merchant_id = ...` taken out of the store, it is
- * theatre and belongs deleted rather than kept.
- *
- * Everything goes through `serve`, so the door, the mounting loop and the flows
- * all run. What is being checked is the answer a merchant's own client would
- * receive, not the shape of a query.
+ * Everything goes through `serve`, so what is checked is the answer a
+ * merchant's own client would receive, not the shape of a query.
  */
 
 import type { Card, MerchantCardList, Receipt } from "@nuanu-ai/agentify-contracts";
@@ -237,12 +233,10 @@ describe("what a key can do", () => {
     expect(JSON.stringify(stillB.body)).not.toContain("not-yours");
 
     // The same call with goods that do not fit B's card is answered exactly
-    // the same way, and this is the half that has to be said out loud. The
-    // goods are now weighed against the card that sold the order, and the
-    // card is B's — so a check that ran before the order was found to be
-    // somebody else's would answer 409 and quote B's own declaration back to
-    // A: the order exists, and here is what it was sold as. Whose the order is
-    // is settled first, and A learns nothing either way.
+    // the same way. The goods are weighed against the card that sold the
+    // order, which is B's, so a check run before ownership would answer 409
+    // and quote B's declaration back to A. Whose the order is is settled
+    // first, and A learns nothing either way.
     const probed = await served.call("POST", `/v0/orders/${orderId}/deliver`, {
       body: { nothing_bs_card_declares: "x" },
       headers: keyOf(a),

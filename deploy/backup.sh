@@ -4,10 +4,10 @@
 # pg_dump of every database on the server except postgres, the test suites'
 # *_test and the scratch that restores and checks leave, which is agentify. It
 # also holds the server's roles, the row count of each table as its dump holds
-# it, production.env and release.json. It never holds
-# backup.env, which opens the snapshots. The dumps are taken under the
-# release lock, waited for five minutes at most (then exit 75 with nothing
-# dumped); the upload runs after the lock is released.
+# it, production.env and release.json. It never holds backup.env, which opens
+# the snapshots. The dumps are taken under the release lock, waited for five
+# minutes at most (then exit 75 with nothing dumped); the upload runs after the
+# lock is released.
 set -Eeuo pipefail
 umask 077
 trap 'echo "backup: line $LINENO failed: $BASH_COMMAND" >&2' ERR

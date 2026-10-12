@@ -8,12 +8,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
 };
 
-/**
- * The front page is the owner landing. It has been since `/` redirected to
- * `/owner`; what changed is that it now renders here, with a hero that names
- * both things the site does (docs/research/31-user-journey.md §2). `/owner`
- * keeps answering, as a redirect to this page, for the links already shared.
- */
+/** The front page is the owner landing; `/owner` redirects here. */
 export default function HomePage() {
   return <LandingPage config={LANDINGS.owner} />;
 }

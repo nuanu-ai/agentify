@@ -28,14 +28,7 @@ type LockedRateEntry = Readonly<{
   retryAt?: Date;
 }>;
 
-/**
- * A refusal carries the moment the window frees and the wall that set it,
- * because the doors in front of it have to tell a person how long they are
- * actually waiting and, where they can see the wall, why.
- *
- * What was allowed carries a receipt per rolling wall it spent, so a caller
- * that turns out not to have used what it took can give that one back.
- */
+/** One rolling event spent, which a caller that did not use it can refund. */
 export type SpentRateEvent = Readonly<{ kind: RateKind; eventId: string }>;
 
 export type RateLimitOutcome =
@@ -84,10 +77,9 @@ async function lockRollingRate(
 }
 
 /**
- * When a full rolling window lets one more request through: the oldest event
- * that keeps it full leaves the window an hour after it happened. Reading the
- * row rather than adding an hour to now is the whole point — a window filled
- * fifty minutes ago frees up in ten minutes, not in an hour.
+ * When a full rolling window lets one more request through: an hour after the
+ * oldest event that keeps it full, not an hour from now. A window filled fifty
+ * minutes ago frees in ten.
  */
 async function rollingRetryAt(
   tx: DatabaseTransaction,
@@ -106,8 +98,8 @@ async function rollingRetryAt(
     limit 1
   `);
   const oldestCounted = result.rows[0]?.occurred_at;
-  // The count and this row come from one predicate, in one transaction, under
-  // one lock: a full window always holds the event that keeps it full.
+  // The count and this row come from one predicate under one lock, so a full
+  // window always holds this row.
   if (oldestCounted === undefined)
     throw new Error(`a full ${entry.kind} window was read without the event that fills it`);
   return new Date(new Date(oldestCounted).getTime() + HOUR_MS);
@@ -224,14 +216,9 @@ export async function consumeRateLimit(
 }
 
 /**
- * Of the walls standing, the one that is still there when the others have
- * gone: the latest moment, and the kind that set it.
- *
- * This is a floor on the wait, not a promise about the door. Two of these
- * walls are shared — a scan session, an IP that a whole office sits behind —
- * so somebody else's request can refill one between the answer and the
- * return. What the answer can say honestly is that nothing passes before this
- * moment.
+ * The latest moment any full limit frees, and the limit that set it. A floor
+ * on the wait, not a promise: a shared limit (a scan session, an office behind
+ * one IP) can be refilled by someone else in the meantime.
  */
 function governingWall(walls: readonly LockedRateEntry[]): { retryAt: Date; wall: RateKind } {
   let latest: { retryAt: Date; wall: RateKind } | undefined;
@@ -245,16 +232,10 @@ function governingWall(walls: readonly LockedRateEntry[]): { retryAt: Date; wall
 }
 
 /**
- * Give back one rolling event that was taken and not used.
- *
- * The walls count two different things, and only one of them can be given
- * back. An address's hour counts letters that arrived in somebody's mailbox:
- * when the send is refused downstream no letter arrived, and charging the
- * address for it means a person who obeys "ask again in forty seconds" spends
- * their hour on refusals. A session's or an IP's hour counts requests arriving
- * at us, and the request did arrive, so it stays spent. A send we merely could
- * not confirm is not refunded either: we know a letter went out only when the
- * far side says it did, and we do not give back what we cannot prove unspent.
+ * Give back one rolling event that was taken and not used. Refund only an
+ * address's hour, and only when the send was refused before any letter went
+ * out: that limit counts letters sent. A session's or an IP's hour counts requests, which
+ * did arrive, and a send that could not be confirmed stays spent.
  */
 export async function refundRateLimitEvent(eventId: string): Promise<void> {
   await getDatabase().db.execute(sql`delete from rate_limit_events where id = ${eventId}`);
@@ -283,11 +264,6 @@ export async function consumeRateLimitsAtomically(
   return transaction ? await consume(transaction) : await getDatabase().db.transaction(consume);
 }
 
-/**
- * A scan refused outright says when the wall it hit frees, for the same reason
- * the link doors do: the caller is a machine, and an hour it made up is an
- * hour of somebody's agent doing nothing for no reason.
- */
 export type ScanRateDecision =
   | Readonly<{ verdict: "allowed" }>
   | Readonly<{ verdict: "challenge_required" }>

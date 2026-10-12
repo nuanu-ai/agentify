@@ -13,13 +13,10 @@ export const metadata: Metadata = {
 };
 
 /**
- * Where a person who owns no merchant starts (ADR-0026 §1).
- *
- * The dashboard sends a signed-in person without a merchant here when their
- * link had no destination of its own, because the scanner is what knows
- * whether they own a report: somebody who does opens the latest of them,
- * never a screen offering to make a merchant, and somebody who owns none goes
- * back to the dashboard. A stranger is sent to sign in.
+ * The dashboard sends a signed-in person who owns no merchant here when their
+ * link had no destination of its own, because the scanner knows whether they
+ * own a report. Someone who does opens the latest one, never a screen offering
+ * to make a merchant; someone who owns none goes back to the dashboard.
  */
 export default async function LatestReportPage() {
   const visitor = await visitorOf((await headers()).get("cookie"));

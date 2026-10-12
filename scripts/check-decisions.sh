@@ -1,23 +1,21 @@
 #!/usr/bin/env bash
 #
-# Checks the decision log: file names and the uniqueness of numbers.
+# Checks the decision log and its boundary with the code.
 #
-# Why this file exists. The decisions in docs/decisions refer to each other and
-# to research by number — "ADR-0003 §8" turns up both in the code and in the
-# portal documents. A number handed out twice turns those references into a
-# riddle, and a name that is off the pattern breaks the directory ordering the
-# log is read by. Both troubles are cheaper to catch in CI than in a
-# conversation a month later; a hook is no good for this, because a decision
-# can also arrive by a route other than a local commit.
+# In docs/decisions: every file is named NNNN-slug.md and no number is handed
+# out twice, because documents cite decisions by number and a duplicate turns
+# a citation into a riddle.
 #
-# What the script deliberately does not check: that decisions already taken
-# stay unchanged. By the charter decisions remain living documents — the edit
-# goes straight into the file, and the history lives in git. Going back to
-# append-only is named as a separate trigger, and that is the product owner's
-# decision, not a default of this script.
+# Outside the documents: no tracked file outside docs/ that is not markdown
+# cites a decision or a research note by number (ADR-NNNN,
+# docs/decisions/NNNN, docs/research/NN). Code states the constraint it keeps
+# and a test holds it; the reasoning stays in the record, so a decision
+# changes in one place. SQL under drizzle/ and migrations/ is exempt, because
+# an applied migration must stay byte-identical; a new migration's comments
+# follow the rule by review.
 #
-# Why bash: the check reads file names in a single directory. The tool that
-# would have to be installed for that would cost more than the check.
+# Not checked: that decisions already taken stay unchanged. They are living
+# documents edited in place, and the history is in git.
 
 set -euo pipefail
 
@@ -77,9 +75,30 @@ if [ -n "${duplicates}" ]; then
   done
 fi
 
+# git grep answers 1 when nothing matches and more than 1 when it could not
+# search at all; only the second is a failure of the check.
+grep_status=0
+citations="$(
+  git -C "${repository_root}" grep -n -I -E \
+    'ADR-[0-9]{4}|docs/decisions/[0-9]{4}|docs/research/[0-9]{2}' \
+    -- . ':(exclude)*.md' ':(exclude)docs/**' ':(exclude)**/drizzle/*.sql' ':(exclude)**/migrations/*.sql' \
+    ':(exclude)scripts/check-decisions.sh'
+)" || grep_status=$?
+
+if [ "${grep_status}" -gt 1 ]; then
+  printf 'Could not search the tracked files for citations (git grep exit %s).\n' "${grep_status}" >&2
+  exit 1
+fi
+
+if [ -n "${citations}" ]; then
+  while IFS= read -r line; do
+    report "${line}: cites a decision or a research note by number. State the constraint in the code and hold it with a test; the reasoning stays in the record."
+  done <<<"$(printf '%s\n' "${citations}" | cut -d: -f1,2)"
+fi
+
 if [ "${problems}" -ne 0 ]; then
   printf 'The decision log is not in order. Problems: %s.\n' "${problems}" >&2
   exit 1
 fi
 
-printf 'The decision log is in order. Decisions: %s, numbers are unique.\n' "${found}"
+printf 'The decision log is in order. Decisions: %s, numbers are unique, and no code cites them.\n' "${found}"

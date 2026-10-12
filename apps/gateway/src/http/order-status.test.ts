@@ -1,22 +1,13 @@
 /**
- * The one door in this gateway that is the agent's.
+ * The agent's own route: where a buyer comes back for an order whose goods come
+ * later. Knowing the order's identifier is the proof, so the call takes no key
+ * and answers about that order and no other.
  *
- * An agent that buys a product whose goods come later pays, and the answer it
- * gets carries an order and no goods, because the goods do not exist yet. This
- * route is how it comes back for them. ADR-0011 settles who may ask: knowing
- * the order's identifier is the proof, so the call takes no key and answers
- * about that order and no other.
- *
- * Three things are being held here and each of them is a way the route goes
- * wrong quietly. It must ask for no key — a door attached to an address prefix
- * rather than read off the route's own `auth` would shut the agent out of the
- * one route that is its own, and this route has already paid for that once,
- * from back when it sat under `/v0/orders` beside the merchant's. It must read
- * an order
- * whoever sold it, without that becoming a way of learning who the merchants
- * are. And it must carry what the buyer is owed and nothing else: an answer
- * assembled from the merchant's own view of the order would hand a stranger the
- * merchant's key for the product and the buyer's own parameters back.
+ * Each of these breaks quietly. A key check attached to an address prefix,
+ * rather than read off the route's own `auth`, shuts the agent out. Reading an
+ * order whoever sold it must not become a way of learning who the merchants
+ * are. And an answer built from the merchant's view of the order would hand a
+ * stranger the merchant's key for the product and the buyer's own parameters.
  */
 
 import { request as httpRequest } from "node:http";
@@ -102,9 +93,7 @@ const orderTakenOn = async (
     onOrder: () => ({ accepted: {} }),
   });
   expect(bought.status, JSON.stringify(bought.body)).toBe(200);
-  // The purchase answers in the same document this route does, so the
-  // identifier to come back with is read off the answer the same way here as
-  // an agent would read it there.
+  // Read off the purchase answer, the way an agent would read it.
   return (bought.body as AgentOrderStatus).order_id;
 };
 
@@ -112,10 +101,8 @@ const statusOf = async (served: Served, orderId: string, headers?: Record<string
   served.call("GET", `/x402/orders/${orderId}/status`, headers === undefined ? {} : { headers });
 
 /**
- * The address a deployment answering as `https://agentify.ad` tells an agent to
- * come back to, which is the production shape: TLS ends at the proxy in front,
- * and the process behind it is reached over plain http on an address nobody
- * outside ever sees.
+ * The production shape: TLS ends at the proxy in front, and the process behind
+ * it is reached over plain http on an address nobody outside sees.
  */
 const PUBLIC_BASE = "https://agentify.ad";
 
@@ -124,11 +111,8 @@ const collectedAt = (orderId: string): string =>
   `${PUBLIC_BASE}${expandPath(API_ROUTES.get_order_status.path, { order_id: orderId })}`;
 
 /**
- * The part of an absolute address this served gateway can be asked at.
- *
- * The gateway under test listens on the loopback interface and not at the
- * public address it names, exactly as a deployment behind its proxy does, so
- * what a test can call is the path and the query of what the answer said.
+ * The gateway under test listens on loopback, not at the public address it
+ * names, so a test can call only the path and query of an address it was given.
  */
 const onThisGateway = (address: unknown): string => {
   const parsed = new URL(String(address));
@@ -136,13 +120,9 @@ const onThisGateway = (address: unknown): string => {
 };
 
 /**
- * The same gateway, reached by calls that say they arrived somewhere else.
- *
- * `fetch` will not send a Host it did not take from the URL — the header is one
- * the specification forbids a client to set — so these calls go out through
- * `node:http`, which sends what it is given. Everything else about a call is
- * what `Served.call` does: a JSON body where there is one, and the answer read
- * back as JSON where it parses.
+ * The same gateway, reached by calls that claim they arrived somewhere else.
+ * `fetch` will not send a Host header it did not take from the URL, so these
+ * go out through `node:http`; otherwise they behave as `Served.call` does.
  */
 const arrivingWith = (served: Served, claimed: Readonly<Record<string, string>>): Served => ({
   ...served,
@@ -186,11 +166,9 @@ const arrivingWith = (served: Served, claimed: Readonly<Record<string, string>>)
 
 describe("where an agent that paid comes back to", () => {
   it("names the address in the purchase answer, and the goods are collected there", async () => {
-    // An agent that paid for goods that come later holds the answer to its
-    // purchase and nothing else, and the obvious guesses at an address from an
-    // order identifier answer `no_such_route`. So the answer names the address
-    // itself, and the promise is that the address is enough: the same order
-    // answers there, and the goods arrive there.
+    // The agent holds the purchase answer and nothing else, and guessing an
+    // address from the order identifier answers `no_such_route`, so the named
+    // address has to be enough on its own.
     const { served, harnessed } = await started({ PUBLIC_BASE_URL: PUBLIC_BASE });
     const itemId = await publish(served, laterCard);
 
@@ -222,11 +200,9 @@ describe("where an agent that paid comes back to", () => {
   });
 
   it("names the same address from both doors, for goods handed over on the call", async () => {
-    // The other way a paid purchase answers: a synchronous sale, finished by
-    // the time the answer is written. The purchase and the status route answer
-    // in one document (ADR-0018), so the address has to come out of both, and
-    // the same — an agent that bought and an agent that came back later are
-    // told where the order lives in one spelling.
+    // A synchronous sale, finished by the time the answer is written. The
+    // purchase and the status route answer in one document, so both must name
+    // the order's address, in one spelling.
     const { served, harnessed } = await started({ PUBLIC_BASE_URL: PUBLIC_BASE });
     const itemId = await publish(served, nowCard);
 
@@ -245,13 +221,10 @@ describe("where an agent that paid comes back to", () => {
   });
 
   it("builds the address from its own configuration, whatever a call says about where it arrived", async () => {
-    // Behind the proxy that ends an agent's TLS connection, the request this
-    // process sees says http and names whichever host the proxy forwarded to,
-    // and the forwarding headers are whatever the caller or the proxy wrote.
-    // An address assembled from any of them sends the agent to plain http, or
-    // to a host of the caller's choosing, with a paid order's identifier in
-    // the path. So both doors are called here as though they were reached at
-    // a host that is not ours, and both must still name the configured one.
+    // Behind the TLS-ending proxy the request says http and names whichever
+    // host was forwarded to, and the forwarding headers are whatever the caller
+    // wrote. An address built from any of them could send a paid order's
+    // identifier over plain http or to a host of the caller's choosing.
     const { served, harnessed } = await started({ PUBLIC_BASE_URL: PUBLIC_BASE });
     const itemId = await publish(served, laterCard);
     const elsewhere = arrivingWith(served, {
@@ -280,8 +253,6 @@ describe("where an agent that paid comes back to", () => {
 
 describe("coming back for goods that were not ready", () => {
   it("tells the buyer where an order stands before the merchant has issued anything", async () => {
-    // The gap this route closes. The purchase answered with an order and no
-    // goods, and until now there was nothing an agent could ask afterwards.
     const { served, harnessed } = await started();
     const itemId = await publish(served, laterCard);
     const orderId = await orderTakenOn(harnessed, served, itemId);
@@ -291,8 +262,8 @@ describe("coming back for goods that were not ready", () => {
     expect(answered.status).toBe(200);
     const status = answered.body as AgentOrderStatus;
     expect(status.order_id).toBe(orderId);
-    // Not a refusal and not a promise: the purchase is running. An agent that
-    // had to read this as an ending would write off a sale still going through.
+    // Not an ending: an agent that read this as one would write off a sale
+    // still going through.
     expect(status.status).toBe("in_progress");
     expect(status.delivered).toBeNull();
     // The money moved at the purchase, so what it cost is a fact already.
@@ -320,11 +291,9 @@ describe("coming back for goods that were not ready", () => {
   });
 
   it("will not hand over goods the buyer has not paid for", async () => {
-    // A synchronous delivery whose charge failed. The goods exist and the
-    // purchase itself refused to hand them over, because nothing was paid; the
-    // order stays open until a repeat purchase carries the payment through.
-    // Answering this door with them would be a way of collecting for free
-    // anything a failed charge left behind.
+    // A synchronous delivery whose charge failed: the goods exist but nothing
+    // was paid. Handing them over here would let anyone collect for free what a
+    // failed charge left behind.
     const { served, harnessed } = await started();
     harnessed.facilitator.willSettle({ settled: false, reason: "the transfer reverted" });
     const itemId = await publish(served, nowCard);
@@ -346,12 +315,9 @@ describe("coming back for goods that were not ready", () => {
 
 describe("a refusal the merchant made", () => {
   it("carries the merchant's own code and sentence to the agent, at the purchase and afterwards", async () => {
-    // The gap the document used to leave open. A synchronous refusal reached
-    // the agent as the bare word `rejected`, and "there is none" was
-    // indistinguishable from "those parameters do not work" — which want
-    // different next moves. The two words are the merchant's, carried across
-    // unchanged, and both doors that answer with this document carry them: the
-    // purchase that was refused, and the read an agent comes back with later.
+    // "There is none" and "those parameters do not work" want different next
+    // moves from the agent, so the merchant's code and sentence reach it
+    // unchanged from both doors.
     const { served, harnessed } = await started();
     const itemId = await publish(served, nowCard);
 
@@ -371,10 +337,9 @@ describe("a refusal the merchant made", () => {
 
     expect(later.status).toBe(200);
     expect((later.body as AgentOrderStatus).refusal).toStrictEqual(refused.refusal);
-    // The refusal is the one field this ending adds, at both doors. The
-    // agent's schema takes fields added later (ADR-0006 §5), so it cannot
-    // refuse one that leaked — a parameter the buyer sent, the merchant's own
-    // key for the product — and this list is where one would be caught.
+    // The agent's schema accepts unknown fields, so it cannot catch one that
+    // leaked (a buyer's parameter, the merchant's key for the product); this
+    // list is where one would be caught.
     for (const answered of [bought.body, later.body]) {
       expect(Object.keys(answered as object).sort()).toStrictEqual([
         "delivered",
@@ -390,11 +355,8 @@ describe("a refusal the merchant made", () => {
   });
 
   it("says nothing about a refusal on an ending nobody refused", async () => {
-    // The negative control, and the fifth gate in a field. An absent `refusal`
-    // has to mean "no merchant refused this order", not "we did not bother" —
-    // so an order that ended in the goods and one that ran out of time both
-    // carry none, and a projection that filled the pair from whatever closure
-    // happened to be on the order would fail here.
+    // An absent `refusal` must mean "no merchant refused this order", not "we
+    // did not say", so filling it from whatever closed the order fails here.
     const { served, harnessed } = await started({
       QUOTE_RESPONSE_MS: "20",
       SYNC_RESPONSE_MS: "80",
@@ -426,12 +388,9 @@ describe("a refusal the merchant made", () => {
 
 describe("the door on the agent's route", () => {
   it("answers the same to a key, to somebody else's key, and to no key", async () => {
-    // An agent has no key, no account and no registration, and the product
-    // exists so that it needs none: the call with nothing in the header is
-    // answered, which is what the last line here says. The rest is the half
-    // that catches a door attached to an address prefix — whatever travels in
-    // the authorization header, this route neither opens nor closes on it. A
-    // junk key is refused everywhere else in this gateway and is ignored here.
+    // An agent has no key, so the call with none must be answered. Whatever is
+    // in the authorization header, even a junk key refused everywhere else in
+    // this gateway, this route neither opens nor closes on it.
     const { served, harnessed } = await started();
     const other = await harnessed.addMerchant("Another merchant");
     const itemId = await publish(served, laterCard);
@@ -454,12 +413,9 @@ describe("the door on the agent's route", () => {
 
 describe("what the answer carries", () => {
   it("reads an order whichever merchant sold it, and names the seller only as the catalog does", async () => {
-    // The route has no key, so it has no merchant to be scoped to, and it must
-    // not become a way of learning what the merchants are inside this system
-    // or what they call their products. What comes back is the buyer's own
-    // purchase: where it stands, what it cost, the goods, and who sold it —
-    // the name and the site the merchant gave for every agent to read on their
-    // cards (ADR-0034), and nothing else about them.
+    // With no key there is no merchant to scope to, so the route must not
+    // reveal which merchants exist or what they call their products. The
+    // seller appears only as on its cards: a name and a site.
     const { served, harnessed } = await started();
     const sellerName = "Not the harness's own seller";
     const seller = await harnessed.addMerchant(sellerName);
@@ -513,20 +469,12 @@ describe("an identifier that names nothing", () => {
   });
 
   it("has one refusal and not two, so an unknown identifier is never told from a forbidden one", async () => {
-    // What this route can and cannot hide, said plainly, because the two are
-    // easy to run together.
-    //
-    // It cannot hide that an identifier names an order. The identifier is the
-    // proof, so a real one has to be answered, and the answer is visibly not
-    // the refusal — that is the door working, and no arrangement of codes
-    // changes it. What the decision leans on instead is that the identifier is
-    // long and random, so walking them finds nothing.
-    //
-    // What it can hide, and does, is the second refusal: there is no "this
-    // order exists and is not yours" anywhere on this route, because there is
-    // no such thing here — nothing is scoped to a caller. So the one refusal
-    // covers every identifier that does not resolve, and the test above holds
-    // that two of those are answered byte for byte alike.
+    // The route cannot hide that a real identifier names an order: the
+    // identifier is the proof, so a real one is answered, and only its being
+    // long and random keeps walking them from finding anything. What it does
+    // hide is a second refusal: nothing here is scoped to a caller, so there is
+    // no "exists and is not yours", only one refusal for whatever does not
+    // resolve.
     const { served, harnessed } = await started();
     const itemId = await publish(served, laterCard);
     const orderId = await orderTakenOn(harnessed, served, itemId);
@@ -580,9 +528,8 @@ describe("the goods as the merchant wrote them", () => {
         as_of: "2026-08-26T12:00:00.000Z",
       },
       delivered: goods,
-      // Every order the pilot writes is a test order, and the buyer's own view
-      // of a purchase says so — every other field here reads the same whether
-      // the charge was real or not.
+      // Only this field tells a test order from a real one; every other field
+      // reads the same whether the charge was real or not.
       test: true,
       seller: { name: "The merchant", site: null },
     });

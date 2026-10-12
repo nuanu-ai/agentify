@@ -1,12 +1,7 @@
 /**
- * The browser's side of a refused verification link.
- *
- * The form used to count sixty seconds of its own and print its own sentence
- * about "too many requests", neither of which came from what the server
- * answered; a person who had asked once read that they had asked too often.
- * The wait and the words both live in the answer now, and this file only
- * reads them out. An answer with no wait in it leaves the button working —
- * the screen does not fill the gap with a number of its own.
+ * The browser's side of a refused verification link: the wait and the words
+ * come from the server's answer, never from the form. An answer with no wait
+ * leaves the button working rather than showing a number of its own.
  */
 
 import { apiErrorEnvelopeSchema } from "@agentify/scanner-contracts";

@@ -1,33 +1,18 @@
 /**
- * Filling the orders of a merchant whose catalogue came from a WooCommerce
- * shop.
+ * A merchant who connected a shop wrote no code, so the dashboard stands in as
+ * their handler: it draws their stream and answers with the calls any
+ * merchant's worker makes, in-process, as the merchant on the account that
+ * connected the shop. An order this leaves unanswered is handed over again by
+ * the order machine, which alone knows how many attempts are left; so the
+ * answers are a delivery, a refusal, or nothing, and nothing means "ask me
+ * again".
  *
- * A merchant who connected a shop wrote no code. Their products are on sale,
- * agents buy them, and something has to turn a paid order here into an order
- * there — so the dashboard stands in as their handler, drawing their own stream
- * and answering with the calls any merchant's worker makes, the way ADR-0004
- * says a worker calls them. It calls the gateway's application inside the
- * process the two share rather than over the API (ADR-0030), as the merchant on
- * the account that connected the shop.
- *
- * The hand-over itself is the gateway's queue-shaped effect and it is not
- * reimplemented here. An order reaches this because the envelope carrying it
- * was written into the same transaction as the state that implies it
- * (ADR-0013), and an order this leaves unanswered is handed over again by the
- * order machine, which is the one thing that knows how many attempts are left.
- * So the two answers below are the whole vocabulary: a delivery, a refusal, or
- * nothing at all — and nothing at all is the one that means "ask me again".
- *
- * The rule that shapes everything else in this file: **a merchant's shop is not
- * ours to write to twice.** A delivery is at least once, so the same sale can
- * arrive here more than once, and a second order in somebody's shop is a second
- * thing they pick, pack and post for one payment. The ledger in `woo-shops.ts`
- * is claimed before the shop is called and completed after, and the case it
- * exists for is the one in the middle: an attempt that reached the point of
- * calling and never learned the outcome. That one is refused rather than
- * retried, in words that say it is not knowable from here — which is the
- * difference between "there is no order" and "I do not know whether there is
- * one".
+ * A merchant's shop is not ours to write to twice. Delivery is at least once,
+ * and a second order in somebody's shop is a second parcel packed for one
+ * payment. The ledger in `woo-shops.ts` is claimed before the shop is called
+ * and completed after, and an attempt that called and never learned the outcome
+ * is refused rather than retried, in words that say it is not knowable from
+ * here: "I do not know whether there is an order" is not "there is no order".
  */
 
 import { createHash } from "node:crypto";
@@ -61,44 +46,33 @@ import {
 } from "./woo-shop.js";
 import type { WooConnection, WooOrderFacts, WooPermission, WooShops } from "./woo-shops.js";
 
-/** What filling one order needs beyond the order and the connection. */
 export interface Filling {
   readonly shops: WooShops;
   readonly now: () => Date;
   /**
-   * How the shop is reached, with the real call as the default.
-   *
-   * A parameter so that the decisions in this file can be read off a test
-   * without a WooCommerce anywhere near it. A deployment passes nothing.
+   * Injectable so this file's decisions can be tested without a WooCommerce; a
+   * deployment passes nothing.
    */
   readonly placeOrder?: (keys: ShopKeys, sold: SoldItem) => Promise<OrderMade>;
   /**
-   * How the shop is asked whether the product is still the one supported
-   * downloadable file, with the real inspection as the default. A price
-   * question and an order read the product the same way. A deployment passes
-   * nothing.
+   * A price question and an order read the product the same way. A deployment
+   * passes nothing.
    */
   readonly inspectProduct?: (
     connection: WooConnection,
     merchantItemId: string,
   ) => Promise<ProductInspection>;
-  /**
-   * How the shop is asked what shipping a parcel to a place costs, with the
-   * shop's own cart as the default. A deployment passes nothing.
-   */
+  /** The shop's own cart by default; a deployment passes nothing. */
   readonly shippingRates?: (
     connection: WooConnection,
     productId: string,
     place: ShipToLocality,
   ) => Promise<RatesRead>;
-  /** How long a price question may take; a deployment passes nothing. */
+  /** A deployment passes nothing. */
   readonly quoteWithinMs?: number;
-  /**
-   * How a parcel's paid order is created in the shop, with the real call as
-   * the default. A deployment passes nothing.
-   */
+  /** A deployment passes nothing. */
   readonly placeParcel?: (keys: ShopKeys, sold: ParcelSold) => Promise<ParcelMade>;
-  /** Test seam for the durable quote binding; production reads WooShops. */
+  /** Test seam for the durable quote binding; production reads `WooShops`. */
   readonly quotedProduct?: (
     connection: WooConnection,
     priceId: string,
@@ -107,13 +81,9 @@ export interface Filling {
 }
 
 /**
- * What this merchant's handler answers for one order, or null for no answer at
- * all.
- *
- * Null is not a failure to decide. It is the answer that means the sale is
- * still live and the order should come round again — the shop did not answer,
- * so nothing about this sale has been settled and a refusal would close for
- * good something that a minute from now would go through.
+ * Null is not a failure to decide: the shop did not answer, nothing about the
+ * sale is settled, and a refusal would close for good something that might go
+ * through a minute later.
  */
 export const fillFromTheShop = async (
   order: Order,
@@ -121,7 +91,7 @@ export const fillFromTheShop = async (
   orderEmail: string,
   parts: Filling,
 ): Promise<HandlerAnswer | null> => {
-  // A parcel's order carries where it goes, and nothing else does (ADR-0032).
+  // Only a parcel's order carries where it goes.
   if (order.ship_to !== undefined) {
     return await fillParcelFromTheShop(order, connection, orderEmail, parts);
   }
@@ -132,7 +102,7 @@ export const fillFromTheShop = async (
   }
   if (known?.kind === "placed_parcel") {
     // A download's order bound as a parcel's cannot be written by anything
-    // here; whatever it is, it is not ordered a second time.
+    // here; it is never ordered a second time.
     return unknownCreation(order.id, connection.shopUrl, parts.now());
   }
   if (known?.kind === "precreate_refused") {
@@ -169,17 +139,16 @@ export const fillFromTheShop = async (
       productIdFromMerchantItem(connection.shopUrl, order.merchant_item_id) ??
       "",
     // Recovery must restore the product the buyer accepted, never bless the
-    // changed product that caused this refusal. With no accepted quote there
-    // is deliberately no product fingerprint recovery can satisfy.
+    // changed product that caused this refusal; with no accepted quote no
+    // fingerprint can satisfy recovery.
     productFingerprint: quoted ?? "unbound-price-id",
     amount: order.price.amount,
     currency: order.price.currency,
   };
   if (eligible === null) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
-    // Refused either way, and the reason is the one that is true: a shop that
-    // did not answer has said nothing about the product, so this does not say
-    // the product stopped being sold.
+    // Refused either way, with the true reason: a shop that did not answer has
+    // said nothing about the product.
     return {
       refused: {
         code: "cannot_fulfill",
@@ -225,11 +194,10 @@ export const fillFromTheShop = async (
   }
 
   if (connection.permissions !== "read_write") {
-    // The shop granted less than we asked for, so every sale on this connection
-    // ends here. The merchant is told which it is, in their own log and on
-    // their own connection screen; the agent is told the fact and no more,
-    // because who granted what to whom is the merchant's business and nothing
-    // an agent could act on.
+    // The shop granted less than asked, so every sale on this connection ends
+    // here. The merchant is told which, in their log and on their connection
+    // screen; the agent only the fact, since the grant is nothing it could act
+    // on.
     console.error(
       `[dashboard] the shop at ${connection.shopUrl} granted ${JSON.stringify(connection.permissions)}` +
         " access, which cannot create an order, so every sale on it is refused",
@@ -248,8 +216,8 @@ export const fillFromTheShop = async (
   const claim = await parts.shops.claimOrder(connection.accountId, order.id, facts, parts.now());
 
   if (claim.kind === "placed") {
-    // The same sale, handed over a second time. The shop already has the order
-    // and the buyer gets the same number they would have got the first time.
+    // The same sale handed over again: the shop already has the order, and the
+    // buyer gets the same number.
     return { delivered: deliveryFromWooPermission(claim.permission) };
   }
 
@@ -272,11 +240,9 @@ export const fillFromTheShop = async (
   const made = await place(connection, {
     orderId: order.id,
     productId: eligible.productId,
-    // Not the buyer's, which is why the parameter is not called that. Creating
-    // an order makes WooCommerce send mail to whatever is on it and nothing in
-    // the request can stop that, so whose address belongs here is a product
-    // question nobody has answered; until somebody does it is the merchant's
-    // own, and ADR-0023 says so rather than this pretending it is settled.
+    // The merchant's own address, not the buyer's: creating an order makes
+    // WooCommerce mail whatever address is on it, and nothing in the request
+    // can stop that.
     email: orderEmail,
     price: { amount: order.price.amount, currency: order.price.currency },
     download: { id: eligible.downloadId, name: eligible.fileName },
@@ -317,37 +283,31 @@ export const fillFromTheShop = async (
 
   if (made.again) {
     // Nothing is answered and the claim stays: the request may have reached the
-    // shop, so the next attempt has to meet "we do not know" rather than a
-    // clean slate.
+    // shop, so the next attempt must meet "we do not know" rather than a clean
+    // slate.
     console.error(`[dashboard] ${order.id} has no usable WooCommerce creation result`);
     return null;
   }
 
-  // A response after POST is not proof that the remote side did not commit.
-  // Keep the create_unknown obligation and require exact-id recovery rather
-  // than turning a proxy/plugin-rewritten 4xx into a second POST.
+  // A response after POST is not proof the shop did not commit, so the
+  // obligation stays `create_unknown` and needs exact-id recovery, rather than
+  // turning a rewritten 4xx into a second POST.
   console.error(`[dashboard] ${order.id} has no verifiable WooCommerce creation result`);
   return unknownCreation(order.id, connection.shopUrl, parts.now());
 };
 
 /**
- * What this merchant's handler answers for a paid parcel: the order taken on
- * once the shop holds a paid order shipping to the buyer, a refusal where
- * none can be made, or nothing at all while the shop does not answer.
- *
  * The product is held to the one the price was bound to, and the shipping to
- * what was paid above the goods: the shop's cart is asked again for the place
- * the order pays for, and the rate costing exactly that difference is the
- * rate that was sold — the cheapest at the price question, and still there if
- * the shop has added a cheaper one since. Where no rate costs it any more, the
- * order is refused before anything reaches the shop, and is a refund owed.
+ * what was paid above the goods: the cart is asked again for the paid-for
+ * place, and the rate costing exactly that difference is the one sold. Where
+ * none does, the order is refused before anything reaches the shop, and is a
+ * refund owed.
  *
- * A shop that does not answer is not a refusal here. A parcel has days to
- * ship, so the order comes round again on its next hand-over and nothing is
- * written until the shop has said something. Once the shop's answer shows the
- * order with the address on it, `accepted` lets Agentify erase its copy
- * (ADR-0032); nothing of the address is written to the ledger or the log on
- * any path.
+ * A shop that does not answer is not a refusal: a parcel has days to ship, so
+ * the order comes round again and nothing is written until the shop says
+ * something. Once the shop shows the order with the address on it, `accepted`
+ * lets Agentify erase its copy; the address is never written to the ledger or
+ * the log.
  */
 const fillParcelFromTheShop = async (
   order: Order,
@@ -500,16 +460,15 @@ const fillParcelFromTheShop = async (
     );
     return null;
   }
-  // From here the shop may hold a paid order shipping to the buyer while the
-  // sale is refused and owes a refund, so the log names the shop's order
-  // where the shop named it: that order is not to be shipped.
+  // From here the shop may hold a paid order while the sale is refused and owes
+  // a refund, so the log names the shop's order, where known, as one not to
+  // ship.
   const inTheShop =
     made.id === undefined
       ? ""
       : `; the shop's order ${made.id} does not match it and is not to be shipped`;
   if (made.again) {
-    // Not answered, and the claim stays: the order may be in the shop, so the
-    // next hand-over meets "we do not know" rather than a clean slate.
+    // Not answered, and the claim stays: the order may be in the shop.
     console.error(`[dashboard] ${order.id} has no usable WooCommerce creation result${inTheShop}`);
     return null;
   }
@@ -563,17 +522,11 @@ export const deliveryFromWooPermission = (permission: WooPermission): Record<str
   };
 };
 
-/** What the loop needs to fill one connected shop's orders. */
 export interface WorkingParts extends Filling {
-  /** How the account behind a connection is read: its address and its merchant. */
   readonly identity: Pick<Identity, "byId">;
   readonly clientFor: (acting: Acting) => GatewayClient;
-  /** How long one poll holds the stream open. */
   readonly waitSeconds?: number;
-  /**
-   * How the shop is asked whether a parcel's order shipped, with the real read
-   * as the default. A deployment passes nothing.
-   */
+  /** The real read by default; a deployment passes nothing. */
   readonly readShipment?: (
     keys: ShopKeys,
     wooOrderId: string,
@@ -582,28 +535,20 @@ export interface WorkingParts extends Filling {
 }
 
 /**
- * How long one poll waits.
- *
- * Short enough that a merchant stopping the dashboard does not wait on it, and
- * long enough that a synchronous order is picked up the moment it is written
- * rather than on the next turn — which matters, because a synchronous purchase
- * is an agent holding a request open while this happens.
+ * Short enough not to hold up a stopping dashboard, long enough to pick up a
+ * synchronous order at once, while its agent holds a request open.
  */
 const WAIT_SECONDS = 5;
 
 /**
- * One turn for one connected shop: draw the stream, fill what came, answer.
- *
- * It answers with how many envelopes were drawn, events included, which is
- * what the loop reads to decide whether to come straight back. The gateway
- * hands out one envelope a poll, so an event is often all a turn draws, and a
- * turn that drew one is not a quiet stream.
+ * Returns how many envelopes were drawn, events included, which the loop reads
+ * to decide whether to come straight back: one envelope per poll, so a turn
+ * that drew an event is not a quiet stream.
  */
 export const turnOnce = async (connection: WooConnection, parts: WorkingParts): Promise<number> => {
   const person = await parts.identity.byId(connection.accountId);
   if (person === null || person.merchant === null) {
-    // The account behind this connection is gone, or has no merchant on it.
-    // Nothing can be drawn as somebody who does not exist.
+    // The account is gone or has no merchant; nothing can be drawn as nobody.
     console.error(
       `[dashboard] the WooCommerce connection for ${connection.accountId} names an account with no` +
         " merchant on it, so its orders cannot be drawn",
@@ -625,8 +570,8 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
           ? { available: false as const, as_of: parts.now().toISOString() }
           : await quoteFromTheShop(connection, envelope.payload, parts.now(), parts);
       if (answer === null) {
-        // The shop did not answer, and saying nothing is how the gateway hears
-        // that: the agent is told the price check went unanswered.
+        // Saying nothing is how the gateway hears that the shop did not answer;
+        // the agent is told the price check went unanswered.
         continue;
       }
       const said = await gateway.answerQuote(envelope.payload.price_id, answer);
@@ -637,7 +582,7 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
       }
       continue;
     }
-    // Events have no reply. Reading one here would be pretending to answer it.
+    // Events have no reply.
     if (envelope.kind !== "order") {
       continue;
     }
@@ -656,23 +601,20 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
 };
 
 /**
- * How long a price question may take, from the moment it is drawn.
- *
  * The gateway waits five seconds for a price (`QUOTE_RESPONSE_MS`) and then
- * reads the merchant as silent, so an answer later than that answers nobody.
- * Four seconds leaves the rest for the answer to travel, and keeps a slow
- * shop from holding up the questions and orders queued behind this one.
+ * reads the merchant as silent; four leaves time for the answer to travel and
+ * keeps a slow shop from holding up the work queued behind it.
  */
 const QUOTE_WITHIN_MS = 4_000;
 
-/** What a piece of work came to, or null where it did not finish in time. */
+/** Null where it did not finish in time. */
 const inTime = async <T>(work: Promise<T>, ms: number): Promise<T | null> => {
   let cut: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<null>((resolve) => {
     cut = setTimeout(() => resolve(null), ms);
   });
-  // A shop that answers after the deadline answers nobody, and what it says
-  // then must not surface as a failure of the turn that stopped waiting.
+  // A late answer answers nobody and must not surface as a failure of the turn
+  // that stopped waiting.
   work.catch(() => undefined);
   try {
     return await Promise.race([work, late]);
@@ -681,7 +623,7 @@ const inTime = async <T>(work: Promise<T>, ms: number): Promise<T | null> => {
   }
 };
 
-/** What the cheapest of the shop's rates costs, in cents, or null where there is none. */
+/** Null where there is none. */
 const cheapestCents = (rates: readonly ShippingRate[]): bigint | null => {
   let cheapest: bigint | null = null;
   for (const rate of rates) {
@@ -692,19 +634,14 @@ const cheapestCents = (rates: readonly ShippingRate[]): bigint | null => {
 };
 
 /**
- * What this merchant's handler answers when an agent asks for a price: the
- * shop's own price for the product as it stands, with that product bound to
- * the price so the order paying it can be held to it — or no price at all.
+ * The product is bound to the price so the order paying it can be held to it. A
+ * parcel's price is the goods plus the shop's cheapest rate to the asked-for
+ * place, added in cents; the rate is not bound, because it says where the buyer
+ * is and a binding is kept for good, so the order asks the shop again.
  *
- * A parcel's price is the goods and the shop's cheapest rate to the place the
- * question carries, added in cents (ADR-0023). The product is bound to the
- * price and the rate is not: the rate says where the buyer is, and a binding
- * is kept for good, so the order asks the shop again for the place it pays for.
- *
- * A price that was already bound to another product is not moved to this one.
- * The order comes back with the price identifier and is held to what it was
- * first bound to, so a second answer naming a different download would be a
- * price for goods no order could be filled against.
+ * A price already bound to another product is not moved: the order is held to
+ * what it was first bound to, so a second answer naming different goods would
+ * be a price no order could be filled against.
  */
 export const quoteFromTheShop = async (
   connection: WooConnection,
@@ -713,7 +650,7 @@ export const quoteFromTheShop = async (
   parts: Filling,
 ): Promise<QuoteResponse | null> => {
   const unavailable: QuoteResponse = { available: false, as_of: at.toISOString() };
-  /** Not available, with the reason in the merchant's log and no word of the place. */
+  /** The reason goes to the merchant's log, with no word of the place. */
   const unpriced = (why: string): QuoteResponse => {
     console.error(
       `[dashboard] ${question.merchant_item_id} has no price for ${question.price_id}: ${why}`,
@@ -722,8 +659,8 @@ export const quoteFromTheShop = async (
   };
   const productId = productIdFromMerchantItem(connection.shopUrl, question.merchant_item_id);
   const place = question.ship_to;
-  // Asked of the shop at the same time as the product is, because the two
-  // together have to fit in the time a price question has.
+  // Asked together with the product, because both must fit in the time a price
+  // question has.
   const shipping =
     place === undefined || productId === null
       ? Promise.resolve(null)
@@ -736,12 +673,11 @@ export const quoteFromTheShop = async (
     Promise.all([productInTheShop(connection, question.merchant_item_id, parts), shipping]),
     parts.quoteWithinMs ?? QUOTE_WITHIN_MS,
   );
-  // A shop that did not answer is not a shop that has none. "Not available"
-  // would tell the agent the goods are gone and send it elsewhere; null says
-  // nothing, so the gateway's wait for a price runs out and the agent is told
-  // the price check went unanswered, which is worth trying again later. A
-  // WooCommerce card is asynchronous or a parcel, where that silence refuses
-  // the sale; on a synchronous card it would sell at the listed price instead.
+  // A shop that did not answer is not a shop that has none: "not available"
+  // would send the agent elsewhere, while null lets the gateway's wait run out
+  // and tells the agent the price check went unanswered. On a WooCommerce card
+  // (asynchronous or a parcel) that silence refuses the sale; on a synchronous
+  // card it would sell at the listed price instead.
   const silent = (why: string): null => {
     console.error(
       `[dashboard] ${question.merchant_item_id} is not priced for ${question.price_id}, and nothing is said: ${why}`,
@@ -779,7 +715,7 @@ export const quoteFromTheShop = async (
   return recorded ? { available: true, price, as_of: at.toISOString() } : unavailable;
 };
 
-/** The product as the shop has it now, read the one way both answers read it. */
+/** Read the one way both answers read it. */
 const productInTheShop = (
   connection: WooConnection,
   merchantItemId: string,
@@ -788,20 +724,14 @@ const productInTheShop = (
   (parts.inspectProduct ?? inspectProductInTheShop)(connection, merchantItemId);
 
 /**
- * One pass over every placed parcel of every connected shop: whatever the
- * shop now says about each, said onward.
+ * A parcel marked Completed is recorded with the gateway as shipped, the last
+ * thing the agent hears, and is followed no further. One the shop ended without
+ * completing is let go without a word to the gateway: it never shipped, and its
+ * time to ship running out makes it a refund owed. A gateway that did not
+ * answer is asked again next pass; a refused shipment is in the merchant's log.
  *
- * A parcel's order the merchant marked Completed is recorded with the gateway
- * as shipped, which is the last thing the agent is told about it (ADR-0033),
- * and is followed no further. One the shop ended without completing it is
- * let go without a word to the gateway: it never shipped, and its time to ship
- * running out makes it a refund owed. A gateway that did not answer is asked
- * again on the next pass; one that refused the shipment has said all it will,
- * and the refusal is in the merchant's log. Everything else waits.
- *
- * Shops are read one after another and a shop that throws is passed over for
- * this pass, so one merchant's broken shop does not keep another's parcels
- * from shipping.
+ * Shops are read one after another, and one that throws is skipped for this
+ * pass so it cannot keep another merchant's parcels from shipping.
  */
 export const followShipments = async (
   parts: Pick<WorkingParts, "shops" | "identity" | "clientFor" | "now" | "readShipment">,
@@ -850,8 +780,8 @@ export const followShipments = async (
           await parts.shops.endParcel(parcel.orderId, "shipped", parts.now());
           continue;
         }
-        // Nothing answered, or the payment is still settling, which the
-        // gateway asks to be called again after.
+        // Nothing answered, or the payment is still settling, which the gateway
+        // asks to be called again after.
         if (recorded.status === 0 || recorded.code === "settle_in_flight") {
           console.error(`[dashboard] the shipment of ${parcel.orderId} waits: ${recorded.why}`);
           continue;
@@ -872,46 +802,31 @@ export const followShipments = async (
 };
 
 /**
- * How often every placed parcel is read again.
- *
- * A parcel ships in days, and the agent learns of it within minutes of the
- * merchant marking it Completed. Every pass is one read per parcel waiting,
- * against the merchant's own shop, so it is not made more often than that.
+ * Each pass is one read per waiting parcel against the merchant's own shop; the
+ * agent still learns of a shipment within minutes.
  */
 const SHIPMENTS_EVERY_MS = 5 * 60_000;
 
 /**
- * How long a placed parcel is read for: thirty days, the longest time to ship
- * any card may name (ADR-0033). A parcel from this connector is past its seven
- * days long before, and a shipment the merchant records late still closes a
- * refund owed until a refund is recorded (ADR-0028); after thirty days the shop
- * is not read for it again.
+ * Thirty days, the longest time to ship any card may name. A shipment recorded
+ * late still closes a refund owed until a refund is recorded.
  */
 const FOLLOWED_FOR_MS = 30 * 24 * 60 * 60 * 1_000;
 
-/** A worker turning, until it is stopped. */
 export interface WooWorker {
   stop(): Promise<void>;
 }
 
-/** How long the loop waits before looking for connections again. */
 const BETWEEN_TURNS_MS = 1_000;
 
 /**
- * Keeps every connected shop's orders being filled, for as long as the dashboard
- * is running.
+ * One loop per connected shop, because a poll holds its request open and a
+ * synchronous purchase has a fixed budget; walking shops in one loop would make
+ * each merchant wait behind the others.
  *
- * One loop per connected shop rather than one loop walking them all, because
- * the walk is what turns a second merchant into a wait: a poll holds its
- * request open, and a synchronous purchase is answered inside a budget that is
- * the same for every product on the platform. A merchant whose orders were
- * behind somebody else's poll would sell less the more shops we connected.
- *
- * The list of connections is read again every second, so a shop connected while
- * this is running starts being served without a restart and one disconnected
- * stops. Nothing here is a schedule anything depends on: an order nobody draws
- * is handed over again by the order machine, so a dashboard that was down comes
- * back to work that is still waiting.
+ * Connections are reread every second, so shops connected or disconnected while
+ * running are picked up without a restart. Nothing depends on this as a
+ * schedule: an order nobody draws is handed over again by the order machine.
  */
 export const startWooWorker = (
   parts: WorkingParts & { readonly betweenTurnsMs?: number; readonly shipmentsEveryMs?: number },
@@ -926,14 +841,11 @@ export const startWooWorker = (
         try {
           const connection = await parts.shops.connectionOf(accountId);
           if (connection === null) {
-            // Waited out rather than returned from, which is not tidiness. The
-            // watcher below starts a loop for an account that has none, and it
-            // decides that by asking whether this map holds one — so a loop
-            // that ended on its own would leave an entry nothing is running
-            // behind, and a merchant who disconnected and connected again
-            // inside one pass would have their orders filled by nobody until
-            // the dashboard was restarted. Ending a loop is the watcher's, and
-            // it is the only thing that takes the entry away with it.
+            // Waited out rather than returned from: the watcher starts a loop
+            // for an account whose entry is missing from this map, so a loop
+            // that ended on its own would leave an entry with nothing behind
+            // it, and a quick disconnect and reconnect would go unserved until
+            // restart. Only the watcher ends a loop and removes its entry.
             await new Promise((resolve) =>
               setTimeout(resolve, parts.betweenTurnsMs ?? BETWEEN_TURNS_MS),
             );
@@ -941,21 +853,16 @@ export const startWooWorker = (
           }
           const filled = await turnOnce(connection, parts);
           if (filled === 0) {
-            // A turn that drew nothing waits before the next one. The poll
-            // ordinarily holds its own request open for seconds, so this is
-            // usually zero extra waiting — but a gateway that answers a poll
-            // at once, because it refused it or because the wait was asked for
-            // as nothing, would otherwise be asked again as fast as this
-            // process can ask, which is a dashboard hammering a gateway that is
-            // already having a bad afternoon. A turn that did fill something
-            // comes straight back, because there may be more waiting.
+            // A turn that drew nothing waits, so a gateway answering polls at
+            // once (refused, or a zero wait) is not hammered; a turn that
+            // filled something comes straight back.
             await new Promise((resolve) =>
               setTimeout(resolve, parts.betweenTurnsMs ?? BETWEEN_TURNS_MS),
             );
           }
         } catch (thrown) {
-          // A turn that threw must not take the loop with it: what is on the
-          // other end is somebody else's shop and somebody else's network.
+          // A turn that threw must not take the loop with it: the other end is
+          // somebody else's shop and network.
           console.error(`[dashboard] a WooCommerce turn failed for ${accountId}`, thrown);
           await new Promise((resolve) =>
             setTimeout(resolve, parts.betweenTurnsMs ?? BETWEEN_TURNS_MS),
@@ -994,9 +901,8 @@ export const startWooWorker = (
     }
   })();
 
-  // Its own loop, never a step of a shop's turn: a turn answers price
-  // questions inside seconds, and reading every waiting parcel of a slow shop
-  // would hold those up.
+  // Its own loop, so reading a slow shop's parcels never holds up the price
+  // questions a turn answers within seconds.
   let wake: (() => void) | null = null;
   const following = (async () => {
     while (running) {
@@ -1005,7 +911,7 @@ export const startWooWorker = (
       } catch (thrown) {
         console.error("[dashboard] the parcels could not be followed this time", thrown);
       }
-      // A stop that came during the pass found nothing to wake.
+      // A stop during the pass found nothing to wake.
       if (!running) break;
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, parts.shipmentsEveryMs ?? SHIPMENTS_EVERY_MS);

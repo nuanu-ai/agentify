@@ -1,27 +1,16 @@
 /**
- * The mock merchant, pointed at a gateway that is already running.
- *
- * The same merchant the offline gate uses — the same two cards, the same price
- * desk, the same goods — except that it opens its subscription against a live
- * gateway over the network instead of one booted in its own process. That is
- * the whole difference, and it is deliberate: what a merchant's engineer reads
- * here is the code they would write, not a demonstration written to look like
- * it. `merchant.ts` holds the handlers; this file wires them to an address,
- * keeps the process alive, and writes down whether the subscription is still
- * getting through — see `SUBSCRIPTION_FILE` below for what that last one can
- * and cannot claim.
- *
- * What it is for: the local stack (ADR-0005 §1) comes up with a catalogue and
- * somewhere for an order to go, so the dashboard has something to show and a
- * purchase can be walked end to end. It is not a fixture of anything —
+ * The mock merchant, pointed at a gateway that is already running: the same
+ * cards, price desk and goods as the offline suite, opening its subscription
+ * against a live gateway over the network instead of one booted in its own
+ * process. `merchant.ts` holds the handlers; this file wires them to an
+ * address, keeps the process alive and writes down whether the subscription is
+ * still getting through (see `SUBSCRIPTION_FILE` for what that can claim). It
+ * gives the local stack a catalogue and somewhere for an order to go;
  * `pnpm test` never runs it.
  *
- * One thing here is not in `merchant.ts` and is invented: the asynchronous card
- * is taken on by the handler and delivered later by an explicit call, and in a
- * test that call is the test's. Here nobody makes it, so this file waits a few
- * seconds and makes it itself. That stands in for the provider issuing an eSIM
- * profile, which is what the card says happens, and the wait is the only part
- * of this merchant's behaviour that is a stand-in rather than the real shape.
+ * One part is a stand-in. Nobody here makes the asynchronous card's explicit
+ * deliver call, so this file waits a few seconds and makes it itself, in place
+ * of the provider issuing an eSIM profile.
  *
  *   GATEWAY_URL=http://localhost:8080 MERCHANT_API_KEY=… pnpm --filter @agentify/slice serve
  */
@@ -48,7 +37,7 @@ if (apiKey === undefined || apiKey === "") {
   process.exit(1);
 }
 
-/** How long the eSIM's provider is pretended to take. See the note above. */
+/** How long the eSIM's provider is pretended to take. */
 const PROVISIONING_MS = 4_000;
 
 /** How often the accepted orders are looked over. */
@@ -57,30 +46,23 @@ const SWEEP_MS = 500;
 /**
  * Where this process writes what it can say about its own subscription.
  *
- * The merchant has no port and nothing to ask it, so `docker compose ps` said
- * `running` and stopped there — which is true of a process selling two cards
- * and just as true of one whose worker ended on the first poll and never came
- * back. This file is the answer to that, and the healthcheck compose.yaml gives
- * this service is the thing that reads it: the line says whether the
- * subscription is believed to be getting through, and the file's own
- * modification time says the loop that wrote it is still turning. Both are
- * checked there, because either can be true while the other is not.
+ * The merchant has no port and nothing to ask it, so `docker compose ps` alone
+ * says `running` whether it is selling or its worker ended on the first poll.
+ * The healthcheck compose.yaml gives this service reads this file: the line
+ * says whether the subscription is believed to be getting through, and the
+ * file's modification time says the loop that wrote it is still turning. Either
+ * can be true while the other is not, so both are checked.
  *
- * What the line is derived from is worth knowing, because it bounds what it may
- * claim, and `subscription.ts` is where that reasoning lives and is tested.
- * The short of it: "getting through" means no poll failure has been reported
- * for DOUBT_MS, and nothing stronger. It is late at both ends — a gateway that
- * freezes rather than refusing goes unnoticed until the poll in flight times
- * out, and a recovery is noticed up to ninety seconds after it happens, so a
- * gateway restarted on purpose shows this container red for about that long. It
- * says nothing at all about whether the catalogue is still published or whether
- * a paid order would be routed here: a database emptied under a live
- * subscription leaves this line reading `selling` and the shelf bare.
+ * "Getting through" means only that no poll failure has been reported for
+ * DOUBT_MS; `subscription.ts` holds that reasoning. It is late at both ends, so
+ * a gateway restarted on purpose shows this container red for about ninety
+ * seconds. It says nothing about whether the catalogue is still published or a
+ * paid order would be routed here: a database emptied under a live subscription
+ * leaves the line reading `selling`.
  *
- * The name is written out a second time in compose.yaml, which is the price of
- * not having an environment variable for a path that is nobody's to configure.
- * Both sides ask the runtime for the directory rather than spelling it, so a
- * TMPDIR set on the service moves the two together.
+ * The name is written out again in compose.yaml. Both sides ask the runtime for
+ * the directory rather than spelling it, so a TMPDIR set on the service moves
+ * the two together.
  */
 const SUBSCRIPTION_FILE = join(tmpdir(), "agentify-merchant-subscription");
 

@@ -140,8 +140,8 @@ for ua in 'ChatGPT-User/1.0' 'OAI-SearchBot/1.0' 'Claude-User' 'PerplexityBot/1.
   [[ "$status" == "200" ]] || { echo "$ua received $status" >&2; exit 1; }
 done
 
-# The owner landing is the front page; its old address redirects there with a
-# response no cache may keep, since a cached redirect in either direction loops.
+# `/owner` redirects to the front page with a response no cache may keep, since
+# a cached redirect in either direction loops.
 front_headers="$(curl --silent --show-error --max-time 20 --head "$WEB_BASE_URL/")"
 grep -q '^HTTP/.* 200 ' <<<"$front_headers" || { echo "front page is not a 200" >&2; exit 1; }
 owner_headers="$(curl --silent --show-error --max-time 20 --head "$WEB_BASE_URL/owner")"

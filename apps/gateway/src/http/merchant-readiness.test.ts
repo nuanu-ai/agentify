@@ -1,15 +1,12 @@
 /**
  * What the publish door asks of a merchant, on each of the three surfaces.
  *
- * A merchant's engineer learns what their merchant lacks in one place: the
- * refusal of a publish. Nothing else on the public surface answers the
- * question in advance, so this refusal has to be complete and exact on every
- * surface — a finding the door forgot is a card published for a merchant who
- * cannot sell, and a finding the door invented is a merchant sent to set
- * something the surface does not need. Each case below takes one fact away
- * from a merchant who otherwise has everything, and publishes a card with
- * nothing wrong with it, so what comes back is the door's judgement of the
- * merchant and of nothing else.
+ * A publish refusal is the only place a merchant's engineer learns what their
+ * merchant lacks, so it must be complete and exact on every surface: a missed
+ * finding publishes a card for a merchant who cannot sell, and an invented one
+ * sends a merchant to set something the surface does not need. Each case takes
+ * one fact away from a merchant who has everything and publishes a faultless
+ * card, so the answer judges the merchant and nothing else.
  */
 
 import { type Card, MERCHANT_FINDINGS, type MerchantFinding } from "@nuanu-ai/agentify-contracts";
@@ -166,12 +163,9 @@ describe("what the publish door asks of a merchant", () => {
 });
 
 describe("the one line a refusal is read by", () => {
-  // `problems` is the answer a program reads; the message is what a person
-  // reads in a log, and for a merchant who lacks something it used to be the
-  // first finding cut off at a hundred and sixty letters, mid-sentence and
-  // before it said how to fix it. Where the merchant is what stands in the
-  // way, the line says which of their settings are missing, all of them and
-  // only them, and says it whole.
+  // `problems` is what a program reads; the message is what a person reads in
+  // a log. Where the merchant stands in the way, the message names every
+  // missing setting and only those, whole rather than cut short.
   const NOTHING: Holding = { name: false, wallet: false, approval: false };
 
   it("names every missing merchant setting, whole", async () => {
@@ -207,7 +201,7 @@ describe("the one line a refusal is read by", () => {
     ).error;
 
     // Every finding about the merchant but the shop's site, which is asked of
-    // a parcel's card alone (ADR-0033).
+    // a parcel's card alone.
     expect(aboutTheMerchant(refusal)).toStrictEqual(
       Object.values(MERCHANT_FINDINGS).filter((finding) => finding !== "no_seller_site"),
     );

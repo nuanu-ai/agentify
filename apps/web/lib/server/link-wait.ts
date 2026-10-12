@@ -1,29 +1,18 @@
 /**
- * One answer for a verification link that was not sent, on both scanner doors.
+ * One answer for a verification link that was not sent, for registration and
+ * recovery alike: that no link went out, and how long the wait really is.
  *
- * Two walls can stand in front of a link. The scanner keeps its own rolling
- * hour per address and per scan session; the dashboard keeps a minute between
- * two links to one address and three links an hour on top of it, and names in
- * `retry_at` the moment its wall falls. Whichever refused, the person is owed
- * the same two things: that no link went out, and how long the wait really is.
- *
- * The registration route used to answer every refusal with a flat hour, so
- * somebody forty seconds into a one-minute wait was told to come back in an
- * hour and the recovery route said a link was on its way when none was. Both
- * numbers were invented, and inventing one is what this file exists to keep
- * out. The reason is held to the same rule as the number: the dashboard's answer
- * says when it will send again and never which of its two walls refused, so a
- * refusal that came from there states no cause at all. The one wall the
- * scanner can see — an address that has spent its own hour — is the one it
- * names.
+ * The scanner's own hourly limits or the dashboard's cooldown can refuse. The
+ * dashboard's answer carries `retry_at` but never which of its limits refused,
+ * so a cause is named only when the scanner can see it: an address that has
+ * spent its own hour. Neither the wait nor the cause is ever made up.
  */
 
 import { waitResponse, waitSeconds } from "./http";
 
-/** The wall behind a refusal, as far as the door can actually see it. */
+/** The limit behind a refusal, as far as the scanner can see it. */
 export type LinkWall = "address_hour" | "unspecified";
 
-/** What a request for a link came to, on either door. */
 export type LinkSendOutcome =
   | Readonly<{ sent: true }>
   | Readonly<{ sent: false; retryAt: Date; wall: LinkWall }>;

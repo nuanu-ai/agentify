@@ -1,14 +1,9 @@
 /**
- * The WooCommerce connection store against a real database, on the tables the
- * checked-in migration builds.
- *
- * The same contract the memory store keeps, run against Postgres, because the
- * two properties this store exists for are exactly the ones a memory
- * implementation can have by accident and a database has to be written for: a
- * token spent by one caller and no other, and a sale claimed once however many
- * attempts arrive at once. The first is a delete that returns a row; the second
- * is an insert that does nothing on conflict. Neither can be checked without a
- * database underneath.
+ * The shared contract run against Postgres, because its two properties are ones
+ * a memory store can have by accident and a database has to be written for: a
+ * token spent by one caller only (a delete that returns a row) and a sale
+ * claimed once however many attempts arrive together (an insert that does
+ * nothing on conflict).
  */
 
 import { dirname, join } from "node:path";
@@ -21,11 +16,8 @@ import { wooShopsContract } from "./testing/woo-shops-contract.js";
 import { postgresWooShops } from "./woo-shops.js";
 
 /**
- * A database of this file's own.
- *
- * The tables here hang off the accounts table by foreign key, so the suite
- * makes accounts of its own — which is not something to do to tables another
- * suite is emptying between its tests.
+ * These tables hang off the accounts table by foreign key, so the suite makes
+ * its own accounts, which must not happen in tables another suite empties.
  */
 const wanted = (() => {
   const url = new URL(testDatabaseUrl());
@@ -48,20 +40,10 @@ if (databaseUrl === null) {
 } else {
   const pool = new Pool({ connectionString: databaseUrl });
 
-  // Both halves of the reset are lessons this file learned by failing.
-  //
-  // It takes whatever tables are there rather than a list of their names,
-  // because everything in this database is built by the migrations about to
-  // run again, and a list is written once and then falls behind the next
-  // migration. That is not hypothetical: the list here was missing the report
-  // tombstones for two migrations, so every run after the first died on a
-  // table it had never been told to drop.
-  //
-  // And the schema the migrator journals in goes with the tables, which is the
-  // half that is easy to miss: it is not in `public`, so dropping the tables
-  // alone leaves a journal saying they are all still there, the next migration
-  // run concludes there is nothing to apply, and the suite fails on a table
-  // that does not exist.
+  // Drops whatever tables exist rather than a list of names, since a list falls
+  // behind the next migration. The migrator's journal schema goes too: it is
+  // not in `public`, and left behind it would say everything is applied while
+  // the tables are gone.
   await pool.query(`
     do $$
     declare
@@ -84,21 +66,12 @@ if (databaseUrl === null) {
   });
 
   /**
-   * Opens every connection the pool will hold, before anything is measured.
-   *
-   * The two cases in the contract that fire ten calls at once are measuring
-   * whether one statement settles a race, and they can only measure it if the
-   * ten calls really do overlap. A pool starts empty and opens connections as
-   * they are asked for, so without this the first call finishes its whole round
-   * trip while the second is still waiting for a socket — the calls serialise,
-   * a read followed by a write passes, and the case reports green over the
-   * defect it exists for. Measured: with a select-then-delete standing in for
-   * the single statement, the grant case passes on a cold pool and fails on a
-   * warm one.
+   * The contract's concurrent cases only measure a race if the ten calls really
+   * overlap; on a cold pool the first call finishes while the second waits for
+   * a socket, so a read-then-write would pass the case it exists to fail.
    */
   await Promise.all(Array.from({ length: 10 }, () => pool.query("select 1")));
 
-  /** Two accounts for the rows to hang off, made fresh for each run. */
   let issued = 0;
   const anAccount = async (): Promise<string> => {
     issued += 1;
@@ -112,8 +85,8 @@ if (databaseUrl === null) {
   };
 
   wooShopsContract("on postgres", async () => {
-    // Everything these tables hold, gone, so that one case cannot read a row
-    // another one wrote. The accounts go with them: they are made per case.
+    // Every row gone, so one case cannot read another's; the accounts too,
+    // since they are made per case.
     await pool.query("delete from dashboard_woo_orders");
     await pool.query("delete from dashboard_woo_quotes");
     await pool.query("delete from dashboard_woo_shops");

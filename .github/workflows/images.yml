@@ -5,11 +5,8 @@ name: Images
 # of a branch of this repository, for linux/amd64, and pushes each to the
 # GitHub Container Registry as ghcr.io/nuanu-ai/agentify-<name>:<full commit
 # SHA>. Every image carries the two labels a host checks: the source revision
-# and the source repository.
-#
-# The images are built here and not on the servers because a server building
-# its own spent most of a release on it, and gave each channel different bytes
-# for the same commit (ADR-0016).
+# and the source repository. Images are built here rather than on the servers
+# so that every channel runs the same bytes for a commit.
 #
 # Production does not trust a registry tag: any later push can move one,
 # including a push from a branch whose copy of this file says something else.
@@ -43,10 +40,9 @@ name: Images
 # from main's run, and a test release from the one successful run of the
 # commit, whichever branch pushed it.
 #
-# It deploys nothing. No job here holds a route or a credential to a server,
-# and a pushed image selects no channel. It runs no tests either: ci.yml is the
-# gate, and an image existing for a commit says nothing about whether that
-# commit is fit to release.
+# It deploys nothing (no job here holds a route or a credential to a server)
+# and runs no tests: ci.yml is the gate, and an image existing for a commit
+# says nothing about whether that commit is fit to release.
 
 on:
   # Branch pushes only, and never tags: step 1's `branch=main` matches a run's
@@ -74,9 +70,8 @@ jobs:
           fetch-depth: 0
       - run: ./scripts/scan-secrets.sh . "$GITHUB_SHA"
 
-  # One leg per image, in parallel. The build context is the repository root.
-  # app, scanner and scanner-worker read the .dockerignore beside their
-  # Dockerfile; web has none of its own and reads the root one.
+  # The build context is the repository root. app, scanner and scanner-worker
+  # read the .dockerignore beside their Dockerfile; web reads the root one.
   build:
     name: build ${{ matrix.image }}
     needs: secret_scan
@@ -113,12 +108,8 @@ jobs:
 
       # Without a provenance attestation the pushed object is one image
       # manifest, so its digest names the linux/amd64 image and nothing beside
-      # it. The cache is scoped per image, and `mode=max` keeps the
-      # intermediate stages too. A commit that changes neither the lockfile nor
-      # a package manifest reuses `pnpm install` in web, scanner and
-      # scanner-worker; in app it reuses only the download, `pnpm fetch`,
-      # because the install there follows `COPY . .`. A cache that cannot be
-      # written slows the next build and does not fail this one.
+      # it. A cache that cannot be written slows the next build and does not
+      # fail this one.
       - id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -136,11 +127,10 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=max,ignore-error=true
 
-      # The legs of a matrix do not each hand a later job an output of their
-      # own, so each leaves its digest in a one-line artifact instead. "Re-run
-      # failed jobs" keeps the artifacts of the legs that passed, and GitHub
-      # allows a re-run for thirty days after the run, so the artifacts are
-      # kept exactly that long; a re-run replaces the one it rebuilds.
+      # Matrix legs cannot each hand a later job an output, so each leaves its
+      # digest in an artifact. "Re-run failed jobs" keeps the passing legs'
+      # artifacts, and GitHub allows a re-run for thirty days, hence the
+      # retention.
       - name: Record the pushed digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -169,9 +159,7 @@ jobs:
           path: digests
           merge-multiple: true
 
-      # The five names are the build matrix's. Four digests are not a release,
-      # and neither are six, so anything but exactly those five publishes
-      # nothing.
+      # Anything but exactly the build matrix's five names publishes nothing.
       - name: Publish the five digests as one notice
         run: |
           set -euo pipefail

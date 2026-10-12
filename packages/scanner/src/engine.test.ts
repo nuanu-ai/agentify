@@ -6,10 +6,8 @@ import { htmlSignals, parseJsonLd, parseSitemap, visibleText } from "./parsers.j
 import { parseRobots } from "./robots.js";
 import { baseBlocked, levelForScore, scoreChecks } from "./scoring.js";
 
-// The readers whose result checks.ts keeps for each page, each counted on its
-// way through and otherwise left exactly as it is: every call reaches the real
-// function and returns what it returns. The count is what "a scan evaluated
-// again" below reads; nothing in this file is answered by a stand-in.
+// The page readers are wrapped only to count their calls, for "a scan
+// evaluated again" below; every call still reaches the real function.
 vi.mock("./parsers.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("./parsers.js")>();
   return {
@@ -138,10 +136,8 @@ describe("what the checks read from the markup real sites write", () => {
     [12, 13].map((id) => check(input, id)?.status === "unavailable");
 
   it("reads a page that only mentions a captcha or carries Cloudflare's bot detection", () => {
-    // Shopify puts the first script on every page of every store, for the
-    // captcha its forms may show; Cloudflare puts the second at the end of the
-    // pages it serves, to tell bots from browsers in the background. Both are
-    // the page itself, not a challenge in its place.
+    // Shopify puts the first script on every store's pages for its forms'
+    // captcha; Cloudflare appends the second to tell bots from browsers.
     const shopify = `<script id="captcha-bootstrap">!function(){'use strict';const t='contact',e='account',n='new_comment'}();</script>`;
     const cloudflare = `<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}})();</script>`;
     for (const script of [shopify, cloudflare])
@@ -165,9 +161,7 @@ describe("what the checks read from the markup real sites write", () => {
 
   it("reaches no verdict when the home page was a challenge, and reads nothing off it", () => {
     // Etsy's DataDome page, as it served it to the scanner in place of the
-    // home page: small and fast, and not the site. Nothing measured on it is
-    // the site's, so no check passes or fails on it and the scan withholds
-    // its score rather than grade a page the site never showed.
+    // home page.
     const challenge = `<html><head><title>etsy.com</title></head><body><script data-cfasync="false">var dd={'rt':'c','host':'geo.captcha-delivery.com'}</script><script data-cfasync="false" src="https://ct.captcha-delivery.com/c.js"></script></body></html>`;
     for (const status of [200, 403]) {
       const evaluation = evaluateScan({
@@ -206,9 +200,6 @@ describe("what the checks read from the markup real sites write", () => {
   });
 
   it("keeps the verdict of a home page that merely says the words a challenge says", () => {
-    // A shop page is the shop page whatever its words: a product named after
-    // a film, a help text about a login form. Only a challenge status or a
-    // vendor's own interstitial marks a page served in the site's place.
     const ordinary = evaluateScan(makeArtifacts("store"));
     for (const words of ["Access Denied hacker T-shirt", "Please verify you are human to log in"]) {
       const evaluation = evaluateScan({
@@ -230,8 +221,6 @@ describe("what the checks read from the markup real sites write", () => {
   });
 
   it("does not call a home page that could not be reached a block", () => {
-    // A server error is not the site turning the reader away: the scan says
-    // what it could read and that the rest was unavailable.
     const evaluation = evaluateScan({
       ...makeArtifacts("store"),
       base: artifact("https://example.com/", "Service unavailable", { status: 503 }),
@@ -272,8 +261,8 @@ describe("what the checks read from the markup real sites write", () => {
     expect(check(withBase(singleQuoted), 15)?.evidence).toMatchObject({
       product_identifiers: true,
     });
-    // A product value in another tag, such as the product card Twitter once
-    // defined, is not an Open Graph type.
+    // A product value in another tag, such as Twitter's product card, is not
+    // an Open Graph type.
     const card = `<meta property="og:type" content="website"><meta name="twitter:card" content="product"><p>Wool</p>`;
     expect(check(withBase(card), 15)?.status).toBe("fail");
   });
@@ -298,11 +287,10 @@ describe("what the checks read from the markup real sites write", () => {
 });
 
 describe("a scan of pages as large as the fetch admits", () => {
-  // The promise of parsers.test.ts ("a page or a sitemap as large as the
-  // fetch admits") for what the checks and the fingerprint read themselves:
-  // a feed link and an Open Graph type in a page of up to 2 MiB, a link in an
-  // llms.txt of up to 512 KiB, and the Adyen script in the first 512 KiB of a
-  // page, which is as far as the fingerprint reads.
+  // What the checks and the fingerprint read themselves, at the sizes the
+  // fetch admits: a feed link and an Open Graph type in a page of up to 2 MiB,
+  // a link in an llms.txt of up to 512 KiB, and the Adyen script in the first
+  // 512 KiB of a page, which is as far as the fingerprint reads.
   const pageCap = 2 * 1024 * 1024;
   const textCap = 512 * 1024;
   const budgetMs = 500;
@@ -364,17 +352,12 @@ describe("a scan of pages as large as the fetch admits", () => {
 
 describe("a scan evaluated again", () => {
   // The worker evaluates a scan's checks up to four times as its requests
-  // complete. Each round hands over a new set of artifacts holding the same
-  // fetched pages, and a page of up to 2 MiB costs one of these readers tens
-  // of milliseconds on a laptop. So a reading is kept with the page itself,
-  // and a later round is answered from it.
-  //
-  // The test counts calls instead of timing the rounds, because a time is a
-  // property of the machine: a ratio of two timings went over its line under
-  // the load of the whole suite with nothing broken. What a count does not
-  // see is the work that is not kept, such as check 15 and the fingerprint
-  // going over the raw pages every round, or a new reader added without a
-  // place to keep its result.
+  // complete, each round with a new set of artifacts holding the same pages,
+  // so a reading is kept with the page itself. The test counts calls rather
+  // than timing rounds, since timings flake under load. A count sees only the
+  // readers listed below: it misses work that is not kept, such as check 15
+  // and the fingerprint going over the raw pages every round, and a new reader
+  // added without a place to keep its result.
   const readers = { visibleText, htmlSignals, parseJsonLd, parseSitemap, parseRobots };
   const callsSoFar = () =>
     Object.fromEntries(

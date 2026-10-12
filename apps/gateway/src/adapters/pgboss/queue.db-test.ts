@@ -1,26 +1,12 @@
 /**
- * The queue, against a real Postgres.
+ * The queue against a real Postgres, under `pnpm test:db`. Almost everything
+ * this adapter promises is pg-boss keeping it, and none of that is visible
+ * offline.
  *
- * Almost everything this adapter promises is pg-boss keeping it — the delayed
- * job, the retry after a handler throws, the window after which a delivery
- * nobody answered is taken back — and none of it is visible offline. The
- * offline suite next door can only check the shape of the queue names. This is
- * where the promises themselves are checked.
- *
- * It is a file of its own rather than more tests in `adapters.db-test.ts`, and
- * the reason is the failure that produced it. That file starts a whole gateway,
- * and a started gateway has a worker polling `agentify_reminders`. A test that
- * stands up a second queue against the same database and waits for its own
- * handler to be called is asking pg-boss to hand one job to two consumers;
- * pg-boss hands it to one of them, correctly, and it was the gateway's — so the
- * test's handler was never called and the test failed every run. Delivering a
- * job once is the queue working, not the queue broken. Nothing here starts a
- * gateway, and every test gets a pg-boss installation of its own, so no test in
- * this file is ever competing with anything for its own jobs.
- *
- * These are not in `pnpm test`, for the same reason the adapters next door are
- * not: that command is free, deterministic and works without a network. They
- * run under `pnpm test:db`.
+ * Nothing here starts a gateway, so these tests stay out of
+ * `adapters.db-test.ts`: a started gateway polls `agentify_reminders`, and
+ * pg-boss would rightly hand a test's job to that worker instead of the test's
+ * handler.
  */
 
 import type { WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
@@ -31,8 +17,6 @@ import type { Reminder } from "../../ports/queue.js";
 import { readyDatabase, testDatabaseUrl } from "../../testing/database.js";
 import { A_NAME_PG_BOSS_ACCEPTS, ENVELOPES, PgBossQueue, REMINDERS, streamOf } from "./queue.js";
 
-// This suite's own database, made if it is not there. The sentence explaining
-// that there is no server at all is printed once, by the adapters suite.
 const databaseUrl = await readyDatabase(testDatabaseUrl());
 
 /** Real time, because a queue that lives in a database keeps its own. */
@@ -40,19 +24,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** The merchant whose stream this suite publishes to and draws from. */
 const A = "mch_a";
-/** That merchant's stream, which is a pg-boss queue of its own (ADR-0010). */
+/** That merchant's stream, which is a pg-boss queue of its own. */
 const STREAM = streamOf(A);
 
 /**
- * A pg-boss installation nobody else is using.
- *
- * Every test gets its own schema, and that is not tidiness. Queue settings are
- * written once — pg-boss's `create_queue` is an insert that does nothing on
- * conflict — so a test that needs a one-second visibility window would leave
- * that window on `agentify_envelopes` for every test that ran after it, and the
- * suite's behaviour would depend on the order the tests happened to be declared
- * in. A schema each also means the installation itself is exercised from
- * nothing every run.
+ * One pg-boss schema per test. Queue settings are written once (`create_queue`
+ * does nothing on conflict), so in a shared schema one test's one-second
+ * visibility window would stay on its queue for every test after it.
  */
 const SCHEMAS = [
   "pgboss_reminder_retry",
@@ -72,8 +50,8 @@ const SCHEMAS = [
 ] as const;
 
 if (databaseUrl === null) {
-  // Said quietly: the sentence with the instructions in it is printed once, by
-  // the adapters suite, and twice would read like two different problems.
+  // Quiet: the adapters suite prints the instructions, and printing them twice
+  // would read like two different problems.
   describe("the queue on a real database", () => {
     it.skip("is skipped: there is no Postgres to run it against", () => {
       // Intentionally empty: the skip is the message.
@@ -88,10 +66,9 @@ if (databaseUrl === null) {
 
     beforeAll(async () => {
       pool = new Pool({ connectionString: url });
-      // Dropped rather than emptied, and before anything is started. pg-boss's
-      // own deleteAllJobs truncates a partitioned table, which deadlocks
-      // against a worker polling it; and emptying the jobs would leave the
-      // queues and their schedules behind on a volume that outlives the run.
+      // Dropped rather than emptied, before anything starts: pg-boss's
+      // deleteAllJobs truncates a partitioned table, which deadlocks against a
+      // polling worker, and would leave queues and schedules behind.
       for (const schema of SCHEMAS) {
         await pool.query(`drop schema if exists ${schema} cascade`);
       }
@@ -101,11 +78,9 @@ if (databaseUrl === null) {
       // Stopped rather than left: a boss still polling holds connections open,
       // and the next file's first act is to drop the schema underneath it.
       await Promise.all(running.map((queue) => queue.stop().catch(() => undefined)));
-      // Taken away again, so that a developer opening this database finds the
-      // tables the gateway uses and not a row of pg-boss installations belonging to
-      // a test run. The drop in beforeAll is what makes the suite repeatable
-      // and stays there: a run that dies in the middle leaves its schemas
-      // behind, and the next run must not care.
+      // Dropped again so the database holds only the gateway's tables. The
+      // drop in beforeAll stays too: a run that dies midway leaves its schemas
+      // behind.
       for (const schema of SCHEMAS) {
         await pool.query(`drop schema if exists ${schema} cascade`);
       }
@@ -138,13 +113,8 @@ if (databaseUrl === null) {
     }
 
     it("agrees with the rule the queue names are held to", async () => {
-      // The adapter keeps a regular expression for what pg-boss takes as a
-      // queue name, and offline that is only a regular expression agreeing with
-      // itself. This is the library answering, and the first time it was asked
-      // it disagreed: the comment beside the constants said a period was
-      // refused and the obvious `agentify.envelopes` would fail at start-up,
-      // and pg-boss created that queue without a word. A rule copied out of a
-      // reading rather than out of the library had been standing as a fact.
+      // Offline the adapter's name rule can only agree with itself; here
+      // pg-boss answers.
       const { boss } = await labQueue("pgboss_queue_names");
 
       const taken = [ENVELOPES, REMINDERS, STREAM, "agentify.envelopes", "agentify-envelopes"];
@@ -159,20 +129,16 @@ if (databaseUrl === null) {
         await expect(boss.createQueue(name)).rejects.toThrow();
       }
 
-      // A merchant's stream is named after the merchant now, so a merchant
-      // whose identifier pg-boss will not take is not a start-up error somebody
-      // sees — it is one merchant whose orders reach nobody, found at the first
-      // sale. It is refused where the name is built instead.
+      // An identifier pg-boss would refuse is refused where the stream name is
+      // built, not at that merchant's first sale.
       expect(() => streamOf("a merchant")).toThrow(/cannot name a queue/);
     }, 30_000);
 
     it("delivers a reminder, and delivers it again when the handler throws", async () => {
-      // A reminder is the only thing that ever declares an overdue order. One
-      // dropped because the database was briefly unreachable is a paid order
-      // nobody ever marks for a refund, so the retry is not a nicety — and it
-      // is the queue's job rather than the handler's, because a handler that
-      // re-armed its own reminder would be writing to the thing that had just
-      // thrown at it.
+      // A reminder is the only thing that declares an order overdue, so one
+      // dropped is a paid order never marked for a refund. The retry is the
+      // queue's: a handler re-arming its own reminder would write to the thing
+      // that had just thrown at it.
       const seen: Reminder[] = [];
       let failures = 0;
       const { queue } = await labQueue("pgboss_reminder_retry");
@@ -192,8 +158,6 @@ if (databaseUrl === null) {
       await vi.waitFor(() => expect(seen).toHaveLength(2), { timeout: 25_000, interval: 100 });
 
       expect(failures).toBe(1);
-      // The same reminder twice, not two different ones: what came back is the
-      // deadline that was not dealt with, carrying the instant it runs out at.
       expect(seen).toStrictEqual([
         { kind: "deadline", orderId: "ord_r", deadline: "quote_expiry", at: 1 },
         { kind: "deadline", orderId: "ord_r", deadline: "quote_expiry", at: 1 },
@@ -201,15 +165,10 @@ if (databaseUrl === null) {
     }, 40_000);
 
     it("gives up on a reminder that never succeeds, after the number of attempts it was given", async () => {
-      // The other half of the retry, and the half a test that throws once
-      // cannot see. The port promises a reminder is delivered again "a bounded
-      // number of times", and the configuration's own comment says delivering
-      // it forever would turn a defect into a loop. A handler that always
-      // throws is what asks whether the bound is real: with the attempts below
-      // set to three, the third failure has to be the last word.
+      // Retrying forever would turn a defect into a loop. labQueue gives
+      // reminders three attempts, so the third failure is the last.
       const seen: Reminder[] = [];
-      // Held in one place rather than written twice, because the second use is
-      // inside a string the compiler cannot check.
+      // Named once: the second use is inside SQL the compiler cannot check.
       const schema = "pgboss_reminder_bound" satisfies (typeof SCHEMAS)[number];
       const { boss, queue } = await labQueue(schema);
       queue.onReminder(async (reminder) => {
@@ -223,8 +182,6 @@ if (databaseUrl === null) {
         0,
       );
 
-      // Three deliveries in all — the first and two retries — and then the job
-      // is failed rather than tried a fourth time.
       await vi.waitFor(
         async () => {
           const { rows } = await pool.query<{ state: string }>(
@@ -237,18 +194,15 @@ if (databaseUrl === null) {
       );
       expect(seen).toHaveLength(3);
 
-      // Left alone from here: a failed reminder is not picked up again, which
-      // is what stops a deadline nobody can act on from being retried for as
-      // long as the gateway runs.
+      // A supervision pass does not pick a failed reminder up again.
       await boss.supervise();
       expect(seen).toHaveLength(3);
     }, 60_000);
 
     it("fires reminders that fall due together in one pass, not one poll apart", async () => {
-      // Every order leaves several reminders behind, and they fall due in
-      // clusters. Taken one per poll, the fifth of five due at once waited
-      // four polls behind the others, and a deadline it carried landed seconds
-      // late — long enough to decide whether a synchronous sale went through.
+      // Reminders fall due in clusters. Taken one per poll, the last of five
+      // would land seconds late, long enough to decide whether a synchronous
+      // sale went through.
       const firedAt: number[] = [];
       const { queue } = await labQueue("pgboss_reminder_together");
       queue.onReminder(async () => {
@@ -266,10 +220,8 @@ if (databaseUrl === null) {
     }, 40_000);
 
     it("lets one failing reminder fail alone, without holding back the ones beside it", async () => {
-      // Reminders taken together are settled one by one. A batch settled as a
-      // whole would fail every reminder in it for the one that threw, and spend
-      // their attempts on a defect that is not theirs until their deadlines
-      // were lost.
+      // A batch settled as a whole would spend every reminder's attempts on the
+      // one that threw, until their deadlines were lost.
       const seen: string[] = [];
       const schema = "pgboss_reminder_neighbours" satisfies (typeof SCHEMAS)[number];
       const { queue } = await labQueue(schema, { [REMINDERS]: {} });
@@ -286,9 +238,6 @@ if (databaseUrl === null) {
       }
       await queue.start();
 
-      // Run until the broken one has spent every attempt it was given and
-      // failed for good; by then a batch settled as a whole would have failed
-      // its neighbours along with it, every time.
       const states = async () => {
         const { rows } = await pool.query<{ order_id: string; state: string }>(
           `select data->>'orderId' as order_id, state from ${schema}.job where name = $1 order by 1`,
@@ -311,10 +260,8 @@ if (databaseUrl === null) {
     }, 60_000);
 
     it("takes nothing for a worker that left while its draw was waiting", async () => {
-      // A worker that stops cuts its poll off. A draw still waiting for it
-      // stops at once, and what is published afterwards stays on the stream
-      // for the next draw: an event is sent once, and one taken for nobody is
-      // gone.
+      // An event is sent once, so a draw for a worker that has left must take
+      // nothing: what is published afterwards stays for the next draw.
       const { queue } = await labQueue("pgboss_envelope_left");
       const left = new AbortController();
       const waiting = queue.draw(A, 10, 20_000, left.signal);
@@ -340,11 +287,8 @@ if (databaseUrl === null) {
     }, 40_000);
 
     it("holds a delayed reminder back until its moment", async () => {
-      // Every deadline in the system is armed through this. A reminder that
-      // fired the moment it was written would close an order whose merchant is
-      // still honestly inside his deadline — the machine checks the instant it
-      // carries against its own arithmetic, but only because it is told the
-      // truth about when it fired.
+      // Every deadline is armed through this; a reminder fired early would
+      // close an order whose merchant is still inside its deadline.
       const seen: Reminder[] = [];
       const { queue } = await labQueue("pgboss_reminder_delay");
       queue.onReminder(async (reminder) => {
@@ -357,9 +301,8 @@ if (databaseUrl === null) {
         4_000,
       );
 
-      // The reminders are looked for every half second, so by now they have
-      // been looked at several times and this one left alone. Without that,
-      // "nothing yet" would only mean nobody had got round to it.
+      // Reminders are polled every half second, so by now this one has been
+      // passed over several times; otherwise "nothing yet" would prove nothing.
       await sleep(2_800);
       expect(seen).toStrictEqual([]);
 
@@ -372,13 +315,10 @@ if (databaseUrl === null) {
     }, 40_000);
 
     it("gives a reminder back when the process that took it never answers", async () => {
-      // The crash case, and the only reason a visibility window is worth
-      // having. A gateway that took a deadline reminder and died before acting
-      // on it must not take that deadline with it: the order it belongs to is
-      // paid, and nothing else in the system will ever declare it overdue.
-      //
-      // One second of window instead of the default fifteen minutes, and the
-      // dying is done by taking the job and not answering it.
+      // A gateway that dies holding a deadline reminder must not take the
+      // deadline with it: nothing else will ever declare that paid order
+      // overdue. The window is one second here, and dying is taking the job
+      // without answering it.
       const { boss, queue } = await labQueue("pgboss_reminder_expiry", {
         [REMINDERS]: { expireInSeconds: 1 },
       });
@@ -390,16 +330,13 @@ if (databaseUrl === null) {
 
       const taken = await boss.fetch<Reminder>(REMINDERS, { batchSize: 1 });
       expect(taken).toHaveLength(1);
-      // While it is out with somebody, nobody else is given it. A queue that
-      // handed the same deadline to two processes would have them both act on
-      // it.
+      // While it is out, nobody else is given it, or two processes would both
+      // act on the deadline.
       expect(await boss.fetch<Reminder>(REMINDERS, { batchSize: 1 })).toStrictEqual([]);
 
       await sleep(1_500);
-      // Asked for rather than waited for. pg-boss runs this itself, on a timer,
-      // about once a minute; calling it by hand compresses that minute and
-      // changes nothing else, so what is watched below is the same recovery a
-      // running gateway gets without anybody asking.
+      // pg-boss runs supervision itself about once a minute; calling it by
+      // hand only compresses that wait.
       await boss.supervise();
 
       const again = await vi.waitFor(
@@ -410,8 +347,7 @@ if (databaseUrl === null) {
         },
         { timeout: 25_000, interval: 250 },
       );
-      // The same job, not a second one somebody wrote: an order gets one
-      // deadline, and it comes back rather than being duplicated.
+      // The same job comes back; the deadline is not duplicated.
       expect(again[0]?.id).toBe(taken[0]?.id);
       expect(again[0]?.data).toStrictEqual({
         kind: "deadline",
@@ -422,16 +358,11 @@ if (databaseUrl === null) {
     }, 60_000);
 
     it("does not give a drawn envelope back after its window, and that is the known gap", async () => {
-      // The port says this out loud and calls it a real gap, so it is checked
-      // rather than assumed. An envelope drawn into a poll response that never
-      // reached the merchant's worker is lost: publish keeps no retries,
-      // because whether an order is delivered again is the order machine's
-      // decision and a queue with its own patience would be a second opinion
-      // over the top of it. An order event has no such machine behind it and is
-      // simply gone — that is the gap, and it needs an acknowledgement the
-      // contract does not have.
-      // Held in one place rather than written twice, because the second use is
-      // inside a string the compiler cannot check.
+      // Publish keeps no retries, because redelivering an order is the order
+      // machine's call. An order event has no such machine behind it, so one
+      // drawn but never received is gone; closing that gap needs an
+      // acknowledgement the contract does not have.
+      // Named once: the second use is inside SQL the compiler cannot check.
       const schema = "pgboss_envelope_expiry" satisfies (typeof SCHEMAS)[number];
       const { boss, queue } = await labQueue(schema, {
         [STREAM]: { expireInSeconds: 1 },
@@ -457,13 +388,11 @@ if (databaseUrl === null) {
       await sleep(1_500);
       await boss.supervise();
 
-      // And still not, once the window has run out. This is the promise the
-      // port makes and the thing a reader would otherwise have to take on
-      // trust.
+      // And still not once the window has run out.
       expect(await queue.draw(A, 10, 1_000)).toStrictEqual([]);
 
-      // Where it went, so that "lost" is a place somebody can look rather than
-      // a silence: the delivery is recorded as failed, not quietly dropped.
+      // Recorded as failed, so a lost delivery can be found rather than
+      // silently dropped.
       const { rows } = await pool.query<{ state: string }>(
         `select state from ${schema}.job where name = $1`,
         [STREAM],
@@ -472,24 +401,16 @@ if (databaseUrl === null) {
     }, 60_000);
 
     it("makes both queues with the fifteen-minute window a lost delivery waits out", async () => {
-      // Every other test here that cares about the visibility window makes the
-      // queue itself with a window of one second, so none of them ever sees the
-      // window production runs with. This is that number, read back off a queue
-      // the adapter made the way `start()` makes it.
-      //
-      // Fifteen minutes is how long a delivery may be held by a process that
-      // has died before the queue takes it back. For a reminder that is how
-      // late an overdue order can be declared when the gateway carrying its
-      // deadline goes down, so it is a number somebody may well want to change
-      // — and the note beside `createQueue` says why that cannot be done by
-      // passing options there. Changing it should break this test and send
-      // whoever changed it to that note.
+      // The other tests make their queues with a one-second window; this reads
+      // back the window production gets. For a reminder it is how late an
+      // overdue order can be declared when the gateway holding it dies. Options
+      // passed to `createQueue` do not reach a database that already has the
+      // queue, so changing it is `updateQueue` or a migration.
       const { boss, queue } = await labQueue("pgboss_queue_settings");
       queue.onReminder(async () => undefined);
       await queue.start();
-      // A merchant's stream is made the first time anything reaches for it,
-      // because the merchants are rows and this process holds no list of them
-      // at start-up. So it is reached for, and then asked about.
+      // A merchant's stream is made the first time it is reached for; the
+      // process holds no list of merchants at start-up.
       await queue.draw(A, 1, 0);
 
       for (const name of [STREAM, REMINDERS]) {
@@ -499,25 +420,11 @@ if (databaseUrl === null) {
     }, 30_000);
 
     it("holds a delayed envelope back, and reaches a poll in another process when it lands", async () => {
-      // Two promises, and they need different setups to be worth anything.
-      //
-      // The first is the wait itself. The gateway publishes an envelope with
-      // one when a delivery is to be tried again and when a charge is still in
-      // flight, and that is the branch of publish which deliberately wakes
-      // nobody — a delayed envelope has nothing to wake anybody for yet.
-      //
-      // The second is that a draw in one process is reached by a publish in
-      // another. That needs an envelope published with no wait, because only
-      // those signal the parked polls at all: the delayed one above would be
-      // carried by a single instance's own `draw` loop just as well, so it
-      // proves nothing about a second one. This is what would carry a second
-      // gateway process the day there is one, and it is `draw` asking `fetch`
-      // again rather than anything pg-boss does on its own — the library's
+      // Two setups. A delayed publish deliberately wakes no parked poll, so the
+      // first half checks the wait itself. An immediate publish wakes only its
+      // own instance's polls, so the second half checks that another
+      // instance's `draw` still finds it by fetching again: pg-boss's own
       // polling lives in `work()`, which envelopes never go through.
-      //
-      // The queue is made once, the way `start()` makes it, and the second
-      // instance finds it already there, which is what a second gateway
-      // starting against a running system does.
       const publisher = await labQueue("pgboss_envelope_delay", { [STREAM]: {} });
       const drawer = await labQueue("pgboss_envelope_delay");
       const envelopeAt = (id: string): WorkerEnvelope => ({
@@ -550,15 +457,10 @@ if (databaseUrl === null) {
     }, 60_000);
 
     it("says whether a stream is still holding an order, and only about orders", async () => {
-      // The sweep asks this before it sends an order out again, and what it
-      // buys is the order's own deliveries: the machine counts every hand-over,
-      // the count is what its attempt cap reads, and the closure at that cap is
-      // a refund. A wrong answer here costs a merchant who was merely between
-      // polls one of his retries.
-      //
-      // It cannot be checked offline, because the whole of it is a filter the
-      // library builds — containment against the job's document — and an
-      // in-memory queue agreeing with itself proves nothing about that.
+      // The sweep asks this before sending an order again, and every hand-over
+      // counts toward an attempt cap that ends in a refund, so a wrong answer
+      // costs a merchant a retry. The answer is a containment filter pg-boss
+      // builds, which only a real database can check.
       const { queue } = await labQueue("pgboss_holds_order", { [STREAM]: {} });
       const orderEnvelope = (id: string, orderId: string): WorkerEnvelope => ({
         kind: "order",
@@ -578,34 +480,25 @@ if (databaseUrl === null) {
         },
       });
 
-      // Nothing there at all.
       expect(await queue.holdsOrder(A, "ord_held")).toBe(false);
 
       await queue.publish(A, orderEnvelope("env_held_1", "ord_held"));
       expect(await queue.holdsOrder(A, "ord_held")).toBe(true);
-      // And it is about this order rather than about the stream having
-      // anything on it.
       expect(await queue.holdsOrder(A, "ord_somebody_else")).toBe(false);
 
-      // A redelivery waiting out its delay counts: it is going to be handed
-      // over, so an order with one is not an order that has reached nobody.
+      // A redelivery waiting out its delay counts as held: it will be handed
+      // over.
       await queue.publish(A, orderEnvelope("env_held_2", "ord_delayed_hold"), 60_000);
       expect(await queue.holdsOrder(A, "ord_delayed_hold")).toBe(true);
 
-      // Drawn is not held. This is the gap the port names in its own words: an
-      // envelope in a worker's hands looks from here exactly like one that was
-      // never written, which is why the sweep has patience as well as this.
+      // Drawn is not held: an envelope in a worker's hands looks like one never
+      // written, which is why the sweep also waits.
       const drawn = await queue.draw(A, 10, 2_000);
       expect(drawn.map((delivery) => delivery.envelope.id)).toStrictEqual(["env_held_1"]);
       expect(await queue.holdsOrder(A, "ord_held")).toBe(false);
 
-      // And an event about an order is not an order. Nothing ever re-sends an
-      // event, so nothing should ever be told an order is still in hand
-      // because a message about it is.
-      //
-      // The state this whole repair rests on is checked next door, in its own
-      // test: an envelope whose window ran out is `failed`, and this has to
-      // answer "not held" for it or the order it carried reaches nobody, ever.
+      // An event about an order does not hold the order: nothing re-sends
+      // events.
       await queue.publish(A, {
         kind: "order_event",
         id: "env_held_3",
@@ -620,12 +513,9 @@ if (databaseUrl === null) {
     }, 60_000);
 
     it("says a failed envelope is not held, which is what the repair rests on", async () => {
-      // The one state the whole repair depends on. An envelope drawn into a
-      // poll response that never reached its worker is failed once its window
-      // runs out — the test above pins that — and it is never offered again. If
-      // this said "held" for it, the sweep would leave that order alone
-      // forever: paid, with nobody ever handed the work, until its own
-      // fulfillment deadline turned it into a debt.
+      // An envelope whose window ran out is failed and never offered again.
+      // Answering "held" for it would leave a paid order with nobody ever handed
+      // the work until its fulfilment deadline made it a debt.
       const schema = "pgboss_holds_failed" satisfies (typeof SCHEMAS)[number];
       const { boss, queue } = await labQueue(schema, {
         [STREAM]: { expireInSeconds: 1 },
@@ -658,9 +548,6 @@ if (databaseUrl === null) {
       await sleep(1_500);
       await boss.supervise();
 
-      // Failed, said by the library rather than assumed, and then the answer
-      // that matters: nothing is holding this order, so the sweep is free to
-      // send it again.
       const { rows } = await pool.query<{ state: string }>(
         `select state from ${schema}.job where name = $1`,
         [STREAM],
@@ -670,11 +557,9 @@ if (databaseUrl === null) {
     }, 60_000);
 
     it("takes on work to run every day, runs it, and does not stack up schedules", async () => {
-      // The gateway registers its sweep of old payment claims through this on
-      // every start, so a schedule pg-boss refused would take start-up down
-      // with it. Two things are worth more than "it did not throw": that the
-      // work is really wired to the queue, and that registering it again — what
-      // every restart does — replaces the schedule instead of adding one more.
+      // The gateway registers its daily sweep on every start, so a refused
+      // schedule takes start-up down, and registering again must replace the
+      // schedule rather than add one.
       const { boss, queue } = await labQueue("pgboss_every_day");
       let ran = 0;
 

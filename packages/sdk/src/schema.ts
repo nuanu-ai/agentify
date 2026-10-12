@@ -1,30 +1,17 @@
 /**
- * The small amount of schema machinery this package needs, written against the
- * shape of a result rather than against the library that produces it.
- *
- * The reason is the dependency tree a merchant installs. The SDK declares one
- * runtime dependency, `@nuanu-ai/agentify-contracts`, and zod arrives underneath it
- * (ADR-0003 §8). Importing zod here by name would add a package to that tree
- * without a recorded decision — and under a strict install it would not even
- * resolve, because zod is the contracts package's dependency and not ours. So
- * the schemas are used through the objects contracts exports, and where a type
- * has to be named at all it is named by its shape.
- *
- * Nothing here reimplements validation. The checking is the contracts
- * schemas', every time; this file only carries their findings across into the
- * shape a merchant reads.
+ * The little schema machinery this package needs, written against the shape of
+ * a result rather than against zod. zod arrives beneath
+ * `@nuanu-ai/agentify-contracts` and is not this package's dependency, so under
+ * a strict install it would not even resolve here. Nothing here validates; it
+ * carries the contract schemas' findings into the shape a merchant reads.
  */
 
 import type { Problem } from "@nuanu-ai/agentify-contracts";
 
 /**
- * One finding of a schema, as much of it as this package reads.
- *
- * `code` is optional because it is optional on the shape zod produces, and a
- * finding with no code still has a path and a sentence. Where it is missing
- * the translation below supplies one rather than leaving the field out: a
- * consumer branching on the code should never have to tell "no code" from "the
- * field did not arrive".
+ * One finding of a schema, as much of it as this package reads. A finding
+ * with no code is given `UNNAMED_FINDING`, so a consumer never has to tell "no
+ * code" from "the field did not arrive".
  */
 export interface SchemaIssue {
   readonly code?: string | undefined;
@@ -36,16 +23,10 @@ export interface SchemaIssue {
 export const UNNAMED_FINDING = "invalid";
 
 /**
- * A schema's findings, in the shape the publish call answers in.
- *
- * One shape for both sides is the point. A merchant who ran the check locally
- * and a merchant who published and was refused read the same object under the
- * same word — a path to the field, a code for their code, a sentence for the
- * person fixing it — so neither of the two has a reader of its own.
- *
- * The path is flattened to text because that is what the contract carries. An
- * index inside an array arrives as a number and would otherwise be a number in
- * one finding and a name in the next.
+ * A schema's findings, in the shape the publish call answers in, so a local
+ * check and a refused publish read the same. The path is flattened to text,
+ * since an array index would otherwise be a number in one finding and a name
+ * in the next.
  */
 export const problemsOf = (issues: readonly SchemaIssue[]): Problem[] =>
   issues.map((issue) => ({
@@ -55,12 +36,9 @@ export const problemsOf = (issues: readonly SchemaIssue[]): Problem[] =>
   }));
 
 /**
- * The findings of a schema rendered as one block of text, one finding a line,
- * each pointing at the field it is about.
- *
- * A finding about the whole document has an empty path and is written as such
- * rather than with a blank where the field would be, so that "this is about
- * the card" and "the path went missing" do not look the same.
+ * The findings as one block of text, one a line, each pointing at its field.
+ * A finding with an empty path is written as about the card as a whole, so it
+ * cannot be mistaken for a path that went missing.
  */
 export const describeProblems = (problems: readonly Problem[]): string =>
   problems

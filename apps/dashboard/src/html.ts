@@ -1,20 +1,13 @@
 /**
- * Building a page out of strings, and the escaping that makes that safe.
- *
- * There is no template engine here because ADR-0005 §4 asks for no build step
- * and three lists do not need one. What that trades away is the engine's
- * automatic escaping, so the escaping is the first thing in this file and
- * everything that reaches a page goes through it. A merchant's own card title
- * is not hostile input in any interesting sense, but it is text somebody else
- * wrote, and a title containing a `<` would otherwise silently break the page
- * it appears on.
+ * Pages are built from strings with no template engine, so there is no
+ * automatic escaping: everything that reaches a page goes through `escaped`.
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
 import type { DashboardDestination } from "./dashboard-entry.js";
 import { moment } from "./words.js";
 
-/** Text on its way into a page, with the five characters that are not text. */
+/** Escapes the five characters that are not text in HTML. */
 export const escaped = (value: string): string =>
   value
     .replaceAll("&", "&amp;")
@@ -24,29 +17,23 @@ export const escaped = (value: string): string =>
     .replaceAll("'", "&#39;");
 
 /**
- * The field every form behind the gate carries: the address its page was
- * drawn for.
- *
- * People mostly sign out to come back as another address (ADR-0026 §3), and
- * a tab drawn for the first is often still open when the second signs in. The
- * browser then sends the second one's cookie with the first one's form, so the
- * cookie alone cannot say whose page was pressed; this field can, and the gate
- * refuses a form whose page was drawn for somebody else.
+ * The address the page was drawn for, carried by every form behind the gate. A
+ * tab drawn for one address is often still open when another signs in, and the
+ * browser then sends the new cookie with the old form, so the cookie alone
+ * cannot say whose page was pressed; the gate refuses a form drawn for somebody
+ * else.
  */
 export const DRAWN_FOR = "signed_in_as";
 
 /**
- * A page with every form that posts saying whom it was drawn for.
+ * Applied to the whole page rather than written into each form, so a new form
+ * carries it without anybody remembering to. A form that ends up without it is
+ * refused by the gate, so a miss shows as a form that does not work rather than
+ * one that works for whoever is signed in.
  *
- * Done to the whole page rather than written into each form, so a form added
- * later carries it without anybody remembering to, however its tag is spelled.
- * A form that ends up without it anyway is refused by the gate rather than let
- * through, so a miss shows as a form that does not work instead of a form that
- * works for whoever is signed in.
- *
- * `autocomplete="off"` because Firefox restores a hidden field's old value
- * when a page is reloaded, which would put the address the tab was first drawn
- * for back into a page just redrawn for somebody else.
+ * `autocomplete="off"` because Firefox restores a hidden field's old value on
+ * reload, which would put the first address back into a page redrawn for
+ * somebody else.
  */
 const drawnFor = (who: string, html: string): string =>
   html.replaceAll(/<form\b[^>]*>/gi, (tag) =>
@@ -56,58 +43,37 @@ const drawnFor = (who: string, html: string): string =>
   );
 
 /**
- * Which of the screens with navigation on them is being looked at.
- *
- * Each is a section a signed-out person is returned to after the sign-in, the
- * cards being the start, so a tab cannot be added that the sign-in forgets.
+ * Each tab is also a destination the sign-in returns to, so a tab cannot be
+ * added that the sign-in forgets.
  */
 export type Tab = "cards" | Exclude<DashboardDestination, "default" | "woocommerce">;
 
 export interface Chrome {
-  /** Which of the three things this stack is, so every page names it. */
   readonly mode: SurfaceMode;
-  /** Where the dashboard is mounted, "" when it is at the root of its origin. */
+  /** "" when mounted at the root of its origin. */
   readonly base: string;
   /**
-   * The address of the person signed in.
-   *
-   * On every page, in the corner, because a merchant with two people has to be
-   * able to tell whose screen this is before pressing the control that stops
-   * all their selling.
-   *
-   * It links to the settings, where the account it names is described. Pressing
-   * your own name means "show me my account" and opens that page directly.
+   * On every page, so a merchant with two people can tell whose screen this is
+   * before pressing the control that stops all their selling.
    */
   readonly who: string;
-  /**
-   * Whether anybody has shown they can read mail sent to that address. The
-   * identity fact remains available to callers, while every interactive
-   * passwordless session is confirmed by the link that opened it.
-   */
+  /** Every interactive session is confirmed by the link that opened it. */
   readonly confirmed: boolean;
-  /** The tab to mark as the current one; null on a page that is none of them. */
+  /** Null on a page that is none of the tabs. */
   readonly tab: Tab | null;
   readonly title: string;
-  /** Where the logo in the sidebar leads; the site's front page unless named. */
+  /** The site's front page unless named. */
   readonly home?: string;
   /**
-   * The merchant's own selling word, for the light in the corner.
-   *
-   * Absent on a screen that is not about selling, which is the keys. The word
-   * comes from the card list, and fetching one on a page that draws no cards
-   * would be a call to the gateway whose only purpose is a coloured dot — on
-   * the one screen a merchant is most likely to be reading because something
-   * about their keys has gone wrong.
+   * Absent on the keys screen: the word comes from the card list, and fetching
+   * it there would be a gateway call for a coloured dot on the screen a
+   * merchant reads when something about their keys has gone wrong.
    */
   readonly selling?: { readonly text: string; readonly tone: string };
   /**
-   * Whether this merchant has still chosen no name for buyers to read.
-   *
-   * True draws the line at the top of the page saying nothing of theirs can go
-   * on sale, with the page that fixes it. Absent where the screen did not ask
-   * the gateway — the keys, for the reason given above the selling word, and
-   * the settings itself, which is the answer rather than a place to be told
-   * about the question.
+   * True draws the line at the top saying nothing can go on sale, with the page
+   * that fixes it. Absent where the screen did not ask the gateway: the keys
+   * screen, and settings itself.
    */
   readonly unnamed?: boolean;
   readonly body: string;
@@ -122,7 +88,6 @@ const TABS: readonly [Tab, string][] = [
   ["settings", "Settings"],
 ];
 
-/** Every page names its mode and warns only where there is something to warn about. */
 const surface = (mode: SurfaceMode): string => {
   const words = SURFACE_WORDS[mode];
   return words === null
@@ -130,29 +95,14 @@ const surface = (mode: SurfaceMode): string => {
     : `<div class="stack-note" ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}"><div class="container"><p class="surface-words">${escaped(words)}</p></div></div>`;
 };
 
-/** The same compact lockup on the public site, the dashboard and every auth page. */
 export const brandLockup = (home = "/"): string =>
   `<a class="brand" href="${escaped(home)}" aria-label="Agentify home"><img class="brand-mark" src="/assets/agentify-mark.svg" alt="" width="30" height="30"><span>Agentify</span></a>`;
 
 /**
- * The band at the foot of every working screen.
- *
- * One row and three things in it: the lockup, the three places outside the
- * dashboard a signed-in merchant has the same need for as any visitor, and the
- * copyright. It is the scanner's footer in colour and in type — ink rather than
- * paper, the mark inverse, the small print in the monospaced face — and not in
- * shape: the scanner's four columns of link groups carry a marketing site, and
- * a console with five tabs has nothing to put in them.
- *
- * It also settles where the documentation goes. The link used to ride in the
- * bar, where it had to argue at length that it was not a sixth tab; in a footer
- * it plainly is not one, and the argument goes with it.
- *
- * The three addresses are absolute and carry no base path: ADR-0005 §1 puts the
- * documentation at /docs and the scanner's own pages at the root of the same
- * origin, beside the dashboard rather than under it. Run on its own the dashboard
- * has none of them and all three 404, exactly as /styles/fonts.css does, and
- * for the same reason: the shared origin is Caddy's to assemble.
+ * The three addresses are absolute and carry no base path: the documentation
+ * and the scanner live at the root of the same origin, beside the dashboard.
+ * Run on its own the dashboard has none of them, and the links 404 until Caddy
+ * assembles the shared origin.
  */
 const FOOT = `  <footer class="foot">
     <div class="foot-inner container">
@@ -167,9 +117,6 @@ const FOOT = `  <footer class="foot">
   </footer>
 `;
 
-/**
- * The numbered sections, the same list in the sidebar and in the narrow menu.
- */
 const sections = (chrome: Chrome): string =>
   `${TABS.map(([tab, label], index) =>
     tab === chrome.tab
@@ -178,16 +125,9 @@ const sections = (chrome: Chrome): string =>
   ).join("")}`;
 
 /**
- * The menu behind the burger on a phone and a tablet, where there is no room
- * for the sidebar. A details element, so it opens and closes on its button
- * with no script at all (ADR-0005 §4), and every link in it leads to another
- * page, which closes it. Its button says "Menu" in both states, because a
- * details element already tells a screen reader whether it is open.
- *
- * The sidebar's own list and help box are hidden at these widths, so only one
- * of the two navigations is ever on the screen. Who is signed in, and the way
- * out, stay in the bar at the top at every width (ADR-0026 §3), so the menu
- * does not repeat them.
+ * A details element, so it opens and closes with no script. Who is signed in
+ * and the way out stay in the top bar at every width, so the menu does not
+ * repeat them.
  */
 const narrowMenu = (chrome: Chrome): string => `<details class="app-menu">
         <summary aria-label="Menu"><span></span><span></span><span></span></summary>
@@ -198,22 +138,12 @@ const narrowMenu = (chrome: Chrome): string => `<details class="app-menu">
       </details>`;
 
 /**
- * One whole page.
- *
- * The stylesheet is linked rather than inlined so that a merchant moving
- * between the screens fetches it once, and so that the one visual
- * language the surfaces share is one file rather than four copies.
- *
- * The faces are linked separately, from the shared origin, because they are
- * woff2 files Caddy serves out of the visual package and their addresses are
- * relative to that directory. Behind Caddy this resolves and the pages are set in Schibsted Grotesk;
- * run on its own the dashboard has no /styles, the link 404s and the fallback
- * stack in the tokens carries the page — which is what a fallback stack is for,
- * and why every family here names a full one.
+ * The fonts are linked from the shared origin, where Caddy serves them. Run on
+ * its own the dashboard has no /styles, the link 404s and the fallback stack in
+ * the tokens carries the page, which is why every family names a full one.
  */
 export const page = (chrome: Chrome): string => {
-  // The screen's own heading is drawn once, in the bar at the top, rather than
-  // a second time above the content.
+  // The heading is drawn once, in the top bar.
   const heading = /<h1>([\s\S]*?)<\/h1>/.exec(chrome.body);
   const body = heading === null ? chrome.body : chrome.body.replace(heading[0], "");
   const title = heading?.[1] ?? escaped(chrome.title);
@@ -240,9 +170,9 @@ export const page = (chrome: Chrome): string => {
     </aside>
     <div class="app-workspace">
       ${
-        // The stack notice heads the workspace rather than the window: the
-        // sidebar is a full-height sticky column, and a band above it would
-        // push its foot below the first screen.
+        // The stack notice heads the workspace rather than the window: a band
+        // above the full-height sticky sidebar would push its foot below the
+        // first screen.
         surface(chrome.mode)
       }
       <header class="top"><div class="top-inner">
@@ -262,18 +192,8 @@ ${FOOT}</div>
 };
 
 /**
- * Who is signed in, and how to stop being them, at the end of the bar.
- *
- * In the header, as the scanner's header carries the same two things
- * (apps/web/components/site-chrome.tsx), because one session serves the whole
- * site and the site reads as one product (ADR-0026 §3). It stands behind a rule
- * of its own at the far end, in the muted weight of a label, so the address
- * does not read as a sixth tab and the selling light stays the one piece of
- * status beside the tabs.
- *
- * The address is still a link to the settings, because pressing your own name
- * means "show me my account" and the account is on that page. A long address is
- * cut with its whole self in the title, so the bar never runs off a phone.
+ * A long address is cut, with the whole of it in the title, so the bar never
+ * runs off a phone.
  */
 const accountRow = (base: string, who: string): string => `      <div class="account">
         <a class="who" href="${escaped(base)}/settings" title="${escaped(who)}">${escaped(who)}</a>
@@ -284,18 +204,10 @@ const accountRow = (base: string, who: string): string => `      <div class="acc
 `;
 
 /**
- * The line at the top of every working screen while no name is set.
- *
- * It says the consequence rather than the setting, because the consequence is
- * the part a merchant can feel: a card their code publishes is refused, and
- * without this line the refusal arrives in their own logs with nothing in the
- * dashboard to explain it. The refusal they would read there ends by naming the
- * route that lifts it, which is the right sentence for whoever is holding an
- * API response and the wrong one for somebody looking at a page — so this says
- * the same thing and points at the page that does it instead.
- *
- * It goes once the name is chosen. A line that never leaves is a line nobody
- * reads, and this one is about a state one form post ends.
+ * Says the consequence (a card the merchant's code publishes is refused) and
+ * points at the page that fixes it, because the API's refusal names a route,
+ * which is the wrong sentence for somebody looking at a page. It goes once the
+ * name is chosen.
  */
 const unnamedNote = (base: string): string => `  <div class="callout">
     <div class="what">You cannot publish products until you choose the seller name buyers will see.</div>
@@ -304,13 +216,8 @@ const unnamedNote = (base: string): string => `  <div class="callout">
 `;
 
 /**
- * A page with no navigation: the pages in front of the gate, and the few behind
- * it that stand outside the dashboard's frame.
- *
- * There were two of these: one that carried the theme script and one for the
- * pages whose behaviour has to be complete without JavaScript. With the theme
- * gone there is no script on any of them, so the two were the same page written
- * twice.
+ * The pages in front of the gate, and the few behind it outside the dashboard's
+ * frame. None carries a script.
  */
 export const bare = (
   base: string,
@@ -335,26 +242,17 @@ ${body}
 </body>
 </html>
 `;
-  // Asked of every caller, so a screen behind the gate cannot forget to say
-  // whom it is drawn for: null for the pages in front of the gate, whose forms
-  // post to addresses the gate never sees, and for pages with no form that
-  // posts.
+  // Asked of every caller, so a screen behind the gate cannot forget it: null
+  // for the pages in front of the gate and for pages with no form that posts.
   return who === null ? drawn : drawnFor(who, drawn);
 };
 
 /**
- * An instant as a page prints it, and the only way a page prints one.
- *
- * The words are `moment`'s, in UTC to the second. The markup lets the moment
- * wrap between its date and its time and nowhere else — left to itself a
- * browser breaks "2026-09-23" after a hyphen — and adds nothing to the text,
- * so a copied moment is the moment. The two halves sit inside one span of
- * their own: where a table row is drawn as a block its cells are drawn as
- * small tables, and Chrome and WebKit drop a space standing between two spans
- * directly inside one, so the date and the time ran together.
- *
- * Three screens printed a moment as plain text beside this and each of them
- * broke that way on a phone, which is why no screen imports `moment` itself.
+ * The only way a page prints an instant; no screen imports `moment` itself. UTC
+ * to the second, allowed to wrap between date and time and nowhere else, with
+ * nothing added to the text, so a copied moment is the moment. The two halves
+ * sit in one span of their own, because where a table row is drawn as a block
+ * Chrome and WebKit drop a space between two spans directly inside a cell.
  */
 export const when = (iso: string): string => {
   const text = moment(iso);
@@ -364,32 +262,26 @@ export const when = (iso: string): string => {
     : `<span class="when"><span>${escaped(date ?? "")}</span> <span>${escaped(time.join(" "))}</span></span>`;
 };
 
-/** A cell holding an instant, in a column as narrow as the moment on two lines. */
+/** A column as narrow as the moment on two lines. */
 export const momentCell = (iso: string): Cell => ({ kind: "quiet moment", html: when(iso) });
 
-/** A state with its dot, the way every one of the three screens draws one. */
 export const state = (word: { readonly text: string; readonly tone: string }): string =>
   `<span class="state ${word.tone}"><span class="dot"></span>${escaped(word.text)}</span>`;
 
-/** One cell of a table: what it shows, and the class that says what kind of value it is. */
 export interface Cell {
   readonly html: string;
   readonly kind?: string;
 }
 
-/** One row: its cells in the order of the columns, and the class the row is marked with. */
 export interface Row {
   readonly mark?: string;
   readonly cells: readonly Cell[];
 }
 
 /**
- * A table with a row for every entry, or one line saying there are none.
- *
- * Every cell carries the head of its column. Where the frame is too narrow for
- * the columns, a row is drawn as a block of labelled values rather than a line
- * the page has to be scrolled sideways to read, and the labels are these — the
- * same words as the heads, so the two cannot say different things.
+ * Every cell carries its column's head: where the frame is too narrow, a row is
+ * drawn as a block of labelled values, and the labels are the same words as the
+ * heads.
  */
 export const table = (
   columns: readonly string[],

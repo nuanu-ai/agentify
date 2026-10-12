@@ -71,10 +71,8 @@ const orderEnvelope = {
 };
 
 /**
- * Whether a schema accepts a value — and, when it does not, why.
- *
- * A bare boolean reports "expected false to be true" and leaves the reader to
- * find the field themselves.
+ * Whether a schema accepts a value and, when it does not, why, so a failure
+ * names the field instead of "expected false to be true".
  */
 const verdictOf = (schema: ZodType, value: unknown): string => {
   const result = schema.safeParse(value);
@@ -88,26 +86,23 @@ const callError = {
 };
 
 describe("an order read back with its state", () => {
-  // The promise: a worker that restarted can find out what it still owes
-  // without trusting its own database alone. That means one document carrying
-  // both the order it has to deliver and the word for where it stands.
+  // The promise: a restarted worker learns what it still owes from one
+  // document carrying the order and the word for where it stands.
 
   it("accepts an order with the state it is in", () => {
     expect(OrderWithStatusSchema.parse(openOrder)).toStrictEqual(openOrder);
   });
 
-  // Only `status`. This schema is `OrderSchema.extend({ status })`, so the five
-  // fields under it are the order's own and `order.test.ts` asks about each of
-  // them there. What is left is the field this schema adds — and if the
-  // extension is ever replaced by a strict object written out by hand, these
-  // cases have to come back with it.
+  // Only `status`: the other fields come from `OrderSchema` through `extend`
+  // and are asked about in `order.test.ts`. If the extension is ever written
+  // out by hand, those cases have to come back here.
   it("refuses an order read back without status and names it", () => {
     expectMissingFieldRejected(OrderWithStatusSchema, openOrder, "status");
   });
 
   it("refuses a word that is not one of the endings the agent and merchant share", () => {
-    // The vocabulary is the state machine's own. A state read back under a word
-    // nobody publishes would be a second answer to "what became of it".
+    // A state under a word nobody publishes would be a second answer to "what
+    // became of it".
     expect(errorOf(OrderWithStatusSchema, { ...order, status: "dispatched" })).toContain("status");
     expect(OrderWithStatusSchema.safeParse({ ...order, status: "delivered" }).success).toBe(true);
     expect(OrderWithStatusSchema.safeParse({ ...order, status: "refund_due" }).success).toBe(true);
@@ -120,8 +115,7 @@ describe("an order read back with its state", () => {
 
 describe("the list of orders", () => {
   it("accepts a merchant with nothing open", () => {
-    // An empty list is a real answer and the common one. A schema that refused
-    // it would make "you owe nothing" indistinguishable from a broken call.
+    // "You owe nothing" must not look like a broken call.
     expect(OrderListSchema.parse({ orders: [] })).toStrictEqual({ orders: [] });
   });
 
@@ -133,8 +127,7 @@ describe("the list of orders", () => {
   });
 
   it("is an object rather than a bare array", () => {
-    // A bare array cannot grow a cursor or a count without breaking every
-    // reader that already parses it as the whole answer.
+    // A bare array cannot grow a cursor or a count without breaking readers.
     expect(OrderListSchema.safeParse([openOrder]).success).toBe(false);
     expect(errorOf(OrderListSchema, {})).toContain("orders");
   });
@@ -146,9 +139,8 @@ describe("the list of orders", () => {
 
 describe("the merchant's own cards", () => {
   // The promise: a merchant sees what they published, whether each card is
-  // selling, and whether the whole catalog is stopped. The public catalog
-  // answers none of those — it is unscoped, it hides a paused card entirely,
-  // and it carries no word about the merchant at all.
+  // selling, and whether the whole catalog is stopped, none of which the
+  // public catalog answers.
   const merchantCard = {
     id: "itm_4d21bb",
     as_of: "2026-08-26T09:00:00Z",
@@ -166,8 +158,7 @@ describe("the merchant's own cards", () => {
   const cards = { selling: "open", cards: [merchantCard] };
 
   it("accepts a merchant who has published nothing yet", () => {
-    // The first screen a merchant ever sees. A schema that refused it would
-    // make "you have published nothing" indistinguishable from a broken call.
+    // "You have published nothing" must not look like a broken call.
     expect(MerchantCardListSchema.parse({ selling: "open", cards: [] })).toStrictEqual({
       selling: "open",
       cards: [],
@@ -175,9 +166,7 @@ describe("the merchant's own cards", () => {
   });
 
   it("says whether the merchant is selling at all, beside the cards", () => {
-    // The two are separate facts and both are needed on one screen: a merchant
-    // whose catalog is stopped sees every card read paused, and the reason is
-    // this field rather than any of the cards.
+    // A stopped catalog makes every card read paused, and this field says why.
     const stopped = MerchantCardListSchema.parse({
       selling: "paused",
       cards: [{ ...merchantCard, selling: "paused" }],
@@ -193,8 +182,7 @@ describe("the merchant's own cards", () => {
   }
 
   it("is an object rather than a bare array", () => {
-    // A bare array could not carry the merchant's own selling word at all, and
-    // could never grow a cursor without breaking every reader.
+    // A bare array has nowhere for the selling word and cannot grow.
     expect(MerchantCardListSchema.safeParse([merchantCard]).success).toBe(false);
   });
 
@@ -210,9 +198,8 @@ describe("the merchant's own cards", () => {
 });
 
 describe("the merchant's own receipts", () => {
-  // The promise: a merchant can read back the payments that went through
-  // without holding their own copy. A receipt exists from the moment the money
-  // moves, so this is the list the merchant reconciles their wallet against.
+  // The promise: a merchant reads back the payments that went through, the
+  // list they reconcile their wallet against.
   const receipt = {
     id: "rcp_4b90de",
     order_id: "ord_7c1e05",
@@ -246,8 +233,7 @@ describe("the merchant's own receipts", () => {
   });
 
   it("holds every receipt in the list to the receipt document", () => {
-    // A row missing the moment the price behind it was true is a row a
-    // merchant cannot reconcile, and it must not travel as a receipt.
+    // A row without the moment the price was true cannot be reconciled.
     const withoutAsOf = {
       ...receipt,
       price: { amount: "5.00", currency: "USD", at: receipt.paid_at },
@@ -269,11 +255,8 @@ describe("asking for only the open orders", () => {
   });
 
   it("takes the two words a query string can carry and nothing else", () => {
-    // A query string carries text, and this document says so. Written as a
-    // boolean it would export as one, and an engineer generating a client from
-    // that would build a request nobody can send. `?open=1` is refused rather
-    // than guessed at: a merchant who meant "only the open ones" and silently
-    // got all of them would reconcile against the wrong list.
+    // A query string carries text, and a boolean here would export as one.
+    // `?open=1` is refused rather than silently answered with every order.
     expect(OrderListQuerySchema.safeParse({ open: true }).success).toBe(false);
     expect(OrderListQuerySchema.safeParse({ open: "1" }).success).toBe(false);
     expect(OrderListQuerySchema.safeParse({ open: "yes" }).success).toBe(false);
@@ -296,8 +279,8 @@ describe("the poll a worker makes", () => {
   });
 
   it("accepts a poll that asks for no wait at all", () => {
-    // A drain: answer with whatever is queued right now and come straight
-    // back. It is a real request, and a worker shutting down makes it.
+    // A drain: whatever is queued now, at once. The SDK's worker does not
+    // send one, but the contract allows it.
     expect(WorkerPollRequestSchema.safeParse({ wait_seconds: 0 }).success).toBe(true);
   });
 
@@ -307,18 +290,14 @@ describe("the poll a worker makes", () => {
   });
 
   it("refuses a batch of no envelopes", () => {
-    // Asking for at most zero is asking for nothing, and the answer would look
-    // exactly like a quiet queue forever.
+    // At most zero would look exactly like a quiet queue for ever.
     expect(WorkerPollRequestSchema.safeParse({ max: 0 }).success).toBe(false);
     expect(WorkerPollRequestSchema.safeParse({ max: 1 }).success).toBe(true);
   });
 
   it("puts no ceiling on either, because a ceiling would be the gateway's", () => {
-    // A first draft capped both and called the caps bounds on the format. They
-    // were policy numbers with no anchor outside this file, and a card is held
-    // to the opposite rule for the same kind of value — it takes any whole
-    // positive number of seconds rather than inventing a limit. Whatever is
-    // asked for, the gateway answers with its own window and its own batch.
+    // Any limit is the gateway's own: whatever is asked, it answers with its
+    // own window and batch size.
     expect(WorkerPollRequestSchema.safeParse({ wait_seconds: 86_400 }).success).toBe(true);
     expect(WorkerPollRequestSchema.safeParse({ max: 1_000_000 }).success).toBe(true);
   });
@@ -328,8 +307,8 @@ describe("the poll a worker makes", () => {
   });
 
   it("tells the reader of the document alone whose the limits are", () => {
-    // A reader with the export and no TypeScript would otherwise take the
-    // absence of a ceiling for a promise that any number will be honoured.
+    // Otherwise a reader of the export would take no ceiling for a promise
+    // that any number is honoured.
     const description = schemas.worker_poll_request.meta()?.description ?? "";
 
     expect(description).toContain("the policy is the gateway's");
@@ -339,17 +318,16 @@ describe("the poll a worker makes", () => {
 
 describe("what a poll answers with", () => {
   it("accepts an empty batch, which is the answer to a quiet window", () => {
-    // ADR-0004 makes this the ordinary case, not a failure. A worker that read
-    // it as an error would restart its subscription every idle window.
+    // The ordinary case, not a failure; a worker reading it as one would
+    // restart its subscription every idle window.
     const quiet = { contract_version: CONTRACT_VERSION, envelopes: [] };
 
     expect(WorkerPollResponseSchema.parse(quiet)).toStrictEqual(quiet);
   });
 
   it("names the contract version the gateway speaks, on every answer", () => {
-    // The SDK has a function for checking this and had nothing to feed it. A
-    // worker that starts against a gateway speaking another dialect should
-    // fail at startup, not on somebody's first order.
+    // A worker started against a gateway of another version must fail at
+    // startup, not on somebody's first order.
     expectMissingFieldRejected(
       WorkerPollResponseSchema,
       { contract_version: CONTRACT_VERSION, envelopes: [] },
@@ -399,11 +377,10 @@ describe("what a poll answers with", () => {
 });
 
 describe("what answering for an order comes back as", () => {
-  // The promise the shape keeps: a merchant tells success from failure by one
-  // test, and the word inside a success is something to write down rather than
-  // to branch on. The portal says a repeated delivery is a success with a
-  // different word; a merchant who wrote `if (result === 'delivered')` would
-  // have turned their own safe retry into a failure branch.
+  // The promise: success and failure are told apart by one test, and the
+  // word inside a success is to record, not to branch on. A repeated delivery
+  // succeeds as `already_delivered`, so `if (result === 'delivered')` would
+  // turn a safe retry into a failure branch.
 
   for (const result of ORDER_CALL_RESULTS) {
     it(`carries "${result}" under the same marker of success as every other`, () => {
@@ -415,10 +392,8 @@ describe("what answering for an order comes back as", () => {
   }
 
   it("marks success with something every language reads the same way", () => {
-    // The marker is a value and not a key, because a key whose payload can be
-    // empty reads as false in some of the languages a merchant writes in — and
-    // the export exists for exactly the engineer working outside TypeScript.
-    // Both answers of this family are truthy on `ok` and falsy on failure.
+    // A value, not a key that may hold an empty object, which reads as false
+    // in some languages.
     const delivered = OrderCallResponseSchema.parse({ ok: true, result: "delivered" });
     const accepted = OrderAcceptResponseSchema.parse({ ok: true });
     const failed = OrderCallResponseSchema.parse({ ok: false, error: callError });
@@ -434,8 +409,7 @@ describe("what answering for an order comes back as", () => {
   });
 
   it("refuses an answer that is both, or neither", () => {
-    // Both would be two answers at once, and whichever a merchant read first
-    // would look like the whole truth.
+    // Two answers at once.
     expect(
       OrderCallResponseSchema.safeParse({ ok: true, result: "delivered", error: callError })
         .success,
@@ -447,21 +421,18 @@ describe("what answering for an order comes back as", () => {
   });
 
   it("refuses a failure with nothing said about why", () => {
-    // The other half of the shape, and the more expensive one to leave open: a
-    // merchant handed "no" and no reason has nothing to branch on, nothing to
-    // print and nothing to write down about an order somebody paid for.
+    // "No" without a reason gives a merchant nothing to branch on, print or
+    // record about an order somebody paid for.
     expect(OrderCallResponseSchema.safeParse({ ok: false }).success).toBe(false);
   });
 
   it("refuses a success with no word for which success it was", () => {
-    // Unlike taking an order on, delivering and refusing have words, and the
-    // merchant has to write down which one happened.
+    // Delivering and refusing have words, and the merchant records which.
     expect(OrderCallResponseSchema.safeParse({ ok: true }).success).toBe(false);
   });
 
   it("refuses a success word the vocabulary does not carry", () => {
-    // The published list is the whole of it. A merchant branching on a word we
-    // never promised is branching on something the next release can rename.
+    // A word never promised is one the next release can rename.
     expect(OrderCallResponseSchema.safeParse({ ok: true, result: "ok" }).success).toBe(false);
     expect(OrderCallResponseSchema.safeParse({ ok: true, result: "taken_on" }).success).toBe(false);
     expect(OrderCallResponseSchema.safeParse({ ok: true, result: "" }).success).toBe(false);
@@ -478,12 +449,9 @@ describe("what answering for an order comes back as", () => {
 
 describe("what taking an order on comes back as", () => {
   it("succeeds without a word for what happened", () => {
-    // This route reports every success the same bare way, including taking on
-    // an order that was already delivered — it declines to tell those apart.
-    // The answer route is where a word earns its place, because it carries
-    // whichever of the three things a handler returned. An answer with no word
-    // in it also has nothing to get wrong when the same order is redelivered
-    // and taken on again, which is ordinary here.
+    // Every success of this route is the same bare `ok: true`, already
+    // delivered included, so a redelivered order taken on again has nothing
+    // to get wrong.
     expect(OrderAcceptResponseSchema.parse({ ok: true })).toStrictEqual({ ok: true });
   });
 
@@ -513,9 +481,8 @@ describe("what answering a price question comes back as", () => {
   });
 
   it("refuses an acknowledgement that does not say", () => {
-    // The merchant may be holding stock against the question. Read as used, a
-    // silent flag leaves that stock held; read as unused, it releases stock
-    // for a sale that is going through.
+    // Read as used, a silent flag leaves stock held; read as unused, it
+    // releases stock under a sale that is going through.
     expectMissingFieldRejected(QuoteAnswerAckSchema, { used: true }, "used");
     expect(QuoteAnswerAckSchema.safeParse({ used: "true" }).success).toBe(false);
   });
@@ -527,8 +494,7 @@ describe("what answering a price question comes back as", () => {
 
 describe("the purchase an agent sends", () => {
   it("always carries the parameters, empty for a product that needs none", () => {
-    // The same rule the order keeps: nobody downstream should have to tell "no
-    // parameters" from "the field did not arrive".
+    // As in the order: "no parameters" and "did not arrive" never look alike.
     expect(PurchaseRequestSchema.parse({ params: {} })).toStrictEqual({ params: {} });
     expect(
       PurchaseRequestSchema.safeParse({ params: { email: "buyer@example.com" } }).success,
@@ -541,9 +507,8 @@ describe("the purchase an agent sends", () => {
   });
 
   it("refuses a field it does not know", () => {
-    // What the parameters have to be for this particular card is checked
-    // against that card, at the moment of purchase. This document carries the
-    // envelope and does not pretend to check the contents.
+    // Whether the parameters fit a card is checked against that card at
+    // purchase; this document carries the envelope.
     expect(errorOf(PurchaseRequestSchema, { params: {}, price: "5.00" })).toContain("price");
   });
 });
@@ -566,31 +531,26 @@ describe("the status an agent reads", () => {
   };
 
   it("names the order it is about", () => {
-    // A status with no order on it is a sentence an agent cannot file against
-    // anything once it has more than one purchase running.
+    // An agent with several purchases running files a status by its order.
     expect(AgentOrderStatusSchema.parse(status)).toStrictEqual(status);
   });
 
   it("carries the goods once they are released", () => {
-    // The whole reason this document exists: an agent that bought something
-    // whose goods come later has to be able to come back for them, and what
-    // comes back is the delivery the merchant made.
+    // An agent that bought goods that come later comes back for them here.
     const collected = { ...status, status: "delivered", delivered: { access_code: "SESAME" } };
 
     expect(AgentOrderStatusSchema.parse(collected)).toStrictEqual(collected);
   });
 
   it("says an order was never priced rather than leaving the field out", () => {
-    // A purchase can close before anybody names a price for it — the product
-    // was gone, or the price question went unanswered. Null is that fact; an
-    // absent field is an oversight, and a reader cannot tell them apart.
+    // A purchase can close before a price was named; null says so, where an
+    // absent field would look like an oversight.
     expect(AgentOrderStatusSchema.parse({ ...status, price: null }).price).toBeNull();
   });
 
   it("says why an order ended where Agentify and not its merchant decided it", () => {
-    // A reason is a word to branch on and a sentence saying what to do next.
-    // Its words are an open set, like the status: a word a reader does not know
-    // falls through to the sentence rather than breaking the read.
+    // A word to branch on and a sentence saying what to do; an unknown word
+    // falls through to the sentence.
     const priceGone = {
       ...status,
       status: "expired",
@@ -609,9 +569,8 @@ describe("the status an agent reads", () => {
   });
 
   it("names who sold it, so an agent with a question the order cannot answer knows where to go", () => {
-    // ADR-0034: the shop's own site is where a parcel that did not arrive, a
-    // return or the terms of the sale are taken, and the order is where an
-    // agent holding nothing else looks for it.
+    // The shop's own site is where an agent takes a parcel that did not
+    // arrive, a return or the terms of the sale.
     expect(AgentOrderStatusSchema.parse(status).seller).toStrictEqual({
       name: "Freeland",
       site: "https://freeland.example",
@@ -633,11 +592,9 @@ describe("the status an agent reads", () => {
   }
 
   it("names where the order is collected as an address an agent can call as it stands", () => {
-    // The agent that paid for goods that come later holds this document and
-    // nothing else, and the address in it is the only way back to them. A
-    // path with no host in it has to be joined onto something the agent was
-    // never told, and an address in a scheme no HTTP client speaks is not one
-    // it can call at all.
+    // The agent that paid for goods that come later holds only this document.
+    // A path needs a host the agent was never told, and an address in another
+    // scheme is not one an HTTP client can call.
     for (const status_url of [
       "/x402/orders/ord_7c1e05/status",
       "agentify.ad/x402/orders/ord_7c1e05/status",
@@ -656,13 +613,10 @@ describe("the status an agent reads", () => {
   });
 
   it("carries the rule about that address into the exported document", () => {
-    // An engineer generating a client in another language reads the JSON
-    // Schema and not this package, and a rule zod keeps to itself is dropped
-    // from it without a word. The exported pattern has to refuse a bare path
-    // too, or a generated client accepts what this schema refuses — and it has
-    // to give the schema's verdict on every address the scheme rule decides,
-    // including one whose scheme is written in capitals: a flag on a pattern
-    // is one of the things the export drops, and then the two disagree.
+    // A rule zod keeps to itself is dropped from the export, so the exported
+    // pattern must refuse a bare path too and agree with the schema on every
+    // address, scheme in capitals included: a pattern's flags do not survive
+    // the export.
     const exported = toJsonSchemas().agent_order_status;
 
     expect(exported.required).toContain("status_url");
@@ -689,10 +643,8 @@ describe("the status an agent reads", () => {
   });
 
   it("carries the merchant's own words for a refusal they made", () => {
-    // The channel the vocabulary's fold was always argued on: `rejected` is
-    // coarse because the reason travels separately, and this is where it
-    // travels. The two words are the merchant's own — the code an agent
-    // branches on and the sentence it can show — carried across unchanged.
+    // `rejected` is coarse because the reason travels here: the merchant's own
+    // code and sentence, unchanged.
     const refused = {
       ...status,
       status: "rejected",
@@ -703,10 +655,9 @@ describe("the status an agent reads", () => {
   });
 
   it("takes both words the merchant wrote, and neither of them empty", () => {
-    // The pair is the merchant's answer as it stands. A field added beside it
-    // later is read past (ADR-0006 §5); that this gateway attaches no
-    // bookkeeping of its own to somebody else's refusal is held where the
-    // status is written, every object of it shut.
+    // A field added beside the pair later is read past; that the gateway adds
+    // no bookkeeping of its own to a merchant's refusal is held where the
+    // status is written.
     for (const pair of [
       { code: "out_of_stock" },
       { message: "no seats left on that plan" },
@@ -721,28 +672,23 @@ describe("the status an agent reads", () => {
   });
 
   it("leaves the pair out where nobody refused, rather than sending an empty one", () => {
-    // An absent `refusal` is the answer for every ending that is not a
-    // merchant's refusal — a deadline, a charge that failed its check, a
-    // product that was simply gone. A blank pair would read as a merchant who
-    // refused and would not say why, which is a different and worse claim.
+    // Absent for every ending that is not a merchant's refusal; a blank pair
+    // would claim a merchant refused and would not say why.
     expect(AgentOrderStatusSchema.parse(status).refusal).toBeUndefined();
     expect(AgentOrderStatusSchema.safeParse({ ...status, refusal: null }).success).toBe(false);
   });
 
   it("says in the exported document that a missing refusal is not a dropped one", () => {
-    // The reader who has only the document is the one who would plan around
-    // the claim: an absent refusal means there was none to quote.
+    // An absent refusal means there was none to quote.
     const description = schemas.agent_order_status.meta()?.description ?? "";
 
     expect(description).toContain("no refusal to quote");
   });
 
   it("reads a status word added later as a word, rather than refusing the order", () => {
-    // The storefront has no version (ADR-0006 §5). An agent holding this
-    // schema meets a word it does not know, and reading it as not an ending it
-    // knows — and asking again later — is the safe reading; refusing the whole
-    // document would leave it with nothing about an order it paid for. The
-    // merchant's own view of the order stays closed.
+    // The storefront has no version: an unknown word is read as not an ending
+    // the agent knows, and it asks again later rather than losing the whole
+    // document. The merchant's own view of the order stays closed.
     expect(
       AgentOrderStatusSchema.safeParse({ ...status, status: "payment_unresolved" }).success,
     ).toBe(true);
@@ -750,9 +696,7 @@ describe("the status an agent reads", () => {
   });
 
   it("holds a word added later to the shape of a word", () => {
-    // Open is not anything at all: a status is read by a program and shown to
-    // a person, and markup, padding or a page of text is not a word anybody
-    // added to this vocabulary.
+    // Open, but still a word: no markup, padding or page of text.
     for (const word of ["", " on_hold ", "On_Hold", "<b>held</b>", "w".repeat(65)]) {
       expect(AgentOrderStatusSchema.safeParse({ ...status, status: word }).success, word).toBe(
         false,
@@ -823,9 +767,8 @@ describe("the catalog an agent reads", () => {
   });
 
   it("is read card by card, so a card an agent cannot read leaves the rest of the page", () => {
-    // ADR-0006 §5: one card a reader cannot make out is passed over, and
-    // every other card stays for sale. A page refused whole would empty the
-    // catalog over one card.
+    // One card a reader cannot make out is passed over and every other stays
+    // for sale.
     const broken = { id: "itm_9a0f11", title: "No price on it" };
     const page = CatalogPageSchema.parse({ items: [publicCard, broken] });
 
@@ -833,9 +776,8 @@ describe("the catalog an agent reads", () => {
   });
 
   it("passes over a card of a mode this contract does not name, however well formed", () => {
-    // A mode added later reaches this reader on a card that is otherwise whole.
-    // It cannot know when such goods arrive or when the money moves, so it
-    // must not buy on it; the rest of the page still stands.
+    // A reader cannot know when such goods arrive or when money moves, so it
+    // must not buy; the rest of the page stands.
     const later = { ...publicCard, fulfillment: "by_appointment" };
     const page = CatalogPageSchema.parse({ items: [later, publicCard] });
 
@@ -847,9 +789,8 @@ describe("the catalog an agent reads", () => {
   });
 
   it("says in the exported documents that they take what is added later", () => {
-    // The reader furthest from us holds the JSON Schema and nothing else. A
-    // document exported closed would refuse the first field or word added
-    // after it, whatever this package does in TypeScript.
+    // A document exported closed would refuse the first field or word added
+    // after it, whatever the TypeScript does.
     const exported = toJsonSchemas();
     const known = (property: unknown): unknown[] =>
       ((property as { anyOf?: { enum?: unknown[] }[] }).anyOf ?? []).flatMap(
@@ -870,10 +811,8 @@ describe("the catalog an agent reads", () => {
   });
 
   it("says in the exported document that it does not claim to be the whole catalog", () => {
-    // The fifth gate on the one artifact an agent reads first: what has been
-    // truncated, and is that said. Paging is not designed, and a reader must
-    // not take the absence of a field about it for a promise that there is no
-    // more.
+    // What is truncated must be said: paging is not designed, and no paging
+    // field is not a promise that there is no more.
     const description = JSON.stringify(schemas.catalog_page.meta() ?? {});
 
     expect(description).toContain("whole catalog");
@@ -881,15 +820,13 @@ describe("the catalog an agent reads", () => {
 });
 
 describe("the answer a handler returned, on its way back", () => {
-  // The promise: whatever a merchant's handler returns has an address, in
-  // every mode (ADR-0004 §2). The explicit deliver and refuse calls do not
-  // apply in the synchronous mode by the machine's own design, and there the
-  // returned answer is the only thing there is, so without this route a
-  // synchronous refusal would have nowhere to go.
+  // The promise: whatever a handler returns has an address, in every mode. In
+  // synchronous fulfillment the explicit deliver and refuse calls do not
+  // apply, so without this route a synchronous refusal would go nowhere.
 
   const answerRoute: RouteDefinition = API_ROUTES.answer_order;
 
-  /** The body and the answer as the table names them, not as we import them. */
+  /** The body and the answer as the table names them. */
   const body = (): ZodType => {
     expect(answerRoute.request, "the answer route carries no request body").toBeDefined();
     return answerRoute.request ?? z.never();
@@ -908,9 +845,7 @@ describe("the answer a handler returned, on its way back", () => {
   });
 
   it("refuses an answer that says two things at once, or nothing", () => {
-    // A handler answers with exactly one of the three. Two would be two
-    // answers, and whichever we acted on the merchant could say was the wrong
-    // one; none is silence, and silence is a deadline, not an answer.
+    // Two would be two answers; none is silence, and silence is a deadline.
     expect(
       verdictOf(body(), {
         delivered: { access_url: "https://example.com/a" },
@@ -921,8 +856,8 @@ describe("the answer a handler returned, on its way back", () => {
   });
 
   it("refuses a refusal nobody can count or read", () => {
-    // The code feeds the share of purchases that ran into a missing product,
-    // and the message is for the person who picks the case up afterwards.
+    // The code is counted toward the missing-product measure; the message is
+    // for the person who picks the case up.
     expect(verdictOf(body(), { refused: { message: "нет" } })).not.toBe("accepted");
     expect(verdictOf(body(), { refused: { code: "out_of_stock" } })).not.toBe("accepted");
     expect(verdictOf(body(), { refused: { code: "", message: "нет" } })).not.toBe("accepted");
@@ -932,9 +867,8 @@ describe("the answer a handler returned, on its way back", () => {
   });
 
   it("refuses a fourth kind of answer", () => {
-    // "Not right now" would blur the line a refusal draws: a supplier who
-    // timed out once would look like a product that cannot be sold at all. A
-    // temporary failure is an exception, and it comes back as another delivery.
+    // "Not right now" would blur the line a refusal draws; a temporary failure
+    // is an exception, and the order comes back.
     expect(verdictOf(body(), { deferred: { retry_after_seconds: 30 } })).not.toBe("accepted");
     expect(verdictOf(body(), { delivered: { access_url: "https://x" }, extra: 1 })).not.toBe(
       "accepted",
@@ -942,11 +876,9 @@ describe("the answer a handler returned, on its way back", () => {
   });
 
   it("tells a late synchronous handler that the work was not wasted", () => {
-    // The case ADR-0004 §2 names. The merchant started before the deadline
-    // and finished after it: nothing went wrong on their side, the goods
-    // exist, and a repeat purchase collects them. Told this was an error, they
-    // would go looking for a fault that is not there — and the word is a
-    // success in the published vocabulary, not a failure code.
+    // The merchant started before the deadline and finished after it: the
+    // goods exist and a repeat purchase collects them, so this is a success
+    // word, not a failure code.
     const late = answer().safeParse({ ok: true, result: "purchase_already_closed" });
 
     expect(late.success ? "accepted" : "refused").toBe("accepted");
@@ -956,9 +888,7 @@ describe("the answer a handler returned, on its way back", () => {
   });
 
   it("answers in the same family as the explicit closure calls", () => {
-    // One vocabulary of successes and one of failures across all four calls. A
-    // second family here would be a second thing for a merchant to learn about
-    // the same order.
+    // One vocabulary of successes and failures across all four calls.
     expect(answer()).toBe(OrderCallResponseSchema);
     expect(
       verdictOf(answer(), {
@@ -973,9 +903,7 @@ describe("the answer a handler returned, on its way back", () => {
   });
 
   it("is reachable from the registry the way every other document is", () => {
-    // The gap this route closed: `handler_answer` was a document the contract
-    // published and the table referred to from nowhere, so the one shape a
-    // synchronous merchant needs was exported and unreachable through the API.
+    // The one shape a synchronous merchant needs is reachable through the API.
     expect(body()).toBe(schemas.handler_answer);
     expect(Object.keys(schemas)).toContain("handler_answer");
   });
@@ -983,11 +911,9 @@ describe("the answer a handler returned, on its way back", () => {
 
 describe("the route table", () => {
   // The promise: the gateway that serves these calls and the SDK that makes
-  // them read one description of them. Two dialects of the same surface is
-  // what this table exists to prevent, and every check below is about a way
-  // the two could come apart.
+  // them read one description; every check below is a way they could part.
 
-  /** The registry name of a schema, which is how the table is read back below. */
+  /** The registry name of a schema, which is how the table is read back. */
   const nameOf = (schema: ZodType | undefined): string => {
     if (schema === undefined) return "-";
     const found = (Object.entries(schemas) as [SchemaName, ZodType][]).find(
@@ -999,12 +925,9 @@ describe("the route table", () => {
   const responseOf = (route: RouteDefinition): string => nameOf(route.response.document);
 
   /**
-   * The whole surface as it stands, so a change to any of it is a change here.
-   *
-   * The documents are in the row and not merely checked for membership in the
-   * registry, because that is the half the table exists for. With only the
-   * addresses pinned, `get_order` could quietly answer with a plain order and
-   * lose the state a restarting worker reads it for, and nothing would say so.
+   * The whole surface as it stands, documents included: with only addresses
+   * pinned, `get_order` could answer with a plain order and lose the state a
+   * restarting worker reads it for.
    */
   const surface: [string, string, string, string, string, string, string][] = [
     // name, method, path, auth, query, request, response
@@ -1129,14 +1052,13 @@ describe("the route table", () => {
   });
 
   it("names every route the way the wire is written", () => {
-    // The same rule the schema registry keeps. A table that mixed conventions
-    // would read like two surfaces.
+    // As in the schema registry: wire names are snake_case.
     for (const name of Object.keys(API_ROUTES)) expect(name, name).toMatch(/^[a-z][a-z0-9_]*$/);
   });
 
   it("puts no two routes at one address under one method", () => {
-    // Two routes at one address is one of them never being reached, and which
-    // one depends on the order a router happened to mount them in.
+    // One of two routes at one address is never reached, depending on mount
+    // order.
     const addresses = Object.values(API_ROUTES).map((route) => `${route.method} ${route.path}`);
 
     expect([...new Set(addresses)]).toHaveLength(addresses.length);
@@ -1150,9 +1072,8 @@ describe("the route table", () => {
   });
 
   it("refers to no schema the contract does not publish", () => {
-    // The reader furthest from us has the JSON Schema export and this table. A
-    // route pointing at a schema the registry does not carry is a call they
-    // cannot generate a client for.
+    // A reader outside TypeScript has the export and this table; a schema the
+    // registry lacks is a call they cannot generate a client for.
     const published = new Set<ZodType>(Object.values(schemas));
     const unpublished: string[] = [];
 
@@ -1172,12 +1093,8 @@ describe("the route table", () => {
   });
 
   it("names the document every call answers with, the purchase included", () => {
-    // The purchase used to be the exception, on the grounds that it is a
-    // payment exchange before it is a document — which left the one call an
-    // agent makes as the only one whose answer nothing holds to a shape. The
-    // exchange is still there and is still not a document; what a paid
-    // purchase comes back with is the state of the order, and that is named
-    // here like everything else.
+    // The purchase too: the payment exchange is not a document, but what a
+    // paid purchase comes back with is the state of the order.
     for (const [name, route] of Object.entries(API_ROUTES) as [string, RouteDefinition][]) {
       expect(route.response.document, name).toBeDefined();
     }
@@ -1194,12 +1111,9 @@ describe("the route table", () => {
   });
 
   it("holds every path parameter to a name its own reader can recover", () => {
-    // The reader is a regular expression with a grammar, and a name outside
-    // that grammar is not refused, it is truncated: a router would read
-    // ":productKey" as one parameter and this reads it as "product", leaving
-    // "Key" as a literal in the address. Every purchase would then go to the
-    // wrong URL. Comparing against a plain split of the path is what makes a
-    // name the parser cannot hold fail at our build instead of in a log.
+    // A name outside the path grammar is truncated, not refused: ":productKey"
+    // would read as "product" with "Key" left in the address. Comparing with a
+    // plain split of the path catches it at build time.
     for (const [name, route] of Object.entries(API_ROUTES)) {
       const written = route.path
         .split("/")
@@ -1211,11 +1125,9 @@ describe("the route table", () => {
   });
 
   it("declares the extra methods an address must answer on as data, not as prose", () => {
-    // A gateway mounts from the table. The purchase address has to answer the
-    // payment challenge on GET as well, because the validators and crawlers
-    // that list a paid resource ask for it that way — a lesson already paid for
-    // once, when a paywall bound to one method made most of a catalog
-    // invisible. Written only in the description it would be mounted by nobody.
+    // The purchase address answers the payment challenge on GET too, because
+    // validators and crawlers that list a paid resource ask that way; a
+    // gateway mounts from data, so it is data here.
     const purchase: RouteDefinition = API_ROUTES.purchase_item;
     expect(purchase.also_answers_on).toStrictEqual(["GET"]);
 
@@ -1228,29 +1140,19 @@ describe("the route table", () => {
   });
 
   it("leaves a route whose door nobody has chosen out of what a gateway may serve", () => {
-    // The natural way to mount a table is to ask whether a route needs the key
-    // and treat the rest as open, which serves an undecided route to the whole
-    // world. Mounting from this list makes the safe reading the easy one.
-    //
-    // Every route in the table has a door today, so nothing is being dropped
-    // here and this reads as a property rather than as a subtraction. It is
-    // still the promise a gateway relies on, and the gateway keeps its own half
-    // of it: `buildApp` refuses to mount an undecided route whoever hands it
-    // over, so this list going wrong stops the process rather than opening a
-    // door.
+    // Mounting "key or open" would serve an undecided route to the world;
+    // mounting from this list makes the safe reading the easy one. The gateway
+    // keeps its own half: `buildApp` refuses to mount an undecided route.
     for (const [name, route] of mountableRoutes()) expect(route.auth, name).not.toBe("undecided");
   });
 
   it("names the door on the one route that is the agent's rather than the merchant's", () => {
-    // Not `merchant_key`: an agent has no key. Not `none` either — a route open
-    // to everyone with nothing to name a purchase would be no door at all.
-    // Knowing the order's identifier is what stands in for one (ADR-0011), and
-    // the word says which of the three it is so that a gateway mounting from
-    // this table cannot read it as either of the others.
+    // An agent has no key, and `none` would be no door at all: knowing the
+    // order's identifier stands in for one, and the word keeps a gateway from
+    // reading it as either of the others.
     expect(API_ROUTES.get_order_status.auth).toBe("order_id");
-    // And it is the only route behind that door. The word means "the caller
-    // named the order", which is a sentence about one path parameter — put on
-    // a route that takes no order, it would be a door with nothing to check.
+    // The only route behind that door: on a route that takes no order it would
+    // be a door with nothing to check.
     for (const [name, route] of Object.entries(API_ROUTES) as [string, RouteDefinition][]) {
       if (route.auth !== "order_id") continue;
       expect(pathParamsOf(route.path), name).toContain("order_id");
@@ -1258,22 +1160,11 @@ describe("the route table", () => {
   });
 
   it("keeps the version in the merchant's prefix and out of the storefront's", () => {
-    // Two genres of address share one table, and which genre a route is in
-    // decides whether its address may ever move. `/v0` is the merchant's API,
-    // versioned for the reason a classic API is: an engineer writes a shop's
-    // code against it. The storefront is the catalog an agent browses, the
-    // address it buys at and the door it comes back to for its own order —
-    // that address is a product identity, listed in catalogs we do not run and
-    // constructed by strangers from a base and an identifier, so it carries no
-    // version at all and the protocol says its own in the challenge instead
-    // (ADR-0006 §5).
-    //
-    // The list is the classification and the assertion is that the addresses
-    // agree with it, so a storefront route written under `/v0` fails here, and
-    // so does a merchant route put where an agent would find it. A version
-    // segment further along an otherwise versionless storefront address is the
-    // third way in and is checked on its own: `/x402/v1/…` would satisfy the
-    // prefix and break the promise.
+    // `/v0` is the merchant's API, versioned for integration code. Storefront
+    // addresses are listed in catalogs Agentify does not run and built by
+    // strangers, so they carry no version; the protocol versions itself in the
+    // challenge. A storefront route under `/v0`, a merchant route where an
+    // agent would find it, or `/x402/v1/…` each fail here.
     const storefront: readonly RouteName[] = ["list_catalog", "purchase_item", "get_order_status"];
 
     for (const [name, route] of Object.entries(API_ROUTES) as [RouteName, RouteDefinition][]) {
@@ -1286,11 +1177,9 @@ describe("the route table", () => {
   });
 
   it("pauses and resumes with verbs, so leaving cannot be reached by a side door", () => {
-    // Written as one route taking a selling word, the switch would accept
-    // "departed" as easily as "paused" — and leaving is not a heavier pause.
-    // It closes the open orders and leaves the merchant owing refunds on
-    // whatever was paid for and never delivered. That is a decision with its
-    // own design, not a value in a body, so no route here takes one.
+    // One route taking a selling word would accept "departed" as easily as
+    // "paused", and leaving closes open orders and leaves refunds owed; no
+    // route takes the word in a body.
     const switches: RouteDefinition[] = [
       API_ROUTES.pause_card,
       API_ROUTES.resume_card,
@@ -1312,9 +1201,8 @@ describe("the addresses in the table, expanded and read back", () => {
   });
 
   it("round-trips every route in the table", () => {
-    // The promise: an SDK holding this table can build the address of any call
-    // without a parser of its own, and what it builds has nothing left to
-    // substitute.
+    // The promise: the SDK builds any call's address from the table, with
+    // nothing left to substitute.
     for (const [name, route] of Object.entries(API_ROUTES)) {
       const parameters = pathParamsOf(route.path);
       const values = Object.fromEntries(parameters.map((parameter) => [parameter, "ord_7c1e05"]));
@@ -1327,30 +1215,24 @@ describe("the addresses in the table, expanded and read back", () => {
   });
 
   it("encodes a value the way a path segment has to be encoded", () => {
-    // An identifier may carry a slash and a space — "SKU 100/1" is one this
-    // contract accepts. Pasted into an address unencoded it becomes two
-    // segments and a different route.
+    // "SKU 100/1" is a valid identifier; unencoded it is a different route.
     expect(expandPath("/v0/orders/:order_id", { order_id: "SKU 100/1" })).toBe(
       "/v0/orders/SKU%20100%2F1",
     );
   });
 
   it("refuses to build an address with a hole in it", () => {
-    // The failure this prevents is a request to a literal ":order_id", which
-    // reads in a log as a route that exists and answers 404 for everyone.
+    // Otherwise the request goes to a literal ":order_id".
     expect(() => expandPath("/v0/orders/:order_id", {})).toThrow(/order_id/);
     expect(() => expandPath("/v0/orders/:order_id", { order_id: "" })).toThrow(/order_id/);
   });
 
   it("finds a value only where the caller actually put one", () => {
-    // `constructor` is the one name on Object.prototype that fits the grammar
-    // of a path parameter. Looked up without asking whether the caller owns
-    // the key, it expands into the source of a function.
+    // `constructor` fits the parameter grammar and is on Object.prototype;
+    // unchecked, it expands into the source of a function.
     expect(() => expandPath("/v0/x/:constructor", {})).toThrow(/constructor/);
 
-    // And the case a check on the type alone cannot see: an inherited value
-    // that is a perfectly good string. Whatever built this object did not put
-    // an order id in it, and an address built from one goes to an order the
+    // An inherited value that is a good string still names an order the
     // caller never named.
     const inherited = Object.create({ order_id: "ord_somebody_elses" }) as Record<string, string>;
 
@@ -1360,17 +1242,15 @@ describe("the addresses in the table, expanded and read back", () => {
   });
 
   it("refuses a value that is a step through the path rather than a value in it", () => {
-    // ".." survives encoding untouched and a relative-URL resolver walks it,
-    // so the request lands at an address nobody asked for. An identifier in
-    // this contract is allowed to be "..".
+    // ".." survives encoding and a URL resolver walks it, and an identifier
+    // may be "..".
     expect(() => expandPath("/v0/orders/:order_id", { order_id: ".." })).toThrow(/order_id/);
     expect(() => expandPath("/v0/orders/:order_id", { order_id: "." })).toThrow(/order_id/);
   });
 
   it("refuses a value that is not text, rather than spelling it out", () => {
-    // The SDK has the types; whatever calls the SDK may not. Stringified,
-    // `null` becomes the four letters that spell it and the request goes to a
-    // real-looking address for an order that never existed.
+    // Callers of the SDK may not have the types; `null` stringified would be a
+    // real-looking address.
     const wrong = { order_id: null } as unknown as Record<string, string>;
     const alsoWrong = { order_id: 5 } as unknown as Record<string, string>;
 
@@ -1379,8 +1259,8 @@ describe("the addresses in the table, expanded and read back", () => {
   });
 
   it("refuses a value for something the address does not take", () => {
-    // A caller passing `orderId` to a path that wants `order_id` has a bug,
-    // and dropping it silently would send a request that does something else.
+    // `orderId` for `order_id` is a bug, and dropping it would send a request
+    // that does something else.
     expect(() =>
       expandPath("/v0/orders/:order_id", { order_id: "ord_1", orderId: "ord_2" }),
     ).toThrow(/orderId/);
@@ -1389,13 +1269,9 @@ describe("the addresses in the table, expanded and read back", () => {
 });
 
 /**
- * The merchant key's header: the one part of the surface the route table
- * deliberately does not carry, and the one both sides used to agree on only by
- * each writing the same two strings down apart from the other. The gateway
- * parsed `Authorization: Bearer` and the SDK sent it, and nothing tied the two
- * together — the failure of which is a call that fails with an authorisation
- * error while both repositories look correct. These four hold the agreement in
- * one place, so a change to it breaks a test rather than a merchant's worker.
+ * The merchant key's header, which the route table does not carry: held in
+ * one place, so a mismatch between gateway and SDK breaks a test rather than
+ * a merchant's worker with an authorisation error.
  */
 describe("the merchant key's header, held in one place so both sides cannot drift", () => {
   it("names the header the key travels in and the value that carries it", () => {
@@ -1406,29 +1282,25 @@ describe("the merchant key's header, held in one place so both sides cannot drif
   });
 
   it("takes back out exactly the key the value was built around", () => {
-    // The property that matters: whatever the SDK put in, the gateway reads the
-    // same key out. A key travels as a bearer token, so it carries no
-    // whitespace — but every other character a key is likely to hold survives
-    // the round trip untouched.
+    // Whatever the SDK puts in, the gateway reads the same key out; a key has
+    // no whitespace, and every other likely character survives.
     for (const key of ["k", "a-merchant-key-long-enough", "sk.live_9-1/ABCxyz+42="]) {
       expect(merchantKeyFrom(merchantKeyHeaderValue(key))).toBe(key);
     }
   });
 
   it("reads the scheme however it is cased, because an auth scheme is case-insensitive", () => {
-    // A merchant whose client wrote "bearer" holds a key that is perfectly
-    // correct; matching the scheme case-sensitively would cost them an
-    // afternoon on it (RFC 7235 §2.1).
+    // An auth scheme is case-insensitive (RFC 7235 §2.1), and "bearer" holds a
+    // correct key.
     expect(merchantKeyFrom("Bearer abc")).toBe("abc");
     expect(merchantKeyFrom("bearer abc")).toBe("abc");
     expect(merchantKeyFrom("  Bearer\tabc  ")).toBe("abc");
   });
 
   it("returns null for anything that is not one of our bearer tokens", () => {
-    // Negative control: every way the value is not a key this contract issued
-    // reads as "no key", never as a key that happens to match. A half-parsed
-    // string that slipped through here would be compared against the real key
-    // and, now and then, would match a prefix of it.
+    // The negative control: anything that is not a key this contract issued
+    // reads as no key, never as a half-parsed string that could match a prefix
+    // of the real one.
     expect(merchantKeyFrom(undefined)).toBeNull(); // no header at all
     expect(merchantKeyFrom("")).toBeNull(); // an empty value
     expect(merchantKeyFrom("abc")).toBeNull(); // no scheme, just a token
@@ -1449,13 +1321,9 @@ describe("the envelope every call refuses in", () => {
 
   for (const field of ["code", "message", "retryable"]) {
     it(`refuses one with no ${field}, and says which is missing`, () => {
-      // All three are required and all three absences are expensive. A refusal
-      // with no code is one nothing can branch on; a refusal with no words is
-      // one only its author can read, and whoever prints it prints an empty
-      // space where the reason belongs. A refusal that will not say whether
-      // calling again could work leaves the caller to guess, and both guesses
-      // cost: one is a loop against a door that will never open, the other is
-      // an abandoned call that would have gone through.
+      // A refusal without a code cannot be branched on, without words cannot
+      // be read, and without the retry answer leaves the caller guessing
+      // between a loop and an abandoned call.
       const without = Object.fromEntries(
         Object.entries(refused.error).filter(([name]) => name !== field),
       );
@@ -1465,8 +1333,7 @@ describe("the envelope every call refuses in", () => {
   }
 
   it("refuses a code or a sentence that is there and says nothing", () => {
-    // Blank is the absence wearing the field's name, and it reaches a reader
-    // as a refusal whose reason is not there.
+    // Blank is the absence wearing the field's name.
     expect(errorOf(ErrorEnvelopeSchema, { error: { ...refused.error, code: "  " } })).toContain(
       "code",
     );
@@ -1476,10 +1343,8 @@ describe("the envelope every call refuses in", () => {
   });
 
   it("refuses an answer about calling again that is not an answer", () => {
-    // The flag is a fact with two values and no third. A string, or the word
-    // "maybe" spelled as null, is a caller reading truthiness out of whatever
-    // arrived — and "maybe" read as true is the retry loop this field exists
-    // to prevent.
+    // Two values and no third: "maybe" read as true is the retry loop this
+    // field exists to prevent.
     for (const said of ["false", 0, null, "maybe"]) {
       expect(
         ErrorEnvelopeSchema.safeParse({ error: { ...refused.error, retryable: said } }).success,
@@ -1489,9 +1354,8 @@ describe("the envelope every call refuses in", () => {
   });
 
   it("lets a refusal say more about itself, beside the three that are always there", () => {
-    // Two refusals on this surface do: where an order ended, and which fields
-    // of a document did not fit. A reader that does not recognise the extra
-    // field still reads the three that are always there.
+    // Some refusals add detail, such as where an order ended or which fields
+    // did not fit; a reader that does not know it still reads the three.
     for (const detail of [
       { status: "rejected" },
       { problems: [{ path: ["params", "email"], code: "required", message: "missing" }] },
@@ -1504,11 +1368,8 @@ describe("the envelope every call refuses in", () => {
   });
 
   it("is not a document that merely mentions an error", () => {
-    // The negative control the recognition rests on. A caller asks every
-    // answer it could not read whether it was a refusal, and an envelope that
-    // matched anything with an `error` in it would turn one of this surface's
-    // own documents — an order call that did not go through says so inside the
-    // shape its route promises — into a call that failed.
+    // The negative control: an envelope matching anything with an `error` in
+    // it would turn a route's own document into a failed call.
     expect(
       ErrorEnvelopeSchema.safeParse({ ok: false, error: { code: "x", message: "y" } }).success,
     ).toBe(false);
@@ -1519,13 +1380,9 @@ describe("the envelope every call refuses in", () => {
   });
 
   it("is refused by every route's own document, so recognising one cannot swallow an answer", () => {
-    // The invariant the SDK's recognition actually rests on. It reads an
-    // answer as a refusal when the route's document will not have it, and that
-    // is only safe while no document of this surface would accept an envelope
-    // — otherwise a call that worked, or one whose refusal is a document in
-    // its own right, would come back as a failure with the gateway's words
-    // attached to it. Reading the two in the other order would not save it;
-    // this is what does, so this is where it is checked.
+    // The SDK reads an answer as a refusal when the route's document will not
+    // have it, which is safe only while no document accepts an envelope; this
+    // is where that is checked.
     for (const [name, route] of Object.entries(API_ROUTES) as [string, RouteDefinition][]) {
       expect(
         route.response.document.safeParse(refused).success,
@@ -1535,12 +1392,8 @@ describe("the envelope every call refuses in", () => {
   });
 
   it("accepts a code the published list has never heard of", () => {
-    // The half of the vocabulary that is easy to lose. The list beside this
-    // schema is what a consumer switches over; it is not what the schema
-    // validates against, and the day it becomes that, a client one version
-    // behind its gateway stops being able to read a refusal at all — the
-    // parse fails, and what it had was a perfectly good sentence explaining
-    // why its call did not go through.
+    // The list is for switching over, not for validating: a client one
+    // version behind would otherwise fail to read a refusal at all.
     const unfamiliar = {
       error: { code: "something_nobody_has_named_yet", message: "and yet", retryable: false },
     };
@@ -1550,15 +1403,12 @@ describe("the envelope every call refuses in", () => {
   });
 
   it("has no code written down twice", () => {
-    // A duplicate would be harmless to the union and misleading to a reader
-    // counting what this surface can say.
+    // A duplicate would mislead a reader counting what this surface can say.
     expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
   });
 
   it("is published, because it is the one answer every caller has to be able to read", () => {
-    // The reader furthest from us has the JSON Schema export. A refusal shape
-    // that lived only in TypeScript would leave them with the successes of
-    // every call described and no way at all to find out that a call failed.
+    // A reader with only the export must be able to tell a call failed.
     expect(schemas.error_envelope).toBe(ErrorEnvelopeSchema);
   });
 });

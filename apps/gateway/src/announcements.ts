@@ -1,44 +1,22 @@
 /**
  * What the gateway has the dashboard tell a merchant, and what the dashboard
- * answers (ADR-0019).
+ * answers. The dashboard imports this file through the package's
+ * `./announcements` entry, so both sides read one definition.
  *
- * On the live deployment a change of a payout wallet already set is announced
- * to every account that names the merchant before anything is written, and a
- * first wallet, a new key of the merchant's own and a cancelled change are
- * announced once they are done. Every announcement says who asked, as far as
- * the gateway knows it: the account a dashboard session is signed in as, or
- * the key a call over the API was made with.
- *
- * The gateway knows the merchant and the change; the dashboard knows the
- * addresses and sends the mail. The two run in one process (ADR-0030), and the
- * process hands the gateway the dashboard's way of telling, so this is the
- * shape of a call between them rather than a wire: the dashboard imports it
- * from this package's `./announcements` entry, which carries this file and
- * nothing else, so the two sides read one definition.
- *
- * What an announcement carries is facts and no words. The message a person
- * reads is the dashboard's to write, because the dashboard is what knows where
- * its own screens are; the gateway says what changed, from what to what, and,
- * for a new key, which key asked. Nothing in it can open anything: there is no
- * token here, and the message built from it carries none.
+ * An announcement carries facts, never words or tokens: the dashboard writes
+ * the message, and nothing in it can open anything.
  */
 
 /**
- * The longest a key's label is when an announcement names the key: the
- * hundred characters a new key's label is held to at the door, and the one
- * character that says a longer label was cut.
+ * The hundred characters a key's label is held to at the door, plus one for
+ * the ellipsis that says a longer label was cut.
  */
 const LONGEST_ANNOUNCED_LABEL = 101;
 
 /**
  * A key's label as an announcement carries it: one line, cut to a hundred
- * characters with an ellipsis saying so.
- *
- * A new key's label is held to that at the door, but a key written before the
- * door held labels to anything, including one a terminal command issued when
- * there was such a command, can be named anything at all — and an announcement
- * of a key issued with such a key must still read as one line in a message. So
- * the gateway writes every label it announces down to this.
+ * characters with an ellipsis saying so. Stored labels are not all held to the
+ * door's limit, so every announced label goes through this.
  */
 export function announcedLabel(label: string): string {
   const oneLine = label.replace(/[\p{Cc}\p{Zl}\p{Zp}\s]+/gu, " ").trim();
@@ -55,41 +33,28 @@ export function announcedLabel(label: string): string {
 }
 
 /**
- * Who asked for a change the wallet screen makes: a session in the dashboard,
- * which is the one place a wallet is set.
- *
- * The dashboard calls the gateway inside the process the two share, as the
- * merchant on the signed-in account's row (ADR-0030), so what the gateway
- * knows of such a call is that account's address. It is named as the account
- * a session is signed in as and not as a person, because a session somebody
- * else took is signed in as the owner all the same.
+ * Who asked for a wallet change: the account a dashboard session is signed in
+ * as. It names the account, not a person, because a stolen session is signed
+ * in as the owner all the same.
  */
 export type AskedInTheDashboard = { readonly kind: "signed_in"; readonly email: string };
 
 /**
- * Who asked for a new key: anything that may change the wallet, or a key of
- * the merchant's own code, named the way the merchant's list of keys names it.
- *
- * That list shows a key under its label, with its identifier beneath, so that
- * is how a message names it: a person reading "the key you called the stock
- * worker" can find the row and disable it. A label here is always one written
- * by `announcedLabel`.
+ * Who asked for a new key: a dashboard session, or a key of the merchant's own
+ * code named by its label and identifier as their list of keys shows it, so
+ * the reader can find and disable it. The label is always `announcedLabel`'s.
  */
 export type AskedWith =
   | AskedInTheDashboard
   | { readonly kind: "merchant_code"; readonly id: string; readonly label: string };
 
-/**
- * An address as the gateway holds one, the mixed-case spelling a wallet shows,
- * and an instant as an ISO 8601 timestamp with its offset.
- */
+/** An address in the mixed-case checksummed spelling a wallet shows. */
 type Wallet = string;
 
 /**
- * A merchant's first payout wallet was set in the dashboard, and applies
- * already. Sent after, and never waited on: it replaces nothing, and a new
- * merchant has to be able to start selling — but a session that is not the
- * owner's could set it, and this is how the owner hears of it.
+ * A merchant's first payout wallet was set and already applies. Sent after,
+ * never waited on; it exists so the owner hears of a wallet somebody else's
+ * session set.
  */
 interface WalletSet {
   readonly kind: "wallet_set";
@@ -99,11 +64,10 @@ interface WalletSet {
 }
 
 /**
- * A replacement for the wallet paid now has been asked for. Sent before
- * anything is written; the change is recorded only if every message was
- * handed over, and it takes effect forty-eight hours after that — which is
- * after `not_before`, the instant the gateway can name while it is still
- * asking.
+ * A replacement for the current wallet was asked for. Sent before anything is
+ * written: the change is recorded only if every message was handed over, and
+ * takes effect forty-eight hours after that, so no earlier than `not_before`
+ * (an ISO 8601 timestamp).
  */
 interface WalletChange {
   readonly kind: "wallet_change";
@@ -114,7 +78,7 @@ interface WalletChange {
   readonly asked_with: AskedInTheDashboard;
 }
 
-/** A waiting change was cancelled by asking for the address paid now. Sent after. */
+/** A pending change was cancelled by asking for the current address. Sent after. */
 interface WalletChangeCancelled {
   readonly kind: "wallet_change_cancelled";
   readonly merchant_id: string;
@@ -123,7 +87,7 @@ interface WalletChangeCancelled {
   readonly asked_with: AskedInTheDashboard;
 }
 
-/** A key for the merchant's own code was issued. Sent after, and never waited on. */
+/** A key for the merchant's own code was issued. Sent after, never waited on. */
 interface KeyIssued {
   readonly kind: "key_issued";
   readonly merchant_id: string;
@@ -131,17 +95,13 @@ interface KeyIssued {
   readonly asked_with: AskedWith;
 }
 
-/** What the gateway has the dashboard tell a merchant. */
 export type Announcement = WalletSet | WalletChange | WalletChangeCancelled | KeyIssued;
 
 /**
- * What became of the messages, as the dashboard knows it.
- *
- * `handed_over` is every account naming the merchant sent a message the mail
- * provider took. `nobody_to_tell` is no account names the merchant, so nothing
- * was sent. `not_handed_over` is at least one message the provider would not
- * take — and others may have been, which is why nothing a caller says about
- * this may read as "nothing was sent".
+ * What became of the messages. `handed_over`: the mail provider took a message
+ * for every account naming the merchant. `nobody_to_tell`: no account names
+ * the merchant. `not_handed_over`: at least one was not taken, but others may
+ * have been, so it must never be read as "nothing was sent".
  */
 export interface AnnouncementAnswer {
   readonly outcome: "handed_over" | "nobody_to_tell" | "not_handed_over";

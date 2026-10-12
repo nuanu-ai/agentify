@@ -119,22 +119,17 @@ describe("the catalog", () => {
     expect(result.error.code).toBe(CARD_REJECTED);
     expect(result.error.retryable).toBe(false);
     expect(result.error.problems.length).toBeGreaterThan(1);
-    // The sentence is not the list said again: it names the first finding and
-    // counts the rest, which is what a person reading one line of a log needs.
-    // That it is not blank is the schema's business and is checked there.
+    // The sentence names the first finding and counts the rest, for a person
+    // reading one line of a log.
     expect(result.error.message).toContain(String(result.error.problems.length));
   });
 
   it("refuses a price it cannot sell at, and names what it found", async () => {
-    // The promise: a card reaches the catalog only at a price a payment can
-    // actually be taken at, and a merchant who is told no is told which half of
-    // the price is wrong and what it said. A payment of nothing is not a sale
-    // Agentify makes, a currency other than the dollar has no rate to be
-    // charged at, and an amount written without its cents is how "500"
-    // meant as five dollars becomes a five-hundred-dollar card. An amount
+    // A payment of nothing is not a sale, a currency other than the dollar has
+    // no rate to be charged at, and an amount written without its cents is how
+    // "500" meant as five dollars becomes a five-hundred-dollar card. An amount
     // finer than the token a buyer pays in has no exact charge. The short
-    // spelling is opened out before the rule is applied, so it meets the same
-    // rule in the same words.
+    // spelling meets the same rule in the same words.
     const harnessed = await started();
 
     for (const [price, field, found] of UNSELLABLE_PRICES) {
@@ -157,9 +152,9 @@ describe("the catalog", () => {
   });
 
   it("publishes every price a payment can be taken at", async () => {
-    // The other side of the rule, so that it cannot grow past what it is for:
-    // a price below a cent is an ordinary price for a call priced per use, and
-    // a card priced in USDC is charged in USDC as it stands.
+    // So the rule cannot grow past its purpose: a price below a cent is
+    // ordinary for a call priced per use, and a card priced in USDC is charged
+    // in USDC as it stands.
     const harnessed = await started();
 
     for (const [index, price] of SELLABLE_PRICES.entries()) {
@@ -227,25 +222,14 @@ describe("a synchronous purchase", () => {
   });
 
   it("answers with the goods when the agent took its time deciding to pay", async () => {
-    // Seen on the stand against the live test gateway. The agent read the
-    // requirements, signed, and presented the payment ten seconds after the
-    // order was opened — well inside the life of the price it was quoted. It
-    // was charged, the merchant delivered, and it was answered that its
-    // purchase was in progress, holding nothing: every clock the synchronous
-    // mode runs on was counted from the unpaid call that opened the order
-    // rather than from the paid one, so there was none of the ceiling left to
-    // wait in and none of the merchant's answer left to deliver in.
+    // Every clock of the synchronous mode counts from the paid call, not from
+    // the unpaid one that opened the order. Twenty seconds of thinking is longer
+    // than the ceiling itself, so a budget counted from the wrong end would be
+    // empty rather than merely short.
     //
-    // Twenty seconds here, longer than the ceiling itself, so that a budget
-    // measured from the wrong end is not merely short but empty.
-    //
-    // The handler takes a moment, and that is the whole of what makes this a
-    // test rather than a coincidence. A merchant's handler is another process
-    // across a network and cannot answer inside the same turn of the event
-    // loop; this one takes twenty milliseconds, which is a four-hundredth of
-    // the ceiling and a great deal more than the nothing the old arithmetic
-    // left. An instantaneous handler would win against a budget of zero and
-    // the test would pass on the broken gateway.
+    // The handler takes twenty milliseconds on purpose. A real handler is
+    // another process and cannot answer in the same turn of the event loop, and
+    // an instantaneous one would win even against a budget of zero.
     const harnessed = await started();
     const itemId = await published(harnessed, syncCard);
 
@@ -274,33 +258,19 @@ describe("a synchronous purchase", () => {
   });
 
   it("waits out the whole ceiling, with the payment check on top of it", async () => {
-    // The same hole as the test above, one payment check narrower, and found
-    // the same way: on the live test gateway, after the fix above was
-    // deployed. The agent bought in one go, the facilitator took a second to
-    // vouch for the payment, the merchant's handler answered six seconds after
-    // that, and the charge went through on chain — and the agent was answered
-    // that its purchase was in progress while the goods were already written
-    // down against the order.
-    //
-    // Both clocks the goods run on start when the payment checked out: the
+    // Both clocks the goods run on start when the payment checks out: the
     // merchant's answer has `sync_response` from there and the charge has its
-    // own `settle_response` after that, so the machine may legitimately still
-    // be deciding until the check and then the whole ceiling have gone by. The
-    // park was counting the ceiling from the arrival of the call with the
-    // check inside it, and so gave up exactly one round trip to the
-    // facilitator early.
+    // own `settle_response` after that. So the park has to wait out the check
+    // and then the whole ceiling; counting the ceiling from the call's arrival
+    // gives up one round trip to the facilitator early.
     //
-    // The numbers are a tenth of the deployed ones and the shape is the live
-    // one: the merchant answers inside his eight, the charge inside its two,
-    // and the two together inside the ten. The check is given half the ceiling
-    // rather than the tenth it took on the stand, because the length of the
-    // check is exactly the width of the hole — half puts the two answers
-    // further apart than any scheduling noise around them.
-    //
-    // What the harness clock reads is what the gateway measures the budget
-    // against, and the park's own timer is real: so the check's cost is a jump
-    // of the clock, and the merchant's is a wait in real time that the park
-    // has to sit through.
+    // The merchant answers inside his 800, the charge inside its 200, and the
+    // two together inside the 1000. The check takes half the ceiling because
+    // its length is exactly the width of the hole, and half keeps the two
+    // outcomes further apart than any scheduling noise. The gateway measures
+    // the budget against the harness clock while the park's timer is real, so
+    // the check's cost is a jump of the clock and the merchant's is a real
+    // wait the park has to sit through.
     const harnessed = await started({
       QUOTE_RESPONSE_MS: "50",
       SYNC_RESPONSE_MS: "800",
@@ -309,8 +279,6 @@ describe("a synchronous purchase", () => {
     });
     const itemId = await published(harnessed, syncCard);
 
-    // A payment layer that takes its time to vouch, and a charge that takes
-    // its own to execute. Neither is instant anywhere except in a test.
     const layer = harnessed.facilitator;
     const vouchesFor = layer.verify.bind(layer);
     const executes = layer.settle.bind(layer);
@@ -350,8 +318,6 @@ describe("a synchronous purchase", () => {
   });
 
   it("charges nothing when the merchant refuses", async () => {
-    // "A refusal before the charge" is the literal reading of the mode, and the
-    // one thing a merchant is promised about refusing.
     const harnessed = await started();
     const itemId = await published(harnessed, syncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
@@ -374,11 +340,9 @@ describe("a synchronous purchase", () => {
   });
 
   it("takes nothing, and leaves the order open, when a payment does not check out", async () => {
-    // A payment the payment layer will not vouch for closes nothing and claims
-    // nothing: the order stays exactly where it was and ends on its own
-    // deadline, so a stranger's junk cannot spend the life of an order somebody
-    // else was issued a challenge for. Nothing is charged, and the buyer may
-    // present a corrected payment while the quote still stands.
+    // A stranger's junk must not spend the life of an order somebody else was
+    // issued a challenge for, so it closes and claims nothing, and the buyer
+    // may still present a corrected payment while the quote stands.
     const harnessed = await started();
     const itemId = await published(harnessed, syncCard);
     harnessed.facilitator.willRefuseVerification("insufficient_funds", "the wallet is empty");
@@ -405,9 +369,9 @@ describe("a synchronous purchase", () => {
   });
 
   it("leaves the goods with the merchant and the money with the buyer when the charge fails last", async () => {
-    // The rare one the machine has a whole state for: the goods exist and the
-    // charge did not go through. The buyer is not told he bought nothing, and
-    // the merchant is told he is holding something nobody paid for.
+    // The goods exist and the charge did not go through. The buyer is not told
+    // he bought nothing, and the merchant is told he holds goods nobody paid
+    // for.
     const harnessed = await started();
     const itemId = await published(harnessed, syncCard);
     harnessed.facilitator.willSettle({ settled: false, reason: "the transfer reverted" });
@@ -434,10 +398,10 @@ describe("a synchronous purchase", () => {
   });
 
   it("says nobody knows when the charge goes quiet, rather than saying it failed", async () => {
-    // The fifth gate, in the one place it costs money: an agent told his
-    // purchase did not happen goes and buys the same thing elsewhere without
-    // looking at his wallet.
-    // The budget is wide on purpose: the header on `brisk` in deadlines.test.ts.
+    // An agent told his purchase did not happen goes and buys the same thing
+    // elsewhere without looking at his wallet.
+    // The budget is far wider than the deadlines on purpose: it is a real wait
+    // racing a real timer, and a narrow margin makes the test flaky.
     const harnessed = await started({
       QUOTE_RESPONSE_MS: "50",
       SYNC_RESPONSE_MS: "200",
@@ -455,11 +419,9 @@ describe("a synchronous purchase", () => {
     await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
     await worker.stop();
 
-    // The clock on the charge ran out and declared the silence — in the word
-    // that keeps "nobody knows" apart from "it did not go through". The goods
-    // exist, so the order is the one the portal calls unclosed rather than a
-    // refusal, and the agent is told the outcome is unknown, not that the
-    // purchase is still being worked on.
+    // The charge's deadline declared the silence in the word that keeps "nobody
+    // knows" apart from "it did not go through". The goods exist, so the order
+    // is unclosed rather than refused.
     const parked = await harnessed.store.orderById(offered.order.order.id);
     expect(parked?.order.state).toBe("delivered_unpaid");
     expect(parked?.order.payment).toBe("outcome_unknown");
@@ -474,14 +436,10 @@ describe("a synchronous purchase", () => {
   });
 
   it("still writes the receipt when the facilitator answers after the silence was declared", async () => {
-    // The facilitator's client waits far longer than the settle deadline does,
-    // so the ordinary shape of a silence is one declared while the call is
-    // still out — and the answer that lands afterwards is the payment layer's
-    // own, naming a transaction it executed. That is a charge this gateway
-    // observed, however late, and the receipt is what a merchant reconciles a
-    // wallet against. Only a fact somebody read elsewhere and recorded by hand
-    // has no execution time to stamp a proof with, and that one arrives with
-    // no settlement on it.
+    // The facilitator's client waits far longer than the settle deadline, so a
+    // silence is usually declared while the call is still out. The answer that
+    // lands afterwards names a transaction the payment layer executed, and the
+    // receipt is what a merchant reconciles a wallet against.
     const harnessed = await started({
       SYNC_RESPONSE_MS: "200",
       SETTLE_RESPONSE_MS: "50",
@@ -517,12 +475,10 @@ describe("a synchronous purchase", () => {
   });
 
   it("sends an agent back to a quiet order as one still open, not one that is over", async () => {
-    // One authorisation buys one order, and an agent that presented the same
-    // one twice is told which order is holding it. Whether it is sent to
-    // collect anything there turns on whether that order is still open, and an
-    // order whose charge went quiet is: the goods are made and the buyer's
-    // money may well have moved. Told it was over, the agent goes and pays for
-    // the same thing a second time.
+    // An agent that presents a spent authorisation is told which order holds
+    // it and whether there is anything to collect there. An order whose charge
+    // went quiet is still open: the goods are made and the money may have
+    // moved, and an agent told it was over pays a second time.
     const harnessed = await started({
       QUOTE_RESPONSE_MS: "50",
       SYNC_RESPONSE_MS: "200",
@@ -550,9 +506,8 @@ describe("a synchronous purchase", () => {
     expect(replayed.heldBy).toBe(quiet.order.order.id);
     expect(replayed.collectable).toBe(true);
 
-    // The other sentence, on an order that really is over. The merchant
-    // refused, nothing was charged and nothing was made, so there is nothing
-    // at that order to go and collect.
+    // On an order that really is over, refused with nothing charged or made,
+    // there is nothing to collect.
     const doomed = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
     const afterwards = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
     if (doomed.step !== "pay" || afterwards.step !== "pay") throw new Error("no price was offered");
@@ -593,7 +548,6 @@ describe("an asynchronous purchase", () => {
     expect(bought.order.order.payment).toBe("settled");
     expect(await harnessed.store.receiptForOrder(offered.order.order.id)).toBeNull();
 
-    // And the merchant then does the work, on his own clock.
     const worked = await workOnce(harnessed, {
       onOrder: () => ({ accepted: {} }),
     });
@@ -616,10 +570,9 @@ describe("an asynchronous purchase", () => {
   });
 
   it("stamps the receipt with the moment the money moved, not the moment it was written", async () => {
-    // The charge goes through at the purchase and the goods come hours later.
-    // A receipt stamped with the delivery would tell the merchant their buyer
-    // was charged at a moment when nothing had happened yet, and reconciling
-    // against it would come out wrong by exactly that gap.
+    // The charge goes through at the purchase and the goods come hours later;
+    // a receipt stamped at the delivery would put the charge at a moment when
+    // nothing had happened, and reconciling against it would be off by that gap.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -684,9 +637,9 @@ describe("an asynchronous purchase", () => {
   });
 
   it("closes a purchase whose charge failed after delivery when the agent pays again", async () => {
-    // The portal's promise to both sides: the goods the merchant already made
-    // are not thrown away, and a repeat carries the payment through against
-    // them without asking him to produce anything a second time.
+    // The goods the merchant already made are not thrown away, and a repeat
+    // carries the payment through against them without asking him to produce
+    // anything a second time.
     const harnessed = await started();
     const itemId = await published(harnessed, syncCard);
     harnessed.facilitator.willSettle(
@@ -698,12 +651,9 @@ describe("an asynchronous purchase", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
 
-    // Both payments are signed from one wallet, so the repeat comes from the
-    // buyer who bought — carrying a fresh authorisation, which is a different
-    // signed thing and a different fingerprint. The second spells the address
-    // in capitals, which is a thing clients differ on and the chain does not:
-    // a buyer refused their own repeat over the shift key would be this whole
-    // defect again, in miniature.
+    // Both payments come from one wallet, each with its own authorisation and
+    // fingerprint. The second spells the address in capitals, as some clients
+    // do; the chain does not care, so the ownership check must not either.
     const first = authorisation(harnessed, ALICE, "0x01");
     const second = authorisation(harnessed, ALICE_SHOUTED, "0x02");
     const worker = workUntilStopped(harnessed, {
@@ -725,10 +675,9 @@ describe("an asynchronous purchase", () => {
     expect(repeated.delivery).toStrictEqual({ access_code: "SESAME" });
     // The merchant was asked for nothing the second time round.
     expect(harnessed.facilitator.settles).toHaveLength(2);
-    // And the charge that closed it was the payment the agent actually
-    // presented. Counting the charges says nothing about this: the first
-    // authorisation had already failed, and charging it again would have taken
-    // nothing while the one the agent sent was thrown away.
+    // The charge that closed it was the payment the agent actually presented:
+    // charging the failed first authorisation again would take nothing while
+    // the one the agent sent was thrown away.
     expect(harnessed.facilitator.settles.map((charge) => charge.payment)).toStrictEqual([
       first.payment,
       second.payment,
@@ -738,11 +687,9 @@ describe("an asynchronous purchase", () => {
 
   it("keeps the last few things the payment layer said, and counts what it dropped", async () => {
     // They are what an operator reconciles a silent charge from, and they
-    // arrive on a route that takes no key — so the list is bounded, and a
-    // reader of the last one needs to know whether there was one or twenty.
-    // A whole synchronous purchase says two things: the verification, and the
-    // charge. With room for one, the charge is kept and the verification is
-    // counted among what fell off.
+    // arrive on a route that takes no key, so the list is bounded and counts
+    // what fell off. A synchronous purchase says two things, the verification
+    // and the charge; with room for one, the charge is kept.
     const harnessed = await started({ PAYMENT_WORDS_KEPT: "1" });
     const itemId = await published(harnessed, syncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
@@ -762,12 +709,11 @@ describe("an asynchronous purchase", () => {
   });
 
   it("does not take a second payment on an order whose first charge went quiet", async () => {
-    // The machine refuses a repeat there, because a second charge would be the
-    // buyer's money spent on a guess about the first. What must not happen is
-    // the refusal being ignored and the new payment written down anyway: the
-    // record of which authorisation is unaccounted for is the only thing
-    // anybody could ever reconcile that order from.
-    // The budget is wide on purpose: the header on `brisk` in deadlines.test.ts.
+    // A second charge would spend the buyer's money on a guess about the
+    // first. The refusal must also leave the record alone: which authorisation
+    // is unaccounted for is the only thing that order can be reconciled from.
+    // The budget is far wider than the deadlines on purpose: it is a real wait
+    // racing a real timer, and a narrow margin makes the test flaky.
     const harnessed = await started({
       QUOTE_RESPONSE_MS: "50",
       SYNC_RESPONSE_MS: "200",
@@ -813,8 +759,8 @@ describe("an asynchronous purchase", () => {
   });
 
   it("answers a second delivery the same way as the first", async () => {
-    // The portal's promise: called again after a dropped connection, deliver
-    // delivers nothing twice and charges nothing twice.
+    // Called again after a dropped connection, deliver delivers nothing twice
+    // and charges nothing twice.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -862,10 +808,9 @@ describe("an asynchronous purchase", () => {
     const owing = await harnessed.store.orderById(offered.order.order.id);
     expect(owing?.order.state).toBe("refund_due");
 
-    // No receipt, and that is a gap rather than a decision. The receipt
-    // vocabulary has a word for an order that owes money back, and receipts are
-    // only written when goods are released — so an order that took money and
-    // never released any has none to carry that word.
+    // No receipt, and that is a known gap: the receipt vocabulary has a word
+    // for an order that owes money back, but receipts are written only when
+    // goods are released, so this order has none to carry it.
     expect(await harnessed.store.receiptForOrder(offered.order.order.id)).toBeNull();
 
     const told = await harnessed.gateway.poll(harnessed.merchant.id, 0);
@@ -931,11 +876,10 @@ describe("an asynchronous purchase", () => {
 });
 
 describe("the goods against the card that sold them", () => {
-  // Every assertion here reads the order back out of the store rather than
-  // believing the answer the call gave. The two failures this describes were
-  // both invisible from the answer alone: an order marked delivered with
-  // nothing behind it answered "delivered", and goods quietly replaced by a
-  // later call answered "already_delivered" exactly as they should have.
+  // Assertions here read the order back out of the store rather than trusting
+  // the call's answer: an order marked delivered with nothing behind it, and
+  // goods quietly replaced by a later call, both answer exactly as a correct
+  // gateway would.
 
   /** An order paid for under the card as it stands, its identifier returned. */
   const paidOrder = async (harnessed: Harness, itemId: string, payment: string) => {
@@ -1019,9 +963,8 @@ describe("the goods against the card that sold them", () => {
   });
 
   it("holds an order written before it kept its own promise to the card as it stands", async () => {
-    // Orders already in flight when this rule arrived carry no promise of
-    // their own. They are held to the card as it stands, which is what held
-    // every order before, so a delivery to the current card closes them.
+    // An order stored without a promise of its own is held to the card as it
+    // stands, so a delivery to the current card closes it.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -1053,9 +996,8 @@ describe("the goods against the card that sold them", () => {
     if (answered?.ok !== false) throw new Error("an empty delivery closed the order");
     expect(answered.error.code).toBe("delivery_does_not_match_card");
     expect(answered.error.message).toContain("activation_code");
-    // The sentence is for the person reading a log; the findings are for the
-    // handler that has to be fixed, and they name the field rather than leaving
-    // his code to pick it back out of a sentence.
+    // The sentence is for a person reading a log; the findings name the field
+    // for the handler that has to be fixed.
     expect(answered.error.problems?.map((problem) => problem.path.join("."))).toStrictEqual([
       "activation_code",
     ]);
@@ -1103,12 +1045,9 @@ describe("the goods against the card that sold them", () => {
   });
 
   it("stays a line a person can read however much the merchant sends", async () => {
-    // Counting the findings is not enough, and this is the case that shows it.
-    // Every field the card never declared arrives as one finding whose own text
-    // lists all of them, so a cap on the number of findings never fires and the
-    // length of what the merchant is told is set by what the merchant sent. A
-    // handler looping over the wrong object put fourteen thousand characters
-    // into the one line somebody has to read in a log.
+    // Counting the findings is not enough: every undeclared field arrives in
+    // one finding whose text lists them all, so a cap on the number of findings
+    // never fires and the length is set by what the merchant sent.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -1126,11 +1065,9 @@ describe("the goods against the card that sold them", () => {
     );
 
     if (answered?.ok !== false) throw new Error("three hundred undeclared fields were delivered");
-    // The bound the constants actually promise is five findings of a hundred
-    // and sixty letters each, plus a bounded card name and the fixed prose —
-    // about twelve hundred. This case makes one enormous finding rather than
-    // five, so it lands far inside that; the number to read as the guarantee
-    // is the wider one, and it is asserted at the end.
+    // The guaranteed bound is about twelve hundred characters (five findings
+    // of 160, a bounded card name and the fixed prose), asserted below with
+    // every long thing at once. One enormous finding lands far inside it.
     expect(answered.error.message.length).toBeLessThan(400);
     // Cut short, and saying so — a reader must not mistake what is left for
     // the whole of the complaint.
@@ -1140,10 +1077,8 @@ describe("the goods against the card that sold them", () => {
   });
 
   it("does not carry a card's own identifier into the answer at whatever length it is", async () => {
-    // The card names itself in that message, and the contract puts no maximum
-    // on what a merchant may call his own product — so the one bounded thing
-    // was quoting an unbounded one. His own card, his own refusal, but the
-    // line still has to be readable.
+    // The message names the card, and the contract puts no maximum on what a
+    // merchant may call his own product.
     const harnessed = await started();
     const itemId = await published(harnessed, {
       ...asyncCard,
@@ -1165,11 +1100,8 @@ describe("the goods against the card that sold them", () => {
   });
 
   it("stays inside its bound with every long thing at once", async () => {
-    // The three things a refusal quotes that have no length of their own, all
-    // at their worst in one message: a card naming itself at five thousand
-    // characters, nine declared fields every one of them missing, and three
-    // hundred undeclared ones arriving. This is the number to read as the
-    // promise — the other two tests are cases that land well inside it.
+    // Everything a refusal quotes that has no length of its own, at its worst
+    // in one message. This is the bound to read as the promise.
     const harnessed = await started();
     const itemId = await published(harnessed, {
       ...asyncCard,
@@ -1235,9 +1167,8 @@ describe("the goods against the card that sold them", () => {
   });
 
   it("holds a synchronous handler's own answer to the same card", async () => {
-    // The handler's return is the delivery in this mode, so the check has to
-    // stand on that road too — otherwise the whole promise is one call away
-    // from being unenforced.
+    // In this mode the handler's return is the delivery, so the same check has
+    // to stand on this path too.
     const harnessed = await started();
     const itemId = await published(harnessed, syncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
@@ -1285,11 +1216,9 @@ describe("the goods against the card that sold them", () => {
   });
 
   it("keeps the goods the buyer was first given, whatever a later call carries", async () => {
-    // Delivery is at least once by design: a worker restarting, a redelivery
-    // and a merchant's own retry all land the same order twice. The repeat is
-    // answered as a repeat and must change nothing — a second call carrying
-    // different goods used to replace what the agent had already been handed,
-    // and the answer looked exactly the same either way.
+    // Delivery is at least once: a restarted worker, a redelivery and a
+    // merchant's own retry all land the same order twice. The repeat must
+    // change nothing, and its answer cannot show whether it did.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -1313,11 +1242,9 @@ describe("the goods against the card that sold them", () => {
   });
 
   it("answers a repeat as a repeat even when what it carries is nothing like the card", async () => {
-    // The order already has its goods, so this call could not have written
-    // anything whatever it carried, and that is what the merchant is told. A
-    // refusal here would be marked worth calling again — on an order that can
-    // never take another delivery — and would turn a retry the system asks him
-    // to make into a failure against a sale that went through.
+    // This call could not have written anything whatever it carried, and that
+    // is what the merchant is told. A refusal would be marked worth retrying on
+    // an order that can never take another delivery.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -1339,12 +1266,10 @@ describe("the goods against the card that sold them", () => {
   });
 
   it("tells a merchant about his goods before it tells him the order is over", async () => {
-    // The order of two true things, pinned because it is a choice. This order
-    // is closed and its refund is paid out, and the goods do not fit the card
-    // either. The card is what he is told about, because that is the fault in
-    // his code; the state of the order arrives on his next call, under the
-    // code the contract promises for it. Asking the machine first would mean
-    // keeping a copy of its table of what a delivery does in each state.
+    // The order is closed and the goods do not fit the card either. He is told
+    // about the card, the fault in his code, and the order's state on his next
+    // call; asking the machine first would mean keeping a copy of its table of
+    // what a delivery does in each state.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -1536,16 +1461,12 @@ describe("a price's life", () => {
 
 describe("two payments racing one order", () => {
   it("gives a losing buyer their authorisation back, so it can buy something else", async () => {
-    // The promise: an agent that lost a race for an order still holds a usable
-    // signature. Two agents reaching for the last unit is the ordinary shape of
-    // this market, and the one that arrives second has done nothing wrong.
-    //
-    // The claim is taken before the ownership decision on purpose — it is what
-    // stops one signature being spent on two orders, and it has to be in place
-    // before anything is dispatched. But a presentation refused for ownership
-    // never spent anything, so holding the claim afterwards binds a live
-    // authorisation to an order it can never pay for, and the agent's next
-    // attempt is answered "already spent" and pointed at somebody else's order.
+    // Two agents reaching for the last unit is ordinary, and the one that
+    // arrives second has done nothing wrong. The claim is taken before the
+    // ownership check because it has to be in place before anything is
+    // dispatched; but a presentation refused for ownership spent nothing, and
+    // keeping its claim would bind a live authorisation to an order it can
+    // never pay for.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
 
@@ -1553,12 +1474,10 @@ describe("two payments racing one order", () => {
     if (first.step !== "pay") throw new Error("the first purchase did not reach a payment");
     const firstOrder = first.order.order.id;
 
-    // Alice pays and owns it.
     const hers = authorisation(harnessed, ALICE, "0x01");
     const won = await harnessed.gateway.payPurchase(firstOrder, hers.payment, hers.fingerprint);
     expect(won.step).toBe("under_way");
 
-    // Bob arrives second with his own signature and is turned away.
     const his = authorisation(harnessed, BOB, "0x01");
     const lost = await harnessed.gateway.payPurchase(firstOrder, his.payment, his.fingerprint);
     expect(lost.step).toBe("not_this_purchase");
@@ -1577,14 +1496,12 @@ describe("two payments racing one order", () => {
   });
 
   it("lets exactly one own it, charges exactly one, and hands the goods to the winner alone", async () => {
-    // The blocker the ownership rule exists for. Two verified payments for one
-    // order both pass the payment layer and reach the decision at the same
-    // instant; if each read a stale "nobody owns it yet" they would both take
-    // it — two buyers, two merchants asked to deliver, one charge that succeeds
-    // and one that fails on a merchant who handed over goods for nothing. The
-    // decision is made under the store's lock, reading the order there, so the
-    // first arrival becomes the owner and the second is turned away.
-    // The budget is wide on purpose: the header on `brisk` in deadlines.test.ts.
+    // Two verified payments for one order reach the ownership check at once.
+    // If each read a stale "nobody owns it yet", both would take it, and one
+    // charge would fail on a merchant who handed over goods for nothing. The
+    // check reads the order under the store's lock.
+    // The budget is far wider than the deadlines on purpose: it is a real wait
+    // racing a real timer, and a narrow margin makes the test flaky.
     const harnessed = await started({
       QUOTE_RESPONSE_MS: "50",
       SYNC_RESPONSE_MS: "300",
@@ -1600,9 +1517,8 @@ describe("two payments racing one order", () => {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
 
-    // Hold both verifications so the two calls reach the ownership decision at
-    // the same instant. Released together, what decides between them is the
-    // in-lock guard — not the order they happened to verify in.
+    // Held and released together, so what decides between the two is the
+    // in-lock guard and not the order they happened to verify in.
     const hers = authorisation(harnessed, ALICE, "0x01");
     const his = authorisation(harnessed, BOB, "0x01");
     const release = harnessed.facilitator.holdVerification();
@@ -1619,10 +1535,8 @@ describe("two payments racing one order", () => {
     const [a, b] = await race;
     await worker.stop();
 
-    // Exactly one is handed the goods; the other is turned away as not its
-    // purchase. This is the assertion the stale-read defect fails: without the
-    // in-lock guard both are treated as the owner and both come away with the
-    // goods.
+    // Without the in-lock guard both are treated as the owner and both come
+    // away with the goods.
     const winners = [a, b].filter((result) => result.step === "settled");
     const refused = [a, b].filter((result) => result.step === "not_this_purchase");
     expect(winners).toHaveLength(1);
@@ -1644,10 +1558,9 @@ describe("two payments racing one order", () => {
   });
 
   it("does not let a stranger's failed payment stop the buyer who was issued the challenge", async () => {
-    // The finding-four answer, made a rule: an anonymous first payment that
-    // does not check out closes nothing and claims nothing, so the order stays
-    // there for the buyer it was priced for — a stranger cannot spend its life
-    // by getting there first with junk.
+    // An anonymous first payment that does not check out closes and claims
+    // nothing, so a stranger cannot spend the order's life by getting there
+    // first with junk.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -1675,17 +1588,11 @@ describe("two payments racing one order", () => {
   });
 
   it("does not make two payments that name no payer into one buyer", async () => {
-    // A payment can decode perfectly and still say nothing about who signed it:
-    // a scheme that does not sign an EIP-3009 authorisation sends a signature
-    // and no more, which is what an agent's client sends over HTTP today. It
-    // passes the route's decode and reaches the flows with no payer in it, so
-    // this is a wire case and not a malformed-input case.
-    //
-    // What has to hold then is that the fingerprint of what was signed carries
-    // the whole weight of telling buyers apart. A stand-in payer invented for
-    // the unnamed would be the same stand-in every time, and the second sender
-    // would be handed the first one's purchase — the defect this rule exists to
-    // stop, moved one branch over.
+    // A payment can decode perfectly and name no payer: a scheme that does not
+    // sign an EIP-3009 authorisation sends only a signature, and that passes
+    // the route's decode. The fingerprint then has to tell buyers apart on its
+    // own; a stand-in payer would be the same every time, and the second
+    // sender would be handed the first one's purchase.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -1715,11 +1622,9 @@ describe("two payments racing one order", () => {
   });
 
   it("does not make two payments naming a blank signer into one buyer", async () => {
-    // The same promise where the authorisation is there and its signer is an
-    // empty string. It reaches a different line — the payer arrives as `""`
-    // rather than as nothing — and an empty string is an identity that every
+    // Here the payer arrives as `""` rather than as nothing, an identity every
     // such payment would share. `walletThatPaid` turns it into nobody so the
-    // fingerprint stands in, which the `??` on its own would not do.
+    // fingerprint stands in, which `??` alone would not do.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -1766,14 +1671,10 @@ describe("the price question", () => {
   });
 
   it("stamps the sale price when the price was struck, not when the money moved", async () => {
-    // The order carries a price so the handler can write the sale down without
-    // looking the card up, and `at` is the moment we fixed that price for this
-    // sale — here, the moment the merchant's answer came back. It is not the
-    // moment of payment: on a card with a price check the agent can spend as
-    // long as it likes deciding in between, and a handler that filed the sale
-    // under `at` as though it were the charge would have the two records
-    // disagree by exactly that thinking time. When the money moved is on the
-    // receipt, under its own name.
+    // `at` is the moment the price was fixed for this sale, here when the
+    // merchant's answer came back, and not the moment of payment: the agent may
+    // think for as long as it likes in between. When the money moved is on the
+    // receipt under its own name.
     const harnessed = await started({ QUOTE_TTL_MS: "600000" });
     const itemId = await published(harnessed, livePriced(asyncCard));
 
@@ -1792,7 +1693,6 @@ describe("the price question", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
 
-    // The agent thinks it over for a minute and a half, and then pays.
     harnessed.advance(90_000);
     const paid = harnessed.now();
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
@@ -1813,10 +1713,9 @@ describe("the price question", () => {
   });
 
   it("does not price a sale off an answer it could not charge", async () => {
-    // The price check is the second door a price comes in by, and it keeps the
-    // card's rule: an answer of nothing is refused rather than charged. The
-    // sale then goes on as though nobody had answered — here a synchronous
-    // card, which sells at its own published price.
+    // The price check keeps the card's rule: an answer of nothing is refused,
+    // and the sale goes on as though nobody had answered, here at the
+    // synchronous card's own published price.
     const harnessed = await started({ QUOTE_RESPONSE_MS: "50" });
     const itemId = await published(harnessed, livePriced(syncCard));
 
@@ -1838,7 +1737,6 @@ describe("the price question", () => {
   it("still prices the sale off a corrected answer that follows a refused one", async () => {
     // A refused answer moves nothing, so the question is still open and an
     // answer the door takes, sent while we are still waiting, prices the sale.
-    // The portal promises exactly this beside the refusal.
     const harnessed = await started();
     const itemId = await published(harnessed, livePriced(syncCard));
 
@@ -1931,9 +1829,9 @@ describe("the price question", () => {
   });
 
   it("sells a silent synchronous card off its own snapshot", async () => {
-    // ADR-0002 §3: where the merchant's live answer still stands between the
-    // price and the charge, his silence is an open failure and the card's own
-    // number sells. Nobody answers the question here, and our patience for it
+    // On a synchronous card the merchant's own answer still stands between the
+    // price and the charge, so his silence on the price is an open failure and
+    // the card's own number sells. Nobody answers here, and our patience for it
     // is one millisecond.
     const harnessed = await started({ QUOTE_RESPONSE_MS: "1" });
     const itemId = await published(harnessed, livePriced(syncCard));
@@ -1946,9 +1844,9 @@ describe("the price question", () => {
   });
 
   it("will not start an asynchronous purchase the merchant went silent on", async () => {
-    // The other half of the same decision: where the money moves at the
-    // purchase, selling at an unknown stock level manufactures debts to buyers,
-    // and a lost sale is cheaper than a debt.
+    // On an asynchronous card the money moves at the purchase, so selling at an
+    // unknown stock level manufactures debts to buyers, and a lost sale is
+    // cheaper than a debt.
     const harnessed = await started({ QUOTE_RESPONSE_MS: "1" });
     const itemId = await published(harnessed, livePriced(asyncCard));
 
@@ -2007,12 +1905,10 @@ describe("the price question", () => {
   });
 
   it("tells a merchant his answer priced nothing when the order had already moved on", async () => {
-    // The acknowledgement is his cue to release stock he set aside, so it has to
-    // mean what it says. It used to mean only that somebody was still listening,
-    // which is a different thing and wrong in exactly the case that matters: the
-    // clock on our own patience closes the question a moment before his answer
-    // lands, the sale goes through at another price, and he is told his was
-    // taken.
+    // The acknowledgement is his cue to release stock he set aside, so it says
+    // whether his answer priced the sale, not whether somebody was still
+    // listening: our patience can close the question a moment before his answer
+    // lands, and the sale goes through at another price.
     const harnessed = await started({ QUOTE_RESPONSE_MS: "10" });
     const itemId = await published(harnessed, livePriced(syncCard));
 
@@ -2045,16 +1941,10 @@ describe("the price question", () => {
   });
 
   it("tells a merchant how long his price will be honoured, not how long we will wait", async () => {
-    // The promise, and it is a merchant's stock: `expires_at` on a price
-    // question means "until when the price you name will be honoured, so a
-    // merchant holding stock against it knows when to stop" (quote.ts). That is
-    // not the same number as our own patience for an answer — the gateway sells
-    // at a quoted price for the whole of the price's life, which begins when the
-    // answer lands and not when the question went out.
-    //
-    // Told the shorter number, a merchant who set a unit aside releases it while
-    // we are still selling against it, which is the oversell the price question
-    // exists to prevent.
+    // `expires_at` on a price question is how long the named price will be
+    // honoured, not our patience for an answer: the price's life begins when
+    // the answer lands. Told the shorter number, a merchant who set a unit
+    // aside releases it while we are still selling against it.
     const harnessed = await started({ QUOTE_RESPONSE_MS: "500", QUOTE_TTL_MS: "60000" });
     const itemId = await published(harnessed, livePriced(asyncCard));
 
@@ -2067,9 +1957,7 @@ describe("the price question", () => {
     const promised = Date.parse(question.payload.expires_at) - askedAt;
 
     // An answer later than our patience is refused, so the latest a price can
-    // still be alive is that patience plus the price's own life. Erring long
-    // makes a merchant hold stock a little too long; erring short makes them
-    // release stock we are still selling against.
+    // still be alive is that patience plus the price's own life.
     expect(promised).toBe(500 + 60_000);
 
     await harnessed.gateway.answerQuote(harnessed.merchant.id, question.payload.price_id, {
@@ -2081,9 +1969,8 @@ describe("the price question", () => {
   });
 
   it("tells a merchant his answer priced nothing when the machine would not take it", async () => {
-    // The other half of the same promise, and the one the wording exists for.
-    // Somebody is still parked on the question, so an acknowledgement built out
-    // of "was anybody listening" would say yes — while the order was closed a
+    // Somebody is still parked on the question, so an acknowledgement built
+    // out of "was anybody listening" would say yes, while the order closed a
     // moment earlier and his price bought nothing.
     const harnessed = await started({ QUOTE_RESPONSE_MS: "500" });
     const itemId = await published(harnessed, livePriced(asyncCard));
@@ -2117,13 +2004,10 @@ describe("the price question", () => {
   });
 
   it("carries the merchant's own `as_of` into the sale price, not the gateway's clock", async () => {
-    // The fifth gate on price freshness. `as_of` is the moment the price behind
-    // the sale was true; on a live-priced card that moment is the merchant's to
-    // state, and it reaches the buyer in the receipt and the merchant's worker
-    // in the order. Stamping the gateway's own clock there would claim the price
-    // was fresh at the sale when the merchant had priced it earlier. `at` — the
-    // moment of purchase — is the gateway's clock, and the two are distinct
-    // claims that must not be folded together.
+    // `as_of` is the moment the price behind the sale was true, and on a
+    // live-priced card that moment is the merchant's to state. Stamping the
+    // gateway's clock there would claim the price was fresh at the sale. `at`,
+    // the moment of purchase, is the gateway's clock.
     const merchantPricedAt = "2026-08-26T10:15:00.000Z";
 
     const harnessed = await started();
@@ -2149,9 +2033,6 @@ describe("the price question", () => {
     const purchasedAt = asTimestamp(harnessed.now());
     expect(purchasedAt).not.toBe(merchantPricedAt);
 
-    // The order the merchant's worker reads, and the receipt the buyer keeps,
-    // both carry the merchant's instant as `as_of` and the gateway's clock as
-    // `at`.
     const document = orderDocumentOf(bought.order);
     expect(document.price.as_of).toBe(merchantPricedAt);
     expect(document.price.at).toBe(purchasedAt);
@@ -2160,19 +2041,13 @@ describe("the price question", () => {
     expect(receipt?.price.as_of).toBe(merchantPricedAt);
     expect(receipt?.price.at).toBe(purchasedAt);
 
-    // Not conflated: here freshness and purchase-time are different moments, and
-    // a receipt that reported one for the other would lose the freshness claim.
     expect(receipt?.price.at).not.toBe(receipt?.price.as_of);
   });
 
   it("stamps a snapshot sale with the price's publish time, not the purchase clock", async () => {
-    // The sibling claim on the same gate. A card sold from its own price and
-    // never checked live still carries `as_of`: the moment that card price was
-    // last published (per the sale-price contract). That is a fact about the
-    // price, not about this purchase, so it stays pinned to the publish even as
-    // the gateway's clock moves on to the moment of sale — here the two are
-    // deliberately an hour and a half apart. Stamping the gateway's own clock
-    // for `as_of` would claim the price was published at the sale.
+    // A card sold from its own price carries `as_of` as the moment that price
+    // was last published. That is a fact about the price, not this purchase,
+    // so it stays pinned to the publish while the clock moves on to the sale.
     const harnessed = await started();
     const itemId = await published(harnessed, syncCard);
     const publishedAt = asTimestamp(harnessed.now());
@@ -2283,17 +2158,11 @@ describe("the worker's stream", () => {
   });
 
   it("hands an event over once, and never again if the batch it went in is lost", async () => {
-    // The portal tells a merchant two different rules for one subscription, and
-    // this is the half that costs money when it is read as the other one. An
-    // event is finished the moment it is handed into a batch: nothing answers
-    // it, nothing takes it back after a window, and a batch that never reached
-    // the process that asked for it takes the event with it. So the merchant is
-    // never told what it carried, and the thing it carried here is a debt to a
-    // buyer who has paid and has no goods.
-    //
-    // The second half is the recovery the page now points at: the debt is on
-    // the order, and the order is on the list of open ones whether the event
-    // arrived or not.
+    // Unlike an order, an event is finished the moment it is handed into a
+    // batch: nothing acknowledges it and nothing redelivers it, so a lost batch
+    // loses the event, here a debt to a buyer who paid and has no goods. The
+    // recovery is the list of open orders, which carries the debt whether the
+    // event arrived or not.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -2322,17 +2191,11 @@ describe("the worker's stream", () => {
   });
 
   it("hands nobody an order the late answer already closed", async () => {
-    // Seen on the live test gateway. A synchronous order went out; the handler
-    // answered six seconds later, past the three we wait before deciding
-    // nobody answered, so a redelivery was already on its way. The late answer
-    // was taken — goods released, charge executed, the order closed as
-    // delivered — and then the redelivery's turn came and the same order was
-    // handed to the worker a second time, for a purchase that was over.
-    //
-    // Deliveries stay at least once and a genuine race can still put a repeat
-    // in front of a handler, which is why holding against one is still the
-    // merchant's to do. What must not happen is the gateway sending a repeat
-    // out while knowing the order is closed.
+    // A handler that answers after the handler-answer wait already has a
+    // redelivery queued behind it. Its late answer is taken and closes the
+    // order. Deliveries stay at least once and a genuine race can still repeat
+    // one, but the gateway must not send a repeat while knowing the order is
+    // closed.
     const harnessed = await started({
       HANDLER_ANSWER_MS: "20",
       REDELIVERY_BASE_DELAY_MS: "20",
@@ -2345,15 +2208,14 @@ describe("the worker's stream", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
 
-    // The agent's call parks while the merchant works, as it does on the stand.
+    // The agent's call parks while the merchant works.
     const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
     const handed = await harnessed.gateway.poll(harnessed.merchant.id, 1_000);
     expect(handed.envelopes.filter((each) => each.kind === "order")).toHaveLength(1);
 
-    // We give up on that hand-over and put a fresh delivery on the stream.
-    // Waiting for it is what makes the rest of this a test: with no redelivery
-    // actually waiting there, a poll that hands out nothing proves nothing.
+    // Wait until the redelivery is queued: with none waiting, a poll that
+    // hands out nothing proves nothing.
     await vi.waitFor(
       async () =>
         expect(await harnessed.queue.holdsOrder(harnessed.merchant.id, orderId)).toBe(true),
@@ -2437,7 +2299,7 @@ describe("the merchant's calls", () => {
     expect(refused.error.retryable).toBe(false);
 
     // What the agent sees: the purchase ends at its deadline and nothing is
-    // charged, which is what the portal tells the merchant will happen.
+    // charged.
     const bought = await buying;
     if (bought.step !== "settled") throw new Error(`the purchase came back ${bought.step}`);
     expect(bought.order.order.state).toBe("expired");
@@ -2445,10 +2307,9 @@ describe("the merchant's calls", () => {
   });
 
   it("does not tell a merchant a live order is closed", async () => {
-    // The contract promises "order_already_closed" means the order reached an
-    // ending that no call reopens. A merchant walking their own list of open
-    // orders and calling deliver on one in the wrong state used to be told,
-    // under that promised code, that a live order was dead.
+    // The contract promises "order_already_closed" means an ending no call
+    // reopens, so a live order in the wrong state is refused under another
+    // code.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -2494,11 +2355,10 @@ describe("the merchant's calls", () => {
   });
 
   it("answers an acceptance on the answer route with the word for a successful one", async () => {
-    // The promise: taking an order on is a success and reads as one. The SDK
-    // posts every handler answer to this route without the merchant asking,
-    // and relays anything that is not ok:true to him as a problem — so an
-    // acceptance answered with a failure writes "something went wrong" against
-    // an order that is going through and will deliver normally.
+    // The SDK posts every handler answer to this route and relays anything that
+    // is not ok:true to the merchant as a problem, so an acceptance answered as
+    // a failure reports "something went wrong" on an order that is going
+    // through.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -2523,11 +2383,9 @@ describe("the merchant's calls", () => {
   });
 
   it("answers an acceptance of a delivered order with the state it is in", async () => {
-    // Deliveries are at least once, so a worker takes an order on again after
-    // it has closed as a matter of course. "Accepted" would be a lie about the
-    // work: it means the goods are owed and the order is under way, and this
-    // merchant already handed them over. He is told what he can act on — there
-    // is nothing left to deliver — and no second fulfillment is asked of him.
+    // Deliveries are at least once, so a worker takes a closed order on again
+    // as a matter of course. "Accepted" would claim the goods are still owed;
+    // he is told there is nothing left to deliver.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -2548,15 +2406,10 @@ describe("the merchant's calls", () => {
   });
 
   it("still takes an order on that is owed a refund, because the goods still close it", async () => {
-    // The other order an acceptance can arrive for late. This fixture reaches
-    // the debt the short way — the merchant refuses out of stock after the
-    // charge, which is one of the paths into it, not the expiry one — and the
-    // promise is the same either way: goods that arrive before the refund does
-    // close the debt instead, so a merchant taking the order on afterwards is
-    // taking on work that still exists, and is told his acceptance landed.
-    // Odd-looking on the face of it, since he is the one who refused; it is
-    // the honest answer, because until the refund is executed his goods are
-    // still the cheaper way out for everybody.
+    // Goods that arrive before the refund close the debt instead, so an
+    // acceptance here takes on work that still exists, odd as that looks from
+    // the merchant who refused. The fixture reaches the debt by a refusal; the
+    // expiry path promises the same.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -2618,14 +2471,11 @@ describe("the claims on payments", () => {
 
 describe("an order sent out again", () => {
   it("carries the instant of this delivery, under the identifier of the same message", async () => {
-    // This is the one path where an envelope goes back on the stream with its
-    // identifier untouched: it was drawn and handed to nobody, so no worker has
-    // seen that identifier and none will see it twice. The stamp still has to
-    // move — put back with its original one, it would name a moment that has
-    // passed. What this is not is how a worker recognises a repeat: an order
-    // the gateway decides to send again is wrapped in a fresh envelope with a
-    // fresh identifier, and the only thing two attempts have in common is the
-    // order they carry (`envelope.ts`).
+    // An envelope drawn and handed to nobody goes back with its identifier,
+    // since no worker has seen it, but with a fresh stamp. This is not how a
+    // worker recognises a repeat: a redelivery the gateway decides on is a
+    // fresh envelope with a fresh identifier, and two attempts share only the
+    // order they carry.
     const harnessed = await started({
       QUOTE_RESPONSE_MS: "50",
       SYNC_RESPONSE_MS: "400",
@@ -2786,10 +2636,9 @@ describe("the test mark on an order and its receipt", () => {
   });
 
   it("is false on a live one", async () => {
-    // The claim this test protects is the one we make to somebody else's agent
-    // about somebody else's money: `test: false` says the money moved. The
+    // `test: false` tells somebody else's agent that the money moved. The
     // harness wires the scripted facilitator whatever the configuration names,
-    // so this buys the derivation and settles nothing.
+    // so this checks the derivation and settles nothing.
     const sold = await soldOn({
       PAYMENT_NETWORK: "eip155:8453",
       FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
@@ -2825,9 +2674,9 @@ describe("a poll on a key revoked before it was held", () => {
 
 describe("one integration at a time", () => {
   // A merchant sells through their own code or through a WooCommerce shop the
-  // dashboard connected, and a card of the other one is off sale (ADR-0036).
-  // Selling both ways at once, the code's worker drew a paid order for a
-  // product imported from the shop, and the shop never heard of it.
+  // dashboard connected, and a card of the other one is off sale. Selling both
+  // ways at once would let the code's worker draw a paid order for a product
+  // imported from the shop, which the shop would never hear of.
   const fromTheShop: Card = { ...asyncCard, merchant_item_id: "woo-mug", title: "A mug" };
 
   const onTheShop = async (harnessed: Harness): Promise<string> => {

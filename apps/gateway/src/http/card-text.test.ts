@@ -1,15 +1,10 @@
 /**
- * A card's own words at the publish door, over HTTP.
- *
- * The door refuses a title, a description or a field's title that is not plain
- * text, says what it found in the findings a merchant reads, and stores
- * nothing — it never cleans the text and publishes the result, because the
- * merchant would never learn and an agent would read words nobody wrote.
- *
- * The rule is the door's alone. A card stored before it keeps being served,
- * in the catalog and in its merchant's own list: every answer on those routes
- * is held to its contract on the way out, so a rule applied on reading would
- * turn one old row into a failed catalog for everybody.
+ * A card's own words at the publish door, over HTTP. Text that is not plain is
+ * refused, never cleaned and published, because the merchant would never learn
+ * and an agent would read words nobody wrote. The rule holds only at the door:
+ * every catalog answer is checked against its contract on the way out, so
+ * applying it on reading would turn one old stored card into a failed catalog
+ * for everybody.
  */
 
 import {
@@ -79,7 +74,6 @@ describe("a card's own words at the publish door", () => {
     expect(findingAt(answered.body, "description")).toContain('"<p>"');
     expect(findingAt(answered.body, "result.code.title")).toContain("U+0007");
 
-    // Refused means refused: not cleaned and published anyway.
     const mine = await served.call("GET", "/v0/cards", { headers: asMerchant });
     expect((mine.body as MerchantCardList).cards).toStrictEqual([]);
   });

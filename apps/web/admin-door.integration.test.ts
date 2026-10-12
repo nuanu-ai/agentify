@@ -1,20 +1,13 @@
 /**
- * The door to the operator's dashboard, asked over HTTP of the scanner's own
+ * The operator's dashboard at `/admin`, asked over HTTP of the scanner's own
  * build.
  *
- * ADR-0026 §6: `/admin` opens for a session whose account carries the operator
- * flag. Everybody else, signed in or not, and everybody while the seller dashboard
- * cannot confirm the flag, gets the site's 404 page, the one a path no route
- * answers gets. The answer is Next's, drawn from the page's refusal, so this
- * runs the standalone build rather than importing the page. It compares the
- * refusal with the answer at `/nimda`, a path of the same shape that no route
- * has: the same status, the same page title and heading, none of the
- * operator's dashboard, and no header of a door with a password of its own.
- *
- * The operator's dashboard reads the scanner's own tables, so it is asked of a database
- * the migrations alone built: the test empties the `*_migration_test`
- * database it is told about and migrates it, the way the scanner's other
- * integration suites do, and puts nothing beside what the migrations made.
+ * `/admin` opens only for a session whose account carries the operator flag.
+ * Everybody else, and everybody while the seller dashboard cannot confirm the
+ * flag, gets the same 404 page as `/nimda`, a path no route has. Next draws
+ * that answer from the page's refusal, so this runs the standalone build
+ * rather than importing the page. The `*_migration_test` database is emptied
+ * and built by the migrations alone, with nothing installed beside them.
  *
  *   pnpm --filter @agentify/web build
  *   MIGRATION_TEST_DATABASE_URL=postgresql://…/agentify_scanner_migration_test \
@@ -58,10 +51,7 @@ let scanner: ChildProcess;
 let scannerOutput = "";
 let base = "";
 
-/**
- * The seller dashboard's side of the question the scanner asks about every visitor
- * (ADR-0026 §2), answering from the two sets above.
- */
+/** The seller dashboard's answer to the session question, from the two sets above. */
 function standInSellerDashboard(): Server {
   return createServer((request, response) => {
     let body = "";
@@ -144,12 +134,10 @@ const DOORS = ["/admin", "/admin/users"] as const;
 
 /**
  * Asserts that `/admin` and what is under it are the site's 404 page for this
- * visitor, asked as a page, as a HEAD and as a client navigation.
- *
- * A client navigation is the one way of asking whose status says nothing: Next
- * carries a page's refusal inside the answer to it and the browser draws the
- * 404 page from that. What is held there is that the payload is the 404 page
- * and none of the operator's dashboard.
+ * visitor, asked as a page, as a HEAD and as a client navigation. A client
+ * navigation's status says nothing, because Next carries the refusal inside
+ * the payload, so there the payload must be the 404 page and none of the
+ * operator's dashboard.
  */
 async function expectMissingPages(visitor: Asking, who: string): Promise<void> {
   for (const door of DOORS) {
@@ -258,8 +246,8 @@ describe("the operator's dashboard at /admin", () => {
     const opened = await ask("/admin", operator);
     expect(opened.status).toBe(200);
     expect(opened.body).toContain(HEADING);
-    // The one answer that carries the dashboard is kept by no cache: nothing
-    // in front of the scanner says so any more, so the scanner has to.
+    // Nothing in front of the scanner keeps the dashboard out of caches, so the
+    // scanner's own answer must.
     const cacheControl = opened.headers
       .filter(([name]) => (name ?? "").toLowerCase() === "cache-control")
       .map(([, value]) => value ?? "")

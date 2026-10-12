@@ -1,14 +1,7 @@
 /**
- * Telling a merchant of a change to their payout wallet or their keys
- * (ADR-0019).
- *
- * The dashboard holds the addresses and sends the messages, and it runs in the
- * gateway's own process (ADR-0030), so this is a call rather than a request:
- * the process hands the gateway the dashboard's way of telling, and its three
- * answers are the outcomes here. A throw from it is our own code failing —
- * reading the addresses, or a defect before one message or between two — and
- * the gateway reads it as `not_handed_over`, since a message may have gone out
- * to some of them already.
+ * Telling a merchant of a change to their payout wallet or their keys, through
+ * the dashboard running in the same process. A throw is read as
+ * `not_handed_over`, since some messages may already have gone out.
  */
 
 import type { Announcement, AnnouncementAnswer } from "../announcements.js";
@@ -20,12 +13,9 @@ export interface Announcer {
 }
 
 /**
- * The announcer of a deployment that announces nothing: a test deployment and
- * the sandbox, where a change applies at once (ADR-0019).
- *
- * It throws rather than answering, because nothing on those deployments may
- * ask it anything — the flows decide by the surface whether to announce — and
- * a call reaching it is a defect in that decision, which an answer would hide.
+ * The announcer of a test deployment and the sandbox, where a change applies
+ * at once. It throws rather than answering, because a call reaching it is a
+ * defect in the flow's decision to announce.
  */
 export const nobodyAnnounces: Announcer = {
   announce: async (announcement) => {

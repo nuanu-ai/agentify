@@ -1,15 +1,9 @@
 /**
- * The dashboard's teller: the gateway announces, the dashboard tells every
- * account that names the merchant (ADR-0019), in the process the two share
- * (ADR-0030).
- *
- * The promises are the gateway's to rely on and the merchant's to read. Every
- * account naming the merchant is told and nobody else is. The answer says
- * whether every message was handed over, whether there was nobody to tell, or
- * whether a message could not be. And each message carries the
- * facts a person needs to act — what changes, from what to what, when at the
- * earliest, that it was asked for in the dashboard, and where the screen is that
- * decides it — and nothing that opens anything.
+ * Every account naming the merchant is told and nobody else is; the answer says
+ * whether every message was handed over, there was nobody to tell, or a message
+ * could not be. Each message carries what a person needs to act (what changes,
+ * from what to what, the earliest moment, that it was asked for in the
+ * dashboard, where the deciding screen is) and nothing that opens anything.
  */
 
 import type { Announcement } from "@agentify/gateway/announcements";
@@ -44,11 +38,6 @@ const aWalletChange: Announcement = {
   asked_with: { kind: "signed_in", email: "owner@example.com" },
 };
 
-/**
- * The teller over the real component on its memory store, with accounts at
- * two merchants, and a mail provider that takes or refuses each address as the
- * test says.
- */
 const telling = async (
   people: readonly (readonly [email: string, merchantId: string])[],
   refuses: ReadonlySet<string> = new Set(),
@@ -92,9 +81,8 @@ describe("a wallet change", () => {
       expect(text).toContain(FROM);
       expect(text).toContain(TO);
       expect(text).toContain("2026-09-26 12:00:00 UTC");
-      // Only a session in the dashboard changes a wallet, so where it was
-      // asked for is the dashboard, and a person who did not ask knows a
-      // session did.
+      // Only a dashboard session changes a wallet, so a person who did not ask
+      // knows a session did.
       expect(text).toMatch(/asked for in the dashboard/i);
       expect(text).toContain(THE_SETTINGS_SCREEN);
       expect(text).not.toMatch(/token/i);
@@ -123,10 +111,9 @@ describe("a wallet change", () => {
 
 describe("a key's label, which somebody else may have written", () => {
   it("is written into the message so that no mail client makes a link of it", async () => {
-    // A leaked key can be used to issue a key named like an instruction with
-    // an address in it. The message is Agentify's, so the label is shown as
-    // data: in quotes, on one line, and with nothing in it a mail client
-    // would turn into somewhere to click.
+    // A leaked key can issue a key named like an instruction with an address in
+    // it, so the label is shown as data: quoted, on one line, with nothing a
+    // mail client would turn into a link.
     const { tell, sent } = await telling([["owner@example.com", MERCHANT]]);
 
     await tell({
@@ -150,9 +137,9 @@ describe("a key's label, which somebody else may have written", () => {
 });
 
 describe("what a message advises and claims", () => {
-  // A first wallet and a cancel leave nothing waiting, so cancelling a
-  // waiting change is advice that cannot work there; what works at once is
-  // pausing the selling, and then a replacement, which waits.
+  // A first wallet and a cancel leave nothing waiting, so advice to cancel
+  // cannot work there; what works at once is pausing the selling, then a
+  // replacement, which waits.
   it.each([
     [
       "a first wallet",
@@ -180,10 +167,9 @@ describe("what a message advises and claims", () => {
 
       await tell(request satisfies Announcement);
 
-      // In that order, and by the names the screens give the two controls,
-      // which both read from one place: the stop is immediate, the sign-out
-      // keeps an intruder from undoing what comes next, and the address waits
-      // and is announced.
+      // In this order, by the names the screens give the controls: the stop is
+      // immediate, the sign-out keeps an intruder from undoing what comes next,
+      // and the address waits and is announced.
       const body = sent[0]?.body ?? "";
       const stop = body.indexOf(STOP_ALL_SELLING);
       const signOut = body.indexOf(SIGN_OUT_EVERY_OTHER_DEVICE);
@@ -197,11 +183,9 @@ describe("what a message advises and claims", () => {
 });
 
 describe("who asked", () => {
-  // A change asked for from the dashboard comes from a session, and the
-  // gateway knows the account that session is signed in as (ADR-0030). Every
-  // message names that account, so the accounts at a merchant can tell whose
-  // session it was; it says a session and not a person, because a session
-  // somebody else took is signed in as the owner all the same.
+  // Every message names the account the session was signed in as, and says a
+  // session rather than a person, because a stolen session is signed in as the
+  // owner all the same.
   const ASKED_FROM = { kind: "signed_in", email: "partner@example.com" } as const;
 
   it.each([

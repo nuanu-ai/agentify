@@ -1,25 +1,14 @@
 #!/usr/bin/env bash
 #
-# Does the SDK work for somebody who does not have this repository?
+# Does the SDK work for somebody who does not have this repository? The unit
+# tests, the type checker and `pnpm test` all see the workspace, so each can
+# pass on a package that dies on first use elsewhere. This packs the tarballs
+# npm would publish, installs them into a directory with no path back here, and
+# runs the two commands the quickstart tells a merchant to run.
 #
-# Everything else about the packaging can be green while the answer is no. The
-# unit tests read our own `package.json` and believe it; the type checker
-# resolves `@nuanu-ai/agentify` through the workspace link and never looks at what
-# `files` would ship; `pnpm test` imports TypeScript that a merchant's Node
-# would refuse. Each of those passes on a package that installs into someone
-# else's project and dies on first use. So this check does the only thing that
-# settles it: it packs the tarballs npm would publish, installs them into a
-# directory that has no path back here, and runs the two commands the
-# quickstart tells a merchant to run.
-#
-# It needs the network, because the install pulls zod from the registry. That
-# is why it lives beside `pnpm smoke` and not inside `pnpm test`, which is free,
-# offline and fast and must stay that way.
-#
-# Two packages are packed and not one. `@nuanu-ai/agentify` depends on
-# `@nuanu-ai/agentify-contracts`, so a merchant who installs the SDK installs both, and a
-# check that packed only the SDK would prove nothing about the half that carries
-# the schemas.
+# It needs the network (the install pulls zod from the registry), so it lives
+# beside `pnpm smoke`, not inside `pnpm test`. `@nuanu-ai/agentify-contracts` is
+# packed as well, because a merchant who installs the SDK installs both.
 
 set -euo pipefail
 
@@ -28,8 +17,7 @@ scratch="$(mktemp -d "${TMPDIR:-/tmp}/agentify-outside.XXXXXX")"
 
 failures=0
 
-# A passing run leaves nothing behind; a failing one leaves everything, because
-# the install and the tarballs are what whoever debugs it needs to look at.
+# A failing run leaves the install and the tarballs in place for debugging.
 cleanup() {
   if [ "$failures" -eq 0 ]; then
     rm -rf "$scratch"
@@ -39,8 +27,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Report and keep going, so one run names everything that is wrong rather than
-# only the first thing. The exit code at the bottom is what fails the command.
+# Report and keep going, so one run names everything that is wrong; the exit
+# code at the bottom fails the command.
 check() {
   local what="$1" expected="$2" actual="$3"
 
@@ -65,31 +53,23 @@ contains() {
 }
 
 echo "Packing the two publishable packages the way a release would"
-# The build output is deleted first on purpose. Each package's `prepack` runs
-# its own build, so packing from nothing is the path a release actually takes,
-# and a package that had lost that hook would pack an empty tarball here rather
-# than quietly inherit whatever an earlier build left lying around.
+# The build output is deleted first: each package's `prepack` runs its own
+# build, so a package that lost that hook packs an empty tarball here instead of
+# a stale build.
 rm -rf "$repo/packages/sdk/dist" "$repo/packages/contracts/dist"
 # `pnpm pack` applies `publishConfig`, so these tarballs carry the built entry
-# points and the command — not the source paths the working tree develops
-# against — and `workspace:*` has become a real version range.
+# points and the command, and `workspace:*` becomes a real version range.
 pnpm --filter @nuanu-ai/agentify-contracts exec pnpm pack --pack-destination "$scratch" >/dev/null
 pnpm --filter @nuanu-ai/agentify exec pnpm pack --pack-destination "$scratch" >/dev/null
 ls -1 "$scratch"
 
 echo
 echo "What the tarballs would ship"
-# An allowlist and not a list of things we fear. Naming the bad files would
-# pass anything nobody thought of — a stray `.env`, a `node_modules`, the
-# sources — whereas `dist`, the manifest and the legal notices are the entire
-# agreed surface, so anything else appearing is the finding.
-#
-# The two named patterns are inside that surface rather than outside it, and
-# that is why they need naming as well. `files` ships `dist` and only `dist`,
-# so the one way a test or the fake gateway can reach a merchant is by being
-# compiled into it — which is a build that stopped excluding them, not a stray
-# file. The allowlist alone would pass exactly that, and nothing else pins the
-# exclusions in tsconfig.build.json.
+# An allowlist: `dist`, the manifest and the legal notices are the whole
+# surface, so anything else is the finding. Tests and the fake gateway are named
+# as well, because they can only reach a merchant compiled into `dist`, which
+# the allowlist alone would pass; nothing else pins the exclusions in
+# tsconfig.build.json.
 for tarball in "$scratch"/nuanu-ai-agentify-*.tgz; do
   unexpected="$(tar -tzf "$tarball" |
     grep -vE '^package/(package\.json|README\.md|LICENSE|NOTICE|dist/)' || true)"
@@ -107,11 +87,8 @@ contains "the command is in it" "package/dist/cli.js" \
 
 echo
 echo "Installing the tarballs into $scratch"
-# The tarballs were written here rather than into the repository, so nothing in
-# this directory names a path inside our workspace. Node resolves modules by
-# walking up from where it starts, and from a temporary directory that walk
-# never reaches us. npm and not pnpm, because npm is what the quickstart tells
-# a merchant to use and what most of them have.
+# Outside the repository, Node's upward module resolution never reaches the
+# workspace. npm, not pnpm, because the quickstart tells a merchant to use npm.
 cd "$scratch"
 cat > package.json <<'JSON'
 {
@@ -125,12 +102,10 @@ JSON
 npm install --no-audit --no-fund \
   ./nuanu-ai-agentify-contracts-*.tgz ./nuanu-ai-agentify-[0-9]*.tgz
 
-# The package is TypeScript even when the merchant's program is not. Its
-# declarations must stand on their own in a strict project rather than borrow
-# the workspace's root `@types/node` through a path the merchant does not have.
-# The SDK runs on Node 24's standard Web APIs — URL, fetch and AbortSignal — so
-# the consumer declares that library explicitly while still excluding every
-# ambient package through `types: []`.
+# The declarations must stand on their own in a strict project, without the
+# workspace's root `@types/node`. The SDK runs on Node 24's standard Web APIs
+# (URL, fetch, AbortSignal), so the consumer declares that library while
+# `types: []` excludes every ambient package.
 cat > consumer.ts <<'TS'
 import { createClient } from "@nuanu-ai/agentify";
 
@@ -159,7 +134,7 @@ JSON
 
 "$repo/node_modules/.bin/tsc" -p tsconfig.json
 
-# The pilot's own eSIM card, the one the vertical slice publishes and sells.
+# The pilot's eSIM card.
 cat > card.json <<'JSON'
 {
   "merchant_item_id": "esim-eu-5gb-30d",
@@ -177,17 +152,14 @@ cat > card.json <<'JSON'
 }
 JSON
 
-# The pilot's other product, the rented number, written the short way: the price
-# as one string, the delivered field as its type word, and no fulfillment mode
-# because the number goes back in the answer to the purchase. `params` stays
-# written out, because a required parameter with a title cannot be said any
-# shorter — which is the mixed spelling the documentation shows.
+# The pilot's rented number, written the short way: the price as one string,
+# the delivered field as its type word, no fulfillment mode. `params` stays
+# written out, because a required parameter with a title has no shorter form.
 #
-# It is here rather than in the unit tests because the short forms are read by
-# the contracts package and the command lives in the SDK: packed separately,
-# installed from tarballs, resolved by npm rather than by the workspace link.
-# A version range between the two that let an older contracts package answer
-# would take the short forms away and leave every test in this repository green.
+# This is here rather than in the unit tests because the contracts package reads
+# the short forms and the SDK holds the command: a version range that let an
+# older contracts package answer would lose the short forms with every test in
+# this repository still green.
 cat > short-card.json <<'JSON'
 {
   "merchant_item_id": "virtual-number-monthly-nl",
@@ -201,19 +173,16 @@ cat > short-card.json <<'JSON'
 }
 JSON
 
-# The same card with its title taken out: the negative control. Without it a
-# command that printed "complete" unconditionally would pass every assertion
-# above and this check would be theatre.
+# The negative control: without it, a command that always printed "complete"
+# would pass.
 node -e '
   const card = JSON.parse(require("fs").readFileSync("card.json", "utf8"));
   delete card.title;
   require("fs").writeFileSync("untitled-card.json", JSON.stringify(card, null, 2));
 '
 
-# And the short card with a price nobody could settle in: the negative control
-# for the short forms themselves. Accepting the long form and quietly accepting
-# anything at all in the short one is the failure this catches — the merchant
-# has to be told which half of the price is wrong.
+# The negative control for the short forms: a short price nobody could settle
+# in must be refused, naming which half of it is wrong.
 node -e '
   const card = JSON.parse(require("fs").readFileSync("short-card.json", "utf8"));
   card.price = "8.75 dollars";
@@ -222,10 +191,9 @@ node -e '
 
 echo
 echo "Step 3 of the quickstart: importing the package"
-# A merchant's first line of integration code. It is run through `node` with no
-# loader, no transpiler and no configuration, because that is what they have.
-# Both halves matter: that the entry point resolves at all, and that what comes
-# out of it is the working code rather than an empty shape.
+# Plain `node`, with no loader or transpiler, as a merchant has it: the entry
+# point must resolve, and its exports must be the working code, not an empty
+# shape.
 imported="$(node --input-type=module -e '
   import { readFileSync } from "node:fs";
   import { checkCard, createClient, contractVersion } from "@nuanu-ai/agentify";
@@ -245,9 +213,9 @@ contains "the check reads a card written short" "short=true" "$imported"
 echo
 echo "Step 4 of the quickstart: the installed Agentify command"
 
-# Check the local link before invoking npm. The unscoped `agentify` package on
-# the public registry belongs to somebody else; explicit scoped-package and
-# offline flags below prevent npm from substituting it if this link is absent.
+# The unscoped `agentify` package on the public registry belongs to somebody
+# else. The local link is checked first, and the scoped, offline flags below
+# keep npm from substituting it if this link is absent.
 linked="$(readlink node_modules/.bin/agentify 2>&1 || true)"
 check "npm will find our installed command and not a stranger's" \
   "../@nuanu-ai/agentify/dist/cli.js" "$linked"

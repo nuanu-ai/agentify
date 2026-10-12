@@ -1,16 +1,13 @@
 /**
- * No stylesheet on the origin uses a token nothing defines.
- *
- * The visual language renamed its tokens when it moved into one file, and two
- * stylesheets merged in from another branch kept the old names: an unresolved
- * `var()` is invalid at computed-value time, so the rule falls to its initial
- * value and a divider quietly disappears. Nobody sees a stylesheet fail, which
- * is why this check is a machine and not a comment.
+ * No stylesheet on the origin uses a token nothing defines. An unresolved
+ * `var()` is invalid at computed-value time, so the rule falls back to its
+ * initial value and, say, a divider quietly disappears without any stylesheet
+ * visibly failing.
  *
  * Every `var(--name)` in the repository's own stylesheets must have a `--name:`
- * declared in some stylesheet of the repository, or set inline from a
- * component as `"--name":`; VitePress's own `--vp-*` tokens are the portal's
- * and are defined by its theme at run time.
+ * declared in some stylesheet of the repository, or set inline from a component
+ * as `"--name":`. VitePress's own `--vp-*` tokens are defined by its theme at
+ * run time.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";

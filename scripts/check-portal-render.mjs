@@ -1,22 +1,18 @@
 #!/usr/bin/env node
 
 /**
- * The portal's examples reached the built pages.
+ * Checks that the portal's examples reached the built pages.
  *
- * `packages/contracts/src/portal-fixtures.test.ts` holds every example file to
- * its schema, checks that some page names it, and checks that every name a page
- * writes resolves to a file. What no test can reach is the last step: whether
- * VitePress turned `<<< @/examples/…` into the file's content or printed the
- * line as text. A snippet syntax that changed under an upgrade would leave the
- * whole suite green while every example vanished from the site — which is the
- * failure this exists for, because the merchant reads the built page and
- * nothing else.
+ * `packages/contracts/src/portal-fixtures.test.ts` holds each example to its
+ * schema and to the pages that name it. No test can see whether VitePress
+ * turned `<<< @/examples/…` into the file's content or printed the line as
+ * text: a snippet syntax changed by an upgrade would leave the suite green
+ * while every example vanished from the site.
  *
- * Run it after `pnpm run docs:build` in `apps/docs/`. It compares the file against
- * the page whole rather than sampling: the built HTML, with its tags taken off
- * and its entities decoded, has to contain the example's own text. Whitespace
- * is collapsed on both sides, because the highlighter lays the JSON out in
- * spans and the line breaks between them are not the document's.
+ * Run it after `pnpm run docs:build` in `apps/docs/`. The built HTML, with tags
+ * removed and entities decoded, must contain the example's whole text.
+ * Whitespace is collapsed on both sides because the highlighter lays the JSON
+ * out in spans.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -28,7 +24,7 @@ const PORTAL = join(ROOT, "apps", "docs");
 const EXAMPLES = join(PORTAL, "examples");
 const DIST = join(PORTAL, ".vitepress", "dist");
 
-/** The house style, addressed to us: the site does not build it. */
+/** The house style for writers; the site does not build it. */
 const NOT_A_PAGE = "WRITING.md";
 
 const die = (message) => {
@@ -37,12 +33,9 @@ const die = (message) => {
 };
 
 /**
- * What a reader sees, with the markup gone and the whitespace levelled.
- *
- * A tag becomes nothing rather than a space. The highlighter wraps every token
- * of the JSON in its own span and puts no whitespace between them, so a space
- * in their place would cut `"merchant_item_id":` into three pieces and no
- * example would ever be found.
+ * What a reader sees. A tag becomes nothing rather than a space: the
+ * highlighter puts every JSON token in its own span with no whitespace between
+ * them, so a space would split `"merchant_item_id":` and no example would match.
  */
 const textOf = (html) =>
   html
@@ -73,7 +66,6 @@ const exampleFiles = () =>
     )
     .sort();
 
-/** Every built page, at whatever depth the router put it. */
 const builtPages = (directory, prefix = "") =>
   readdirSync(directory, { withFileTypes: true }).flatMap((entry) =>
     entry.isDirectory()
@@ -105,9 +97,8 @@ for (const page of pages) {
 }
 
 if (shownBy.size === 0) {
-  // The negative control. A portal that moved, or an include syntax nothing
-  // here recognises, would otherwise leave this script with nothing to check
-  // and let it report success over an empty list.
+  // The negative control: a moved portal or an unrecognised include syntax
+  // would otherwise leave nothing to check and report success.
   die(`no page under ${PORTAL} includes anything; the layout or the syntax has changed`);
 }
 
@@ -150,17 +141,14 @@ for (const file of files) {
 }
 
 if (complaints.length > 0) {
-  // Deduplicated: when the syntax itself has gone, every example on the page
-  // has the same thing wrong with it, and saying it once is saying it.
+  // Deduplicated: when the syntax itself is gone, every example on a page has
+  // the same complaint.
   die(`the built portal does not show its examples:\n  ${[...new Set(complaints)].join("\n  ")}`);
 }
 
-// The one place a hook that skipped nested pages would be caught. A reader
-// landing on a page with no marker is told nothing about which stack they are
-// reading, and the release's own probe only fetches three addresses.
-// Present, and above the page rather than after it. A marker appended at the
-// end satisfies a probe and reaches no reader, which is the failure that would
-// otherwise ship looking like a pass.
+// Every built page, nested ones included, carries the surface marker above the
+// page. The release probe fetches only three addresses, and a marker appended
+// at the end would satisfy it while reaching no reader.
 const unmarked = builtPages(DIST).filter((page) => {
   const html = readFileSync(join(DIST, page), "utf8");
   const marker = html.indexOf('data-agentify-surface="');

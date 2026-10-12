@@ -354,8 +354,8 @@ async function buildScanStatus(scan: typeof scans.$inferSelect): Promise<ScanSta
       scan.acceptedAt
     ).toISOString(),
     target_host: scan.targetHost,
-    // Only where the score was withheld for it: an earlier scanner marked a
-    // home page it could not reach the same way, and graded the scan around it.
+    // Only where the score was withheld for it: stored scans can carry a home
+    // page marked unreachable that was graded all the same, and those were read.
     ...(baseBlocked(rows) && scan.score === null ? { blocked: true as const } : {}),
     ...(terminal && scan.coverage !== null && scan.level
       ? {

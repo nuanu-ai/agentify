@@ -1,12 +1,9 @@
 /**
- * Dashboard identity behind one emailed-link door, for the whole site.
- *
- * Better Auth owns token consumption, people and sessions. Its generated HTTP
- * routes stay unmounted: the dashboard sends every link itself, the ones the
- * scanner asks for included, and calls the component only from the same-origin
- * POST owned by the SSR server. Production verification runs on a
- * transaction-bound Drizzle adapter; the deterministic memory store runs the
- * same component against an isolated transaction copy.
+ * Better Auth owns token consumption, people and sessions, but its HTTP routes
+ * stay unmounted: the dashboard sends every link itself and calls the component
+ * only from its own same-origin POST handlers. Production runs it on a
+ * transaction-bound Drizzle adapter; the memory store runs the same component
+ * on an isolated transaction copy.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -78,26 +75,23 @@ export interface AccountSummary {
   readonly operator: boolean;
 }
 
-/** Operator-only operations kept out of the page-facing identity port. */
+/** Operator-only operations, kept out of the page-facing port. */
 export interface Identity extends DashboardIdentity {
   /**
-   * Writes an unconfirmed account naming a merchant that already exists, or
-   * null where the address has one. No command and no route calls it: an
-   * account is made when its person consumes a link (ADR-0026 §1), and a
-   * merchant by that person's press. It is how a suite arranges a person who
-   * already owns a merchant.
+   * Writes an unconfirmed account naming an existing merchant, or returns null
+   * where the address has one. No command or route calls it; it is how a test
+   * arranges a person who already owns a merchant.
    */
   make(email: string, merchantId: string): Promise<Person | null>;
   byEmail(email: string): Promise<Person | null>;
   byId(personId: string): Promise<Person | null>;
   endEverySessionFor(email: string): Promise<number>;
   /**
-   * Sets or clears the operator flag on the account at this address, and says
-   * whether there was one. Sessions are left as they are: the flag is read on
-   * every reading of a session, so the next request already sees the move.
+   * Sessions are left as they are: the flag is read on every session read, so
+   * the next request already sees the change.
    */
   setOperator(email: string, operator: boolean): Promise<boolean>;
-  /** The addresses of every account naming this merchant, for an announcement. */
+  /** For an announcement. */
   emailsNaming(merchantId: string): Promise<readonly string[]>;
   list(now: Date): Promise<readonly AccountSummary[]>;
   sendReportLink(request: SendReportLinkRequest): Promise<SendReportLinkResponse>;
@@ -110,18 +104,13 @@ export interface Identity extends DashboardIdentity {
 export const emailAs = (raw: string): string => raw.trim().toLowerCase();
 
 /**
- * How long a session lasts from the last visit (ADR-0026 §2).
- *
- * Thirty days, and sliding: a person who keeps coming back does not meet the
- * sign-in form again. A short session is not what protects the money; the wait
- * on a wallet change is (ADR-0019).
+ * Sliding: a person who keeps coming back does not meet the sign-in form again.
+ * What protects the money is the wait on a wallet change, not a short session.
  */
 export const SESSION_DAYS = 30;
 /**
- * How often a visit moves a session's end, at most.
- *
- * Once a day rather than on every request, so a click is not a write to the
- * sessions table, and the cookie handed back on that visit carries the new end.
+ * At most once a day, so a click is not a write to the sessions table; the
+ * cookie handed back on that visit carries the new end.
  */
 const SESSION_RENEWAL_SECONDS = 24 * 60 * 60;
 export const LINK_TTL_SECONDS = 60 * 60;
@@ -129,7 +118,6 @@ export const LINK_RATE_WINDOW_MS = 60 * 60 * 1000;
 export const LINK_RATE_LIMIT = 3;
 export const LINK_MIN_INTERVAL_MS = 60 * 1000;
 export const LINK_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-/** How long a link's hashed row is kept once it has run out, then removed. */
 export const LINK_PROOF_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const LINK_CLEANUP_BATCH = 100;
 const REPORT_DIGEST_KEY_ID = "digest-v1";
@@ -144,10 +132,8 @@ export interface IdentityParts {
 }
 
 /**
- * What a link's token was asked for, recorded with the token and read only
- * from there: the address, where the link leads, and the scanner's request it
- * was asked for, if any (ADR-0026 §1, §2). Nothing in the link itself is ever
- * read as any of these.
+ * Recorded with the token and read only from there; nothing in the link itself
+ * is ever read as any of these.
  */
 type LinkClaim = Readonly<{
   email: string;
@@ -181,7 +167,7 @@ const schema = {
 class DeliveryRefused extends Error {}
 class VerificationRefused extends Error {}
 
-/** How a one-time token is written at rest, the way the component hashes it. */
+/** As the component hashes it. */
 const tokenHash = (token: string): string => createHash("sha256").update(token).digest("base64url");
 
 export function identityFor(config: DashboardConfig, parts: IdentityParts = {}): Identity {
@@ -211,9 +197,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         modelName: "dashboard_accounts",
         additionalFields: {
           merchantId: { type: "string", required: false, input: false },
-          // Whether this person may read the operator's dashboard (ADR-0026
-          // §6). Closed to input like the merchant: only the terminal's
-          // command writes it.
+          // Closed to input: only the terminal command writes it.
           operator: { type: "boolean", required: false, defaultValue: false, input: false },
         },
       },
@@ -222,9 +206,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         expiresIn: SESSION_DAYS * 24 * 60 * 60,
         updateAge: SESSION_RENEWAL_SECONDS,
         additionalFields: {
-          // The scanner's request the link that opened this session was asked
-          // for, which the answer to whose session a cookie is names so the
-          // scanner can finish that request and no other (ADR-0026 §2).
+          // Lets the scanner finish the request this session's link was asked
+          // for, and no other.
           reportRequest: { type: "string", required: false, input: false },
         },
       },
@@ -232,11 +215,10 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       verification: { modelName: "dashboard_verifications" },
       advanced: {
         cookiePrefix: "agentify",
-        // The prefix is chosen here and not by the component. Left to itself it
-        // puts `__Secure-` in front of every name on an https base, and what
-        // ADR-0026 §2 asks for is `__Host-`: the one a browser refuses unless
-        // the cookie is Secure, for the whole origin and names no Domain, which
-        // is what keeps a sibling host from planting or replacing a session.
+        // The component would prefix `__Secure-` on an https base; the
+        // dashboard needs `__Host-`, which a browser accepts only when Secure,
+        // for the whole origin and with no Domain, so a sibling host cannot
+        // plant or replace a session.
         useSecureCookies: false,
         cookies: { session_token: { name: sessionCookieName(config.cookieSecure) } },
         defaultCookieAttributes: {
@@ -269,8 +251,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             if (stored === null || stored === undefined) {
               throw new Error("dashboard_link_storage_missing");
             }
-            // Every link lands on the dashboard's page with one control, whoever
-            // asked for it; only the token rides in it (ADR-0026 §1).
+            // Only the token rides in the link.
             const action = new URL(`${base}/sign-in/open`);
             action.searchParams.set("token", token);
             active.handed = await postman(
@@ -293,8 +274,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const sessionCookie = cookies.sessionToken.name;
 
   // The memory adapter is for deterministic tests and local work. Queueing its
-  // transaction copies gives it all-or-nothing behavior; PostgreSQL remains the
-  // authority for concurrent row locking.
+  // transaction copies gives it all-or-nothing behaviour; PostgreSQL remains
+  // the authority for concurrent row locking.
   let memoryTail: Promise<void> = Promise.resolve();
   const inMemoryTransaction = async <T>(
     work: (bound: typeof auth, rows: MemoryRows) => Promise<T>,
@@ -391,9 +372,9 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       throw new VerificationRefused();
     }
     if (claim.request !== null) {
-      // In the same transaction as the session itself: a session that opened
-      // without the request it was asked for would leave that request waiting
-      // for a visit that can never finish it.
+      // In the same transaction as the session: a session opened without its
+      // request would leave that request waiting for a visit that can never
+      // finish it.
       await context.internalAdapter.updateSession(opened.response.token, {
         reportRequest: claim.request,
       });
@@ -440,15 +421,12 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     new Headers({ cookie: `${sessionCookie}=${value}` });
   const contextOf = async () => await auth.$context;
   /**
-   * Every live session among the values a request carries, each with the lines
-   * that renew its cookie when this reading moved its end.
-   *
    * The component moves a session's end at most once a day and says so with a
-   * cookie of its own; a reader that dropped that line would extend the row and
-   * leave the browser holding a cookie that still expires thirty days after
-   * sign-in. A value whose session is dead answers with a line clearing the
-   * cookie, and that line is dropped here: it names the same cookie the live
-   * value sits under, so passing it on would sign the person out.
+   * cookie of its own; dropping that line would extend the row while the
+   * browser's cookie still expires thirty days after sign-in. A dead value
+   * answers with a line clearing the cookie, which is dropped here: it names
+   * the same cookie the live value sits under, so passing it on would sign the
+   * person out.
    */
   const liveOnesIn = async (
     cookieHeader: string | undefined,
@@ -479,15 +457,11 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   };
 
   /**
-   * Ends every live session of one account but the kept ones, and says how
-   * many it ended.
-   *
-   * Only live rows are asked for: a session that ran out signs nobody in, and
-   * its row is never deleted, so an account that has signed in often has many
-   * of them. The store reads at most a hundred rows at a time, in no order,
-   * so this asks again until a read finds nothing left to end. A token already
-   * ended that comes back is not ended or counted twice, which is also what
-   * stops the loop if a row somehow survives its delete.
+   * Only live rows are asked for, since expired rows are never deleted. The
+   * store reads at most a hundred rows at a time in no order, so this asks
+   * again until a read finds nothing left to end; a token already ended is not
+   * ended or counted twice, which also stops the loop if a row survives its
+   * delete.
    */
   const endLiveSessionsOf = async (
     personId: string,
@@ -857,8 +831,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
 
     async endOtherSessionsOfMerchant(merchantId, keep) {
       // Read without renewing: this is not the pressing person's visit, and a
-      // renewal here would move their session's end in the database while the
-      // cookie lines that tell their browser so are thrown away.
+      // renewal would move their session's end while the cookie lines saying so
+      // are thrown away.
       const kept = new Set((await liveOnesIn(keep, false)).map((one) => one.token));
       const people = await (await contextOf()).adapter.findMany<{ id: string }>({
         model: "user",
@@ -872,7 +846,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     },
 
     async endOtherSessionsOfPerson(personId, keep) {
-      // Read without renewing, for the reason the merchant's version gives.
+      // Read without renewing, as above.
       const kept = new Set((await liveOnesIn(keep, false)).map((one) => one.token));
       return await endLiveSessionsOf(personId, kept);
     },
@@ -919,7 +893,7 @@ function personFrom(user: PersonRow): Person {
     };
   }
   // Nothing writes an empty identifier; a row holding one was edited by hand,
-  // and reading it as no merchant would hide that behind the press.
+  // and reading it as no merchant would hide that.
   if (typeof user.merchantId !== "string" || user.merchantId === "") {
     throw new Error("dashboard_account_unreadable_merchant");
   }
@@ -932,8 +906,7 @@ function personFrom(user: PersonRow): Person {
 }
 
 /**
- * Whether a row the component read carries the operator flag. Anything but a
- * stored true is no, so a row that predates the flag or lost it grants nothing.
+ * Anything but a stored true is no, so a row without the flag grants nothing.
  */
 function operatorOn(user: object): boolean {
   return (user as { operator?: unknown }).operator === true;
@@ -962,12 +935,8 @@ function claimFrom(value: string): LinkClaim | null {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
- * A claim read back, held to the closed set it was written from.
- *
- * A destination is one of the dashboard's sections, its start among them, or
- * the report of one named scan, and a request is the scanner's identifier or
- * nothing. A row holding anything else was not written by this file and opens
- * nothing.
+ * A row holding anything outside the closed set was not written by this file
+ * and opens nothing.
  */
 function claimOf(value: Record<string, unknown>): LinkClaim | null {
   if (typeof value.email !== "string" || value.email !== emailAs(value.email)) return null;
@@ -996,12 +965,9 @@ function sameClaim(one: LinkClaim, other: LinkClaim): boolean {
 }
 
 /**
- * Whether a link still in somebody's mailbox goes when their address is
- * deleted at the scanner.
- *
- * A link to a report always goes, because the reports it led to are being
- * deleted. A link into the dashboard goes with the person, and stays for a
- * person who owns a merchant and is kept.
+ * A report link always goes, because its reports are being deleted. A dashboard
+ * link goes with the person, and stays for a person who owns a merchant and is
+ * kept.
  */
 function goesWithTheDeletion(
   claim: LinkClaim | null,
@@ -1011,52 +977,31 @@ function goesWithTheDeletion(
   return claim?.email === email && (typeof claim.destination !== "string" || result !== "retained");
 }
 
-/** How one address's link sends are keyed; `pnpm forget` clears them by the same key. */
+/** `pnpm forget` clears an address's link sends by this same key. */
 export const rateKey = (secret: string, email: string): string =>
   createHmac("sha256", secret).update(`dashboard-link:${email}`).digest("hex");
 
 type LinkRefusal = Readonly<{ wall: LinkWall; retryAt: Date }>;
 
 /**
- * What the rate rows say about a request: refused, or written down.
- *
- * Both arms carry the moment this address may ask again. For a refusal it is
- * the wall that refused; for a send it is the wall in front of the next link,
- * read off the rows the send has just joined. They are the same computation
- * over the same rows, one moment apart, which is why a screen can be told the
- * wait after an accepted link without the door guessing at it.
+ * Both arms carry the moment the address may ask again: for a refusal, the
+ * limit that refused; for a send, the limit in front of the next link, read
+ * from the rows the send just joined.
  */
 type LinkRate =
   | Readonly<{ sent: true; retryAt: Date }>
   | Readonly<{ sent: false; wall: LinkWall; retryAt: Date }>;
 
 /**
- * The two walls in front of a link, read off the sends this address already
- * has, oldest first.
+ * Three links an hour per address, and at least a minute between two. A request
+ * the minute refuses writes no row, so the three are messages that actually
+ * went out. When both limits stand, the answer names the later one: naming the
+ * nearer would send somebody back to a button that is still refused.
  *
- * The hour is the outer wall: three links to one address, and the fourth waits
- * for the oldest of the three to fall out of the window. The minute is the
- * inner one, and it is what keeps the hour from being spent in five seconds by
- * somebody who has simply not looked in their mailbox yet. A request the
- * minute refuses is not a send and costs nothing — the caller writes no row
- * for it — so the three an hour are three messages that actually went out.
- *
- * Both walls can stand at once, and then the one the answer names is the one
- * that is still there when the other has gone: the later of the two. A page
- * that named the nearer wall would send somebody back to press a button that
- * is still refused, which is the kind of claim ADR-0026's door exists to keep
- * off the screen.
- *
- * Both doors stand on this, the dashboard's and the report's, because both count
- * the same rows. They do not say the same thing about it. The dashboard's own
- * pages are ours to write, so its answer names the wall and the screen has a
- * sentence for each. The report answer crosses a contract the scanner reads,
- * and that contract carries the moment and no wall — so the scanner cannot
- * tell the minute from the hour and must say one sentence that is true of
- * both: come back at this time. Widening the contract to carry the wall is a
- * change to somebody else's reader and is not worth it for a difference in
- * wording; what must not happen is the scanner guessing which wall it was from
- * how far away the moment is.
+ * The dashboard's answer names which limit, and its pages have a sentence for
+ * each. The report answer crosses the scanner's contract, which carries only
+ * the moment, so the scanner must say one sentence true of both and must not
+ * guess the limit from how far away the moment is.
  */
 function refusalIn(sentAt: readonly Date[], now: Date): LinkRefusal | null {
   const newest = sentAt.at(-1);
@@ -1070,11 +1015,8 @@ function refusalIn(sentAt: readonly Date[], now: Date): LinkRefusal | null {
   let hourly: LinkRefusal | null = null;
   if (sentAt.length >= LINK_RATE_LIMIT) {
     const firstCounted = sentAt[sentAt.length - LINK_RATE_LIMIT];
-    // A list long enough to have spent the allowance and no send at the index
-    // that proves it is a list this function cannot read. Nothing reaches this
-    // today, and the direction is what the line is for: a wall that meets
-    // something it cannot explain refuses loudly rather than standing aside
-    // quietly, which is how a rate limit becomes no rate limit for one caller.
+    // Rows this cannot explain are refused loudly: standing aside quietly is how
+    // a rate limit becomes no rate limit for one caller.
     if (firstCounted === undefined) throw new Error("dashboard_link_rate_count_inconsistent");
     hourly = { wall: "hourly", retryAt: new Date(firstCounted.getTime() + LINK_RATE_WINDOW_MS) };
   }
@@ -1084,13 +1026,9 @@ function refusalIn(sentAt: readonly Date[], now: Date): LinkRefusal | null {
 }
 
 /**
- * The wait a send just written leaves in front of the next link.
- *
- * It is the same reading of the same rows, with this send among them: the
- * minute the door keeps between two links, or the rest of the hour when this
- * was the third. There is always a wall — a send a moment old raises the
- * interval by itself — so nothing here can answer "no wait", and if it does
- * the rows disagree with the send that was just written.
+ * There is always a limit in front of the next link, since a send a moment old
+ * raises the minute by itself; answering "no wait" would mean the rows disagree
+ * with the send just written.
  */
 function waitAfter(sentAt: readonly Date[], now: Date): Date {
   const next = refusalIn(sentAt, now);
@@ -1209,11 +1147,9 @@ async function reportDigestKeyInPostgres(tx: DashboardTransaction, now: Date): P
 }
 
 /**
- * Removes the rows of links that ran out more than a week ago.
- *
- * The component deletes a link's row when it is spent; a link nobody pressed
- * stays, holding a hashed token and the claim with an address in it, and this
- * is what bounds how long. In batches, so one request never pays for a backlog.
+ * A spent link's row is deleted by the component; an unpressed one keeps a
+ * hashed token and an address, and this bounds how long. In batches, so one
+ * request never pays for a backlog.
  */
 function cleanupOldLinksInMemory(rows: MemoryRows, now: Date): void {
   const cutoff = now.getTime() - LINK_PROOF_RETENTION_MS;
@@ -1290,8 +1226,8 @@ function dashboardLinkMessage(to: string, link: string): Message {
   return {
     to,
     subject: "Sign in to your Agentify dashboard",
-    // The URL stands on a line of its own, so that a client that draws no
-    // button and a person copying it by hand both get the whole of it.
+    // The URL stands on a line of its own, so a client that draws no button and
+    // a person copying it by hand both get the whole of it.
     body: `Agentify\n\n${title}\n\nSign in with this link:\n\n${link}\n\n${lifetime}\n\n${unasked}`,
     html: transactionalEmailHtml({
       preview: "Press the button to sign in to your dashboard.",

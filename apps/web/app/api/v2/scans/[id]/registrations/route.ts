@@ -55,10 +55,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       "invalid_registration",
       "Check the email, the phone if given, and the consent fields.",
     );
-  // Who is asking decides what the ask is. A signed-in person's own ask is
-  // filed under the session's address at once and sends nothing; anybody
-  // else's waits for the link sent to the address they typed. A dashboard that
-  // does not answer is neither, and nothing is asked on a guess (ADR-0026 §2).
+  // A signed-in person's ask is filed under the session's address at once and
+  // sends nothing; a stranger's waits for the link sent to the address typed.
+  // A dashboard that does not answer is neither, and nothing is asked on a guess.
   const visitor = await visitorOf(request.headers.get("cookie"));
   if (visitor.kind === "unknown")
     return errorResponse(
@@ -70,9 +69,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       30,
     );
   const email = parsed.data.email;
-  // An address typed beside a session is not quietly swapped for the session's:
-  // the person is told which address a report they ask for is filed under,
-  // and how to ask with another (ADR-0026 §2).
+  // An address typed beside a session is never silently swapped for the
+  // session's: the person is told which address the report is filed under.
   if (
     visitor.kind === "person" &&
     email !== undefined &&

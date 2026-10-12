@@ -1,6 +1,6 @@
 import { permanentRedirect } from "next/navigation";
 
-/** The owner landing is the front page now; this address is kept for links already shared. */
+/** Kept so links already shared to this address still reach the front page. */
 export default function OwnerPage() {
   permanentRedirect("/");
 }

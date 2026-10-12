@@ -1,21 +1,11 @@
 /**
- * Buying a parcel: the address beside the purchase (ADR-0032).
+ * Buying a parcel. The merchant's price question carries only the locality,
+ * because a price question reaches a merchant for purchases never made; the
+ * whole address reaches the merchant only once the order is paid, and is erased
+ * once they have it or the order ends without them.
  *
- * The agent sends where the parcel goes in a block of its own, and only a
- * parcel's purchase takes one. The merchant's price question receives the
- * locality and nothing about who receives it, because a price question reaches
- * a merchant for purchases never made; the whole address reaches the merchant
- * only once the order is paid. And the address a purchase pays for is the one
- * it was priced for: a payment carrying another is refused before anything is
- * verified, with words to start again.
- *
- * Once the merchant has the address, or the order ends without them, the
- * gateway lets go of it: the order says only when, and nothing on the
- * merchant's stream carries any of it any more.
- *
- * Each test puts the parcel's card in the store directly, as a card already
- * published would be, so that what a test is about is the purchase and not the
- * publishing door.
+ * Each test puts the parcel's card in the store directly, so that a test is
+ * about the purchase and not the publishing door.
  */
 
 import {
@@ -700,9 +690,9 @@ describe("the shipment", () => {
 
 describe("a shipment against a card republished since the sale", () => {
   // A merchant may republish under the same key while an order of theirs is
-  // in flight, and the catalog keeps one version per key. The order recorded
-  // at purchase whether it is a parcel (ADR-0033), so what its delivery is
-  // held to comes from the order and not from the card as it stands now.
+  // in flight, and the catalog keeps one version per key. The order records at
+  // purchase whether it is a parcel, so what its delivery is held to comes from
+  // the order and not from the card as it stands now.
   const shipment = { carrier: "JNE", tracking_number: null };
 
   it("still takes a parcel's shipment when its card has become one that delivers goods", async () => {
@@ -777,10 +767,10 @@ describe("a shipment against a card republished since the sale", () => {
   });
 
   it("refuses a shipment, in words, for an older order whose card has become a parcel's", async () => {
-    // An order written before orders kept their own result is held to the card
-    // as it stands. When that card now declares no goods, nothing can close
-    // the order with goods or with a shipment, and the refusal says why and
-    // that sending it again will not help.
+    // An order with no result of its own is held to the card as it stands.
+    // When that card now declares no goods, nothing can close the order with
+    // goods or with a shipment, and the refusal says why and that sending it
+    // again will not help.
     const { harnessed } = await started();
     const ordinary = await harnessed.gateway.publishCard(harnessed.merchant.id, {
       merchant_item_id: "voucher-older",

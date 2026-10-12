@@ -1,50 +1,39 @@
 import { defineConfig } from "vitest/config";
 
 /**
- * The suite that needs a database.
- *
- * It is a separate command because `pnpm test` is free, deterministic and works
- * without a network, and a suite that needs a Postgres server is none of those.
- * These tests skip themselves with a sentence saying so when there is no server
- * to reach, so running the command without one is a clear message rather than a
- * wall of connection errors.
+ * The suite that needs a database, kept out of `pnpm test` because a Postgres
+ * server is neither free nor offline.
  *
  *   docker compose up -d --wait postgres
  *   pnpm test:db
  *
- * Naming the service matters: `docker compose up -d` with nothing after it
- * starts the whole stack, six services of it.
+ * Name the service: `docker compose up -d` alone starts the whole stack.
  *
- * Nothing needs to be set on a laptop. The suite runs against `agentify_test`,
- * which is its own database on that server and not the `agentify` the
- * gateway and the dashboard use, and it makes that database if it is not there. A host
- * that keeps its Postgres somewhere other than the 5432 `compose.yaml`
- * publishes on a laptop — a deployment binds `127.0.0.1:55432` — has one thing
- * to say, and says it to the command:
+ * The suite runs against its own `agentify_test` database and creates it if
+ * missing. A host whose Postgres is not on the 5432 `compose.yaml` publishes by
+ * default (AGENTIFY_POSTGRES_PUBLISH moved it; the deployed channels publish no
+ * database port at all) says so to the command:
  *
  *   AGENTIFY_TEST_DATABASE_URL=postgres://agentify:agentify@localhost:55432/agentify_test \
  *     pnpm test:db
  *
- * DATABASE_URL still overrides the default as well, and naming
- * `agentify` is refused whichever of the two names it: this suite
- * empties every table it finds and drops the queue's schema, which is not a
- * thing to do quietly to the database somebody is watching.
+ * DATABASE_URL also overrides the default. Either one naming `agentify` is
+ * refused: this suite empties every table it finds and drops the queue's
+ * schema.
  */
 export default defineConfig({
   test: {
     environment: "node",
     // A run with no server reachable fails here rather than skipping every file
-    // and exiting zero. See the file for why that mattered.
+    // and exiting zero.
     globalSetup: ["./vitest.db.setup.ts"],
     include: ["apps/*/src/**/*.db-test.ts"],
-    // The same refusal the offline suite runs under. This suite is allowed a
-    // database and nothing else, and a database is not reached with `fetch`,
-    // so what this rules out here is what it rules out there: a call to
-    // somebody's live API arriving in a suite nobody expects one in.
+    // The offline suite's network refusal. A database is not reached with
+    // `fetch`, so this still rules out a call to somebody's live API.
     setupFiles: ["./vitest.setup.ts"],
     passWithNoTests: false,
-    // Verbose so that the sentence explaining a skip is actually printed. A run
-    // that says "1 skipped" and nothing else reads like a suite that passed.
+    // Verbose so that the sentence explaining a skip is printed; "1 skipped"
+    // alone reads like a pass.
     reporters: ["verbose"],
     // One database, one schema: two files writing the same tables at once would
     // be testing each other.
