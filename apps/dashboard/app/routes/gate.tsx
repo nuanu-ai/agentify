@@ -71,8 +71,11 @@ export const middleware: MiddlewareFunction<Response>[] = [
     const response = await next();
     // Once a day the read moves the session's end, and the browser must be
     // told or its cookie expires thirty days after sign-in however often its
-    // person returns.
-    for (const line of answer.setCookies) response.headers.append("set-cookie", line);
+    // person returns. The renewal goes before the page's own lines, so a page
+    // that clears the session has the last word.
+    const own = response.headers.getSetCookie();
+    response.headers.delete("set-cookie");
+    for (const line of [...answer.setCookies, ...own]) response.headers.append("set-cookie", line);
     return response;
   },
 ];
