@@ -1,0 +1,183 @@
+{
+  "conditions": {
+    "base": "http://localhost:8090",
+    "runs": 5,
+    "latencyMs": 300,
+    "cpuSlowdown": 4,
+    "orderId": "ord_9a8f9ff3e80a4ca2971f79a8d98ea177",
+    "cardId": "item_3a7f15dcc16546d8bbe84babdda7f2f1"
+  },
+  "screenA": {
+    "spike": {
+      "jsKB": {
+        "median": 111.6,
+        "runs": [111.6, 111.6, 111.6, 111.6, 111.6]
+      },
+      "lcpMs": {
+        "median": 692,
+        "runs": [732, 692, 692, 676, 700]
+      }
+    },
+    "today": {
+      "jsKB": {
+        "median": 226.3,
+        "runs": [226.3, 226.3, 226.3, 226.3, 226.3]
+      },
+      "lcpMs": {
+        "median": 716,
+        "runs": [720, 716, 712, 720, 708]
+      }
+    }
+  },
+  "M2": {
+    "spikeKB": {
+      "median": 111.7,
+      "runs": [111.7, 111.7, 111.7, 111.7, 111.7]
+    },
+    "todayKB": {
+      "median": 0,
+      "runs": [0, 0, 0, 0, 0]
+    }
+  },
+  "M4": {
+    "spike": {
+      "firstChangeMs": {
+        "median": 32,
+        "runs": [32.2, 32, 32.1, 31.5, 31.2]
+      },
+      "serverAnswerDrawnMs": {
+        "median": 648.8,
+        "runs": [648.8, 649.1, 649.1, 631.3, 638.4]
+      }
+    },
+    "today": {
+      "firstChangeMs": {
+        "median": 950.9,
+        "runs": [959.8, 949.7, 965.8, 948.9, 950.9]
+      }
+    }
+  },
+  "M5": {
+    "spikeAfterRest": {
+      "median": 109.9,
+      "runs": [113.7, 89.9, 109.9, 106.3, 133.8],
+      "requests": [
+        "/dashboard/spike/orders/ord_9a8f9ff3e80a4ca2971f79a8d98ea177.data",
+        "/dashboard/spike/assets/order-mObMw58f.js",
+        "/dashboard/spike/orders/ord_9a8f9ff3e80a4ca2971f79a8d98ea177.data",
+        "/assets/agentify-mark-heavy.svg"
+      ]
+    },
+    "spikeWithoutRest": {
+      "median": 341.7,
+      "runs": [341.2, 341.5, 341.7, 342.5, 378.4],
+      "requests": [
+        "/dashboard/spike/assets/order-mObMw58f.js",
+        "/dashboard/spike/orders/ord_9a8f9ff3e80a4ca2971f79a8d98ea177.data",
+        "/dashboard/spike/orders/ord_9a8f9ff3e80a4ca2971f79a8d98ea177.data",
+        "/assets/agentify-mark-heavy.svg"
+      ]
+    },
+    "todayReferenceSectionClick": {
+      "median": 640,
+      "runs": [671.3, 644.1, 632.4, 636.6, 640]
+    }
+  },
+  "M6": {
+    "spike GET / (document)": {
+      "serverTimingP95Ms": 5.9,
+      "serverTimingMedianMs": 4,
+      "loopbackFirstByteP95Ms": 7.3,
+      "samples": 40
+    },
+    "spike GET /orders (document)": {
+      "serverTimingP95Ms": 5.7,
+      "serverTimingMedianMs": 3.1,
+      "loopbackFirstByteP95Ms": 7.3,
+      "samples": 40
+    },
+    "spike GET /orders (data)": {
+      "serverTimingP95Ms": 2.4,
+      "serverTimingMedianMs": 1.6,
+      "loopbackFirstByteP95Ms": 3.8,
+      "samples": 40
+    },
+    "spike GET /orders/:id (document)": {
+      "serverTimingP95Ms": 2,
+      "serverTimingMedianMs": 1.8,
+      "loopbackFirstByteP95Ms": 3.7,
+      "samples": 40
+    },
+    "spike GET /orders/:id (data)": {
+      "serverTimingP95Ms": 1.6,
+      "serverTimingMedianMs": 1.1,
+      "loopbackFirstByteP95Ms": 2.8,
+      "samples": 40
+    },
+    "spike POST /orders/:id (action, data)": {
+      "serverTimingP95Ms": 2.8,
+      "serverTimingMedianMs": 1.2,
+      "loopbackFirstByteP95Ms": 5.5,
+      "samples": 40
+    },
+    "spike POST / (scan action, a new scan each)": {
+      "serverTimingP95Ms": 25.8,
+      "serverTimingMedianMs": 9.6,
+      "loopbackFirstByteP95Ms": 27.7,
+      "samples": 8,
+      "scannerPartP95Ms": 24.8,
+      "scannerPartMedianMs": 9
+    },
+    "today GET / (Next.js)": {
+      "serverTimingP95Ms": null,
+      "serverTimingMedianMs": null,
+      "loopbackFirstByteP95Ms": 6.8,
+      "samples": 40
+    },
+    "today GET /dashboard/orders": {
+      "serverTimingP95Ms": null,
+      "serverTimingMedianMs": null,
+      "loopbackFirstByteP95Ms": 3,
+      "samples": 40
+    },
+    "today GET /dashboard/cards": {
+      "serverTimingP95Ms": null,
+      "serverTimingMedianMs": null,
+      "loopbackFirstByteP95Ms": 2.6,
+      "samples": 40
+    },
+    "today POST /dashboard/cards/:id/pause|resume": {
+      "serverTimingP95Ms": null,
+      "serverTimingMedianMs": null,
+      "loopbackFirstByteP95Ms": 3.4,
+      "samples": 40
+    }
+  },
+  "M7": {
+    "spike scan form": {
+      "landedOn": "/scan/01a12f2e-bedf-71cc-b2a6-62813da1c00e",
+      "works": true
+    },
+    "today scan form": {
+      "landedOn": "/?url=example.com",
+      "works": false
+    },
+    "spike navigation": {
+      "works": true
+    },
+    "spike action": {
+      "before": "Pause this card",
+      "after": "Resume this card",
+      "works": true,
+      "url": "/dashboard/spike/orders/ord_9a8f9ff3e80a4ca2971f79a8d98ea177"
+    },
+    "today navigation": {
+      "works": true
+    },
+    "today action": {
+      "before": "/dashboard/cards/item_3a7f15dcc16546d8bbe84babdda7f2f1/pause",
+      "after": "/dashboard/cards/item_3a7f15dcc16546d8bbe84babdda7f2f1/resume",
+      "works": true
+    }
+  }
+}
