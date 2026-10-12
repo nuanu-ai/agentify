@@ -1080,13 +1080,17 @@ describe("what the React pages take from a stranger", () => {
     }
 
     const page = await browser.get("/cards%E0%A4%A");
-    const table = await browser.get(
-      `/__manifest?version=${version}&paths=${encodeURIComponent("/%E0\n[dashboard] forged")}`,
-    );
+    const forged = encodeURIComponent("/%E0\n[dashboard] forged");
+    // A second question mark is part of the query to React Router, which reads
+    // the question from everything after the first.
+    const tables = [
+      await browser.get(`/__manifest?version=${version}&paths=${forged}`),
+      await browser.get(`/__manifest?version=${version}&x=?&paths=${forged}`),
+    ];
     vi.restoreAllMocks();
 
     expect(page.status).toBeLessThan(500);
-    expect(table.status).toBe(400);
+    expect(tables.map((table) => table.status)).toStrictEqual([400, 400]);
     expect(written.filter((line) => /%E0|forged/.test(line))).toStrictEqual([]);
   });
 
