@@ -1,18 +1,11 @@
 /**
- * The rules for the name buyers read beside every product and for the shop's
- * site, in words, and the settings screen where both are changed. The screen
- * where a new merchant first chooses the name is drawn by React Router
- * (`app/screens/setup.tsx`) from the words here.
+ * The rules the name buyers read beside every product and the shop's site are
+ * held to, in words, wherever they are set; the screens that set them are drawn
+ * by React Router (`app/screens/setup.tsx`, `app/screens/settings.tsx`).
  */
 
 import { SellerSiteSchema, ServiceNameSchema } from "@nuanu-ai/agentify-contracts";
-import { accountSettings } from "./account-settings.js";
 import { STOP_ALL_SELLING } from "./control-labels.js";
-import { escaped, page } from "./html.js";
-import { payoutWalletBlock } from "./payout-wallet.js";
-import { refusedForNoName, type Viewer } from "./screens.js";
-import { wooSettingsBlock } from "./woo-screens.js";
-import { APPROVAL_GIVEN, APPROVAL_PENDING } from "./words.js";
 
 /**
  * The rule itself is the contract's `ServiceNameSchema`, the discovery
@@ -74,135 +67,3 @@ export const SITE_CANNOT_BE_TAKEN_AWAY =
 
 export const whatIsWrongWithTheSite = (site: string): string | null =>
   SellerSiteSchema.safeParse(site).success ? null : SITE_REFUSED;
-
-export interface RefusedSite {
-  readonly problem: string;
-  readonly typed: string;
-}
-
-/**
- * The name buyers read, the payout wallet (`payout-wallet.ts`) and the account
- * (`account-settings.ts`), each under its own heading.
- *
- * After a refusal the name box keeps the rejected value so the merchant can
- * correct it; the heading still says which name is actually saved.
- */
-export const settingsScreen = (
-  viewer: Viewer,
-  problem?: string,
-  typedName?: string,
-  refusedSite?: RefusedSite,
-): string => {
-  const { base } = viewer;
-  const name = viewer.sellerName ?? null;
-  const site = viewer.sellerSite ?? null;
-
-  const body = `
-  <div class="lede">
-    <div>
-      <h1>Settings</h1>
-      <p>${escaped(
-        name === null
-          ? `You have not set a seller name yet.${refusedForNoName(viewer) ? " Until you do, cards cannot be published." : ""}`
-          : `Your products are sold under ${name}.`,
-      )}</p>
-      ${
-        // Only in live mode, and only when the route read the approval: a
-        // screen that did not ask says nothing rather than guess.
-        viewer.mode === "live" && viewer.liveApproval !== undefined
-          ? `<p>${escaped(viewer.liveApproval ? APPROVAL_GIVEN : APPROVAL_PENDING)}</p>`
-          : ""
-      }
-    </div>
-  </div>
-  <div class="settings-grid">
-  <section class="settings-panel settings-pair">
-  <div class="panel-top">
-  <div class="lede">
-    <div>
-      <h2>Seller name</h2>
-      <p class="quiet">${escaped(NAME_RULE)}</p>
-      ${problem === NAME_CANNOT_BE_TAKEN_AWAY ? "" : `<p class="quiet">${escaped(NAME_CANNOT_BE_TAKEN_AWAY)}</p>`}
-    </div>
-  </div>
-  </div>
-  <form class="issue" method="post" action="${escaped(base)}/settings">
-    <div>
-      <label for="seller_name">Your seller name</label>
-      <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typedName ?? name ?? "")}" required>
-    </div>
-    <button class="button button-primary" type="submit">Save</button>
-  </form>
-  <div class="panel-messages">${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
-  <div class="panel-follow">
-  <h2>Your shop's site</h2>
-  <p class="quiet">${escaped(SITE_RULE)}</p>
-  <form class="issue" method="post" action="${escaped(base)}/settings/site">
-    <div>
-      <label for="seller_site">Your shop's site</label>
-      <input id="seller_site" name="seller_site" type="url" autocomplete="url" inputmode="url" placeholder="https://yourshop.com" value="${escaped(refusedSite?.typed ?? site ?? "")}" required>
-    </div>
-    <button class="button button-primary" type="submit">Save</button>
-  </form>
-  ${refusedSite === undefined ? "" : `<p class="problem">${escaped(refusedSite.problem)}</p>`}
-  </div>
-  </div>
-  </section>
-  <section class="settings-panel settings-pair">${payoutWalletBlock(viewer)}</section>
-  <section class="settings-panel settings-wide settings-account">${accountSettings(viewer)}</section>
-  </div>`;
-
-  return page({
-    mode: viewer.mode,
-    base,
-    who: viewer.who,
-    confirmed: viewer.confirmed,
-    tab: "settings",
-    title: "Settings",
-    body,
-  });
-};
-
-export const integrationsScreen = (viewer: Viewer): string => {
-  const { base } = viewer;
-  const body = `
-  <div class="lede">
-    <div>
-      <h1>Integrations</h1>
-      <p>${
-        viewer.shop === undefined
-          ? "Your products reach Agentify from your own code through the SDK."
-          : "Your products reach Agentify from your own code through the SDK, or from a WooCommerce shop, one of the two at a time."
-      }</p>
-    </div>
-  </div>
-  <div class="settings-grid">
-  <section class="settings-panel settings-wide settings-connect">
-    <div class="connect-ways">
-      <div class="connect-way">
-        <h3>The SDK</h3>
-        <p class="quiet">Your developer installs the <code>@nuanu-ai/agentify</code> package in a Node.js service, publishes cards with an API key, and handles paid orders in your own code.</p>
-        <div class="connect-actions">
-          <a class="button button-primary" href="/docs/quickstart">Open the connection guide</a>
-          <a class="button button-secondary" href="${escaped(base)}/keys?new=key">Create an API key</a>
-        </div>
-      </div>
-      ${
-        viewer.shop === undefined
-          ? ""
-          : `<div class="connect-way">${wooSettingsBlock(base, viewer.shop)}</div>`
-      }
-    </div>
-  </section>
-  </div>`;
-
-  return page({
-    mode: viewer.mode,
-    base,
-    who: viewer.who,
-    confirmed: viewer.confirmed,
-    tab: "integrations",
-    title: "Integrations",
-    body,
-  });
-};

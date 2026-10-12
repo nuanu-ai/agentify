@@ -10,8 +10,6 @@ import { type Readiness, readinessOf, type SurfaceMode, UNKNOWN } from "@agentif
 import { MERCHANT_FINDINGS } from "@nuanu-ai/agentify-contracts";
 import { bare, brandLockup, escaped, page } from "./html.js";
 import type { PayoutWallet } from "./payout-wallet.js";
-// A type-only import, so the two files are not a cycle at run time.
-import type { ShopTile } from "./woo-screens.js";
 import type { Unset } from "./words.js";
 
 export interface Viewer {
@@ -29,12 +27,10 @@ export interface Viewer {
    * `html.ts` gives).
    */
   readonly sellerName?: string | null;
-  /** Null where none was given. Present only on the settings screen. */
-  readonly sellerSite?: string | null;
   /**
-   * Present only where the screen asked the gateway for the address: settings,
-   * which draws the block, and the cards, which say what holds a card off sale.
-   * A page that did not ask must not tell a merchant they have set no address.
+   * Present only where the screen asked the gateway for the address: the cards,
+   * which say what holds a card off sale. A page that did not ask must not tell
+   * a merchant they have set no address.
    */
   readonly payout?: PayoutWallet;
   /**
@@ -42,22 +38,6 @@ export interface Viewer {
    * publishing waits for it.
    */
   readonly liveApproval?: boolean;
-  /**
-   * Where the screen asked. Absent only on a dashboard built with nowhere to
-   * keep a connection, which mounts none of those routes. A read that failed is
-   * `unread`, not absent, because a block that vanished would read as "no shop
-   * is connected" to a merchant who connected one. Several states rather than a
-   * flag, because "connect a shop" over a Connect halfway through tells a
-   * merchant it failed. `ShopTile` carries only what a screen may know, never
-   * the stored row with the shop's key and secret, so a screen cannot leak
-   * them.
-   */
-  readonly shop?: ShopTile;
-  /**
-   * What became of signing out every other device; present only on the
-   * settings screen drawn as the answer to that press.
-   */
-  readonly accountNotice?: string;
 }
 
 /**

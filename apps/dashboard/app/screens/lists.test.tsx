@@ -156,8 +156,7 @@ describe("whether a live merchant is approved, on the cards", () => {
     ...SEEN_BY,
     mode: "live",
     sellerName: "Freeland",
-    sellerSite: "https://freeland.example",
-    payout: { wallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", pending: null },
+    payout: { wallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" },
     liveApproval: approved,
   });
   const offSale = MerchantCardListSchema.parse({

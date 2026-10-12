@@ -128,18 +128,23 @@ export async function pagesFromSource({ live }: { readonly live: boolean }): Pro
 }
 
 /**
- * Which methods a route answers: a read where it draws a page or loads data,
- * and a post where it acts. No other method reaches an action, because the
+ * Which methods a route answers: a read where it loads data or draws a page
+ * that acts on nothing, and a post where it acts. A route that only draws the
+ * answer to its own post, which it needs a component for, is not opened as a
+ * page by a read, but its data is served: the page drawn there asks for it when
+ * the browser comes back to it. No other method reaches an action, because the
  * origin check reads posts alone.
  */
-type Answers = (method: string) => boolean;
+type Answers = (method: string, data: boolean) => boolean;
 
 interface Served {
   readonly answers: Answers;
   /**
    * Whether a browser may keep the page's data for a moment. A page sent with
    * no script never has its data asked for by its own page, so whatever asks
-   * for it is not a prefetch, and nothing of it is kept.
+   * for it is not a prefetch, and nothing of it is kept; nor is any of a page
+   * that says `keepsData: false`, because what it shows must be what is held
+   * now.
    */
   readonly keepsData: boolean;
 }
@@ -156,18 +161,19 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
         default?: unknown;
         loader?: unknown;
         action?: unknown;
-        handle?: { script?: boolean };
+        handle?: { script?: boolean; keepsData?: boolean };
       };
       // A layout with no path of its own, the root among them, is a frame
       // around pages and never a page, even while nothing is nested in it.
       const page = route.index === true || (route.path ?? "") !== "";
       const served: Served = {
-        answers: (method) =>
+        answers: (method, data) =>
           page &&
           (method === "GET" || method === "HEAD"
-            ? module.default !== undefined || module.loader !== undefined
+            ? module.loader !== undefined ||
+              (module.default !== undefined && (module.action === undefined || data))
             : method === "POST" && module.action !== undefined),
-        keepsData: module.handle?.script !== false,
+        keepsData: module.handle?.script !== false && module.handle?.keepsData !== false,
       };
       const shared = {
         id: route.id,
@@ -295,9 +301,10 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
         handle(request, response, next);
         return;
       }
-      const matches = matchRoutes(routes, pageOf(request.path), basename);
-      const served = matches?.at(-1)?.route.handle as Served | undefined;
-      if (served === undefined || !served.answers(request.method)) {
+      const data = request.path.endsWith(".data");
+      const matches = matchRoutes(routes, pageOf(request.path), basename) ?? [];
+      const served = matches.at(-1)?.route.handle as Served | undefined;
+      if (served === undefined || !served.answers(request.method, data)) {
         next();
         return;
       }
@@ -315,9 +322,11 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       // any answer. A page's data may be kept by this browser for ten seconds,
       // per cookie, because a browser hands a prefetched answer to the click
       // that follows only while it is fresh; a press changes a cookie, so
-      // nothing kept before it is read after it.
+      // nothing kept before it is read after it. A page that keeps nothing says
+      // so for the pages nested in it too.
       const reading = request.method === "GET" || request.method === "HEAD";
-      if (reading && request.path.endsWith(".data") && served.keepsData) {
+      const keeps = matches.every((match) => (match.route.handle as Served).keepsData);
+      if (reading && data && keeps) {
         response.setHeader("cache-control", "private, max-age=10");
         response.setHeader("vary", "cookie");
       } else {

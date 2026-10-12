@@ -25,9 +25,9 @@ const TABS: readonly (readonly [Tab, string, "drawn" | "string"])[] = [
   ["cards", "Cards", "drawn"],
   ["orders", "Orders", "drawn"],
   ["receipts", "Receipts", "drawn"],
-  ["integrations", "Integrations", "string"],
+  ["integrations", "Integrations", "drawn"],
   ["keys", "API keys", "string"],
-  ["settings", "Settings", "string"],
+  ["settings", "Settings", "drawn"],
 ];
 
 const FOOT = [
@@ -120,7 +120,7 @@ export function Frame({
           <header className="top">
             <div className="top-inner">
               <h1 className="top-title">{title}</h1>
-              <Word word={frame.selling} />
+              {frame.selling === undefined ? null : <Word word={frame.selling} />}
               <SignedIn
                 className="account"
                 who={gate.who}

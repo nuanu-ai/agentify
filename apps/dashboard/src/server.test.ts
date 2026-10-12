@@ -1228,7 +1228,8 @@ const routesOf = async (running: Running): Promise<{ method: string; path: strin
     const module = route.module as { default?: unknown; loader?: unknown; action?: unknown };
     const path = `/${pathOf(route.id)}`.replaceAll(/:[a-z_]+/g, "x");
     return [
-      ...(module.default !== undefined || module.loader !== undefined
+      ...(module.loader !== undefined ||
+      (module.default !== undefined && module.action === undefined)
         ? [{ method: "get", path }]
         : []),
       ...(module.action !== undefined ? [{ method: "post", path }] : []),
@@ -1636,6 +1637,71 @@ describe("the settings screen", () => {
 
     expect(answered.status).toBe(303);
     expect(answered.to).toBe("/settings");
+  });
+
+  it("leads the wallet form's address to the settings at once, even while the gateway does not answer", async () => {
+    // Nothing on the way to the page asks the gateway, so a gateway that has
+    // stopped answering does not hold up the way there.
+    const running = await started();
+    await running.browser.signIn();
+    running.silenceGateway();
+
+    const answered = await Promise.race([
+      running.browser.get("/settings/payout-wallet"),
+      new Promise<"still waiting">((resolve) => setTimeout(() => resolve("still waiting"), 5_000)),
+    ]);
+
+    expect(answered).not.toBe("still waiting");
+    expect((answered as Visit).status).toBe(303);
+    expect((answered as Visit).to).toBe("/settings");
+  });
+
+  it("serves the settings' data at a press's address, which the page drawn there asks for when the browser comes back to it", async () => {
+    // A page answered to a press is a page of the application; going back to
+    // it from another screen asks for its data at its own address.
+    const { browser } = await started();
+    await browser.signIn();
+
+    for (const path of [
+      "/settings/site",
+      "/settings/sign-out-others",
+      "/settings/payout-wallet/cancel",
+    ]) {
+      const data = await browser.get(`${path}.data`);
+      expect(data.status, path).toBe(200);
+      expect(data.html, path).toContain(PERSON);
+      expect(readable(data.html), path).not.toContain("There is no such page");
+    }
+  });
+
+  it("never lets a browser keep the settings' data, so the wallet shown is the one the gateway holds now", async () => {
+    // A press there loads a whole page at its own address, which drops nothing
+    // a browser kept for the settings; kept, a waiting change could be missing
+    // from the screen whose showing it is what makes it take effect.
+    const { browser } = await started();
+    await browser.signIn();
+
+    for (const path of ["/settings", "/settings/sign-out-others", "/settings/payout-wallet"]) {
+      const data = await browser.get(`${path}.data`);
+      expect(data.headers.get("cache-control"), path).toBe("private, no-store");
+    }
+  });
+
+  it("draws no page at the other presses' addresses opened as a page, only at their press", async () => {
+    // Their page is the answer to the press; opened without one, it would be a
+    // page that says nothing happened.
+    const { browser } = await started();
+    await browser.signIn();
+
+    for (const path of [
+      "/settings/site",
+      "/settings/sign-out-others",
+      "/settings/payout-wallet/cancel",
+    ]) {
+      const answered = await browser.get(path);
+      expect(answered.status, path).toBe(404);
+      expect(readable(answered.html), path).toContain("There is no such page");
+    }
   });
 
   it("answers an emptied box with the control that does what they meant", async () => {
@@ -3034,7 +3100,7 @@ describe("what every screen says about the address", () => {
     const { browser } = await started();
     await browser.signIn();
 
-    for (const path of ["/cards", "/orders", "/receipts"]) {
+    for (const path of ["/cards", "/orders", "/receipts", "/integrations"]) {
       const data = await browser.get(`${path}.data`);
       expect(data.status, path).toBe(200);
       expect(data.html, path).toContain(PERSON);
