@@ -4,13 +4,20 @@
  */
 
 import type { ActionFunctionArgs } from "react-router";
-import { answer } from "../answer.js";
+import { acted } from "../answer.js";
 import { services } from "../services.js";
+
+/**
+ * A failure is drawn as the pages' own. A route with neither a page nor a
+ * boundary is one React Router answers a failure from as bare text.
+ */
+export { ErrorBoundary } from "../root.js";
 
 export async function action(asked: ActionFunctionArgs) {
   const { request, context } = asked;
-  return answer(
-    await context.get(services).signIn.signOut(request.headers.get("cookie") ?? undefined),
+  return acted(
+    async () =>
+      await context.get(services).signIn.signOut(request.headers.get("cookie") ?? undefined),
     asked,
   );
 }

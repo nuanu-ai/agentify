@@ -28,7 +28,8 @@ export async function loader(asked: LoaderFunctionArgs) {
 export async function action(asked: ActionFunctionArgs) {
   const { request, context } = asked;
   return press(
-    await context.get(services).settings.name(context.get(signedIn), await formOf(request)),
+    async () =>
+      await context.get(services).settings.name(context.get(signedIn), await formOf(request)),
     asked,
   );
 }

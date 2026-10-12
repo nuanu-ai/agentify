@@ -8,9 +8,10 @@ export const middleware = readsLeadToSettings;
 export async function action(asked: ActionFunctionArgs) {
   const { request, context } = asked;
   return press(
-    await context
-      .get(services)
-      .settings.signOutOthers(context.get(signedIn), request.headers.get("cookie") ?? undefined),
+    async () =>
+      await context
+        .get(services)
+        .settings.signOutOthers(context.get(signedIn), request.headers.get("cookie") ?? undefined),
     asked,
   );
 }

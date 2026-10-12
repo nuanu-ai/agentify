@@ -9,7 +9,7 @@ import {
   useActionData,
   useLoaderData,
 } from "react-router";
-import { answer, formOf, useChrome } from "../answer.js";
+import { acted, answer, formOf, useChrome } from "../answer.js";
 import { ChooseNameScreen } from "../screens/setup.js";
 import { services, signedIn } from "../services.js";
 
@@ -19,8 +19,9 @@ export function loader(asked: LoaderFunctionArgs) {
 
 export async function action(asked: ActionFunctionArgs) {
   const { request, context } = asked;
-  return answer(
-    await context.get(services).sellerName.choose(context.get(signedIn), await formOf(request)),
+  return acted(
+    async () =>
+      await context.get(services).sellerName.choose(context.get(signedIn), await formOf(request)),
     asked,
   );
 }

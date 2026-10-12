@@ -9,7 +9,7 @@
 import { createContext, type MiddlewareFunction, redirectDocument } from "react-router";
 import type { Outcome } from "../src/page-services.js";
 import type { SettingsView } from "../src/settings-view.js";
-import { type Asked, answer } from "./answer.js";
+import { type Asked, acted } from "./answer.js";
 import { services } from "./services.js";
 
 export const pressed = createContext<SettingsView | null>(null);
@@ -29,7 +29,10 @@ export const readsLeadToSettings: MiddlewareFunction<Response>[] = [
   },
 ];
 
-export function press(outcome: Outcome<SettingsView>, asked: Asked) {
-  if (outcome.kind === "view") asked.context.set(pressed, outcome.view);
-  return answer(outcome, asked);
+export function press(work: () => Promise<Outcome<SettingsView>>, asked: Asked) {
+  return acted(async () => {
+    const outcome = await work();
+    if (outcome.kind === "view") asked.context.set(pressed, outcome.view);
+    return outcome;
+  }, asked);
 }

@@ -30,13 +30,14 @@ export function loader({ url, context }: LoaderFunctionArgs) {
 export async function action(asked: ActionFunctionArgs) {
   const { request, context } = asked;
   return press(
-    await context
-      .get(services)
-      .settings.wallet(
-        context.get(signedIn),
-        await formOf(request),
-        request.headers.get("cookie") ?? undefined,
-      ),
+    async () =>
+      await context
+        .get(services)
+        .settings.wallet(
+          context.get(signedIn),
+          await formOf(request),
+          request.headers.get("cookie") ?? undefined,
+        ),
     asked,
   );
 }

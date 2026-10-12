@@ -5,7 +5,7 @@
  */
 
 import type { ActionFunctionArgs } from "react-router";
-import { answer } from "../answer.js";
+import { acted } from "../answer.js";
 import { services, signedIn } from "../services.js";
 
 /**
@@ -17,8 +17,9 @@ export { ErrorBoundary } from "../root.js";
 
 export async function action(asked: ActionFunctionArgs) {
   const { params, context } = asked;
-  return answer(
-    await context.get(services).keys.disable(context.get(signedIn), params.key_id ?? ""),
+  return acted(
+    async () =>
+      await context.get(services).keys.disable(context.get(signedIn), params.key_id ?? ""),
     asked,
   );
 }

@@ -8,7 +8,8 @@ export const middleware = readsLeadToSettings;
 export async function action(asked: ActionFunctionArgs) {
   const { request, context } = asked;
   return press(
-    await context.get(services).settings.site(context.get(signedIn), await formOf(request)),
+    async () =>
+      await context.get(services).settings.site(context.get(signedIn), await formOf(request)),
     asked,
   );
 }

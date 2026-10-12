@@ -9,7 +9,7 @@ import {
   useActionData,
   useLoaderData,
 } from "react-router";
-import { answer, useChrome } from "../answer.js";
+import { acted, answer, useChrome } from "../answer.js";
 import { MerchantScreen } from "../screens/setup.js";
 import { services, signedIn } from "../services.js";
 
@@ -20,7 +20,10 @@ export function loader(asked: LoaderFunctionArgs) {
 
 export async function action(asked: ActionFunctionArgs) {
   const { context } = asked;
-  return answer(await context.get(services).start.openMerchant(context.get(signedIn)), asked);
+  return acted(
+    async () => await context.get(services).start.openMerchant(context.get(signedIn)),
+    asked,
+  );
 }
 
 export default function Merchant() {

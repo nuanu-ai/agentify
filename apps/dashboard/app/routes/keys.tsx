@@ -15,7 +15,7 @@ import {
   useActionData,
   useLoaderData,
 } from "react-router";
-import { answer, formOf } from "../answer.js";
+import { acted, answer, formOf } from "../answer.js";
 import { Frame } from "../components/frame.js";
 import { KeysScreen, NewKeyScreen } from "../screens/keys.js";
 import { services, signedIn } from "../services.js";
@@ -46,8 +46,9 @@ export async function loader(asked: LoaderFunctionArgs) {
 export async function action(asked: ActionFunctionArgs) {
   const { request, context } = asked;
   context.set(pressed, true);
-  return answer(
-    await context.get(services).keys.issue(context.get(signedIn), await formOf(request)),
+  return acted(
+    async () =>
+      await context.get(services).keys.issue(context.get(signedIn), await formOf(request)),
     asked,
   );
 }
