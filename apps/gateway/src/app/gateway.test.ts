@@ -2897,6 +2897,24 @@ describe("one integration at a time", () => {
     expect(performance.now() - startedAt).toBeLessThan(2_000);
   });
 
+  it("answers the integration not in use after the poll's window, not at once", async () => {
+    // A worker polls again as soon as it is answered empty, and answered at
+    // once a connector whose merchant sells through their code would spin.
+    const harnessed = await started();
+    const startedAt = performance.now();
+
+    const answered = await harnessed.gateway.poll(
+      harnessed.merchant.id,
+      300,
+      undefined,
+      null,
+      "woocommerce",
+    );
+
+    expect(answered.envelopes).toStrictEqual([]);
+    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(250);
+  });
+
   it("names the orders that still wait on the integration being left", async () => {
     const harnessed = await started();
     const coded = await published(harnessed, asyncCard);
