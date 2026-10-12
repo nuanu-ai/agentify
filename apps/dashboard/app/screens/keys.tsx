@@ -1,6 +1,7 @@
 import { Button, Table } from "@agentify/ui";
-import { useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
+import { Link, useNavigate } from "react-router";
 import type { KeysView, NewKeyView } from "../../src/keys.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
@@ -130,6 +131,23 @@ export function KeysScreen({ view }: Readonly<{ view: KeysView }>) {
  */
 export function NewKeyScreen({ view }: Readonly<{ view: NewKeyView }>) {
   const [said, setSaid] = useState("");
+  const [left, setLeft] = useState(false);
+  const navigate = useNavigate();
+  // A browser may keep a page it leaves whole and show it again as it was, so
+  // the secret comes off the page as it is left, and a page brought back
+  // draws the list.
+  useEffect(() => {
+    const leave = () => flushSync(() => setLeft(true));
+    const back = (event: PageTransitionEvent) => {
+      if (event.persisted) void navigate("/keys", { replace: true });
+    };
+    window.addEventListener("pagehide", leave);
+    window.addEventListener("pageshow", back);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      window.removeEventListener("pageshow", back);
+    };
+  }, [navigate]);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(view.secret);
@@ -148,7 +166,7 @@ export function NewKeyScreen({ view }: Readonly<{ view: NewKeyView }>) {
         </div>
       </div>
       <div className="scroller">
-        <p className="secret">{view.secret}</p>
+        <p className="secret">{left ? "" : view.secret}</p>
       </div>
       <p>
         <Button type="button" onClick={() => void copy()}>
