@@ -90,8 +90,10 @@ operator.
 ## Decisions
 - An ADR records a decision that is expensive to reverse: a dependency in a
   published package's tree, a schema on disk, a wire contract, a security
-  boundary. Everything else — screens, flows, internal mechanics — is a design
-  note in `docs/research/` and is rewritten freely.
+  boundary, what money means, and the custody boundary that keeps Agentify
+  from holding money or goods. Everything else — screens, flows, internal
+  mechanics, process topology, toolchain, release procedure and operations —
+  is a design note in `docs/research/` and is rewritten freely.
 - One decision — one file in `docs/decisions/` (format `NNNN-slug.md`), with a
   ceiling of about sixty lines: context, the decision, the alternatives
   rejected. Enough to reconstruct the reasoning, not to exhaust the subject;
