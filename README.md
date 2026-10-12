@@ -173,7 +173,9 @@ PUBLIC_BASE_URL=http://localhost:3001 BASE_PATH=/dashboard \
 ```
 
 The dashboard is then at `http://localhost:3001/dashboard/sign-in`, and the
-sign-in link is in the terminal. The shared mark and faces that Caddy serves
+sign-in link is in the terminal. In this mode the dashboard's listener and
+Vite's update socket answer on loopback only, because Vite serves the pages'
+source files. The shared mark and faces that Caddy serves
 beside the stack are missing there, and the pages fall back to the system's
 faces. `pnpm --filter @agentify/dashboard build` compiles the pages as the
 image does, into `apps/dashboard/dist`, and `pnpm --filter @agentify/app start`

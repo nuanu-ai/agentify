@@ -32,7 +32,10 @@ import { type Refusal, refusalOfPost } from "./form-post.js";
 import type { PageServices } from "./page-services.js";
 
 const APP_ROOT = fileURLToPath(new URL("..", import.meta.url));
+const WORKSPACE = join(APP_ROOT, "..", "..");
 const BUILT_SERVER = join(APP_ROOT, "dist", "server", "index.js");
+
+const LOOPBACK = "127.0.0.1";
 
 /** Where Vite puts the browser's files, under the build's public path. */
 const ASSETS_DIRECTORY = "assets";
@@ -61,6 +64,11 @@ export interface Pages {
   readonly assets: Readonly<{ path: string; handle: RequestHandler }> | null;
   /** Development shows a failing loader's error on the page; production never does. */
   readonly mode: "production" | "development";
+  /**
+   * The one interface the dashboard's listener may take, where it must not
+   * take them all; absent, it takes them all, as a container's does.
+   */
+  readonly host?: string;
   close(): Promise<void>;
 }
 
@@ -100,7 +108,23 @@ export async function pagesFromSource({ live }: { readonly live: boolean }): Pro
     configFile: join(APP_ROOT, "vite.config.ts"),
     appType: "custom",
     logLevel: live ? "info" : "silent",
-    server: { middlewareMode: true, hmr: live, ...(live ? {} : { watch: null }) },
+    server: {
+      middlewareMode: true,
+      // Live, Vite answers for source files and pushes updates over a socket
+      // of its own, so both stay on loopback, and only what the pages import
+      // is served: their own directory, the shared components and visual
+      // language, and the dependencies the browser loads.
+      hmr: live ? { host: LOOPBACK } : false,
+      fs: {
+        allow: [
+          APP_ROOT,
+          join(WORKSPACE, "packages", "ui"),
+          join(WORKSPACE, "packages", "visual"),
+          join(WORKSPACE, "node_modules"),
+        ],
+      },
+      ...(live ? {} : { watch: null }),
+    },
     ...(live ? {} : { optimizeDeps: { noDiscovery: true, include: [] } }),
   });
   return {
@@ -122,6 +146,7 @@ export async function pagesFromSource({ live }: { readonly live: boolean }): Pro
         }
       : null,
     mode: live ? "development" : "production",
+    ...(live ? { host: LOOPBACK } : {}),
     close: () => vite.close(),
   };
 }

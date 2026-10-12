@@ -80,19 +80,21 @@ function started(
 ): RunningDashboard {
   const reportIdentityServer = startReportIdentityServer(config.reportIdentitySecret, identity);
 
-  const server = buildApp(config, { gateway: application, identity, wooShops, pages }).listen(
-    DASHBOARD_PORT,
-    () => {
-      console.log(`[dashboard] listening on ${DASHBOARD_PORT}`);
-      // Says which delivery mode is in force without logging recipients or
-      // links from a real provider.
-      console.log(
-        isSandboxMail(config.mailUrl)
-          ? "[dashboard] no mail provider is configured: every message is written to this log instead"
-          : `[dashboard] messages are sent through ${config.mailUrl}, from ${config.mailFrom}`,
-      );
-    },
-  );
+  const app = buildApp(config, { gateway: application, identity, wooShops, pages });
+  const listening = () => {
+    console.log(`[dashboard] listening on ${DASHBOARD_PORT}`);
+    // Says which delivery mode is in force without logging recipients or
+    // links from a real provider.
+    console.log(
+      isSandboxMail(config.mailUrl)
+        ? "[dashboard] no mail provider is configured: every message is written to this log instead"
+        : `[dashboard] messages are sent through ${config.mailUrl}, from ${config.mailFrom}`,
+    );
+  };
+  const server =
+    pages.host === undefined
+      ? app.listen(DASHBOARD_PORT, listening)
+      : app.listen(DASHBOARD_PORT, pages.host, listening);
 
   const worker = !wooOfferedOn(config.surfaceMode)
     ? { stop: async () => {} }
