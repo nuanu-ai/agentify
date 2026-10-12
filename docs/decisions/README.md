@@ -36,10 +36,12 @@ What this buys and what it costs. Alternatives rejected, and why.
 A number is never reused. When a decision is merged into another or moved into
 research, its number is retired and listed here with where its content now
 lives, so that a citation in git history, a commit message or a changelog
-still leads somewhere. Before this list was kept, two numbers were given out a
-second time: 0004 first named the failure policy of a silent price hook, which
-stands in ADR-0002 §3, and 0023 first named a self-service test purchase that
-was reverted.
+still leads somewhere. Before this list was kept, three numbers were given out
+a second time: 0004 first named the failure policy of a silent price hook,
+which stands in ADR-0002 §3; 0021 first named the answer envelope, which then
+moved to 0022 and is now in ADR-0018, while 0021 went to what a payment
+challenge says; and 0023 first named a self-service test purchase that was
+reverted.
 
 - 0001 (the pilot is exposed on the x402 Bazaar through the CDP facilitator):
   the closing section of `docs/research/04-spike-bazaar-listing.md`; what is
