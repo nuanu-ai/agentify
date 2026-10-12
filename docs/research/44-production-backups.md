@@ -12,11 +12,14 @@ the "Backups" section of `deploy/README.md`, and this note repeats neither.
 Before this, the only copies of PRODUCTION's databases were the restore points
 a release takes on the same host, so losing the host lost the data.
 
-Every ten minutes a systemd timer on PRODUCTION dumps the channel's databases
-and the server's roles under the release lock, so a backup and a release never
-run at once, and stores them with `production.env` in the restic repository
-named in ADR-0029. The recovery point objective is ten minutes. Each run
-forgets what the retention no longer keeps — the last 144 snapshots, one an
+Every ten minutes a systemd timer on PRODUCTION dumps the channel's database,
+`agentify`, and the server's roles under the release lock, so a release never
+stops or migrates the database while it is being dumped; a backup waits up to
+five minutes for the lock and then gives up with nothing dumped. The lock is
+released once the dumps are taken, and the upload with `production.env` to the
+restic repository named in ADR-0029, the forget and the prune run after it, so
+they can overlap a release. The recovery point objective is ten minutes. Each
+run forgets what the retention no longer keeps — the last 144 snapshots, one an
 hour for 48 hours and one a day for 30 days — and the first run of each day
 prunes the repository (`deploy/backup.sh`).
 
@@ -33,7 +36,9 @@ package that has them.
 WAL archiving (WAL-G or pgBackRest with `archive_timeout`): a recovery point of
 seconds, at the price of changing the database container, taking base backups
 and keeping a second restore path beside `restore.sh`. On the host a dump of
-both databases takes about a second and a run 2–4 seconds; in a rehearsal at a
-hundred times the data, half a second and three (`00-open-questions.md`). It
-becomes worth that price when a dump takes more than about a minute, since
-releases wait for it, or when ten minutes of lost writes is too much.
+the database takes about a second and a run 2–4 seconds (measured on
+2026-09-24, when the channel still had two databases; it has had one since); in
+a rehearsal at a hundred times the data, half a second and three
+(`00-open-questions.md`). It becomes worth that price when a dump takes more
+than about a minute, since releases wait for it, or when ten minutes of lost
+writes is too much.
