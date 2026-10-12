@@ -11,7 +11,13 @@
 
 import type { MerchantKey } from "@nuanu-ai/agentify-contracts";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { createRoutesStub, Outlet, RouterContextProvider, useNavigate } from "react-router";
+import {
+  createRoutesStub,
+  Outlet,
+  RouterContextProvider,
+  type ShouldRevalidateFunction,
+  useNavigate,
+} from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../../src/config.js";
 import type { GatewayClient } from "../../src/gateway.js";
@@ -20,6 +26,7 @@ import { pageServicesFor } from "../../src/page-services.js";
 import { chromeOf } from "../answer.js";
 import { ErrorBoundary } from "../root.js";
 import { services, signedIn } from "../services.js";
+import * as gate from "./gate.js";
 import Keys, { action, loader, shouldRevalidate } from "./keys.js";
 
 const PERSON = "owner@example.com";
@@ -57,9 +64,17 @@ function Shell() {
 /**
  * The page inside the root and the gate it is drawn under, as the build nests
  * it, opened from the cards. Unless told otherwise, the list stops answering
- * once a key is issued.
+ * once a key is issued. The gate's loader stands for the gate as a whole: a
+ * request it answers after the press could find the session gone or the
+ * sign-in store not answering.
  */
-const keysPage = ({ listAfterIssue = "fails" }: { listAfterIssue?: "fails" | "answers" } = {}) => {
+const keysPage = ({
+  listAfterIssue = "fails",
+  gateAfterIssue = "answers",
+}: {
+  listAfterIssue?: "fails" | "answers";
+  gateAfterIssue?: "fails" | "answers";
+} = {}) => {
   let issued = false;
   const client = {
     keys: async () =>
@@ -103,7 +118,14 @@ const keysPage = ({ listAfterIssue = "fails" }: { listAfterIssue?: "fails" | "an
         { path: "cards", Component: () => <p>The cards page</p> },
         {
           id: "routes/gate",
-          loader: () => ({ who: PERSON }),
+          loader: () => {
+            if (issued && gateAfterIssue === "fails") {
+              throw new Error("the sign-in store did not answer");
+            }
+            return { who: PERSON };
+          },
+          shouldRevalidate: (gate as { shouldRevalidate?: ShouldRevalidateFunction })
+            .shouldRevalidate,
           Component: Outlet,
           children: [
             {
@@ -134,6 +156,16 @@ const issue = async () => {
 describe("issuing a key where the page's script runs", () => {
   it("shows the secret even when the list cannot be read right after the press", async () => {
     keysPage();
+
+    await issue();
+
+    expect(screen.queryByText("Something went wrong")).toBeNull();
+  });
+
+  it("shows the secret even when the gate could not answer right after the press", async () => {
+    // The press was drawn for the address signed in, so nothing after it
+    // needs the gate asked again before the one showing of the secret.
+    keysPage({ listAfterIssue: "answers", gateAfterIssue: "fails" });
 
     await issue();
 
