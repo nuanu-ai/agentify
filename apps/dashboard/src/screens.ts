@@ -627,13 +627,15 @@ const whereTheRestIs = (status: OrderList["orders"][number]["status"]): string =
 /**
  * The transfer behind a receipt, as the payment layer named it: a link to the
  * chain's own page for it where this deployment has one and the name is a
- * transaction hash, the name as written otherwise, and said to be missing
- * where the layer named none. Written out whole, because a shortened hash is a
- * different string to whoever pastes it.
+ * transaction hash, and the name as written otherwise. Written out whole,
+ * because a shortened hash is a different string to whoever pastes it. A
+ * receipt without one says only that this receipt does not carry it: receipts
+ * written before the field existed, and payments an operator recorded by hand,
+ * had a transfer all the same.
  */
 const transferCell = (transaction: string | undefined, page: string | null): Cell => {
   if (transaction === undefined) {
-    return { kind: "quiet", html: "Not reported" };
+    return { kind: "quiet", html: "Not on this receipt" };
   }
   return page !== null && /^0x[0-9a-fA-F]{64}$/.test(transaction)
     ? {

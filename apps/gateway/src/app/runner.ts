@@ -1135,8 +1135,12 @@ export class OrderRunner {
       paid_at: asTimestamp(paidAt),
       outcome: receiptOutcomeOf(record.order),
       // The payment layer's own name for the transfer, so the receipt can be
-      // found on the chain by more than its time.
-      ...(record.settlement === null ? {} : { transaction: record.settlement.transaction }),
+      // found on the chain by more than its time. A name of nothing is left
+      // off: the contract refuses it, and one receipt it refused would break
+      // the merchant's whole list.
+      ...(record.settlement === null || record.settlement.transaction.trim() === ""
+        ? {}
+        : { transaction: record.settlement.transaction }),
       test: record.order.test,
     };
   }
