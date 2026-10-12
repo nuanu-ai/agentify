@@ -264,8 +264,10 @@ when its data may be kept. A dry run before the first measurement showed it,
 and the spike's data answers became `private, max-age=10` while its pages stay
 `private, no-cache`. That keeps ADR-0026 §3, which forbids a shared cache, and
 gives up something `no-store` held: this browser's own cache now keeps an
-order's data for ten seconds. A post to the same address drops the kept answer,
-so a switch is never drawn from data older than itself.
+order's data for ten seconds. A post to the same page does not drop the kept
+answer, because the data's address carries `_routes` and the post's does not;
+the dashboard therefore gives the browser a new cookie with every press and
+keeps page data per cookie (`35-one-process.md`).
 
 The front page paints its largest element at the same moment in both stacks,
 692 and 716 ms, because in both the heading waits for the document and the

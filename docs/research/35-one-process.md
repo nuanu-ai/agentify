@@ -74,36 +74,46 @@ their sessions (ADR-0026 §2) and the WooCommerce connector's bookkeeping
 inside the process: the gateway has the dashboard tell a merchant of a change
 to their payout wallet or keys (ADR-0019).
 
-The pages are server-rendered, and they are moving to one framework. React
-Router in its framework mode, compiled by Vite, is the one stack for every
-surface a person uses (`docs/research/43-one-frontend-stack.md`), and the move
-runs on its eighth major version; its pages render in this process, on the
-dashboard's listener, in front of the pages still built as HTML strings, and a
-request reaches React Router only where one of its routes answers that path
-and method, so every other path falls through to the strings until the last
-screen moves. The sign-in, the page a mailed link lands on, the sign-out, the
-cards, the orders, the receipts and the API keys have moved
-(`apps/dashboard/app`); the rest are strings. Both draw from the gateway's
-application in the process, behind one gate decided in one place
-(`apps/dashboard/src/gate.ts`), and both are tested over HTTP against the real
-gateway.
+The pages are React Router in its framework mode, on its eighth major version,
+compiled by Vite: the one stack for every surface a person uses
+(`docs/research/43-one-frontend-stack.md`). They are drawn in this process, on
+the dashboard's listener, from the gateway's application in the same process,
+behind one gate decided in one place (`apps/dashboard/src/gate.ts`), and they
+are tested over HTTP against the real gateway. Every path under the dashboard
+is one of its routes (`apps/dashboard/app/routes.ts`), the last of them the page
+that says there is no such page, so a visitor with no session is sent to the
+sign-in from an address that does not exist exactly as from one that does.
+Beside the pages the listener answers only the health probe and the WooCommerce
+shop's callback, which the shop's own server posts to. A post from another
+site, or one longer than any form the pages send, is refused before any page
+reads it, and the page that says so is drawn like the others.
 
-Every form is an HTML form that works without script. With script, a moved
-page's forms show the press at once and its section links open without a page
-load, fetched while the pointer rests on them. A press answered back on its own
-page stays inside the application, which reads the page again; every press
-gives the browser a new cookie, and the page data a browser keeps for that
-fetch varies by cookie, so nothing kept before a press is shown after it. The
-page a mailed link lands on runs no script at all, because it holds a one-time
-token. The page that shows a new key's secret, once, is the answer to the press
-that issues the key and to nothing else, and no cache keeps it. With script,
-React Router keeps it in the page's memory and never in history, and the page
-takes it off the screen as it is left, so a reload, a return to it through Back
-and Forward, or a later visit draws the list, and the secret is copied at a
-press (`apps/dashboard/app/routes/keys.tsx`); without script the secret is
-selected by hand, and the page warns against resending the form. The front page
-is the scanner's, everywhere, and the scanner is still a Next.js application,
-which moves after the dashboard.
+Every form is an HTML form that works without script. With script, a page's
+forms show the press at once and its section links open without a page load,
+fetched while the pointer rests on them. The browser may keep a page's data for
+ten seconds, and that is what lets the click after the pointer rested on a link
+be answered from the fetch it made; in Chromium the click asks the server again
+once the ten seconds are up, prefetched or not. The keys and the settings keep
+nothing, because a key revoked a moment ago and a wallet change that waits must
+read as the gateway holds them now. A press posted to a page's own address
+would not drop what the browser kept of it, because the data's address carries
+the routes it asks for and the post's does not. So every press gives the
+browser a new value of a session-only cookie, `agentify.dashboard_pressed`,
+which names and opens nothing, and the kept data varies by cookie: nothing kept
+before a press is shown after it, on the page pressed or any other. A press's
+own address, opened again from history or the address bar, leads to the page
+its form lives on. The page a mailed link lands on runs no script at all,
+because it holds a one-time token.
+
+The page that shows a new key's secret, once, is the answer to the press that
+issues the key and to nothing else, and no cache keeps it. With script, React
+Router keeps it in the page's memory and never in history, and the page takes
+it off the screen as it is left, so a reload, a return to it through Back and
+Forward, or a later visit draws the list, and the secret is copied at a press
+(`apps/dashboard/app/routes/keys.tsx`); without script the secret is selected by
+hand, and the page warns against resending the form. The front page is the
+scanner's, everywhere, and the scanner is still a Next.js application, which
+moves after the dashboard.
 
 The whole chain, Postgres included, comes up locally from `docker compose up`
 behind the same route table the channels use (ADR-0005), so a person clicks

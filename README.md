@@ -151,6 +151,34 @@ Nothing published on the host reaches the dashboard's identity listener, so a
 scanner started this way scans and reports but cannot unlock one; that path is
 walked in the stack.
 
+The dashboard's pages are edited the same way, outside a container.
+`pnpm --filter @agentify/app dev` runs the application, the gateway and the
+dashboard in one process, on the host, with the pages compiled from their source
+by Vite on each request, so an edit to a page shows at the next reload with no
+build. It takes the settings the stack's `app` service is given in
+`compose.yaml`, with the database on the published port and the dashboard's own
+port as the address mailed links are built on:
+
+```sh
+docker compose up -d --wait postgres
+export DATABASE_URL=postgres://agentify:agentify@localhost:5432/agentify
+pnpm db:migrate
+PUBLIC_BASE_URL=http://localhost:3001 BASE_PATH=/dashboard \
+  AUTH_SECRET=a-sandbox-secret-nobody-should-reuse-anywhere \
+  REPORT_IDENTITY_SECRET=a-sandbox-report-identity-secret-nobody-should-reuse \
+  FACILITATOR_URL=sandbox:scripted PAYMENT_NETWORK=eip155:84532 \
+  PAY_TO_ADDRESS=0x70997970C51812dc3A010C7d01b50e0d17dc79C8 \
+  MAIL_URL=sandbox:log COOKIE_SECURE=false \
+  pnpm --filter @agentify/app dev
+```
+
+The dashboard is then at `http://localhost:3001/dashboard/sign-in`, and the
+sign-in link is in the terminal. The shared mark and faces that Caddy serves
+beside the stack are missing there, and the pages fall back to the system's
+faces. `pnpm --filter @agentify/dashboard build` compiles the pages as the
+image does, into `apps/dashboard/dist`, and `pnpm --filter @agentify/app start`
+serves that build instead.
+
 ## What happens in a sale
 
 A card is one product written so that a program can decide to buy it: a title,
@@ -211,7 +239,7 @@ its own.
 | `apps/web` | The scanner: the public site, the checks, the report. |
 | `apps/scanner-worker`, `apps/browser-observer-actor` | The scanner's background process and its passive browser observation. |
 | `apps/gateway` | The payment edge, the order runner and the queue. Ports in `src/ports`, their implementations in `src/adapters`. |
-| `apps/dashboard` | The merchant's screens: sign-in, cards, orders, receipts, keys, and the identity route the scanner calls. Server-rendered in the application's process; the screens moved so far are React Router pages under `app/`, built by `pnpm --filter @agentify/dashboard build`, and the rest are still HTML strings (`docs/research/35-one-process.md`). |
+| `apps/dashboard` | The merchant's screens: sign-in, cards, orders, receipts, integrations, keys, settings and the WooCommerce connector, and the identity route the scanner calls. React Router pages under `app/`, server-rendered in the application's process and built by `pnpm --filter @agentify/dashboard build`; their server half is in `src/` (`docs/research/35-one-process.md`). |
 | `packages/ui` | `@agentify/ui`: the React components every surface draws with, thin wrappers over the classes of `packages/visual`. |
 | `apps/docs` | The merchant documentation, a VitePress site served at `/docs`. Its JSON examples are test fixtures (see below). |
 | `packages/contracts` | `@nuanu-ai/agentify-contracts`: every shape that crosses a boundary, as zod schemas, and the route table both sides import instead of transcribing. |
