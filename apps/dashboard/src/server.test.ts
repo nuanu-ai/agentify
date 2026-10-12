@@ -4038,6 +4038,63 @@ describe("a press that fails in a way nobody planned for", () => {
     expect(answered).toMatch(/request failed/i);
   });
 
+  it("answers every press inside the dashboard that fails on the dashboard's page saying so", async () => {
+    // Whichever press it was, the merchant learns that something broke and to
+    // look before pressing again, on a page with a way on; a bare line of text
+    // gives them neither.
+    const broken = (): never => {
+      throw new Error("the answer was not a document this contract knows");
+    };
+    // Broken once the person is in, since signing in reads the merchant too.
+    let breaking = false;
+    const { browser } = await started({
+      client: (real) =>
+        new Proxy(real, {
+          get: (target, name, receiver) =>
+            breaking && typeof Reflect.get(target, name, receiver) === "function"
+              ? broken
+              : Reflect.get(target, name, receiver),
+        }),
+      identity: (real) => ({
+        ...real,
+        signOut: async (cookie) => (breaking ? broken() : await real.signOut(cookie)),
+        endOtherSessionsOfPerson: broken,
+      }),
+    });
+    await browser.signIn();
+    breaking = true;
+
+    await said(async () => {
+      for (const [path, form] of [
+        [STOP_SELLING, {}],
+        ["/keys", { label: "the second worker" }],
+        ["/keys/some-key/disable", {}],
+        ["/settings", { seller_name: "Bright Data Plans" }],
+        ["/settings/site", { seller_site: "https://example.com" }],
+        ["/settings/sign-out-others", {}],
+        [
+          "/settings/payout-wallet",
+          { payout_wallet: "0x1111111111111111111111111111111111111111" },
+        ],
+        [
+          "/settings/payout-wallet/cancel",
+          { payout_wallet: "0x1111111111111111111111111111111111111111" },
+        ],
+        ["/sign-out", {}],
+      ] as const) {
+        const pressed = await browser.post(path, form);
+
+        expect({ status: pressed.status, to: pressed.to }, path).toStrictEqual({
+          status: 500,
+          to: null,
+        });
+        expect(readable(pressed.html), path).toContain(
+          "Something in the dashboard is broken. Check the page you were on before deciding whether it went through.",
+        );
+      }
+    });
+  });
+
   it("answers a sign-in press that fails with the dashboard's page saying so, and logs nothing it carried", async () => {
     // Nothing is drawn after a press that throws but what the press answers,
     // so the page around the answer has to come with it.
