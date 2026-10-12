@@ -20,7 +20,6 @@ export default function NoSuchPage() {
     <Frame title="There is no such page" frame={{ unnamed: false }}>
       <div className="lede">
         <div>
-          <h1>There is no such page</h1>
           <p>
             The link may have a typo or be out of date. Every section of your dashboard is in the
             menu.
