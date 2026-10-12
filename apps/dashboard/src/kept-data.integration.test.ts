@@ -100,8 +100,7 @@ const onTheCards = async (): Promise<Page> => {
 };
 
 /** The sidebar's link, not the narrow menu's copy of it. */
-const linkTo = (page: Page, section: string) =>
-  page.locator("nav.tabs a", { hasText: section });
+const linkTo = (page: Page, section: string) => page.locator("nav.tabs a", { hasText: section });
 
 /** Rests on a section link long enough for the page to fetch it, then leaves. */
 const restOn = async (page: Page, section: string): Promise<void> => {
