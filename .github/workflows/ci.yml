@@ -149,8 +149,8 @@ jobs:
       - run: pnpm scanner:test:actor
 
       # Builds the dashboard's pages and checks, in the same Chromium, that the
-      # click after a hover is answered from its fetch and that nothing kept
-      # before a press is shown after it.
+      # click after a hover is answered from its fetch, that nothing kept
+      # before a press is shown after it, and that a press keeps the scroll.
       - run: pnpm dashboard:test:browser
 
   # The portal keeps a separate gate because its rendered examples are a

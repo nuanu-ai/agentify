@@ -9,8 +9,8 @@
 
 import { MerchantCardListSchema } from "@nuanu-ai/agentify-contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { createRoutesStub, Outlet, redirect, ScrollRestoration } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { createRoutesStub, Outlet, redirect } from "react-router";
+import { afterEach, describe, expect, it } from "vitest";
 import type { Viewer } from "../../src/viewer.js";
 import { cardsView } from "../../src/views.js";
 import { CardsScreen } from "./cards.js";
@@ -43,14 +43,11 @@ const cards = MerchantCardListSchema.parse({
   ],
 });
 
-afterEach(() => {
-  cleanup();
-  vi.restoreAllMocks();
-});
+afterEach(cleanup);
 
 /**
- * The cards in a live document, inside the gate, with the scroll kept as the
- * root keeps it. The press answers with the redirect back to the cards, and
+ * The cards in a live document, inside the gate. The press answers with the
+ * redirect back to the cards, and
  * the cards read again after it wait until the test lets them through.
  */
 const pressable = () => {
@@ -59,12 +56,7 @@ const pressable = () => {
     {
       id: "root",
       path: "/",
-      Component: () => (
-        <>
-          <Outlet />
-          <ScrollRestoration />
-        </>
-      ),
+      Component: Outlet,
       children: [
         {
           id: "routes/gate",
@@ -121,19 +113,5 @@ describe("a switch pressed on the cards", () => {
 
     await waitFor(() => expect(button.getAttribute("aria-busy")).toBeNull());
     expect(button.hasAttribute("disabled")).toBe(false);
-  });
-
-  it("leaves the merchant where they were on the page", async () => {
-    // A merchant pausing the twentieth card reads the twentieth card next.
-    const scrolled = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
-    const press = pressable();
-    const button = screen.getByRole("button", { name: "Pause" });
-
-    fireEvent.click(button);
-    await waitFor(() => expect(press.pressed).toBe(1));
-    await act(async () => press.release());
-    await waitFor(() => expect(button.getAttribute("aria-busy")).toBeNull());
-
-    expect(scrolled).not.toHaveBeenCalled();
   });
 });

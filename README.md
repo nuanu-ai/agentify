@@ -310,8 +310,9 @@ kept apart for that reason:
   `pnpm --filter @agentify/browser-observer-actor exec playwright install chromium`.
 - `pnpm dashboard:test:browser` builds the dashboard's pages and drives the same
   Chromium over them, to hold what the browser does with the page data it is
-  allowed to keep: the click after a hover is answered from the hover's fetch,
-  and nothing kept before a press is shown after it.
+  allowed to keep, the click after a hover being answered from the hover's
+  fetch and nothing kept before a press shown after it, and that a press
+  answered on its own page leaves the merchant where they were on it.
 
 ## Releasing
 

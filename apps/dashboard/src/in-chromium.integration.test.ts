@@ -1,10 +1,11 @@
 /**
- * What Chromium does with the dashboard's page data, against the built pages:
- * the click after the pointer rested on a section link is answered from the
- * fetch the rest made, and after a press nothing the browser kept from before
- * it is shown. The headers that promise this are held offline in
- * `server.test.ts`; this holds what a browser does with them, which a change of
- * React Router's data addresses could break with every header still in place.
+ * What Chromium does with the built pages where only a browser can tell. The
+ * click after the pointer rested on a section link is answered from the fetch
+ * the rest made, and after a press nothing the browser kept from before it is
+ * shown: the headers that promise this are held offline in `server.test.ts`,
+ * and a change of React Router's data addresses could break it with every
+ * header still in place. A press answered on its own page leaves the merchant
+ * where they were on it, which only a page that really scrolls can show.
  *
  * It needs the build (`pnpm --filter @agentify/dashboard build`) and
  * Playwright's Chromium, and counts what reaches the dashboard rather than what
@@ -51,6 +52,19 @@ beforeAll(async () => {
     },
   });
   await identity.make(PERSON, harnessed.merchant.id);
+  // Cards enough to scroll a short window, published as the merchant's own
+  // code publishes them.
+  for (const room of [101, 102, 103, 104]) {
+    const published = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+      merchant_item_id: `room-${room}`,
+      title: "A room for the night",
+      description: `One night in room ${room}`,
+      price: { amount: "80.00", currency: "USD" },
+      result: { access_code: { type: "string" } },
+      fulfillment: "sync",
+    });
+    if (!published.ok) throw new Error("the test's card was not published");
+  }
   await identity.requestLink(PERSON, "default");
   const link = new URL(/(https?:\/\/\S+)/.exec(mails.at(-1)?.body ?? "")?.[1] ?? "");
   const opened = await identity.openLink(link.searchParams.get("token") ?? "");
@@ -91,8 +105,8 @@ afterAll(async () => {
 });
 
 /** A browser with nothing kept yet, signed in, on the cards. */
-const onTheCards = async (): Promise<Page> => {
-  const context = await browser.newContext();
+const onTheCards = async (viewport = { width: 1280, height: 900 }): Promise<Page> => {
+  const context = await browser.newContext({ viewport });
   await context.addCookies(cookies.map((one) => ({ ...one, url: origin })));
   const page = await context.newPage();
   await page.goto(`${origin}${BASE}/cards`);
@@ -141,6 +155,34 @@ describe("the page data Chromium keeps", () => {
     await open(page, "Orders", "/orders");
 
     expect(timesAsked("/orders") - before).toBe(2);
+    await page.context().close();
+  });
+});
+
+describe("a press answered on its own page", () => {
+  it("leaves the merchant where they were on it", async () => {
+    // A merchant pausing the last card reads the last card next.
+    const page = await onTheCards({ width: 1280, height: 320 });
+    // Selling on, as a test above may have left it off, so every card has its
+    // switch.
+    const resume = page.locator("form[action*='selling=resume'] button");
+    if ((await resume.count()) > 0) {
+      await resume.click();
+      await page.locator("form[action*='selling=pause']").waitFor();
+    }
+    // The last card's row in the middle of a short window, with the page
+    // scrolled to reach it.
+    const row = page.locator("tbody tr").last();
+    await row.evaluate((element) => element.scrollIntoView({ block: "center" }));
+    const scrolled = await page.evaluate(() => window.scrollY);
+    const before = await row.evaluate((element) => element.getBoundingClientRect().top);
+
+    await row.locator("form[action*='pause='] button").click();
+    await row.locator("form[action*='resume=']").waitFor();
+    await page.waitForLoadState("networkidle");
+
+    expect(scrolled).toBeGreaterThan(0);
+    expect(await row.evaluate((element) => element.getBoundingClientRect().top)).toBe(before);
     await page.context().close();
   });
 });
