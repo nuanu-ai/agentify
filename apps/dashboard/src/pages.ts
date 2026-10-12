@@ -119,11 +119,12 @@ export async function pagesFromSource({ live }: { readonly live: boolean }): Pro
 /**
  * Which methods a route answers: a read where it loads data or draws a page
  * that acts on nothing, and a post where it acts. A route that only draws the
- * answer to its own post, which it needs a component for, is not opened by a
- * read. No other method reaches an action, because the origin check reads
- * posts alone.
+ * answer to its own post, which it needs a component for, is not opened as a
+ * page by a read, but its data is served: the page drawn there asks for it when
+ * the browser comes back to it. No other method reaches an action, because the
+ * origin check reads posts alone.
  */
-type Answers = (method: string) => boolean;
+type Answers = (method: string, data: boolean) => boolean;
 
 interface Served {
   readonly answers: Answers;
@@ -153,11 +154,11 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
       // around pages and never a page, even while nothing is nested in it.
       const page = route.index === true || (route.path ?? "") !== "";
       const served: Served = {
-        answers: (method) =>
+        answers: (method, data) =>
           page &&
           (method === "GET" || method === "HEAD"
             ? module.loader !== undefined ||
-              (module.default !== undefined && module.action === undefined)
+              (module.default !== undefined && (module.action === undefined || data))
             : method === "POST" && module.action !== undefined),
         keepsData: module.handle?.script !== false,
       };
@@ -279,9 +280,10 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
         handle(request, response, next);
         return;
       }
+      const data = request.path.endsWith(".data");
       const matches = matchRoutes(routes, pageOf(request.path), basename);
       const served = matches?.at(-1)?.route.handle as Served | undefined;
-      if (served === undefined || !served.answers(request.method)) {
+      if (served === undefined || !served.answers(request.method, data)) {
         next();
         return;
       }
@@ -305,7 +307,7 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       // action React Router sends posts to its own page's address and drops
       // that page's data.
       const reading = request.method === "GET" || request.method === "HEAD";
-      if (reading && request.path.endsWith(".data") && served.keepsData) {
+      if (reading && data && served.keepsData) {
         response.setHeader("cache-control", "private, max-age=10");
         response.setHeader("vary", "cookie");
       } else {

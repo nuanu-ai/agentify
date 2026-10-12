@@ -1619,6 +1619,24 @@ describe("the settings screen", () => {
     expect((answered as Visit).to).toBe("/settings");
   });
 
+  it("serves the settings' data at a press's address, which the page drawn there asks for when the browser comes back to it", async () => {
+    // A page answered to a press is a page of the application; going back to
+    // it from another screen asks for its data at its own address.
+    const { browser } = await started();
+    await browser.signIn();
+
+    for (const path of [
+      "/settings/site",
+      "/settings/sign-out-others",
+      "/settings/payout-wallet/cancel",
+    ]) {
+      const data = await browser.get(`${path}.data`);
+      expect(data.status, path).toBe(200);
+      expect(data.html, path).toContain(PERSON);
+      expect(readable(data.html), path).not.toContain("There is no such page");
+    }
+  });
+
   it("draws no page at the other presses' addresses opened as a page, only at their press", async () => {
     // Their page is the answer to the press; opened without one, it would be a
     // page that says nothing happened.
