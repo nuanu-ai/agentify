@@ -11,6 +11,7 @@
 
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
 import type { Gateway } from "@agentify/gateway";
 import {
   buyOverHttp,
@@ -3369,6 +3370,34 @@ describe("what every screen says about the address", () => {
     expect(data.html).not.toContain(PERSON);
     expect(data.html).toContain("/sign-in");
   });
+
+  it.each([
+    ["sandbox", {}],
+    ["test", { FACILITATOR_URL: "https://x402.org/facilitator" }],
+  ] as const)(
+    "says on every screen in the frame that it is the %s stack, and so whether money is real",
+    async (mode, dashboard) => {
+      // The band is the page's own statement that nothing settles here; a screen
+      // drawn without it would read as the live dashboard.
+      const running = await started({ dashboard, wooShops: memoryWooShops() });
+      await running.browser.signIn();
+
+      for (const path of [
+        "/cards",
+        "/orders",
+        "/receipts",
+        "/integrations",
+        "/keys",
+        "/settings",
+        "/woocommerce",
+        "/nowhere",
+      ]) {
+        const answered = await running.browser.get(path);
+        expect(answered.html, path).toContain(`${SURFACE_MARKER_ATTRIBUTE}="${mode}"`);
+        expect(readable(answered.html), path).toContain(SURFACE_WORDS[mode]);
+      }
+    },
+  );
 
   it("links the signed-in address to settings without a confirmation control", async () => {
     const { browser } = await started();
