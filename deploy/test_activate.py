@@ -296,8 +296,7 @@ class Activation(unittest.TestCase):
         # A service renamed or merged into another is no container the new
         # revision starts or stops, and left running it keeps the old release's
         # code on the database and its queues while the new release migrates
-        # them. The gateway and the dashboard became `app` and ran on beside it,
-        # on both channels, until a person removed them.
+        # them.
         (self.world / "containers" / "gateway").write_text("old running\n")
         said = self.run_script("activate")
         self.assertIn("exit 0", said)

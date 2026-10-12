@@ -5,7 +5,7 @@ what `deploy/compose.public.yaml` does to the seed. This renders each channel
 the way deploy/stack.sh does — the same compose files in the same order, the
 jobs profile activation renders with — from a synthetic environment file, and
 runs the preflight over the result, as activation does. A deployed channel
-seeds no merchant (ADR-0014), whether or not its environment file names
+seeds no merchant, whether or not its environment file names
 AGENTIFY_SEED_KEY.
 
 It needs Docker with Compose and Node, as the release does.
@@ -115,8 +115,8 @@ class ChannelRender(unittest.TestCase):
                 self.assertEqual(checked.returncode, 0, checked.stderr)
 
     def test_a_channel_whose_file_still_names_a_seed_seeds_nothing_and_passes(self):
-        # A host's file may name it, by mistake or from before seeding ended;
-        # the overlay empties it all the same.
+        # A host's file may name it by mistake; the overlay empties it all the
+        # same.
         for channel in CHANNELS:
             with self.subTest(channel=channel):
                 document = self.render(channel, {"AGENTIFY_SEED_KEY": SEED[channel]})

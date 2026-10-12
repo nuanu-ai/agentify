@@ -1,12 +1,10 @@
 """One scratch container for a class of deploy tests.
 
 The deploy scripts run as root against host paths, so the tests run them in a
-throwaway Linux container. Starting one is what costs: on a Mac, Docker
-Desktop spends about half a second and three to four cores on each, and these
-tests used to start two per test, one to run the script and one to give the
-files back afterwards, some 240 for the suite and minutes of four cores. A
-class now starts one container, and each test runs its script in it with
-`docker exec`, which starts a process rather than a container.
+throwaway Linux container. Starting a container is the expensive part (on a
+Mac, Docker Desktop spends about half a second and several cores on each), so
+a class starts one, and each test runs its script in it with `docker exec`,
+which starts a process rather than a container.
 
 Each run still finds the container as a new one would be: before the script,
 whatever an earlier run left running is killed and the paths the scripts and

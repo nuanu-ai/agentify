@@ -1,13 +1,9 @@
-# The one door.
-#
-# ADR-0005 §1: Caddy is the only address anybody types. `/` is the scanner,
-# `/docs` the portal, `/dashboard` the dashboard, and `/v0/*` and `/x402/*`
-# are both the gateway — the merchant's API and the storefront an agent buys at
-# — so a merchant's engineer sees one origin and never reasons about ports. The
-# same file describes the server later, which is why nothing below is written
-# twice: every address the routes depend on is one environment variable with a
-# local default, and the deployment overrides the variable rather than editing
-# a copy of this file.
+# The single entry point. `/` is the scanner, `/docs` the portal, `/dashboard`
+# the dashboard, and `/v0/*` and `/x402/*` the gateway (the merchant API and the
+# storefront an agent buys at), so a merchant's engineer sees one origin and
+# never reasons about ports. Every address the routes depend on is an
+# environment variable with a local default; a deployment overrides the
+# variable rather than editing a copy of this file.
 #
 #   AGENTIFY_SITE_ADDRESS      what Caddy listens on              :8080
 #   AGENTIFY_FRONT_PAGE        required front-page route          no default
@@ -19,11 +15,8 @@
 #   AGENTIFY_SCANNER_UPSTREAM  host:port of the scanner process   scanner:3000
 #   AGENTIFY_SURFACE_MODE      what the static pages say           sandbox
 #
-# The defaults are the container's view of the world, because ADR-0005 §1 wants
-# the whole chain to come up from `docker compose up`, and it does: the compose
-# file in this repository brings up all of it, and the services these defaults
-# name are the service names on its network. Running this file from a checkout
-# outside Docker still works, with the roots pointed at the repository:
+# The defaults are the service names on the compose network. Outside Docker,
+# point the roots at the repository:
 #
 #   AGENTIFY_FRONT_PAGE=scanner_front_page \
 #   AGENTIFY_ASSET_ROOT=packages/visual/public \
@@ -33,11 +26,9 @@
 #   AGENTIFY_SCANNER_UPSTREAM=127.0.0.1:3000 \
 #     caddy run --config deploy/Caddyfile
 #
-# The listen address defaults to a high port rather than :80 so that the same
-# line works unprivileged on a laptop and inside a container. A deployment sets
-# AGENTIFY_SITE_ADDRESS to its hostname, and Caddy's automatic HTTPS turns
-# itself on because the address stops being a bare port — which is the reason
-# this file does not disable it.
+# The listen address defaults to a high port so it works unprivileged. A
+# deployment sets AGENTIFY_SITE_ADDRESS to its hostname, which is what turns on
+# Caddy's automatic HTTPS; do not disable it here.
 
 # A direct test deployment receives TLS through an SNI pass-through ingress;
 # port 80 stops at that ingress. TLS-ALPN therefore reaches this Caddy while
@@ -69,27 +60,22 @@
 	}
 }
 
-# Every path the site block below leaves unclaimed is the scanner's, `/admin`
-# included. The operator's dashboard has no door of its own here: it opens for
-# an account that carries the operator flag and answers everybody else with the
-# site's 404 page, and the scanner decides which (ADR-0026 §6).
+# Every path the site block leaves unclaimed is the scanner's, `/admin`
+# included: the scanner decides who may see the operator's pages and answers
+# everybody else with its 404.
 (scanner_front_page) {
 	handle {
 		reverse_proxy {$AGENTIFY_SCANNER_UPSTREAM:scanner:3000} {
-			# Scanner consumers historically disagreed about whether the first or
-			# last forwarded address was the browser. Give them one address. The
-			# global trusted-proxy boundary above decides it; incoming values from
-			# any other peer are not evidence.
+			# One address for the browser, decided by the trusted-proxy boundary above;
+			# values sent by any other peer are not evidence.
 			header_up X-Forwarded-For {client_ip}
 		}
 	}
 }
 
-# The mark and the faces the dashboard's HTML asks for. The scanner owns the
-# front page and bundles its own copies, so these are Caddy's to serve from the
-# visual package. Naming the two marks and the font subtree is deliberate: a
-# broad /assets or /styles route would silently reserve scanner namespaces that
-# the dashboard does not use.
+# The mark and the font files the dashboard's HTML asks for (the scanner
+# bundles its own). Named one by one: a broad /assets or /styles route would
+# take those namespaces away from the scanner.
 (shared_assets) {
 	@shared_assets path /assets/agentify-mark.svg /assets/agentify-mark-heavy.svg /styles/fonts.css /styles/fonts/*.woff2
 	handle @shared_assets {
@@ -101,32 +87,17 @@
 {$AGENTIFY_SITE_ADDRESS::8080} {
 	encode zstd gzip
 
-	# The web surface decision puts four things on one origin, and same-origin is
-	# then the whole of the boundary between them: the scanner and the reports it
-	# writes, a static portal build, a dashboard that holds a merchant's session,
-	# and the money path at /v0. These three headers are the part of the
-	# hardening that costs nothing.
+	# Same-origin is the whole boundary between the scanner, the portal, the
+	# dashboard and the money path, so these headers matter.
 	#
-	# It said "and cannot break a page", and one of them broke every form in the
-	# dashboard. `Referrer-Policy: no-referrer` does more than hide the referrer:
-	# by the fetch specification, a request whose method is not GET or HEAD and
-	# whose referrer policy is `no-referrer` carries `Origin: null` instead of
-	# the page's own origin. So every form post from the dashboard arrived claiming
-	# to come from nowhere, the check that a form came from this host refused it,
-	# and a merchant on the live site could not sign in at all. Nothing about it
-	# looked like a header problem: the same request from a command line, which
-	# implements no referrer policy, was let through.
+	# `Referrer-Policy: no-referrer` must not come back: with it, browsers send
+	# `Origin: null` on every form POST, the dashboard's same-origin check refuses
+	# them, and nobody can sign in. A command-line request does not reproduce it.
 	#
-	# `same-origin` gives up nothing we wanted. A referrer still never reaches
-	# another site, which is the whole reason the line is here, and our own
-	# origin survives on our own requests. `no-referrer` must not come back.
-	#
-	# What is deliberately not here: HSTS, because on a plain-HTTP local origin
-	# it would pin localhost in every developer's browser for its max-age; and a
-	# Content-Security-Policy, because the portal's build and the dashboard's
-	# inline scripts have not been surveyed and a policy written blind either
-	# breaks pages or is loose enough to be decoration. Both belong with the
-	# first deployment to a real host, and neither should be guessed here.
+	# HSTS and a Content-Security-Policy are deliberately absent: HSTS would pin
+	# localhost in developers' browsers, and a CSP written without surveying the
+	# portal's and dashboard's inline scripts either breaks pages or protects
+	# nothing.
 	header {
 		X-Content-Type-Options nosniff
 		Referrer-Policy same-origin
@@ -140,130 +111,58 @@
 
 	import shared_assets
 
-	# The gateway, at both of the prefixes the contract's own route table is
-	# written under (packages/contracts/src/api.ts): /v0 is the merchant's API
-	# and /x402 is the storefront — the catalog an agent browses, the address it
-	# buys at, and the door it comes back to for its own order. Both are the
-	# gateway's, not mount points invented here: the path is passed through
-	# untouched and the process behind it sees exactly the URL the agent asked
-	# for. A matcher that carried only /v0 would leave every storefront address
-	# falling through to the scanner below, which answers its own 404 — so a
-	# product listed in a discovery catalog would be unbuyable from outside
-	# while every test in this repository stayed green.
+	# The gateway, at both prefixes of the contract's route table, with the path
+	# passed through untouched. Dropping /x402 here would send every storefront
+	# address to the scanner's 404 while every test stays green.
 	#
-	# The gateway must be started with PUBLIC_BASE_URL set to this origin. It
-	# puts that address into the payment challenge it sends an agent, and an
-	# agent that is told to come back to the process's own port would be sent
-	# at a door that is closed from outside.
+	# The gateway must run with PUBLIC_BASE_URL set to this origin: it puts that
+	# address into the payment challenge, and an agent sent to the process's own
+	# port finds it closed.
 	#
-	# /healthz is in the same matcher, and it is deliberately not under /v0.
-	# Whether this stack is up has to be answerable from outside the door, and
-	# from outside there was nothing to ask: the path fell through to the front
-	# page, which answers a 404 to a name it does not have, and /v0/healthz
-	# arrived at the gateway as a route the contract does not carry and was
-	# refused as one. Three of the four things on this origin are processes and
-	# the fourth is a directory this server reads itself, so the health of the
-	# door is the gateway's — it is what the money path runs through, and each
-	# of the others answers for itself or is answered for by Caddy being up at
-	# all. The path stays outside /v0 because that table is the contract a
-	# merchant's engineer integrates against, and an operational probe is not
-	# part of it.
-	#
-	# Who can ask is worth being plain about, because on a deployed origin this
-	# path is public: there is no door in front of it, so anybody who knows the
-	# hostname can ask whether the gateway is up, and a monitor that has to be
-	# given a credential first is a monitor nobody sets up. What that gives away
-	# is the answer itself and nothing else — the gateway replies `{"ok":true}`
-	# and carries no version, no hostname, no counts and no error text — so what
-	# leaks is that this address exists, which the rest of the origin already
-	# says.
-	#
-	# What comes back is the gateway's own answer and nothing more. No verdict
-	# here stands for the dashboard, and none stands for Postgres — a gateway
-	# answering this route has not been asked whether its database is reachable,
-	# so `{"ok":true}` here is compatible with a stack that cannot serve a single
-	# order. A document that averaged them would be read as one and would be
-	# wrong the first time one of them went down alone; the services that know
-	# their own state report it to compose, which is where a per-service verdict
-	# belongs.
-	#
-	# The dashboard is the second process and needs no line of its own. It answers
-	# the same probe under its own prefix, and the block below passes /dashboard/*
-	# through untouched, so /dashboard/healthz already arrives.
+	# /healthz is public and outside /v0, which is the merchant's contract. It
+	# reports the gateway alone and reveals nothing beyond `{"ok":true}`; it says
+	# nothing about Postgres or the dashboard, which answers /dashboard/healthz
+	# itself through the block below.
 	@gateway path /v0 /v0/* /x402 /x402/* /healthz
 	handle @gateway {
 		reverse_proxy {$AGENTIFY_GATEWAY_UPSTREAM:app:3000}
 	}
 
-	# The dashboard, on its own listener in the application, beside the
-	# gateway's (ADR-0030). The prefix is passed through rather than stripped,
-	# deliberately: the dashboard then reads its own mount point off the request
-	# it is answering and builds its links from the same string, instead of
-	# being told the prefix out of band and having to prepend it to every href.
-	# So the dashboard routes on /dashboard, /dashboard/orders, /dashboard/receipts
-	# as written.
-	#
-	# The prefix is spelled as two exact paths rather than one /dashboard* glob
-	# so that it claims the dashboard and its pages and nothing else: a scanner
-	# page at /dashboards-we-have-known would otherwise disappear into the proxy.
+	# The dashboard. The prefix is passed through, not stripped, so the dashboard
+	# builds its links from the path it was asked for. Two exact paths rather than
+	# a /dashboard* glob, so a scanner page such as /dashboards-x is not captured.
 	@dashboard path /dashboard /dashboard/*
 	handle @dashboard {
 		header @dashboard_link Referrer-Policy strict-origin
 		reverse_proxy {$AGENTIFY_DASHBOARD_UPSTREAM:app:3001}
 	}
 
-	# The address the dashboard had while it was called the cabinet, on the
-	# product owner's word (2026-10-06): a bookmark, a link in a message already
-	# sent, or a shop returning from a Connect started under the old address
-	# still arrives. The same path, under the new prefix, with the query kept,
-	# and in any case, as the dashboard itself never minded case. 307 rather than
-	# 301 or 302 so a form posted to the old address is posted again, body and
-	# method intact, rather than turned into a GET that loses it; and not 308,
-	# for the reason /docs below is not permanent either: a browser keeps a
-	# permanent redirect, so after a rollback to a revision with no /dashboard
-	# it would keep sending somebody to a page that is not there. This block is
-	# removed on 2026-11-06, a month after the move.
+	# Old links to /cabinet still arrive. 307 keeps a posted form's method and
+	# body; a permanent 301 or 308 would be cached by browsers past a rollback.
+	# Temporary: due for removal on 2026-11-06.
 	@cabinet_moved path_regexp cabinet_moved (?i)^/cabinet(/.*)?$
 	handle @cabinet_moved {
 		redir * /dashboard{re.cabinet_moved.1}{?query} 307
 	}
 
-	# The portal. Here the prefix IS stripped, because the other side is a
-	# directory of files and not a process: /docs/money has to become money.html
-	# on disk.
-	#
-	# That cuts both ways. The built HTML asks for its stylesheets by absolute
-	# path and links its own pages the same way, so the portal has to be built
-	# knowing where it lives:
+	# The portal. The prefix is stripped because the other side is a directory:
+	# /docs/money must become money.html on disk. The portal must therefore be
+	# built knowing its mount point, or its assets and links point outside /docs:
 	#
 	#   pnpm --dir apps/docs exec vitepress build --base /docs/
 	#
-	# Built without that flag, every page comes out asking for /assets/... at
-	# the root of the origin, where the scanner answers and has nothing by that
-	# name, and every link in the sidebar points outside /docs. The flag is a
-	# build argument rather than an edit to the portal's config on purpose: the
-	# mount point is this file's business, and the portal should not have to
-	# know it in a file of its own.
-	# Temporary rather than permanent on purpose: a 301 is cached by the browser
-	# past the life of the mount point, and the first person to move /docs would
-	# spend an afternoon on it.
+	# Temporary redirect: browsers cache a 301 past the life of the mount point.
 	redir /docs /docs/
 	handle_path /docs/* {
 		root * {$AGENTIFY_PORTAL_ROOT:/srv/docs}
 
-		# cleanUrls is on in the portal's config, so /docs/money is a request
-		# for a page whose file carries the extension.
+		# The portal is built with cleanUrls, so /docs/money is money.html.
 		try_files {path} {path}.html {path}/index.html
-		# Which stack this is, and the only place in this system where the mode
-		# is a variable rather than a derivation: Caddy cannot read a CAIP-2
-		# identifier and cannot hold the list of chains. Two fields can
-		# disagree, so the release checks this one against the channel before
-		# anything starts and against the rendered pages after they are up.
-		#
-		# The delimiters are comment-shaped so that these files are readable
-		# and openable without this server in front of them, and `mime` keeps
-		# the templating off everything that is not a page — a stylesheet or a
-		# built script containing two braces is not a template.
+		# AGENTIFY_SURFACE_MODE is set by hand rather than derived (Caddy cannot read
+		# the chain identifier), so the release checks it against the channel before
+		# anything starts and against the rendered pages afterwards. Comment-shaped
+		# delimiters keep the files readable without Caddy; `mime` keeps templating
+		# off stylesheets and scripts.
 		templates {
 			mime text/html
 			between <!--{{ }}-->
@@ -271,15 +170,9 @@
 		file_server
 	}
 
-	# The portal is a directory of files, so a page that is not there would be
-	# Caddy's bare, empty 404. VitePress builds its own 404 page under the same
-	# base, and this serves it with the status kept. The scanner and the
-	# dashboard answer their own missing pages, so nothing here touches theirs.
-	#
-	# The 404 page is a portal page like any other, so it is templated the same
-	# way. Served without it, the page carries every mode's notice at once, and
-	# a live deployment tells whoever mistyped an address that its payments are
-	# pretend.
+	# The portal's own 404 page, status kept. It must be templated like any other
+	# portal page, or a live deployment's 404 shows every mode's notice at once,
+	# including "payments are pretend".
 	handle_errors {
 		@portal_missing `{err.status_code} == 404 && {http.request.orig_uri.path}.startsWith('/docs/')`
 		handle @portal_missing {
@@ -295,14 +188,10 @@
 		}
 	}
 
-	# The merchant landing, a draft the product owner shows people while the
-	# product's market positioning is being worked out (2026-10-07). It lives at
-	# /sell on a laptop and on the test channel; on the live channel the
-	# expression is false and /sell stays the scanner's, as before. Its prices
-	# are not approved and its grey notes are for choosing between them, so no
-	# search engine is asked to keep the page, and no browser keeps a stale copy.
-	# The page is a directory of files, like the portal, so the prefix is
-	# stripped and /sell/ is its index.html.
+	# A draft merchant landing, served everywhere except the live channel (there
+	# /sell falls through to the scanner). Its prices are not approved, so it is
+	# noindex and no-cache. A directory, like the portal, so the prefix is
+	# stripped.
 	@sell_page {
 		path /sell /sell/*
 		expression "{$AGENTIFY_SURFACE_MODE:sandbox}" != "live"
@@ -317,8 +206,7 @@
 		}
 	}
 
-	# One route table, three stacks. The selector has no default, so a stack
-	# that names no front page is refused at load rather than answering a bare
-	# 404 at its own address.
+	# No default: a stack that names no front page is refused at load rather than
+	# answering a bare 404.
 	import {$AGENTIFY_FRONT_PAGE}
 }

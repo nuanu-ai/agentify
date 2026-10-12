@@ -1,68 +1,40 @@
-# What every public deployment changes about the laptop's stack.
-#
-# Everything that differs between the two channels is a variable in the host's
-# `.env` — the chain, the facilitator, the surface mode, the origin, the Caddy
-# address, the published port — so there is one file here
-# rather than one per channel. What is in it is what is true of any stack this
-# repository does not run on somebody's laptop.
+# What every public deployment changes about the laptop's stack. Everything
+# that differs between the two channels is a variable in the host's environment
+# file, so there is one file here rather than one per channel.
 
 services:
   postgres:
-    # Two stacks cannot both take 5432, and nothing outside the Compose network
-    # has any business reaching either database. The migration suite runs
-    # against a disposable server in the release workflow, so nothing on
-    # the host needs a port here at all.
+    # Nothing outside the Compose network should reach the database, and two
+    # stacks cannot both take 5432. The migration suite runs against a disposable
+    # server in the release workflow, so the host needs no port here.
     ports: !override []
 
-  # A deployed channel seeds no merchant (ADR-0014). A merchant comes into
-  # being one way: a person opens the link mailed to their address and presses
-  # the dashboard's one control. The base file seeds the laptop's key by default,
-  # so this puts nothing in its place, and says nothing rather than reading a
-  # variable, so a channel's environment file that names AGENTIFY_SEED_KEY seeds
-  # nothing either. The release's preflight refuses a rendered seed all the same.
+  # A deployed channel seeds no merchant: one is created only when a person
+  # opens the link mailed to them and presses the dashboard's control. Empty
+  # rather than a variable, so an environment file naming AGENTIFY_SEED_KEY
+  # seeds nothing either; the release's preflight also refuses a rendered seed.
   app:
     environment:
       SANDBOX_MERCHANT_KEY: ""
 
   merchant:
-    # The laptop's fixture, kept out of a public catalog without the laptop
-    # having to ask. The base file leaves this service unprofiled so
-    # `docker compose up` still brings up a stack that sells; here it is given
-    # a profile nothing enables.
-    #
-    # Two things would go wrong if it ran. Its key is the laptop's, which a
-    # deployed channel never seeds: the door turns it away, so the service
-    # never reports healthy and `up -d --wait` cannot finish. And a public
-    # catalog has no business selling an eSIM and a room that nobody sells.
-    #
-    # What this keeps out is the deployment: no public stack runs that process
-    # on its own, unattended. Starting it by hand against a stack takes a key
-    # a merchant issued in their own dashboard, because no deployed channel
-    # seeds one.
+    # The laptop's fixture merchant, given a profile nothing enables. On a
+    # deployed channel its key is never seeded, so it would never turn healthy and
+    # `up -d --wait` could not finish; and a public catalog must not sell its
+    # fixture products. Run by hand, it needs a key issued in a real dashboard.
     profiles: ["fixtures"]
 
   scanner:
-    # Closed unless the channel's own file says otherwise. The laptop has this
-    # on, because the whole path a reader walks — a scan, a mailed link, the
-    # dashboard door — has to work from one command there. What a public site
-    # accepts from strangers is a different question with a different answer,
-    # and it is the operator's to write down rather than the packaging's to
-    # decide: a channel that names nothing here takes no registrations.
+    # Closed unless the channel's own file says otherwise: what a public site
+    # accepts from strangers is the operator's decision, not the packaging's.
     environment:
       REGISTRATION_ENABLED: "${REGISTRATION_ENABLED:-false}"
-      # The two secrets a laptop is allowed to inherit and a deployment is not.
-      # `compose.yaml` gives them sandbox answers so `docker compose up` needs
-      # no file, and those answers are printed in a public repository: one
-      # signs every report link this site hands out, the other is what the
-      # address behind a report is encrypted with. A channel that has not put
-      # its own in place does not render. Activation does that render before
-      # it stops anything, so this refuses with the name of the variable and
-      # the sentence above it, and nothing is stopped.
-      #
-      # Both live in the channel's one environment file, and a channel that
-      # has never existed has them written by hand (deploy/README.md, "Setting
-      # up a host"). Losing them is not a configuration error that can be
-      # corrected later: every link already sent stops verifying and every
+      # compose.yaml gives these two sandbox values that are public in this
+      # repository: one signs every report link, the other encrypts the address
+      # behind a report. A channel without its own does not render, and activation
+      # renders before it stops anything, so nothing is stopped. They live in the
+      # channel's environment file (deploy/README.md, "Setting up a host"). Losing
+      # them cannot be undone: every link already sent stops verifying and every
       # stored address stops decrypting.
       TOKEN_HMAC_SECRET: "${TOKEN_HMAC_SECRET:?set this channel own report-link signing secret; see deploy/README.md, Setting up a host}"
       EMAIL_ENCRYPTION_KEY: "${EMAIL_ENCRYPTION_KEY:?set this channel own address encryption key; see deploy/README.md, Setting up a host}"

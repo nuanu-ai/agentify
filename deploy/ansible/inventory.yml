@@ -1,8 +1,8 @@
 ---
-# The inventory of the Woo acceptance route on TEST (woo-test-hairpin.yml),
-# which is the only playbook left here. The group structure is the
-# repository's; the address and the login name are the operator's and are not
-# kept here. Supply them from an untracked file beside this one:
+# The inventory of the Woo acceptance route on TEST (woo-test-hairpin.yml).
+# The group structure is the repository's; the address and the login name are
+# the operator's and are not kept here. Supply them from an untracked file
+# beside this one:
 #
 #   cp deploy/ansible/inventory.local.yml.example deploy/ansible/inventory.local.yml
 #   ansible-playbook -i deploy/ansible/inventory.yml \

@@ -3,10 +3,10 @@
 # name is deploy/stack.sh's, never this file's. Use with compose.yaml and
 # deploy/compose.public.yaml, in that order.
 services:
-  # The init scripts from a path no release changes, which deploy/stack.sh
-  # names and deploy/activate.sh keeps equal to the checkout's copy. Mounted
-  # from the checkout, they changed path with every revision, and Compose
-  # recreated the database on every release.
+  # The init scripts come from a path no release changes, which deploy/stack.sh
+  # names and deploy/activate.sh keeps equal to the checkout's copy. Not from the
+  # checkout: that path changes with every revision, and Compose would recreate
+  # the database on every release.
   postgres:
     volumes:
       - "${AGENTIFY_POSTGRES_INIT:?deploy/stack.sh names the database's init scripts}:/docker-entrypoint-initdb.d:ro"
@@ -23,7 +23,7 @@ services:
     environment:
       DATABASE_URL: "postgres://agentify:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify"
 
-  # One database and one account for every process (ADR-0003).
+  # One database and one account for every process.
   scanner-migrate:
     environment:
       DATABASE_URL: "postgres://agentify:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify"
