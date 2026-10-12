@@ -71,11 +71,22 @@ export const middleware: MiddlewareFunction<Response>[] = [
     const response = await next();
     // Once a day the read moves the session's end, and the browser must be
     // told or its cookie expires thirty days after sign-in however often its
-    // person returns.
-    for (const line of answer.setCookies) response.headers.append("set-cookie", line);
+    // person returns. The renewal goes before the page's own lines, so a page
+    // that clears the session has the last word.
+    const own = response.headers.getSetCookie();
+    response.headers.delete("set-cookie");
+    for (const line of [...answer.setCookies, ...own]) response.headers.append("set-cookie", line);
     return response;
   },
 ];
+
+/**
+ * The root's page for trouble, drawn from here for the pages behind the gate:
+ * after a failed action React Router reads only the loaders above the boundary
+ * that draws the failure, and the root's chrome is one of them only when that
+ * boundary is below the root.
+ */
+export { ErrorBoundary } from "../root.js";
 
 /** The address every page behind the gate is drawn for, and names. */
 export const loader = ({ context }: LoaderFunctionArgs) => ({ who: context.get(signedIn).email });

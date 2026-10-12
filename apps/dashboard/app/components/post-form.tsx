@@ -11,7 +11,9 @@ import { DRAWN_FOR } from "../../src/drawn-for.js";
  * `document` posts with a whole page load, for an action still served by a
  * string page; otherwise React Router sends it. Either way it is an HTML form
  * that works with no script, and with script its button shows the press at
- * once and takes no second one.
+ * once and takes no second one until the page that answers it is drawn, so a
+ * page read again after the press never shows the old state pressable; a page
+ * that answers its own press keeps the person where they were on it.
  *
  * `autoComplete="off"` because Firefox restores a hidden field's old value on
  * reload, which would put the first address back into a page redrawn for
@@ -36,12 +38,13 @@ export function PostForm({
   const navigation = useNavigation();
   const [sent, setSent] = useState(false);
   const pending =
-    sent || (navigation.state === "submitting" && navigation.formAction?.endsWith(action) === true);
+    sent || (navigation.state !== "idle" && navigation.formAction?.endsWith(action) === true);
   return (
     <Form
       method="post"
       action={action}
       reloadDocument={document}
+      preventScrollReset
       className={className}
       onSubmit={document ? () => setSent(true) : undefined}
     >

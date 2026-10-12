@@ -36,7 +36,6 @@ const Wrappable = ({ parts }: Readonly<{ parts: readonly string[] }>) => (
   </>
 );
 
-/** The switches post to a page still served as a string, so with a whole page load. */
 const Control = ({
   id,
   control,
@@ -44,11 +43,7 @@ const Control = ({
 }: Readonly<{ id: string; control: CardControl; base: string }>) => {
   if (control.kind === "switch") {
     return (
-      <PostForm
-        document
-        className="inline"
-        action={`/cards/${encodeURIComponent(id)}/${control.verb}`}
-      >
+      <PostForm className="inline" action={`/cards?${new URLSearchParams({ [control.verb]: id })}`}>
         {(pending) => (
           <Button
             compact
@@ -89,7 +84,7 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
         </div>
         <div className="actions">
           {allSelling === null ? null : (
-            <PostForm document className="inline" action={`/selling/${allSelling.verb}`}>
+            <PostForm className="inline" action={`/cards?selling=${allSelling.verb}`}>
               {(pending) => (
                 <Button
                   variant={allSelling.verb === "resume" ? "primary" : "secondary"}

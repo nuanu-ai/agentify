@@ -89,7 +89,11 @@ tested over HTTP against the real gateway.
 
 Every form is an HTML form that works without script. With script, a moved
 page's forms show the press at once and its section links open without a page
-load, fetched while the pointer rests on them. The page a mailed link lands on
+load, fetched while the pointer rests on them. A press answered back on its own
+page stays inside the application, which reads the page again; every press
+gives the browser a new cookie, and the page data a browser keeps for that
+fetch varies by cookie, so nothing kept before a press is shown after it. The
+page a mailed link lands on
 runs no script at all, because it holds a one-time token. The page that shows
 a new key's secret, once, still carries an inline script that replaces its
 history entry so that a reload returns to the list instead of issuing another

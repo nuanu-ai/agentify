@@ -34,7 +34,7 @@ import express, { type Express, type Request, type Response } from "express";
 import type { DashboardConfig } from "./config.js";
 import type { DashboardIdentity, Person } from "./dashboard-entry.js";
 import { DRAWN_FOR } from "./drawn-for.js";
-import { clearingLines, gateFor } from "./gate.js";
+import { gateFor } from "./gate.js";
 import {
   type Acting,
   type Answer,
@@ -51,16 +51,13 @@ import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import { printable } from "./printable.js";
 import { notDrawnForYouScreen, notFoundScreen, unsetIn, type Viewer } from "./screens.js";
 import {
-  chooseNameScreen,
   integrationsScreen,
   NAME_CANNOT_BE_TAKEN_AWAY,
-  NAME_NEEDED,
   SITE_CANNOT_BE_TAKEN_AWAY,
   settingsScreen,
   whatIsWrongWithTheName,
   whatIsWrongWithTheSite,
 } from "./seller-name.js";
-import { merchantSetupScreen } from "./sign-in.js";
 import {
   cardsFromTheShop,
   decimalOfMinorUnits,
@@ -244,7 +241,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     parts.clientFor ??
     ((acting: Acting, answerWithinMs?: number) =>
       gatewayFor(parts.gateway, acting, answerWithinMs));
-  const registrar = parts.registrar ?? registrarFor(parts.gateway);
   /**
    * Only called below the gate, which sends an account with no merchant to the
    * control that makes one, so a missing merchant here is a defect, not a case.
@@ -260,12 +256,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       );
     }
     return clientFor({ merchantId: merchant.id, email: person.email }, answerWithinMs);
-  };
-
-  const forget = (response: Response): void => {
-    for (const line of clearingLines(identity, config.cookieSecure)) {
-      response.append("set-cookie", line);
-    }
   };
 
   const gate = gateFor(base, identity, config.cookieSecure);
@@ -296,6 +286,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       pageServicesFor(config, {
         identity,
         clientFor: (acting) => clientFor(acting),
+        registrar: parts.registrar ?? registrarFor(parts.gateway),
         wooOffered: wooShops !== undefined,
       }),
     ),
@@ -418,18 +409,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     });
   }
 
-  const registerMerchant = async (): Promise<string | null> => {
-    const made = await registrar.register();
-    if (!made.ok) {
-      console.error(`[dashboard] no merchant was made: ${made.why}`);
-      return null;
-    }
-    return made.document;
-  };
-
-  const attachMerchant = async (person: Person) =>
-    await identity.attachMerchant(person.id, registerMerchant);
-
   /**
    * The gate: everything below needs a session; everything above is on the list
    * a test holds.
@@ -466,89 +445,15 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     })();
   });
 
-  app.get(`${base}/`, (request, response) => {
-    response.redirect(303, whoIs(request).merchant === null ? `${base}/merchant` : `${base}/cards`);
-  });
-
-  /**
-   * Drawing it makes nothing; only the same-origin press asks the gateway for
-   * the merchant.
-   */
-  app.get(`${base}/merchant`, (request, response) => {
-    const person = whoIs(request);
-    if (person.merchant !== null) {
-      response.redirect(303, `${base}/cards`);
-      return;
-    }
-    response.type("html").send(merchantSetupScreen(base, config.surfaceMode, person.email));
-  });
-
-  app.post(`${base}/merchant`, async (request, response) => {
-    const person = whoIs(request);
-    if (person.merchant !== null) {
-      response.redirect(303, `${base}/cards`);
-      return;
-    }
-    const attached = await attachMerchant(person);
-    if (attached.status === "attached") {
-      response.redirect(303, `${base}/choose-name`);
-      return;
-    }
-    if (attached.status === "already-attached") {
-      response.redirect(303, `${base}/cards`);
-      return;
-    }
-    if (attached.status === "person-missing") {
-      forget(response);
-      response.redirect(303, `${base}/sign-in`);
-      return;
-    }
-    // A press that did not make a merchant leaves the person signed in to press
-    // again rather than spending another link.
-    response
-      .status(503)
-      .type("html")
-      .send(merchantSetupScreen(base, config.surfaceMode, person.email, true));
-  });
-  // A person without a merchant reaches only the screen above, its press and
-  // the sign-out; every commerce route below needs the complete merchant and
-  // sends anybody else to that screen.
+  // A person without a merchant reaches only the screen that makes one, its
+  // press and the sign-out, all drawn by React Router; every commerce route
+  // below needs the complete merchant and sends anybody else to that screen.
   app.use((request, response, next) => {
     if (whoIs(request).merchant === null) {
       response.redirect(303, `${base}/merchant`);
       return;
     }
     next();
-  });
-
-  /**
-   * Asks the gateway for nothing: a merchant arrives here a second after
-   * creation, with no name to draw. Coming back later gives the same form,
-   * which sets the name as settings does.
-   */
-  app.get(`${base}/choose-name`, (request, response) => {
-    response.type("html").send(chooseNameScreen(base, config.surfaceMode, whoIs(request).email));
-  });
-
-  app.post(`${base}/choose-name`, async (request, response) => {
-    const typed = nameIn(request);
-    // Empty means the button was pressed with nothing in the box; the
-    // catalogue's rule is not what they broke.
-    const wrong = typed === "" ? NAME_NEEDED : whatIsWrongWithTheName(typed);
-    if (wrong !== null) {
-      response
-        .status(400)
-        .type("html")
-        .send(chooseNameScreen(base, config.surfaceMode, whoIs(request).email, wrong, typed));
-      return;
-    }
-
-    const set = await gatewayAs(request).setSellerName(typed);
-    if (!set.ok) {
-      return trouble(response, base, set);
-    }
-    noted(whoIs(request), "chose the name their products are sold under");
-    response.redirect(303, `${base}/cards`);
   });
 
   /**
@@ -1323,31 +1228,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       }
       const query = shopUrl === null ? "" : `?${new URLSearchParams({ shop_url: shopUrl })}`;
       response.redirect(303, `${base}/woocommerce${query}`);
-    });
-  }
-
-  for (const [verb, paused] of [
-    ["pause", true],
-    ["resume", false],
-  ] as const) {
-    app.post(`${base}/cards/:item_id/${verb}`, async (request, response) => {
-      const itemId = request.params.item_id ?? "";
-      const switched = await gatewayAs(request).pauseCard(itemId, paused);
-      if (!switched.ok) {
-        return trouble(response, base, switched);
-      }
-      noted(whoIs(request), `${paused ? "paused" : "resumed"} the card ${itemId}`);
-      // A redirect, so a reload does not press the switch again.
-      response.redirect(303, `${base}/cards`);
-    });
-
-    app.post(`${base}/selling/${verb}`, async (request, response) => {
-      const switched = await gatewayAs(request).setSelling(!paused);
-      if (!switched.ok) {
-        return trouble(response, base, switched);
-      }
-      noted(whoIs(request), paused ? "stopped all selling" : "started selling again");
-      response.redirect(303, `${base}/cards`);
     });
   }
 

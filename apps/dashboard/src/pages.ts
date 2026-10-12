@@ -13,6 +13,7 @@
  * everything above the body parser in `server.ts` run before this.
  */
 
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { extname, join } from "node:path";
@@ -37,6 +38,16 @@ const BUILT_ASSETS = join(APP_ROOT, "dist", "client", ASSETS_DIRECTORY);
 
 /** The largest form any page here posts, and more than any of them needs. */
 const FORM_AT_MOST = 16 * 1024;
+
+/**
+ * A cookie each press gives the browser anew, so that page data kept before a
+ * press is never handed to a read after it, whichever page the read is for and
+ * wherever the press was posted: React Router reads its page again after a
+ * press at the very address a prefetch or the press before already filled.
+ * It names and opens nothing, so it needs neither `Secure` nor clearing at
+ * sign-out.
+ */
+const PRESSED = "agentify.dashboard_pressed";
 
 /**
  * The pages as one build: compiled ahead of time in a deployment, or compiled
@@ -253,6 +264,14 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
     `${basename.replace(/\/$/, "")}${build.routeDiscovery.manifestPath}`;
 
   return (request: Request, response: Response, next: NextFunction): void => {
+    // A browser with no cookie at all keeps nothing of a page, and the shop's
+    // callback is no browser.
+    if (request.method === "POST" && request.headers.cookie !== undefined) {
+      response.append(
+        "set-cookie",
+        `${PRESSED}=${randomBytes(12).toString("base64url")}; Path=${basename}; HttpOnly; SameSite=Lax`,
+      );
+    }
     void (async () => {
       const { build, routes, handle } = mount(
         typeof pages.build === "function" ? await pages.build() : pages.build,
@@ -294,13 +313,9 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       }
       // A page here may show the signed-in address, so no shared cache keeps
       // any answer. A page's data may be kept by this browser for ten seconds,
-      // per session cookie, because a browser hands a prefetched answer to the
-      // click that follows only while it is fresh. The price: a press posted
-      // to another address, such as a string page's switch, does not drop the
-      // data kept for this one, so for up to ten seconds after it a page opened
-      // inside the application may show its data from before the press. An
-      // action React Router sends posts to its own page's address and drops
-      // that page's data.
+      // per cookie, because a browser hands a prefetched answer to the click
+      // that follows only while it is fresh; a press changes a cookie, so
+      // nothing kept before it is read after it.
       const reading = request.method === "GET" || request.method === "HEAD";
       if (reading && request.path.endsWith(".data") && served.keepsData) {
         response.setHeader("cache-control", "private, max-age=10");

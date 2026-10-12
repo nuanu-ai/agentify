@@ -1,14 +1,14 @@
 /**
- * The screens where the name buyers read beside every product is chosen and
- * changed. Skipping is allowed on the first screen, but never silently: until a
- * name is set, publishing a card is refused, and every screen a merchant works
- * on says so with a way to fix it.
+ * The rules for the name buyers read beside every product and for the shop's
+ * site, in words, and the settings screen where both are changed. The screen
+ * where a new merchant first chooses the name is drawn by React Router
+ * (`app/screens/setup.tsx`) from the words here.
  */
 
 import { SellerSiteSchema, ServiceNameSchema } from "@nuanu-ai/agentify-contracts";
 import { accountSettings } from "./account-settings.js";
 import { STOP_ALL_SELLING } from "./control-labels.js";
-import { bare, brandLockup, escaped, page } from "./html.js";
+import { escaped, page } from "./html.js";
 import { payoutWalletBlock } from "./payout-wallet.js";
 import { refusedForNoName, type Viewer } from "./screens.js";
 import { wooSettingsBlock } from "./woo-screens.js";
@@ -79,47 +79,6 @@ export interface RefusedSite {
   readonly problem: string;
   readonly typed: string;
 }
-
-/**
- * The example is the shape of the common mistake: the name people already know,
- * not a description of the goods. A catalogue written into this box becomes the
- * listing name, and nothing further down the line corrects it.
- */
-const WHAT_IT_IS_FOR = `<p>Buyers see this seller name beside your products and in the payment they approve. Use the name people already know you by, rather than a description of what you sell.</p>`;
-
-/**
- * No navigation: this is the last step of first-time setup. Skipping is a link
- * to the cards screen, where the same missing-name notice waits with the page
- * that fixes it.
- */
-export const chooseNameScreen = (
-  base: string,
-  mode: Viewer["mode"],
-  who: string,
-  problem?: string,
-  typed = "",
-): string =>
-  bare(
-    base,
-    "The name your products are sold under",
-    `<div class="gate">
-${brandLockup("/")}
-<form class="gate-card" method="post" action="${escaped(base)}/choose-name">
-  <h1>Choose your seller name</h1>
-  <p>Your account is ready. Choose the seller name buyers will see.</p>
-  <label for="seller_name">The name your products are sold under</label>
-  <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typed)}" autofocus required>
-  ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
-  ${problem === NAME_REFUSED ? "" : `<p class="quiet">${escaped(NAME_RULE)}</p>`}
-  <button class="button button-primary" type="submit">Use this name</button>
-  ${WHAT_IT_IS_FOR}
-  <p class="quiet">You can change it in <a href="${escaped(base)}/settings">Settings</a>; until it is set, nothing you publish goes on sale.</p>
-  <p class="quiet gate-skip">Not decided yet? <a href="${escaped(base)}/cards">Leave it for now</a>.</p>
-</form>
-</div>`,
-    mode,
-    who,
-  );
 
 /**
  * The name buyers read, the payout wallet (`payout-wallet.ts`) and the account

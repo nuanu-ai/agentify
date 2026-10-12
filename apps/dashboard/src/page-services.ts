@@ -19,9 +19,11 @@ import {
   type Person,
 } from "./dashboard-entry.js";
 import { clearingLines, dashboardPathFor, type Gate, gateFor, startOf } from "./gate.js";
-import type { Acting, Answer, GatewayClient } from "./gateway.js";
+import type { Acting, Answer, GatewayClient, Registrar } from "./gateway.js";
 import { SESSION_DAYS } from "./identity.js";
+import { printable } from "./printable.js";
 import type { Viewer } from "./screens.js";
+import { NAME_NEEDED, NAME_REFUSED, NAME_RULE, whatIsWrongWithTheName } from "./seller-name.js";
 import {
   type CardsView,
   cardsView,
@@ -100,6 +102,23 @@ export type OpenLinkView =
   | Readonly<{ screen: "open"; token: string; email: string }>
   | Readonly<{ screen: "refused" }>;
 
+/**
+ * The one control that makes a merchant. `unavailable` is a press that did
+ * not make one, which leaves the person signed in to press again.
+ */
+export interface MerchantView {
+  readonly unavailable: boolean;
+}
+
+/** The screen where a new merchant chooses the name buyers read. */
+export interface ChooseNameView {
+  /** What was typed, given back with its refusal so it can be corrected. */
+  readonly typed: string;
+  readonly problem?: string;
+  /** The catalogue's rule in words; null where the refusal already says it. */
+  readonly rule: string | null;
+}
+
 export interface PageServices {
   /** "" when mounted at the root of its origin. */
   readonly base: string;
@@ -111,6 +130,28 @@ export interface PageServices {
     landing(cookie: string | undefined, query: URLSearchParams): Promise<Outcome<OpenLinkView>>;
     open(cookie: string | undefined, form: FormData): Promise<Outcome<OpenLinkView>>;
     signOut(cookie: string | undefined): Promise<Outcome<never>>;
+  };
+  /**
+   * The way in for a person the gate let through: where the dashboard's own
+   * address leads, and the control that makes a merchant for a person with
+   * none.
+   */
+  readonly start: {
+    where(person: Person): Outcome<never>;
+    merchant(person: Person): Outcome<MerchantView>;
+    openMerchant(person: Person): Promise<Outcome<MerchantView>>;
+  };
+  /** Choosing the name buyers read, the last step of a new merchant's setup. */
+  readonly sellerName: {
+    page(): Outcome<ChooseNameView>;
+    choose(person: Person, form: FormData): Promise<Outcome<ChooseNameView>>;
+  };
+  /**
+   * A switch pressed on the cards, named in the address the press is posted
+   * to: `pause` or `resume` with a card, or `selling` with either way.
+   */
+  readonly selling: {
+    press(person: Person, query: URLSearchParams): Promise<Outcome<never>>;
   };
   /** The screens about a merchant's selling, for a person the gates let through. */
   readonly screens: {
@@ -127,6 +168,11 @@ export interface PageParts {
    * account's row, built per request so two people are two merchants.
    */
   readonly clientFor: (acting: Acting) => GatewayClient;
+  /**
+   * Makes a merchant; not a client method, because the person has no merchant
+   * yet to bind a client to.
+   */
+  readonly registrar: Registrar;
   /** Whether this dashboard offers the WooCommerce connector at all. */
   readonly wooOffered: boolean;
 }
@@ -145,6 +191,16 @@ const problemOf = (answer: Answer<unknown> & { ok: false }): Outcome<never> => (
     said: `${answer.why.slice(0, 1).toUpperCase()}${answer.why.slice(1)}`,
   },
 });
+
+/**
+ * A process log, not an audit trail: it rotates, goes with the container, and
+ * is written by the process it records. The whole line goes through
+ * `printable`, so nothing interpolated into it can forge a second line in the
+ * record of who stopped the selling.
+ */
+const noted = (person: Person, did: string): void => {
+  console.log(printable(`[dashboard] ${person.email} ${did}`));
+};
 
 /**
  * Not the real grammar of an address: it catches the mistakes made in a form (a
@@ -183,6 +239,24 @@ const LINK_HEADERS = { "referrer-policy": "strict-origin" } as const;
  */
 const once = (values: readonly unknown[]): unknown => (values.length === 1 ? values[0] : undefined);
 
+/**
+ * Which switch a press on the cards names: one card's, or all selling's when
+ * no card is named. A press naming anything else, or anything twice, names no
+ * switch at all rather than whichever was read first.
+ */
+const switchIn = (query: URLSearchParams): Readonly<{ card?: string; paused: boolean }> | null => {
+  const named = [...new Set(query.keys())];
+  const [key] = named;
+  const value = key === undefined ? undefined : once(query.getAll(key));
+  if (named.length !== 1 || typeof value !== "string" || value === "") return null;
+  if (key === "selling") {
+    return value === "pause" || value === "resume" ? { paused: value === "pause" } : null;
+  }
+  return key === "pause" || key === "resume" ? { card: value, paused: key === "pause" } : null;
+};
+
+const NO_SUCH_SWITCH = "There is no such switch on the cards.";
+
 export function pageServicesFor(config: DashboardConfig, parts: PageParts): PageServices {
   const base = config.basePath;
   const { identity } = parts;
@@ -211,6 +285,15 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       );
     }
     return parts.clientFor({ merchantId: person.merchant.id, email: person.email });
+  };
+
+  const registerMerchant = async (): Promise<string | null> => {
+    const made = await parts.registrar.register();
+    if (!made.ok) {
+      console.error(`[dashboard] no merchant was made: ${made.why}`);
+      return null;
+    }
+    return made.document;
   };
 
   /**
@@ -377,6 +460,97 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           location: `${base}/sign-in`,
           setCookies: clearingLines(identity, config.cookieSecure),
         };
+      },
+    },
+
+    start: {
+      where: (person) => ({
+        kind: "redirect",
+        location: person.merchant === null ? `${base}/merchant` : `${base}/cards`,
+      }),
+
+      // Drawing it makes nothing; only the same-origin press asks the gateway
+      // for the merchant.
+      merchant: (person) =>
+        person.merchant === null
+          ? { kind: "view", view: { unavailable: false } }
+          : { kind: "redirect", location: `${base}/cards` },
+
+      async openMerchant(person) {
+        if (person.merchant !== null) {
+          return { kind: "redirect", location: `${base}/cards` };
+        }
+        const attached = await identity.attachMerchant(person.id, registerMerchant);
+        if (attached.status === "attached") {
+          return { kind: "redirect", location: `${base}/choose-name` };
+        }
+        if (attached.status === "already-attached") {
+          return { kind: "redirect", location: `${base}/cards` };
+        }
+        if (attached.status === "person-missing") {
+          return {
+            kind: "redirect",
+            location: `${base}/sign-in`,
+            setCookies: clearingLines(identity, config.cookieSecure),
+          };
+        }
+        // A press that did not make a merchant leaves the person signed in to
+        // press again rather than spending another link.
+        return { kind: "view", status: 503, view: { unavailable: true } };
+      },
+    },
+
+    sellerName: {
+      // Asks the gateway for nothing: a merchant arrives here a second after
+      // creation, with no name to draw. Coming back later gives the same form,
+      // which sets the name as settings does.
+      page: () => ({ kind: "view", view: { typed: "", rule: NAME_RULE } }),
+
+      async choose(person, form) {
+        // Trimmed rather than refused, because a leading space is a typing
+        // accident and the catalogue's rule would make a padded name a second
+        // spelling. A missing field reads as an empty one.
+        const named = once(form.getAll("seller_name"));
+        const typed = typeof named === "string" ? named.trim() : "";
+        // Empty means the button was pressed with nothing in the box; the
+        // catalogue's rule is not what they broke.
+        const problem = typed === "" ? NAME_NEEDED : whatIsWrongWithTheName(typed);
+        if (problem !== null) {
+          return {
+            kind: "view",
+            status: 400,
+            view: { typed, problem, rule: problem === NAME_REFUSED ? null : NAME_RULE },
+          };
+        }
+        const set = await gatewayAs(person).setSellerName(typed);
+        if (!set.ok) return problemOf(set);
+        noted(person, "chose the name their products are sold under");
+        return { kind: "redirect", location: `${base}/cards` };
+      },
+    },
+
+    selling: {
+      async press(person, query) {
+        const pressed = switchIn(query);
+        if (pressed === null) {
+          return { kind: "problem", problem: { status: 404, said: NO_SUCH_SWITCH } };
+        }
+        const gateway = gatewayAs(person);
+        const switched =
+          pressed.card === undefined
+            ? await gateway.setSelling(!pressed.paused)
+            : await gateway.pauseCard(pressed.card, pressed.paused);
+        if (!switched.ok) return problemOf(switched);
+        noted(
+          person,
+          pressed.card === undefined
+            ? pressed.paused
+              ? "stopped all selling"
+              : "started selling again"
+            : `${pressed.paused ? "paused" : "resumed"} the card ${pressed.card}`,
+        );
+        // A redirect, so a reload does not press the switch again.
+        return { kind: "redirect", location: `${base}/cards` };
       },
     },
 
