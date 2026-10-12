@@ -87,11 +87,24 @@ export type Answer<T> =
       readonly code?: string;
     };
 
+/**
+ * Why a refund fell due: the merchant refused an order already paid for, its
+ * delivery deadline passed, the merchant left, or the payment network
+ * confirmed the charge only after the gateway had stopped waiting for it and
+ * closed the order.
+ */
+export type RefundCause = "refused" | "deadline_passed" | "merchant_left" | "charge_confirmed_late";
+
 export interface GatewayClient {
   cards(): Promise<Answer<MerchantCardList>>;
   pauseCard(itemId: string, paused: boolean): Promise<Answer<MerchantCard>>;
   setSelling(selling: boolean): Promise<Answer<MerchantCardList>>;
   orders(open: boolean): Promise<Answer<OrderList>>;
+  /**
+   * Why each order owing a refund owes it, by order, for the callout that says
+   * so. The order document carries the debt and not its cause.
+   */
+  refundsOwed(): Promise<Answer<Readonly<Record<string, RefundCause>>>>;
   receipts(): Promise<Answer<ReceiptList>>;
   /**
    * The keys the merchant issued for their own code. Every one can be
@@ -441,6 +454,28 @@ export const gatewayFor = (
           merchantOrderList(await application.orders(merchantId, open ? true : undefined)),
         ),
       ),
+    refundsOwed: () =>
+      call("reading why refunds are owed", async () => {
+        const owed: Record<string, RefundCause> = {};
+        for (const record of await application.orders(merchantId, true)) {
+          const cause =
+            record.order.state === "refund_due" ? record.order.closure?.cause : undefined;
+          const said =
+            cause === "merchant_refused"
+              ? "refused"
+              : cause === "deadline_expired"
+                ? "deadline_passed"
+                : cause === "merchant_departed"
+                  ? "merchant_left"
+                  : cause === "payment_outcome_unknown"
+                    ? "charge_confirmed_late"
+                    : undefined;
+          if (said !== undefined) {
+            owed[record.order.id] = said;
+          }
+        }
+        return done(owed);
+      }),
     receipts: () =>
       call("reading the receipts", async () =>
         answered(API_ROUTES.list_receipts, await application.receipts(merchantId)),

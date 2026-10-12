@@ -23,6 +23,7 @@ import {
   type ReceiptList,
 } from "@nuanu-ai/agentify-contracts";
 import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
+import type { RefundCause } from "./gateway.js";
 import {
   bare,
   brandLockup,
@@ -474,6 +475,7 @@ export const ordersScreen = (
   cards: MerchantCardList,
   orders: OrderList,
   open: boolean,
+  owed: Readonly<Record<string, RefundCause>> = {},
 ): string => {
   const { base } = viewer;
   const titles = new Map(
@@ -526,7 +528,7 @@ ${wanting
   .map(
     (order) => `  <div class="callout">
     <div class="what">Order <span class="mono">${escaped(order.id)}</span> ${escaped(ORDER_WORDS[order.status].text)}</div>
-    <div class="why">${escaped(whyItNeedsYou(order.status))}${whereTheRestIs(order.status)}</div>
+    <div class="why">${escaped(whyItNeedsYou(order.status, owed[order.id]))}${whereTheRestIs(order.status)}</div>
   </div>
 `,
   )
@@ -581,9 +583,28 @@ const testOrders = (orders: OrderList): string => {
   )}</p>`;
 };
 
-const whyItNeedsYou = (status: OrderList["orders"][number]["status"]): string =>
+/**
+ * How a refund came to be owed, said as it happened. Where the cause could not
+ * be read the sentence says only what holds for every debt, rather than
+ * guessing the commonest cause.
+ */
+const OWED_BECAUSE: Readonly<Record<RefundCause, string>> = {
+  refused:
+    "The payment was received, then your integration refused the order, so the product was not delivered.",
+  deadline_passed:
+    "The payment was received, the delivery window ran out, and the product was not delivered.",
+  merchant_left:
+    "The payment was received, and the order closed undelivered when you left Agentify.",
+  charge_confirmed_late:
+    "The payment network confirmed the payment only after we had stopped waiting for it and closed the order, so the product was not delivered.",
+};
+
+const whyItNeedsYou = (
+  status: OrderList["orders"][number]["status"],
+  cause: RefundCause | undefined,
+): string =>
   status === "refund_due"
-    ? "The payment was received, the delivery window ran out, and the product was not delivered. You return it from your own wallet — we recorded the amount and the order. A late delivery still clears the debt."
+    ? `${cause === undefined ? "The payment was received and the product was not delivered." : OWED_BECAUSE[cause]} You return it from your own wallet — we recorded the amount and the order. A late delivery still clears the debt.`
     : "Your integration returned the product, but the payment did not go through, so the product was not released to the buyer. The order stays open.";
 
 /**

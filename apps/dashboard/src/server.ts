@@ -1856,10 +1856,11 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     // and what a merchant reconciling their books relies on.
     const open = request.query.open === "true";
     const gateway = gatewayAs(request);
-    const [cards, orders, name] = await Promise.all([
+    const [cards, orders, name, owed] = await Promise.all([
       gateway.cards(),
       gateway.orders(open),
       gateway.sellerName(),
+      gateway.refundsOwed(),
     ]);
     if (!cards.ok) {
       return trouble(response, base, cards);
@@ -1870,10 +1871,19 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     if (!name.ok) {
       return trouble(response, base, name);
     }
+    if (!owed.ok) {
+      return trouble(response, base, owed);
+    }
     response
       .type("html")
       .send(
-        ordersScreen(viewing(request, base, name.document), cards.document, orders.document, open),
+        ordersScreen(
+          viewing(request, base, name.document),
+          cards.document,
+          orders.document,
+          open,
+          owed.document,
+        ),
       );
   });
 

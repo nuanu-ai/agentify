@@ -3102,6 +3102,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
           setSellerSite: answer,
           payoutWallet: answer,
           integration: answer,
+          refundsOwed: answer,
         }) as never,
     });
     return { browser, close: async () => undefined };
