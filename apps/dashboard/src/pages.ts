@@ -104,7 +104,21 @@ export async function pagesFromSource({ live }: { readonly live: boolean }): Pro
   return {
     build: async () =>
       (await vite.ssrLoadModule("virtual:react-router/server-build")) as ServerBuild,
-    assets: live ? { path: "/", handle: vite.middlewares } : null,
+    assets: live
+      ? {
+          path: "/",
+          // Vite takes its base off the address of every request it passes
+          // on, so the address is put back before the dashboard's own
+          // handlers read it.
+          handle: (request, response, next) => {
+            const asked = request.url;
+            vite.middlewares(request, response, () => {
+              request.url = asked;
+              next();
+            });
+          },
+        }
+      : null,
     mode: live ? "development" : "production",
     close: () => vite.close(),
   };
