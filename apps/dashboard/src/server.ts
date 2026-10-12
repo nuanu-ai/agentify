@@ -45,6 +45,7 @@ import {
 } from "./gateway.js";
 import { bare, brandLockup, escaped } from "./html.js";
 import { keysScreen, newKeyScreen } from "./keys.js";
+import { noted } from "./noted.js";
 import { pageServicesFor } from "./page-services.js";
 import { type Pages, pagesHandler } from "./pages.js";
 import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
@@ -1657,20 +1658,6 @@ const shownIn = (
 const walletIn = (request: Request): string => {
   const form = (request.body ?? {}) as { payout_wallet?: unknown };
   return typeof form.payout_wallet === "string" ? form.payout_wallet.trim() : "";
-};
-
-/**
- * A process log, not an audit trail: it rotates, goes with the container, and
- * is written by the process it records. Never a one-time token, a link, a
- * session identifier or a merchant key.
- *
- * The whole line goes through `printable`, not only the field that first needed
- * it (a key's label, open to any alphabet and unbounded): a label with a
- * newline and a plausible sentence would forge a second line in the record of
- * who stopped the selling. Doing it here covers whatever is interpolated next.
- */
-const noted = (person: Person, did: string): void => {
-  console.log(printable(`[dashboard] ${person.email} ${did}`));
 };
 
 /**
