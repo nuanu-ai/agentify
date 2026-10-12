@@ -111,6 +111,13 @@ export interface WooView {
    * beside the control that asked, not under the Connect box.
    */
   readonly leaving?: string;
+  /**
+   * Why selling through the connected shop was refused, or why Import was,
+   * for a merchant still on their code: drawn beside the switch.
+   */
+  readonly switching?: string;
+  /** Whether the merchant's selling is stopped, so that nothing imported sells. */
+  readonly stopped?: boolean;
   /** What they typed, so a refusal leaves the box as they left it. */
   readonly typed?: string;
   /**
@@ -315,6 +322,25 @@ const theWayBack = (
   </form>
 `;
 
+/**
+ * The switch to the connected shop, for a merchant whose shop is here while
+ * they sell through their own code: a Disconnect cut off between moving them
+ * back and forgetting the shop leaves them so, and so can two tabs. Nothing
+ * imported sells until they press it.
+ */
+const theSwitch = (
+  base: string,
+  view: WooView,
+): string => `  <form class="issue" method="post" action="${escaped(base)}/woocommerce/switch">
+    <div>
+      <label>You sell through your own code</label>
+      <p class="quiet">This shop is connected, but its cards are off sale and nothing can be imported while you sell through your own code. Selling through the shop takes the cards your code published off sale, and your code receives no orders until you disconnect the shop here.</p>
+      ${view.switching === undefined ? "" : `<p class="problem">${escaped(view.switching)}</p>`}
+    </div>
+    <button class="button button-primary" type="submit">Sell through this shop</button>
+  </form>
+`;
+
 /** The box the shop's address is typed into. */
 const theForm = (base: string, view: WooView): string => `  <div class="lede">
     <div>
@@ -363,7 +389,12 @@ const theConnection = (
       }
     </div>
   </div>
-  <form class="issue" method="post" action="${escaped(base)}/woocommerce/import">
+${view.through === "api" ? theSwitch(base, view) : ""}${
+  view.stopped === true
+    ? `  <p class="quiet">Selling is stopped, so nothing imported sells until you start it again on <a href="${escaped(base)}/cards">Cards</a>.</p>
+`
+    : ""
+}  <form class="issue" method="post" action="${escaped(base)}/woocommerce/import">
     <div>
       <label>Import the catalog</label>
       <p class="quiet">Reads up to ${PRODUCTS_AT_MOST} products and publishes only the product configuration currently supported by this connector, described above. Other products stay in your shop. If the shop has more than ${PRODUCTS_AT_MOST} products, the whole import is refused. Running it again updates the same cards.</p>
@@ -377,7 +408,7 @@ const theConnection = (
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/disconnect">
     <div>
       <label>Disconnect</label>
-      <p class="quiet">Deletes the keys your shop gave us and switches you back to selling through your own code: the shop's cards go off sale, and the cards your code published come back, with selling stopped until you start it again on Cards. Orders still waiting on the shop have to finish first, a parcel until it is marked Completed in WooCommerce. To revoke the keys in the shop too, open WooCommerce → Settings → Advanced → REST API.</p>
+      <p class="quiet">Deletes the keys your shop gave us and switches you back to selling through your own code: the shop's cards go off sale, and the cards your code published come back, with selling stopped until you start it again on Cards. Orders still waiting on the shop have to finish first, a parcel until it is marked Completed in WooCommerce. A parcel already owed a refund is no longer followed once the shop is disconnected, so marking it Completed after that does not clear the debt. To revoke the keys in the shop too, open WooCommerce → Settings → Advanced → REST API.</p>
       ${view.leaving === undefined ? "" : `<p class="problem">${escaped(view.leaving)}</p>`}
     </div>
     <button class="button button-secondary" type="submit">Forget this shop</button>

@@ -1522,6 +1522,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       view: {
         problem?: string;
         leaving?: string;
+        switching?: string;
         typed?: string;
         cameBack?: boolean;
         refused?: readonly Unset[];
@@ -1557,6 +1558,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
             state,
             unset: standing.document.unset,
             through: integration.document.through,
+            stopped: integration.document.selling !== "open",
           }),
         );
     };
@@ -1656,6 +1658,25 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       if (connection === null) {
         response.redirect(303, `${base}/woocommerce`);
         return;
+      }
+
+      // Asked before the shop is read, like the settings below: a merchant
+      // selling through their code would have every imported card refused
+      // (ADR-0036), and the shop screen offers them the switch instead.
+      const integration = await gatewayAs(request).integration();
+      if (!integration.ok) {
+        return trouble(response, base, integration);
+      }
+      if (integration.document.through !== "woocommerce") {
+        return await drawTheShop(
+          request,
+          response,
+          {
+            switching:
+              "Nothing was imported: you sell through your own code, so nothing imported would sell. Sell through this shop first.",
+          },
+          409,
+        );
       }
 
       // Asked before the shop is. The door refuses every card of a merchant
@@ -1784,6 +1805,18 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
           skipped,
         }),
       );
+    });
+
+    app.post(`${base}/woocommerce/switch`, async (request, response) => {
+      // The switch for a merchant whose shop is connected while they sell
+      // through their code: what Connect does before sending them to the shop,
+      // for one whose shop is already here.
+      const switched = await gatewayAs(request).sellThrough("woocommerce");
+      if (!switched.ok) {
+        return await drawTheShop(request, response, { switching: switched.why }, 409);
+      }
+      noted(whoIs(request), "switched to selling through their connected WooCommerce shop");
+      response.redirect(303, `${base}/woocommerce`);
     });
 
     app.post(`${base}/woocommerce/disconnect`, async (request, response) => {

@@ -154,7 +154,11 @@ export interface GatewayClient {
    * are off sale because the other one published them (ADR-0036).
    */
   integration(): Promise<
-    Answer<{ readonly through: Integration; readonly offSale: readonly string[] }>
+    Answer<{
+      readonly through: Integration;
+      readonly offSale: readonly string[];
+      readonly selling: "open" | "paused" | "departed";
+    }>
   >;
   /**
    * Moves this merchant to an integration: Connect moves them to the shop
@@ -410,8 +414,8 @@ const switchRefused = (to: Integration, waiting: readonly string[]): Answer<neve
     code: "orders_waiting",
     why:
       to === "woocommerce"
-        ? `${counted} on your own code: ${which}. Your code has to finish ${one ? "it" : "them"} before your shop takes over, because from then on your code receives nothing. To keep new orders from arriving meanwhile, stop all selling on Cards.`
-        : `${counted} on your shop: ${which}. ${one ? "It has" : "They have"} to finish before the shop is disconnected, a parcel until it is marked Completed in WooCommerce, because from then on nothing reads the shop for ${one ? "it" : "them"}.`,
+        ? `${counted} on your own code: ${which}. ${one ? "It has" : "Each has"} to end before your shop takes over, because from then on your code receives nothing: delivered or refused by your code, paid or left unpaid by its buyer, or closed when its time runs out. To keep new orders from arriving meanwhile, stop all selling on Cards.`
+        : `${counted} on your shop: ${which}. ${one ? "It has" : "Each has"} to end before the shop is disconnected, because from then on nothing reads the shop: a parcel once it is marked Completed in WooCommerce, an unpaid purchase once its buyer pays or lets it lapse, or any of them when its time runs out.`,
   };
 };
 

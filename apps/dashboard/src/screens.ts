@@ -519,7 +519,7 @@ ${table(
   ["Order", "Product", "Amount", "State", "Price set"],
   rows,
   open
-    ? "Nothing is open: no order is waiting on you or owed money. A price a buyer has asked for and not paid is not listed here; All shows it."
+    ? "Nothing is open: no order is owed goods or money. A purchase still at its price question or waiting to be paid is not listed here; All shows it."
     : "No orders yet.",
 )}
   <p class="note">${escaped(

@@ -779,18 +779,25 @@ export class Gateway {
   }
 
   /**
-   * The integration this merchant sells through now, and their cards that are
-   * off sale because the other one published them, for the screens that say
-   * why a card is not selling.
+   * The integration this merchant sells through now, their cards that are off
+   * sale because the other one published them, and their own selling word,
+   * for the screens that say why a card is not selling.
    */
-  async integrationOf(
-    merchantId: string,
-  ): Promise<{ readonly through: Integration; readonly offSale: readonly string[] }> {
-    const through = await this.sellsThrough(merchantId);
+  async integrationOf(merchantId: string): Promise<{
+    readonly through: Integration;
+    readonly offSale: readonly string[];
+    readonly selling: MerchantSelling;
+  }> {
+    const merchant = await this.runtime.store.merchantById(merchantId);
+    if (merchant === null) {
+      throw new Error(`there is no merchant ${merchantId}, so nothing they sell through`);
+    }
+    const through = merchant.integration;
     const cards = await this.runtime.store.cards(merchantId);
     return {
       through,
       offSale: cards.filter((card) => card.integration !== through).map((card) => card.id),
+      selling: merchant.selling,
     };
   }
 
