@@ -299,8 +299,14 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       // matching it would have React Router write it, as the stranger sent
       // it, to the log; the route table matches each path it is asked about.
       const asked = request.path === manifestPath(build);
+      // Read as React Router reads it, from everything after the first `?`.
+      const query = request.originalUrl.indexOf("?");
       const paths = asked
-        ? (new URLSearchParams(request.url.split("?")[1] ?? "").get("paths") ?? "").split(",")
+        ? (
+            new URLSearchParams(query === -1 ? "" : request.originalUrl.slice(query + 1)).get(
+              "paths",
+            ) ?? ""
+          ).split(",")
         : [request.path];
       if (!paths.every(decodes)) {
         if (asked) {
