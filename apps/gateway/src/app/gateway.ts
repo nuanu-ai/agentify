@@ -76,7 +76,14 @@ import {
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
-import type { StoredCard, StoredKey, StoredOrder, StoredPayoutWallet } from "../ports/store.js";
+import type {
+  Integration,
+  IntegrationSwitch,
+  StoredCard,
+  StoredKey,
+  StoredOrder,
+  StoredPayoutWallet,
+} from "../ports/store.js";
 import { orderCallResponseOf } from "./answers.js";
 import {
   issueKey,
@@ -253,6 +260,48 @@ export type PurchaseAttempt =
  * failing, answers in a bounded time.
  */
 const PASSED_AT_MOST = 32;
+
+/** The facts every card of one merchant is read through (`Gateway#howTheySell`). */
+interface HowTheySell {
+  readonly selling: MerchantSelling;
+  readonly sellable: boolean;
+  readonly integration: Integration;
+}
+
+/** What an agent is told of a product that went off sale as its order was made. */
+const NOT_ON_SALE = "this product is not on sale at the moment, so no new order is taken";
+
+/**
+ * Why a publish through the integration not in use is refused, said to
+ * whoever published (ADR-0036). About the merchant and not a field, so the
+ * path is empty; short enough that the refusal's one line carries it whole.
+ */
+const NOT_THE_INTEGRATION_IN_USE: Readonly<Record<Integration, Problem>> = {
+  api: {
+    path: [],
+    code: "sells_through_a_shop",
+    message:
+      "this merchant sells through the WooCommerce shop connected in the dashboard; disconnecting it there brings back the cards their own code publishes",
+  },
+  woocommerce: {
+    path: [],
+    code: "sells_through_their_code",
+    message:
+      "this merchant sells through their own code; connecting the WooCommerce shop in the dashboard switches them to it",
+  },
+};
+
+/** Why a card the other integration published is not taken over by this one. */
+function heldByTheOther(integration: Integration, merchantItemId: string): Problem {
+  return {
+    path: ["merchant_item_id"],
+    code: "published_by_the_other_integration",
+    message:
+      integration === "api"
+        ? `"${merchantItemId}" names a product imported from the merchant's WooCommerce shop, and a card stays with what first published it; publish this one under its own merchant_item_id`
+        : `"${merchantItemId}" names a card the merchant's own code published, and a card stays with what first published it, so this product was not imported`,
+  };
+}
 
 /** One poll held open, the key it came in on, and the way to end it early. */
 interface HeldPoll {
@@ -460,7 +509,11 @@ export class Gateway {
    * the list for the same reason: a screen that shows one finding shows the one
    * that is not on the card, which is the one nothing on the card explains.
    */
-  async publishCard(merchantId: string, body: unknown): Promise<PublishResult> {
+  async publishCard(
+    merchantId: string,
+    body: unknown,
+    integration: Integration = "api",
+  ): Promise<PublishResult> {
     const parsed = CardSchema.safeParse(body);
 
     const merchant = await this.runtime.store.merchantById(merchantId);
@@ -470,6 +523,11 @@ export class Gateway {
     // distinct from the complete list of ordinary publish prerequisites.
     if (merchant === null) {
       throw new Error(`publishing resolved to ${merchantId}, and there is no such merchant`);
+    }
+    // Asked first and alone: nothing else about the card matters while it
+    // would go off sale the moment it was published (ADR-0036).
+    if (merchant.integration !== integration) {
+      return cardRejected([], [NOT_THE_INTEGRATION_IN_USE[integration]]);
     }
     // The same question the selling word asks of every card afterwards, put
     // here where the merchant is in front of somebody who can be told what is
@@ -507,7 +565,11 @@ export class Gateway {
       merchantId,
       parsed.data,
       this.runtime.clock(),
+      integration,
     );
+    if (stored.integration !== integration) {
+      return cardRejected([], [heldByTheOther(integration, parsed.data.merchant_item_id)]);
+    }
     return { ok: true, id: stored.id };
   }
 
@@ -531,8 +593,12 @@ export class Gateway {
       items: entries
         .filter(
           (entry) =>
-            sellingFor(entry.merchant, entry.card, sellableBy(entry, this.runtime.config)) ===
-            "open",
+            sellingFor(
+              entry.merchant,
+              entry.card,
+              sellableBy(entry, this.runtime.config),
+              entry.integration,
+            ) === "open",
         )
         .map((entry) =>
           publicCardOf(cardAsHeld(entry.card.card, this.runtime.config), {
@@ -577,7 +643,12 @@ export class Gateway {
       selling:
         merchant === null
           ? "paused"
-          : sellingFor(merchant.selling, stored, sellableBy(merchant, this.runtime.config)),
+          : sellingFor(
+              merchant.selling,
+              stored,
+              sellableBy(merchant, this.runtime.config),
+              merchant.integration,
+            ),
       serviceName: merchant?.serviceName ?? null,
       // The address a payment request written now names, which is a waiting
       // change once its moment has come and not before (ADR-0019).
@@ -598,9 +669,12 @@ export class Gateway {
    * merchant's card is never selected rather than selected and dropped.
    */
   async merchantCards(merchantId: string): Promise<MerchantCardList> {
-    const { selling, sellable } = await this.#howTheySell(merchantId);
+    const theirs = await this.#howTheySell(merchantId);
     const cards = await this.runtime.store.cards(merchantId);
-    return { selling, cards: cards.map((stored) => merchantCardOf(stored, selling, sellable)) };
+    return {
+      selling: theirs.selling,
+      cards: cards.map((stored) => merchantCardOf(stored, theirs)),
+    };
   }
 
   /**
@@ -614,9 +688,7 @@ export class Gateway {
    * does. Answering "open" would be selling on behalf of somebody nobody can
    * find.
    */
-  async #howTheySell(
-    merchantId: string,
-  ): Promise<{ readonly selling: MerchantSelling; readonly sellable: boolean }> {
+  async #howTheySell(merchantId: string): Promise<HowTheySell> {
     const merchant = await this.runtime.store.merchantById(merchantId);
     if (merchant === null) {
       throw new Error(`there is no merchant ${merchantId}, so there is no word for their selling`);
@@ -624,6 +696,7 @@ export class Gateway {
     return {
       selling: merchant.selling,
       sellable: sellableBy(merchant, this.runtime.config),
+      integration: merchant.integration,
     };
   }
 
@@ -647,8 +720,7 @@ export class Gateway {
       // finding out what somebody else is selling.
       return null;
     }
-    const { selling, sellable } = await this.#howTheySell(merchantId);
-    return merchantCardOf(stored, selling, sellable);
+    return merchantCardOf(stored, await this.#howTheySell(merchantId));
   }
 
   /**
@@ -675,6 +747,31 @@ export class Gateway {
     }
     await this.runtime.store.setSelling(merchantId, selling);
     return { ok: true, cards: await this.merchantCards(merchantId) };
+  }
+
+  /** The integration this merchant sells through now (ADR-0036). */
+  async sellsThrough(merchantId: string): Promise<Integration> {
+    const merchant = await this.runtime.store.merchantById(merchantId);
+    if (merchant === null) {
+      throw new Error(`there is no merchant ${merchantId}, so nothing they sell through`);
+    }
+    return merchant.integration;
+  }
+
+  /**
+   * Moves this merchant to the other integration, or says which orders hold
+   * them where they are (`IntegrationSwitch`).
+   *
+   * A poll held open across the switch ends with nothing, whichever
+   * integration's it was: the one being left has nothing more coming to it,
+   * and the one taking over has just been told what it is.
+   */
+  async sellThrough(merchantId: string, to: Integration): Promise<IntegrationSwitch> {
+    const switched = await this.runtime.store.switchIntegration(merchantId, to);
+    if (switched.switched) {
+      this.#letGo(merchantId, () => true);
+    }
+    return switched;
   }
 
   /**
@@ -1205,7 +1302,7 @@ export class Gateway {
       // opened that could never be paid or never be described. Whose word it is
       // comes off the card: a buyer walks one catalog across every merchant,
       // and what governs this sale is the card's own merchant.
-      selling: sellingFor(theirs.selling, stored, theirs.sellable),
+      selling: sellingFor(theirs.selling, stored, theirs.sellable, theirs.integration),
     });
 
     if (!created.ok) {
@@ -1247,7 +1344,13 @@ export class Gateway {
       paymentWordsDropped: 0,
       openDeliveryId: null,
     };
-    await this.runner.create(record, created.effects, at);
+    // Written only while the merchant still sells through the card's
+    // integration: a switch landing between the word above and this write
+    // would otherwise leave an order nothing will draw (ADR-0036).
+    const written = await this.runner.create(record, created.effects, at, stored.integration);
+    if (written === null) {
+      return { step: "not_selling", message: NOT_ON_SALE };
+    }
 
     if (priceQuestion !== null) {
       await this.#askThePrice(record, stored, priceQuestion);
@@ -1650,18 +1753,27 @@ export class Gateway {
    *
    * The key is the one the poll came in on, where it came in on one, and a
    * poll held open ends with nothing once that key is revoked (`#held`).
+   * `through` is the integration drawing: the dashboard's connector for a
+   * shop, the API for everybody else. A merchant selling through the other
+   * one hands it nothing (ADR-0036).
    */
   async poll(
     merchantId: string,
     waitMs: number,
     gone?: AbortSignal,
     keyId: string | null = null,
+    through: Integration = "api",
   ): Promise<WorkerPollResponse> {
     const held: HeldPoll = { keyId, stop: new AbortController() };
     const holding = this.#held.get(merchantId) ?? new Set<HeldPoll>();
     holding.add(held);
     this.#held.set(merchantId, holding);
     try {
+      // Asked once the poll is held, so a switch either came before this read
+      // and is seen by it, or comes after and ends the poll (`sellThrough`).
+      if ((await this.sellsThrough(merchantId)) !== through) {
+        return { contract_version: CONTRACT_VERSION, envelopes: [] };
+      }
       return await this.#drawFor(
         merchantId,
         waitMs,
@@ -2527,16 +2639,12 @@ function sentNow(envelope: WorkerEnvelope, at: number): WorkerEnvelope {
  * `paused` is the card's own flag, untouched, so a merchant can still see which
  * cards they took off themselves while everything is stopped.
  */
-function merchantCardOf(
-  stored: StoredCard,
-  merchant: MerchantSelling,
-  sellable: boolean,
-): MerchantCard {
+function merchantCardOf(stored: StoredCard, theirs: HowTheySell): MerchantCard {
   return {
     id: stored.id,
     as_of: asTimestamp(stored.asOf),
     card: stored.card,
-    selling: sellingFor(merchant, stored, sellable),
+    selling: sellingFor(theirs.selling, stored, theirs.sellable, theirs.integration),
     paused: stored.paused,
   };
 }

@@ -2864,6 +2864,25 @@ describe("one integration at a time", () => {
     expect(card?.integration).toBe("woocommerce");
   });
 
+  it("takes no order for a card whose merchant switches as the order is made", async () => {
+    // The word an order is born under is read a moment before the order is
+    // written. A switch landing in that moment would leave an order of the
+    // integration just left, which nothing draws any more.
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    const { store } = harnessed;
+    const write = store.addOrder.bind(store);
+    store.addOrder = async (record, through) => {
+      await store.switchIntegration(harnessed.merchant.id, "woocommerce");
+      return await write(record, through);
+    };
+
+    const offered = await harnessed.gateway.beginPurchase(coded, {});
+
+    expect(offered.step).toBe("not_selling");
+    expect(await store.orders(harnessed.merchant.id)).toStrictEqual([]);
+  });
+
   it("ends a poll held open across the switch with nothing", async () => {
     // Held open from before, the code's poll would draw whatever arrived in
     // its window — the shop's first order included.

@@ -30,11 +30,11 @@ import {
   type CatalogEntry,
   INTEGRATIONS,
   type Integration,
-  OWING_ONLY_MONEY,
   type IntegrationSwitch,
   type MerchantScope,
   type OrderChange,
   type OrderLookup,
+  OWING_ONLY_MONEY,
   type PaymentClaim,
   type Ran,
   type Store,
@@ -1202,9 +1202,7 @@ function sellingWordOf(word: string): MerchantSelling {
 
 function integrationOf(word: string): Integration {
   if (!(INTEGRATIONS as readonly string[]).includes(word)) {
-    throw new Error(
-      `the integration is "${word}", which is not one of ${INTEGRATIONS.join(", ")}`,
-    );
+    throw new Error(`the integration is "${word}", which is not one of ${INTEGRATIONS.join(", ")}`);
   }
   return word as Integration;
 }

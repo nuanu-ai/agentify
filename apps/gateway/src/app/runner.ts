@@ -79,6 +79,7 @@ import type { GatewayConfig } from "../config.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { Reminder } from "../ports/queue.js";
 import type {
+  Integration,
   MerchantScope,
   OrderChange,
   PaymentWord,
@@ -245,8 +246,17 @@ export class OrderRunner {
    * Writes down an order that does not exist yet and carries out the effects
    * its creation asked for. The machine has already decided whether there is an
    * order at all; this is the part that makes it real.
+   *
+   * Given the integration its card was sold through, nothing is written or
+   * carried out, and null comes back, where its merchant no longer sells
+   * through that one by the time it would be written (`Store#addOrder`).
    */
-  async create(record: StoredOrder, effects: readonly Effect[], at: number): Promise<StoredOrder> {
+  async create(
+    record: StoredOrder,
+    effects: readonly Effect[],
+    at: number,
+    through?: Integration,
+  ): Promise<StoredOrder | null> {
     refuseToWriteAnImpossibleOrder(record.order);
     refuseToKeepAnAddressPastItsTime(record);
     // The clock is started before the order is written and not after it. Of the
@@ -270,7 +280,9 @@ export class OrderRunner {
       );
     }
 
-    await this.#runtime.store.addOrder(record);
+    if (!(await this.#runtime.store.addOrder(record, through))) {
+      return null;
+    }
     await this.#run(record, effects, at);
     return record;
   }

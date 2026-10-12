@@ -18,7 +18,13 @@ import type { Announcer } from "../ports/announcer.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Facilitator } from "../ports/facilitator.js";
 import type { Queue } from "../ports/queue.js";
-import type { Store, StoredCard, StoredMerchant, StoredPayoutWallet } from "../ports/store.js";
+import type {
+  Integration,
+  Store,
+  StoredCard,
+  StoredMerchant,
+  StoredPayoutWallet,
+} from "../ports/store.js";
 
 export interface Runtime {
   readonly config: GatewayConfig;
@@ -122,13 +128,20 @@ export function priceCheckOf(card: Card): "none" | "merchant" {
  * pause a card can be excused from, and reading a card as merely paused would
  * be the difference between "no new orders" and "the open ones closed and the
  * money for the undelivered is yours to return".
+ *
+ * A card that the integration its merchant is not selling through published
+ * is off sale the same way (ADR-0036): nothing of that integration draws the
+ * merchant's stream, so an order of it would be paid for and filled by nobody.
  */
 export function sellingFor(
   merchant: MerchantSelling,
   card: StoredCard,
   sellable: boolean,
+  through: Integration,
 ): MerchantSelling {
-  return merchant === "open" && (card.paused || !sellable) ? "paused" : merchant;
+  return merchant === "open" && (card.paused || !sellable || card.integration !== through)
+    ? "paused"
+    : merchant;
 }
 
 /**
