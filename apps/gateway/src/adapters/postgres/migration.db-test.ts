@@ -1057,11 +1057,13 @@ if (databaseUrl === null) {
         item_lookalike: "api",
         item_shop: "woocommerce",
       });
+      // The pilot merchant migration 0003 writes is there too, with no card.
       expect(await integrations("merchants")).toStrictEqual({
         mch_both: "woocommerce",
         mch_coded: "api",
         mch_none: "api",
         mch_shop: "woocommerce",
+        [SEEDED_MERCHANT.id]: "api",
       });
     });
 
@@ -1069,7 +1071,10 @@ if (databaseUrl === null) {
       await run("0014_one_integration.sql");
       await writeMerchant("mch_new");
 
-      expect(await integrations("merchants")).toStrictEqual({ mch_new: "api" });
+      expect(await integrations("merchants")).toStrictEqual({
+        mch_new: "api",
+        [SEEDED_MERCHANT.id]: "api",
+      });
       await expect(writeCard("item_silent", "mch_new", "sku-1")).rejects.toThrow(/integration/);
       await expect(
         pool.query(
