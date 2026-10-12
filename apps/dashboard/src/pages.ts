@@ -184,7 +184,17 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
           " app/entry.server.tsx, so no page could reach the session or the gateway.",
       );
     }
-    const build: ServerBuild = { ...compiled, basename };
+    const build: ServerBuild = {
+      ...compiled,
+      basename,
+      // React Router refuses a post whose `Origin` differs from the request's
+      // own address, scheme included, and behind a terminator that sets no
+      // forwarded header the scheme it sees is not the browser's, so every
+      // honest post would be refused. The dashboard's own check, which runs
+      // before any request reaches here, compares hosts and has already
+      // turned away a post from anywhere else.
+      allowedActionOrigins: ["**"],
+    };
     const made: Mounted = {
       build,
       routes: routesOf(build),
