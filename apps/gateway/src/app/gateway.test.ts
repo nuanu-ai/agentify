@@ -2788,6 +2788,27 @@ describe("the test mark on an order and its receipt", () => {
   });
 });
 
+describe("a poll on a key revoked before it was held", () => {
+  it("takes no order, even though the door let it in", async () => {
+    // The door resolves the key and the poll is held a moment later. A key
+    // revoked in that moment has no held poll to end, and the poll would draw
+    // for its whole window on a key the merchant had just cut off.
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    await harnessed.disableKey(harnessed.merchant.keyId);
+
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+    const offered = await harnessed.gateway.beginPurchase(coded, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+
+    expect((await held).envelopes).toStrictEqual([]);
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 0)).envelopes).toHaveLength(1);
+  });
+});
+
 describe("one integration at a time", () => {
   // A merchant sells through their own code or through a WooCommerce shop the
   // dashboard connected, and a card of the other one is off sale (ADR-0036).
