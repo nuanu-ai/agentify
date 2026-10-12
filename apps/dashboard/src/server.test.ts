@@ -46,7 +46,7 @@ import {
 import type { Handover, Message, Postman } from "./mail.js";
 import type { Pages } from "./pages.js";
 import { buildApp } from "./server.js";
-import { formTo, readable, shownMarkIn, waitingButton } from "./testing/html.js";
+import { formsIn, formTo, readable, shownMarkIn, waitingButton } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
@@ -2038,6 +2038,29 @@ describe("the cards screen", () => {
     expect(text).toContain("90.00 USD");
     expect(text).toContain("paused");
     expect(await purchasable(gateway, itemId)).toBe(false);
+  });
+
+  it("answers a switch pressed by the page's script inside the application, which reads the cards again", async () => {
+    // A whole page load after every press would cost the merchant the page
+    // they were reading; inside the application the switch's own answer leads
+    // back to the cards, and the cards are read again with the press in them.
+    const { browser, gateway } = await started();
+    const itemId = await publish(gateway, roomCard);
+    await browser.signIn();
+    const drawn = formsIn((await browser.get("/cards")).html).find(
+      ({ method, action }) => method === "post" && action.includes(encodeURIComponent(itemId)),
+    );
+    if (drawn === undefined) throw new Error("the cards draw no switch for the card");
+    // The address the script posts a form to: the form's own, as data.
+    const [path = "", query = ""] = drawn.action.split("?");
+
+    const pressed = await browser.post(`${path}.data?${query}`, Object.fromEntries(drawn.fields));
+
+    expect(pressed.status).toBe(202);
+    expect(pressed.html).toContain('"redirect","/cards"');
+    expect(pressed.headers.get("x-remix-reload-document")).toBeNull();
+    expect(await purchasable(gateway, itemId)).toBe(false);
+    expect(readable((await browser.get("/cards")).html)).toContain("Resume");
   });
 });
 
