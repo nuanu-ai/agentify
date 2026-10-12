@@ -1,9 +1,9 @@
 import { consentAllowsMeasurement, readCurrentConsent } from "@agentify/analytics/browser";
 import {
   PARTNER_CLICK_ID_ALIASES,
-  partnerClickIdSchema,
+  PARTNER_CLICK_ID_PATTERN,
   type Segment,
-} from "@agentify/scanner-contracts";
+} from "@agentify/scanner-contracts/browser";
 
 const captures = new Map<string, Promise<void>>();
 
@@ -39,8 +39,7 @@ export function readPartnerClickId(search: string): string | undefined {
   for (const alias of PARTNER_CLICK_ID_ALIASES) {
     for (const value of query.getAll(alias)) {
       if (!value) continue;
-      const parsed = partnerClickIdSchema.safeParse(value);
-      return parsed.success ? parsed.data : undefined;
+      return PARTNER_CLICK_ID_PATTERN.test(value) ? value : undefined;
     }
   }
   return undefined;

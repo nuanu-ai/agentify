@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { SEGMENTS } from "./browser.js";
 
-export const segmentSchema = z.enum(["store", "owner", "local"]);
+export const segmentSchema = z.enum(SEGMENTS);
 export type Segment = z.infer<typeof segmentSchema>;
 
 export const scanStatusSchema = z.enum([

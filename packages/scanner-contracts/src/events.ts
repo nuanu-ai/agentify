@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { PARTNER_CLICK_ID_PATTERN } from "./browser.js";
+
+export { PARTNER_CLICK_ID_ALIASES } from "./browser.js";
 
 export const ANALYTICS_EVENT_NAMES = [
   "landing_view",
@@ -17,5 +20,4 @@ export type AnalyticsEventName = z.infer<typeof analyticsEventNameSchema>;
 export const deliveryDestinationSchema = z.enum(["posthog", "meta", "partner_tracker"]);
 export type DeliveryDestination = z.infer<typeof deliveryDestinationSchema>;
 
-export const PARTNER_CLICK_ID_ALIASES = ["clickid", "click_id", "cid", "sub_id", "subid"] as const;
-export const partnerClickIdSchema = z.string().regex(/^[A-Za-z0-9_-]{16,64}$/);
+export const partnerClickIdSchema = z.string().regex(PARTNER_CLICK_ID_PATTERN);

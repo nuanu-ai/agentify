@@ -11,7 +11,6 @@
  */
 
 import { useEffect, useState } from "react";
-import { z } from "zod";
 
 export type Visitor =
   | Readonly<{ status: "loading" }>
@@ -19,10 +18,25 @@ export type Visitor =
   | Readonly<{ status: "signed_out" }>
   | Readonly<{ status: "unknown" }>;
 
-const answerSchema = z.union([
-  z.object({ status: z.literal("signed_in"), email: z.string().min(3), operator: z.boolean() }),
-  z.object({ status: z.literal("signed_out") }),
-]);
+/**
+ * Checked by hand rather than by a schema, because this runs on every page and
+ * a schema library in the browser costs each of them its weight. Only the
+ * fields named here are kept.
+ */
+function visitorIn(answer: unknown): Visitor | null {
+  if (typeof answer !== "object" || answer === null) return null;
+  const said = answer as Record<string, unknown>;
+  if (said.status === "signed_out") return { status: "signed_out" };
+  if (
+    said.status === "signed_in" &&
+    typeof said.email === "string" &&
+    said.email.length >= 3 &&
+    typeof said.operator === "boolean"
+  ) {
+    return { status: "signed_in", email: said.email, operator: said.operator };
+  }
+  return null;
+}
 
 /**
  * Shared by every part of the page that asks at once, since two questions would
@@ -43,9 +57,9 @@ async function ask(): Promise<Visitor> {
       credentials: "same-origin",
       cache: "no-store",
     });
-    const parsed = answerSchema.safeParse(await response.json().catch(() => null));
-    if (!response.ok || !parsed.success) return { status: "unknown" };
-    return parsed.data;
+    const visitor = visitorIn(await response.json().catch(() => null));
+    if (!response.ok || visitor === null) return { status: "unknown" };
+    return visitor;
   } catch {
     return { status: "unknown" };
   }
