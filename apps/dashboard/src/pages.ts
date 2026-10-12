@@ -4,8 +4,8 @@
  * answers that path with that method; a path that matches no other route
  * matches the page that says there is no such page. What falls through to the
  * listener's last answer is a request no route takes: a method other than a
- * read or a post, a post to a page that does not act, a path that cannot be
- * decoded, and a WooCommerce page where the connector is not offered.
+ * read or a post, a post to a page that does not act, and a path that cannot
+ * be decoded.
  *
  * What the pages need from the process — the session lookup, the gateway as
  * the signed-in merchant, the configuration — reaches their loaders through the
@@ -148,12 +148,33 @@ interface Served {
 }
 
 /**
- * The build's routes as a tree, for asking whether a path is one of them
- * before handing the request over. A route of the WooCommerce connector says
- * so in its `handle`, and where the connector is not offered it is no page:
- * its path falls through, answered as a path the dashboard does not have.
+ * The build without the WooCommerce connector's routes, on the server and in
+ * the route table the browser is sent, for a dashboard that does not offer it:
+ * React Router then matches their paths as any path the dashboard does not
+ * have, to the page that says there is no such page. A route of the connector
+ * says so in its `handle`, and goes with everything nested in it.
  */
-const routesOf = (build: ServerBuild, wooOffered: boolean): RouteObject[] => {
+const withoutTheShop = (build: ServerBuild): ServerBuild => {
+  const shops = (id: string | undefined): boolean => {
+    const route = id === undefined ? undefined : build.routes[id];
+    if (route === undefined) return false;
+    const module = route.module as { handle?: { woocommerce?: boolean } };
+    return module.handle?.woocommerce === true || shops(route.parentId);
+  };
+  const kept = <Route>(table: Record<string, Route>): Record<string, Route> =>
+    Object.fromEntries(Object.entries(table).filter(([id]) => !shops(id)));
+  return {
+    ...build,
+    routes: kept(build.routes),
+    assets: { ...build.assets, routes: kept(build.assets.routes) },
+  };
+};
+
+/**
+ * The build's routes as a tree, for asking whether a path is one of them
+ * before handing the request over.
+ */
+const routesOf = (build: ServerBuild): RouteObject[] => {
   const childrenOf = (parentId: string | undefined): RouteObject[] =>
     Object.values(build.routes).flatMap((route): RouteObject[] => {
       if (route === undefined || route.parentId !== parentId) return [];
@@ -162,13 +183,11 @@ const routesOf = (build: ServerBuild, wooOffered: boolean): RouteObject[] => {
         loader?: unknown;
         action?: unknown;
         middleware?: unknown;
-        handle?: { script?: boolean; keepsData?: boolean; woocommerce?: boolean };
+        handle?: { script?: boolean; keepsData?: boolean };
       };
       // A layout with no path of its own, the root among them, is a frame
       // around pages and never a page, even while nothing is nested in it.
-      const page =
-        (route.index === true || (route.path ?? "") !== "") &&
-        (module.handle?.woocommerce !== true || wooOffered);
+      const page = route.index === true || (route.path ?? "") !== "";
       const served: Served = {
         answers: (method) =>
           page &&
@@ -253,7 +272,7 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       );
     }
     const build: ServerBuild = {
-      ...compiled,
+      ...(services.woo === null ? withoutTheShop(compiled) : compiled),
       basename,
       // React Router refuses a post whose `Origin` differs from the request's
       // own address, scheme included, and behind a terminator that sets no
@@ -264,7 +283,7 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
     };
     const made: Mounted = {
       build,
-      routes: routesOf(build, services.woo !== null),
+      routes: routesOf(build),
       handle: createRequestHandler({
         build,
         mode: pages.mode,

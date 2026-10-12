@@ -3,8 +3,8 @@ import type { WooPages } from "../src/woo-pages.js";
 import { services } from "./services.js";
 
 /**
- * Every route of the WooCommerce connector says so in its `handle`, and the
- * mount answers it only where the connector is offered.
+ * Every route of the WooCommerce connector says so in its `handle`, and where
+ * the connector is not offered the mount takes it out of the build.
  */
 export const WOOCOMMERCE = { woocommerce: true } as const;
 
@@ -17,7 +17,7 @@ export const wooPagesIn = (context: Readonly<RouterContextProvider>): WooPages =
   if (woo === null) {
     throw new Error(
       "a WooCommerce page ran on a dashboard that does not offer the connector, where the mount" +
-        " answers none of its routes — this is a defect in the mount",
+        " takes its routes out of the build — this is a defect in the mount",
     );
   }
   return woo;

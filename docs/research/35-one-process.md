@@ -82,9 +82,10 @@ behind one gate decided in one place (`apps/dashboard/src/gate.ts`), and they
 are tested over HTTP against the real gateway. Every path under the dashboard
 is one of its routes (`apps/dashboard/app/routes.ts`), the last of them the page
 that says there is no such page, so a visitor with no session is sent to the
-sign-in from an address that does not exist as from one that does. A request no
-page takes, such as a post to a page that does not act or a WooCommerce page
-where the connector is not offered, gets a plain 404 from the listener. Beside
+sign-in from an address that does not exist as from one that does, and where
+the WooCommerce connector is not offered its pages are such addresses. A request
+no page takes, such as a post to a page that does not act, gets a plain 404 from
+the listener. Beside
 the pages the listener answers only the health probe and the WooCommerce shop's
 callback, which the shop's own server posts to. A post from another
 site, or one longer than any form the pages send, is refused before any page

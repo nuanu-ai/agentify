@@ -8,6 +8,9 @@
 
 import { Outlet } from "react-router";
 import { readsLeadTo } from "../answer.js";
+import { WOOCOMMERCE } from "../woocommerce.js";
+
+export const handle = WOOCOMMERCE;
 
 export const middleware = readsLeadTo("/woocommerce");
 
