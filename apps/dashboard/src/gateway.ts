@@ -29,7 +29,7 @@
  * test of every route.
  */
 
-import type { Caller, Gateway, WalletChangeRefusal } from "@agentify/gateway";
+import type { Caller, Gateway, Integration, WalletChangeRefusal } from "@agentify/gateway";
 import {
   bodyRefused,
   CONFLICT,
@@ -130,8 +130,26 @@ export interface GatewayClient {
    * merchant importing a catalogue reads. Folded into a sentence it would be
    * one line saying a card was refused, with the reasons in a log nobody can
    * see.
+   *
+   * Published as the shop's: the WooCommerce import is the one thing in the
+   * dashboard that publishes, and a merchant selling through their code has
+   * it refused (ADR-0036).
    */
   publishCard(card: CardInput): Promise<Answer<PublishResult>>;
+  /**
+   * Which integration this merchant sells through now, and their cards that
+   * are off sale because the other one published them (ADR-0036).
+   */
+  integration(): Promise<
+    Answer<{ readonly through: Integration; readonly offSale: readonly string[] }>
+  >;
+  /**
+   * Moves this merchant to an integration: Connect moves them to the shop
+   * before they are sent to it, and Disconnect back to their code. Refused,
+   * in words that name the orders, while one still waits on the integration
+   * being left.
+   */
+  sellThrough(to: Integration): Promise<Answer<{ readonly sellingPaused: boolean }>>;
   /**
    * Draws what is next on this merchant's stream: one envelope, or none when
    * the wait ran out.
@@ -359,6 +377,31 @@ const orderCallAnswer = (
 
 const KeysSchema = z.array(MerchantKeySchema);
 
+/** How many of the orders holding a switch the refusal names before counting the rest. */
+const ORDERS_NAMED = 5;
+
+/**
+ * Why a switch of integration was refused, in the words of the shop screen it
+ * is drawn on: which orders still wait on the integration being left, and what
+ * lets them finish.
+ */
+const switchRefused = (to: Integration, waiting: readonly string[]): Answer<never> => {
+  const named = waiting.slice(0, ORDERS_NAMED).join(", ");
+  const rest = waiting.length - ORDERS_NAMED;
+  const which = rest > 0 ? `${named} and ${rest} more` : named;
+  const one = waiting.length === 1;
+  const counted = one ? "1 order still waits" : `${waiting.length} orders still wait`;
+  return {
+    ok: false,
+    status: CONFLICT,
+    code: "orders_waiting",
+    why:
+      to === "woocommerce"
+        ? `${counted} on your own code: ${which}. Your code has to finish ${one ? "it" : "them"} before your shop takes over, because from then on your code receives nothing. To keep new orders from arriving meanwhile, stop all selling on Cards.`
+        : `${counted} on your shop: ${which}. ${one ? "It has" : "They have"} to finish before the shop is disconnected, a parcel until it is marked Completed in WooCommerce, because from then on nothing reads the shop for ${one ? "it" : "them"}.`,
+  };
+};
+
 /**
  * The client of one account, built per request from the signed-in person, so
  * two people signed into one dashboard are two merchants.
@@ -493,15 +536,35 @@ export const gatewayFor = (
     // door, so there is no request schema to hold it to first.
     publishCard: (card) =>
       call("publishing a card", async () =>
-        answered(API_ROUTES.publish_card, await application.publishCard(merchantId, card)),
+        answered(
+          API_ROUTES.publish_card,
+          await application.publishCard(merchantId, card, "woocommerce"),
+        ),
       ),
+    integration: () =>
+      call("reading the integration", async () =>
+        done(await application.integrationOf(merchantId)),
+      ),
+    sellThrough: (to) =>
+      call("switching the integration", async () => {
+        const switched = await application.sellThrough(merchantId, to);
+        return switched.switched
+          ? done({ sellingPaused: switched.sellingPaused })
+          : switchRefused(to, switched.waiting);
+      }),
     pollWorker: (waitSeconds) =>
       call("drawing the stream", async () => {
         const asked = sent(API_ROUTES.poll_worker, { wait_seconds: waitSeconds });
         if (!asked.ok) return asked.refused;
         return answered(
           API_ROUTES.poll_worker,
-          await application.poll(merchantId, (asked.value.wait_seconds ?? waitSeconds) * 1_000),
+          await application.poll(
+            merchantId,
+            (asked.value.wait_seconds ?? waitSeconds) * 1_000,
+            undefined,
+            null,
+            "woocommerce",
+          ),
         );
       }),
     answerOrder: (orderId, answer) =>

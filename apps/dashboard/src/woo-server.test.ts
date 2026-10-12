@@ -1175,7 +1175,23 @@ describe("importing the catalogue", () => {
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
       silent: "everything",
     });
-    await connected(running);
+    await running.signIn();
+    // Connected the way Connect leaves a merchant, without pressing it: a
+    // gateway that does not answer cannot switch them to the shop either.
+    await running.harnessed.gateway.sellThrough(running.harnessed.merchant.id, "woocommerce");
+    const startedAt = new Date();
+    await running.shops.beginGrant({
+      token: "a-token-that-came-back",
+      accountId: running.accountId,
+      shopUrl: SHOP,
+      startedAt,
+      expiresAt: new Date(startedAt.getTime() + 15 * 60_000),
+    });
+    await running.shops.connectFromGrant(
+      "a-token-that-came-back",
+      { consumerKey: "ck_a", consumerSecret: "cs_b", permissions: "read_write" },
+      startedAt,
+    );
 
     const imported = await running.post("/woocommerce/import", { [DRAWN_FOR]: PERSON });
 
@@ -1378,18 +1394,26 @@ describe("importing the catalogue", () => {
       fulfillment: "sync",
     };
 
-    /** What the door says about this merchant, as a program would pick it out. */
+    /**
+     * What the door says about this merchant, as a program would pick it out,
+     * asked the way the import asks it: as the shop, which is what the
+     * merchant sells through once Connect is pressed (ADR-0036).
+     */
     const theDoorSays = async (running: Running): Promise<readonly string[]> => {
-      const answered = await running.gateway.call("POST", "/v0/catalog/publish", {
-        body: A_CARD,
-        headers: { authorization: `Bearer ${running.ownKey}` },
-      });
-      if (answered.status === 200) {
+      const key = await running.harnessed.gateway.keyBehind(running.ownKey);
+      if (key === null) throw new Error("the merchant's own key does not open the door");
+      const answered = await running.harnessed.gateway.publishCard(
+        key.merchantId,
+        A_CARD,
+        "woocommerce",
+      );
+      if (answered.ok) {
         return [];
       }
-      const { problems } = (answered.body as { error: { problems: { code: string }[] } }).error;
       const aboutTheMerchant: ReadonlySet<string> = new Set(Object.values(MERCHANT_FINDINGS));
-      return problems.map((finding) => finding.code).filter((code) => aboutTheMerchant.has(code));
+      return answered.error.problems
+        .map((finding) => finding.code)
+        .filter((code) => aboutTheMerchant.has(code));
     };
 
     /** The line beside Import, read the way a merchant reads it. */

@@ -3082,6 +3082,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
           seller: answer,
           setSellerSite: answer,
           payoutWallet: answer,
+          integration: answer,
         }) as never,
     });
     return { browser, close: async () => undefined };
@@ -3455,9 +3456,10 @@ describe("the page that says a call to the gateway failed", () => {
     silenceGateway();
 
     const failed = await browser.get("/receipts");
-    const again = /<(?:a|form)\b[^>]*\b(?:href|action)="([^"]*)"[^>]*>(?:(?!<\/(?:a|form)>)[\s\S])*?Try again/.exec(
-      failed.html,
-    )?.[1];
+    const again =
+      /<(?:a|form)\b[^>]*\b(?:href|action)="([^"]*)"[^>]*>(?:(?!<\/(?:a|form)>)[\s\S])*?Try again/.exec(
+        failed.html,
+      )?.[1];
 
     expect(failed.status).toBe(504);
     expect(again).toMatch(/\/receipts$/);

@@ -1519,13 +1519,26 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     const drawTheShop = async (
       request: Request,
       response: Response,
-      view: { problem?: string; typed?: string; cameBack?: boolean; refused?: readonly Unset[] },
+      view: {
+        problem?: string;
+        leaving?: string;
+        typed?: string;
+        cameBack?: boolean;
+        refused?: readonly Unset[];
+      },
       status = 200,
     ): Promise<void> => {
       const person = whoIs(request);
-      const [state, standing] = await Promise.all([shopStateFor(person.id), standingOf(request)]);
+      const [state, standing, integration] = await Promise.all([
+        shopStateFor(person.id),
+        standingOf(request),
+        gatewayAs(request).integration(),
+      ]);
       if (!standing.ok) {
         return trouble(response, base, standing);
+      }
+      if (!integration.ok) {
+        return trouble(response, base, integration);
       }
       if (state === undefined) {
         // Unreachable: these routes are mounted only where there is a store,
@@ -1543,6 +1556,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
             ...view,
             state,
             unset: standing.document.unset,
+            through: integration.document.through,
           }),
         );
     };
@@ -1606,6 +1620,16 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       const looked = await grantScreen(authorize);
       if (!looked.ok) {
         return await drawTheShop(request, response, { problem: looked.why, typed }, 400);
+      }
+
+      // The merchant moves to the shop here, before they are sent to it, and
+      // not when the keys arrive (ADR-0036). A switch refused at the callback
+      // could only be told to a shop's server; refused here, it is told to the
+      // merchant, beside the button. One who goes and never approves is on
+      // the shop with none connected, and the page offers the way back.
+      const switched = await gatewayAs(request).sellThrough("woocommerce");
+      if (!switched.ok) {
+        return await drawTheShop(request, response, { problem: switched.why, typed }, 409);
       }
 
       // Written down only now: a Connect nobody could have completed is a row
@@ -1763,9 +1787,23 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     });
 
     app.post(`${base}/woocommerce/disconnect`, async (request, response) => {
+      // Back to the merchant's own code first, and the keys forgotten only
+      // once that held: a shop forgotten while one of its orders still waits
+      // would leave that order to nobody — a parcel's shipment is read off
+      // the shop, and only while it is connected (ADR-0036).
+      const switched = await gatewayAs(request).sellThrough("api");
+      if (!switched.ok) {
+        return await drawTheShop(request, response, { leaving: switched.why }, 409);
+      }
       const person = whoIs(request);
       const shopUrl = await shops.forget(person.id);
       noted(person, "forgot the keys their WooCommerce shop had given");
+      // Where the code's cards came back with selling stopped, the merchant is
+      // sent to the screen that starts it again, which says it is stopped.
+      if (switched.document.sellingPaused) {
+        response.redirect(303, `${base}/cards`);
+        return;
+      }
       const query = shopUrl === null ? "" : `?${new URLSearchParams({ shop_url: shopUrl })}`;
       response.redirect(303, `${base}/woocommerce${query}`);
     });
@@ -1776,14 +1814,18 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     // The wallet and the approval as well as the name, because a card can read
     // paused for the want of any of them, and the control beside it says which
     // (`cardControl`).
-    const [cards, name, wallet, approval] = await Promise.all([
+    const [cards, name, wallet, approval, integration] = await Promise.all([
       gateway.cards(),
       gateway.sellerName(),
       gateway.payoutWallet(),
       approvalOn(gateway),
+      gateway.integration(),
     ]);
     if (!cards.ok) {
       return trouble(response, base, cards);
+    }
+    if (!integration.ok) {
+      return trouble(response, base, integration);
     }
     if (!name.ok) {
       return trouble(response, base, name);
@@ -1804,6 +1846,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         cards.document,
         config.publicBaseUrl,
         shops !== undefined,
+        integration.document,
       ),
     );
   });

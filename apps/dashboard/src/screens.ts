@@ -12,6 +12,7 @@
  */
 
 import { type Readiness, readinessOf, type SurfaceMode, UNKNOWN } from "@agentify/core";
+import type { Integration } from "@agentify/gateway";
 import {
   API_ROUTES,
   expandPath,
@@ -256,13 +257,23 @@ const cardAside = (entry: MerchantCard): string => {
  * approval is missing on live, it says so; and a card that reads paused where
  * the rule finds nothing missing, which only a change landing between two
  * reads can make, is said to be off sale and no more.
+ *
+ * A card the integration not in use published is off sale for that reason
+ * whatever else holds it (ADR-0036), and it is said first: resuming it, or
+ * anything set in Settings, would not put it on sale.
  */
 const cardControl = (
   base: string,
   entry: MerchantCard,
   merchant: MerchantCardList["selling"],
   door: Readiness,
+  integration: CardsIntegration,
 ): string => {
+  if (integration.offSale.includes(entry.id)) {
+    return integration.through === "woocommerce"
+      ? '<span class="quiet">Off sale while you sell through your WooCommerce shop</span>'
+      : '<span class="quiet">Off sale while you sell through your own code</span>';
+  }
   if (entry.paused) {
     return `<form class="inline" method="post" action="${escaped(base)}/cards/${encodeURIComponent(entry.id)}/resume">
 <button class="button button-compact button-primary" type="submit">Resume</button></form>`;
@@ -324,9 +335,8 @@ const wrappable = (address: string): string => {
 
 /**
  * What an empty catalogue shows: why it is empty, and the ways to fill it as
- * buttons. The SDK comes first, because it is the product's path; the
- * WooCommerce connector comes after it, named as the experiment it is, and
- * only where this dashboard has one.
+ * buttons. The SDK comes first and the WooCommerce connector after it, only
+ * where this dashboard has one.
  *
  * An empty catalogue has two readings the merchant cannot tell apart from
  * here: nobody has published anything yet, or something published was
@@ -344,16 +354,28 @@ const emptyCatalogue = (viewer: Viewer, wooAvailable: boolean): string => {
     <p>${escaped(why)}</p>
     <div class="connect-actions">
       <a class="button button-primary" href="/docs/quickstart">Publish your first card through the SDK</a>
-      ${wooAvailable ? `<a class="button button-secondary" href="${escaped(viewer.base)}/woocommerce">Try the experimental WooCommerce connector</a>` : ""}
+      ${wooAvailable ? `<a class="button button-secondary" href="${escaped(viewer.base)}/woocommerce">Connect a WooCommerce shop</a>` : ""}
     </div>
   </div>`;
 };
+
+/**
+ * The integration the merchant sells through, and their cards that are off
+ * sale because the other one published them (ADR-0036).
+ */
+export interface CardsIntegration {
+  readonly through: Integration;
+  readonly offSale: readonly string[];
+}
+
+const ALL_THROUGH_THE_CODE: CardsIntegration = { through: "api", offSale: [] };
 
 export const cardsScreen = (
   viewer: Viewer,
   cards: MerchantCardList,
   origin: string,
   wooAvailable = false,
+  integration: CardsIntegration = ALL_THROUGH_THE_CODE,
 ): string => {
   const { base } = viewer;
   const paused = cards.cards.filter((entry) => entry.paused).length;
@@ -377,7 +399,7 @@ export const cardsScreen = (
         { kind: "amount", html: escaped(money(entry.card.price)) },
         { kind: "quiet", html: escaped(FULFILLMENT_WORDS[entry.card.fulfillment]) },
         { html: state(SELLING_WORDS[entry.selling]) },
-        { kind: "control", html: cardControl(base, entry, cards.selling, door) },
+        { kind: "control", html: cardControl(base, entry, cards.selling, door, integration) },
       ],
     }),
   );

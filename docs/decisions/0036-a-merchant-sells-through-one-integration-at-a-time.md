@@ -32,18 +32,20 @@ the catalog, refusing a price question and an order before any payment, while
 its own pause flag stays as the merchant set it, so switching back returns
 exactly the cards that were on sale.
 
-Connecting a shop switches the merchant to it when the shop's keys arrive, and
+Pressing Connect switches the merchant to the shop before they are sent to
+it, so a refusal is said beside the button rather than to a shop's server, and
 disconnecting switches them back to the SDK. A switch is refused, in words
-that name the orders, while an order of the integration being left still waits
-for its worker's first answer, or while a parcel the shop placed has not
-shipped, because the connector follows a parcel only while its shop is
-connected. An order that owes a refund holds nothing. The switch and the
-making of an order wait for each other on the merchant, and a poll held open
-across the switch returns empty.
+that name the orders, while an order still waits on the integration being
+left: to be paid at the price it was quoted, for its first answer, or for the
+goods it was taken on for, a parcel until it ships, because the connector
+follows a parcel only while its shop is connected. An order that owes only
+money holds nothing. The switch and the making of an order wait for each
+other on the merchant, and a poll held open across the switch returns empty.
 
-While the shop is connected, the SDK's poll and publish are refused as not
-retryable, in words that name the shop and say that disconnecting it in the
-dashboard brings the code's cards back. The merchant's keys still read orders
+While the merchant sells through the shop, the SDK's poll and publish are
+refused as not retryable, in words that name the shop and say that
+disconnecting it in the dashboard brings the code's cards back; the import is
+refused the same way while they sell through their code. The merchant's keys still read orders
 and receipts and still deliver an order the code had already taken on.
 Disconnecting a shop when the code's cards would come back on sale leaves the
 merchant's selling paused until they start it again: an asynchronous order is
