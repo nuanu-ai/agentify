@@ -20,7 +20,7 @@ body is held to, and an example of what the agent receives. A parcel's body and
 schema carry `ship_to`, and its example output is a recorded shipment. Examples
 stand for each declared type and carry no invented data. The wire format is
 assembled at the edge by the protocol's own library, never by hand, and
-`@x402/extensions` is the gateway's dependency alone, since ADR-0003 §8 keeps
+`@x402/extensions` is the gateway's dependency alone, since ADR-0003 §1 keeps
 the contracts package, on which the merchant SDK depends, to zod. The resource
 address is pinned from `PUBLIC_BASE_URL` and the route table, never read off the
 request, which behind our reverse proxy arrives as `http://` with the caller's

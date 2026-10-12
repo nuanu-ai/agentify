@@ -61,7 +61,7 @@ session was signed in as, or the key a call was made with.
 
 The gateway holds no money, so it needs no custody, ledger or payout run. The
 checksum's Keccak-256 is hand-written in the contracts package, whose published
-tree is `zod` alone (ADR-0003 §8), until a second need for a hash brings an
+tree is `zod` alone (ADR-0003 §1), until a second need for a hash brings an
 audited library. A replacement costs two days of sales to the old wallet. An
 intruding session can ask again after each cancel, or set a first address; the
 owner answers with the immediate pause, signing out other devices (ADR-0026 §3)

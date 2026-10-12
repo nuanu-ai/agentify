@@ -13,7 +13,7 @@ credential, which takes a key per account for the dashboard to call as its
 merchant (ADR-0014), a route with its own secret for the gateway to have a
 merchant mailed (ADR-0019), and a refusal for a dashboard that did not answer.
 That boundary protects little: both write the one database as its superuser
-(ADR-0003 §2), payout wallets included, and run from one image, released together.
+(ADR-0003 §3), payout wallets included, and run from one image, released together.
 
 ## Decision
 

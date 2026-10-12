@@ -18,7 +18,7 @@ close or refund.
 
 An effect that cannot be re-driven once the order has moved past it is written
 in the same transaction as the order. Orders, receipts and the queue share one
-Postgres (ADR-0003 §6), and pg-boss accepts a handle that runs one statement,
+Postgres (ADR-0003 §3, §4), and pg-boss accepts a handle that runs one statement,
 so the job is inserted inside the store's transaction and commits or rolls back
 with the order. The store's port names three such writes: an envelope on a
 merchant's stream (a hand-over, a redelivery, a merchant event); a receipt, our

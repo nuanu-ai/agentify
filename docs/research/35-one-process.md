@@ -228,7 +228,7 @@ holds for a key over HTTP.
 ### Shared resources
 
 Both processes reach one database, `agentify`, with one account, the
-instance's bootstrap superuser (ADR-0003 §2), and on production the
+instance's bootstrap superuser (ADR-0003 §3), and on production the
 preflight requires every service's `DATABASE_URL` to be the same one (line
 180). Either process can therefore read and write every table, the merchant's
 payout wallet included, which is the part of the boundary that no longer
@@ -241,7 +241,7 @@ protects anything.
 | Queue | pg-boss (`apps/gateway/src/adapters/pgboss/queue.ts`) | none |
 | Pools | the store's, and pg-boss's own | one, for identity and WooCommerce |
 
-The two histories stay separate after the merge. ADR-0003 §2 explains why
+The two histories stay separate after the merge. ADR-0003 §3 explains why
 there are several: the drizzle migrator compares with the newest entry of the
 history it is given and would take another set's entry for its own. Merging
 them buys nothing a person would notice.
@@ -552,7 +552,8 @@ and might describe a registration that change does not leave.
 
 **Step 1, one process.**
 
-- ADR-0003 §2: `apps/app` joins the workspace's split beside `apps/gateway`.
+- ADR-0003: `apps/app` joins the workspace's split beside `apps/gateway`
+  (the split now lives in `docs/research/45-stack-toolchain.md`).
 - ADR-0005 §1, the paragraph on `/healthz`: it answers for the process's
   gateway listener and `/cabinet/healthz` for its cabinet listener, and the
   reason for having no aggregate health document stays, for the scanner and

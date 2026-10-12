@@ -38,7 +38,7 @@ a link, to say whose session a cookie is and, for a deletion, to remove a person
 who owns no merchant; only its header asks to renew a session. A page that
 cannot reach the dashboard says it cannot tell who is visiting: not knowing who
 somebody is must not look like knowing they are nobody. The two share a database
-(ADR-0003 §2) but not tables. A report opens for a session whose address's lead
+(ADR-0003 §3) but not tables. A report opens for a session whose address's lead
 is linked to its scan. A full-report request finishes at the first visit of the
 session its link opens; a signed-in ask names the address it files under and
 finishes at once, never somebody else's request. Deleting an address closes its
