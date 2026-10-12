@@ -1028,13 +1028,29 @@ describe("what the React pages take from a stranger", () => {
     expect(signedIn).toBeGreaterThan(0);
   });
 
-  it("answers an address that cannot be decoded without a fault", async () => {
-    const { browser } = await started();
-    await browser.signIn();
+  it("writes nothing a stranger sent into the log, from an address or the route table's question", async () => {
+    // A path that cannot be decoded is one React Router would write to the log
+    // as it came, and a newline in it forges a line in the record of who did
+    // what. The build's version, which the route table asks for, is public.
+    const { browser, pages } = await started();
+    const build = typeof pages.build === "function" ? await pages.build() : pages.build;
+    const version = build.assets.version;
+    const written: string[] = [];
+    for (const level of ["log", "warn", "error"] as const) {
+      vi.spyOn(console, level).mockImplementation((...said: unknown[]) => {
+        written.push(said.map(String).join(" "));
+      });
+    }
 
-    const answered = await browser.get("/cards%E0%A4%A");
+    const page = await browser.get("/cards%E0%A4%A");
+    const table = await browser.get(
+      `/__manifest?version=${version}&paths=${encodeURIComponent("/%E0\n[dashboard] forged")}`,
+    );
+    vi.restoreAllMocks();
 
-    expect(answered.status).toBeLessThan(500);
+    expect(page.status).toBeLessThan(500);
+    expect(table.status).toBe(400);
+    expect(written.filter((line) => /%E0|forged/.test(line))).toStrictEqual([]);
   });
 
   it("never lets a browser keep the data of the page a mailed link lands on", async () => {
