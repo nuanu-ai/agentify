@@ -21,9 +21,12 @@ digest. It needs no GitHub credential, and GitHub holds no host credential or
 secret: a channel's configuration and secrets are one root-owned environment
 file on its host. GitHub Actions builds the images once per pushed branch head,
 pushes them to the GitHub Container Registry as public packages and publishes
-their digests; a host builds nothing and pulls nothing by tag, because any
-later push can move a registry tag. How a release runs, waits, fails and is
-restored is `deploy/README.md`.
+their digests in one notice. A host reads it by the rule in the header of
+`.github/workflows/images.yml`, which wants exactly one annotation titled
+`images`, so one a branch adds refuses the release instead of replacing the
+digests. A host builds nothing and pulls nothing by tag, because any later push
+can move a registry tag. How a release runs, waits, fails and is restored is
+`deploy/README.md`.
 
 A PRODUCTION release is an `app-v*` tag, which only repository administrators
 can create. The tag publishes the SDK and the contracts to npm through Trusted
