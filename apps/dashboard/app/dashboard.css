@@ -1301,10 +1301,13 @@ h2 {
   margin: 0 auto;
   padding-inline: 0;
 }
+/* Where the title, the light and the address wrap onto two rows, the title
+   keeps the room above it that one centred row gives it. */
 @media (max-width: 900px) {
   .app-workspace .top-inner {
     width: calc(100% - 36px);
     min-height: 64px;
+    padding-block: 14px;
   }
 }
 
