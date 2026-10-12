@@ -75,6 +75,17 @@ describe("a failure, as a log line names it", () => {
     expect(failureNamed(null)).toBe("a thrown null");
   });
 
+  it("is still a line, and not a second failure, when the failure cannot be read", () => {
+    // It runs inside a pool's error listener, where a throw takes the process down.
+    const unreadable = Object.defineProperty(new Error(SECRET), "code", {
+      get() {
+        throw new Error(SECRET);
+      },
+    });
+
+    expect(failureNamed(unreadable)).toBe("a failure that could not be named");
+  });
+
   it("takes no name or code from a value's own fields unless they read as one", () => {
     // A parsed document can carry fields called anything, a constructor and a
     // code among them.
