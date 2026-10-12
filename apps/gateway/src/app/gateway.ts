@@ -303,6 +303,23 @@ function heldByTheOther(integration: Integration, merchantItemId: string): Probl
   };
 }
 
+/** Waits out a poll's window with nothing to draw, or less where the poll is ended. */
+function quietFor(ms: number, ended: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (ended.aborted || ms <= 0) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(done, ms);
+    function done(): void {
+      clearTimeout(timer);
+      ended.removeEventListener("abort", done);
+      resolve();
+    }
+    ended.addEventListener("abort", done, { once: true });
+  });
+}
+
 /** One poll held open, the key it came in on, and the way to end it early. */
 interface HeldPoll {
   readonly keyId: string | null;
@@ -1768,17 +1785,18 @@ export class Gateway {
     const holding = this.#held.get(merchantId) ?? new Set<HeldPoll>();
     holding.add(held);
     this.#held.set(merchantId, holding);
+    const signal =
+      gone === undefined ? held.stop.signal : AbortSignal.any([gone, held.stop.signal]);
     try {
       // Asked once the poll is held, so a switch either came before this read
       // and is seen by it, or comes after and ends the poll (`sellThrough`).
+      // Answered as a quiet stream is, after its window: answered at once, a
+      // worker that polls again on an empty answer would spin.
       if ((await this.sellsThrough(merchantId)) !== through) {
+        await quietFor(Math.min(waitMs, this.runtime.config.worker.pollWaitMs), signal);
         return { contract_version: CONTRACT_VERSION, envelopes: [] };
       }
-      return await this.#drawFor(
-        merchantId,
-        waitMs,
-        gone === undefined ? held.stop.signal : AbortSignal.any([gone, held.stop.signal]),
-      );
+      return await this.#drawFor(merchantId, waitMs, signal);
     } finally {
       holding.delete(held);
       if (holding.size === 0 && this.#held.get(merchantId) === holding) {
