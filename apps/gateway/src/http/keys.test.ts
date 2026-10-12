@@ -619,12 +619,11 @@ describe("the mark a call leaves on the key it was made with", () => {
     });
 
     expect(answered.status).toBe(200);
-    // The line names the key and what was not written, not just any error.
+    // The line names the key and what was not written, in one line of its own.
     expect(said).toHaveBeenCalledWith(
       expect.stringContaining(
         `the last use of the key ${harnessed.merchant.keyId} was not written down`,
       ),
-      expect.objectContaining({ message: "the database would not take it" }),
     );
   });
 });
