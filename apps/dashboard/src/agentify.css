@@ -112,53 +112,6 @@ textarea {
 }
 
 /*
- * The one ink band on these screens, in the colours the shared file names for
- * the scanner's footer. `margin-top: auto` holds it against the bottom of a short
- * page: the page is a full-height flex column, so the last child takes the slack.
- */
-.foot {
-  margin-top: auto;
-  background: var(--fg);
-  color: var(--footer-text);
-}
-
-.foot-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px 28px;
-  flex-wrap: wrap;
-  padding-block: 28px;
-}
-
-.foot .brand,
-.foot .brand:hover {
-  color: var(--bg);
-}
-
-.foot-links {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-  font-size: 0.875rem;
-}
-
-.foot-links a {
-  color: var(--footer-text);
-  text-decoration: none;
-}
-
-.foot-links a:hover {
-  color: var(--bg);
-  text-decoration: none;
-}
-
-.foot-copy {
-  color: var(--footer-faint);
-  font: 0.75rem / 1.5 var(--font-mono);
-}
-
-/*
  * Text rather than a link: asking for this address without paying is answered
  * with a payment demand in a header, so a browser shows a blank page and the
  * card looks broken. Set to be read and copied whole, wrapping wherever it has to

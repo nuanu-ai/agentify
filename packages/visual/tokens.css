@@ -1,8 +1,9 @@
 /*
  * The visual language shared by every surface on the origin: the tokens, the
  * base element rules, and the primitives every surface draws (page width,
- * button, field, badge, table, brand lockup, small typographic classes). The
- * layout of one page does not belong here; it lives with that page.
+ * button, field, badge, table, brand lockup, footer band, small typographic
+ * classes). The layout of one page does not belong here; it lives with that
+ * page.
  *
  * Nothing serves this file over HTTP on the deployed origin: the Caddyfile
  * routes shared assets one path at a time and this one is not among them, so
@@ -253,6 +254,23 @@ p {
   min-height: 36px;
   padding: 0 14px;
   font-size: 0.875rem;
+}
+
+/* A press on its way to the server: the button keeps its colours, so it does
+   not read as unavailable, while it takes no second press. */
+.button[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.72;
+}
+
+.button-primary[aria-busy="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.button-secondary[aria-busy="true"] {
+  background: var(--surface);
+  color: var(--fg);
 }
 
 /* A labelled box. The line under it is either a hint in the ordinary voice or
@@ -516,6 +534,50 @@ p {
   height: 30px;
   display: block;
   flex: none;
+}
+
+/* The ink band at the foot of a page. `margin-top: auto` holds it against the
+   bottom of a short page wherever the page is a full-height flex column. */
+.foot {
+  margin-top: auto;
+  background: var(--fg);
+  color: var(--footer-text);
+}
+
+.foot-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-block) 28px;
+  flex-wrap: wrap;
+  padding-block: 28px;
+}
+
+.foot .brand,
+.foot .brand:hover {
+  color: var(--bg);
+}
+
+.foot-links {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  font-size: var(--text-small);
+}
+
+.foot-links a {
+  color: var(--footer-text);
+  text-decoration: none;
+}
+
+.foot-links a:hover {
+  color: var(--bg);
+  text-decoration: none;
+}
+
+.foot-copy {
+  color: var(--footer-faint);
+  font: var(--text-caption) / 1.5 var(--font-mono);
 }
 
 @media (max-width: 700px) {
