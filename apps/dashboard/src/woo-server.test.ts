@@ -22,6 +22,7 @@ import type { Message } from "./mail.js";
 import { buildApp } from "./server.js";
 import { importFormOf, readable, shownMarkIn } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
+import { testPages } from "./testing/pages.js";
 import type { StoreProduct } from "./woo-catalog.js";
 import type { Preflight } from "./woo-connect.js";
 import type { WooRequest } from "./woo-request.js";
@@ -217,6 +218,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   const read: string[] = [];
   const silent = standing.silent;
   const app: Express = buildApp(config, {
+    pages: await testPages(),
     gateway: harnessed.gateway,
     identity,
     wooShops: shops,

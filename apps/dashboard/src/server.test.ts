@@ -44,9 +44,11 @@ import {
   LINK_RATE_WINDOW_MS,
 } from "./identity.js";
 import type { Handover, Message, Postman } from "./mail.js";
+import type { Pages } from "./pages.js";
 import { buildApp } from "./server.js";
 import { readable, shownMarkIn, waitingButton } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
+import { testPages } from "./testing/pages.js";
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
 /**
@@ -180,6 +182,7 @@ interface Browser {
 
 interface Running {
   readonly harnessed: Harness;
+  readonly pages: Pages;
   readonly gateway: Served;
   readonly browser: Browser;
   /**
@@ -269,6 +272,7 @@ const started = async (options: Starting = {}): Promise<Running> => {
 
   open = {
     harnessed,
+    pages: await testPages(),
     gateway,
     browser,
     url,
@@ -325,6 +329,7 @@ async function visiting(
     merchant,
   );
   const app = buildApp(config, {
+    pages: await testPages(),
     gateway: application,
     identity: options.identity === undefined ? identity : options.identity(identity),
     ...(options.registrar === undefined ? {} : { registrar: options.registrar }),
@@ -1107,7 +1112,12 @@ const routesOf = (running: Running): { method: string; path: string }[] => {
       PAYMENT_NETWORK: "eip155:84532",
       FACILITATOR_URL: "sandbox:scripted",
     }),
-    { gateway: running.harnessed.gateway, identity: running.identity, wooShops: memoryWooShops() },
+    {
+      pages: running.pages,
+      gateway: running.harnessed.gateway,
+      identity: running.identity,
+      wooShops: memoryWooShops(),
+    },
   );
   return (
     listed.router.stack as { route?: { path: string; methods: Record<string, boolean> } }[]

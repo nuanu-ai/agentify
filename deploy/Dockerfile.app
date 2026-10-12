@@ -3,8 +3,8 @@
 # migration that runs to completion before them. Which one a container is is
 # decided at `command`, not at build time.
 #
-# There is no compile step: Node runs the TypeScript through tsx, as on a
-# laptop, so there is no build output to be stale.
+# Node runs the TypeScript through tsx, as on a laptop; the one compile step is
+# the dashboard's pages, below.
 
 FROM node:24.21.0-alpine
 
@@ -27,6 +27,11 @@ RUN pnpm fetch
 
 COPY . .
 RUN pnpm install --frozen-lockfile --offline
+
+# The dashboard's pages are the one thing compiled: React Router's Vite build,
+# the scripts and styles a browser loads and the server half the process
+# imports. Node runs the rest of the source as it is.
+RUN pnpm --filter @agentify/dashboard build
 
 # Not root. The application is reached from outside through Caddy, and none of
 # the three has any reason to be able to write to its own source.

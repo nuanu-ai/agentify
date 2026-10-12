@@ -2,8 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": "src",
-    "types": ["node"]
+    "jsx": "react-jsx",
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "types": ["node", "vite/client"]
   },
-  "include": ["src"]
+  "include": ["src", "app", "react-router.config.ts", "vite.config.ts"]
 }

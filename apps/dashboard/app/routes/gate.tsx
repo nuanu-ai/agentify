@@ -1,0 +1,85 @@
+/**
+ * The gate: every page nested under this route in `routes.ts` needs a session,
+ * and gets it from here rather than asking for one itself, so a page added
+ * under it is guarded by being there. It decides with the same function as the
+ * string pages' gate. A form that posts is refused unless it was drawn for the
+ * address signed in now, before any action reads it.
+ */
+
+import {
+  data,
+  type LoaderFunctionArgs,
+  type MiddlewareFunction,
+  Outlet,
+  redirectDocument,
+} from "react-router";
+import { DRAWN_FOR } from "../../src/drawn-for.js";
+import { chromeOf, type Trouble } from "../answer.js";
+import { services, signedIn } from "../services.js";
+
+const cookies = (lines: readonly string[]): Headers => {
+  const headers = new Headers();
+  for (const line of lines) headers.append("set-cookie", line);
+  return headers;
+};
+
+/** A form whose body cannot be read as a form carries no mark, and is refused. */
+const drawnForIn = async (request: Request): Promise<unknown> => {
+  if (request.method === "GET" || request.method === "HEAD") return undefined;
+  try {
+    return (await request.clone().formData()).get(DRAWN_FOR) ?? undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const middleware: MiddlewareFunction<Response>[] = [
+  async ({ request, context }, next) => {
+    const pages = context.get(services);
+    let answer: Awaited<ReturnType<typeof pages.gate>>;
+    try {
+      answer = await pages.gate({
+        cookie: request.headers.get("cookie") ?? undefined,
+        method: request.method,
+        path: new URL(request.url).pathname.replace(/\.data$/, ""),
+        drawnFor: await drawnForIn(request),
+      });
+    } catch {
+      // Nothing below this route has run, so the page drawn instead is given
+      // what it needs here; the exception is not logged, for the reason the
+      // server entry gives.
+      console.error("[dashboard] a request failed");
+      throw data({ kind: "broken", chrome: chromeOf(context) } satisfies Trouble, { status: 500 });
+    }
+    if (answer.kind === "signed-out") {
+      // Sent as it is: React Router does not put its prefix on a redirect
+      // thrown here, so the location already carries the dashboard's.
+      throw redirectDocument(answer.location, { status: 303, headers: cookies(answer.setCookies) });
+    }
+    if (answer.kind === "not-drawn-for-you") {
+      throw data(
+        {
+          kind: "not-drawn-for-you",
+          chrome: chromeOf(context),
+          who: answer.who,
+          start: answer.start,
+        } satisfies Trouble,
+        { status: 409, headers: cookies(answer.setCookies) },
+      );
+    }
+    context.set(signedIn, answer.person);
+    const response = await next();
+    // Once a day the read moves the session's end, and the browser must be
+    // told or its cookie expires thirty days after sign-in however often its
+    // person returns.
+    for (const line of answer.setCookies) response.headers.append("set-cookie", line);
+    return response;
+  },
+];
+
+/** The address every page behind the gate is drawn for, and names. */
+export const loader = ({ context }: LoaderFunctionArgs) => ({ who: context.get(signedIn).email });
+
+export default function Gate() {
+  return <Outlet />;
+}

@@ -50,6 +50,8 @@ import {
 import { bare, brandLockup, escaped } from "./html.js";
 import { SESSION_DAYS } from "./identity.js";
 import { keysScreen, newKeyScreen } from "./keys.js";
+import { pageServicesFor } from "./page-services.js";
+import { type Pages, pagesHandler } from "./pages.js";
 import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import { printable } from "./printable.js";
 import {
@@ -191,6 +193,8 @@ function readTokens(): string {
 const STYLESHEET = `${TOKENS}\n${readFileSync(new URL("./agentify.css", import.meta.url), "utf8")}`;
 
 export interface DashboardParts {
+  /** The pages drawn by React Router, which answer in front of the string ones. */
+  readonly pages: Pages;
   /**
    * `identity.ts` over Postgres in a deployment, over the component's memory
    * store in tests, so the suite drives the real component offline.
@@ -323,9 +327,15 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   app.disable("x-powered-by");
   // No `trust proxy`: nothing reads the client's address, and express would put
   // a spoofable value behind `request.ip` and `request.secure` where nobody
-  // reading a handler would doubt it. Only small forms are posted here.
-  app.use(express.urlencoded({ extended: false, limit: "16kb" }));
+  // reading a handler would doubt it.
   app.use(sameOriginUnder(base, config.surfaceMode));
+  if (parts.pages.assets !== null) {
+    app.use(parts.pages.assets.path, parts.pages.assets.handle);
+  }
+  // Ahead of the body parser, because React Router reads a form itself.
+  app.use(pagesHandler(parts.pages, pageServicesFor(config, { identity })));
+  // Only small forms are posted here.
+  app.use(express.urlencoded({ extended: false, limit: "16kb" }));
 
   // At BASE_PATH behind the shared origin, and at the root for a container
   // health check: a probe answering 404 reads as a dead process.
