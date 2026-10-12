@@ -1148,28 +1148,14 @@ h2 {
   }
 }
 
-/* The forms sit on the bottom edge of equal-height panels, and the account is a
-   strip of its own at the foot. */
+/* Each panel's words, form and messages sit at their own height, one under
+   another, and the account is a strip of its own at the foot. */
 .settings-panel {
   display: flex;
   flex-direction: column;
 }
-.settings-panel > .issue {
-  margin-top: auto;
-}
-/* The name and wallet panels share three rows across the pair (what the panel
-   says, the box with its button, the refusal), so a refusal in one panel cannot
-   lift its box above the other's. */
-.settings-pair {
-  display: grid;
-  grid-row: span 3;
-  grid-template-rows: subgrid;
-  row-gap: 0;
-}
 .settings-pair > .issue {
-  margin-top: 0;
   padding-bottom: 0;
-  align-self: end;
 }
 .panel-top > .lede {
   padding: 24px 24px 0;
@@ -1181,9 +1167,7 @@ h2 {
 .panel-top > .saved {
   margin: 16px 24px 8px;
 }
-/* The name panel's own second subject, its shop's site, sits in its third
-   row under the name's refusal: the pair shares exactly three rows, and a
-   fourth child of the panel would be laid over the third. */
+/* The name panel's own second subject, its shop's site, follows its form. */
 .panel-follow > h2 {
   margin-top: 24px;
 }
