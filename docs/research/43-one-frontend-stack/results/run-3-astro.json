@@ -1,0 +1,192 @@
+{
+  "conditions": {
+    "base": "http://localhost:8090",
+    "runs": 5,
+    "latencyMs": 300,
+    "cpuSlowdown": 4,
+    "orderId": "ord_fe74cc8259c942f088730b313a20f15b",
+    "cardId": "item_cdd099358ffe40468110d48227c9a5dc",
+    "stacks": ["astro", "today"]
+  },
+  "screenA": {
+    "today": {
+      "jsKB": {
+        "median": 226.3,
+        "runs": [226.3, 226.3, 226.3, 226.3, 226.3]
+      },
+      "lcpMs": {
+        "median": 692,
+        "runs": [700, 692, 688, 692, 688]
+      }
+    },
+    "astro": {
+      "jsKB": {
+        "median": 1.2,
+        "runs": [1.2, 1.2, 1.2, 1.2, 1.2]
+      },
+      "lcpMs": {
+        "median": 672,
+        "runs": [672, 672, 668, 672, 672]
+      }
+    }
+  },
+  "M2": {
+    "todayKB": {
+      "median": 0,
+      "runs": [0, 0, 0, 0, 0]
+    },
+    "astroKB": {
+      "median": 1.2,
+      "runs": [1.2, 1.2, 1.2, 1.2, 1.2]
+    }
+  },
+  "M4": {
+    "today": {
+      "firstChangeMs": {
+        "median": 949.4,
+        "runs": [955.8, 949.5, 949.4, 949.4, 945.7]
+      }
+    },
+    "astro": {
+      "firstChangeMs": {
+        "median": 16.2,
+        "runs": [40.5, 16.3, 14.1, 16.2, 15.3]
+      },
+      "serverAnswerDrawnMs": {
+        "median": 315.9,
+        "runs": [313.3, 317.1, 315.1, 316.8, 315.9]
+      }
+    }
+  },
+  "M5": {
+    "todayReferenceSectionClick": {
+      "median": 636.6,
+      "runs": [640, 636.6, 648.5, 631.6, 635.5]
+    },
+    "astroAfterRest": {
+      "median": 129.5,
+      "runs": [130.6, 131.2, 129.5, 129.2, 116.7],
+      "requests": [
+        "/dashboard/spike-astro/orders/ord_fe74cc8259c942f088730b313a20f15b",
+        "/dashboard/spike-astro/orders/ord_fe74cc8259c942f088730b313a20f15b",
+        "/dashboard/spike-astro/_astro/Page.CFsU8KbZ.css",
+        "/dashboard/spike-astro/_astro/page.BsuiZEAU.js",
+        "/dashboard/spike-astro/_astro/schibsted-grotesk-400-latin.DPhJBilQ.woff2",
+        "/dashboard/spike-astro/_astro/schibsted-grotesk-latin-wght-normal.Bb8VGrTG.woff2",
+        "/dashboard/spike-astro/_astro/ibm-plex-mono-400-latin.BJoXLJYV.woff2",
+        "/dashboard/spike-astro/_astro/ibm-plex-mono-500-latin.C820gu2e.woff2",
+        "/assets/agentify-mark-heavy.svg"
+      ]
+    },
+    "astroWithoutRest": {
+      "median": 371.2,
+      "runs": [328.6, 376.3, 333.6, 371.2, 377],
+      "requests": [
+        "/dashboard/spike-astro/orders/ord_fe74cc8259c942f088730b313a20f15b",
+        "/dashboard/spike-astro/orders/ord_fe74cc8259c942f088730b313a20f15b",
+        "/dashboard/spike-astro/_astro/Page.CFsU8KbZ.css",
+        "/dashboard/spike-astro/_astro/page.BsuiZEAU.js",
+        "/dashboard/spike-astro/_astro/schibsted-grotesk-400-latin.DPhJBilQ.woff2",
+        "/dashboard/spike-astro/_astro/schibsted-grotesk-latin-wght-normal.Bb8VGrTG.woff2",
+        "/dashboard/spike-astro/_astro/ibm-plex-mono-400-latin.BJoXLJYV.woff2",
+        "/dashboard/spike-astro/_astro/ibm-plex-mono-500-latin.C820gu2e.woff2",
+        "/assets/agentify-mark-heavy.svg"
+      ]
+    }
+  },
+  "M6": {
+    "today GET / (Next.js)": {
+      "serverTimingP95Ms": null,
+      "serverTimingMedianMs": null,
+      "loopbackFirstByteP95Ms": 9.8,
+      "samples": 40
+    },
+    "today GET /dashboard/orders": {
+      "serverTimingP95Ms": null,
+      "serverTimingMedianMs": null,
+      "loopbackFirstByteP95Ms": 6,
+      "samples": 40
+    },
+    "today GET /dashboard/cards": {
+      "serverTimingP95Ms": null,
+      "serverTimingMedianMs": null,
+      "loopbackFirstByteP95Ms": 2.6,
+      "samples": 40
+    },
+    "today POST /dashboard/cards/:id/pause|resume": {
+      "serverTimingP95Ms": null,
+      "serverTimingMedianMs": null,
+      "loopbackFirstByteP95Ms": 3.2,
+      "samples": 40
+    },
+    "astro GET / (document)": {
+      "serverTimingP95Ms": 0.4,
+      "serverTimingMedianMs": 0.2,
+      "loopbackFirstByteP95Ms": 1.5,
+      "samples": 40
+    },
+    "astro GET /orders (document)": {
+      "serverTimingP95Ms": 2.9,
+      "serverTimingMedianMs": 1.6,
+      "loopbackFirstByteP95Ms": 5.7,
+      "samples": 40
+    },
+    "astro GET /orders/:id (document)": {
+      "serverTimingP95Ms": 1.6,
+      "serverTimingMedianMs": 1.1,
+      "loopbackFirstByteP95Ms": 3.3,
+      "samples": 40
+    },
+    "astro POST /orders/:id (action, background)": {
+      "serverTimingP95Ms": 2,
+      "serverTimingMedianMs": 1.7,
+      "loopbackFirstByteP95Ms": 3.5,
+      "samples": 40
+    },
+    "astro POST / (scan action, a new scan each)": {
+      "serverTimingP95Ms": 47.7,
+      "serverTimingMedianMs": 7.3,
+      "loopbackFirstByteP95Ms": 49.9,
+      "samples": 8,
+      "scannerPartP95Ms": 47,
+      "scannerPartMedianMs": 6.8
+    }
+  },
+  "M7": {
+    "today scan form": {
+      "landedOn": "/?url=example.com",
+      "works": false
+    },
+    "today navigation": {
+      "works": true
+    },
+    "today action": {
+      "before": "/dashboard/cards/item_cdd099358ffe40468110d48227c9a5dc/pause",
+      "after": "/dashboard/cards/item_cdd099358ffe40468110d48227c9a5dc/resume",
+      "works": true
+    },
+    "astro scan form": {
+      "landedOn": "/scan/01a12f45-e099-778e-896d-0bbf802cdfcd",
+      "works": true
+    },
+    "astro navigation": {
+      "works": true
+    },
+    "astro action": {
+      "before": "Pause this card",
+      "after": "Resume this card",
+      "works": true,
+      "url": "/dashboard/spike-astro/orders/ord_fe74cc8259c942f088730b313a20f15b"
+    }
+  },
+  "inlineScriptChars": {
+    "spike front page": 2985,
+    "spike orders": 3028,
+    "spike order": 4592,
+    "astro front page": 333,
+    "astro orders": 0,
+    "astro order": 1102,
+    "today front page": 22644,
+    "today orders": 0
+  }
+}

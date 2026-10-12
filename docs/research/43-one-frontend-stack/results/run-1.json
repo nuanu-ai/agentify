@@ -1,0 +1,172 @@
+{
+  "conditions": {
+    "base": "http://localhost:8090",
+    "runs": 5,
+    "latencyMs": 300,
+    "cpuSlowdown": 4,
+    "orderId": "ord_9a8f9ff3e80a4ca2971f79a8d98ea177",
+    "cardId": "item_3a7f15dcc16546d8bbe84babdda7f2f1"
+  },
+  "screenA": {
+    "spike": {
+      "jsKB": {
+        "median": 112.6,
+        "runs": [112.6, 112.6, 112.6, 112.6, 112.6]
+      },
+      "lcpMs": {
+        "median": 692,
+        "runs": [720, 692, 688, 696, 684]
+      }
+    },
+    "today": {
+      "jsKB": {
+        "median": 226.3,
+        "runs": [226.3, 226.3, 226.3, 226.3, 226.3]
+      },
+      "lcpMs": {
+        "median": 692,
+        "runs": [972, 704, 692, 692, 692]
+      }
+    }
+  },
+  "M2": {
+    "spikeKB": {
+      "median": 113,
+      "runs": [113, 113, 113, 113, 113]
+    },
+    "todayKB": {
+      "median": 0,
+      "runs": [0, 0, 0, 0, 0]
+    }
+  },
+  "M4": {
+    "spike": {
+      "firstChangeMs": {
+        "median": 32.6,
+        "runs": [31.7, 33.2, 32.6, 32.7, 32]
+      },
+      "serverAnswerDrawnMs": {
+        "median": 647.6,
+        "runs": [647.6, 632.9, 648.6, 631.1, 649.6]
+      }
+    },
+    "today": {
+      "firstChangeMs": {
+        "median": 950.6,
+        "runs": [981.8, 955.5, 945.5, 949.7, 950.6]
+      }
+    }
+  },
+  "M5": {
+    "spikeAfterRest": {
+      "median": 140.5,
+      "runs": [134.8, 144.5, 137.3, 141.1, 140.5],
+      "requests": [
+        "/dashboard/spike/orders/ord_9a8f9ff3e80a4ca2971f79a8d98ea177.data",
+        "/dashboard/spike/assets/order-B1PeGdLK.js",
+        "/dashboard/spike/assets/button-Dtd83DWo.js",
+        "/dashboard/spike/orders/ord_9a8f9ff3e80a4ca2971f79a8d98ea177.data",
+        "/assets/agentify-mark-heavy.svg"
+      ]
+    },
+    "spikeWithoutRest": {
+      "median": 466.5,
+      "runs": [442, 470, 466.5, 439.6, 469.9],
+      "requests": [
+        "/dashboard/spike/assets/order-B1PeGdLK.js",
+        "/dashboard/spike/orders/ord_9a8f9ff3e80a4ca2971f79a8d98ea177.data",
+        "/dashboard/spike/orders/ord_9a8f9ff3e80a4ca2971f79a8d98ea177.data",
+        "/dashboard/spike/assets/button-Dtd83DWo.js",
+        "/assets/agentify-mark-heavy.svg"
+      ]
+    },
+    "todayReferenceSectionClick": {
+      "median": 643.6,
+      "runs": [637.4, 643.8, 643.6, 664.4, 639.7]
+    }
+  },
+  "M6": {
+    "spike GET / (document)": {
+      "serverTimingP95Ms": 6.1,
+      "serverTimingMedianMs": 3.5,
+      "loopbackFirstByteP95Ms": 7.9
+    },
+    "spike GET /orders (document)": {
+      "serverTimingP95Ms": 5.9,
+      "serverTimingMedianMs": 3.7,
+      "loopbackFirstByteP95Ms": 7.7
+    },
+    "spike GET /orders (data)": {
+      "serverTimingP95Ms": 2.4,
+      "serverTimingMedianMs": 1.7,
+      "loopbackFirstByteP95Ms": 3.8
+    },
+    "spike GET /orders/:id (document)": {
+      "serverTimingP95Ms": 2.1,
+      "serverTimingMedianMs": 1.7,
+      "loopbackFirstByteP95Ms": 3.4
+    },
+    "spike GET /orders/:id (data)": {
+      "serverTimingP95Ms": 3.8,
+      "serverTimingMedianMs": 1.6,
+      "loopbackFirstByteP95Ms": 5.8
+    },
+    "spike POST /orders/:id (action, data)": {
+      "serverTimingP95Ms": 2.8,
+      "serverTimingMedianMs": 1.5,
+      "loopbackFirstByteP95Ms": 4.1
+    },
+    "spike POST / (scan action, replayed key)": {
+      "serverTimingP95Ms": 8.7,
+      "serverTimingMedianMs": 3.2,
+      "loopbackFirstByteP95Ms": 9.7
+    },
+    "today GET / (Next.js)": {
+      "serverTimingP95Ms": null,
+      "serverTimingMedianMs": null,
+      "loopbackFirstByteP95Ms": 6.7
+    },
+    "today GET /dashboard/orders": {
+      "serverTimingP95Ms": null,
+      "serverTimingMedianMs": null,
+      "loopbackFirstByteP95Ms": 3.1
+    },
+    "today GET /dashboard/cards": {
+      "serverTimingP95Ms": null,
+      "serverTimingMedianMs": null,
+      "loopbackFirstByteP95Ms": 3.5
+    },
+    "today POST /dashboard/cards/:id/pause|resume": {
+      "serverTimingP95Ms": null,
+      "serverTimingMedianMs": null,
+      "loopbackFirstByteP95Ms": 2.3
+    }
+  },
+  "M7": {
+    "spike scan form": {
+      "landedOn": "/dashboard/spike",
+      "works": false
+    },
+    "today scan form": {
+      "landedOn": "/?url=example.com",
+      "works": false
+    },
+    "spike navigation": {
+      "works": true
+    },
+    "spike action": {
+      "before": "Pause this card",
+      "after": "Resume this card",
+      "works": true,
+      "url": "/dashboard/spike/orders/ord_9a8f9ff3e80a4ca2971f79a8d98ea177"
+    },
+    "today navigation": {
+      "works": true
+    },
+    "today action": {
+      "before": "/dashboard/selling/pause",
+      "after": "/dashboard/selling/resume",
+      "works": true
+    }
+  }
+}
