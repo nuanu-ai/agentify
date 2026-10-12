@@ -770,7 +770,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/orders/:order_id/accept",
     auth: "merchant_key",
     description:
-      "Takes an order on: the merchant will deliver, and says how long they expect it to take when they know. An empty body is a complete answer. A synchronous order still waiting for its goods cannot be taken on, because its goods travel only in the handler's answer: the call is refused with not_applicable_in_mode. The same order is taken on again every time it is redelivered, and the success carries no word: taking on an order that is already delivered succeeds here too, and this route does not tell the two apart. The answer route does, because it carries whichever of the three things a handler returned.",
+      "Takes an order on: the merchant will deliver. An empty body is a complete answer. A synchronous order still waiting for its goods cannot be taken on, because its goods travel only in the handler's answer: the call is refused with not_applicable_in_mode. The same order is taken on again every time it is redelivered, and the success carries no word: taking on an order that is already delivered succeeds here too, and this route does not tell the two apart. The answer route does, because it carries whichever of the three things a handler returned.",
     request: AcceptanceSchema,
     response: { document: OrderAcceptResponseSchema },
   },
