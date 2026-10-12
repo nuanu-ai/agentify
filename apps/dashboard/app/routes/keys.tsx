@@ -2,8 +2,9 @@
  * The key list and the press that issues a key. The press is answered with the
  * page that shows the new key's secret, the only answer that ever carries it.
  * It goes to that press alone, which nothing caches, and React Router keeps it
- * in the page's memory, never in history, until the page is left: a reload, a
- * return to it through Back and Forward, and any later visit draw the list.
+ * in the page's memory, never in history; the page takes it off the screen as
+ * it is left, and a reload, a return to it through Back and Forward, and any
+ * later visit draw the list.
  */
 
 import {
