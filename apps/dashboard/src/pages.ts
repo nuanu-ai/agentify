@@ -296,17 +296,22 @@ export async function precompressedFrom(directory: string): Promise<RequestHandl
     const encoding = accepted(request.headers["accept-encoding"]).find((each) =>
       names.has(`${name}.${each === "gzip" ? "gz" : each}`),
     );
-    response.setHeader("cache-control", "public, max-age=31536000, immutable");
-    response.setHeader("vary", "accept-encoding");
-    response.setHeader("content-type", type);
-    if (encoding !== undefined) {
-      response.setHeader("content-encoding", encoding);
-    }
+    // Named under the directory rather than joined to it, so a directory with a
+    // dot in its path, a checkout under a tool's hidden one, is not refused as
+    // a dotfile; and the headers are given to the send, so a send that fails
+    // leaves none of them on the error page.
     response.sendFile(
-      join(
-        directory,
-        encoding === undefined ? name : `${name}.${encoding === "gzip" ? "gz" : encoding}`,
-      ),
+      encoding === undefined ? name : `${name}.${encoding === "gzip" ? "gz" : encoding}`,
+      {
+        root: directory,
+        maxAge: "1y",
+        immutable: true,
+        headers: {
+          "content-type": type,
+          vary: "accept-encoding",
+          ...(encoding === undefined ? {} : { "content-encoding": encoding }),
+        },
+      },
       (error) => {
         if (error !== undefined && !response.headersSent) next(error);
       },
