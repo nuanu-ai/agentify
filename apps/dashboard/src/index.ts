@@ -23,7 +23,6 @@ export {
   type LinkRequestResult,
   type Person,
 } from "./identity.js";
-export { keysScreen, newKeyScreen } from "./keys.js";
 export {
   type Handover,
   isSandboxMail,

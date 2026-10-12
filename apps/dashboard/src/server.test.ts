@@ -2742,7 +2742,9 @@ describe("the keys screen", () => {
 
     expect(keys.issued).toStrictEqual(["the second worker"]);
     expect(issued.status).toBe(200);
-    expect(issued.html).toContain(SECRET);
+    // Read where a person reads it: the page's data carries it too, drawn or
+    // not.
+    expect(readable(issued.html)).toContain(SECRET);
     // Kept by no cache, so nothing can hand the page back later.
     expect(issued.headers.get("cache-control")).toBe("private, no-store");
     expect(readable(issued.html)).toMatch(/only time|once/i);
@@ -2810,7 +2812,8 @@ describe("the keys screen", () => {
 
     expect(keys.issued).toStrictEqual(["the second worker"]);
     expect(issued.status).toBe(200);
-    expect(issued.html).toContain(SECRET);
+    expect(readable(issued.html)).toContain(SECRET);
+    expect(readable(issued.html)).not.toContain("Something went wrong");
   });
 
   it("revokes a key only on a second, deliberate press", async () => {
@@ -2993,7 +2996,7 @@ describe("what every screen says about the address", () => {
     const { browser } = await started();
     await browser.signIn();
 
-    for (const path of ["/cards", "/orders", "/receipts"]) {
+    for (const path of ["/cards", "/orders", "/receipts", "/keys"]) {
       const data = await browser.get(`${path}.data`);
       expect(data.status, path).toBe(200);
       expect(data.html, path).toContain(PERSON);

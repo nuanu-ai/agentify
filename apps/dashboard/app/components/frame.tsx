@@ -26,7 +26,7 @@ const TABS: readonly (readonly [Tab, string, "drawn" | "string"])[] = [
   ["orders", "Orders", "drawn"],
   ["receipts", "Receipts", "drawn"],
   ["integrations", "Integrations", "string"],
-  ["keys", "API keys", "string"],
+  ["keys", "API keys", "drawn"],
   ["settings", "Settings", "string"],
 ];
 
@@ -120,7 +120,7 @@ export function Frame({
           <header className="top">
             <div className="top-inner">
               <h1 className="top-title">{title}</h1>
-              <Word word={frame.selling} />
+              {frame.selling === undefined ? null : <Word word={frame.selling} />}
               <SignedIn
                 className="account"
                 who={gate.who}

@@ -25,7 +25,6 @@ import type { Gateway } from "@agentify/gateway";
 import {
   type CardInput,
   EvmAddressSchema,
-  IssueKeyRequestSchema,
   MERCHANT_FINDINGS,
   type PayoutWallet as PayoutWalletDocument,
   type PublishResult,
@@ -44,7 +43,6 @@ import {
   registrarFor,
 } from "./gateway.js";
 import { bare, brandLockup, escaped } from "./html.js";
-import { keysScreen, newKeyScreen } from "./keys.js";
 import { pageServicesFor } from "./page-services.js";
 import { type Pages, pagesHandler } from "./pages.js";
 import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
@@ -1350,99 +1348,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       response.redirect(303, `${base}/cards`);
     });
   }
-
-  app.get(`${base}/keys`, async (request, response) => {
-    const keys = await gatewayAs(request).keys();
-    if (!keys.ok) {
-      return trouble(response, base, keys);
-    }
-    response
-      .type("html")
-      .send(
-        keysScreen(viewing(request, base), keys.document, undefined, request.query.new === "key"),
-      );
-  });
-
-  // The new-key page replaces its POST history entry with this, so a reload
-  // returns to the list without issuing a second key or storing the secret for
-  // another request.
-  app.get(`${base}/keys/new`, (_request, response) => {
-    response.redirect(303, `${base}/keys`);
-  });
-
-  app.post(`${base}/keys`, async (request, response) => {
-    const form = (request.body ?? {}) as { label?: unknown };
-    const label = typeof form.label === "string" ? form.label.trim() : "";
-    const gateway = gatewayAs(request);
-
-    if (label === "") {
-      // A key with no name cannot be told apart from another on the screen
-      // meant for telling them apart before revoking one. The list is fetched
-      // again so the refusal lands on the page they were looking at.
-      const keys = await gateway.keys();
-      if (!keys.ok) {
-        return trouble(response, base, keys);
-      }
-      response
-        .status(400)
-        .type("html")
-        .send(
-          keysScreen(
-            viewing(request, base),
-            keys.document,
-            "Give the key a name, so that you can tell it from the others when you come to revoke one.",
-          ),
-        );
-      return;
-    }
-
-    // The rest of the rule is the contract's: one line, at most the length the
-    // gateway takes, which also keeps the live announcement naming it to one
-    // line.
-    const unfit = IssueKeyRequestSchema.shape.label.safeParse(label);
-    if (!unfit.success) {
-      const keys = await gateway.keys();
-      if (!keys.ok) {
-        return trouble(response, base, keys);
-      }
-      const said = unfit.error.issues[0]?.message ?? "that name cannot be given to a key";
-      response
-        .status(400)
-        .type("html")
-        .send(
-          keysScreen(
-            viewing(request, base),
-            keys.document,
-            `${said.slice(0, 1).toUpperCase()}${said.slice(1)}. No key was issued.`,
-          ),
-        );
-      return;
-    }
-
-    const issued = await gateway.issueKey(label);
-    if (!issued.ok) {
-      return trouble(response, base, issued);
-    }
-    // The name and identifier, never the secret: a log goes places the database
-    // does not, and this is the one moment the secret exists outside the
-    // merchant's hands.
-    noted(whoIs(request), `issued a key, ${issued.document.key.id}, named "${label}"`);
-    // A page rather than a redirect; `keys.ts` says why.
-    response.type("html").send(newKeyScreen(viewing(request, base), label, issued.document.secret));
-  });
-
-  app.post(`${base}/keys/:key_id/disable`, async (request, response) => {
-    const keyId = request.params.key_id ?? "";
-    const stopped = await gatewayAs(request).disableKey(keyId);
-    if (!stopped.ok) {
-      // Including the refusal the screen never offers a control for: the
-      // gateway will not disable the key its caller holds. Whoever reaches this
-      // anyway is told what the gateway said.
-      return trouble(response, base, stopped);
-    }
-    noted(whoIs(request), `revoked the key ${keyId}`);
-    response.redirect(303, `${base}/keys`);
-  });
 
   app.use((request, response) => {
     response

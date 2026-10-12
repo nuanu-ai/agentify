@@ -9,6 +9,7 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import { IssueKeyRequestSchema } from "@nuanu-ai/agentify-contracts";
 import type { DashboardConfig } from "./config.js";
 import {
   type DashboardDestination,
@@ -21,6 +22,8 @@ import {
 import { clearingLines, dashboardPathFor, type Gate, gateFor, startOf } from "./gate.js";
 import type { Acting, Answer, GatewayClient } from "./gateway.js";
 import { SESSION_DAYS } from "./identity.js";
+import { type KeysView, keysView, type NewKeyView, newKeyView } from "./keys.js";
+import { printable } from "./printable.js";
 import type { Viewer } from "./screens.js";
 import {
   type CardsView,
@@ -118,6 +121,17 @@ export interface PageServices {
     orders(person: Person, query: URLSearchParams): Promise<Outcome<OrdersView>>;
     receipts(person: Person): Promise<Outcome<ReceiptsView>>;
   };
+  /** The merchant's keys, for a person the gates let through. */
+  readonly keys: {
+    list(person: Person, query: URLSearchParams): Promise<Outcome<KeysView>>;
+    /**
+     * Answered with the page that shows the new key's secret rather than a
+     * redirect: a redirect cannot carry the secret without writing it into
+     * history and logs, or storing it for the next request.
+     */
+    issue(person: Person, form: FormData): Promise<Outcome<KeysView | NewKeyView>>;
+    disable(person: Person, keyId: string): Promise<Outcome<never>>;
+  };
 }
 
 export interface PageParts {
@@ -182,6 +196,31 @@ const LINK_HEADERS = { "referrer-policy": "strict-origin" } as const;
  * nobody's choice, and is read as not named at all.
  */
 const once = (values: readonly unknown[]): unknown => (values.length === 1 ? values[0] : undefined);
+
+/**
+ * The process log's line naming who did what, never a token, a link, a session
+ * or a key's secret. The whole line goes through `printable`, so a key's label
+ * with a newline cannot forge a second line in the record of who did what.
+ */
+const noted = (person: Person, did: string): void => {
+  console.log(printable(`[dashboard] ${person.email} ${did}`));
+};
+
+/**
+ * A key with no name cannot be told apart from another on the screen meant for
+ * telling them apart before revoking one. The rest of the rule is the
+ * contract's: one line, at most the length the gateway takes, which also keeps
+ * the live announcement naming it to one line.
+ */
+const whatIsWrongWithTheLabel = (label: string): string | null => {
+  if (label === "") {
+    return "Give the key a name, so that you can tell it from the others when you come to revoke one.";
+  }
+  const unfit = IssueKeyRequestSchema.shape.label.safeParse(label);
+  if (unfit.success) return null;
+  const said = unfit.error.issues[0]?.message ?? "that name cannot be given to a key";
+  return `${said.slice(0, 1).toUpperCase()}${said.slice(1)}. No key was issued.`;
+};
 
 export function pageServicesFor(config: DashboardConfig, parts: PageParts): PageServices {
   const base = config.basePath;
@@ -461,6 +500,49 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             config.transactionPage,
           ),
         };
+      },
+    },
+
+    keys: {
+      async list(person, query) {
+        const keys = await gatewayAs(person).keys();
+        if (!keys.ok) return problemOf(keys);
+        return {
+          kind: "view",
+          view: keysView(keys.document, { startNew: once(query.getAll("new")) === "key" }),
+        };
+      },
+
+      async issue(person, form) {
+        const named = once(form.getAll("label"));
+        const label = typeof named === "string" ? named.trim() : "";
+        const gateway = gatewayAs(person);
+        const problem = whatIsWrongWithTheLabel(label);
+        if (problem !== null) {
+          // The list is read again so the refusal lands on the page they were
+          // looking at.
+          const keys = await gateway.keys();
+          if (!keys.ok) return problemOf(keys);
+          return { kind: "view", status: 400, view: keysView(keys.document, { problem }) };
+        }
+        const issued = await gateway.issueKey(label);
+        if (!issued.ok) return problemOf(issued);
+        // The name and identifier, never the secret: a log goes places the
+        // database does not, and this is the one moment the secret exists
+        // outside the merchant's hands.
+        noted(person, `issued a key, ${issued.document.key.id}, named "${label}"`);
+        return { kind: "view", view: newKeyView(label, issued.document.secret) };
+      },
+
+      async disable(person, keyId) {
+        const stopped = await gatewayAs(person).disableKey(keyId);
+        // Including the refusal the screen never offers a control for: the
+        // gateway will not disable the key its caller holds. Whoever reaches
+        // this anyway is told what the gateway said.
+        if (!stopped.ok) return problemOf(stopped);
+        noted(person, `revoked the key ${keyId}`);
+        // A redirect, so a reload does not press it again.
+        return { kind: "redirect", location: `${base}/keys` };
       },
     },
   };

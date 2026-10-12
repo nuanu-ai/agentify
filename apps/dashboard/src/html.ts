@@ -56,16 +56,12 @@ export interface Chrome {
   readonly title: string;
   /** The site's front page unless named. */
   readonly home?: string;
-  /**
-   * Absent on the keys screen: the word comes from the card list, and fetching
-   * it there would be a gateway call for a coloured dot on the screen a
-   * merchant reads when something about their keys has gone wrong.
-   */
+  /** Absent where the screen did not read the card list, which says it. */
   readonly selling?: { readonly text: string; readonly tone: string };
   /**
    * True draws the line at the top saying nothing can go on sale, with the page
-   * that fixes it. Absent where the screen did not ask the gateway: the keys
-   * screen, and settings itself.
+   * that fixes it. Absent where the screen did not ask the gateway: settings
+   * itself.
    */
   readonly unnamed?: boolean;
   readonly body: string;
@@ -254,43 +250,5 @@ export const when = (iso: string): string => {
     : `<span class="when"><span>${escaped(date ?? "")}</span> <span>${escaped(time.join(" "))}</span></span>`;
 };
 
-/** A column as narrow as the moment on two lines. */
-export const momentCell = (iso: string): Cell => ({ kind: "quiet moment", html: when(iso) });
-
 export const state = (word: { readonly text: string; readonly tone: string }): string =>
   `<span class="state ${word.tone}"><span class="dot"></span>${escaped(word.text)}</span>`;
-
-export interface Cell {
-  readonly html: string;
-  readonly kind?: string;
-}
-
-export interface Row {
-  readonly mark?: string;
-  readonly cells: readonly Cell[];
-}
-
-/**
- * Every cell carries its column's head: where the frame is too narrow, a row is
- * drawn as a block of labelled values, and the labels are the same words as the
- * heads.
- */
-export const table = (
-  columns: readonly string[],
-  rows: readonly Row[],
-  nothing: string,
-): string => {
-  if (rows.length === 0) {
-    return `<div class="scroller"><p class="empty">${escaped(nothing)}</p></div>`;
-  }
-  const cell = (one: Cell, head = ""): string =>
-    `<td${one.kind === undefined ? "" : ` class="${one.kind}"`}${head === "" ? "" : ` data-label="${escaped(head)}"`}>${one.html}</td>`;
-  const row = (one: Row): string =>
-    `<tr${one.mark === undefined ? "" : ` class="${one.mark}"`}>
-${one.cells.map((each, at) => cell(each, columns[at])).join("\n")}
-</tr>`;
-  return `<div class="scroller"><table>
-<thead><tr>${columns.map((column) => `<th>${escaped(column)}</th>`).join("")}</tr></thead>
-<tbody>${rows.map(row).join("")}</tbody>
-</table></div>`;
-};

@@ -35,6 +35,9 @@ export default [
       route("cards", "routes/cards.tsx"),
       route("orders", "routes/orders.tsx"),
       route("receipts", "routes/receipts.tsx"),
+      route("keys", "routes/keys.tsx"),
+      route("keys/new", "routes/keys-new.ts"),
+      route("keys/:key_id/disable", "routes/keys-disable.ts"),
     ]),
   ]),
 ] satisfies RouteConfig;
