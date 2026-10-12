@@ -39,11 +39,10 @@ import {
   type StoredOrder,
   X402Facilitator,
 } from "@agentify/gateway";
-import { AgentOrderStatusSchema, type Card } from "@nuanu-ai/agentify-contracts";
+import type { Card } from "@nuanu-ai/agentify-contracts";
 import { HTTPFacilitatorClient } from "@x402/core/server";
-import type { SettleResponse } from "@x402/core/types";
 import { getDefaultAsset } from "@x402/evm";
-import { makeBuyer } from "./buyer.js";
+import { type Bought, makeBuyer } from "./buyer.js";
 import { EUROPE_ESIM } from "./cards.js";
 import { bootGateway, sliceEnv } from "./gateway-harness.js";
 import { startMerchant } from "./merchant.js";
@@ -90,53 +89,20 @@ export function whyNotThisNetwork(network: string, allowMainnet: boolean): strin
   return `${network} is not a known testnet; real money needs an explicit SMOKE_ALLOW_MAINNET=1, which this command is not meant for`;
 }
 
-export type SettlementVerdict =
-  | { readonly settled: true; readonly transaction: string; readonly readFrom: "answer" | "order" }
-  | { readonly settled: false; readonly why: string };
-
 /**
- * Whether the purchase's charge settled, from what the smoke can read.
- *
- * A synchronous sale carries the settlement on the purchase's answer. An
- * asynchronous one charges while the order is opened and answers with the
- * order alone, so the settlement is read from the order the in-process gateway
- * recorded. An unanswered charge is never reported as a failure: the money may
- * have moved, and paying again would be a second charge.
+ * What the smoke can say about the money after its one purchase: it settled,
+ * nothing was charged, or nobody can tell from here. The third is never folded
+ * into the second, because paying again after a charge whose fate is unknown
+ * would be a second charge.
  */
-export function settlementOf(
-  answer: SettleResponse | null,
-  stored: Pick<StoredOrder, "order" | "settlement"> | null,
-): SettlementVerdict {
-  if (answer !== null) {
-    return answer.success
-      ? { settled: true, transaction: answer.transaction, readFrom: "answer" }
-      : { settled: false, why: `the settlement did not succeed: ${JSON.stringify(answer)}` };
-  }
-  if (stored === null) {
-    return {
-      settled: false,
-      why: "the answer carried no settlement and the gateway holds no order for this purchase, so whether money moved cannot be read here",
-    };
-  }
-  switch (stored.order.payment) {
-    case "settled":
-      return stored.settlement === null
-        ? { settled: false, why: "the order reads settled but carries no transaction to check" }
-        : { settled: true, transaction: stored.settlement.transaction, readFrom: "order" };
-    case "outcome_unknown":
-      return {
-        settled: false,
-        why: "the charge was sent and the payment layer never answered: the money may have moved, so check the buyer's wallet before running again",
-      };
-    case "settle_failed":
-      return { settled: false, why: "the payment layer answered that the charge failed" };
-    default:
-      return {
-        settled: false,
-        why: `the charge has not finished (payment stage: ${stored.order.payment})`,
-      };
-  }
-}
+export type PurchaseVerdict =
+  | {
+      readonly kind: "settled";
+      readonly transaction: string;
+      readonly readFrom: "answer" | "order";
+    }
+  | { readonly kind: "not_charged"; readonly why: string }
+  | { readonly kind: "unknown"; readonly why: string };
 
 /** Stages after which the payment layer has nothing more to say about the charge. */
 const CHARGE_ANSWERED: ReadonlySet<StoredOrder["order"]["payment"]> = new Set([
@@ -145,18 +111,79 @@ const CHARGE_ANSWERED: ReadonlySet<StoredOrder["order"]["payment"]> = new Set([
   "outcome_unknown",
 ]);
 
-/** Reads the order until its charge has an answer, for at most half a minute. */
-async function settledOrStuck(
-  read: () => Promise<StoredOrder | null>,
+const refusalMessageIn = (body: unknown): string => {
+  const error = (body as { error?: { message?: unknown } } | null)?.error;
+  return typeof error?.message === "string" ? error.message : JSON.stringify(body);
+};
+
+const orderIdIn = (body: unknown): string | null => {
+  const id = (body as { order_id?: unknown } | null)?.order_id;
+  return typeof id === "string" ? id : null;
+};
+
+/**
+ * Judges the purchase from its answer and the order it opened.
+ *
+ * A synchronous sale carries the settlement on the answer. An asynchronous one
+ * charges while the order is opened and answers with the order alone, so the
+ * settlement is read from the order the in-process gateway recorded, once its
+ * charge has been answered or the wait has run out.
+ */
+export async function verdictOnPurchase(
+  bought: Pick<Bought, "status" | "body" | "settlement">,
+  readOrder: (orderId: string) => Promise<StoredOrder | null>,
   { timeoutMs = 30_000, everyMs = 250 } = {},
-): Promise<StoredOrder | null> {
+): Promise<PurchaseVerdict> {
+  const answer = bought.settlement;
+  if (answer !== null) {
+    return answer.success && answer.transaction !== ""
+      ? { kind: "settled", transaction: answer.transaction, readFrom: "answer" }
+      : { kind: "not_charged", why: `the settlement did not succeed: ${JSON.stringify(answer)}` };
+  }
+
+  const orderId = orderIdIn(bought.body);
+  if (orderId === null) {
+    return bought.status >= 500
+      ? {
+          kind: "unknown",
+          why: `the gateway failed with HTTP ${bought.status} and named no order: ${refusalMessageIn(bought.body)}`,
+        }
+      : {
+          kind: "not_charged",
+          why: `the gateway refused the purchase with HTTP ${bought.status}: ${refusalMessageIn(bought.body)}`,
+        };
+  }
+
   const deadline = Date.now() + timeoutMs;
-  let stored = await read();
+  let stored = await readOrder(orderId);
   while (stored !== null && !CHARGE_ANSWERED.has(stored.order.payment) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, everyMs));
-    stored = await read();
+    stored = await readOrder(orderId);
   }
-  return stored;
+
+  if (stored === null) {
+    return {
+      kind: "unknown",
+      why: `the gateway holds no order ${orderId} to read the charge from`,
+    };
+  }
+  switch (stored.order.payment) {
+    case "settled":
+      return stored.settlement === null || stored.settlement.transaction === ""
+        ? { kind: "unknown", why: "the order reads settled but carries no transaction to check" }
+        : { kind: "settled", transaction: stored.settlement.transaction, readFrom: "order" };
+    case "settle_failed":
+      return { kind: "not_charged", why: "the payment layer answered that the charge failed" };
+    case "outcome_unknown":
+      return { kind: "unknown", why: "the charge was sent and the payment layer never answered" };
+    case "settling":
+      return { kind: "unknown", why: `the charge was still running after ${timeoutMs} ms` };
+    default:
+      return {
+        kind: "not_charged",
+        why: `no charge was started (payment stage: ${stored.order.payment})`,
+      };
+  }
 }
 
 /** The real facilitator, built from the loaded config exactly as production does. */
@@ -340,16 +367,27 @@ async function main(): Promise<void> {
     if (bought.settlement !== null) {
       say(`settlement on the answer: ${JSON.stringify(bought.settlement)}`);
     }
-    const answered = AgentOrderStatusSchema.safeParse(bought.body);
-    const stored = answered.success
-      ? await settledOrStuck(() => booted.gateway.runtime.store.orderById(answered.data.order_id))
-      : null;
-    const verdict = settlementOf(bought.settlement, stored);
-    if (!verdict.settled) {
-      die(verdict.why);
+    const verdict = await verdictOnPurchase(bought, (id) =>
+      booted.gateway.runtime.store.orderById(id),
+    );
+    switch (verdict.kind) {
+      case "not_charged":
+        die(`nothing was charged: ${verdict.why}`);
+        break;
+      case "unknown":
+        die(
+          `whether money moved is not known: ${verdict.why}. Check the buyer's wallet before running again.`,
+        );
+        break;
+      case "settled":
+        say(`settled: transaction ${verdict.transaction} (read from the ${verdict.readFrom})`);
+        if (bought.status !== 200) {
+          die(
+            `the charge settled, so the money moved, but the purchase answered HTTP ${bought.status}`,
+          );
+        }
+        say("done: one real testnet settlement went through.");
     }
-    say(`settled: transaction ${verdict.transaction} (read from the ${verdict.readFrom})`);
-    say("done: one real testnet settlement went through.");
   } finally {
     await merchant.stop();
     await booted.stop();
