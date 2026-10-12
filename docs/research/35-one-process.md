@@ -75,17 +75,17 @@ inside the process: the gateway has the dashboard tell a merchant of a change
 to their payout wallet or keys (ADR-0019).
 
 The pages are server-rendered, and they are moving to one framework. React
-Router 7 in its framework mode, compiled by Vite, is the one stack for every
-surface a person uses (`docs/research/43-one-frontend-stack.md`); its pages
-render in this process, on the dashboard's listener, in front of the pages
-still built as HTML strings, and a request reaches React Router only where one
-of its routes answers that path and method, so every other path falls through
-to the strings until the last screen moves. The sign-in, the page a mailed link
-lands on, the sign-out, the cards, the orders and the receipts have moved
-(`apps/dashboard/app`); the rest are strings. Both draw from the gateway's
-application in the process, behind one gate decided in one place
-(`apps/dashboard/src/gate.ts`), and both are tested over HTTP against the real
-gateway.
+Router in its framework mode, compiled by Vite, is the one stack for every
+surface a person uses (`docs/research/43-one-frontend-stack.md`), and the move
+runs on its eighth major version; its pages render in this process, on the
+dashboard's listener, in front of the pages still built as HTML strings, and a
+request reaches React Router only where one of its routes answers that path
+and method, so every other path falls through to the strings until the last
+screen moves. The sign-in, the page a mailed link lands on, the sign-out, the
+cards, the orders and the receipts have moved (`apps/dashboard/app`); the rest
+are strings. Both draw from the gateway's application in the process, behind
+one gate decided in one place (`apps/dashboard/src/gate.ts`), and both are
+tested over HTTP against the real gateway.
 
 Every form is an HTML form that works without script. With script, a moved
 page's forms show the press at once and its section links open without a page

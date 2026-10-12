@@ -445,4 +445,7 @@ allows route by route.
 The migration follows rule 2's order: the dashboard first, then the
 scanner's pages, then the landings, and the Next.js application is removed in
 the change that moves its last page. A future registration prices the cost of
-ownership in its rule, not only the speed.
+ownership in its rule, not only the speed. The move starts on React Router 8,
+the current major of the same framework, measured equivalent: the brotli
+script of the first moved dashboard pages is 91.0 to 91.8 KB a page on 8.4.0
+against 91.7 to 92.4 KB on 7.18.4.
