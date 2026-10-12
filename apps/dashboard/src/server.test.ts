@@ -877,6 +877,31 @@ describe("the passwordless dashboard door", () => {
     expect((await running.identity.byEmail(FRESH.email))?.merchant?.id).toBe("mer_after_retry");
   });
 
+  it("ends the session of a person whose account is gone, even on the day the session is renewed", async () => {
+    // The gate renews a session once a day by setting its cookie again; a
+    // page that clears the cookie must have the last word, or the renewal
+    // would put back what the page took away.
+    const running = await started({
+      identity: (real) => ({
+        ...real,
+        attachMerchant: async () => ({ status: "person-missing" as const }),
+      }),
+    });
+    await running.browser.signIn(FRESH.email);
+    await running.browser.get("/merchant");
+    const aDayAndAnHourAgo = Date.now() - 25 * 60 * 60 * 1_000;
+    for (const session of sessionRows()) {
+      session.expiresAt = new Date(aDayAndAnHourAgo + THIRTY_DAYS_SECONDS * 1_000);
+    }
+
+    const pressed = await running.browser.post("/merchant");
+
+    expect(pressed.to).toBe("/sign-in");
+    const session = pressed.headers.getSetCookie().filter((line) => line.startsWith(`${COOKIE}=`));
+    expect(session.length).toBeGreaterThan(1);
+    expect(session.at(-1)).toMatch(new RegExp(`^${COOKIE}=;`));
+  });
+
   it("stores only the closed settings destination and returns an existing merchant there", async () => {
     const running = await started();
     await running.browser.post("/sign-in", { email: PERSON, destination: "settings" });
