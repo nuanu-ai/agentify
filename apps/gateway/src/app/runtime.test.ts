@@ -42,6 +42,7 @@ const stored = (paused: boolean): StoredCard => ({
   card,
   asOf: 0,
   paused,
+  integration: "api",
 });
 
 describe("what the order machine is told about one card", () => {
