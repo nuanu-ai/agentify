@@ -1,9 +1,11 @@
 /**
  * The dashboard's pages, React Router 8 in framework mode, mounted on its
  * listener. A request is handed to React Router only where one of its routes
- * answers that path with that method, and every readable path under the
- * dashboard is one, the page that says there is no such page included; what is
- * left falls through to the listener's last answer.
+ * answers that path with that method; a path that matches no other route
+ * matches the page that says there is no such page. What falls through to the
+ * listener's last answer is a request no route takes: a method other than a
+ * read or a post, a post to a page that does not act, a path that cannot be
+ * decoded, and a WooCommerce page where the connector is not offered.
  *
  * What the pages need from the process — the session lookup, the gateway as
  * the signed-in merchant, the configuration — reaches their loaders through the

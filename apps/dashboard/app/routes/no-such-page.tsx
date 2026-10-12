@@ -1,9 +1,9 @@
 /**
- * Any address under the dashboard that is none of its pages. It stands inside
- * the gates, so a visitor with no session is sent to the sign-in from it as
- * from every address and learns nothing about which exist; somebody signed in
- * is told in the dashboard's own frame, with its menu and a way back. A form
- * sent here is answered the same way, since nothing here acts.
+ * Any address under the dashboard that matches none of its routes. It stands
+ * inside the gates, so a visitor with no session who opens it is sent to the
+ * sign-in as from any page; somebody signed in is told in the dashboard's own
+ * frame, with its menu and a way back. A form sent here is answered the same
+ * way, since nothing here acts.
  */
 
 import { data } from "react-router";

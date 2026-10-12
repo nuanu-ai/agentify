@@ -178,9 +178,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     ),
   );
 
-  // What the pages do not answer: a method no page takes, or an address that
-  // could not be read. Every readable path under the dashboard is a page, one
-  // that says there is no such page included.
+  // What no page takes, which `pages.ts` lists: these get no frame and no
+  // gate, and say nothing about who is signed in.
   app.use((_request, response) => {
     response.status(404).type("text/plain").send("Not Found");
   });
