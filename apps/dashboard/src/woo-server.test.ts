@@ -2020,6 +2020,28 @@ describe("one integration at a time", () => {
     expect((await theCodePolls(running)).status).toBe(200);
   });
 
+  it("offers a merchant on their code with a shop connected the switch to it, and imports nothing until they take it", async () => {
+    // Reached when a Disconnect switched the merchant back and was cut off
+    // before it forgot the shop, or from two tabs: the page showed a connected
+    // shop and an Import that read the whole shop only to refuse every card.
+    const running = await started({
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await running.signIn();
+    await connectTheShop(running);
+    const merchantId = running.harnessed.merchant.id;
+    await running.harnessed.gateway.sellThrough(merchantId, "api");
+
+    const page = await running.get("/woocommerce");
+    const refused = await running.post("/woocommerce/import");
+
+    expect(page.html).toContain('action="/woocommerce/switch"');
+    expect(refused.status).toBe(409);
+    expect(running.read).toStrictEqual([]);
+    await running.post("/woocommerce/switch");
+    expect(await running.harnessed.gateway.sellsThrough(merchantId)).toBe("woocommerce");
+  });
+
   it("says beside each of the code's cards why it is off sale while the shop sells", async () => {
     const running = await started();
     await running.signIn();
