@@ -1,21 +1,14 @@
 #!/usr/bin/env bash
 #
-# Hygiene for agent worktrees under .claude/worktrees.
+# Lists the agent worktrees under .claude/worktrees and, with `clean`, removes
+# the merged ones with their branches; a merge removes neither. Safe to run at
+# any moment.
 #
-# Why this file exists. Agents work in worktrees and finish; the merge does
-# not remove the worktree or its branch, so within one day the repository
-# accumulated four 132 MB copies of itself and a thicket of dead branches
-# (the product owner's rule, 2026-08-26: acceptance of an agent branch ends
-# with the worktree removed and the branch deleted). This script is that
-# final step of acceptance, made safe to run at any moment.
-#
-# What it will never touch: the primary checkout (it is not under
-# .claude/worktrees); locked worktrees (the agent harness locks a worktree
-# while its agent is alive); dirty worktrees (uncommitted work is someone's
-# work in progress); branches whose commits are not in main (verified with
-# git cherry, which compares patches, not hashes — it survives the history
-# rewrite of 2026-08-26). Whatever this script refuses to remove, it names
-# with the reason; forcing is left to a human with plain git.
+# It never touches the primary checkout; a locked worktree (the agent harness
+# locks one while its agent is alive); a dirty one; or a branch whose commits
+# are not in main, checked with git cherry, which compares patches rather than
+# hashes and so survives a rewritten history. Whatever it keeps, it names with
+# the reason; forcing is left to a human with plain git.
 #
 # Usage: scripts/worktrees.sh [list|clean]   (also: pnpm worktrees[:clean])
 
@@ -33,7 +26,6 @@ esac
 repository_root="$(git rev-parse --show-toplevel)"
 agents_prefix="${repository_root}/.claude/worktrees/"
 
-# Drop worktree records whose directories are already gone.
 git worktree prune
 
 # Snapshot the porcelain listing first: removing worktrees while reading
@@ -69,12 +61,9 @@ flush() {
   elif [ -z "${short_branch}" ]; then
     state="detached HEAD — inspect by hand"
   elif [ "$(git rev-parse "${short_branch}")" = "$(git rev-parse main)" ]; then
-    # A branch sitting exactly on main's HEAD has no history of its own: it is
-    # either a worktree an agent has only just created and not yet committed
-    # into, or one that did nothing. Either way it is not litter left by a
-    # merge — a merged branch's HEAD stays on its own last commit while main
-    # moves past it. Removing it here is what once deleted a running agent's
-    # fresh worktree out from under it (2026-08-27). Left for a human.
+    # A branch exactly on main's HEAD is a worktree an agent has only just
+    # created, or one that did nothing; a merged branch stays on its own last
+    # commit. Removing it could delete a running agent's fresh worktree.
     state="no commits of its own — fresh or untouched, not auto-removed"
   elif git cherry main "${short_branch}" | grep -q '^+'; then
     state="unmerged commits — accept or discard by hand"

@@ -103,9 +103,7 @@ jobs:
       - name: Enable the repository pnpm version
         run: corepack enable
 
-      # This is the version proven by the adjacent Mercuryo Agent Pay release
-      # workflow. Node's bundled npm is not the release authority and may be
-      # older than npm Trusted Publishing support.
+      # Node's bundled npm may predate npm Trusted Publishing support.
       - name: Install npm with Trusted Publishing support
         run: npm install -g npm@11.6.2
 
@@ -151,11 +149,9 @@ jobs:
           set -euo pipefail
 
           # The registry records a publish some time after `changeset publish`
-          # reports it, and the two packages are not recorded together: on
-          # both 0.2.0 and 0.2.1 the SDK appeared at once and the contracts
-          # package one to two minutes later (`npm view <package> time`). A
-          # twenty-second wait failed both releases with a package that was
-          # already there, and the rerun found nothing left to publish.
+          # reports it, and not both packages at once: the contracts package can
+          # lag the SDK by minutes. A short wait fails a release whose rerun
+          # then finds nothing left to publish.
           expect_version() {
             local selector="$1"
             local expected="$2"

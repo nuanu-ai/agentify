@@ -7,19 +7,13 @@
  *
  * Usage: pnpm approve <email>
  *
- * The filter names the dashboard by its directory and not by its package name
- * because pnpm resolves it inside that container, against the revision that
- * was deployed last rather than against this checkout. A rename of the package
- * would otherwise break approval from every laptop until the next deployment
- * caught up. The container's own name is not so lucky: it follows the Compose
- * service of the revision deployed there, so a checkout naming a renamed one
- * reaches a host only once that host runs it (deploy/README.md).
- *
- * `--fail-if-no-match` is what makes that safe to rely on: a filter matching
- * nothing — a layout the container does not have, a working directory that is
- * not the workspace root — is pnpm's own refusal with a non-zero status rather
- * than a silent success over an empty selection, and this wrapper forwards
- * that status.
+ * pnpm resolves the filter inside the container, against the revision deployed
+ * there rather than this checkout, so the dashboard is named by its directory:
+ * a package rename would otherwise break approval until the next deployment.
+ * The container's name has no such protection; it follows the Compose service
+ * of the revision deployed there. `--fail-if-no-match` makes a filter that
+ * matches nothing a non-zero refusal rather than a silent success, and this
+ * wrapper forwards that status.
  */
 
 import { spawnSync } from "node:child_process";

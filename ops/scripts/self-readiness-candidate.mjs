@@ -253,8 +253,7 @@ async function main() {
   if (evaluation.score.coverage !== 1)
     fail(`candidate coverage ${evaluation.score.coverage} is not 1.0`);
 
-  // The owner landing became the front page (docs/research/31-user-journey.md
-  // §2). Its old address answers with a redirect that no cache may keep: a
+  // `/owner` redirects to the front page with a response no cache may keep: a
   // browser holding a cached redirect in either direction would loop.
   const ownerAlias = await fetchArtifact("/owner");
   if (

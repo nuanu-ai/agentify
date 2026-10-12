@@ -140,7 +140,7 @@ async function expectSharedAssets(baseUrl) {
 /**
  * Asserts that Caddy adds nothing to a path that it does not add to an ordinary
  * scanner path: the operator's dashboard has no door of its own at the edge,
- * so no header may tell `/admin` apart from any other page (ADR-0026 §6).
+ * so no header may tell `/admin` apart from any other page.
  */
 async function expectUnmarked(baseUrl, requestPath) {
   const headersOf = async (path) => {
@@ -326,8 +326,8 @@ try {
   ]) {
     await expectProxy(innerBase, encodedEdge, role);
   }
-  // The address the dashboard had before /dashboard answers with the same path
-  // under the new prefix, query kept, and 307 so a posted form is posted again.
+  // `/cabinet` paths redirect to the same path under `/dashboard`, query kept,
+  // with 307 so a posted form is posted again.
   for (const [from, to] of [
     ["/cabinet", "/dashboard"],
     ["/cabinet/sign-in/open?token=a%2Bb", "/dashboard/sign-in/open?token=a%2Bb"],

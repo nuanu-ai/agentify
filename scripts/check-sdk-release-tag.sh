@@ -2,11 +2,10 @@
 #
 # Resolve the npm versions one application release tag would publish.
 #
-# The tag is `app-v<release>`, the acceptance that puts a revision on
-# production (ADR-0016). The SDK and contracts versions are the ones the
-# manifests carry — the number in the tag is the application's and says
-# nothing about them — and Changesets publishes only what the registry does
-# not hold yet, so a tag whose versions are already public publishes nothing.
+# The tag is `app-v<release>`; its number is the application's and says
+# nothing about the SDK and contracts versions, which come from their
+# manifests. Changesets publishes only what the registry does not hold yet, so
+# a tag whose versions are already public publishes nothing.
 #
 # The workflow appends this command's stdout to GITHUB_OUTPUT, so stdout is a
 # deliberately tiny machine contract. Explanations and refusals go to stderr.

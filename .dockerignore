@@ -1,7 +1,4 @@
-# What never belongs in a build context.
-#
-# node_modules first and for a reason: the install inside the image is done by
-# pnpm from the lockfile, and a host's node_modules copied in would be both the
+# The image installs from the lockfile; a host's node_modules would be the
 # largest thing in the context and the wrong platform's binaries.
 node_modules
 **/node_modules
