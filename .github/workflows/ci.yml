@@ -104,6 +104,10 @@ jobs:
       # the package tsconfig that decides what ships; the latter reads the whole
       # source tree including tests and emits nothing.
       - run: pnpm build
+      # Reads the dashboard's build, so it comes after it: the script a page
+      # loads stays under its budget, and every file the browser gets is hashed
+      # and kept for a year.
+      - run: pnpm --filter @agentify/dashboard budget
       # Runs the site just built, on loopback, so it comes after the build. The
       # built server reads APP_BASE_URL when it answers, not when it was built,
       # for the absolute URLs in its robots and sitemap.

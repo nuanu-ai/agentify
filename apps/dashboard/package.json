@@ -11,6 +11,7 @@
   },
   "scripts": {
     "build": "react-router build && tsx src/precompress.ts",
+    "budget": "tsx src/budget.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "account": "tsx src/account.ts",
     "approve": "tsx src/approve.ts",
