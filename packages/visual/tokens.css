@@ -91,7 +91,7 @@
 
   /* Spacing, named for where it goes. */
   --space-snug: 4px; /* between a line and the line that qualifies it */
-  --space-tight: 8px; /* between a label, its box and the line under the box */
+  --space-tight: 8px; /* between a label and its box */
   --space-control: 12px; /* between two controls, and inside a table cell */
   --space-block: 16px; /* between blocks inside a card */
   --space-card: 24px; /* the inset of a card or panel, and between cards */
@@ -309,9 +309,11 @@ p {
   border-color: var(--fail);
 }
 
+/* The line under the box stands a block's distance from it, so it reads as a
+   note about what was typed rather than as the next label. */
 .field .field-hint,
 .field .field-error {
-  margin: 0;
+  margin: calc(var(--space-block) - var(--space-tight)) 0 0;
   font-size: var(--text-small);
 }
 
