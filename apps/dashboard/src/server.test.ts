@@ -3498,6 +3498,8 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
     expect(answered.status).toBe(404);
     expect(readable(answered.html)).toContain("There is no such page");
+    // Said once, in the bar, as every screen's title is.
+    expect(answered.html.match(/<h1\b/g)).toHaveLength(1);
     expect(answered.html).toMatch(/<a [^>]*href="\/cards"[^>]*>Back to the dashboard<\/a>/);
     const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
     expect(readable(bar)).toContain(PERSON);
