@@ -194,6 +194,15 @@ const pageOf = (path: string, basename: string): string => {
   return page.length > 1 && page.endsWith("/") ? page.slice(0, -1) : page;
 };
 
+const decodes = (path: string): boolean => {
+  try {
+    decodeURI(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 interface Mounted {
   readonly build: ServerBuild;
   readonly routes: RouteObject[];
@@ -252,16 +261,23 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       const { build, routes, handle } = mount(
         typeof pages.build === "function" ? await pages.build() : pages.build,
       );
-      if (request.path === manifestPath(build)) {
-        handle(request, response, next);
+      // A path that cannot be decoded is no address any route could have, and
+      // matching it would have React Router write it, as the stranger sent
+      // it, to the log; the route table matches each path it is asked about.
+      const asked = request.path === manifestPath(build);
+      const paths = asked
+        ? (new URLSearchParams(request.url.split("?")[1] ?? "").get("paths") ?? "").split(",")
+        : [request.path];
+      if (!paths.every(decodes)) {
+        if (asked) {
+          response.status(400).type("text/plain").send("Invalid Request");
+        } else {
+          next();
+        }
         return;
       }
-      try {
-        decodeURI(request.path);
-      } catch {
-        // Not an address any route could have, and matching it would have
-        // React Router write the stranger's path to the log.
-        next();
+      if (asked) {
+        handle(request, response, next);
         return;
       }
       const matches = matchRoutes(routes, pageOf(request.path, basename), basename);
