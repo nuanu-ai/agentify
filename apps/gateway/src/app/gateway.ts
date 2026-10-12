@@ -1815,6 +1815,13 @@ export class Gateway {
     const signal =
       gone === undefined ? held.stop.signal : AbortSignal.any([gone, held.stop.signal]);
     try {
+      // The key is asked again once the poll is held, for the reason the
+      // integration is: the door let it in a moment ago, and a revocation in
+      // that moment found no held poll to end (`disableMerchantKey`). Answered
+      // at once, because the next poll is the door's to refuse.
+      if (keyId !== null && !(await this.#keyStillWorks(merchantId, keyId))) {
+        return { contract_version: CONTRACT_VERSION, envelopes: [] };
+      }
       // Asked once the poll is held, so a switch either came before this read
       // and is seen by it, or comes after and ends the poll (`sellThrough`).
       // Answered as a quiet stream is, after its window: answered at once, a
@@ -1830,6 +1837,11 @@ export class Gateway {
         this.#held.delete(merchantId);
       }
     }
+  }
+
+  async #keyStillWorks(merchantId: string, keyId: string): Promise<boolean> {
+    const keys = await this.runtime.store.keysOf(merchantId);
+    return keys.some((key) => key.id === keyId && key.disabledAt === null);
   }
 
   /** Ends the held polls of one merchant that `which` picks out, with nothing. */
