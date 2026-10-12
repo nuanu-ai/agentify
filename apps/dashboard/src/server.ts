@@ -147,10 +147,11 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         ),
       );
       response.json({ ok: true });
-    })().catch((thrown) => {
+    })().catch(() => {
       // A failure, so the shop takes its key back rather than keeping one
-      // nothing here knows about.
-      console.error("[dashboard] a WooCommerce callback could not be written down", thrown);
+      // nothing here knows about. The exception is not logged: a failed write
+      // carries the values it was given, the shop's secret among them.
+      console.error("[dashboard] a WooCommerce callback could not be written down");
       if (!response.headersSent) {
         response.status(500).json({ ok: false });
       }

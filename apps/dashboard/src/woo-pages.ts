@@ -168,8 +168,9 @@ async function publishedOrNot(
 ): Promise<Answer<PublishResult>> {
   try {
     return await gateway.publishCard(card);
-  } catch (thrown) {
-    console.error("[dashboard] publishing a card failed", thrown);
+  } catch {
+    // Not the exception, which can carry the values its store was given.
+    console.error("[dashboard] publishing a card failed");
     return {
       ok: false,
       status: 500,
