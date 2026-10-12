@@ -23,11 +23,15 @@ const cookies = (lines: readonly string[]): Headers => {
   return headers;
 };
 
-/** A form whose body cannot be read as a form carries no mark, and is refused. */
+/**
+ * A form whose body cannot be read as a form carries no mark, and is refused;
+ * so is one marked more than once, which no page draws.
+ */
 const drawnForIn = async (request: Request): Promise<unknown> => {
   if (request.method === "GET" || request.method === "HEAD") return undefined;
   try {
-    return (await request.clone().formData()).get(DRAWN_FOR) ?? undefined;
+    const marks = (await request.clone().formData()).getAll(DRAWN_FOR);
+    return marks.length === 1 ? marks[0] : undefined;
   } catch {
     return undefined;
   }
