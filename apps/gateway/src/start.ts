@@ -136,6 +136,19 @@ async function seedTheSandbox(config: GatewayConfig, runtime: Runtime): Promise<
   }
 }
 
+/**
+ * The database as a log line names it: its host and name. A password may hold
+ * a colon, and an address may carry it again in its query, so nothing else of
+ * the address is printed.
+ */
+function databaseNamed(databaseUrl: string): string {
+  if (!URL.canParse(databaseUrl)) {
+    return "the database DATABASE_URL names";
+  }
+  const { host, pathname } = new URL(databaseUrl);
+  return `${host}${pathname}`;
+}
+
 export interface RunningGateway {
   /**
    * The application the surface is mounted on, which the dashboard calls inside
@@ -203,7 +216,7 @@ export async function startGateway(
     // Names the database that did not answer, which a stack trace from the
     // queue's internals does not.
     console.error(
-      `[gateway] cannot start: the queue and the store both live in ${config.databaseUrl.replace(/:[^:@/]*@/, ":***@")}, and it did not answer`,
+      `[gateway] cannot start: the queue and the store both live in ${databaseNamed(config.databaseUrl)}, and it did not answer`,
     );
     throw thrown;
   }
