@@ -1047,7 +1047,6 @@ describe("an order that never reached the handler", () => {
     const late = must(silent.order, {
       kind: "handler_delivered",
       at: due - 100,
-      goods: { access_code: "A" },
     });
     expect(late.order.state).toBe("fulfilled");
 
