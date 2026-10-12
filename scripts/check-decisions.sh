@@ -10,8 +10,9 @@
 # cites a decision or a research note by number (ADR-NNNN,
 # docs/decisions/NNNN, docs/research/NN). Code states the constraint it keeps
 # and a test holds it; the reasoning stays in the record, so a decision
-# changes in one place. Applied migrations are exempt: they are history and
-# must stay byte-identical.
+# changes in one place. SQL under drizzle/ and migrations/ is exempt, because
+# an applied migration must stay byte-identical; a new migration's comments
+# follow the rule by review.
 #
 # Not checked: that decisions already taken stay unchanged. They are living
 # documents edited in place, and the history is in git.
@@ -74,12 +75,20 @@ if [ -n "${duplicates}" ]; then
   done
 fi
 
+# git grep answers 1 when nothing matches and more than 1 when it could not
+# search at all; only the second is a failure of the check.
+grep_status=0
 citations="$(
   git -C "${repository_root}" grep -n -I -E \
     'ADR-[0-9]{4}|docs/decisions/[0-9]{4}|docs/research/[0-9]{2}' \
     -- . ':(exclude)*.md' ':(exclude)docs/**' ':(exclude)**/drizzle/*.sql' ':(exclude)**/migrations/*.sql' \
-    ':(exclude)scripts/check-decisions.sh' || true
-)"
+    ':(exclude)scripts/check-decisions.sh'
+)" || grep_status=$?
+
+if [ "${grep_status}" -gt 1 ]; then
+  printf 'Could not search the tracked files for citations (git grep exit %s).\n' "${grep_status}" >&2
+  exit 1
+fi
 
 if [ -n "${citations}" ]; then
   while IFS= read -r line; do
