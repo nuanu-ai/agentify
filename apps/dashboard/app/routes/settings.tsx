@@ -1,9 +1,10 @@
 /**
  * The settings, with the payout wallet. Each press on the page posts to an
- * address of its own, the routes nested here, and is answered with this page at
- * that address or sent on. Its forms load the next page whole, as a browser
- * without script does: the page is drawn from the read its press made, which
- * only a press and its page answered in one request share.
+ * address of its own, the routes nested here and the wallet's beside them, and
+ * is answered with this page at that address or sent on. Its forms load the
+ * next page whole, as a browser without script does: the page is drawn from
+ * the read its press made, which only a press and its page answered in one
+ * request share.
  */
 
 import { type ActionFunctionArgs, type LoaderFunctionArgs, useLoaderData } from "react-router";

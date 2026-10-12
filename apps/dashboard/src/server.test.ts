@@ -1602,6 +1602,23 @@ describe("the settings screen", () => {
     expect(answered.to).toBe("/settings");
   });
 
+  it("leads the wallet form's address to the settings at once, even while the gateway does not answer", async () => {
+    // Nothing on the way to the page asks the gateway, so a gateway that has
+    // stopped answering does not hold up the way there.
+    const running = await started();
+    await running.browser.signIn();
+    running.silenceGateway();
+
+    const answered = await Promise.race([
+      running.browser.get("/settings/payout-wallet"),
+      new Promise<"still waiting">((resolve) => setTimeout(() => resolve("still waiting"), 5_000)),
+    ]);
+
+    expect(answered).not.toBe("still waiting");
+    expect((answered as Visit).status).toBe(303);
+    expect((answered as Visit).to).toBe("/settings");
+  });
+
   it("draws no page at the other presses' addresses opened as a page, only at their press", async () => {
     // Their page is the answer to the press; opened without one, it would be a
     // page that says nothing happened.
