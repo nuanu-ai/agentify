@@ -15,19 +15,17 @@ import { Word } from "./word.js";
 
 /**
  * Each section is also a destination the sign-in returns to, so a section
- * cannot be added that the sign-in forgets. `drawn` names the sections this
- * application draws, followed without a page load; the rest are pages still
- * drawn as strings and are loaded whole.
+ * cannot be added that the sign-in forgets.
  */
 export type Tab = "cards" | Exclude<DashboardDestination, "default" | "woocommerce">;
 
-const TABS: readonly (readonly [Tab, string, "drawn" | "string"])[] = [
-  ["cards", "Cards", "drawn"],
-  ["orders", "Orders", "drawn"],
-  ["receipts", "Receipts", "drawn"],
-  ["integrations", "Integrations", "drawn"],
-  ["keys", "API keys", "drawn"],
-  ["settings", "Settings", "drawn"],
+const TABS: readonly (readonly [Tab, string])[] = [
+  ["cards", "Cards"],
+  ["orders", "Orders"],
+  ["receipts", "Receipts"],
+  ["integrations", "Integrations"],
+  ["keys", "API keys"],
+  ["settings", "Settings"],
 ];
 
 const FOOT = [
@@ -63,7 +61,8 @@ export function Frame({
   frame,
   children,
 }: Readonly<{
-  tab: Tab;
+  /** Absent on a page that is none of the sections. */
+  tab?: Tab;
   title: string;
   heading?: string;
   frame: FrameView;
@@ -74,7 +73,7 @@ export function Frame({
   if (gate === undefined) {
     throw new Error("the frame was drawn outside the gate, where no address is known");
   }
-  const sections: Section[] = TABS.map(([key, label, drawn], index) => ({
+  const sections: Section[] = TABS.map(([key, label], index) => ({
     key,
     label: (
       <>
@@ -83,7 +82,7 @@ export function Frame({
       </>
     ),
     current: key === tab,
-    ...(drawn === "drawn" ? { to: `/${key}` } : { href: `${chrome.base}/${key}` }),
+    to: `/${key}`,
   }));
   return (
     <div className="page">

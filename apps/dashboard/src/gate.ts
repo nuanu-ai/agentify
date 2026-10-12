@@ -1,8 +1,7 @@
 /**
- * The gate in front of every page that needs a session, decided once for both
- * ways the dashboard draws a page: the string handlers in `server.ts` and the
- * React pages in `app/`. Each asks this module and only turns its answer into
- * a response, so the two cannot come to disagree about who gets in.
+ * The gate in front of every page that needs a session. The gate route in
+ * `app/` asks this module and only turns its answer into a response, so who
+ * gets in is decided here and nowhere else.
  */
 
 import {

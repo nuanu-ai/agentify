@@ -9,7 +9,7 @@ import { createReadableStreamFromReadable } from "@react-router/node";
 import { renderToPipeableStream } from "react-dom/server";
 import { type EntryContext, ServerRouter } from "react-router";
 
-export { services } from "./services.js";
+export { refused, services } from "./services.js";
 
 /** How long a page may take to draw before it is abandoned. */
 export const streamTimeout = 10_000;

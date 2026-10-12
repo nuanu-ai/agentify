@@ -1,16 +1,15 @@
 /**
- * The dashboard's React pages, React Router 8 in framework mode, mounted on its
- * listener in front of the pages still drawn as strings. A request is handed to
- * React Router only where one of its routes answers that path with that
- * method; everything else falls through to the string handlers, so a screen
- * moves by adding its route here and deleting its string handler in the same
- * change.
+ * The dashboard's pages, React Router 8 in framework mode, mounted on its
+ * listener. A request is handed to React Router only where one of its routes
+ * answers that path with that method, and every readable path under the
+ * dashboard is one, the page that says there is no such page included; what is
+ * left falls through to the listener's last answer.
  *
  * What the pages need from the process — the session lookup, the gateway as
  * the signed-in merchant, the configuration — reaches their loaders through the
  * request context under the key the build itself exports, and nothing else
- * crosses: no credential, key or route is added for them. The origin check and
- * everything above the body parser in `server.ts` run before this.
+ * crosses: no credential, key or route is added for them. The health probe and
+ * the shop's callback in `server.ts` run before this.
  */
 
 import { randomBytes } from "node:crypto";
@@ -27,6 +26,7 @@ import {
   RouterContextProvider,
   type ServerBuild,
 } from "react-router";
+import { type Refusal, refusalOfPost } from "./form-post.js";
 import type { PageServices } from "./page-services.js";
 
 const APP_ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -35,9 +35,6 @@ const BUILT_SERVER = join(APP_ROOT, "dist", "server", "index.js");
 /** Where Vite puts the browser's files, under the build's public path. */
 const ASSETS_DIRECTORY = "assets";
 const BUILT_ASSETS = join(APP_ROOT, "dist", "client", ASSETS_DIRECTORY);
-
-/** The largest form any page here posts, and more than any of them needs. */
-const FORM_AT_MOST = 16 * 1024;
 
 /**
  * A cookie each press gives the browser anew, so that page data kept before a
@@ -152,7 +149,7 @@ interface Served {
  * The build's routes as a tree, for asking whether a path is one of them
  * before handing the request over. A route of the WooCommerce connector says
  * so in its `handle`, and where the connector is not offered it is no page:
- * its path falls through to the string pages, which answer it as no such page.
+ * its path falls through, answered as a path the dashboard does not have.
  */
 const routesOf = (build: ServerBuild, wooOffered: boolean): RouteObject[] => {
   const childrenOf = (parentId: string | undefined): RouteObject[] =>
@@ -236,15 +233,21 @@ interface Mounted {
 export function pagesHandler(pages: Pages, services: PageServices): RequestHandler {
   const basename = services.base === "" ? "/" : services.base;
   const mounted = new WeakMap<ServerBuild, Mounted>();
+  const refusals = new WeakMap<Request, Refusal>();
 
   const mount = (compiled: ServerBuild): Mounted => {
     const known = mounted.get(compiled);
     if (known !== undefined) return known;
-    const key = (compiled.entry.module as { services?: RouterContext<PageServices> }).services;
-    if (key === undefined) {
+    const keys = compiled.entry.module as {
+      services?: RouterContext<PageServices>;
+      refused?: RouterContext<Refusal | null>;
+    };
+    const { services: key, refused } = keys;
+    if (key === undefined || refused === undefined) {
       throw new Error(
-        "The dashboard's pages do not export the key their services go under, `services` in" +
-          " app/entry.server.tsx, so no page could reach the session or the gateway.",
+        "The dashboard's pages do not export the keys their services and a refused post go" +
+          " under, `services` and `refused` in app/entry.server.tsx, so no page could reach the" +
+          " session or the gateway.",
       );
     }
     const build: ServerBuild = {
@@ -253,9 +256,8 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       // React Router refuses a post whose `Origin` differs from the request's
       // own address, scheme included, and behind a terminator that sets no
       // forwarded header the scheme it sees is not the browser's, so every
-      // honest post would be refused. The dashboard's own check, which runs
-      // before any request reaches here, compares hosts and has already
-      // turned away a post from anywhere else.
+      // honest post would be refused. The dashboard's own check below compares
+      // hosts, and a post it refuses is answered before any route reads it.
       allowedActionOrigins: ["**"],
     };
     const made: Mounted = {
@@ -264,7 +266,13 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       handle: createRequestHandler({
         build,
         mode: pages.mode,
-        getLoadContext: () => new RouterContextProvider(new Map([[key, services]])),
+        getLoadContext: (request) =>
+          new RouterContextProvider(
+            new Map<RouterContext<unknown>, unknown>([
+              [key, services],
+              [refused, refusals.get(request) ?? null],
+            ]),
+          ),
       }) as RequestHandler,
     };
     mounted.set(compiled, made);
@@ -313,16 +321,6 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
         next();
         return;
       }
-      if (request.method === "POST") {
-        // React Router reads a form whole; a body that does not say how long
-        // it is, or says it is longer than any form here, is refused before
-        // that, as the body parser refuses one for the string pages.
-        const length = Number(request.headers["content-length"] ?? Number.NaN);
-        if (!(length <= FORM_AT_MOST)) {
-          next(Object.assign(new Error("request entity too large"), { type: "entity.too.large" }));
-          return;
-        }
-      }
       // A page here may show the signed-in address, so no shared cache keeps
       // any answer. A page's data may be kept by this browser for ten seconds,
       // per cookie, because a browser hands a prefetched answer to the click
@@ -330,6 +328,19 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       // nothing kept before it is read after it. A page that keeps nothing says
       // so for the pages nested in it too.
       const reading = request.method === "GET" || request.method === "HEAD";
+      if (request.method === "POST") {
+        const refusal = refusalOfPost({
+          origin: request.headers.origin,
+          host: request.headers.host,
+          length: request.headers["content-length"],
+        });
+        if (refusal !== null) {
+          refusals.set(request, refusal);
+          // Its page says why; React Router's own check would otherwise answer
+          // an origin it cannot parse first, with a bare line.
+          delete request.headers.origin;
+        }
+      }
       const keeps = matches.every((match) => (match.route.handle as Served).keepsData);
       if (reading && data && keeps) {
         response.setHeader("cache-control", "private, max-age=10");

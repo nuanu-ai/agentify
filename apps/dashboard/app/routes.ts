@@ -1,8 +1,6 @@
 /**
- * The pages React Router draws. The process answers a path with these only
- * where a route here matches it, and hands every other path to the pages still
- * drawn as strings; a screen moves by being added here and deleted there in
- * the same change.
+ * The dashboard's pages. Every path under it matches one of these, the last of
+ * them the page that says there is no such page.
  *
  * A page that shows anything of an account goes under the gate, and one about
  * a merchant's selling under `merchant-only` as well. What stands outside the
@@ -55,6 +53,7 @@ export default [
         route("woocommerce/switch", "routes/woocommerce-switch.tsx"),
         route("woocommerce/disconnect", "routes/woocommerce-disconnect.tsx"),
       ]),
+      route("*", "routes/no-such-page.tsx"),
     ]),
   ]),
 ] satisfies RouteConfig;

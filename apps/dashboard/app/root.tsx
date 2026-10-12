@@ -8,10 +8,12 @@
 
 import type { ReactNode } from "react";
 import {
+  data,
   isRouteErrorResponse,
   Links,
   type LoaderFunctionArgs,
   Meta,
+  type MiddlewareFunction,
   Outlet,
   Scripts,
   ScrollRestoration,
@@ -21,6 +23,7 @@ import {
 } from "react-router";
 import { type Chrome, chromeOf, type Trouble } from "./answer.js";
 import { GatePage } from "./components/gate-page.js";
+import { refused } from "./services.js";
 import stylesheet from "./styles.css?url";
 
 export const links = () => [
@@ -29,6 +32,24 @@ export const links = () => [
   // dashboard has none, and the fallback stack in the tokens carries the page.
   { rel: "stylesheet", href: "/styles/fonts.css" },
   { rel: "stylesheet", href: stylesheet },
+];
+
+/**
+ * A post the process refused, from another site or longer than any form here,
+ * is answered here, before any route below reads it, the gate included, which
+ * reads the mark a form carries.
+ */
+export const middleware: MiddlewareFunction<Response>[] = [
+  ({ context }, next) => {
+    const refusal = context.get(refused);
+    if (refusal !== null) {
+      throw data(
+        { kind: "problem", chrome: chromeOf(context), said: refusal.said } satisfies Trouble,
+        { status: refusal.status },
+      );
+    }
+    return next();
+  },
 ];
 
 export const loader = ({ context }: LoaderFunctionArgs): Chrome => chromeOf(context);

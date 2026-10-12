@@ -8,9 +8,8 @@ import { DRAWN_FOR } from "../../src/drawn-for.js";
  * written without this component is refused rather than done for whoever is
  * signed in.
  *
- * `document` posts with a whole page load, for an action still served by a
- * string page or one answered with a page at its own address (the settings');
- * otherwise React Router sends it. `replace={false}` gives the answer a history
+ * `document` posts with a whole page load, for an action answered with a page
+ * at its own address (the settings'); otherwise React Router sends it. `replace={false}` gives the answer a history
  * entry of its own even where it is drawn at the page's own address, so Back
  * returns to the page the press was made on. Either way it is an HTML form that
  * works with no script, and with script its button shows the press at once and

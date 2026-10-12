@@ -1246,8 +1246,8 @@ describe("one session for the whole site", () => {
 
 /**
  * Read rather than listed, so a rule held for every route holds for a route
- * added later: the string handlers off the Express router, and the pages React
- * Router draws off its build, by the methods each answers.
+ * added later: the routes beside the pages off the Express router, and the
+ * pages off React Router's build, by the methods each answers.
  */
 const routesOf = async (running: Running): Promise<{ method: string; path: string }[]> => {
   const build =
@@ -1328,7 +1328,7 @@ describe("the operator flag", () => {
 });
 
 describe("the gate", () => {
-  it("lets a visitor with no session reach only the sign-in pages, the stylesheet, the health probe and the shop's callback and return", async () => {
+  it("lets a visitor with no session reach only the sign-in pages, the health probe and the shop's callback and return", async () => {
     // Every route on this list answers a stranger without the sign-in redirect,
     // and any other route, an unknown one included, is behind the gate.
     const running = await started({ base: "/dashboard", wooShops: memoryWooShops() });
@@ -1348,7 +1348,6 @@ describe("the gate", () => {
         () => stranger.get(`/dashboard/sign-in/open?token=${"C".repeat(32)}`),
       ],
       ["pressing it", () => stranger.post("/dashboard/sign-in/open", { token: "C".repeat(32) })],
-      ["the stylesheet", () => stranger.get("/dashboard/agentify.css")],
       [
         "the route table the pages' script asks for",
         () => stranger.get("/dashboard/__manifest?paths=%2Fdashboard%2Fcards&version=any"),
@@ -3292,7 +3291,7 @@ describe("what every screen says about the address", () => {
     const presses: [string, () => Promise<Visit>][] = [
       ["a switch sent by the page's script", () => browser.post(`/cards.data?pause=${itemId}`)],
       ["a switch sent as a plain form", () => browser.post(switchOf(itemId, "resume"))],
-      ["a press on a page still drawn as a string", () => browser.post("/keys", { label: "ci" })],
+      ["a press on another page", () => browser.post("/keys", { label: "ci" })],
     ];
     const given: string[] = [];
     for (const [name, press] of presses) {

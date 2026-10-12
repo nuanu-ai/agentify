@@ -1,8 +1,8 @@
 /**
  * The gate: every page nested under this route in `routes.ts` needs a session,
  * and gets it from here rather than asking for one itself, so a page added
- * under it is guarded by being there. It decides with the same function as the
- * string pages' gate. A form that posts is refused unless it was drawn for the
+ * under it is guarded by being there. It decides with `gateFor` in
+ * `src/gate.ts`. A form that posts is refused unless it was drawn for the
  * address signed in now, before any action reads it.
  */
 

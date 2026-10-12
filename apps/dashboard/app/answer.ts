@@ -57,10 +57,11 @@ const headersOf = (
 
 /**
  * Sends the browser to a path of this site. Back to the page the request was
- * answered at, which this application draws, it stays inside the application,
- * and a browser running the pages' script reads the page afresh; anywhere else
- * it loads the page whole, since the path may be a page still drawn as a
- * string, or the scanner's. React Router reads a redirect from a loader or an
+ * answered at, it stays inside the application, and a browser running the
+ * pages' script reads the page afresh; anywhere else it loads the page whole,
+ * since the path may be the scanner's, and a press that leads to another page,
+ * a sign-out among them, starts it with nothing of the page before it in
+ * memory. React Router reads a redirect from a loader or an
  * action as a path under its own prefix, so a path under the dashboard's is
  * handed over without it, and one outside it is written as a whole address on
  * the origin the request came to.
