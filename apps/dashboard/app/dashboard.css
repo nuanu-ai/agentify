@@ -466,6 +466,11 @@ td.control {
 /* Secondary notes stay part of the reading flow rather than looking like an
    alert. Actionable notices use a full panel; no message uses a one-sided-border
    callout. */
+/* The new key's copy button, a block clear of the note under it. */
+.copy-row {
+  margin: 0 0 var(--space-block);
+}
+
 .note {
   margin: 0 0 32px;
   color: var(--muted);

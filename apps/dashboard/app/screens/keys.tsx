@@ -168,7 +168,7 @@ export function NewKeyScreen({ view }: Readonly<{ view: NewKeyView }>) {
       <div className="scroller">
         <p className="secret">{left ? "" : view.secret}</p>
       </div>
-      <p>
+      <p className="copy-row">
         <Button type="button" onClick={() => void copy()}>
           Copy key
         </Button>{" "}
