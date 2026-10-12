@@ -1529,7 +1529,9 @@ export class Gateway {
         verified.verified === false
           ? `nothing was charged: ${NEXT_STEP_AFTER[verified.reason]}; the payment layer said: ${briefly(verified.message)}`
           : verified.message;
-      console.warn(`[gateway] a payment for ${orderId} did not verify: ${why}`);
+      // The log keeps the layer's words whole: the agent is told the gist,
+      // and the operator working out why a payment failed needs all of it.
+      console.warn(`[gateway] a payment for ${orderId} did not verify: ${verified.message}`);
       return {
         step: "payment_not_verified",
         why,
