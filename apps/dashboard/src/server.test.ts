@@ -1090,6 +1090,41 @@ describe("what the React pages take from a stranger", () => {
     expect(written.filter((line) => /%E0|forged/.test(line))).toStrictEqual([]);
   });
 
+  it("refuses a form longer than any page sends, or one that does not say its length, unread", async () => {
+    // React Router reads a form whole, so a body is bounded before it is read;
+    // the refusal is the dashboard's page, saying what was wrong with it.
+    const running = await started();
+    await running.browser.signIn();
+
+    const long = await running.browser.post("/keys", { label: "x".repeat(17_000) });
+    const unsaid = await fetch(`${running.url}/keys`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        cookie: `${COOKIE}=${running.browser.sessionToken() ?? ""}`,
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      // A stream has no length to declare, so it is sent in chunks.
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("label=nightly"));
+          controller.close();
+        },
+      }),
+      duplex: "half",
+    } as RequestInit);
+
+    for (const [name, status, html] of [
+      ["longer", long.status, long.html],
+      ["unsaid", unsaid.status, await unsaid.text()],
+    ] as const) {
+      expect(status, name).toBe(413);
+      expect(readable(html), name).toContain("That was larger than any form on this page sends.");
+    }
+    const keys = await running.browser.get("/keys");
+    expect(readable(keys.html)).not.toContain("nightly");
+  });
+
   it("never lets a browser keep the data of the page a mailed link lands on", async () => {
     // That page holds a one-time token and runs no script, so nothing of the
     // pages' own asks for its data; asked by hand, it is kept nowhere.
