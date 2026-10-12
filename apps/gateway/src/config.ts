@@ -212,13 +212,11 @@ const environmentSchema = z.object({
    */
   SETTLE_RESPONSE_MS: durationMs(2_000),
   /**
-   * The same wait on an order paid before its goods: asynchronous, confirmed
-   * or a parcel. The payment layer answers once the transfer is in a block, and
-   * a block comes every two seconds, so a wait of about that length declared
-   * about a tenth of these charges silent on the test channel and left a
-   * refund owed for each. Nothing promised is shorter here: the delivery
-   * deadline runs from the charge, and the agent only waits longer to hear
-   * that the purchase is under way.
+   * The same wait on an order paid before its goods (asynchronous, confirmed
+   * or a parcel), which no promised ceiling contains. The payment layer
+   * answers only once the transfer is in a block, so a wait near the block
+   * time closes orders whose money then arrives, each as a refund owed. The
+   * purchase call does not wait on this; it waits on the payment layer itself.
    */
   SETTLE_BEFORE_GOODS_MS: durationMs(15_000),
   /** How long the merchant has to answer a synchronous order with the goods. */

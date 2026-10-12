@@ -37,7 +37,8 @@ FAKE_ACTIVATE = """#!/usr/bin/env bash
 python3 -c 'import json, os, sys
 images = {k: v for k, v in os.environ.items() if k.startswith("AGENTIFY_") and k.endswith("_IMAGE")}
 with open(os.environ["FAKE_ACTIVATE_LOG"], "a") as log:
-    log.write(json.dumps({"argv": sys.argv[1:], "cwd": os.getcwd(), "images": images}) + "\\n")' "$@"
+    log.write(json.dumps({"argv": sys.argv[1:], "cwd": os.getcwd(), "images": images,
+                          "leaving": os.environ.get("AGENTIFY_LEAVING")}) + "\\n")' "$@"
 exit "${FAKE_ACTIVATE_EXIT:-0}"
 """
 
@@ -582,6 +583,22 @@ class AManualRun(ReleaseTest):
     def test_refuses_a_name_the_repository_does_not_have(self):
         self.refused("no-such-branch", "names nothing")
         self.refused("../etc/passwd", "not a tag")
+
+    def test_hands_the_activation_the_cards_a_person_names_as_leaving(self):
+        # A release that takes cards off sale on purpose says which, and the
+        # activation holds it to exactly those (deploy/activate.sh).
+        self.assertEqual(self.release("main", "--leaving", "item_a,item_b"), 0, self.said)
+        self.assertEqual(self.release("main"), 0, self.said)
+
+        self.assertEqual([run["leaving"] for run in self.activations()], ["item_a item_b", None])
+
+    def test_takes_only_card_ids_as_leaving_and_none_on_the_timer_or_a_restore(self):
+        for flags in (["--leaving", "item_a;reboot", "main"], ["--leaving", "", "main"],
+                      ["--timer", "--leaving", "item_a", "deploy-test"],
+                      ["--restore", "/var/backups/agentify/test/x", "--leaving", "item_a"]):
+            with self.assertRaises(SystemExit, msg=flags), contextlib.redirect_stderr(io.StringIO()):
+                RELEASE.main(["--config", str(self.config), *flags])
+        self.assertEqual(self.activations(), [])
 
     def test_refuses_a_configuration_with_a_field_it_does_not_know(self):
         config = json.loads(self.config.read_text())
