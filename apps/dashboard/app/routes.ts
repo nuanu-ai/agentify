@@ -35,6 +35,7 @@ export default [
       route("cards", "routes/cards.tsx"),
       route("orders", "routes/orders.tsx"),
       route("receipts", "routes/receipts.tsx"),
+      route("integrations", "routes/integrations.tsx"),
     ]),
   ]),
 ] satisfies RouteConfig;

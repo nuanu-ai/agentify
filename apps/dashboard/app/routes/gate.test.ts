@@ -56,6 +56,7 @@ const throughTheGate = async (request: Request, identity: ReturnType<typeof iden
             throw new Error("the gate asks the gateway nothing");
           },
           wooOffered: false,
+          shopState: async () => undefined,
         }),
       ],
     ]),

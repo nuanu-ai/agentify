@@ -11,7 +11,6 @@ import { STOP_ALL_SELLING } from "./control-labels.js";
 import { bare, brandLockup, escaped, page } from "./html.js";
 import { payoutWalletBlock } from "./payout-wallet.js";
 import { refusedForNoName, type Viewer } from "./screens.js";
-import { wooSettingsBlock } from "./woo-screens.js";
 import { APPROVAL_GIVEN, APPROVAL_PENDING } from "./words.js";
 
 /**
@@ -200,50 +199,6 @@ export const settingsScreen = (
     confirmed: viewer.confirmed,
     tab: "settings",
     title: "Settings",
-    body,
-  });
-};
-
-export const integrationsScreen = (viewer: Viewer): string => {
-  const { base } = viewer;
-  const body = `
-  <div class="lede">
-    <div>
-      <h1>Integrations</h1>
-      <p>${
-        viewer.shop === undefined
-          ? "Your products reach Agentify from your own code through the SDK."
-          : "Your products reach Agentify from your own code through the SDK, or from a WooCommerce shop, one of the two at a time."
-      }</p>
-    </div>
-  </div>
-  <div class="settings-grid">
-  <section class="settings-panel settings-wide settings-connect">
-    <div class="connect-ways">
-      <div class="connect-way">
-        <h3>The SDK</h3>
-        <p class="quiet">Your developer installs the <code>@nuanu-ai/agentify</code> package in a Node.js service, publishes cards with an API key, and handles paid orders in your own code.</p>
-        <div class="connect-actions">
-          <a class="button button-primary" href="/docs/quickstart">Open the connection guide</a>
-          <a class="button button-secondary" href="${escaped(base)}/keys?new=key">Create an API key</a>
-        </div>
-      </div>
-      ${
-        viewer.shop === undefined
-          ? ""
-          : `<div class="connect-way">${wooSettingsBlock(base, viewer.shop)}</div>`
-      }
-    </div>
-  </section>
-  </div>`;
-
-  return page({
-    mode: viewer.mode,
-    base,
-    who: viewer.who,
-    confirmed: viewer.confirmed,
-    tab: "integrations",
-    title: "Integrations",
     body,
   });
 };

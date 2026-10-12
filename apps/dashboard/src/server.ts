@@ -53,7 +53,6 @@ import { printable } from "./printable.js";
 import { notDrawnForYouScreen, notFoundScreen, unsetIn, type Viewer } from "./screens.js";
 import {
   chooseNameScreen,
-  integrationsScreen,
   NAME_CANNOT_BE_TAKEN_AWAY,
   NAME_NEEDED,
   SITE_CANNOT_BE_TAKEN_AWAY,
@@ -81,7 +80,6 @@ import {
 import {
   type ImportOutcome,
   type ShopState,
-  type ShopTile,
   wooImportScreen,
   wooReturnScreen,
   wooScreen,
@@ -298,6 +296,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         identity,
         clientFor: (acting) => clientFor(acting),
         wooOffered: wooShops !== undefined,
+        // Asked per request, by which time the function below is defined.
+        shopState: (accountId) => shopStateFor(accountId),
       }),
     ),
   );
@@ -635,25 +635,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       return trouble(response, base, settings);
     }
     response.type("html").send(settingsScreen(viewingSettings(request, base, settings.document)));
-  });
-
-  // Nothing on this page comes from the gateway, so the gateway cannot take it
-  // down. A shops read that throws is logged and drawn as "could not be read",
-  // not as no block: a vanished block reads as no connection to a merchant who
-  // has one.
-  app.get(`${base}/integrations`, async (request, response) => {
-    const shop = await shopStateFor(whoIs(request).id).catch((thrown: unknown): ShopTile => {
-      console.error(
-        "[dashboard] the WooCommerce connection could not be read for the integrations screen",
-        thrown,
-      );
-      return { kind: "unread" };
-    });
-    response
-      .type("html")
-      .send(
-        integrationsScreen({ ...viewing(request, base), ...(shop === undefined ? {} : { shop }) }),
-      );
   });
 
   // Opened from history or the address bar after a refusal; it leads to the

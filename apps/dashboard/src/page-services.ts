@@ -21,6 +21,7 @@ import {
 import { clearingLines, dashboardPathFor, type Gate, gateFor, startOf } from "./gate.js";
 import type { Acting, Answer, GatewayClient } from "./gateway.js";
 import { SESSION_DAYS } from "./identity.js";
+import { type IntegrationsView, integrationsView } from "./integrations-view.js";
 import type { Viewer } from "./screens.js";
 import {
   type CardsView,
@@ -30,6 +31,7 @@ import {
   type ReceiptsView,
   receiptsView,
 } from "./views.js";
+import type { ShopState, ShopTile } from "./woo-screens.js";
 
 /** A view to draw, a place to send the browser, or a problem to show instead. */
 export type Outcome<View> =
@@ -118,6 +120,10 @@ export interface PageServices {
     orders(person: Person, query: URLSearchParams): Promise<Outcome<OrdersView>>;
     receipts(person: Person): Promise<Outcome<ReceiptsView>>;
   };
+  /** The ways a merchant's catalogue reaches Agentify. */
+  readonly integrations: {
+    page(person: Person): Promise<Outcome<IntegrationsView>>;
+  };
 }
 
 export interface PageParts {
@@ -129,6 +135,11 @@ export interface PageParts {
   readonly clientFor: (acting: Acting) => GatewayClient;
   /** Whether this dashboard offers the WooCommerce connector at all. */
   readonly wooOffered: boolean;
+  /**
+   * The account's WooCommerce connection as the shop's own screen reads it;
+   * undefined where this dashboard has nowhere to keep one.
+   */
+  readonly shopState: (accountId: string) => Promise<ShopState | undefined>;
 }
 
 /**
@@ -461,6 +472,22 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             config.transactionPage,
           ),
         };
+      },
+    },
+
+    integrations: {
+      // A shops read that fails is drawn as one that could not be read, never as
+      // no block, which would tell a merchant who connected a shop that none is.
+      // The failure is logged as a line: a store's exception can carry a shop's
+      // key.
+      async page(person) {
+        const shop = await parts.shopState(person.id).catch((): ShopTile => {
+          console.error(
+            "[dashboard] the WooCommerce connection could not be read for the integrations screen",
+          );
+          return { kind: "unread" };
+        });
+        return { kind: "view", view: integrationsView(shop) };
       },
     },
   };
