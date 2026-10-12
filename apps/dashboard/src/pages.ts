@@ -323,10 +323,13 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       }
       // A page here may show the signed-in address, so no shared cache keeps
       // any answer. A page's data may be kept by this browser for ten seconds,
-      // per cookie, because a browser hands a prefetched answer to the click
-      // that follows only while it is fresh; a press changes a cookie, so
-      // nothing kept before it is read after it. A page that keeps nothing says
-      // so for the pages nested in it too.
+      // per cookie: the click after a hover is answered from the hover's fetch
+      // only while that is fresh, and past the ten seconds Chromium asks again
+      // whether the answer was prefetched or not. A post alone would not drop
+      // a kept answer, whose address carries `_routes` where the post's does
+      // not, so a press changes a cookie instead, and nothing kept before it
+      // is read after it. A page that keeps nothing says so for the pages
+      // nested in it too.
       const reading = request.method === "GET" || request.method === "HEAD";
       if (request.method === "POST") {
         const refusal = refusalOfPost({
