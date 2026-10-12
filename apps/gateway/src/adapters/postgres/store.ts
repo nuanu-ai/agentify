@@ -15,6 +15,7 @@ import { and, eq, exists, inArray, isNull, lt, not, or, sql } from "drizzle-orm"
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
 import type { DrizzleTransactionLike } from "pg-boss";
+import { failureNamed } from "../../failure-named.js";
 import type { Ids } from "../../ports/clock.js";
 import {
   type CatalogEntry,
@@ -637,7 +638,7 @@ export class PostgresStore implements Store {
         try {
           await client.query("select pg_advisory_unlock(hashtext($1))", [`agentify.${name}`]);
         } catch (thrown) {
-          console.error(`[gateway] could not let go of ${name}`, thrown);
+          console.error(`[gateway] could not let go of ${name}: ${failureNamed(thrown)}`);
           // An unlock can fail on a live session (a statement timeout) and leave
           // the lock held by a client about to return to the pool, so every
           // later run would skip silently. Marking the connection broken makes
@@ -1012,12 +1013,14 @@ export function connect(
 ): { db: Database; pool: Pool } {
   const pool = new Pool({ ...options, connectionString: databaseUrl });
   pool.on("error", (error) => {
-    console.error("[gateway] an idle database connection failed", error);
+    console.error(`[gateway] an idle database connection failed: ${failureNamed(error)}`);
   });
 
   // One shared function, since listeners are removed by identity.
   const noticeTheFailure = (failed: unknown) => {
-    console.error("[gateway] a database connection somebody was holding failed", failed);
+    console.error(
+      `[gateway] a database connection somebody was holding failed: ${failureNamed(failed)}`,
+    );
   };
   pool.on("acquire", (client) => client.on("error", noticeTheFailure));
   pool.on("release", (_failed, client) => client.removeListener("error", noticeTheFailure));

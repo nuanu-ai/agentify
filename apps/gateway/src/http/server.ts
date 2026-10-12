@@ -24,6 +24,7 @@ import express, { type Express, type Request, type Response } from "express";
 import type { ZodType } from "zod";
 import type { Gateway } from "../app/gateway.js";
 import { checksBeforeSending } from "../app/written.js";
+import { failureNamed } from "../failure-named.js";
 import { bearerIn } from "./auth.js";
 import { GATEWAY_FAILED } from "./merchant-answers.js";
 import { handlersFor } from "./routes.js";
@@ -201,7 +202,9 @@ export function buildApp(
         return;
       }
 
-      console.error("[gateway] a request failed before it reached a route", thrown);
+      console.error(
+        `[gateway] a request failed before it reached a route: ${failureNamed(thrown)}`,
+      );
       response
         .status(GATEWAY_FAILED.status)
         .json(refusal(GATEWAY_FAILED.code, GATEWAY_FAILED.message));
@@ -228,7 +231,7 @@ function mount(
       try {
         await answer(request, response, route, handler, gateway, carriesBody);
       } catch (thrown) {
-        console.error(`[gateway] ${name} failed`, thrown);
+        console.error(`[gateway] ${name} failed: ${failureNamed(thrown)}`);
         if (!response.headersSent) {
           response
             .status(GATEWAY_FAILED.status)

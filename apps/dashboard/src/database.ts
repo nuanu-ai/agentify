@@ -1,3 +1,4 @@
+import { failureNamed } from "@agentify/gateway/failure-named";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
@@ -16,13 +17,14 @@ const MIGRATIONS_TABLE = "cabinet_migrations";
  * restart, a failover, an idle reaper) as an `error` event on itself, and an
  * `error` event with no listener kills the process.
  *
- * Only the name and message are logged: the driver's error carries the query's
- * bound values, which include session identifiers and one-time-link claims.
+ * The failure is logged by its name alone: the driver's error carries the
+ * query's bound values, which include session identifiers and one-time-link
+ * claims, and a server's message can quote a value too.
  */
 export function connect(databaseUrl: string): Pool {
   const pool = new Pool({ connectionString: databaseUrl });
   const noticeTheFailure = (failed: unknown): void => {
-    console.error(`[dashboard] a database connection failed: ${String(failed)}`);
+    console.error(`[dashboard] a database connection failed: ${failureNamed(failed)}`);
   };
 
   // pg-pool removes its listener from a client while the client is checked out,

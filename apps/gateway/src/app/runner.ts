@@ -52,6 +52,7 @@ import {
   type WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
 import type { GatewayConfig } from "../config.js";
+import { failureNamed } from "../failure-named.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { Reminder } from "../ports/queue.js";
 import type {
@@ -478,7 +479,9 @@ export class OrderRunner {
         // One order that cannot be repaired does not stop the rest, and it is
         // logged so that nobody is left unaware of it.
         swept.refused += 1;
-        console.error(`[gateway] the sweep could not repair ${record.order.id}`, thrown);
+        console.error(
+          `[gateway] the sweep could not repair ${record.order.id}: ${failureNamed(thrown)}`,
+        );
       }
     }
 
@@ -501,7 +504,9 @@ export class OrderRunner {
         swept.receipted += 1;
       } catch (thrown) {
         swept.refused += 1;
-        console.error(`[gateway] the sweep could not receipt ${record.order.id}`, thrown);
+        console.error(
+          `[gateway] the sweep could not receipt ${record.order.id}: ${failureNamed(thrown)}`,
+        );
       }
     }
 
@@ -864,9 +869,16 @@ export class OrderRunner {
     await this.#writeDown(record.order.id, { at, about: "settle", said: outcome.reason });
   }
 
-  /** Records something the payment layer said, without telling the machine. */
+  /**
+   * Records something the payment layer said, without telling the machine. The
+   * words go on the order and not in the log, because they can quote the
+   * payment. The line comes first, so a write that then fails still leaves the
+   * unanswered charge in the log.
+   */
   async #writeDown(orderId: string, word: PaymentWord): Promise<void> {
-    console.error(`[gateway] ${orderId}: the payment layer ${word.about} — ${word.said}`);
+    console.error(
+      `[gateway] ${orderId}: the payment layer left the ${word.about} unanswered; what it said is written to the order, not to this log`,
+    );
     await this.#runtime.store.withOrder(orderId, (found): OrderChange<null> => {
       return { save: { ...found, ...this.#alsoSaid(found, word) }, result: null };
     });
