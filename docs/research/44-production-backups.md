@@ -1,0 +1,49 @@
+# Production's data and secrets leave the host
+
+Date: 2026-09-24, accepted by the product owner the same day. A design note:
+why PRODUCTION is backed up the way it is, and what was weighed against it.
+The runbook — where the snapshots are, how a restore is rehearsed, how the
+storage key is replaced and how a host is rebuilt — is the "Backups" section
+of `deploy/README.md`, and this note does not repeat it.
+
+## Why a copy off the host
+
+The only copies of PRODUCTION's databases were the restore points a release
+takes on the same host, so losing the host lost the data. A copy kept off the
+host is a new security boundary: the customers' data and `production.env`,
+which a rebuild needs, leave the host for a bucket.
+
+## The design
+
+Every ten minutes a systemd timer on PRODUCTION dumps the channel's databases
+and the server's roles under the release lock and stores them, with
+`production.env`, in a restic repository in the bucket
+`nuanu-agentify-backups` (Hetzner Object Storage, fsn1, project "Nuanu AI prod
+backups"). The recovery point objective is ten minutes.
+
+The repository has its own password, since a Hetzner key opens every bucket of
+its project. The password and the key live in `/etc/agentify/backup.env`,
+which no snapshot holds, and the password also in the product owner's
+1Password. Snapshots are kept for a day, hourly for two days and daily for 30
+days, and a restore rehearsal, which a person runs and nothing schedules,
+restores the latest snapshot and compares its row counts. The bucket keeps a
+deleted object's version for 30 days. Object Lock retention is not set, so
+whoever holds the key can delete every version.
+
+What a snapshot catches it keeps until it expires. Personal data that the
+product erases from its tables, such as a buyer's address once the merchant
+holds it (ADR-0032), survives in the snapshots taken while it was there.
+
+## Alternatives rejected
+
+Encryption with age and uploads with curl: deduplication, retention, locking
+and integrity checks would all be ours to write, and restic is one Ubuntu
+package that has them.
+
+WAL archiving (WAL-G or pgBackRest with `archive_timeout`): a recovery point of
+seconds, at the price of changing the database container, taking base backups
+and keeping a second restore path beside `restore.sh`. On the host a dump of
+both databases takes about a second and a run 2–4 seconds; in a rehearsal at a
+hundred times the data, half a second and three (`00-open-questions.md`). It
+becomes worth that price when a dump takes more than about a minute, since
+releases wait for it, or when ten minutes of lost writes is too much.

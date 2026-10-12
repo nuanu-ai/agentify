@@ -57,10 +57,10 @@ never get paid, and the merchant can read them back on those too
 price-question envelope, kept by pg-boss for seven days after an envelope is
 completed (its queue default, `deletion_seconds`), and dumped with the database
 every ten minutes into snapshots that live up to thirty days, their deleted
-copies thirty more (ADR-0029). The driver's error for a failed statement
-carries every bound parameter, and only the path that first writes an order
-strips it (`apps/gateway/src/adapters/postgres/store.ts`). Nothing deletes an
-order. ADR-0032 answers this.
+copies thirty more (`44-production-backups.md`). The driver's error for a
+failed statement carries every bound parameter, and only the path that first
+writes an order strips it (`apps/gateway/src/adapters/postgres/store.ts`).
+Nothing deletes an order. ADR-0032 answers this.
 
 `delivered` claims more than a merchant who shipped can know. It means the goods
 are with the agent; for a parcel the merchant knows only that a carrier took it.

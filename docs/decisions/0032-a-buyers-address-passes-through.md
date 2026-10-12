@@ -13,10 +13,11 @@ is the card's `params`: fields the merchant declares, checked for type alone.
 They are written into the order at the unpaid request and readable by the
 merchant from then on, copied into every envelope the queue keeps for a week,
 dumped with the database every ten minutes into snapshots kept for weeks
-(ADR-0029), and carried whole in a failed statement's error, which most paths
-log. Nothing deletes an order. For somebody's home address that is a store of
-personal data no process of ours reads once the merchant has it. The survey
-behind this decision is `docs/research/37-physical-goods.md`.
+(`docs/research/44-production-backups.md`), and carried whole in a failed
+statement's error, which most paths log. Nothing deletes an order. For
+somebody's home address that is a store of personal data no process of ours
+reads once the merchant has it. The survey behind this decision is
+`docs/research/37-physical-goods.md`.
 
 ## Decision
 
