@@ -131,7 +131,9 @@ interface Served {
   /**
    * Whether a browser may keep the page's data for a moment. A page sent with
    * no script never has its data asked for by its own page, so whatever asks
-   * for it is not a prefetch, and nothing of it is kept.
+   * for it is not a prefetch, and nothing of it is kept; nor is any of a page
+   * that says `keepsData: false`, because what it shows must be what is held
+   * now.
    */
   readonly keepsData: boolean;
 }
@@ -148,7 +150,7 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
         default?: unknown;
         loader?: unknown;
         action?: unknown;
-        handle?: { script?: boolean };
+        handle?: { script?: boolean; keepsData?: boolean };
       };
       // A layout with no path of its own, the root among them, is a frame
       // around pages and never a page, even while nothing is nested in it.
@@ -160,7 +162,7 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
             ? module.loader !== undefined ||
               (module.default !== undefined && (module.action === undefined || data))
             : method === "POST" && module.action !== undefined),
-        keepsData: module.handle?.script !== false,
+        keepsData: module.handle?.script !== false && module.handle?.keepsData !== false,
       };
       const shared = {
         id: route.id,
@@ -281,8 +283,8 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
         return;
       }
       const data = request.path.endsWith(".data");
-      const matches = matchRoutes(routes, pageOf(request.path), basename);
-      const served = matches?.at(-1)?.route.handle as Served | undefined;
+      const matches = matchRoutes(routes, pageOf(request.path), basename) ?? [];
+      const served = matches.at(-1)?.route.handle as Served | undefined;
       if (served === undefined || !served.answers(request.method, data)) {
         next();
         return;
@@ -305,9 +307,11 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       // data kept for this one, so for up to ten seconds after it a page opened
       // inside the application may show its data from before the press. An
       // action React Router sends posts to its own page's address and drops
-      // that page's data.
+      // that page's data. A page that keeps nothing says so for the pages
+      // nested in it too.
       const reading = request.method === "GET" || request.method === "HEAD";
-      if (reading && data && served.keepsData) {
+      const keeps = matches.every((match) => (match.route.handle as Served).keepsData);
+      if (reading && data && keeps) {
         response.setHeader("cache-control", "private, max-age=10");
         response.setHeader("vary", "cookie");
       } else {

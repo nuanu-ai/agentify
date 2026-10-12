@@ -1637,6 +1637,19 @@ describe("the settings screen", () => {
     }
   });
 
+  it("never lets a browser keep the settings' data, so the wallet shown is the one the gateway holds now", async () => {
+    // A press there loads a whole page at its own address, which drops nothing
+    // a browser kept for the settings; kept, a waiting change could be missing
+    // from the screen whose showing it is what makes it take effect.
+    const { browser } = await started();
+    await browser.signIn();
+
+    for (const path of ["/settings", "/settings/sign-out-others", "/settings/payout-wallet"]) {
+      const data = await browser.get(`${path}.data`);
+      expect(data.headers.get("cache-control"), path).toBe("private, no-store");
+    }
+  });
+
   it("draws no page at the other presses' addresses opened as a page, only at their press", async () => {
     // Their page is the answer to the press; opened without one, it would be a
     // page that says nothing happened.
@@ -2988,7 +3001,7 @@ describe("what every screen says about the address", () => {
     const { browser } = await started();
     await browser.signIn();
 
-    for (const path of ["/cards", "/orders", "/receipts", "/integrations", "/settings"]) {
+    for (const path of ["/cards", "/orders", "/receipts", "/integrations"]) {
       const data = await browser.get(`${path}.data`);
       expect(data.status, path).toBe(200);
       expect(data.html, path).toContain(PERSON);

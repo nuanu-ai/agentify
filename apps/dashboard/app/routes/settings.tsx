@@ -14,6 +14,9 @@ import { SettingsScreen } from "../screens/settings.js";
 import { services, signedIn } from "../services.js";
 import { press, pressed } from "../settings-press.js";
 
+/** The waiting change of the wallet must be on the page whenever it waits. */
+export const handle = { keepsData: false };
+
 export async function loader(asked: LoaderFunctionArgs) {
   const { context } = asked;
   return (

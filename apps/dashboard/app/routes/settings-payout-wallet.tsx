@@ -11,6 +11,9 @@ import { SettingsScreen } from "../screens/settings.js";
 import { services, signedIn } from "../services.js";
 import { press, pressed } from "../settings-press.js";
 
+/** The page drawn here is the settings, which keep nothing. */
+export const handle = { keepsData: false };
+
 /**
  * Opened from history or the address bar after a refusal, the press's address
  * leads to the page its form lives on.
