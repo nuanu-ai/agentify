@@ -1,29 +1,12 @@
-// The default VitePress theme, wearing the palette the rest of the site wears.
+// The default VitePress theme with the site's palette (agentify.css maps the
+// theme's variables onto the shared tokens). No component or layout is
+// overridden, so an upgrade has one stylesheet to disagree with.
 //
-// The four surfaces share one visual language (packages/visual/tokens.css).
-// The documentation is the one of them that is not ours to lay out —
-// it is a generated site with its own theme — so almost the whole of the
-// customisation is a stylesheet that maps that theme's own variables onto our
-// tokens. No component is overridden and no layout is replaced: the next
-// VitePress upgrade has one file to disagree with rather than a fork of a
-// theme.
-//
-// The one exception is the link below, and it is here because the theme cannot
-// express it. The documentation is mounted at /docs on an origin it shares with
-// the landing, the dashboard and the gateway, and every internal link VitePress
-// writes is resolved against that mount point — so the site title in the corner,
-// which normally takes a reader home, takes them to the front page of the
-// documentation they are already in. There was no way out at all: a reader who
-// arrived from the landing could go back, and a reader who arrived from a search
-// result could not. A plain anchor is not resolved against anything and
-// therefore goes where it says.
-//
-// It rides in `nav-bar-content-before` rather than in the corner, and that is
-// the theme's shape rather than a preference. The slots at the corner render
-// *inside* the title's own anchor, so a link put there is a link inside a link:
-// invalid, and in practice the outer one takes the click and carries the reader
-// to the page they are already on. It looked right and did nothing, which is
-// how it shipped. This slot is outside that anchor.
+// The one addition is a plain link back to the site. The documentation is
+// mounted at /docs, so the theme's own title link leads to the docs' front
+// page, not the site's. It sits in `nav-bar-content-before` because the slots
+// at the title render inside the title's anchor, and a link inside a link
+// takes the outer anchor's click.
 
 import DefaultTheme from "vitepress/theme";
 import { h } from "vue";
@@ -39,18 +22,12 @@ export default {
           {
             class: "way-out",
             href: "/",
-            // The one attribute that makes this leave the documentation at all.
-            // VitePress runs a router over every same-origin link and handles
-            // the click itself, and its router knows only the pages under
-            // /docs — so a link to the site root was intercepted and went
-            // nowhere, silently. A target makes its handler stand aside and the
-            // browser follow the link, which is what a link is for. `_self`
-            // rather than `_blank`: leaving the documentation is going back,
-            // not opening something new.
+            // Without a target, VitePress's router intercepts this same-origin
+            // link and, knowing only /docs, goes nowhere. `_self`, not `_blank`:
+            // leaving the documentation is going back.
             target: "_self",
-            // Not `aria-label`: the text is already the label, and a second one
-            // saying something longer is what a screen reader reads instead of
-            // what everybody else sees.
+            // Not `aria-label`: the visible text is the label, and a screen
+            // reader would read the longer one instead.
             title: "The Agentify site",
           },
           [
