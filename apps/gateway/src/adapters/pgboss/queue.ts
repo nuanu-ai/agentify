@@ -18,6 +18,7 @@ import {
   type JobResult,
   PgBoss,
 } from "pg-boss";
+import { failureNamed } from "../../failure-named.js";
 import {
   type DrawnEnvelope,
   type Queue,
@@ -95,8 +96,7 @@ export class PgBossQueue implements Queue {
   static over(boss: PgBoss, options: PgBossQueueOptions): PgBossQueue {
     boss.on("error", (error: unknown) => {
       console.error(
-        "[gateway] the queue reported a failure",
-        withoutValues(error, "the queue's own upkeep"),
+        `[gateway] the queue reported a failure: ${failureNamed(withoutValues(error, "the queue's own upkeep"))}`,
       );
     });
     return failingWithoutValues(new PgBossQueue(boss, options), "the queue");
@@ -353,15 +353,13 @@ export class PgBossQueue implements Queue {
             await fire(job.data);
             results.push({ id: job.id, status: "completed" });
           } catch (error) {
+            // Named the same way in the job's output, which pg-boss keeps in
+            // its table and so in every dump of the database.
+            const named = failureNamed(error);
             console.error(
-              `[gateway] a ${job.data.kind} reminder for ${job.data.orderId} failed; it is tried again on its own while it has attempts left`,
-              error,
+              `[gateway] a ${job.data.kind} reminder for ${job.data.orderId} failed; it is tried again on its own while it has attempts left: ${named}`,
             );
-            results.push({
-              id: job.id,
-              status: "failed",
-              output: { message: error instanceof Error ? error.message : String(error) },
-            });
+            results.push({ id: job.id, status: "failed", output: { message: named } });
           }
         }
         return results;
