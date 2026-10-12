@@ -115,6 +115,19 @@ export function answer<View>(
 }
 
 /**
+ * The form a request carried, or an empty one where the body is not a form: a
+ * program can post anything, and what it sent amounts to a form with nothing
+ * in it, never to a fault of the dashboard's.
+ */
+export async function formOf(request: Request): Promise<FormData> {
+  try {
+    return await request.formData();
+  } catch {
+    return new FormData();
+  }
+}
+
+/**
  * For a route whose answers carry headers of their own: React Router passes
  * only cookies on unless a route says which headers its page is sent with. An
  * action's headers win over the loader's that run after it.

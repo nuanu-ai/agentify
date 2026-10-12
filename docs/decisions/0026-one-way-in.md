@@ -72,10 +72,11 @@ change holds from the next page; the header shows an operator the way in.
 Anybody else, and everybody while the dashboard cannot answer, gets the site's
 404 page, and nothing at the edge guards or marks the path. It is read-only.
 
-**7. The dashboard's gate.** One middleware turns away a visitor without a
-session at every dashboard address but sign-in, sign-out, a link's landing page,
-the stylesheet, the health probe and a shop's key callback and return; a route
-joins those only if, without a session, it reads nothing and answers all alike.
+**7. The dashboard's gate.** One gate turns away a visitor without a session at
+every dashboard address but sign-in, sign-out, a link's landing page, the
+stylesheet and the pages' built scripts, the route table their script asks
+for, the health probe and a shop's key callback and return; a route joins those
+only if, without a session, it reads nothing and answers all alike.
 
 ## Consequences
 

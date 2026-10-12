@@ -9,7 +9,7 @@ import {
   useActionData,
   useLoaderData,
 } from "react-router";
-import { answer, carried, useChrome } from "../answer.js";
+import { answer, carried, formOf, useChrome } from "../answer.js";
 import { OpenLinkScreen } from "../screens/sign-in.js";
 import { services } from "../services.js";
 
@@ -32,7 +32,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 export async function action({ request, context }: ActionFunctionArgs) {
   const pages = context.get(services);
   return answer(
-    await pages.signIn.open(request.headers.get("cookie") ?? undefined, await request.formData()),
+    await pages.signIn.open(request.headers.get("cookie") ?? undefined, await formOf(request)),
     request,
     context,
   );

@@ -124,8 +124,22 @@ export async function pagesFromSource({ live }: { readonly live: boolean }): Pro
   };
 }
 
-/** Which methods a route answers: a read where it draws a page or loads data, a post where it acts. */
+/**
+ * Which methods a route answers: a read where it draws a page or loads data,
+ * and a post where it acts. No other method reaches an action, because the
+ * origin check reads posts alone.
+ */
 type Answers = (method: string) => boolean;
+
+interface Served {
+  readonly answers: Answers;
+  /**
+   * Whether a browser may keep the page's data for a moment. A page sent with
+   * no script never has its data asked for by its own page, so whatever asks
+   * for it is not a prefetch, and nothing of it is kept.
+   */
+  readonly keepsData: boolean;
+}
 
 /**
  * The build's routes as a tree, for asking whether a path is one of them
@@ -135,19 +149,27 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
   const childrenOf = (parentId: string | undefined): RouteObject[] =>
     Object.values(build.routes).flatMap((route): RouteObject[] => {
       if (route === undefined || route.parentId !== parentId) return [];
-      const module = route.module as { default?: unknown; loader?: unknown; action?: unknown };
+      const module = route.module as {
+        default?: unknown;
+        loader?: unknown;
+        action?: unknown;
+        handle?: { script?: boolean };
+      };
       // A layout with no path of its own, the root among them, is a frame
       // around pages and never a page, even while nothing is nested in it.
       const page = route.index === true || (route.path ?? "") !== "";
-      const answers: Answers = (method) =>
-        page &&
-        (method === "GET" || method === "HEAD"
-          ? module.default !== undefined || module.loader !== undefined
-          : module.action !== undefined);
+      const served: Served = {
+        answers: (method) =>
+          page &&
+          (method === "GET" || method === "HEAD"
+            ? module.default !== undefined || module.loader !== undefined
+            : method === "POST" && module.action !== undefined),
+        keepsData: module.handle?.script !== false,
+      };
       const shared = {
         id: route.id,
         caseSensitive: route.caseSensitive === true,
-        handle: { answers },
+        handle: served,
       };
       return [
         route.index === true
@@ -234,13 +256,21 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
         handle(request, response, next);
         return;
       }
-      const matches = matchRoutes(routes, pageOf(request.path, basename), basename);
-      const answers = (matches?.at(-1)?.route.handle as { answers?: Answers } | undefined)?.answers;
-      if (answers === undefined || !answers(request.method)) {
+      try {
+        decodeURI(request.path);
+      } catch {
+        // Not an address any route could have, and matching it would have
+        // React Router write the stranger's path to the log.
         next();
         return;
       }
-      if (request.method !== "GET" && request.method !== "HEAD") {
+      const matches = matchRoutes(routes, pageOf(request.path, basename), basename);
+      const served = matches?.at(-1)?.route.handle as Served | undefined;
+      if (served === undefined || !served.answers(request.method)) {
+        next();
+        return;
+      }
+      if (request.method === "POST") {
         // React Router reads a form whole; a body that does not say how long
         // it is, or says it is longer than any form here, is refused before
         // that, as the body parser refuses one for the string pages.
@@ -252,12 +282,15 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       }
       // A page here may show the signed-in address, so no shared cache keeps
       // any answer. A page's data may be kept by this browser for ten seconds,
-      // because a browser hands a prefetched answer to the click that follows
-      // only while it is fresh; it is kept per session cookie, and a post to
-      // the same address drops it, so nothing is drawn from data older than a
-      // change made since.
+      // per session cookie, because a browser hands a prefetched answer to the
+      // click that follows only while it is fresh. The price: a press posted
+      // to another address, such as a string page's switch, does not drop the
+      // data kept for this one, so for up to ten seconds after it a page opened
+      // inside the application may show its data from before the press. An
+      // action React Router sends posts to its own page's address and drops
+      // that page's data.
       const reading = request.method === "GET" || request.method === "HEAD";
-      if (reading && request.path.endsWith(".data")) {
+      if (reading && request.path.endsWith(".data") && served.keepsData) {
         response.setHeader("cache-control", "private, max-age=10");
         response.setHeader("vary", "cookie");
       } else {
@@ -301,7 +334,12 @@ export async function precompressedFrom(directory: string): Promise<RequestHandl
       next();
       return;
     }
-    const name = decodeURIComponent(request.path.slice(1));
+    let name: string;
+    try {
+      name = decodeURIComponent(request.path.slice(1));
+    } catch {
+      name = "";
+    }
     const type = TYPES[extname(name)];
     if (!names.has(name) || type === undefined) {
       response.status(404).type("text/plain").send("No such file.");

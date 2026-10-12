@@ -9,7 +9,7 @@ import {
   useActionData,
   useLoaderData,
 } from "react-router";
-import { answer, carried, useChrome } from "../answer.js";
+import { answer, carried, formOf, useChrome } from "../answer.js";
 import { AskScreen, LinkRequestedScreen, MailUnavailableScreen } from "../screens/sign-in.js";
 import { services } from "../services.js";
 
@@ -29,7 +29,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
 export async function action({ request, context }: ActionFunctionArgs) {
   const pages = context.get(services);
-  return answer(await pages.signIn.ask(await request.formData()), request, context);
+  return answer(await pages.signIn.ask(await formOf(request)), request, context);
 }
 
 export default function SignIn() {
