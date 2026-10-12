@@ -668,6 +668,10 @@ td.control {
   margin: 20px 0 8px;
 }
 
+.gate .field {
+  margin-top: 20px;
+}
+
 @media (max-width: 760px) {
   .gate-card {
     padding: 28px 22px;

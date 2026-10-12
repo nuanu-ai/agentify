@@ -10,6 +10,7 @@ import {
   type HeadersFunction,
   type RouterContextProvider,
   redirectDocument,
+  useRouteLoaderData,
 } from "react-router";
 import type { Outcome, Surface } from "../src/page-services.js";
 import { services } from "./services.js";
@@ -30,6 +31,15 @@ export type Trouble =
 export const chromeOf = (context: Readonly<RouterContextProvider>): Chrome => {
   const pages = context.get(services);
   return { base: pages.base, surface: pages.surface };
+};
+
+/** The chrome the root loaded, which every page drawn without an error has. */
+export const useChrome = (): Chrome => {
+  const chrome = useRouteLoaderData<Chrome>("root");
+  if (chrome === undefined) {
+    throw new Error("a page was drawn without the root's chrome, which every page loads first");
+  }
+  return chrome;
 };
 
 const headersOf = (

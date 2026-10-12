@@ -10,8 +10,16 @@
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
 import type { DashboardConfig } from "./config.js";
-import type { DashboardIdentity } from "./dashboard-entry.js";
-import { type Gate, gateFor } from "./gate.js";
+import {
+  type DashboardDestination,
+  type DashboardIdentity,
+  dashboardDestinationIn,
+  type LinkDestination,
+  type LinkWall,
+  type Person,
+} from "./dashboard-entry.js";
+import { clearingLines, dashboardPathFor, type Gate, gateFor, startOf } from "./gate.js";
+import { SESSION_DAYS } from "./identity.js";
 
 /** A view to draw, a place to send the browser, or a problem to show instead. */
 export type Outcome<View> =
@@ -48,25 +56,264 @@ export interface Surface {
   readonly words: string | null;
 }
 
+/**
+ * A problem is a refusal of something the person did and is drawn under the
+ * box; a reason is why they are on the page at all, such as an expired
+ * session, and is the card's first line in the ordinary voice.
+ */
+export type SignInView =
+  | Readonly<{
+      screen: "ask";
+      destination: DashboardDestination;
+      problem?: string;
+      reason?: string;
+    }>
+  | Readonly<{
+      screen: "requested";
+      email: string;
+      destination: DashboardDestination;
+      answer: LinkAnswer;
+    }>
+  | Readonly<{ screen: "unavailable" }>;
+
+/**
+ * Accepted carries a key of its own rather than the absence of a limit, so a
+ * forgotten field cannot read as good news. The limit is named rather than
+ * inferred from the seconds, because a minute (a link already sent) and an
+ * hour (an allowance spent) need different sentences.
+ */
+export type LinkAnswer =
+  | Readonly<{ sent: true; seconds: number }>
+  | Readonly<{ wall: LinkWall; seconds: number }>;
+
+export type OpenLinkView =
+  | Readonly<{ screen: "open"; token: string; email: string }>
+  | Readonly<{ screen: "refused" }>;
+
 export interface PageServices {
   /** "" when mounted at the root of its origin. */
   readonly base: string;
   readonly surface: Surface;
   readonly gate: Gate;
+  readonly signIn: {
+    page(cookie: string | undefined, query: URLSearchParams): Promise<Outcome<SignInView>>;
+    ask(form: FormData): Promise<Outcome<SignInView>>;
+    landing(cookie: string | undefined, query: URLSearchParams): Promise<Outcome<OpenLinkView>>;
+    open(cookie: string | undefined, form: FormData): Promise<Outcome<OpenLinkView>>;
+    signOut(cookie: string | undefined): Promise<Outcome<never>>;
+  };
 }
 
 export interface PageParts {
   readonly identity: DashboardIdentity;
 }
 
+/**
+ * Not the real grammar of an address: it catches the mistakes made in a form (a
+ * missing half, a space, a bare word), as the account command does.
+ */
+const LOOKS_LIKE_AN_ADDRESS = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
+
+/**
+ * The gate cannot say why the session ended (thirty days without a visit, or
+ * ended from another device), so it gives the rule; naming the lifetime makes
+ * the request for an address read as an ordinary end rather than a fault.
+ */
+const SESSION_ENDED =
+  `Your session ended; a session lasts ${SESSION_DAYS} days from your last visit. ` +
+  `Send yourself a new link to carry on.`;
+
+/**
+ * Signing out clears the cookie in every tab, so a form pressed in another one
+ * arrives with no sign a session existed. The person is told it was not kept,
+ * or they might take a pause for done.
+ */
+const UNSAVED = "You are not signed in, so the change you submitted was not saved.";
+
+/**
+ * The page a mailed link lands on and its press answer with these, and with no
+ * cache, which every page here has. The policy keeps the token out of
+ * `Referer`: `no-referrer` would make Chromium post the form with
+ * `Origin: null`, which the origin check must refuse, while `strict-origin`
+ * keeps the exact origin and sends no query.
+ */
+const LINK_HEADERS = { "referrer-policy": "strict-origin" } as const;
+
+/**
+ * A value named once, as a form or an address names it; named twice it is
+ * nobody's choice, and is read as not named at all.
+ */
+const once = (values: readonly unknown[]): unknown => (values.length === 1 ? values[0] : undefined);
+
 export function pageServicesFor(config: DashboardConfig, parts: PageParts): PageServices {
+  const base = config.basePath;
+  const { identity } = parts;
+
+  /**
+   * A browser with a live session goes to its own start, so the answer depends
+   * on who the browser is and never on whose the link was. Anybody else gets
+   * one refusal for a spent, expired or unknown link.
+   */
+  const refuseLink = async (cookie: string | undefined): Promise<Outcome<OpenLinkView>> => {
+    const signedIn = await identity.whoIs(cookie);
+    if (signedIn !== null) {
+      return {
+        kind: "redirect",
+        location: startOf(base, signedIn.person),
+        headers: LINK_HEADERS,
+        setCookies: signedIn.setCookies,
+      };
+    }
+    return { kind: "view", view: { screen: "refused" }, status: 401, headers: LINK_HEADERS };
+  };
+
+  /**
+   * Opening a link makes nothing: under Lax a link from another site arrives
+   * signed in, so a navigation that made a merchant could be started by
+   * anybody. A link the scanner asked for goes to its report, where the scanner
+   * finishes the request the session now names; a link from a dashboard screen
+   * goes to that screen, or to the control that makes a merchant for somebody
+   * with none; any other to the start.
+   */
+  const whereOpened = (person: Person, destination: LinkDestination): string =>
+    typeof destination !== "string"
+      ? `/report/${encodeURIComponent(destination.report)}`
+      : destination === "default"
+        ? startOf(base, person)
+        : person.merchant === null
+          ? `${base}/merchant`
+          : dashboardPathFor(base, destination);
+
   return {
-    base: config.basePath,
+    base,
     surface: {
       attribute: SURFACE_MARKER_ATTRIBUTE,
       mode: config.surfaceMode,
       words: SURFACE_WORDS[config.surfaceMode],
     },
-    gate: gateFor(config.basePath, parts.identity, config.cookieSecure),
+    gate: gateFor(base, identity, config.cookieSecure),
+
+    signIn: {
+      async page(cookie, query) {
+        const destination = dashboardDestinationIn(once(query.getAll("destination")));
+        const signedIn = await identity.whoIs(cookie);
+        if (signedIn !== null) {
+          return {
+            kind: "redirect",
+            location:
+              signedIn.person.merchant === null
+                ? `${base}/merchant`
+                : dashboardPathFor(base, destination),
+            setCookies: signedIn.setCookies,
+          };
+        }
+        // An expired session is why the person is here, so it is the page's
+        // first line; a change lost with it is a refusal.
+        const said = once(query.getAll("reason"));
+        const problem =
+          said === "session-ended-unsaved"
+            ? `${SESSION_ENDED} The change you submitted was not saved.`
+            : said === "unsaved"
+              ? UNSAVED
+              : undefined;
+        const reason = said === "session-ended" ? SESSION_ENDED : undefined;
+        return {
+          kind: "view",
+          view: {
+            screen: "ask",
+            destination,
+            ...(problem === undefined ? {} : { problem }),
+            ...(reason === undefined ? {} : { reason }),
+          },
+        };
+      },
+
+      async ask(form) {
+        const typed = once(form.getAll("email"));
+        const email = typeof typed === "string" ? typed.trim() : "";
+        const destination = dashboardDestinationIn(once(form.getAll("destination")));
+        if (!LOOKS_LIKE_AN_ADDRESS.test(email)) {
+          return {
+            kind: "view",
+            status: 400,
+            view: {
+              screen: "ask",
+              destination,
+              problem: "Enter an address of the shape someone@example.com.",
+            },
+          };
+        }
+        const requested = await identity.requestLink(email, destination);
+        if (requested.status === "unavailable") {
+          return { kind: "view", status: 503, view: { screen: "unavailable" } };
+        }
+        // Both waits come from the reading of the same rows; this page never
+        // works one out, because the only wait it could guess is the minute,
+        // which is wrong for the link that spent the hour.
+        const seconds = Math.max(1, Math.ceil((requested.retryAt.getTime() - Date.now()) / 1_000));
+        const answer: LinkAnswer =
+          requested.status === "cooldown"
+            ? { wall: requested.wall, seconds }
+            : { sent: true, seconds };
+        return {
+          kind: "view",
+          status: 202,
+          ...("wall" in answer ? { headers: { "retry-after": String(answer.seconds) } } : {}),
+          view: { screen: "requested", email, destination, answer },
+        };
+      },
+
+      /**
+       * Opening spends nothing, so a mail client's preview signs nobody in; only
+       * the same-origin press does. It names the address, so a link for
+       * somebody else's address sent to a victim cannot sign them in as that
+       * somebody unnoticed.
+       */
+      async landing(cookie, query) {
+        const named = once(query.getAll("token"));
+        const token = typeof named === "string" ? named : "";
+        const email = token === "" ? null : await identity.addressOfLink(token);
+        if (email === null) {
+          return await refuseLink(cookie);
+        }
+        return { kind: "view", view: { screen: "open", token, email }, headers: LINK_HEADERS };
+      },
+
+      async open(cookie, form) {
+        const named = once(form.getAll("token"));
+        const token = typeof named === "string" ? named : "";
+        const opened =
+          token === "" ? { status: "refused" as const } : await identity.openLink(token);
+        if (opened.status === "refused") {
+          return await refuseLink(cookie);
+        }
+        // The new session replaces the old one rather than sitting beside it;
+        // otherwise the old row would live on with nothing holding its cookie
+        // and count as another place this account is signed in.
+        await identity.signOut(cookie);
+        return {
+          kind: "redirect",
+          location: whereOpened(opened.person, opened.destination),
+          headers: LINK_HEADERS,
+          setCookies: opened.setCookies,
+        };
+      },
+
+      // The rows go, not only the cookies: anybody who copied a value would
+      // still hold a session. Every identifier the request carried, because a
+      // browser orders cookies of one name by path and age, so the live one need
+      // not be first. It signs this browser out of the whole site and leaves
+      // other devices alone, and it stands in front of the gate so a tab whose
+      // session is gone can still clear its cookie.
+      async signOut(cookie) {
+        await identity.signOut(cookie);
+        console.log("[dashboard] a session was signed out");
+        return {
+          kind: "redirect",
+          location: `${base}/sign-in`,
+          setCookies: clearingLines(identity, config.cookieSecure),
+        };
+      },
+    },
   };
 }

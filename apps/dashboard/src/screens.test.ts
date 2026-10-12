@@ -17,42 +17,12 @@ import { describe, expect, it } from "vitest";
 import { page } from "./html.js";
 import { cardsScreen, ordersScreen, receiptsScreen, type Viewer } from "./screens.js";
 import { settingsScreen } from "./seller-name.js";
-import { signInScreen } from "./sign-in.js";
 import { readable } from "./testing/html.js";
 
 /** Every screen says who it is drawn for. */
 const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: "owner@example.com", confirmed: true };
 
 describe("what a page says about the stack it belongs to", () => {
-  it("says nothing settles here on the laptop", () => {
-    // The sandbox sign-in page must say that no payment settles here.
-    const html = signInScreen("", "sandbox");
-
-    expect(html).toContain(`${SURFACE_MARKER_ATTRIBUTE}="sandbox"`);
-    expect(readable(html)).toContain(SURFACE_WORDS.sandbox);
-  });
-
-  it("says payments settle with test funds on the test site", () => {
-    // The test-site page must carry its test-funds warning.
-    const html = signInScreen("", "test");
-
-    expect(html).toContain(`${SURFACE_MARKER_ATTRIBUTE}="test"`);
-    expect(readable(html)).toContain(SURFACE_WORDS.test);
-  });
-
-  it("says nothing at all on the live one, and still names itself", () => {
-    // The marker names the mode rather than merely existing: an absence cannot
-    // tell a correct live page from one that failed to render.
-    const html = signInScreen("", "live");
-
-    expect(html).toContain(`${SURFACE_MARKER_ATTRIBUTE}="live"`);
-    expect(readable(html)).not.toContain(SURFACE_WORDS.test);
-    expect(readable(html)).not.toContain(SURFACE_WORDS.sandbox);
-    // No banner element either: an empty styled one is a band across a live
-    // page.
-    expect(html).not.toContain('class="stack-note"');
-  });
-
   it("carries the same marker on a signed-in page", () => {
     // Pages behind the sign-in must carry the stack label too.
     const html = page({

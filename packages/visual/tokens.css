@@ -282,7 +282,10 @@ p {
   min-width: 0;
 }
 
-.field-label {
+/* Written against the field, so a page's rule for its own labels and
+   paragraphs does not move or recolour these. */
+.field .field-label {
+  margin: 0;
   font-size: var(--text-label);
   font-weight: 600;
 }
@@ -306,16 +309,17 @@ p {
   border-color: var(--fail);
 }
 
-.field-hint,
-.field-error {
+.field .field-hint,
+.field .field-error {
+  margin: 0;
   font-size: var(--text-small);
 }
 
-.field-hint {
+.field .field-hint {
   color: var(--muted);
 }
 
-.field-error {
+.field .field-error {
   color: var(--fail);
 }
 

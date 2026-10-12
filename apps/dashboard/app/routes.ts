@@ -14,8 +14,11 @@
  * library and no copy of the server. Types may be imported from anywhere.
  */
 
-import { layout, type RouteConfig } from "@react-router/dev/routes";
+import { layout, type RouteConfig, route } from "@react-router/dev/routes";
 
 export default [
+  route("sign-in", "routes/sign-in.tsx"),
+  route("sign-in/open", "routes/sign-in-open.tsx"),
+  route("sign-out", "routes/sign-out.ts"),
   layout("routes/gate.tsx", [layout("routes/merchant-only.tsx", [])]),
 ] satisfies RouteConfig;

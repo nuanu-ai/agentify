@@ -46,7 +46,7 @@ import {
 import type { Handover, Message, Postman } from "./mail.js";
 import type { Pages } from "./pages.js";
 import { buildApp } from "./server.js";
-import { readable, shownMarkIn, waitingButton } from "./testing/html.js";
+import { formTo, readable, shownMarkIn, waitingButton } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
@@ -625,9 +625,8 @@ describe("the passwordless dashboard door", () => {
     expect(unknown.headers.getSetCookie()).toStrictEqual([]);
     expect(rows.dashboard_sessions).toStrictEqual([]);
     expect(mails).toHaveLength(2);
-    expect(known.html).toContain('method="post" action="/sign-in"');
-    expect(known.html).toContain('method="get" action="/sign-in"');
-    expect(known.html).toContain(`name="email" type="hidden" value="${PERSON}"`);
+    expect(formTo(known.html, "post", "/sign-in")?.fields.get("email")).toBe(PERSON);
+    expect(formTo(known.html, "get", "/sign-in")).toBeDefined();
     // The resend carries the minute and is served pressable: the script greys
     // it out, and a browser running none keeps the button and is refused in
     // words.
@@ -664,7 +663,7 @@ describe("the passwordless dashboard door", () => {
     for (let sent = 0; sent < 3; sent += 1) {
       const answer = await browser.post("/sign-in", { email: PERSON });
       expect(answer.status).toBe(202);
-      expect(answer.html).toContain(`name="email" type="hidden" value="${PERSON}"`);
+      expect(formTo(answer.html, "post", "/sign-in")?.fields.get("email")).toBe(PERSON);
       rewindLinkSends(rows);
     }
 
@@ -676,8 +675,8 @@ describe("the passwordless dashboard door", () => {
     expect(readable(limited.html)).not.toContain("is on its way");
     // The resend stays, with the server's wait on it and nothing disabling it:
     // a button served disabled can never be pressed by a scriptless browser.
-    expect(limited.html).toContain('method="post" action="/sign-in"');
-    expect(limited.html).toContain('method="get" action="/sign-in"');
+    expect(formTo(limited.html, "post", "/sign-in")).toBeDefined();
+    expect(formTo(limited.html, "get", "/sign-in")).toBeDefined();
     const resend = waitingButton(limited.html);
     expect(resend.attributes.get("data-link-wait")).toBe(limited.headers.get("retry-after"));
     expect(resend.attributes.has("disabled")).toBe(false);
@@ -706,8 +705,8 @@ describe("the passwordless dashboard door", () => {
     const resend = waitingButton(again.html);
     expect(resend.attributes.get("data-link-wait")).toBe(again.headers.get("retry-after"));
     expect(resend.attributes.has("disabled")).toBe(false);
-    expect(again.html).toContain('method="post" action="/sign-in"');
-    expect(again.html).toContain('method="get" action="/sign-in"');
+    expect(formTo(again.html, "post", "/sign-in")).toBeDefined();
+    expect(formTo(again.html, "get", "/sign-in")).toBeDefined();
     expect(mails).toHaveLength(1);
   });
 
@@ -1102,9 +1101,29 @@ describe("one session for the whole site", () => {
 
 /**
  * Read rather than listed, so a rule held for every route holds for a route
- * added later.
+ * added later: the string handlers off the Express router, and the pages React
+ * Router draws off its build, by the methods each answers.
  */
-const routesOf = (running: Running): { method: string; path: string }[] => {
+const routesOf = async (running: Running): Promise<{ method: string; path: string }[]> => {
+  const build =
+    typeof running.pages.build === "function" ? await running.pages.build() : running.pages.build;
+  const pathOf = (id: string | undefined): string => {
+    const route = id === undefined ? undefined : build.routes[id];
+    return route === undefined
+      ? ""
+      : [pathOf(route.parentId), route.path ?? ""].filter((part) => part !== "").join("/");
+  };
+  const drawn = Object.values(build.routes).flatMap((route) => {
+    if (route === undefined || (route.path ?? "") === "") return [];
+    const module = route.module as { default?: unknown; loader?: unknown; action?: unknown };
+    const path = `/${pathOf(route.id)}`.replaceAll(/:[a-z_]+/g, "x");
+    return [
+      ...(module.default !== undefined || module.loader !== undefined
+        ? [{ method: "get", path }]
+        : []),
+      ...(module.action !== undefined ? [{ method: "post", path }] : []),
+    ];
+  });
   const listed = buildApp(
     loadConfig({
       DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
@@ -1119,16 +1138,16 @@ const routesOf = (running: Running): { method: string; path: string }[] => {
       wooShops: memoryWooShops(),
     },
   );
-  return (
-    listed.router.stack as { route?: { path: string; methods: Record<string, boolean> } }[]
-  ).flatMap(({ route }) =>
-    route === undefined
-      ? []
-      : Object.keys(route.methods).map((method) => ({
-          method,
-          path: route.path.replaceAll(/:[a-z_]+/g, "x"),
-        })),
-  );
+  return (listed.router.stack as { route?: { path: string; methods: Record<string, boolean> } }[])
+    .flatMap(({ route }) =>
+      route === undefined
+        ? []
+        : Object.keys(route.methods).map((method) => ({
+            method,
+            path: route.path.replaceAll(/:[a-z_]+/g, "x"),
+          })),
+    )
+    .concat(drawn);
 };
 
 describe("the operator flag", () => {
@@ -1140,7 +1159,7 @@ describe("the operator flag", () => {
     // flag from a request, not that every line behind those refusals ran.
     const running = await started({ wooShops: memoryWooShops() });
     await running.browser.signIn();
-    const routes = routesOf(running);
+    const routes = await routesOf(running);
     expect(routes.filter(({ method }) => method === "post").length).toBeGreaterThan(10);
 
     // Signing out ends the session the rest are sent with, so it goes last.
@@ -2827,7 +2846,7 @@ describe("what every screen says about the address", () => {
       expect(answered.headers.get("cache-control"), path).toBe("private, no-store");
       const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
       expect(readable(bar), path).toContain(PERSON);
-      expect(bar, path).toContain('method="post" action="/sign-out"');
+      expect(formTo(bar, "post", "/sign-out"), path).toBeDefined();
     }
   });
 
@@ -2931,7 +2950,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     expect(answered.html).toMatch(/<a [^>]*href="\/cards"[^>]*>Back to the dashboard<\/a>/);
     const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
     expect(readable(bar)).toContain(PERSON);
-    expect(bar).toContain('method="post" action="/sign-out"');
+    expect(formTo(bar, "post", "/sign-out")).toBeDefined();
   });
 
   it("treats a cookie it cannot read as nobody being signed in", async () => {
@@ -3257,7 +3276,7 @@ describe("a session that is ended while somebody is looking at a page", () => {
     const recovery = (await browser.get(refused.to ?? "")).html;
     // Something the person did was not kept, so it is a refusal, in the line
     // the form keeps for one.
-    const refusal = readable(/<p class="problem">[\s\S]*?<\/p>/.exec(recovery)?.[0] ?? "");
+    const refusal = readable(/<p class="field-error"[^>]*>[\s\S]*?<\/p>/.exec(recovery)?.[0] ?? "");
     expect(refusal).toContain("not saved");
     // The gate cannot tell a sign-out from an expired session, so it names
     // neither.
@@ -3385,7 +3404,7 @@ describe("a page left open while another address signs in", () => {
     // These answer without a session, and the sign-out signs this browser out
     // whichever page it was pressed on.
     const above = new Set(["/sign-in", "/sign-in/open", "/sign-out", "/woocommerce/callback"]);
-    const behind = routesOf(running).filter(
+    const behind = (await routesOf(running)).filter(
       ({ method, path }) => method === "post" && !above.has(path),
     );
     expect(behind.length).toBeGreaterThan(10);
@@ -3395,9 +3414,10 @@ describe("a page left open while another address signs in", () => {
     expect(refusal.status).toBe(409);
     for (const { path } of behind) {
       for (const answer of [await running.browser.post(path, leftOpen), await silently(path)]) {
-        expect({ status: answer.status, html: answer.html }, path).toStrictEqual({
+        // The same words whichever way the screen is drawn.
+        expect({ status: answer.status, said: readable(answer.html) }, path).toStrictEqual({
           status: 409,
-          html: refusal.html,
+          said: readable(refusal.html),
         });
       }
     }
