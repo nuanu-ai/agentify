@@ -146,6 +146,13 @@ export interface PageServices {
     page(): Outcome<ChooseNameView>;
     choose(person: Person, form: FormData): Promise<Outcome<ChooseNameView>>;
   };
+  /**
+   * A switch pressed on the cards, named in the address the press is posted
+   * to: `pause` or `resume` with a card, or `selling` with either way.
+   */
+  readonly selling: {
+    press(person: Person, query: URLSearchParams): Promise<Outcome<never>>;
+  };
   /** The screens about a merchant's selling, for a person the gates let through. */
   readonly screens: {
     cards(person: Person): Promise<Outcome<CardsView>>;
@@ -231,6 +238,24 @@ const LINK_HEADERS = { "referrer-policy": "strict-origin" } as const;
  * nobody's choice, and is read as not named at all.
  */
 const once = (values: readonly unknown[]): unknown => (values.length === 1 ? values[0] : undefined);
+
+/**
+ * Which switch a press on the cards names: one card's, or all selling's when
+ * no card is named. A press naming anything else, or anything twice, names no
+ * switch at all rather than whichever was read first.
+ */
+const switchIn = (query: URLSearchParams): Readonly<{ card?: string; paused: boolean }> | null => {
+  const named = [...new Set(query.keys())];
+  const [key] = named;
+  const value = key === undefined ? undefined : once(query.getAll(key));
+  if (named.length !== 1 || typeof value !== "string" || value === "") return null;
+  if (key === "selling") {
+    return value === "pause" || value === "resume" ? { paused: value === "pause" } : null;
+  }
+  return key === "pause" || key === "resume" ? { card: value, paused: key === "pause" } : null;
+};
+
+const NO_SUCH_SWITCH = "There is no such switch on the cards.";
 
 export function pageServicesFor(config: DashboardConfig, parts: PageParts): PageServices {
   const base = config.basePath;
@@ -500,6 +525,31 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const set = await gatewayAs(person).setSellerName(typed);
         if (!set.ok) return problemOf(set);
         noted(person, "chose the name their products are sold under");
+        return { kind: "redirect", location: `${base}/cards` };
+      },
+    },
+
+    selling: {
+      async press(person, query) {
+        const pressed = switchIn(query);
+        if (pressed === null) {
+          return { kind: "problem", problem: { status: 404, said: NO_SUCH_SWITCH } };
+        }
+        const gateway = gatewayAs(person);
+        const switched =
+          pressed.card === undefined
+            ? await gateway.setSelling(!pressed.paused)
+            : await gateway.pauseCard(pressed.card, pressed.paused);
+        if (!switched.ok) return problemOf(switched);
+        noted(
+          person,
+          pressed.card === undefined
+            ? pressed.paused
+              ? "stopped all selling"
+              : "started selling again"
+            : `${pressed.paused ? "paused" : "resumed"} the card ${pressed.card}`,
+        );
+        // A redirect, so a reload does not press the switch again.
         return { kind: "redirect", location: `${base}/cards` };
       },
     },

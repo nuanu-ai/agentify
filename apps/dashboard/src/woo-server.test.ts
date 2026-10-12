@@ -835,7 +835,7 @@ describe("importing the catalogue", () => {
     await connected(running);
     await running.post("/woocommerce/import");
     const tote = (await cardsOf(running)).find((one) => one.card.title === "Canvas tote bag");
-    await running.post(`/cards/${encodeURIComponent(tote?.id ?? "")}/pause`);
+    await running.post(`/cards?${new URLSearchParams({ pause: tote?.id ?? "" })}`);
 
     const imported = await running.post("/woocommerce/import");
     const text = readable(imported.html);
@@ -1890,7 +1890,7 @@ describe("one integration at a time", () => {
     expect(left.to).toBe("/cards");
     expect(await running.shops.connectionOf(running.accountId)).toBeNull();
     expect(await onSale(running)).toStrictEqual([]);
-    await running.post("/selling/resume");
+    await running.post("/cards?selling=resume");
     expect(await onSale(running)).toStrictEqual([card]);
   });
 

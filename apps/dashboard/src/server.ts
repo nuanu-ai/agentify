@@ -1231,31 +1231,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     });
   }
 
-  for (const [verb, paused] of [
-    ["pause", true],
-    ["resume", false],
-  ] as const) {
-    app.post(`${base}/cards/:item_id/${verb}`, async (request, response) => {
-      const itemId = request.params.item_id ?? "";
-      const switched = await gatewayAs(request).pauseCard(itemId, paused);
-      if (!switched.ok) {
-        return trouble(response, base, switched);
-      }
-      noted(whoIs(request), `${paused ? "paused" : "resumed"} the card ${itemId}`);
-      // A redirect, so a reload does not press the switch again.
-      response.redirect(303, `${base}/cards`);
-    });
-
-    app.post(`${base}/selling/${verb}`, async (request, response) => {
-      const switched = await gatewayAs(request).setSelling(!paused);
-      if (!switched.ok) {
-        return trouble(response, base, switched);
-      }
-      noted(whoIs(request), paused ? "stopped all selling" : "started selling again");
-      response.redirect(303, `${base}/cards`);
-    });
-  }
-
   app.get(`${base}/keys`, async (request, response) => {
     const keys = await gatewayAs(request).keys();
     if (!keys.ok) {

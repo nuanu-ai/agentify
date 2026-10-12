@@ -1,4 +1,4 @@
-import { type LoaderFunctionArgs, useLoaderData } from "react-router";
+import { type ActionFunctionArgs, type LoaderFunctionArgs, useLoaderData } from "react-router";
 import { answer, useChrome } from "../answer.js";
 import { Frame } from "../components/frame.js";
 import { CardsScreen } from "../screens/cards.js";
@@ -7,6 +7,15 @@ import { services, signedIn } from "../services.js";
 export async function loader(asked: LoaderFunctionArgs) {
   const { context } = asked;
   return answer(await context.get(services).screens.cards(context.get(signedIn)), asked);
+}
+
+/** The switches on the page, each naming itself in the address it posts to. */
+export async function action(asked: ActionFunctionArgs) {
+  const { url, context } = asked;
+  return answer(
+    await context.get(services).selling.press(context.get(signedIn), url.searchParams),
+    asked,
+  );
 }
 
 export default function Cards() {

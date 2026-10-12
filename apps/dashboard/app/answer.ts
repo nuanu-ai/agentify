@@ -9,6 +9,7 @@ import {
   data,
   type HeadersFunction,
   type RouterContextProvider,
+  redirect,
   redirectDocument,
   useRouteLoaderData,
 } from "react-router";
@@ -54,8 +55,10 @@ const headersOf = (
 };
 
 /**
- * Sends the browser to a path of this site with a whole page load, never a
- * move inside this application: the path may be a page still drawn as a
+ * Sends the browser to a path of this site. Back to the page the request was
+ * answered at, which this application draws, it stays inside the application,
+ * and a browser running the pages' script reads the page afresh; anywhere else
+ * it loads the page whole, since the path may be a page still drawn as a
  * string, or the scanner's. React Router reads a redirect from a loader or an
  * action as a path under its own prefix, so a path under the dashboard's is
  * handed over without it, and one outside it is written as a whole address on
@@ -68,10 +71,10 @@ export function sendTo(location: string, url: URL, base: string, headers?: Heade
       : location === base || location.startsWith(`${base}/`) || location.startsWith(`${base}?`)
         ? location.slice(base.length) || "/"
         : null;
-  return redirectDocument(within ?? `//${url.host}${location}`, {
-    status: 303,
-    ...(headers === undefined ? {} : { headers }),
-  });
+  const init = { status: 303, ...(headers === undefined ? {} : { headers }) };
+  return within !== null && location === url.pathname
+    ? redirect(within, init)
+    : redirectDocument(within ?? `//${url.host}${location}`, init);
 }
 
 /**
