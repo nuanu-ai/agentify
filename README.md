@@ -306,6 +306,10 @@ kept apart for that reason:
   `pnpm scanner:test:actor` needs neither: it drives a Chromium, put there once
   with
   `pnpm --filter @agentify/browser-observer-actor exec playwright install chromium`.
+- `pnpm dashboard:test:browser` builds the dashboard's pages and drives the same
+  Chromium over them, to hold what the browser does with the page data it is
+  allowed to keep: the click after a hover is answered from the hover's fetch,
+  and nothing kept before a press is shown after it.
 
 ## Releasing
 
