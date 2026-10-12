@@ -334,14 +334,14 @@ describe("when the time runs out", () => {
 });
 
 describe("a card that names no delivery deadline", () => {
-  it("holds its merchant to ours, and shows the agent no deadline at all", async () => {
+  it("holds its merchant to ours, and shows the agent that time on the card", async () => {
     // The delivery deadline is optional on an asynchronous card, and this is
-    // what leaving it out costs. Our own number applies, and an order that runs
+    // what leaving it out means. Our own number applies, and an order that runs
     // past it is marked as needing a refund exactly as one past a number the
-    // merchant chose would be — while the card an agent reads carries no
-    // deadline for it to see. So the clock the merchant is held to was shown to
-    // neither of them, and the page has to say so rather than promise the agent
-    // a deadline that is not there.
+    // merchant chose would be. The card an agent reads carries that number, in
+    // whole seconds and never less than the time itself, so an agent that
+    // waits as long as the card says never gives up on an order still allowed
+    // to arrive.
     const harnessed = await started();
     const published = await harnessed.gateway.publishCard(harnessed.merchant.id, asyncCard);
     if (!published.ok) throw new Error("the card would not publish");
@@ -350,7 +350,11 @@ describe("a card that names no delivery deadline", () => {
     const shown = (await harnessed.gateway.catalog()).items[0];
     if (shown === undefined) throw new Error("the card did not reach the catalog");
     expect(shown.fulfillment).toBe("async");
-    expect("fulfill_deadline_seconds" in shown).toBe(false);
+    const heldMs = harnessed.runtime.config.deadlines.defaultAsyncFulfillmentMs;
+    const shownMs =
+      ("fulfill_deadline_seconds" in shown ? (shown.fulfill_deadline_seconds ?? 0) : 0) * 1_000;
+    expect(shownMs).toBeGreaterThanOrEqual(heldMs);
+    expect(shownMs - heldMs).toBeLessThan(1_000);
 
     const offered = await harnessed.gateway.beginPurchase(published.id, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
