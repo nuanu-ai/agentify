@@ -247,15 +247,15 @@ export class OrderRunner {
    * its creation asked for. The machine has already decided whether there is an
    * order at all; this is the part that makes it real.
    *
-   * Given the integration its card was sold through, nothing is written or
-   * carried out, and null comes back, where its merchant no longer sells
-   * through that one by the time it would be written (`Store#addOrder`).
+   * `through` is the integration its card was sold through. Where its merchant
+   * no longer sells through that one by the time it would be written, nothing
+   * is written or carried out, and null comes back (`Store#addOrder`).
    */
   async create(
     record: StoredOrder,
     effects: readonly Effect[],
     at: number,
-    through?: Integration,
+    through: Integration,
   ): Promise<StoredOrder | null> {
     refuseToWriteAnImpossibleOrder(record.order);
     refuseToKeepAnAddressPastItsTime(record);

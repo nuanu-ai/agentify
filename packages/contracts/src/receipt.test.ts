@@ -114,7 +114,7 @@ describe("receipt", () => {
 
   it("names the transfer the payment layer reported, and never an empty one", () => {
     // Without it a receipt is matched to the payment on the chain by its time
-    // alone, which is a guess (second manual run, finding 13).
+    // alone, which is a guess.
     const named = { ...receipt, transaction: `0x${"ab".repeat(32)}` };
     expect(ReceiptSchema.parse(named)).toStrictEqual(named);
     expect(errorOf(ReceiptSchema, { ...receipt, transaction: "" })).toContain("transaction");

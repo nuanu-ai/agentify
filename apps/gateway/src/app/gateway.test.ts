@@ -2826,7 +2826,7 @@ describe("a poll on a key revoked before it was held", () => {
 describe("one integration at a time", () => {
   // A merchant sells through their own code or through a WooCommerce shop the
   // dashboard connected, and a card of the other one is off sale (ADR-0036).
-  // The second manual run had the code's worker draw a paid order for a
+  // Selling both ways at once, the code's worker drew a paid order for a
   // product imported from the shop, and the shop never heard of it.
   const fromTheShop: Card = { ...asyncCard, merchant_item_id: "woo-mug", title: "A mug" };
 
@@ -2865,7 +2865,7 @@ describe("one integration at a time", () => {
     ]);
   });
 
-  it("refuses a publish through the integration not in use, in words that say the way back", async () => {
+  it("refuses a publish through the integration not in use, and says which it is", async () => {
     const harnessed = await started();
     await onTheShop(harnessed);
 
@@ -2875,8 +2875,9 @@ describe("one integration at a time", () => {
     if (coded.ok) throw new Error("the code published while the shop sells");
     expect(coded.error.code).toBe(CARD_REJECTED);
     expect(coded.error.retryable).toBe(false);
-    expect(coded.error.message).toMatch(/WooCommerce shop/);
-    expect(coded.error.message).toMatch(/disconnect/i);
+    expect(coded.error.problems.map((problem) => problem.code)).toStrictEqual([
+      "sells_through_a_shop",
+    ]);
     expect(await harnessed.store.cards(harnessed.merchant.id)).toHaveLength(1);
 
     await harnessed.gateway.sellThrough(harnessed.merchant.id, "api");
@@ -2886,7 +2887,9 @@ describe("one integration at a time", () => {
       "woocommerce",
     );
     if (imported.ok) throw new Error("the shop published while the code sells");
-    expect(imported.error.message).toMatch(/own code/);
+    expect(imported.error.problems.map((problem) => problem.code)).toStrictEqual([
+      "sells_through_their_code",
+    ]);
   });
 
   it("keeps a card with what first published it, and says so at its identifier", async () => {
@@ -2897,10 +2900,9 @@ describe("one integration at a time", () => {
     const taken = await harnessed.gateway.publishCard(harnessed.merchant.id, fromTheShop);
 
     if (taken.ok) throw new Error("the code took over the shop's card");
-    expect(taken.error.problems.map((problem) => problem.path)).toStrictEqual([
-      ["merchant_item_id"],
+    expect(taken.error.problems.map((problem) => [problem.path, problem.code])).toStrictEqual([
+      [["merchant_item_id"], "published_by_the_other_integration"],
     ]);
-    expect(taken.error.problems[0]?.message).toMatch(/WooCommerce/);
     const [card] = await harnessed.store.cards(harnessed.merchant.id);
     expect(card?.integration).toBe("woocommerce");
   });

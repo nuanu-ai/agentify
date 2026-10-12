@@ -60,6 +60,16 @@ export const INTEGRATIONS = ["api", "woocommerce"] as const;
 export type Integration = (typeof INTEGRATIONS)[number];
 
 /**
+ * The open states in which an order waits on nobody's worker: it owes the
+ * buyer a refund, or the buyer owes for goods already delivered. Neither holds
+ * a switch of integration (`IntegrationSwitch`).
+ */
+export const OWING_ONLY_MONEY = [
+  "refund_due",
+  "delivered_unpaid",
+] as const satisfies readonly OrderState[];
+
+/**
  * What switching a merchant from one integration to the other came to.
  *
  * Refused while an order of theirs still waits on the integration being left
@@ -73,16 +83,6 @@ export type Integration = (typeof INTEGRATIONS)[number];
  * back on sale, it does, because an asynchronous order is paid before the
  * code answers and the code may not be running.
  */
-/**
- * The open states in which an order waits on nobody's worker: it owes the
- * buyer a refund, or the buyer owes for goods already delivered. Neither holds
- * a switch of integration (`IntegrationSwitch`).
- */
-export const OWING_ONLY_MONEY = [
-  "refund_due",
-  "delivered_unpaid",
-] as const satisfies readonly OrderState[];
-
 export type IntegrationSwitch =
   | { readonly switched: true; readonly sellingPaused: boolean }
   | { readonly switched: false; readonly waiting: readonly string[] };
@@ -867,7 +867,9 @@ export interface Store {
    * Given the integration its card was sold through, the write is made only
    * while its merchant still sells through that one, and answers false
    * otherwise: the birth of an order and a switch wait for each other on the
-   * merchant (`switchIntegration`).
+   * merchant (`switchIntegration`). Every order a purchase makes names one
+   * (`OrderRunner#create`); without one the write is unconditional, which is
+   * how a test sets an order down.
    */
   addOrder(record: StoredOrder, through?: Integration): Promise<boolean>;
 

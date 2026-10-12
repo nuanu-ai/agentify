@@ -2472,7 +2472,7 @@ describe("the orders screen", () => {
   it("says why a refund is owed as it happened, and not always that a window ran out", async () => {
     // A refund falls due when the merchant refuses an order already paid for,
     // and the callout used to say the delivery window had run out whatever the
-    // cause (second manual run, finding 1): a merchant reconciling it looked
+    // cause: a merchant reconciling it looked
     // for a deadline that never passed.
     const { browser, gateway, harnessed } = await started();
     const itemId = await publish(gateway, esimCard);
@@ -2546,7 +2546,7 @@ describe("the receipts screen", () => {
 
   it("links each receipt to its transfer on the chain the money moved on", async () => {
     // A merchant matching a receipt to their wallet had only its time to go
-    // by (second manual run, finding 13).
+    // by.
     const transfer = `0x${"5e".repeat(32)}`;
     const { browser, gateway, harnessed } = await started({
       dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },

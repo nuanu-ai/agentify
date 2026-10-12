@@ -1892,8 +1892,8 @@ describe("coming back from the shop with no session on the request", () => {
 describe("one integration at a time", () => {
   // A merchant sells through their own code or through a connected shop, one
   // at a time (ADR-0036). Pressing Connect moves them to the shop before they
-  // are sent to it, and Disconnect moves them back to their code. The second
-  // manual run had the code's worker draw a paid order of the shop's.
+  // are sent to it, and Disconnect moves them back to their code. Selling both
+  // ways at once, the code's worker drew a paid order of the shop's.
   const coded = {
     merchant_item_id: "esim-7d",
     title: "A seven day eSIM",

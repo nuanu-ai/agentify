@@ -1033,7 +1033,7 @@ describe("an order that never reached the handler", () => {
     // The synchronous budget is ten seconds in the fixtures, so by the ninth
     // second another attempt could only arrive late. The order is not closed
     // for that: the agent was promised the whole of the deadline, and a slow
-    // handler's answer inside it still counts (second manual run, finding 6).
+    // handler's answer inside it still counts.
     const dispatched = reach("dispatched");
     const due = (dispatched.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.syncResponseMs;
     const silent = must(dispatched, {

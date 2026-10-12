@@ -1334,7 +1334,7 @@ describe("the worker's calls over HTTP", () => {
     ]);
   });
 
-  it("refuses the code's poll while its merchant sells through a shop, and says the way back", async () => {
+  it("refuses the code's poll while its merchant sells through a shop, for good", async () => {
     // Answered empty, a worker whose merchant connected a shop would look
     // healthy and idle for as long as anybody let it run; the refusal is what
     // its log shows (ADR-0036).
@@ -1352,8 +1352,6 @@ describe("the worker's calls over HTTP", () => {
     };
     expect(error.code).toBe("call_refused");
     expect(error.retryable).toBe(false);
-    expect(error.message).toMatch(/WooCommerce shop/);
-    expect(error.message).toMatch(/disconnect/i);
 
     await harnessed.gateway.sellThrough(harnessed.merchant.id, "api");
     const working = await served.call("POST", "/v0/worker/poll", {

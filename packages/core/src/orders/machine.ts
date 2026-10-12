@@ -470,7 +470,7 @@ function onDeparture(order: Order): TransitionResult {
  * it. Closed here, a synchronous order ended a second or more before the eight
  * its agent was promised while a slow handler's answer was still allowed to
  * count, and an asynchronous one owed a refund for a deadline that had not
- * passed (second manual run, findings 6 and 1).
+ * passed.
  */
 function redeliver(
   order: Order,
