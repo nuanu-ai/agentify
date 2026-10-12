@@ -94,12 +94,13 @@ load, fetched while the pointer rests on them. The page a mailed link lands on
 runs no script at all, because it holds a one-time token. The page that shows a
 new key's secret, once, is the answer to the press that issues the key and to
 nothing else, and no cache keeps it. With script, React Router keeps it in the
-page's memory and never in history, so a reload, a return to it through Back
-and Forward, or a later visit draws the list, and the secret is copied at a
-press (`apps/dashboard/app/routes/keys.tsx`); without script the secret is
-selected by hand, and the page warns against resending the form. The front page
-is the scanner's, everywhere, and the scanner is still a Next.js application,
-which moves after the dashboard.
+page's memory and never in history, and the page lets go of it as it is left,
+so a reload, a return to it through Back and Forward, or a later visit draws
+the list, and the secret is copied at a press
+(`apps/dashboard/app/routes/keys.tsx`); without script the secret is selected
+by hand, and the page warns against resending the form. The front page is the
+scanner's, everywhere, and the scanner is still a Next.js application, which
+moves after the dashboard.
 
 The whole chain, Postgres included, comes up locally from `docker compose up`
 behind the same route table the channels use (ADR-0005), so a person clicks
