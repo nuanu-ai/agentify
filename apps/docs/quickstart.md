@@ -303,6 +303,12 @@ the rest — when our side speaks a version of the contract your tools do not,
 the subscription stops. Your process stays up and stops selling, and this is
 the only thing that says so.
 
+Your code receives no orders at all while you sell through a WooCommerce shop
+connected in the dashboard, because a merchant sells through one of the two at
+a time. Every poll then fails with a refusal that says so, and the problem
+handler hears it; disconnecting the shop in the dashboard brings your code's
+cards back, with selling stopped until you start it again.
+
 In the synchronous mode the handler returns the result straight away, either
 the delivery or a refusal. Both answers are built on the order itself:
 

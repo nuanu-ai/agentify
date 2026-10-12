@@ -794,7 +794,7 @@ export const startWorker = (
           kind: WORKER_PROBLEM_KINDS.POLL_FAILED,
           fatal: false,
           message: settled
-            ? `${answer.failure.reason}${remark} — the gateway says asking again will not change this, and no new orders arrive until it is fixed (a revoked key has to be replaced); asking again after a wait in case it was not the gateway that answered`
+            ? `${answer.failure.reason}${remark} — the gateway says asking again will not change this, and no new orders arrive until what it names is fixed; asking again after a wait in case it was not the gateway that answered`
             : `${answer.failure.reason}${remark} — asking again after a wait`,
         });
         await rest(retryDelayMs(failures, clock.random()));
