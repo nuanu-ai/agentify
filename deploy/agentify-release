@@ -2,6 +2,8 @@
 """Releases one revision on this host's channel.
 
     sudo agentify-release app-v1.2.3                 a tag, a branch, or on TEST a full SHA
+    sudo agentify-release app-v1.2.3 --leaving item_a,item_b
+                                                     the same, taking those cards off sale on purpose
     sudo agentify-release --restore <restore point>  puts the database back as it holds it
     agentify-release --timer deploy-test             what TEST's timer runs once a minute
 
@@ -16,7 +18,10 @@ person's `--restore` ever restores.
 It resolves the name with `git ls-remote` against the public repository, finds
 the revision's five images by the digests its image build published, fetches
 the revision, and runs that revision's deploy/activate.sh with the images
-pinned by those digests. It needs no GitHub credential and holds no host
+pinned by those digests, and with the cards a person named as leaving the
+catalog in AGENTIFY_LEAVING. Activation holds a release to the cards on sale
+before it, and a person's --leaving is the one way to tell it that a card goes
+on purpose: the release is then held to those cards leaving, exactly. It needs no GitHub credential and holds no host
 credential for GitHub. The channel and the repository come from
 /etc/agentify/release.json, which deploy/install.sh writes.
 
@@ -286,7 +291,7 @@ def first_seen(state, revision):
     return now
 
 
-def activate(config, state, name, revision, mirror):
+def activate(config, state, name, revision, mirror, leaving):
     production = config["channel"] == "production"
     images = image_digests(revision, production)
     running = read(state / "current") if production else None
@@ -309,11 +314,13 @@ def activate(config, state, name, revision, mirror):
     write_tags(config, state)
     say(f"activating {name} ({revision}) on {config['channel']}")
     return subprocess.run(
-        [str(path / "deploy" / "activate.sh"), config["channel"], revision], cwd=path, env={**os.environ, **images}
+        [str(path / "deploy" / "activate.sh"), config["channel"], revision],
+        cwd=path,
+        env={**os.environ, **images, **({"AGENTIFY_LEAVING": " ".join(leaving)} if leaving else {})},
     ).returncode
 
 
-def release(config, name, timer):
+def release(config, name, timer, leaving=()):
     if timer and config["channel"] != "test":
         raise Refusal("only TEST releases by timer; a person releases production")
     state = channel_state(config)
@@ -337,7 +344,7 @@ def release(config, name, timer):
         if not mirror.exists():
             git("init", "-q", "--bare", mirror)
         try:
-            code = activate(config, state, name, revision, mirror)
+            code = activate(config, state, name, revision, mirror, leaving)
             if code == 75:
                 raise Wait("activation had to wait, for the reason in its line above")
         except Wait as wait:
@@ -427,15 +434,27 @@ def launch(config, argv):
     return unit_run.returncode
 
 
+def card_ids(given):
+    """The cards named after --leaving: catalog ids, comma-separated, at least one."""
+    ids = given.split(",")
+    if not all(re.fullmatch(r"[A-Za-z0-9_-]{1,100}", card) for card in ids):
+        raise argparse.ArgumentTypeError(f"{given!r} is not a comma-separated list of card ids such as item_a,item_b")
+    return ids
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Release one revision on this host's channel, or restore a restore point")
     parser.add_argument("name", nargs="?", help="an app-v* tag on production; a tag, branch or full SHA on test")
     parser.add_argument("--timer", action="store_true", help="skip what is current or failed, and wait quietly")
     parser.add_argument("--restore", metavar="DIRECTORY", help="restore the database from this restore point")
+    parser.add_argument("--leaving", type=card_ids, default=[], metavar="CARD,CARD",
+                        help="the cards this release takes off sale on purpose; it is held to exactly those leaving")
     parser.add_argument("--config", type=Path, default=Path("/etc/agentify/release.json"))
     arguments = parser.parse_args(argv)
     if (arguments.name is None) == (arguments.restore is None) or (arguments.timer and arguments.restore):
         parser.error("name one revision to release, or --restore one restore point")
+    if arguments.leaving and (arguments.timer or arguments.restore):
+        parser.error("--leaving goes with a person's release, not with the timer or a restore")
     try:
         config = read_config(arguments.config)
         if not arguments.timer and "INVOCATION_ID" not in os.environ:
@@ -445,7 +464,7 @@ def main(argv=None):
         signal.signal(signal.SIGTERM, lambda signum, frame: None)
         if arguments.restore:
             return restore(config, arguments.restore)
-        return release(config, arguments.name, arguments.timer)
+        return release(config, arguments.name, arguments.timer, arguments.leaving)
     except Wait as wait:
         say(f"{wait}; nothing changed" + ("; the next tick asks again" if arguments.timer else ", run this again later"))
         return 75

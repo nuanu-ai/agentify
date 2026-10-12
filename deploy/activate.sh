@@ -5,6 +5,11 @@
 #
 #   deploy/activate.sh test|production <full revision>
 #
+# AGENTIFY_LEAVING names, space-separated, the cards the person releasing
+# takes off sale on purpose (agentify-release --leaving). Without it, every card
+# on sale before the release has to be on sale after it; with it, exactly those
+# cards have to have left and every other one has to remain.
+#
 # Every refusal is one sentence on stderr. Exit 75 means something was in the
 # way (the lock, another unfinished transition, images that did not arrive)
 # and nothing was stopped.
@@ -344,16 +349,25 @@ at "checking the cards on sale"
 # challenge and never read for payment. The catalog is one unpaged document.
 python3 - "$origin" "$address" "$network" "$cards" <<'PY' \
   || refuse "the cards on sale do not answer as they did before the release, for the reason above, so $revision runs unverified."
-import base64, json, subprocess, sys, urllib.parse
+import base64, json, os, subprocess, sys, urllib.parse
 origin, address, network, before = sys.argv[1:5]
 def get(url, *flags):
     return subprocess.run(["curl", "-sS", "--max-time", "20", "--connect-to", f"{origin}:443:{address}", *flags, url],
                           capture_output=True, text=True, check=True).stdout
 cards = sorted(item["id"] for item in json.loads(get(f"https://{origin}/x402/catalog"))["items"])
 known = set(open(before).read().split()) if before else None
-gone = sorted(known - set(cards)) if known is not None else []
-if gone:
-    sys.exit(f"activate: {len(gone)} card(s) on sale before the release are gone from the catalog: {' '.join(gone)}")
+leaving = set(os.environ.get("AGENTIFY_LEAVING", "").split())
+if leaving and known is None:
+    sys.exit(f"activate: no catalog was read before the release, so the card(s) named as leaving cannot be checked: {' '.join(sorted(leaving))}")
+gone = known - set(cards) if known is not None else set()
+unnamed = sorted(gone - leaving)
+if unnamed:
+    sys.exit(f"activate: {len(unnamed)} card(s) on sale before the release are gone from the catalog: {' '.join(unnamed)}; "
+             f"if the release takes them off sale on purpose, run it again with --leaving {','.join(sorted(gone))}")
+stayed = sorted(leaving - gone)
+if stayed:
+    sys.exit(f"activate: {len(stayed)} card(s) named as leaving did not leave the catalog, because they are still on sale "
+             f"or were not on sale before the release: {' '.join(stayed)}")
 for card in cards:
     url = f"https://{origin}/x402/{urllib.parse.quote(card, safe='')}/purchase"
     head = get(url, "-o", "/dev/null", "-D", "-").splitlines()
@@ -364,7 +378,8 @@ for card in cards:
     if challenge.get("resource", {}).get("url") != url or any(a.get("network") != network for a in accepts):
         sys.exit(f"activate: card {card} answered {status} without a payment challenge for {url} on {network}")
 compared = "none compared, since nothing answered before" if known is None else f"{len(known)} compared"
-print(f"activate: {len(cards)} card(s) on sale ({compared}), each answering its payment challenge on {network}", file=sys.stderr)
+left = f"; {len(gone)} left the catalog as named: {' '.join(sorted(gone))}" if gone else ""
+print(f"activate: {len(cards)} card(s) on sale ({compared}), each answering its payment challenge on {network}{left}", file=sys.stderr)
 PY
 
 at "scheduling the privacy job"
