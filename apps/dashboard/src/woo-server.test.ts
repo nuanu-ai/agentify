@@ -1813,6 +1813,28 @@ describe("coming back from the shop with no session on the request", () => {
   });
 });
 
+describe("the addresses the shop screen's forms post to", () => {
+  // With script, the answer to a press is drawn at the press's address, so a
+  // reload reads it there.
+  it("leads a read of one to the shop screen, and lets the page's own read of its data through", async () => {
+    const running = await started();
+    await running.signIn();
+
+    for (const press of ["connect", "import", "switch", "disconnect"]) {
+      const read = await running.get(`/woocommerce/${press}`);
+      expect({ status: read.status, to: read.to }, press).toStrictEqual({
+        status: 303,
+        to: "/woocommerce",
+      });
+    }
+    // What the page asks for after an import was answered, to redraw the frame
+    // around the answer; sent on to the shop screen, it would take the answer
+    // away.
+    const data = await running.get("/woocommerce/import.data?_routes=routes%2Fgate");
+    expect(data.status).toBe(200);
+  });
+});
+
 describe("a press that fails inside the dashboard", () => {
   it("is answered with the dashboard's own page saying so, and nothing of the failure", async () => {
     const running = await started({
