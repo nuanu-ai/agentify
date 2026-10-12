@@ -52,7 +52,10 @@ to the contract's schemas. Registering and setting the payout wallet are the
 dashboard's alone and have no route (ADR-0014, ADR-0019), and their address and
 answer are held to the same schemas. A message about a payout wallet change,
 which only the dashboard can ask for, names the account the session is signed
-in as (ADR-0019).
+in as, by its address, and never a person: it says the change was asked for in
+the dashboard from a session signed in as that address, because a session
+somebody else took is signed in as the owner all the same
+(`apps/dashboard/src/announcement-mail.ts`, ADR-0019).
 
 The dashboard then proves that the application and the contract's documents
 can draw every screen. What proves the HTTP API is what a merchant's engineer
@@ -517,16 +520,17 @@ cancelled, as it is not today when a request times out on the client.
 
 The caller is a signed-in person, not a key. `KeyOnTheCall` in `gateway.ts`
 becomes a caller that is either a key or a person in the cabinet, and a message
-about a payout wallet change names who acted: the signed-in person's address.
-A wallet is changed only in the cabinet (the product owner, 2026-09-25,
-recorded in ADR-0019 by its own change), so no key ever asks. Today a change
-from the cabinet is named only as "the cabinet" (`AskedWithSchema` in
-`apps/gateway/src/announcements.ts`), because the gateway sees the cabinet's
-key and not the person behind it. Two more things follow. The cabinet's list
-of keys has no `this_call`, because a page acting for a signed-in person holds
-no key, and every key on it can be disabled from there. And a merchant can no
-longer lock themselves out by disabling keys: the way back in is always the
-mailed link, which needs no key.
+about a payout wallet change names who acted as the account the session is
+signed in as, by its address. (As built, it names no person, since a session
+somebody else took is signed in as the owner all the same.) A wallet is changed
+only in the cabinet (the product owner, 2026-09-25, recorded in ADR-0019 by its
+own change), so no key ever asks. Today a change from the cabinet is named only
+as "the cabinet" (`AskedWithSchema` in `apps/gateway/src/announcements.ts`),
+because the gateway sees the cabinet's key and not the person behind it. Two
+more things follow. The cabinet's list of keys has no `this_call`, because a
+page acting for a signed-in person holds no key, and every key on it can be
+disabled from there. And a merchant can no longer lock themselves out by
+disabling keys: the way back in is always the mailed link, which needs no key.
 
 So the cabinet stops proving that the HTTP API is enough, and the decision
 says so rather than pretending otherwise. It still proves that the
