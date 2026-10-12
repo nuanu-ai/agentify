@@ -813,7 +813,7 @@ describe("the passwordless dashboard door", () => {
     expect(screen.status).toBe(200);
     expect(screen.headers.get("cache-control")).toBe("private, no-store");
     expect(readable(screen.html)).toContain(FRESH.email);
-    expect(screen.html).toContain('method="post" action="/merchant"');
+    expect(formTo(screen.html, "post", "/merchant")).toBeDefined();
     expect(registered).toStrictEqual([]);
   });
 
@@ -3668,6 +3668,31 @@ describe("a press that fails in a way nobody planned for", () => {
     expect(written).not.toContain("raw-token");
     expect(written).not.toContain("raw-key");
     expect(written).not.toContain("raw-session");
+  });
+
+  it("answers on the dashboard's own page, which says to look before pressing again and leads on", async () => {
+    // A press can fail after its work was done, so the page cannot say
+    // whether it went through; a bare line would leave the person with no
+    // way on and nothing to tell them what to check.
+    const { browser } = await started({
+      registrar: {
+        register: async () => {
+          throw new Error("the answer was not a document this contract knows");
+        },
+      },
+    });
+    await browser.signIn(FRESH.email);
+
+    const answered = await said(async () => {
+      const failed = await browser.makeMerchant();
+      expect(failed.status).toBe(500);
+      expect(readable(failed.html)).toContain(
+        "Check the page you were on before deciding whether it went through.",
+      );
+      expect(failed.html).toMatch(/<a [^>]*href="\/cards"[^>]*>Back to Cards<\/a>/);
+    });
+
+    expect(answered).toMatch(/request failed/i);
   });
 });
 

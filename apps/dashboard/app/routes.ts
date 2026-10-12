@@ -24,14 +24,17 @@
  * (`src/testing/pages.ts`), so `pnpm test` builds nothing first.
  */
 
-import { layout, type RouteConfig, route } from "@react-router/dev/routes";
+import { index, layout, type RouteConfig, route } from "@react-router/dev/routes";
 
 export default [
   route("sign-in", "routes/sign-in.tsx"),
   route("sign-in/open", "routes/sign-in-open.tsx"),
   route("sign-out", "routes/sign-out.ts"),
   layout("routes/gate.tsx", [
+    index("routes/start.ts"),
+    route("merchant", "routes/merchant.tsx"),
     layout("routes/merchant-only.tsx", [
+      route("choose-name", "routes/choose-name.tsx"),
       route("cards", "routes/cards.tsx"),
       route("orders", "routes/orders.tsx"),
       route("receipts", "routes/receipts.tsx"),

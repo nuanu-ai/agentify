@@ -77,6 +77,14 @@ export const middleware: MiddlewareFunction<Response>[] = [
   },
 ];
 
+/**
+ * The root's page for trouble, drawn from here for the pages behind the gate:
+ * after a failed action React Router reads only the loaders above the boundary
+ * that draws the failure, and the root's chrome is one of them only when that
+ * boundary is below the root.
+ */
+export { ErrorBoundary } from "../root.js";
+
 /** The address every page behind the gate is drawn for, and names. */
 export const loader = ({ context }: LoaderFunctionArgs) => ({ who: context.get(signedIn).email });
 

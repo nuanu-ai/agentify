@@ -33,7 +33,7 @@ export {
   SANDBOX_MAIL,
 } from "./mail.js";
 export type { Viewer } from "./screens.js";
-export { chooseNameScreen, settingsScreen } from "./seller-name.js";
+export { settingsScreen } from "./seller-name.js";
 export { buildApp, type DashboardParts } from "./server.js";
 export {
   FULFILLMENT_WORDS,
