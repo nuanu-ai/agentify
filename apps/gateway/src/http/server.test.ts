@@ -1334,6 +1334,35 @@ describe("the worker's calls over HTTP", () => {
     ]);
   });
 
+  it("refuses the code's poll while its merchant sells through a shop, and says the way back", async () => {
+    // Answered empty, a worker whose merchant connected a shop would look
+    // healthy and idle for as long as anybody let it run; the refusal is what
+    // its log shows (ADR-0036).
+    const { served, harnessed } = await started();
+    await harnessed.gateway.sellThrough(harnessed.merchant.id, "woocommerce");
+
+    const refused = await served.call("POST", "/v0/worker/poll", {
+      body: { wait_seconds: 0 },
+      headers: asMerchant,
+    });
+
+    expect(refused.status).toBe(409);
+    const { error } = refused.body as {
+      error: { code: string; message: string; retryable: boolean };
+    };
+    expect(error.code).toBe("call_refused");
+    expect(error.retryable).toBe(false);
+    expect(error.message).toMatch(/WooCommerce shop/);
+    expect(error.message).toMatch(/disconnect/i);
+
+    await harnessed.gateway.sellThrough(harnessed.merchant.id, "api");
+    const working = await served.call("POST", "/v0/worker/poll", {
+      body: { wait_seconds: 0 },
+      headers: asMerchant,
+    });
+    expect(working.status).toBe(200);
+  });
+
   it("draws the stream and answers an order through the routes the SDK uses", async () => {
     const { served, harnessed } = await started();
     const itemId = await publish(served, {
