@@ -148,12 +148,12 @@ describe("issuing a key where the page's script runs", () => {
 
   it("takes the secret off a page the browser keeps for Back and Forward, and draws the list when it is brought back", async () => {
     // A browser may keep a page it leaves whole, and show it again as it was.
+    // It freezes the page as soon as the event's listeners return, so the
+    // secret must be gone by then, not at React's next turn.
     keysPage({ listAfterIssue: "answers" });
     await issue();
 
-    act(() => {
-      window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
-    });
+    window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
     expect(document.body.textContent).not.toContain(SECRET);
 
     act(() => {
