@@ -1,6 +1,8 @@
 import type { ActionFunctionArgs } from "react-router";
 import { services, signedIn } from "../services.js";
-import { press } from "../settings-press.js";
+import { press, readsLeadToSettings } from "../settings-press.js";
+
+export const middleware = readsLeadToSettings;
 
 /** The presser's own session is the one kept, named by the cookie their press carried. */
 export async function action(asked: ActionFunctionArgs) {

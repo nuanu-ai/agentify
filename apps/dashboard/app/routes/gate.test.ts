@@ -60,7 +60,7 @@ const throughTheGate = async (request: Request, identity: ReturnType<typeof iden
               throw new Error("the gate makes no merchant");
             },
           },
-          wooOffered: false,
+          woo: null,
           shopState: async () => undefined,
         }),
       ],

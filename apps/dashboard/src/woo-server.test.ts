@@ -128,6 +128,8 @@ interface Standing {
    * ready seller: no wallet, and a seller name only where asked.
    */
   readonly fresh?: "named" | "unnamed";
+  /** The prefix the dashboard is mounted under; none where a test does not say. */
+  readonly base?: string;
 }
 
 const CHANNELS = {
@@ -176,6 +178,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
     ...CHANNELS[channel],
     PUBLIC_BASE_URL: PUBLIC,
+    ...(standing.base === undefined ? {} : { BASE_PATH: standing.base }),
   });
   const messages: Message[] = [];
   const rows: Record<string, Record<string, unknown>[]> = {
@@ -273,6 +276,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const { port } = server.address() as AddressInfo;
   const url = `http://127.0.0.1:${port}`;
+  const base = standing.base ?? "";
   const jar = new Map<string, string>();
   let shownMark: string | undefined;
 
@@ -329,14 +333,15 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     asked,
     read,
     ownKey,
-    get: (path) => visit("GET", path),
-    getWithoutCookie: (path) => visit("GET", path, { noCookie: true }),
-    post: (path, form = {}) => visit("POST", path, { body: new URLSearchParams(form).toString() }),
+    get: (path) => visit("GET", `${base}${path}`),
+    getWithoutCookie: (path) => visit("GET", `${base}${path}`, { noCookie: true }),
+    post: (path, form = {}) =>
+      visit("POST", `${base}${path}`, { body: new URLSearchParams(form).toString() }),
     postJson: (path, body) =>
       // No cookie, as WooCommerce posts from the shop's server; sent with one,
       // every callback test would pass with the route mounted below the sign-in
       // while every real Connect broke in silence.
-      visit("POST", path, {
+      visit("POST", `${base}${path}`, {
         body: JSON.stringify(body),
         type: "application/json;charset=UTF-8",
         noCookie: true,
@@ -346,7 +351,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
       // in twice and are about where WooCommerce sends a merchant, so the
       // minute is moved out of the way.
       rewindLinkSends(rows);
-      await visit("POST", "/sign-in", {
+      await visit("POST", `${base}/sign-in`, {
         body: new URLSearchParams({
           email: PERSON,
           ...(destination === "default" ? {} : { destination }),
@@ -405,6 +410,37 @@ describe("pressing Connect", () => {
     expect(to.searchParams.get("user_id")).not.toBe("");
     expect(to.searchParams.get("return_url")).toBe(`${PUBLIC}/woocommerce/return`);
     expect(to.searchParams.get("callback_url")).toBe(`${PUBLIC}/woocommerce/callback`);
+  });
+
+  it("sends the merchant to their shop from a dashboard under a prefix, and names its addresses there", async () => {
+    // The shop is another site: sent as a path of this one, the browser would
+    // land on a page of the dashboard that does not exist.
+    const running = await started({ base: "/dashboard" });
+    await running.signIn();
+
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+
+    expect(pressed.status).toBe(303);
+    const to = new URL(pressed.to ?? "");
+    expect(to.origin).toBe(SHOP);
+    expect(to.searchParams.get("return_url")).toBe(`${PUBLIC}/dashboard/woocommerce/return`);
+    expect(to.searchParams.get("callback_url")).toBe(`${PUBLIC}/dashboard/woocommerce/callback`);
+  });
+
+  it("sends the merchant to a shop whose name is written in another script", async () => {
+    // An address that cannot travel in a header as typed reaches the browser
+    // in the form a browser reads it, rather than failing after the press has
+    // switched the merchant to the shop.
+    const running = await started();
+    await running.signIn();
+
+    const pressed = await running.post("/woocommerce/connect", { shop_url: "https://магазин.рф" });
+
+    expect(pressed.status).toBe(303);
+    const to = new URL(pressed.to ?? "");
+    expect(to.hostname).toBe(new URL("https://магазин.рф").hostname);
+    expect(to.pathname).toBe("/wc-auth/v1/authorize");
+    expect(to.searchParams.get("user_id")).not.toBe("");
   });
 
   it("asks the shop about the very address the browser is sent to", async () => {
@@ -1734,6 +1770,7 @@ describe("coming back from the shop with no session on the request", () => {
 
     expect(came.to).toBe("/woocommerce?from=shop");
     expect(readable(back.html)).toMatch(/no keys have reached us yet/);
+    expect(readable(back.html)).not.toContain("Your shop is connected");
     expect(back.html).toBe(reloaded.html);
   });
 
@@ -1773,6 +1810,49 @@ describe("coming back from the shop with no session on the request", () => {
       // test's question.
       expect(new URL(seen.to ?? "", "http://dashboard.test").pathname, path).toBe("/sign-in");
     }
+  });
+});
+
+describe("the addresses the shop screen's forms post to", () => {
+  // With script, the answer to a press is drawn at the press's address, so a
+  // reload reads it there.
+  it("leads a read of one to the shop screen, and lets the page's own read of its data through", async () => {
+    const running = await started();
+    await running.signIn();
+
+    for (const press of ["connect", "import", "switch", "disconnect"]) {
+      const read = await running.get(`/woocommerce/${press}`);
+      expect({ status: read.status, to: read.to }, press).toStrictEqual({
+        status: 303,
+        to: "/woocommerce",
+      });
+    }
+    // What the page asks for after an import was answered, to redraw the frame
+    // around the answer; sent on to the shop screen, it would take the answer
+    // away.
+    const data = await running.get("/woocommerce/import.data?_routes=routes%2Fgate");
+    expect(data.status).toBe(200);
+  });
+});
+
+describe("a press that fails inside the dashboard", () => {
+  it("is answered with the dashboard's own page saying so, and nothing of the failure", async () => {
+    const running = await started({
+      breakTheShopsRead: () => {
+        throw new Error("the shops table is not answering");
+      },
+    });
+    await running.signIn();
+
+    const pressed = await running.post("/woocommerce/import", { [DRAWN_FOR]: PERSON });
+    const said = readable(pressed.html);
+
+    expect(pressed.status).toBe(500);
+    expect(said).toContain(
+      "Something in the dashboard is broken. Check the page you were on before deciding whether it went through.",
+    );
+    expect(said).toContain("Back to Cards");
+    expect(pressed.html).not.toContain("the shops table is not answering");
   });
 });
 

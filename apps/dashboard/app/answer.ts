@@ -63,10 +63,17 @@ const headersOf = (
  * action as a path under its own prefix, so a path under the dashboard's is
  * handed over without it, and one outside it is written as a whole address on
  * the origin the request came to.
+ *
+ * A whole address on another site, such as the shop a Connect goes to, is
+ * sent as a browser writes it: a header carries no letter outside Latin-1, so
+ * a shop's name in another script would otherwise fail the answer after the
+ * press had done its work.
  */
 export function sendTo(location: string, url: URL, base: string, headers?: Headers): Response {
-  const within =
-    base === ""
+  const elsewhere = /^https?:\/\//i.test(location);
+  const within = elsewhere
+    ? new URL(location).href
+    : base === ""
       ? location
       : location === base || location.startsWith(`${base}/`) || location.startsWith(`${base}?`)
         ? location.slice(base.length) || "/"
@@ -116,6 +123,26 @@ export function answer<View>(outcome: Outcome<View>, { request, url, context }: 
     ...(request.method === "GET" ? { again: `${url.pathname}${url.search}` } : {}),
   };
   throw data(trouble, { status: outcome.problem.status });
+}
+
+/**
+ * An action's server half, answered as `answer` answers it. A failure inside
+ * it is drawn as the dashboard's broken page from here, because React Router
+ * runs no loader after an action that throws, not even the root's, and the
+ * page it would draw has no chrome. The exception is not logged, for the
+ * reason the server entry gives.
+ */
+export async function acted<View>(run: () => Promise<Outcome<View>>, asked: Asked) {
+  let outcome: Outcome<View>;
+  try {
+    outcome = await run();
+  } catch {
+    console.error("[dashboard] a request failed");
+    throw data({ kind: "broken", chrome: chromeOf(asked.context) } satisfies Trouble, {
+      status: 500,
+    });
+  }
+  return answer(outcome, asked);
 }
 
 /**

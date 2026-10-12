@@ -6,7 +6,8 @@
  */
 
 import { type FrameView, type MomentView, momentView } from "./views.js";
-import { keysNotArrived, type ShopTile } from "./woo-screens.js";
+import { keysNotArrived } from "./woo-screens.js";
+import type { ShopTile } from "./woo-views.js";
 
 /**
  * The state rather than a standing invitation: "connect a WooCommerce shop"

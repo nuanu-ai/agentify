@@ -55,12 +55,20 @@ function Unnamed({ base }: Readonly<{ base: string }>) {
   );
 }
 
+/** `heading` is the bar's words where they are not the window's title. */
 export function Frame({
   tab,
   title,
+  heading = title,
   frame,
   children,
-}: Readonly<{ tab: Tab; title: string; frame: FrameView; children: ReactNode }>) {
+}: Readonly<{
+  tab: Tab;
+  title: string;
+  heading?: string;
+  frame: FrameView;
+  children: ReactNode;
+}>) {
   const chrome = useChrome();
   const gate = useRouteLoaderData<{ who: string }>("routes/gate");
   if (gate === undefined) {
@@ -119,7 +127,7 @@ export function Frame({
           <SurfaceNote surface={chrome.surface} />
           <header className="top">
             <div className="top-inner">
-              <h1 className="top-title">{title}</h1>
+              <h1 className="top-title">{heading}</h1>
               {frame.selling === undefined ? null : <Word word={frame.selling} />}
               <SignedIn
                 className="account"

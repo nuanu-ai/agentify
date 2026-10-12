@@ -82,7 +82,7 @@ const keysPage = ({ listAfterIssue = "fails" }: { listAfterIssue?: "fails" | "an
         throw new Error("the keys make no merchant");
       },
     },
-    wooOffered: false,
+    woo: null,
     shopState: async () => undefined,
   });
   // A request of its own each time, as the server gives every call.

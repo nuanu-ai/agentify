@@ -8,7 +8,7 @@ import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { integrationsView } from "../../src/integrations-view.js";
 import { readable } from "../../src/testing/html.js";
-import type { ShopTile } from "../../src/woo-screens.js";
+import type { ShopTile } from "../../src/woo-views.js";
 import { IntegrationsScreen } from "./integrations.js";
 
 const SHOP = "https://shop.example";

@@ -128,14 +128,12 @@ export async function pagesFromSource({ live }: { readonly live: boolean }): Pro
 }
 
 /**
- * Which methods a route answers: a read where it loads data or draws a page
- * that acts on nothing, and a post where it acts. A route that only draws the
- * answer to its own post, which it needs a component for, is not opened as a
- * page by a read, but its data is served: the page drawn there asks for it when
- * the browser comes back to it. No other method reaches an action, because the
- * origin check reads posts alone.
+ * Which methods a route answers: a read where it loads data or draws a page,
+ * and a post where it acts. A route that only draws the answer to its own post
+ * sends a read of its address on to the page its form lives on. No other
+ * method reaches an action, because the origin check reads posts alone.
  */
-type Answers = (method: string, data: boolean) => boolean;
+type Answers = (method: string) => boolean;
 
 interface Served {
   readonly answers: Answers;
@@ -151,9 +149,11 @@ interface Served {
 
 /**
  * The build's routes as a tree, for asking whether a path is one of them
- * before handing the request over.
+ * before handing the request over. A route of the WooCommerce connector says
+ * so in its `handle`, and where the connector is not offered it is no page:
+ * its path falls through to the string pages, which answer it as no such page.
  */
-const routesOf = (build: ServerBuild): RouteObject[] => {
+const routesOf = (build: ServerBuild, wooOffered: boolean): RouteObject[] => {
   const childrenOf = (parentId: string | undefined): RouteObject[] =>
     Object.values(build.routes).flatMap((route): RouteObject[] => {
       if (route === undefined || route.parentId !== parentId) return [];
@@ -161,17 +161,18 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
         default?: unknown;
         loader?: unknown;
         action?: unknown;
-        handle?: { script?: boolean; keepsData?: boolean; fresh?: boolean };
+        handle?: { script?: boolean; keepsData?: boolean; fresh?: boolean; woocommerce?: boolean };
       };
       // A layout with no path of its own, the root among them, is a frame
       // around pages and never a page, even while nothing is nested in it.
-      const page = route.index === true || (route.path ?? "") !== "";
+      const page =
+        (route.index === true || (route.path ?? "") !== "") &&
+        (module.handle?.woocommerce !== true || wooOffered);
       const served: Served = {
-        answers: (method, data) =>
+        answers: (method) =>
           page &&
           (method === "GET" || method === "HEAD"
-            ? module.loader !== undefined ||
-              (module.default !== undefined && (module.action === undefined || data))
+            ? module.loader !== undefined || module.default !== undefined
             : method === "POST" && module.action !== undefined),
         keepsData:
           module.handle?.script !== false &&
@@ -258,7 +259,7 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
     };
     const made: Mounted = {
       build,
-      routes: routesOf(build),
+      routes: routesOf(build, services.woo !== null),
       handle: createRequestHandler({
         build,
         mode: pages.mode,
@@ -307,7 +308,7 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       const data = request.path.endsWith(".data");
       const matches = matchRoutes(routes, pageOf(request.path), basename) ?? [];
       const served = matches.at(-1)?.route.handle as Served | undefined;
-      if (served === undefined || !served.answers(request.method, data)) {
+      if (served === undefined || !served.answers(request.method)) {
         next();
         return;
       }

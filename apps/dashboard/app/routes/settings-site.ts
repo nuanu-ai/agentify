@@ -1,7 +1,9 @@
 import type { ActionFunctionArgs } from "react-router";
 import { formOf } from "../answer.js";
 import { services, signedIn } from "../services.js";
-import { press } from "../settings-press.js";
+import { press, readsLeadToSettings } from "../settings-press.js";
+
+export const middleware = readsLeadToSettings;
 
 export async function action(asked: ActionFunctionArgs) {
   const { request, context } = asked;

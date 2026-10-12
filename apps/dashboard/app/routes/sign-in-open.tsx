@@ -9,7 +9,7 @@ import {
   useActionData,
   useLoaderData,
 } from "react-router";
-import { answer, carried, formOf, useChrome } from "../answer.js";
+import { acted, answer, carried, formOf, useChrome } from "../answer.js";
 import { OpenLinkScreen } from "../screens/sign-in.js";
 import { services } from "../services.js";
 
@@ -29,10 +29,11 @@ export async function loader(asked: LoaderFunctionArgs) {
 
 export async function action(asked: ActionFunctionArgs) {
   const { request, context } = asked;
-  return answer(
-    await context
-      .get(services)
-      .signIn.open(request.headers.get("cookie") ?? undefined, await formOf(request)),
+  return acted(
+    async () =>
+      await context
+        .get(services)
+        .signIn.open(request.headers.get("cookie") ?? undefined, await formOf(request)),
     asked,
   );
 }

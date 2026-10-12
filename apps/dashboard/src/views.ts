@@ -48,7 +48,7 @@ export const momentView = (iso: string): MomentView => {
 
 /** The words at the head of every screen inside the frame. */
 export interface FrameView {
-  /** Absent on a screen that did not read the card list the word comes from. */
+  /** Absent where the screen did not read the merchant's selling. */
   readonly selling?: Word;
   /**
    * True draws the line saying nothing can go on sale until a seller name is

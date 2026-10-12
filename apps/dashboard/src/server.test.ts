@@ -1687,7 +1687,7 @@ describe("the settings screen", () => {
     }
   });
 
-  it("draws no page at the other presses' addresses opened as a page, only at their press", async () => {
+  it("leads the other presses' addresses, opened as a page, to the settings their forms live on", async () => {
     // Their page is the answer to the press; opened without one, it would be a
     // page that says nothing happened.
     const { browser } = await started();
@@ -1699,8 +1699,10 @@ describe("the settings screen", () => {
       "/settings/payout-wallet/cancel",
     ]) {
       const answered = await browser.get(path);
-      expect(answered.status, path).toBe(404);
-      expect(readable(answered.html), path).toContain("There is no such page");
+      expect({ status: answered.status, to: answered.to }, path).toStrictEqual({
+        status: 303,
+        to: "/settings",
+      });
     }
   });
 
@@ -4034,6 +4036,35 @@ describe("a press that fails in a way nobody planned for", () => {
     });
 
     expect(answered).toMatch(/request failed/i);
+  });
+
+  it("answers a sign-in press that fails with the dashboard's page saying so, and logs nothing it carried", async () => {
+    // Nothing is drawn after a press that throws but what the press answers,
+    // so the page around the answer has to come with it.
+    const marker = "token=raw-token session=raw-session";
+    const broken = async (): Promise<never> => {
+      throw new Error(marker);
+    };
+    const { browser } = await started({
+      identity: (real) => ({ ...real, requestLink: broken, openLink: broken }),
+    });
+
+    const written = await said(async () => {
+      for (const [path, form] of [
+        ["/sign-in", { email: PERSON }],
+        ["/sign-in/open", { token: "C".repeat(32) }],
+      ] as const) {
+        const pressed = await browser.post(path, form);
+
+        expect(pressed.status, path).toBe(500);
+        expect(readable(pressed.html), path).toContain(
+          "Something in the dashboard is broken. Check the page you were on before deciding whether it went through.",
+        );
+      }
+    });
+
+    expect(written).toMatch(/request failed/i);
+    expect(written).not.toContain(marker);
   });
 });
 
