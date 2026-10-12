@@ -424,6 +424,21 @@ td.control {
   text-align: right;
 }
 
+/* Where the orders' words wrap, their filter is the list's own control, on a
+   row of its own right above the list, rather than beside the words. */
+@media (max-width: 900px) {
+  .lede:has(> .filter) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .lede:has(> .filter) > div {
+    flex: none;
+  }
+  .lede > .filter {
+    align-self: flex-end;
+  }
+}
+
 .filter {
   display: flex;
   gap: 6px;
