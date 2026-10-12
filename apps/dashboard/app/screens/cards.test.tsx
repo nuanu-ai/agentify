@@ -9,8 +9,8 @@
 
 import { MerchantCardListSchema } from "@nuanu-ai/agentify-contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { createRoutesStub, redirect } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { createRoutesStub, Outlet, redirect, ScrollRestoration } from "react-router";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Viewer } from "../../src/screens.js";
 import { cardsView } from "../../src/views.js";
 import { CardsScreen } from "./cards.js";
@@ -43,58 +43,97 @@ const cards = MerchantCardListSchema.parse({
   ],
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+/**
+ * The cards in a live document, inside the gate, with the scroll kept as the
+ * root keeps it. The press answers with the redirect back to the cards, and
+ * the cards read again after it wait until the test lets them through.
+ */
+const pressable = () => {
+  const state = { pressed: 0, release: (): void => undefined };
+  const Stub = createRoutesStub([
+    {
+      id: "root",
+      path: "/",
+      Component: () => (
+        <>
+          <Outlet />
+          <ScrollRestoration />
+        </>
+      ),
+      children: [
+        {
+          id: "routes/gate",
+          loader: () => ({ who: SEEN_BY.who }),
+          children: [
+            {
+              id: "routes/cards",
+              path: "cards",
+              Component: () => (
+                <CardsScreen view={cardsView(SEEN_BY, cards, "https://agentify.ad")} base="" />
+              ),
+              loader: async () => {
+                if (state.pressed > 0) {
+                  await new Promise<void>((resolve) => {
+                    state.release = resolve;
+                  });
+                }
+                return null;
+              },
+              action: () => {
+                state.pressed += 1;
+                return redirect("/cards");
+              },
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+  render(
+    <Stub
+      initialEntries={["/cards"]}
+      hydrationData={{
+        loaderData: { root: null, "routes/gate": { who: SEEN_BY.who }, "routes/cards": null },
+      }}
+    />,
+  );
+  return state;
+};
 
 describe("a switch pressed on the cards", () => {
   it("stays busy until the cards answering the press are drawn", async () => {
-    let pressed = 0;
-    let release = (): void => undefined;
-    const Stub = createRoutesStub([
-      {
-        id: "routes/gate",
-        path: "/",
-        loader: () => ({ who: SEEN_BY.who }),
-        children: [
-          {
-            id: "routes/cards",
-            path: "cards",
-            Component: () => (
-              <CardsScreen view={cardsView(SEEN_BY, cards, "https://agentify.ad")} base="" />
-            ),
-            // The cards read again after the press wait until the test lets
-            // them through.
-            loader: async () => {
-              if (pressed > 0) await new Promise<void>((resolve) => (release = resolve));
-              return null;
-            },
-            action: () => {
-              pressed += 1;
-              return redirect("/cards");
-            },
-          },
-        ],
-      },
-    ]);
-    render(
-      <Stub
-        initialEntries={["/cards"]}
-        hydrationData={{
-          loaderData: { "routes/gate": { who: SEEN_BY.who }, "routes/cards": null },
-        }}
-      />,
-    );
+    const press = pressable();
     const button = screen.getByRole("button", { name: "Pause" });
 
     fireEvent.click(button);
-    await waitFor(() => expect(pressed).toBe(1));
+    await waitFor(() => expect(press.pressed).toBe(1));
     await act(async () => undefined);
 
     expect(button.getAttribute("aria-busy")).toBe("true");
     expect(button.hasAttribute("disabled")).toBe(true);
 
-    await act(async () => release());
+    await act(async () => press.release());
 
     await waitFor(() => expect(button.getAttribute("aria-busy")).toBeNull());
     expect(button.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("leaves the merchant where they were on the page", async () => {
+    // A merchant pausing the twentieth card reads the twentieth card next.
+    const scrolled = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    const press = pressable();
+    const button = screen.getByRole("button", { name: "Pause" });
+
+    fireEvent.click(button);
+    await waitFor(() => expect(press.pressed).toBe(1));
+    await act(async () => press.release());
+    await waitFor(() => expect(button.getAttribute("aria-busy")).toBeNull());
+
+    expect(scrolled).not.toHaveBeenCalled();
   });
 });
