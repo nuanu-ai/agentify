@@ -871,12 +871,13 @@ export class OrderRunner {
 
   /**
    * Records something the payment layer said, without telling the machine. The
-   * words are kept on the order and not in the log, because they can quote the
-   * payment.
+   * words go on the order and not in the log, because they can quote the
+   * payment. The line comes first, so a write that then fails still leaves the
+   * unanswered charge in the log.
    */
   async #writeDown(orderId: string, word: PaymentWord): Promise<void> {
     console.error(
-      `[gateway] ${orderId}: the payment layer left the ${word.about} unanswered; what it said is kept on the order`,
+      `[gateway] ${orderId}: the payment layer left the ${word.about} unanswered; what it said is written to the order, not to this log`,
     );
     await this.#runtime.store.withOrder(orderId, (found): OrderChange<null> => {
       return { save: { ...found, ...this.#alsoSaid(found, word) }, result: null };
