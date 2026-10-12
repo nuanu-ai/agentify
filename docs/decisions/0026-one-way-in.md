@@ -6,7 +6,7 @@ ADR-0009 and ADR-0024
 
 ## Context
 
-One origin (ADR-0005 §1) serves the scanner's reports, the seller dashboard and
+One origin (ADR-0005) serves the scanner's reports, the seller dashboard and
 the operator's `/admin`. Whoever reads an address's mail is its person.
 
 ## Decision

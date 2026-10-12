@@ -61,6 +61,34 @@ uses: the SDK's tests, the purchase through the real gateway in
 test of every `/v0` route. A screen that needs what a merchant's code could
 need still gets a contract route.
 
+### How the dashboard is built
+
+The gateway's surface is the contract's route table, mounted in one generic
+loop, and the pages for people are `apps/dashboard`. No query in the dashboard
+reaches the gateway's tables. Its own tables hold the people who sign in and
+their sessions (ADR-0026 §2) and the WooCommerce connector's bookkeeping
+(ADR-0023), never a card, an order or a receipt. One call goes the other way,
+inside the process: the gateway has the dashboard tell a merchant of a change
+to their payout wallet or keys (ADR-0019).
+
+The pages are server-rendered HTML, with no client-side framework and no
+client build, and they are tested over HTTP against the real gateway.
+Interactivity is form posts, and an inline script only where a control has a
+wait to draw, which takes the control away and gives it back while the HTML
+stays the working page. A screen that needs more argues for a framework on its
+own merits. The front page is the scanner's, everywhere; the scanner is a
+Next.js application and not the dashboard, so none of this binds it.
+
+The whole chain, Postgres included, comes up locally from `docker compose up`
+behind the same route table the channels use (ADR-0005), so a person clicks
+through the chain end to end on a laptop, and the local stack rehearses the
+deployment. Rich interaction is awkward on server-rendered pages.
+
+Rejected for the dashboard: a single-page application, which buys a build
+pipeline and a dependency tree before any screen needs them; and a dashboard
+querying the gateway's tables, a second reader of the money path's data that
+would hide the gaps in the contract's documents it exists to expose.
+
 ### Nothing between the two needs a credential
 
 Inside the process the gateway tells the dashboard by a call, with no route,
@@ -96,7 +124,8 @@ separated them in the database (ADR-0003).
 
 The trigger to split again is a measured incident in which the dashboard took
 sales down, or a dashboard that needs a runtime the gateway cannot share, such
-as the client framework ADR-0005 §4 names as its own trigger.
+as a client framework a screen has argued for ("How the dashboard is built"
+above).
 
 ### Alternatives rejected
 
@@ -441,7 +470,7 @@ scanner's route. Port 3003 goes in the second step below.
 Both health probes stay. `/healthz` and `/cabinet/healthz` now answer from one
 process, and each still proves that its own listener is up. The container's
 health check asks both, because a check on one would call a process healthy
-whose other surface nobody can reach. ADR-0005 §1's reason for having no
+whose other surface nobody can reach. ADR-0005's reason for having no
 aggregate health document still holds for the scanner and Postgres.
 
 The shutdown keeps the gateway's promise: on a signal the process closes both
@@ -507,9 +536,9 @@ envelope of every refusal — is proven by what a merchant's engineer actually
 touches: the SDK's tests, the slice's purchase through the real gateway, the
 portal's examples run as fixtures, and the gateway's HTTP test for every
 `/v0` route listed above. The rule that keeps the cabinet from growing a
-private API stays as text, where ADR-0005's consequences already put it: a
-screen that needs something a merchant's code could also need gets it as a
-contract route in the same change.
+private API stays as text, as "The dashboard calls the application" above puts
+it: a screen that needs something a merchant's code could also need gets it as
+a contract route in the same change.
 
 ### The WooCommerce worker and the terminal commands
 

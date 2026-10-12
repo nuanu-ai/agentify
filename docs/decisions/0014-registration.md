@@ -98,11 +98,10 @@ registration.** Not before an address means something: the catalogue is shared,
 and the first cost of a stranger's words is the buyer's, not ours. **Wait for
 mail, build nothing.** Everything here is needed whichever the door is; only the
 door changes. **One privileged dashboard key naming the merchant per request.**
-The same secret with a second authentication mode on the money path (ADR-0005
-§2), plus a "which merchant" parameter somebody forgets to check. **A
-registration route behind an invitation code.** It was the dashboard's way in
-while it called the gateway over HTTP; with the call inside the process a route
-is only a door to guard, and its code a secret every host has to keep.
-**Registration on the gateway.** A public form, a password and a rate limit on
-the money path, and the gateway would need the account table this decision keeps
-out of it.
+The same secret with a second authentication mode on the money path (ADR-0010),
+plus a "which merchant" parameter somebody forgets to check. **A registration
+route behind an invitation code.** It was the dashboard's way in while it
+called the gateway over HTTP; with the call inside the process a route is only
+a door to guard, and its code a secret every host has to keep. **Registration
+on the gateway.** A public form, a password and a rate limit on the money path,
+and the gateway would need the account table this decision keeps out of it.
