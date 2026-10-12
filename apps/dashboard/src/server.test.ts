@@ -492,7 +492,7 @@ const overASocket = (
   url: string,
   path: string,
   cookie: string,
-): Promise<{ status: number; body: string }> =>
+): Promise<{ status: number; head: string; body: string }> =>
   new Promise((resolve, reject) => {
     const { hostname, port } = new URL(url);
     const socket = connect(Number(port), hostname, () => {
@@ -509,6 +509,7 @@ const overASocket = (
     socket.on("close", () => {
       resolve({
         status: Number(said.split(" ")[1] ?? 0),
+        head: said.split("\r\n\r\n")[0] ?? "",
         body: readable(said.split("\r\n\r\n").slice(1).join("\r\n\r\n")),
       });
     });
@@ -1070,7 +1071,7 @@ describe("what the React pages take from a stranger", () => {
     // A path that cannot be decoded is one React Router would write to the log
     // as it came, and a newline in it forges a line in the record of who did
     // what. The build's version, which the route table asks for, is public.
-    const { browser, pages } = await started();
+    const { browser, pages, url } = await started();
     const build = typeof pages.build === "function" ? await pages.build() : pages.build;
     const version = build.assets.version;
     const written: string[] = [];
@@ -1087,11 +1088,15 @@ describe("what the React pages take from a stranger", () => {
     const tables = [
       await browser.get(`/__manifest?version=${version}&paths=${forged}`),
       await browser.get(`/__manifest?version=${version}&x=?&paths=${forged}`),
+      // Dot segments, which a browser takes out before sending and React
+      // Router takes out on arrival, so they are written on the wire by hand.
+      await overASocket(url, `/x/../__manifest?version=${version}&paths=${forged}`, ""),
+      await overASocket(url, `/x/%2e%2e/__manifest?version=${version}&paths=${forged}`, ""),
     ];
     vi.restoreAllMocks();
 
     expect(page.status).toBeLessThan(500);
-    expect(tables.map((table) => table.status)).toStrictEqual([400, 400]);
+    expect(tables.map((table) => table.status)).toStrictEqual([400, 400, 400, 400]);
     expect(written.filter((line) => /%E0|forged/.test(line))).toStrictEqual([]);
   });
 
@@ -1128,6 +1133,20 @@ describe("what the React pages take from a stranger", () => {
     }
     const keys = await running.browser.get("/keys");
     expect(readable(keys.html)).not.toContain("nightly");
+  });
+
+  it("decides what a browser may keep by the page React Router answers, however its address is written", async () => {
+    // A path with dot segments in it is answered as the path they lead to,
+    // and so is what may be kept of it: the key list never.
+    const { browser, url } = await started();
+    await browser.signIn();
+    const cookie = `${COOKIE}=${browser.sessionToken() ?? ""}`;
+
+    for (const path of ["/x/../keys.data", "/x/%2e%2e/keys.data", "/x/./../keys.data"]) {
+      const answered = await overASocket(url, path, cookie);
+      expect(answered.status, path).toBe(200);
+      expect(/^cache-control: (.*)$/im.exec(answered.head)?.[1], path).toBe("private, no-store");
+    }
   });
 
   it("never lets a browser keep the data of the page a mailed link lands on", async () => {
