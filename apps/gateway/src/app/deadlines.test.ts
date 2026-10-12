@@ -278,12 +278,7 @@ describe("when the time runs out", () => {
 
 describe("the wait for the charge", () => {
   it("is longer where the money moves before the goods, and a charge inside it counts", async () => {
-    // The payment layer answers a charge once its transfer is in a block, and
-    // a block comes every two seconds, so a wait of about two seconds lost a
-    // tenth of the charges on the test channel to a debt nobody owed. Where the
-    // money moves first a longer wait breaks no promise: the delivery deadline
-    // runs from the charge, and the agent only waits longer to hear the
-    // purchase is under way.
+    // The answer comes at 200ms: past the synchronous wait of 40ms, inside this one.
     const harnessed = await started({ SETTLE_BEFORE_GOODS_MS: "1000" });
     const orderId = await bought(harnessed, asyncCard);
     const release = harnessed.facilitator.holdSettle();
@@ -298,23 +293,30 @@ describe("the wait for the charge", () => {
     expect(order?.closure).toBeNull();
   });
 
-  it("stays short where the goods came first, inside the synchronous ceiling", async () => {
-    // The negative control: the same late answer on a synchronous order, whose
-    // wait for the charge is part of the ten seconds its agent was promised.
-    const harnessed = await started({ SETTLE_BEFORE_GOODS_MS: "1000" });
+  it("stays short where the goods came first, so the agent hears inside the synchronous ceiling", async () => {
+    // The negative control. The wait before goods keeps its fifteen-second
+    // default, so a synchronous order put on it would still be settling when
+    // the agent's ceiling of 2000ms runs out, and the agent would hear
+    // `under_way` instead of the silence.
+    const harnessed = await started();
     const orderId = await bought(harnessed, syncCard);
     const release = harnessed.facilitator.holdSettle();
     const worker = workUntilStopped(harnessed, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
 
-    const paying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    const answered = await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    expect(answered.step).toBe("settled");
+    if (answered.step !== "settled") throw new Error("the agent was not answered");
+    expect(answered.order.order.payment).toBe("outcome_unknown");
+
+    // The answer the gateway stopped waiting for still counts once it comes.
+    release();
     await vi.waitFor(
-      async () => expect((await state(harnessed, orderId))?.payment).toBe("outcome_unknown"),
+      async () => expect((await state(harnessed, orderId))?.payment).toBe("settled"),
       { timeout: 2_000, interval: 5 },
     );
-    release();
-    await paying;
+    expect((await state(harnessed, orderId))?.state).toBe("delivered");
     await worker.stop();
   });
 });
