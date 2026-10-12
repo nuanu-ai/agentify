@@ -88,7 +88,7 @@ const card = (merchantItemId: string, title: string): Card => ({
  * that time. Distinct instants are what keep a list read twice the same list,
  * which is the difference between a suite that fails and a suite that flickers.
  */
-const anOrder = (
+export const anOrder = (
   id: string,
   state: Order["state"],
   at: { readonly merchantId?: string; readonly createdAt?: number } = {},
