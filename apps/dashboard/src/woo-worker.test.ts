@@ -1438,6 +1438,20 @@ describe("a parcel's paid order", () => {
     expect(logged.length).toBeGreaterThan(0);
     for (const word of ADDRESS_WORDS) expect(logged.join("\n")).not.toContain(word);
   });
+
+  it("names a shop that cannot take its order by origin, which no typed newline survives", async () => {
+    const written = await loggedWhile(() =>
+      fillFromTheShop(
+        parcelOrder(),
+        { ...connection(), shopUrl: "https://shop.exam\nple.com", permissions: "read" },
+        MERCHANT_EMAIL,
+        parcelParts(memoryWooShops(), aParcelShop().place),
+      ),
+    );
+
+    expect(written).toContain("the shop at https://shop.example.com granted");
+    expect(written).not.toContain("exam\nple");
+  });
 });
 
 describe("following a parcel to the carrier", () => {
@@ -2242,6 +2256,20 @@ describe("what the worker writes in the merchant's log when something fails", ()
     );
 
     expect(written).toContain("the shop at https://shop.example.com granted");
+    expect(written).not.toContain("exam\nple");
+  });
+
+  it("names the shop an interrupted order was placed in by its origin", async () => {
+    const written = await loggedWhile(() =>
+      fillFromTheShop(
+        anOrder(),
+        { ...connection(), shopUrl: "https://shop.exam\nple.com" },
+        MERCHANT_EMAIL,
+        filling(memoryWooShops(), async () => ({ ok: false as const, why: "gone", again: false })),
+      ),
+    );
+
+    expect(written).toContain("was already being placed in the shop at https://shop.example.com");
     expect(written).not.toContain("exam\nple");
   });
 });
