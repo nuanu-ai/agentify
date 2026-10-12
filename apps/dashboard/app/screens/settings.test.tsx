@@ -130,6 +130,21 @@ describe("the payout wallet on the settings screen", () => {
     expect(text).toMatch(/settle/i);
   });
 
+  it("says a different address waits forty-eight hours only on live, where it does", () => {
+    // Elsewhere a change applies at once, and a first address on live replaces
+    // nothing, so nothing waits.
+    expect(readable(walletPanel({ mode: "live", wallet: SHAPED }))).toMatch(/forty-eight hours/);
+    for (const looking of [
+      { mode: "sandbox", wallet: SHAPED },
+      { mode: "test", wallet: SHAPED },
+      { mode: "live", wallet: null },
+    ] as const) {
+      expect(readable(walletPanel(looking)), JSON.stringify(looking)).not.toMatch(
+        /forty-eight hours/,
+      );
+    }
+  });
+
   it("shows a refused address whole, so the merchant can read it against their wallet", () => {
     // On the page as text, not only inside the box: the box's value is an
     // attribute, which the clipboard's view of the page does not see.
