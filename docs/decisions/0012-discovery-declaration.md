@@ -5,10 +5,11 @@ Status: accepted (the product owner)
 
 ## Context
 
-ADR-0001 exposes the product on the x402 Bazaar, a discovery catalog that lists
-an endpoint once its payment challenge carries a discovery declaration and a
-payment to it settles through the CDP facilitator
-(`docs/research/04-spike-bazaar-listing.md`). A card already holds almost
+The product is exposed on the x402 Bazaar, a discovery catalog that lists an
+endpoint once its payment challenge carries a discovery declaration and a
+payment to it settles through the CDP facilitator, so the live chain settles
+there (ADR-0020). Why this catalog, and what the pilot expects of it, is in
+`docs/research/04-spike-bazaar-listing.md`. A card already holds almost
 everything a declaration wants.
 
 ## Decision

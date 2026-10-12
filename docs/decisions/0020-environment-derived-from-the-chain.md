@@ -61,7 +61,7 @@ not an operator's choice, and a sandbox an agent can reach takes payments that
 never happened, so it stays on a laptop; a receipt proves nothing until its
 reader knows which gateway wrote it. The facilitator becomes a list when a
 second one holds our credentials and its settlements reach the catalog a
-listing depends on (ADR-0001); the prefix becomes the set a site accepts when a
+listing depends on (ADR-0012); the prefix becomes the set a site accepts when a
 live gateway must issue test keys.
 
 Rejected: `AGENTIFY_ENV` or `PAYMENT_SANDBOX=1` beside these fields — two
