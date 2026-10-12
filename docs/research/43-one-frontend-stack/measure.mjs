@@ -27,6 +27,7 @@
  */
 
 import { readFileSync } from "node:fs";
+// biome-ignore lint/correctness/noUndeclaredDependencies: a measuring script kept with its note; Playwright is installed where it runs, not in the repository.
 import { chromium } from "playwright";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:8090";
