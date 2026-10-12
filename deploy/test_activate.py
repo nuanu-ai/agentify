@@ -741,6 +741,36 @@ class Activation(unittest.TestCase):
         said = self.run_script("activate", CARDS_AFTER="card_one")
         self.assertIn("exit 1", said)
         self.assertIn("card_two", said)
+        # And the refusal says how to release it if the card left on purpose.
+        self.assertIn("--leaving card_two", said)
+
+    def test_a_card_the_person_names_as_leaving_may_leave(self):
+        said = self.run_script("activate", CARDS_AFTER="card_one", AGENTIFY_LEAVING="card_two")
+        self.assertIn("exit 0", said)
+        self.assertIn("card_two", said)
+        self.assertIsNone(self.record())
+
+    def test_a_rerun_naming_the_cards_that_left_is_verified(self):
+        # The release took a card off sale on purpose and stopped, unverified;
+        # the person runs it again naming that card, and it carries on.
+        said = self.run_script("activate", CARDS_AFTER="card_one")
+        self.assertIn("exit 1", said)
+        said = self.run_script("activate", CARDS_AFTER="card_one", AGENTIFY_LEAVING="card_two")
+        self.assertIn("exit 0", said)
+        self.assertIsNone(self.record())
+
+    def test_a_card_named_as_leaving_that_is_still_on_sale_stops_the_release(self):
+        # Named as leaving and still selling is a person expecting something the
+        # release did not do, which is worth a stop as much as the other way.
+        said = self.run_script("activate", AGENTIFY_LEAVING="card_two")
+        self.assertIn("exit 1", said)
+        self.assertIn("card_two", said)
+        self.assertEqual(self.record()["phase"], "started")
+
+    def test_a_card_left_unnamed_beside_a_named_one_still_stops_the_release(self):
+        said = self.run_script("activate", CARDS_AFTER="", AGENTIFY_LEAVING="card_two")
+        self.assertIn("exit 1", said)
+        self.assertIn("--leaving card_one", said)
 
     def test_every_card_must_answer_its_challenge_on_the_channels_network(self):
         (self.world / "network").write_text("eip155:8453")
