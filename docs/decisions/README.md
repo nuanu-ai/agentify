@@ -53,7 +53,5 @@ was reverted.
 - 0024 (the scanner's identity without Supabase): ADR-0026.
 - 0025 (the Agentify namespace): a finished rename; its schema URN rule stands
   in ADR-0006 §4, and the names it fixed live in `deploy/README.md`.
-- 0029 (production backups leave the host):
-  `docs/research/44-production-backups.md`; the runbook is `deploy/README.md`.
 - 0030 (the gateway and the dashboard are one process):
   `docs/research/35-one-process.md`.

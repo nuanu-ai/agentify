@@ -541,15 +541,15 @@ from the revision `current` names.
 PRODUCTION is backed up off the host every ten minutes into the restic
 repository in the bucket `nuanu-agentify-backups` (Hetzner Object Storage,
 fsn1, project "Nuanu AI prod backups");
-`docs/research/44-production-backups.md` says why this way. The recovery point
-is ten minutes: whatever was written in the ten minutes before a loss is gone,
-and nothing sooner can be recovered. A snapshot holds a dump of the channel's
-database, the server's roles, the row count of every table, `production.env`
-and `release.json`. It never holds `/etc/agentify/backup.env`, which holds the
-repository's password and the S3 key; the password is also in the product
-owner's 1Password, and the key can be issued again in the Hetzner console.
-Snapshots are kept for the last day, one an hour for two days and one a day for
-thirty days.
+ADR-0029 and `docs/research/44-production-backups.md` say why this way. The
+recovery point is ten minutes: whatever was written in the ten minutes before a
+loss is gone, and nothing sooner can be recovered. A snapshot holds a dump of
+the channel's database, the server's roles, the row count of every table,
+`production.env` and `release.json`. It never holds `/etc/agentify/backup.env`,
+which holds the repository's password and the S3 key; the password is also in
+the product owner's 1Password, and the key can be issued again in the Hetzner
+console. Snapshots are kept for the last day, one an hour for two days and one
+a day for thirty days.
 
 A restore is rehearsed by a person, never on a schedule: the rehearsal restores
 the latest snapshot into scratch databases `check_<database>` beside the live

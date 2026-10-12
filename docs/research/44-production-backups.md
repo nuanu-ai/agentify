@@ -1,38 +1,28 @@
-# Production's data and secrets leave the host
+# How production is backed up
 
 Date: 2026-09-24, accepted by the product owner the same day. A design note:
-why PRODUCTION is backed up the way it is, and what was weighed against it.
-The runbook — where the snapshots are, how a restore is rehearsed, how the
-storage key is replaced and how a host is rebuilt — is the "Backups" section
-of `deploy/README.md`, and this note does not repeat it.
+how PRODUCTION's backup runs, and what was weighed against it. The boundary it
+draws — what leaves the host, where it goes, who holds the keys and how long a
+copy lives — is ADR-0029. The runbook — where the snapshots are, how a restore
+is rehearsed, how the storage key is replaced and how a host is rebuilt — is
+the "Backups" section of `deploy/README.md`, and this note repeats neither.
 
-## Why a copy off the host
+## How it runs
 
-The only copies of PRODUCTION's databases were the restore points a release
-takes on the same host, so losing the host lost the data. A copy kept off the
-host is a new security boundary: the customers' data and `production.env`,
-which a rebuild needs, leave the host for a bucket.
-
-## The design
+Before this, the only copies of PRODUCTION's databases were the restore points
+a release takes on the same host, so losing the host lost the data.
 
 Every ten minutes a systemd timer on PRODUCTION dumps the channel's databases
-and the server's roles under the release lock and stores them, with
-`production.env`, in a restic repository in the bucket
-`nuanu-agentify-backups` (Hetzner Object Storage, fsn1, project "Nuanu AI prod
-backups"). The recovery point objective is ten minutes.
+and the server's roles under the release lock, so a backup and a release never
+run at once, and stores them with `production.env` in the restic repository
+named in ADR-0029. The recovery point objective is ten minutes. Each run
+forgets what the retention no longer keeps — the last 144 snapshots, one an
+hour for 48 hours and one a day for 30 days — and the first run of each day
+prunes the repository (`deploy/backup.sh`).
 
-The repository has its own password, since a Hetzner key opens every bucket of
-its project. The password and the key live in `/etc/agentify/backup.env`,
-which no snapshot holds, and the password also in the product owner's
-1Password. Snapshots are kept for a day, hourly for two days and daily for 30
-days, and a restore rehearsal, which a person runs and nothing schedules,
-restores the latest snapshot and compares its row counts. The bucket keeps a
-deleted object's version for 30 days. Object Lock retention is not set, so
-whoever holds the key can delete every version.
-
-What a snapshot catches it keeps until it expires. Personal data that the
-product erases from its tables, such as a buyer's address once the merchant
-holds it (ADR-0032), survives in the snapshots taken while it was there.
+A restore rehearsal is run by a person and scheduled by nothing. It restores
+the latest snapshot into scratch databases beside the live ones and compares
+every table's row count with the count the snapshot recorded.
 
 ## Alternatives rejected
 
