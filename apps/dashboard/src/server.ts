@@ -32,12 +32,13 @@ import {
 import express, { type Express, type Request, type Response } from "express";
 import type { DashboardConfig } from "./config.js";
 import {
-  type DashboardDestination,
   type DashboardIdentity,
   dashboardDestinationIn,
   type LinkDestination,
   type Person,
 } from "./dashboard-entry.js";
+import { DRAWN_FOR } from "./drawn-for.js";
+import { clearingLines, dashboardPathFor, gateFor, startOf } from "./gate.js";
 import {
   type Acting,
   type Answer,
@@ -46,7 +47,7 @@ import {
   type Registrar,
   registrarFor,
 } from "./gateway.js";
-import { bare, brandLockup, DRAWN_FOR, escaped } from "./html.js";
+import { bare, brandLockup, escaped } from "./html.js";
 import { SESSION_DAYS } from "./identity.js";
 import { keysScreen, newKeyScreen } from "./keys.js";
 import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
@@ -163,18 +164,6 @@ const SESSION_ENDED =
  * or they might take a pause for done.
  */
 const UNSAVED = "You are not signed in, so the change you submitted was not saved.";
-
-/**
- * Where a person who owns no merchant starts. The scanner knows whether they own
- * a report: it shows the latest, and sends somebody with none back to the
- * dashboard's screen with the one control that makes a merchant. Never that
- * screen for a person with reports, and never the merchant itself, which only
- * the explicit press makes.
- */
-export const LATEST_REPORT = "/report/latest";
-
-const dashboardPathFor = (base: string, destination: DashboardDestination): string =>
-  `${base}/${destination === "default" ? "cards" : destination}`;
 
 /**
  * The shared visual language, then the dashboard's own layout, read once at
@@ -312,36 +301,13 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     return clientFor({ merchantId: merchant.id, email: person.email }, answerWithinMs);
   };
 
-  /**
-   * Every cookie the component sets, not only the session, or the others would
-   * stay for good. The clearing line carries the session's attributes, because
-   * a browser replaces a cookie only with a line for the same path, and a
-   * `__Host-` one only with a Secure line for the whole origin.
-   */
   const forget = (response: Response): void => {
-    for (const name of identity.cookieNames) {
-      response.clearCookie(name, {
-        path: "/",
-        httpOnly: true,
-        sameSite: "lax",
-        secure: config.cookieSecure,
-      });
+    for (const line of clearingLines(identity, config.cookieSecure)) {
+      response.append("set-cookie", line);
     }
   };
 
-  /**
-   * A merchant's owner starts on the dashboard, anybody else on the scanner's
-   * latest-report page.
-   */
-  const startOf = (person: Person): string =>
-    person.merchant !== null ? `${base}/cards` : LATEST_REPORT;
-
-  const carriesIdentityCookie = (header: string | undefined): boolean => {
-    const pairs = (header ?? "").split(";");
-    return identity.cookieNames.some((name) =>
-      pairs.some((pair) => pair.split("=", 1)[0]?.trim() === name),
-    );
-  };
+  const gate = gateFor(base, identity, config.cookieSecure);
 
   /**
    * The component's own lines, passed on rather than rebuilt: the cookie's
@@ -572,7 +538,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       typeof destination !== "string"
         ? `/report/${encodeURIComponent(destination.report)}`
         : destination === "default"
-          ? startOf(person)
+          ? startOf(base, person)
           : person.merchant === null
             ? `${base}/merchant`
             : dashboardPathFor(base, destination),
@@ -588,7 +554,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     const signedIn = await identity.whoIs(request.headers.cookie);
     if (signedIn !== null) {
       carryCookies(response, signedIn.setCookies);
-      response.redirect(303, startOf(signedIn.person));
+      response.redirect(303, startOf(base, signedIn.person));
       return;
     }
     response.status(401).type("html").send(refusedLinkScreen(base, config.surfaceMode));
@@ -654,58 +620,28 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   app.use((request, response, next) => {
     void (async () => {
       try {
-        const session = await identity.whoIs(request.headers.cookie);
-        const reading = request.method === "GET" || request.method === "HEAD";
-        if (session === null) {
-          // Cleared on the way out, so somebody whose session ended gets a
-          // usable sign-in rather than this gate on every click.
-          const hadIdentityCookie = carriesIdentityCookie(request.headers.cookie);
-          forget(response);
-          const reason = reading ? "session-ended" : "session-ended-unsaved";
-          // Where the person was going (a bookmark, a screen a message links
-          // to, or the section of an unsaved form) is carried through the
-          // sign-in so the mailed link returns them there. An address outside
-          // the sections leads to the start.
-          const going = dashboardDestinationIn(
-            request.path.slice(`${base}/`.length).split("/", 1)[0],
-          );
-          // A form sent without a cookie is told it was not kept.
-          const query = [
-            hadIdentityCookie ? `reason=${reason}` : reading ? "" : "reason=unsaved",
-            going === "default" ? "" : `destination=${going}`,
-          ]
-            .filter((part) => part !== "")
-            .join("&");
-          response.redirect(303, `${base}/sign-in${query === "" ? "" : `?${query}`}`);
+        const answer = await gate({
+          cookie: request.headers.cookie,
+          method: request.method,
+          path: request.path,
+          drawnFor: (request.body as Record<string, unknown> | undefined)?.[DRAWN_FOR],
+        });
+        carryCookies(response, answer.setCookies);
+        if (answer.kind === "signed-out") {
+          response.redirect(303, answer.location);
           return;
         }
-        // Once a day the read moves the session's end, and the browser must be
-        // told or its cookie expires thirty days after sign-in however often
-        // its person returns.
-        carryCookies(response, session.setCookies);
         // Every page behind the gate shows the signed-in address, so no shared
         // cache may store it.
         response.setHeader("cache-control", "private, no-store");
-        people.set(request, session.person);
-        // A form whose page was not drawn for this person is refused before any
-        // handler reads it: one drawn for another address, and one that carries
-        // no mark at all. Refusing the unmarked one makes a missed form fail
-        // rather than work for whoever is signed in.
-        const drawnFor = (request.body as Record<string, unknown> | undefined)?.[DRAWN_FOR];
-        if (!reading && drawnFor !== session.person.email) {
+        if (answer.kind === "not-drawn-for-you") {
           response
             .status(409)
             .type("html")
-            .send(
-              notDrawnForYouScreen(
-                base,
-                config.surfaceMode,
-                session.person.email,
-                startOf(session.person),
-              ),
-            );
+            .send(notDrawnForYouScreen(base, config.surfaceMode, answer.who, answer.start));
           return;
         }
+        people.set(request, answer.person);
         next();
       } catch (thrown) {
         next(thrown);

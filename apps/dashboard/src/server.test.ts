@@ -29,6 +29,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type DashboardConfig, loadConfig } from "./config.js";
+import { DRAWN_FOR } from "./drawn-for.js";
 import {
   type Acting,
   type Answer,
@@ -36,7 +37,6 @@ import {
   gatewayFor,
   type Registrar,
 } from "./gateway.js";
-import { DRAWN_FOR } from "./html.js";
 import {
   type Identity,
   identityFor,

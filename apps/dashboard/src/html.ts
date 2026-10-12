@@ -5,6 +5,7 @@
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
 import type { DashboardDestination } from "./dashboard-entry.js";
+import { DRAWN_FOR } from "./drawn-for.js";
 import { moment } from "./words.js";
 
 /** Escapes the five characters that are not text in HTML. */
@@ -15,15 +16,6 @@ export const escaped = (value: string): string =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
-
-/**
- * The address the page was drawn for, carried by every form behind the gate. A
- * tab drawn for one address is often still open when another signs in, and the
- * browser then sends the new cookie with the old form, so the cookie alone
- * cannot say whose page was pressed; the gate refuses a form drawn for somebody
- * else.
- */
-export const DRAWN_FOR = "signed_in_as";
 
 /**
  * Applied to the whole page rather than written into each form, so a new form

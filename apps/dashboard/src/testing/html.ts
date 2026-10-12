@@ -5,7 +5,7 @@
  * markup. A tag becomes a space so words do not fuse, except `<wbr>`, for which
  * a browser draws no space. A script goes out whole, source included.
  */
-import { DRAWN_FOR } from "../html.js";
+import { DRAWN_FOR } from "../drawn-for.js";
 
 export const readable = (html: string): string =>
   html
