@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
+import { createRoutesStub, Form, useActionData } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { Field } from "./field.js";
 
@@ -59,6 +60,40 @@ describe("a field", () => {
     });
 
     expect(document.activeElement).toBe(screen.getByLabelText("Seller name"));
+  });
+
+  it("takes the focus at each refusal, though its words are the last one's", async () => {
+    // A page that answers a press in place may refuse the second name in the
+    // same words as the first; the box takes the focus each time.
+    const Stub = createRoutesStub([
+      {
+        path: "/",
+        action: () => ({ problem: "Use 1 to 32 characters of printable ASCII." }),
+        Component: () => {
+          const answer = useActionData() as { problem: string } | undefined;
+          return (
+            <Form method="post">
+              <Field
+                label="Seller name"
+                name="seller_name"
+                {...(answer === undefined ? {} : { error: answer.problem })}
+              />
+              <button type="submit">Use this name</button>
+            </Form>
+          );
+        },
+      },
+    ]);
+    render(<Stub initialEntries={["/"]} />);
+    const button = await screen.findByText("Use this name");
+
+    for (const press of ["first", "second"]) {
+      button.focus();
+      fireEvent.click(button);
+      await waitFor(() =>
+        expect(document.activeElement, press).toBe(screen.getByLabelText("Seller name")),
+      );
+    }
   });
 
   it("asks a browser drawing it refused to put the cursor in it, with no script to do so", () => {
