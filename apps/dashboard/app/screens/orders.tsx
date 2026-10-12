@@ -2,6 +2,7 @@ import { Table } from "@agentify/ui";
 import { Link } from "react-router";
 import type { OrdersView } from "../../src/views.js";
 import { Moment } from "../components/moment.js";
+import { useGoingTo } from "../components/on-its-way.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
 
@@ -18,6 +19,12 @@ export const TestMark = ({ test }: Readonly<{ test: boolean }>) =>
   ) : null;
 
 export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
+  // The filter chosen is marked as soon as it is clicked.
+  const going = useGoingTo();
+  const open =
+    going?.pathname === "/orders"
+      ? new URLSearchParams(going.search).get("open") === "true"
+      : view.open;
   return (
     <>
       <div className="lede">
@@ -26,14 +33,14 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
           {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
         </div>
         <div className="filter">
-          {view.open ? (
+          {open ? (
             <span className="here">Open</span>
           ) : (
             <Link to="/orders?open=true" prefetch="intent">
               Open
             </Link>
           )}
-          {view.open ? (
+          {open ? (
             <Link to="/orders" prefetch="intent">
               All
             </Link>

@@ -10,6 +10,7 @@ import { useRouteLoaderData } from "react-router";
 import type { DashboardDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
 import { useChrome } from "../answer.js";
+import { OnItsWay, useGoingTo } from "./on-its-way.js";
 import { SurfaceNote } from "./surface-note.js";
 import { Word } from "./word.js";
 
@@ -73,6 +74,13 @@ export function Frame({
   if (gate === undefined) {
     throw new Error("the frame was drawn outside the gate, where no address is known");
   }
+  const going = useGoingTo();
+  const marked =
+    going === null
+      ? tab
+      : (TABS.find(
+          ([key]) => going.pathname === `/${key}` || going.pathname.startsWith(`/${key}/`),
+        )?.[0] ?? tab);
   const sections: Section[] = TABS.map(([key, label], index) => ({
     key,
     label: (
@@ -81,12 +89,13 @@ export function Frame({
         {label}
       </>
     ),
-    current: key === tab,
+    current: key === marked,
     to: `/${key}`,
   }));
   return (
     <div className="page">
       <title>{`${title} — Agentify`}</title>
+      <OnItsWay />
       <div className="app-shell">
         <aside className="app-sidebar">
           <div className="app-sidebar-brand">

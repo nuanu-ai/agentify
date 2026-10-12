@@ -94,7 +94,11 @@ const dashboardAt = (path: string) => {
     },
   ]);
   render(<Stub initialEntries={[path]} />);
-  return { releaseAll: () => loads.splice(0).forEach((load) => load.release()) };
+  return {
+    releaseAll: () => {
+      for (const load of loads.splice(0)) load.release();
+    },
+  };
 };
 
 /** The sidebar's sections, not the narrow menu's copy of them. */
