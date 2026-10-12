@@ -1345,6 +1345,32 @@ describe("the gate", () => {
   });
 });
 
+describe("the address a press posts to, opened as a page", () => {
+  it("leads to the page the press's form lives on, never to one that is not there", async () => {
+    // Opened again from history or the address bar, the address would
+    // otherwise be a dead end, and a page drawn there without a press would
+    // say nothing happened.
+    const { browser } = await started({ wooShops: memoryWooShops() });
+    await browser.signIn();
+
+    for (const [path, page] of [
+      ["/settings/site", "/settings"],
+      ["/settings/sign-out-others", "/settings"],
+      ["/settings/payout-wallet", "/settings"],
+      ["/settings/payout-wallet/cancel", "/settings"],
+      ["/keys/some-key/disable", "/keys"],
+      ["/woocommerce/connect", "/woocommerce"],
+      ["/woocommerce/import", "/woocommerce"],
+      ["/woocommerce/switch", "/woocommerce"],
+      ["/woocommerce/disconnect", "/woocommerce"],
+      ["/sign-out", "/"],
+    ] as const) {
+      const read = await browser.get(path);
+      expect({ status: read.status, to: read.to }, path).toStrictEqual({ status: 303, to: page });
+    }
+  });
+});
+
 describe("choosing the name buyers read", () => {
   it("asks for the name on a screen of its own, with room to say what it is for", async () => {
     // Here the screen can say what the name does, show what one looks like and
@@ -1684,25 +1710,6 @@ describe("the settings screen", () => {
     for (const path of ["/settings", "/settings/sign-out-others", "/settings/payout-wallet"]) {
       const data = await browser.get(`${path}.data`);
       expect(data.headers.get("cache-control"), path).toBe("private, no-store");
-    }
-  });
-
-  it("leads the other presses' addresses, opened as a page, to the settings their forms live on", async () => {
-    // Their page is the answer to the press; opened without one, it would be a
-    // page that says nothing happened.
-    const { browser } = await started();
-    await browser.signIn();
-
-    for (const path of [
-      "/settings/site",
-      "/settings/sign-out-others",
-      "/settings/payout-wallet/cancel",
-    ]) {
-      const answered = await browser.get(path);
-      expect({ status: answered.status, to: answered.to }, path).toStrictEqual({
-        status: 303,
-        to: "/settings",
-      });
     }
   });
 
