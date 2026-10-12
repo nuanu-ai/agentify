@@ -13,6 +13,7 @@ import { loadConfig } from "./config.js";
 import { gatewayFor, registrarFor } from "./gateway.js";
 import { identityFor } from "./identity.js";
 import { type PageServices, pageServicesFor } from "./page-services.js";
+import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const PERSON = "owner@example.com";
 /** Of the right shape, and obviously not a real address. */
@@ -35,7 +36,7 @@ const live = async (): Promise<{ harnessed: Harness; services: PageServices }> =
   });
   const config = loadConfig({
     DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
-    AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
+    AUTH_SECRET: TEST_AUTH_SECRET,
     ...LIVE,
   });
   const slow = new Proxy(harnessed.gateway, {

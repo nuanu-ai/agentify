@@ -12,6 +12,7 @@ import { DRAWN_FOR } from "../../src/drawn-for.js";
 import { identityFor } from "../../src/identity.js";
 import type { Message } from "../../src/mail.js";
 import { pageServicesFor } from "../../src/page-services.js";
+import { TEST_AUTH_SECRET } from "../../src/testing/secrets.js";
 import { services, signedIn } from "../services.js";
 import { middleware } from "./gate.js";
 
@@ -20,7 +21,7 @@ const ORDERS = "http://127.0.0.1/dashboard/orders";
 
 const config = loadConfig({
   DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
-  AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
+  AUTH_SECRET: TEST_AUTH_SECRET,
   PAYMENT_NETWORK: "eip155:84532",
   FACILITATOR_URL: "sandbox:scripted",
   BASE_PATH: "/dashboard",

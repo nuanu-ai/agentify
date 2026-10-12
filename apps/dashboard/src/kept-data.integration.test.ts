@@ -22,6 +22,7 @@ import { identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { builtPages } from "./pages.js";
 import { buildApp } from "./server.js";
+import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const PERSON = "owner@example.com";
 const BASE = "/dashboard";
@@ -37,7 +38,7 @@ beforeAll(async () => {
   harnessed = await harness({ PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000001" });
   const config = loadConfig({
     DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
-    AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
+    AUTH_SECRET: TEST_AUTH_SECRET,
     PAYMENT_NETWORK: "eip155:84532",
     FACILITATOR_URL: "sandbox:scripted",
     BASE_PATH: BASE,

@@ -4,13 +4,14 @@ import { loadConfig } from "./config.js";
 import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
+import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const MERCHANT = "mer_the_merchant";
 const NOON = new Date("2026-09-17T12:00:00.000Z");
 
 const config = loadConfig({
   DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
-  AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
+  AUTH_SECRET: TEST_AUTH_SECRET,
   PAYMENT_NETWORK: "eip155:84532",
   FACILITATOR_URL: "sandbox:scripted",
 });

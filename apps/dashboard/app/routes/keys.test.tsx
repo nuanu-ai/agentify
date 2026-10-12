@@ -17,6 +17,7 @@ import { loadConfig } from "../../src/config.js";
 import type { GatewayClient } from "../../src/gateway.js";
 import { identityFor } from "../../src/identity.js";
 import { pageServicesFor } from "../../src/page-services.js";
+import { TEST_AUTH_SECRET } from "../../src/testing/secrets.js";
 import { chromeOf } from "../answer.js";
 import { ErrorBoundary } from "../root.js";
 import { services, signedIn } from "../services.js";
@@ -35,7 +36,7 @@ const NIGHTLY: MerchantKey = {
 
 const config = loadConfig({
   DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
-  AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
+  AUTH_SECRET: TEST_AUTH_SECRET,
   PAYMENT_NETWORK: "eip155:84532",
   FACILITATOR_URL: "sandbox:scripted",
 });

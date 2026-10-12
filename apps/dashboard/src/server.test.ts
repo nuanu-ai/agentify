@@ -49,6 +49,7 @@ import { buildApp } from "./server.js";
 import { formsIn, formTo, readable, shownMarkIn, waitingButton } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
+import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
 /**
@@ -316,7 +317,7 @@ async function visiting(
   // in memory here), but it is still required.
   const config = loadConfig({
     DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
-    AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
+    AUTH_SECRET: TEST_AUTH_SECRET,
     PAYMENT_NETWORK: "eip155:84532",
     FACILITATOR_URL: "sandbox:scripted",
     ...(basePath === "" ? {} : { BASE_PATH: basePath }),

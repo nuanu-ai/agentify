@@ -23,6 +23,7 @@ import { buildApp } from "./server.js";
 import { importFormOf, readable, shownMarkIn } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
+import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 import type { StoreProduct } from "./woo-catalog.js";
 import type { Preflight } from "./woo-connect.js";
 import type { WooRequest } from "./woo-request.js";
@@ -192,7 +193,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   const gateway = await serve(harnessed);
   const config = loadConfig({
     DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
-    AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
+    AUTH_SECRET: TEST_AUTH_SECRET,
     ...CHANNELS[channel],
     PUBLIC_BASE_URL: PUBLIC,
     ...(standing.base === undefined ? {} : { BASE_PATH: standing.base }),

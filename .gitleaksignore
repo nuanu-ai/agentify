@@ -55,3 +55,11 @@ fbdfc4092e6f6abf584307d60a0b413b75b2b529:packages/slice/src/bootstrap-command.te
 # The same public key in the smoke's test, since replaced by a generated one;
 # the commit stays in the branch's history.
 bafb4db326a127291d4bf4f27e4f471faf42102d:packages/slice/src/smoke.test.ts:generic-api-key:17
+# The sign-in secret the dashboard's tests configured, a test value written out
+# whole on the way to React Router's pages; the tests build it at run time now.
+ca2fe223987d8166846484faea520862c247fb3b:apps/dashboard/src/kept-data.integration.test.ts:generic-api-key:40
+e15014f153b355efe8d66e1555a9482d60c0d003:apps/dashboard/app/routes/keys.test.tsx:generic-api-key:37
+6d666f4d5332c1c78c8998f24474836f8ec53c88:apps/dashboard/src/wallet-change.test.ts:generic-api-key:38
+58491283b8b8878e477150af7d2e093cb6f717d7:apps/dashboard/src/wallet-change.test.ts:generic-api-key:38
+b25ec9647c333aa6d02c0b8b6eb8d21b59567e93:apps/dashboard/app/routes/keys.test.tsx:generic-api-key:37
+d18fe60b58cf9d74b25e39d30f6a738a951b53c1:apps/dashboard/app/routes/gate.test.ts:generic-api-key:23
