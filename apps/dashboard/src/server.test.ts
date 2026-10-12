@@ -2469,6 +2469,25 @@ describe("the orders screen", () => {
     expect(text).not.toContain("refund_due");
   });
 
+  it("says why a refund is owed as it happened, and not always that a window ran out", async () => {
+    // A refund falls due when the merchant refuses an order already paid for,
+    // and the callout used to say the delivery window had run out whatever the
+    // cause (second manual run, finding 1): a merchant reconciling it looked
+    // for a deadline that never passed.
+    const { browser, gateway, harnessed } = await started();
+    const itemId = await publish(gateway, esimCard);
+    await buyOverHttp(harnessed, gateway, itemId, {
+      onOrder: () => ({ refused: { code: "out_of_stock", message: "no eSIMs left" } }),
+    });
+
+    await browser.signIn();
+    const text = readable((await browser.get("/orders?open=true")).html);
+
+    expect(text).toContain("1 order needs you");
+    expect(text).toMatch(/your integration refused/i);
+    expect(text).not.toMatch(/window ran out/i);
+  });
+
   it("says held goods need a fresh payment on the same purchase", async () => {
     const { browser, gateway, harnessed } = await started();
     harnessed.facilitator.willSettle({ settled: false, reason: "the transfer reverted" });
