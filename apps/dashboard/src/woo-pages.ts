@@ -98,7 +98,7 @@ export interface WooParts {
  * Connect. A connection wins over a pending Connect for a second shop: the
  * merchant stays connected until new keys arrive.
  */
-export const shopStateOf = async (shops: WooShops, accountId: string): Promise<ShopState> => {
+const shopStateOf = async (shops: WooShops, accountId: string): Promise<ShopState> => {
   const connection = await shops.connectionOf(accountId);
   if (connection !== null) {
     return {

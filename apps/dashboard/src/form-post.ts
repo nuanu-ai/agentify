@@ -20,7 +20,7 @@
 import { printable } from "./printable.js";
 
 /** The largest form any page here posts, and more than any of them needs. */
-export const FORM_AT_MOST = 16 * 1024;
+const FORM_AT_MOST = 16 * 1024;
 
 /**
  * Both sides are parsed rather than compared as text: a host header can carry a
