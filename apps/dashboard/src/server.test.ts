@@ -2969,6 +2969,54 @@ describe("the keys screen", () => {
     // It does not count absent rows as though some worked.
     expect(text).not.toMatch(/\b0 of the 0\b/);
   });
+
+  it("does nothing for a press sent as React Router's data request from a page drawn for somebody else", async () => {
+    // Where script runs the presses go out as data requests, and the gate holds
+    // for those as it does for a form the browser posts itself.
+    const keys = withKeys();
+    const running = await started({ client: keys.client });
+    await running.identity.make(OTHER, running.theMerchant);
+    await running.browser.signIn();
+    const leftOpen = hiddenIn((await running.browser.get("/keys")).html, "/keys");
+    await running.browser.post("/sign-out");
+    await running.browser.signIn(OTHER);
+
+    for (const [path, form] of [
+      ["/keys.data", { ...leftOpen, label: "the second worker" }],
+      [`/keys/${NIGHTLY.id}/disable.data`, leftOpen],
+      ["/keys.data", { [DRAWN_FOR]: "", label: "the second worker" }],
+    ] as const) {
+      const pressed = await running.browser.post(path, form);
+      expect(pressed.status, path).toBe(409);
+      expect(pressed.html, path).not.toContain(SECRET);
+    }
+    expect(keys.issued).toStrictEqual([]);
+    expect(keys.disabled).toStrictEqual([]);
+  });
+
+  it("issues, revokes and leads back to the list under the dashboard's mount point", async () => {
+    // Deployed under /dashboard, so a form or a redirect written without it
+    // reaches an address nothing answers.
+    const keys = withKeys();
+    const { browser } = await started({ base: "/dashboard", client: keys.client });
+    await browser.signIn();
+
+    const list = await browser.get("/dashboard/keys");
+    expect(postingFormsIn(list.html).map(({ action }) => action)).toEqual(
+      expect.arrayContaining([
+        "/dashboard/keys",
+        `/dashboard/keys/${NIGHTLY.id}/disable`,
+        "/dashboard/sign-out",
+      ]),
+    );
+    const issued = await browser.post("/dashboard/keys", { label: "the second worker" });
+    expect(readable(issued.html)).toContain(SECRET);
+    expect(issued.html).toContain('href="/dashboard/keys"');
+    expect((await browser.get("/dashboard/keys/new")).to).toBe("/dashboard/keys");
+    const revoked = await browser.post(`/dashboard/keys/${NIGHTLY.id}/disable`);
+    expect(revoked.to).toBe("/dashboard/keys");
+    expect(keys.disabled).toStrictEqual([NIGHTLY.id]);
+  });
 });
 
 describe("what every screen says about the address", () => {
