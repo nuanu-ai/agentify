@@ -15,6 +15,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import {
   createMemoryRouter,
   UNSAFE_FrameworkContext as FrameworkContext,
+  type LoaderFunctionArgs,
   Outlet,
   RouterProvider,
   useLoaderData,
@@ -90,7 +91,7 @@ const dashboardAt = (base: string, path: string) => {
             },
             {
               path: "orders",
-              loader: async ({ request }) => {
+              loader: async ({ request }: LoaderFunctionArgs) => {
                 ordersAsked += 1;
                 if (path !== "/orders" || ordersAsked > 1) {
                   const load = held();

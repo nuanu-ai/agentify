@@ -26,6 +26,7 @@ import { buildApp } from "./server.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const PERSON = "owner@example.com";
+const SLOW_MS = 1_500;
 const BASE = "/dashboard";
 
 let harnessed: Harness;
@@ -80,6 +81,15 @@ beforeAll(async () => {
   const counted = express();
   counted.use((request, _response, next) => {
     if (request.method === "GET" && request.path.endsWith(".data")) asked.push(request.path);
+    // The receipts' data and the open orders' arrive late, as from a slow
+    // gateway, so what a page shows before its data is there can be seen.
+    if (
+      request.path === `${BASE}/receipts.data` ||
+      (request.path === `${BASE}/orders.data` && request.query.open === "true")
+    ) {
+      setTimeout(next, SLOW_MS);
+      return;
+    }
     next();
   });
   counted.use(dashboard);
@@ -183,6 +193,29 @@ describe("a press answered on its own page", () => {
 
     expect(scrolled).toBeGreaterThan(0);
     expect(await row.evaluate((element) => element.getBoundingClientRect().top)).toBe(before);
+    await page.context().close();
+  });
+});
+
+describe("a click under the dashboard's prefix", () => {
+  it("marks the section or filter chosen before its page arrives, and says the page is coming", async () => {
+    const page = await onTheCards();
+
+    await linkTo(page, "Receipts").click();
+    await page.waitForTimeout(400);
+    expect(await linkTo(page, "Receipts").count()).toBe(0);
+    expect(await page.locator("nav.tabs [aria-current=page]").textContent()).toContain("Receipts");
+    expect(await page.locator(".on-its-way").isVisible()).toBe(true);
+    await page.waitForURL(`${origin}${BASE}/receipts`);
+    await page.waitForLoadState("networkidle");
+    expect(await page.locator(".on-its-way").isVisible()).toBe(false);
+
+    await page.goto(`${origin}${BASE}/orders`);
+    await page.waitForLoadState("networkidle");
+    await page.locator(".filter a", { hasText: "Open" }).click();
+    await page.waitForTimeout(400);
+    expect(await page.locator(".filter .here").textContent()).toBe("Open");
+    await page.waitForURL(`${origin}${BASE}/orders?open=true`);
     await page.context().close();
   });
 });
