@@ -60,6 +60,33 @@ export function policyFor(card: Card, config: GatewayConfig): OrderPolicy {
   };
 }
 
+/**
+ * The card with the times its orders are held to written in where the
+ * merchant named none, which is how an agent reads it in the catalog.
+ *
+ * The gateway's own time applies to such a card's orders (`policyFor`), and a
+ * card that stayed silent about it would offer an agent a promise with no
+ * clock it can see. Rounded up to the second, so an agent that waits as long
+ * as the card says never gives up on an order still allowed to arrive.
+ */
+export function cardAsHeld(card: Card, config: GatewayConfig): Card {
+  const { deadlines } = policyFor(card, config);
+  const seconds = (ms: number): number => Math.ceil(ms / 1_000);
+  switch (card.fulfillment) {
+    case "async":
+      return { ...card, fulfill_deadline_seconds: seconds(deadlines.asyncFulfillmentMs) };
+    case "confirm":
+      return {
+        ...card,
+        confirm_deadline_seconds: seconds(deadlines.confirmationResponseMs),
+        fulfill_deadline_seconds: seconds(deadlines.asyncFulfillmentMs),
+      };
+    case "sync":
+    case "ship":
+      return card;
+  }
+}
+
 export function modeForCard(card: Card): OrderMode {
   return modeOf(card.fulfillment);
 }

@@ -255,12 +255,12 @@ purchase — so the clock is already going when the order reaches your handler,
 and it covers every attempt we make to deliver that order to you. Name it, and
 the agent sees it before it buys.
 
-Leaving it out does not leave you off a clock. A day applies instead, an order
-that runs past it is marked as needing a refund exactly as one past a number of
-your own would be, and the agent is shown no deadline at all — so the clock you
-are held to is one the agent never saw. That day is ours to set rather than the
-card's, and naming your own is the only way the agent learns what it is. What
-happens when a delivery deadline runs out is in [Time ran out](/orders).
+Leaving it out does not leave you off a clock. A day applies instead, the
+agent sees that day on your card in the catalog as if you had named it, and an
+order that runs past it is marked as needing a refund exactly as one past a
+number of your own would be. That day is ours to set rather than the card's,
+so naming your own is the way to keep the time yours. What happens when a
+delivery deadline runs out is in [Time ran out](/orders).
 
 A synchronous card has no such field, because how long to wait for a synchronous
 answer is set by us, the same for every product: eight seconds. That one runs

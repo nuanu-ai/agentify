@@ -88,6 +88,7 @@ import {
 } from "./merchants.js";
 import { OrderRunner, orderDocumentOf, SWEEP_EFFECTS } from "./runner.js";
 import {
+  cardAsHeld,
   missingFrom,
   modeForCard,
   payoutWalletAt,
@@ -520,7 +521,7 @@ export class Gateway {
             "open",
         )
         .map((entry) =>
-          publicCardOf(entry.card.card, {
+          publicCardOf(cardAsHeld(entry.card.card, this.runtime.config), {
             id: entry.card.id,
             as_of: asTimestamp(entry.card.asOf),
             seller: { name: entry.serviceName, site: entry.sellerSite },
