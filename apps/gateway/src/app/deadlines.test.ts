@@ -276,6 +276,49 @@ describe("when the time runs out", () => {
   });
 });
 
+describe("the wait for the charge", () => {
+  it("is longer where the money moves before the goods, and a charge inside it counts", async () => {
+    // The payment layer answers a charge once its transfer is in a block, and
+    // a block comes every two seconds, so a wait of about two seconds lost a
+    // tenth of the charges on the test channel to a debt nobody owed. Where the
+    // money moves first a longer wait breaks no promise: the delivery deadline
+    // runs from the charge, and the agent only waits longer to hear the
+    // purchase is under way.
+    const harnessed = await started({ SETTLE_BEFORE_GOODS_MS: "1000" });
+    const orderId = await bought(harnessed, asyncCard);
+    const release = harnessed.facilitator.holdSettle();
+
+    const paying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    release();
+    await paying;
+
+    const order = await state(harnessed, orderId);
+    expect(order?.payment).toBe("settled");
+    expect(order?.closure).toBeNull();
+  });
+
+  it("stays short where the goods came first, inside the synchronous ceiling", async () => {
+    // The negative control: the same late answer on a synchronous order, whose
+    // wait for the charge is part of the ten seconds its agent was promised.
+    const harnessed = await started({ SETTLE_BEFORE_GOODS_MS: "1000" });
+    const orderId = await bought(harnessed, syncCard);
+    const release = harnessed.facilitator.holdSettle();
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+
+    const paying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await vi.waitFor(
+      async () => expect((await state(harnessed, orderId))?.payment).toBe("outcome_unknown"),
+      { timeout: 2_000, interval: 5 },
+    );
+    release();
+    await paying;
+    await worker.stop();
+  });
+});
+
 describe("a card that names no delivery deadline", () => {
   it("holds its merchant to ours, and shows the agent that time on the card", async () => {
     // With no deadline on the card the gateway's default applies and runs out

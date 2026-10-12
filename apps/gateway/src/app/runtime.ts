@@ -40,7 +40,12 @@ export function policyFor(card: Card, config: GatewayConfig): OrderPolicy {
     deadlines: {
       quoteResponseMs: deadlines.quoteResponseMs,
       quoteTtlMs: deadlines.quoteTtlMs,
-      settleResponseMs: deadlines.settleResponseMs,
+      // The money moves before the goods on every card but a synchronous one,
+      // and there the wait for the charge is not inside anybody's ceiling.
+      settleResponseMs:
+        modeOf(card.fulfillment).settle === "on_purchase"
+          ? deadlines.settleBeforeGoodsMs
+          : deadlines.settleResponseMs,
       syncResponseMs: deadlines.syncResponseMs,
       paymentAfterConfirmationMs: deadlines.paymentAfterConfirmationMs,
       confirmationResponseMs:

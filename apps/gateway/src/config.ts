@@ -205,8 +205,22 @@ const environmentSchema = z.object({
   /** How long we wait for the merchant to say what the goods cost. */
   QUOTE_RESPONSE_MS: durationMs(5_000),
   QUOTE_TTL_MS: durationMs(30_000),
-  /** How long we wait to be told whether the charge went through. */
+  /**
+   * How long we wait to be told whether the charge went through, on a
+   * synchronous order: the goods are already made, and this wait is inside the
+   * ceiling its agent was promised (`SYNC_BUDGET_MS`).
+   */
   SETTLE_RESPONSE_MS: durationMs(2_000),
+  /**
+   * The same wait on an order paid before its goods: asynchronous, confirmed
+   * or a parcel. The payment layer answers once the transfer is in a block, and
+   * a block comes every two seconds, so a wait of about that length declared
+   * about a tenth of these charges silent on the test channel and left a
+   * refund owed for each. Nothing promised is shorter here: the delivery
+   * deadline runs from the charge, and the agent only waits longer to hear
+   * that the purchase is under way.
+   */
+  SETTLE_BEFORE_GOODS_MS: durationMs(15_000),
   /** How long the merchant has to answer a synchronous order with the goods. */
   SYNC_RESPONSE_MS: durationMs(8_000),
   /**
@@ -374,7 +388,10 @@ function emptyIsAbsent(rule: z.ZodType<string, string>) {
 export interface DeadlineConfig {
   readonly quoteResponseMs: number;
   readonly quoteTtlMs: number;
+  /** The wait for the charge on a synchronous order, after its goods. */
   readonly settleResponseMs: number;
+  /** The wait for the charge on an order paid before its goods. */
+  readonly settleBeforeGoodsMs: number;
   readonly syncResponseMs: number;
   /** The promised ceiling the two synchronous waits have to fit inside. */
   readonly syncBudgetMs: number;
@@ -505,6 +522,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
     quoteResponseMs: environmentValues.QUOTE_RESPONSE_MS,
     quoteTtlMs: environmentValues.QUOTE_TTL_MS,
     settleResponseMs: environmentValues.SETTLE_RESPONSE_MS,
+    settleBeforeGoodsMs: environmentValues.SETTLE_BEFORE_GOODS_MS,
     syncResponseMs: environmentValues.SYNC_RESPONSE_MS,
     syncBudgetMs: environmentValues.SYNC_BUDGET_MS,
     paymentAfterConfirmationMs: environmentValues.PAYMENT_AFTER_CONFIRMATION_MS,
