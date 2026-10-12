@@ -26,19 +26,31 @@ Two secrets open it. The repository password and the bucket key live on the
 host in `/etc/agentify/backup.env`, root's alone, which no snapshot holds. The
 password is also kept in the product owner's 1Password, and a bucket key can
 be issued again in the Hetzner console. Object Lock retention is not set, so
-whoever holds the bucket key can delete every version of every snapshot,
-though without the password they read none of them.
+whoever holds the bucket key can delete every version of every snapshot, and
+so can whoever holds the Hetzner project account that issues the keys, though
+without the password neither reads any of them.
 
 A snapshot keeps what it caught until it expires. Snapshots are kept for a
 day, hourly for two days and daily for 30 days, and the bucket keeps a deleted
-object's version for 30 days more. So what the product erases from its
-tables, a buyer's address among them (ADR-0032), can outlive the erasure in
-the bucket for about sixty days, and possibly longer for data left in a pack
-that restic's prune does not rewrite, which its default allows. No promise to
-erase reaches further than this.
+object's version for 30 days more, so most of what the product erases from its
+tables, a buyer's address among them (ADR-0032), leaves the bucket about sixty
+days after the erasure. That is not a bound. restic stores data in packs,
+files that each hold pieces of many snapshots, and `restic prune`, run with
+its default tolerance for unused data, does not rewrite every pack that holds
+some; what stays in a pack it does not rewrite has no upper bound on how long
+it stays. The host keeps copies of its own, outside the bucket, for as long as
+releases leave them there: the restore points of the five newest releases
+(`deploy/activate.sh`), and a database a restore replaced, kept until the next
+verified release (`deploy/restore.sh`).
 
 ## Consequences
 
-A lost host loses at most ten minutes of writes. The bucket key is the one
-credential that can destroy every copy, and the password the one that reads
-them. The runbook is `deploy/README.md`.
+Ten minutes is the target for the writes a lost host takes with it, not a
+guarantee: a backup that fails, or that gives up after five minutes of a busy
+release lock, is only logged today, one line at priority err in the journal,
+and nothing alerts anybody. The bucket key and the Hetzner project account can
+each destroy every copy in the bucket, and the password is what reads them.
+An erasure the product promises elsewhere, such as the portal's about a
+buyer's address, does not reach these copies; whether the portal says so or
+the retention changes is an open question
+(`docs/research/00-open-questions.md`). The runbook is `deploy/README.md`.
