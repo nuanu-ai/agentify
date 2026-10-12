@@ -3,15 +3,15 @@
 /**
  * The keys page where script runs: React Router sends the press itself and
  * draws the page from its answer, so this is the path a merchant with a
- * working browser takes, run in a document. The page's server half is the
- * real one over a gateway client whose list stops answering the moment a key
- * is issued, the one case where reading the list after a press would cost the
- * merchant the only showing of a secret.
+ * working browser takes, run in a document, with its history. The page's
+ * server half is the real one over a stand-in gateway client, whose list can
+ * stop answering the moment a key is issued: the one case where reading the
+ * list after a press would cost the merchant the only showing of a secret.
  */
 
 import type { MerchantKey } from "@nuanu-ai/agentify-contracts";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { createRoutesStub, Outlet, RouterContextProvider } from "react-router";
+import { createRoutesStub, Outlet, RouterContextProvider, useNavigate } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../../src/config.js";
 import type { GatewayClient } from "../../src/gateway.js";
@@ -41,12 +41,29 @@ const config = loadConfig({
 
 afterEach(cleanup);
 
-/** The page inside the root and the gate it is drawn under, as the build nests it. */
-const keysPage = () => {
+/** Stands for the browser's Back button, which a memory router has none of. */
+function Shell() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <button type="button" onClick={() => void navigate(-1)}>
+        Browser back
+      </button>
+      <Outlet />
+    </>
+  );
+}
+
+/**
+ * The page inside the root and the gate it is drawn under, as the build nests
+ * it, opened from the cards. Unless told otherwise, the list stops answering
+ * once a key is issued.
+ */
+const keysPage = ({ listAfterIssue = "fails" }: { listAfterIssue?: "fails" | "answers" } = {}) => {
   let issued = false;
   const client = {
     keys: async () =>
-      issued
+      issued && listAfterIssue === "fails"
         ? { ok: false as const, status: 0, why: "the gateway did not answer in time" }
         : { ok: true as const, document: [NIGHTLY] },
     issueKey: async (label: string) => {
@@ -75,9 +92,10 @@ const keysPage = () => {
       id: "root",
       path: "/",
       loader: () => chromeOf(asked()),
-      Component: Outlet,
+      Component: Shell,
       ErrorBoundary,
       children: [
+        { path: "cards", Component: () => <p>The cards page</p> },
         {
           id: "routes/gate",
           loader: () => ({ who: PERSON }),
@@ -96,19 +114,35 @@ const keysPage = () => {
       ],
     },
   ]);
-  return render(<Stub initialEntries={["/keys"]} />);
+  return render(<Stub initialEntries={["/cards", "/keys"]} initialIndex={1} />);
+};
+
+/** Names a key and presses Issue, as a merchant does. */
+const issue = async () => {
+  fireEvent.change(await screen.findByLabelText("What this key is for"), {
+    target: { value: "the second worker" },
+  });
+  fireEvent.click(screen.getByText("Issue a key"));
+  expect(await screen.findByText(SECRET)).toBeTruthy();
 };
 
 describe("issuing a key where the page's script runs", () => {
   it("shows the secret even when the list cannot be read right after the press", async () => {
     keysPage();
-    fireEvent.change(await screen.findByLabelText("What this key is for"), {
-      target: { value: "the second worker" },
-    });
 
-    fireEvent.click(screen.getByText("Issue a key"));
+    await issue();
 
-    expect(await screen.findByText(SECRET)).toBeTruthy();
     expect(screen.queryByText("Something went wrong")).toBeNull();
+  });
+
+  it("goes Back from the new key to the list it was issued from, without the secret", async () => {
+    keysPage({ listAfterIssue: "answers" });
+    await issue();
+
+    fireEvent.click(screen.getByText("Browser back"));
+
+    expect(await screen.findByText("Issue a key")).toBeTruthy();
+    expect(screen.queryByText("The cards page")).toBeNull();
+    expect(screen.queryByText(SECRET)).toBeNull();
   });
 });
