@@ -18,11 +18,12 @@ worked through on [Connecting to Agentify](/).
 
 ### Do I need an engineer for this?
 
-The current product path is an integration your engineer writes with the
-Agentify SDK. It publishes your cards and runs a handler that fulfills paid
-orders through your API. The WooCommerce connector is experimental and is not
-the SDK acceptance path; delivery by a message is not available. The working
-path is described in [Your hands or ours](/).
+For the SDK, yes: your engineer writes an integration with the Agentify SDK
+that publishes your cards and runs a handler that fulfills paid orders through
+your API. A WooCommerce shop needs no code: it is connected in the dashboard,
+on the test channel for now, and its orders are filled from the shop. You sell
+through one of the two at a time, and delivery by a message is not available.
+Both are described in [Your hands or ours](/).
 
 ### Can a restaurant or a hotel sell this way?
 
@@ -60,8 +61,8 @@ described in the [card reference](/cards).
 ### How do I find out about a sale?
 
 The SDK carries the order to your handler, and your integration fulfills it
-through your API. The WooCommerce connector is experimental; delivery by a
-message is not available. The payment arrives as its own transfer into your
+through your API; a connected WooCommerce shop gets the order as a paid order
+in the shop. Delivery by a message is not available. The payment arrives as its own transfer into your
 wallet, before your delivery or after it depending on the product:
 [Money](/money). Orders are visible in the dashboard, which also holds your cards
 and the switch that stops selling. A receipt is written when the goods are

@@ -249,7 +249,8 @@ export const settingsScreen = (
     </div>
     <button class="button button-primary" type="submit">Save</button>
   </form>
-  <div class="panel-messages">${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}</div>
+  <div class="panel-messages">${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
+  <div class="panel-follow">
   <h2>Your shop's site</h2>
   <p class="quiet">${escaped(SITE_RULE)}</p>
   <form class="issue" method="post" action="${escaped(base)}/settings/site">
@@ -259,7 +260,9 @@ export const settingsScreen = (
     </div>
     <button class="button button-primary" type="submit">Save</button>
   </form>
-  <div class="panel-messages">${refusedSite === undefined ? "" : `<p class="problem">${escaped(refusedSite.problem)}</p>`}</div>
+  ${refusedSite === undefined ? "" : `<p class="problem">${escaped(refusedSite.problem)}</p>`}
+  </div>
+  </div>
   </section>
   <section class="settings-panel settings-pair">${payoutWalletBlock(viewer)}</section>
   <section class="settings-panel settings-wide settings-account">${accountSettings(viewer)}</section>
@@ -278,8 +281,8 @@ export const settingsScreen = (
 
 /**
  * The ways a catalogue reaches Agentify: the merchant's own code through the
- * SDK, which is the product's path and comes first, or a WooCommerce shop
- * through the experimental connector, where this dashboard has one. A tab of its own, because they are integrations,
+ * SDK, which comes first, or a WooCommerce shop through the connector, where
+ * this dashboard has one, one of the two at a time. A tab of its own, because they are integrations,
  * and halfway down the settings, under the name and the wallet, is not where
  * anybody looks for one.
  */
@@ -292,7 +295,7 @@ export const integrationsScreen = (viewer: Viewer): string => {
       <p>${
         viewer.shop === undefined
           ? "Your products reach Agentify from your own code through the SDK."
-          : "Your products reach Agentify from your own code through the SDK, or from a WooCommerce shop through the experimental connector."
+          : "Your products reach Agentify from your own code through the SDK, or from a WooCommerce shop, one of the two at a time."
       }</p>
     </div>
   </div>

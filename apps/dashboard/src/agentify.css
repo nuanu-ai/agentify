@@ -1416,6 +1416,16 @@ h2 {
 .panel-top > .saved {
   margin: 16px 24px 8px;
 }
+/* The name panel's own second subject, its shop's site, sits in its third
+   row under the name's refusal: the pair shares exactly three rows, and a
+   fourth child of the panel would be laid over the third. */
+.panel-follow > h2 {
+  margin-top: 24px;
+}
+.panel-follow > .quiet {
+  margin-top: 8px;
+  font-size: 0.875rem;
+}
 .panel-messages {
   padding: 0 24px 24px;
 }

@@ -42,6 +42,7 @@ const stored = (paused: boolean): StoredCard => ({
   card,
   asOf: 0,
   paused,
+  integration: "api",
 });
 
 describe("what the order machine is told about one card", () => {
@@ -52,11 +53,11 @@ describe("what the order machine is told about one card", () => {
     // Read as paused, a departure would tell everything downstream — the
     // rejection an agent gets, the word on a screen — that it can be undone by
     // pressing resume, which it cannot.
-    expect(sellingFor("departed", stored(false), true)).toBe("departed");
-    expect(sellingFor("departed", stored(true), true)).toBe("departed");
+    expect(sellingFor("departed", stored(false), true, "api")).toBe("departed");
+    expect(sellingFor("departed", stored(true), true, "api")).toBe("departed");
     // And a merchant who left with no address to be paid at has still left:
     // read as paused, their open orders would look like something a resume
     // could bring back.
-    expect(sellingFor("departed", stored(false), false)).toBe("departed");
+    expect(sellingFor("departed", stored(false), false, "api")).toBe("departed");
   });
 });

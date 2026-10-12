@@ -18,7 +18,13 @@ import type { Announcer } from "../ports/announcer.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Facilitator } from "../ports/facilitator.js";
 import type { Queue } from "../ports/queue.js";
-import type { Store, StoredCard, StoredMerchant, StoredPayoutWallet } from "../ports/store.js";
+import type {
+  Integration,
+  Store,
+  StoredCard,
+  StoredMerchant,
+  StoredPayoutWallet,
+} from "../ports/store.js";
 
 export interface Runtime {
   readonly config: GatewayConfig;
@@ -60,6 +66,33 @@ export function policyFor(card: Card, config: GatewayConfig): OrderPolicy {
   };
 }
 
+/**
+ * The card with the times its orders are held to written in where the
+ * merchant named none, which is how an agent reads it in the catalog.
+ *
+ * The gateway's own time applies to such a card's orders (`policyFor`), and a
+ * card that stayed silent about it would offer an agent a promise with no
+ * clock it can see. Rounded up to the second, so an agent that waits as long
+ * as the card says never gives up on an order still allowed to arrive.
+ */
+export function cardAsHeld(card: Card, config: GatewayConfig): Card {
+  const { deadlines } = policyFor(card, config);
+  const seconds = (ms: number): number => Math.ceil(ms / 1_000);
+  switch (card.fulfillment) {
+    case "async":
+      return { ...card, fulfill_deadline_seconds: seconds(deadlines.asyncFulfillmentMs) };
+    case "confirm":
+      return {
+        ...card,
+        confirm_deadline_seconds: seconds(deadlines.confirmationResponseMs),
+        fulfill_deadline_seconds: seconds(deadlines.asyncFulfillmentMs),
+      };
+    case "sync":
+    case "ship":
+      return card;
+  }
+}
+
 export function modeForCard(card: Card): OrderMode {
   return modeOf(card.fulfillment);
 }
@@ -95,13 +128,20 @@ export function priceCheckOf(card: Card): "none" | "merchant" {
  * pause a card can be excused from, and reading a card as merely paused would
  * be the difference between "no new orders" and "the open ones closed and the
  * money for the undelivered is yours to return".
+ *
+ * A card that the integration its merchant is not selling through published
+ * is off sale the same way (ADR-0036): nothing of that integration draws the
+ * merchant's stream, so an order of it would be paid for and filled by nobody.
  */
 export function sellingFor(
   merchant: MerchantSelling,
   card: StoredCard,
   sellable: boolean,
+  through: Integration,
 ): MerchantSelling {
-  return merchant === "open" && (card.paused || !sellable) ? "paused" : merchant;
+  return merchant === "open" && (card.paused || !sellable || card.integration !== through)
+    ? "paused"
+    : merchant;
 }
 
 /**

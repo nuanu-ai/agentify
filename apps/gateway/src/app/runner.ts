@@ -79,6 +79,7 @@ import type { GatewayConfig } from "../config.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { Reminder } from "../ports/queue.js";
 import type {
+  Integration,
   MerchantScope,
   OrderChange,
   PaymentWord,
@@ -245,8 +246,17 @@ export class OrderRunner {
    * Writes down an order that does not exist yet and carries out the effects
    * its creation asked for. The machine has already decided whether there is an
    * order at all; this is the part that makes it real.
+   *
+   * `through` is the integration its card was sold through. Where its merchant
+   * no longer sells through that one by the time it would be written, nothing
+   * is written or carried out, and null comes back (`Store#addOrder`).
    */
-  async create(record: StoredOrder, effects: readonly Effect[], at: number): Promise<StoredOrder> {
+  async create(
+    record: StoredOrder,
+    effects: readonly Effect[],
+    at: number,
+    through: Integration,
+  ): Promise<StoredOrder | null> {
     refuseToWriteAnImpossibleOrder(record.order);
     refuseToKeepAnAddressPastItsTime(record);
     // The clock is started before the order is written and not after it. Of the
@@ -270,7 +280,9 @@ export class OrderRunner {
       );
     }
 
-    await this.#runtime.store.addOrder(record);
+    if (!(await this.#runtime.store.addOrder(record, through))) {
+      return null;
+    }
     await this.#run(record, effects, at);
     return record;
   }
@@ -1122,6 +1134,13 @@ export class OrderRunner {
       ...(record.priceId === null ? {} : { price_id: record.priceId }),
       paid_at: asTimestamp(paidAt),
       outcome: receiptOutcomeOf(record.order),
+      // The payment layer's own name for the transfer, so the receipt can be
+      // found on the chain by more than its time. A name of nothing is left
+      // off: the contract refuses it, and one receipt it refused would break
+      // the merchant's whole list.
+      ...(record.settlement === null || record.settlement.transaction.trim() === ""
+        ? {}
+        : { transaction: record.settlement.transaction }),
       test: record.order.test,
     };
   }

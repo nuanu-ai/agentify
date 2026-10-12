@@ -1029,28 +1029,63 @@ describe("an order that never reached the handler", () => {
     expect(effects).toStrictEqual([{ kind: "redeliver_order", attempt: 2, delayMs: 1_000 }]);
   });
 
-  it("stops repeating once the mode's deadline is too close", () => {
+  it("stops repeating once the mode's deadline is too close, and waits it out", () => {
     // The synchronous budget is ten seconds in the fixtures, so by the ninth
-    // second another attempt could only arrive late.
-    const { order } = must(reach("dispatched"), {
+    // second another attempt could only arrive late. The order is not closed
+    // for that: the agent was promised the whole of the deadline, and a slow
+    // handler's answer inside it still counts.
+    const dispatched = reach("dispatched");
+    const due = (dispatched.timestamps.paidAt ?? 0) + TEST_POLICY.deadlines.syncResponseMs;
+    const silent = must(dispatched, {
       kind: "handler_undelivered",
-      at: T0 + 9_500,
+      at: due - 500,
     });
 
-    expect(order.state).toBe("expired");
-    expect(order.payment).toBe("verified");
+    expect(silent.order.state).toBe("dispatched");
+    expect(silent.effects).toStrictEqual([]);
+
+    const late = must(silent.order, {
+      kind: "handler_delivered",
+      at: due - 100,
+    });
+    expect(late.order.state).toBe("fulfilled");
+
+    const closed = must(silent.order, {
+      kind: "deadline_expired",
+      at: due,
+      deadline: "sync_response",
+    });
+    expect(closed.order.state).toBe("expired");
+    expect(closed.order.payment).toBe("verified");
   });
 
-  it("leaves an asynchronous order owing a refund when the repeats run out", () => {
+  it("leaves an asynchronous order open when the repeats run out, owing a refund only at its deadline", () => {
+    // Out of repeats is not out of time. The merchant may still deliver until
+    // the deadline the card named, and the refund owed after it says the
+    // deadline passed because it did.
     const dispatched = walk(newOrder("async"), [
       { kind: "payment_verified", at: T0 + 1 },
       { kind: "payment_settled", at: T0 + 2 },
       { kind: "order_dispatched", at: T0 + 3 },
     ]);
     const exhausted = { ...dispatched, dispatch: { attempts: 5, accepted: false } };
-    const { order } = must(exhausted, { kind: "handler_undelivered", at: T0 + 4 });
+    const silent = must(exhausted, { kind: "handler_undelivered", at: T0 + 4 });
 
+    expect(silent.order.state).toBe("dispatched");
+    expect(silent.effects).toStrictEqual([]);
+
+    const due = deadlines(silent.order).find((running) => running.kind === "async_fulfillment");
+    if (due === undefined) throw new Error("no delivery deadline is running on the order");
+    const { order } = must(silent.order, {
+      kind: "deadline_expired",
+      at: due.at,
+      deadline: due.kind,
+    });
     expect(order.state).toBe("refund_due");
+    expect(order.closure).toStrictEqual({
+      cause: "deadline_expired",
+      deadline: "async_fulfillment",
+    });
   });
 });
 
@@ -1357,35 +1392,35 @@ describe("an order the merchant has taken on", () => {
   // and enough of those close a paid order into a refund owed while he is
   // filling it.
   //
-  // Both orders below are on the last delivery the cap allows, so a silence
-  // that counted would not just cost a delivery but close the order, and they
-  // differ in nothing but whether the merchant has taken the order on.
-  const onTheLastDelivery = (accepted: boolean): Order => ({
+  // Both orders below have deliveries left, so a silence that counted would
+  // send the order again to a merchant already filling it, and they differ in
+  // nothing but whether the merchant has taken the order on.
+  const withDeliveriesLeft = (accepted: boolean): Order => ({
     ...walk(newOrder("async"), [
       { kind: "payment_verified", at: T0 + 1 },
       { kind: "payment_settled", at: T0 + 2 },
       { kind: "order_dispatched", at: T0 + 3 },
     ]),
-    dispatch: { attempts: 5, accepted },
+    dispatch: { attempts: 1, accepted },
   });
 
   it("is left as it was by a silence noticed after it", () => {
-    const held = onTheLastDelivery(true);
+    const held = withDeliveriesLeft(true);
     const { order, effects } = must(held, { kind: "handler_undelivered", at: T0 + 10 });
 
     expect(effects).toStrictEqual([]);
     expect(order).toStrictEqual(held);
   });
 
-  it("is what keeps the same silence from closing it", () => {
+  it("is what keeps the same silence from sending it again", () => {
     // The negative control: the same order, the same silence, nobody holding
-    // it — and the last delivery is spent and the money is owed back.
-    const { order } = must(onTheLastDelivery(false), {
+    // it — and it goes out again.
+    const { effects } = must(withDeliveriesLeft(false), {
       kind: "handler_undelivered",
       at: T0 + 10,
     });
 
-    expect(order.state).toBe("refund_due");
+    expect(effects).toStrictEqual([{ kind: "redeliver_order", attempt: 2, delayMs: 1_000 }]);
   });
 });
 
@@ -1983,7 +2018,8 @@ describe("delivering the confirmation request again", () => {
     // runs from the first time we asked him. A redelivery bounded by nothing
     // would put the question in front of him again past the moment his
     // silence has already closed the order; a redelivery bounded by that clock
-    // gives up in time, and the order closes citing it.
+    // gives up in time, and the order waits that clock out and closes citing
+    // it.
     const asked = reach("awaiting_confirmation");
     const due = T0 + 1 + TEST_POLICY.deadlines.confirmationResponseMs;
 
@@ -1997,14 +2033,20 @@ describe("delivering the confirmation request again", () => {
 
     expect(inTime.effects).toStrictEqual([{ kind: "redeliver_order", attempt: 2, delayMs: 1_000 }]);
 
-    const { order, effects } = must(asked, { kind: "handler_undelivered", at: due - 500 });
+    const silent = must(asked, { kind: "handler_undelivered", at: due - 500 });
 
+    expect(silent.order.state).toBe("awaiting_confirmation");
+    expect(silent.effects).toStrictEqual([]);
+    const { order } = must(silent.order, {
+      kind: "deadline_expired",
+      at: due,
+      deadline: "confirmation_response",
+    });
     expect(order.state).toBe("expired");
     expect(order.closure).toStrictEqual({
       cause: "deadline_expired",
       deadline: "confirmation_response",
     });
-    expect(effects).toStrictEqual([]);
   });
 
   it("closes the order citing the deadline it actually ran out of", () => {
@@ -2015,7 +2057,14 @@ describe("delivering the confirmation request again", () => {
       ...reach("awaiting_confirmation"),
       dispatch: { attempts: 5, accepted: false },
     };
-    const { order } = must(exhausted, { kind: "handler_undelivered", at: T0 + 9 });
+    const silent = must(exhausted, { kind: "handler_undelivered", at: T0 + 9 });
+    expect(silent.order.state).toBe("awaiting_confirmation");
+    const due = T0 + 1 + TEST_POLICY.deadlines.confirmationResponseMs;
+    const { order } = must(silent.order, {
+      kind: "deadline_expired",
+      at: due,
+      deadline: "confirmation_response",
+    });
 
     expect(order.state).toBe("expired");
     expect(order.closure).toStrictEqual({

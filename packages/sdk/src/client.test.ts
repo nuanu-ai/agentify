@@ -241,6 +241,38 @@ describe("closing an order the merchant took on", () => {
     expect(result).toStrictEqual({ ok: true, result: "delivered" });
   });
 
+  it("says when an acceptance is given something it does not carry, on both roads", async () => {
+    // An acceptance carries nothing; TypeScript refuses an argument, but a
+    // merchant writing JavaScript can still pass one, the removed eta_seconds
+    // above all, and it went nowhere without a word. The order is still taken
+    // on, since refusing to would strand an order its buyer has paid for.
+    const problems: WorkerProblem[] = [];
+    const agentify = await gatewayServing({
+      accept_order: () => ({ body: { ok: true } }),
+    });
+    agentify.on("problem", (problem) => problems.push(problem));
+    const order = agentify.orders.forId("order-1") as unknown as {
+      accepted: (given: unknown) => unknown;
+      accept: (given: unknown) => Promise<unknown>;
+    };
+
+    const answered = order.accepted({ eta_seconds: 60 });
+    const called = await order.accept({ eta_seconds: 60 });
+
+    expect(answered).toStrictEqual({ accepted: {} });
+    expect(called).toStrictEqual({ ok: true });
+    expect(gateway?.callsTo("accept_order")[0]?.body).toStrictEqual({});
+    expect(problems.map((problem) => [problem.kind, problem.subject, problem.fatal])).toStrictEqual(
+      [
+        [WORKER_PROBLEM_KINDS.ACCEPTANCE_ARGUMENT_IGNORED, "order-1", false],
+        [WORKER_PROBLEM_KINDS.ACCEPTANCE_ARGUMENT_IGNORED, "order-1", false],
+      ],
+    );
+    // An acceptance with nothing in it, the ordinary one, says nothing.
+    (agentify.orders.forId("order-2") as unknown as { accepted: () => unknown }).accepted();
+    expect(problems).toHaveLength(2);
+  });
+
   it("says nothing about an ordinary delivery", async () => {
     // The negative control. A reporter that fired on every delivery would be
     // noise a merchant learns to ignore, and the one warning worth having

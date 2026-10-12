@@ -29,7 +29,7 @@
  * test of every route.
  */
 
-import type { Caller, Gateway, WalletChangeRefusal } from "@agentify/gateway";
+import type { Caller, Gateway, Integration, WalletChangeRefusal } from "@agentify/gateway";
 import {
   bodyRefused,
   CONFLICT,
@@ -87,11 +87,24 @@ export type Answer<T> =
       readonly code?: string;
     };
 
+/**
+ * Why a refund fell due: the merchant refused an order already paid for, its
+ * delivery deadline passed, the merchant left, or the payment network
+ * confirmed the charge only after the gateway had stopped waiting for it and
+ * closed the order.
+ */
+export type RefundCause = "refused" | "deadline_passed" | "merchant_left" | "charge_confirmed_late";
+
 export interface GatewayClient {
   cards(): Promise<Answer<MerchantCardList>>;
   pauseCard(itemId: string, paused: boolean): Promise<Answer<MerchantCard>>;
   setSelling(selling: boolean): Promise<Answer<MerchantCardList>>;
   orders(open: boolean): Promise<Answer<OrderList>>;
+  /**
+   * Why each order owing a refund owes it, by order, for the callout that says
+   * so. The order document carries the debt and not its cause.
+   */
+  refundsOwed(): Promise<Answer<Readonly<Record<string, RefundCause>>>>;
   receipts(): Promise<Answer<ReceiptList>>;
   /**
    * The keys the merchant issued for their own code. Every one can be
@@ -130,8 +143,30 @@ export interface GatewayClient {
    * merchant importing a catalogue reads. Folded into a sentence it would be
    * one line saying a card was refused, with the reasons in a log nobody can
    * see.
+   *
+   * Published as the shop's: the WooCommerce import is the one thing in the
+   * dashboard that publishes, and a merchant selling through their code has
+   * it refused (ADR-0036).
    */
   publishCard(card: CardInput): Promise<Answer<PublishResult>>;
+  /**
+   * Which integration this merchant sells through now, and their cards that
+   * are off sale because the other one published them (ADR-0036).
+   */
+  integration(): Promise<
+    Answer<{
+      readonly through: Integration;
+      readonly offSale: readonly string[];
+      readonly selling: "open" | "paused" | "departed";
+    }>
+  >;
+  /**
+   * Moves this merchant to an integration: Connect moves them to the shop
+   * before they are sent to it, and Disconnect back to their code. Refused,
+   * in words that name the orders, while one still waits on the integration
+   * being left.
+   */
+  sellThrough(to: Integration): Promise<Answer<{ readonly sellingPaused: boolean }>>;
   /**
    * Draws what is next on this merchant's stream: one envelope, or none when
    * the wait ran out.
@@ -359,6 +394,31 @@ const orderCallAnswer = (
 
 const KeysSchema = z.array(MerchantKeySchema);
 
+/** How many of the orders holding a switch the refusal names before counting the rest. */
+const ORDERS_NAMED = 5;
+
+/**
+ * Why a switch of integration was refused, in the words of the shop screen it
+ * is drawn on: which orders still wait on the integration being left, and what
+ * lets them finish.
+ */
+const switchRefused = (to: Integration, waiting: readonly string[]): Answer<never> => {
+  const named = waiting.slice(0, ORDERS_NAMED).join(", ");
+  const rest = waiting.length - ORDERS_NAMED;
+  const which = rest > 0 ? `${named} and ${rest} more` : named;
+  const one = waiting.length === 1;
+  const counted = one ? "1 order still waits" : `${waiting.length} orders still wait`;
+  return {
+    ok: false,
+    status: CONFLICT,
+    code: "orders_waiting",
+    why:
+      to === "woocommerce"
+        ? `${counted} on your own code: ${which}. ${one ? "It has" : "Each has"} to end before your shop takes over, because from then on your code receives nothing: delivered or refused by your code, paid or left unpaid by its buyer, or closed when its time runs out. To keep new orders from arriving meanwhile, stop all selling on Cards.`
+        : `${counted} on your shop: ${which}. ${one ? "It has" : "Each has"} to end before the shop is disconnected, because from then on nothing reads the shop: a parcel once it is marked Completed in WooCommerce, an unpaid purchase once its buyer pays or lets it lapse, or any of them when its time runs out.`,
+  };
+};
+
 /**
  * The client of one account, built per request from the signed-in person, so
  * two people signed into one dashboard are two merchants.
@@ -398,6 +458,28 @@ export const gatewayFor = (
           merchantOrderList(await application.orders(merchantId, open ? true : undefined)),
         ),
       ),
+    refundsOwed: () =>
+      call("reading why refunds are owed", async () => {
+        const owed: Record<string, RefundCause> = {};
+        for (const record of await application.orders(merchantId, true)) {
+          const cause =
+            record.order.state === "refund_due" ? record.order.closure?.cause : undefined;
+          const said =
+            cause === "merchant_refused"
+              ? "refused"
+              : cause === "deadline_expired"
+                ? "deadline_passed"
+                : cause === "merchant_departed"
+                  ? "merchant_left"
+                  : cause === "payment_outcome_unknown"
+                    ? "charge_confirmed_late"
+                    : undefined;
+          if (said !== undefined) {
+            owed[record.order.id] = said;
+          }
+        }
+        return done(owed);
+      }),
     receipts: () =>
       call("reading the receipts", async () =>
         answered(API_ROUTES.list_receipts, await application.receipts(merchantId)),
@@ -493,15 +575,31 @@ export const gatewayFor = (
     // door, so there is no request schema to hold it to first.
     publishCard: (card) =>
       call("publishing a card", async () =>
-        answered(API_ROUTES.publish_card, await application.publishCard(merchantId, card)),
+        answered(
+          API_ROUTES.publish_card,
+          await application.publishCard(merchantId, card, "woocommerce"),
+        ),
       ),
+    integration: () =>
+      call("reading the integration", async () =>
+        done(await application.integrationOf(merchantId)),
+      ),
+    sellThrough: (to) =>
+      call("switching the integration", async () => {
+        const switched = await application.sellThrough(merchantId, to);
+        return switched.switched
+          ? done({ sellingPaused: switched.sellingPaused })
+          : switchRefused(to, switched.waiting);
+      }),
     pollWorker: (waitSeconds) =>
       call("drawing the stream", async () => {
         const asked = sent(API_ROUTES.poll_worker, { wait_seconds: waitSeconds });
         if (!asked.ok) return asked.refused;
         return answered(
           API_ROUTES.poll_worker,
-          await application.poll(merchantId, (asked.value.wait_seconds ?? waitSeconds) * 1_000),
+          await application.poll(merchantId, (asked.value.wait_seconds ?? waitSeconds) * 1_000, {
+            through: "woocommerce",
+          }),
         );
       }),
     answerOrder: (orderId, answer) =>

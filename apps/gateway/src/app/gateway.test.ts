@@ -4,6 +4,7 @@ import {
   CARD_REJECTED,
   CatalogPageSchema,
   PublishResultSchema,
+  ReceiptSchema,
   WorkerPollResponseSchema,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -1435,6 +1436,29 @@ describe("a payment the payment layer would not vouch for", () => {
   }
 });
 
+describe("a refused payment's words, when the payment layer says a great deal", () => {
+  it("leads with what was charged and what to do, and says the rest was shortened", async () => {
+    // A facilitator's refusal can carry a contract call's whole diagnostic:
+    // the function, its arguments, the authorisation's fields. Put first, it
+    // buries the two things the agent needs, and those come first instead.
+    const harnessed = await started();
+    const itemId = await published(harnessed, asyncCard);
+    const diagnostic = `ContractFunctionExecutionError: transfer amount exceeds balance\n${"  args: 0x00\n".repeat(80)}`;
+    harnessed.facilitator.willRefuseVerification("insufficient_funds", diagnostic);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+
+    const bought = await harnessed.gateway.payPurchase(offered.order.order.id, "P", "P");
+
+    if (bought.step !== "payment_not_verified") throw new Error("a bad payment was taken");
+    expect(bought.why.indexOf("nothing was charged")).toBe(0);
+    expect(bought.why.indexOf("fund the paying wallet")).toBeLessThan(80);
+    expect(bought.why).toContain("transfer amount exceeds balance");
+    expect(bought.why.length).toBeLessThan(400);
+    expect(bought.why).toMatch(/shortened/);
+  });
+});
+
 describe("a price's life", () => {
   // A price holds for a fixed time, and the timer that closes an order whose
   // price has lapsed can fire late. A payment that arrives after the price's
@@ -2711,8 +2735,11 @@ describe("the merchant's list of orders", () => {
 
 describe("the test mark on an order and its receipt", () => {
   /** One whole synchronous sale on a gateway configured this way. */
-  const soldOn = async (overrides: Record<string, string>) => {
+  const soldOn = async (overrides: Record<string, string>, transaction?: string) => {
     const harnessed = await started(overrides);
+    if (transaction !== undefined) {
+      harnessed.facilitator.willSettle({ settled: true, transaction });
+    }
     const itemId = await published(harnessed, syncCard);
 
     const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
@@ -2735,6 +2762,22 @@ describe("the test mark on an order and its receipt", () => {
     };
   };
 
+  it("names on the receipt the transfer the payment layer reported", async () => {
+    const sold = await soldOn({ PAYMENT_NETWORK: "eip155:84532" });
+
+    expect(sold.receipt?.transaction).toBe("0xtx1");
+  });
+
+  it("leaves the transfer off a receipt where the payment layer named it with nothing", async () => {
+    // A receipt the contract refuses would break the merchant's whole list of
+    // receipts, not just this one.
+    const sold = await soldOn({ PAYMENT_NETWORK: "eip155:84532" }, " ");
+
+    expect(sold.receipt).not.toBeNull();
+    expect(ReceiptSchema.safeParse(sold.receipt).success).toBe(true);
+    expect(sold.receipt?.transaction).toBeUndefined();
+  });
+
   it("is true on a test environment", async () => {
     const sold = await soldOn({ PAYMENT_NETWORK: "eip155:84532" });
 
@@ -2756,5 +2799,199 @@ describe("the test mark on an order and its receipt", () => {
 
     expect(sold.order.test).toBe(false);
     expect(sold.receipt?.test).toBe(false);
+  });
+});
+
+describe("a poll on a key revoked before it was held", () => {
+  it("takes no order, even though the door let it in", async () => {
+    // The door resolves the key and the poll is held a moment later. A key
+    // revoked in that moment has no held poll to end, and the poll would draw
+    // for its whole window on a key the merchant had just cut off.
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    await harnessed.disableKey(harnessed.merchant.keyId);
+
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
+      keyId: harnessed.merchant.keyId,
+    });
+    const offered = await harnessed.gateway.beginPurchase(coded, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+
+    expect((await held).envelopes).toStrictEqual([]);
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 0)).envelopes).toHaveLength(1);
+  });
+});
+
+describe("one integration at a time", () => {
+  // A merchant sells through their own code or through a WooCommerce shop the
+  // dashboard connected, and a card of the other one is off sale (ADR-0036).
+  // Selling both ways at once, the code's worker drew a paid order for a
+  // product imported from the shop, and the shop never heard of it.
+  const fromTheShop: Card = { ...asyncCard, merchant_item_id: "woo-mug", title: "A mug" };
+
+  const onTheShop = async (harnessed: Harness): Promise<string> => {
+    expect(await harnessed.gateway.sellThrough(harnessed.merchant.id, "woocommerce")).toStrictEqual(
+      { switched: true, sellingPaused: false },
+    );
+    const result = await harnessed.gateway.publishCard(
+      harnessed.merchant.id,
+      fromTheShop,
+      "woocommerce",
+    );
+    if (!result.ok) throw new Error(`importing failed: ${JSON.stringify(result.error.problems)}`);
+    return result.id;
+  };
+
+  it("hands the code no order of the shop's, and sells none of the code's cards", async () => {
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    const imported = await onTheShop(harnessed);
+
+    expect((await harnessed.gateway.catalog()).items.map((item) => item.id)).toStrictEqual([
+      imported,
+    ]);
+    expect((await harnessed.gateway.beginPurchase(coded, {})).step).toBe("not_selling");
+
+    const offered = await harnessed.gateway.beginPurchase(imported, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+
+    const id = harnessed.merchant.id;
+    expect((await harnessed.gateway.poll(id, 0)).envelopes).toStrictEqual([]);
+    const shop = await harnessed.gateway.poll(id, 0, { through: "woocommerce" });
+    expect(shop.envelopes.map((envelope) => envelope.payload)).toMatchObject([
+      { id: offered.order.order.id },
+    ]);
+  });
+
+  it("refuses a publish through the integration not in use, and says which it is", async () => {
+    const harnessed = await started();
+    await onTheShop(harnessed);
+
+    const coded = await harnessed.gateway.publishCard(harnessed.merchant.id, syncCard);
+
+    expect(PublishResultSchema.safeParse(coded).success).toBe(true);
+    if (coded.ok) throw new Error("the code published while the shop sells");
+    expect(coded.error.code).toBe(CARD_REJECTED);
+    expect(coded.error.retryable).toBe(false);
+    expect(coded.error.problems.map((problem) => problem.code)).toStrictEqual([
+      "sells_through_a_shop",
+    ]);
+    expect(await harnessed.store.cards(harnessed.merchant.id)).toHaveLength(1);
+
+    await harnessed.gateway.sellThrough(harnessed.merchant.id, "api");
+    const imported = await harnessed.gateway.publishCard(
+      harnessed.merchant.id,
+      { ...fromTheShop, merchant_item_id: "woo-plate" },
+      "woocommerce",
+    );
+    if (imported.ok) throw new Error("the shop published while the code sells");
+    expect(imported.error.problems.map((problem) => problem.code)).toStrictEqual([
+      "sells_through_their_code",
+    ]);
+  });
+
+  it("keeps a card with what first published it, and says so at its identifier", async () => {
+    const harnessed = await started();
+    await onTheShop(harnessed);
+    await harnessed.gateway.sellThrough(harnessed.merchant.id, "api");
+
+    const taken = await harnessed.gateway.publishCard(harnessed.merchant.id, fromTheShop);
+
+    if (taken.ok) throw new Error("the code took over the shop's card");
+    expect(taken.error.problems.map((problem) => [problem.path, problem.code])).toStrictEqual([
+      [["merchant_item_id"], "published_by_the_other_integration"],
+    ]);
+    const [card] = await harnessed.store.cards(harnessed.merchant.id);
+    expect(card?.integration).toBe("woocommerce");
+  });
+
+  it("takes no order for a card whose merchant switches as the order is made", async () => {
+    // The word an order is born under is read a moment before the order is
+    // written. A switch landing in that moment would leave an order of the
+    // integration just left, which nothing draws any more.
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    const { store } = harnessed;
+    const write = store.addOrder.bind(store);
+    store.addOrder = async (record, through) => {
+      await store.switchIntegration(harnessed.merchant.id, "woocommerce");
+      return await write(record, through);
+    };
+
+    const offered = await harnessed.gateway.beginPurchase(coded, {});
+
+    expect(offered.step).toBe("not_selling");
+    expect(await store.orders(harnessed.merchant.id)).toStrictEqual([]);
+  });
+
+  it("ends a poll held open across the switch with nothing", async () => {
+    // Held open from before, the code's poll would draw whatever arrived in
+    // its window — the shop's first order included.
+    const harnessed = await started();
+    const startedAt = performance.now();
+    const held = harnessed.gateway.poll(harnessed.merchant.id, 5_000);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    await harnessed.gateway.sellThrough(harnessed.merchant.id, "woocommerce");
+
+    expect((await held).envelopes).toStrictEqual([]);
+    expect(performance.now() - startedAt).toBeLessThan(2_000);
+  });
+
+  it("answers the integration not in use after the poll's window, not at once", async () => {
+    // A worker polls again as soon as it is answered empty, and answered at
+    // once a connector whose merchant sells through their code would spin.
+    const harnessed = await started();
+    const startedAt = performance.now();
+
+    const answered = await harnessed.gateway.poll(harnessed.merchant.id, 300, {
+      through: "woocommerce",
+    });
+
+    expect(answered.envelopes).toStrictEqual([]);
+    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(250);
+  });
+
+  it("names the orders that still wait on the integration being left", async () => {
+    const harnessed = await started();
+    const coded = await published(harnessed, asyncCard);
+    const offered = await harnessed.gateway.beginPurchase(coded, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+
+    expect(await harnessed.gateway.sellThrough(harnessed.merchant.id, "woocommerce")).toStrictEqual(
+      { switched: false, waiting: [offered.order.order.id] },
+    );
+    expect(await harnessed.gateway.sellsThrough(harnessed.merchant.id)).toBe("api");
+  });
+
+  it("brings the code's cards back with selling stopped, and the shop's off sale", async () => {
+    const harnessed = await started();
+    await published(harnessed, asyncCard);
+    await onTheShop(harnessed);
+
+    expect(await harnessed.gateway.sellThrough(harnessed.merchant.id, "api")).toStrictEqual({
+      switched: true,
+      sellingPaused: true,
+    });
+
+    const cards = await harnessed.gateway.merchantCards(harnessed.merchant.id);
+    expect(cards.selling).toBe("paused");
+    expect((await harnessed.gateway.catalog()).items).toStrictEqual([]);
+    await harnessed.gateway.setSelling(harnessed.merchant.id, "open");
+    expect((await harnessed.gateway.catalog()).items.map((item) => item.fulfillment)).toHaveLength(
+      1,
+    );
+    expect(
+      (await harnessed.gateway.merchantCards(harnessed.merchant.id)).cards.map((card) => [
+        card.card.merchant_item_id,
+        card.selling,
+      ]),
+    ).toStrictEqual([
+      ["esim-7d", "open"],
+      ["woo-mug", "paused"],
+    ]);
   });
 });

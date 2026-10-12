@@ -45,6 +45,7 @@ import {
   X402_VERSION,
 } from "../http/x402.js";
 import type { Ids } from "../ports/clock.js";
+import type { Integration } from "../ports/store.js";
 
 /** Identifiers a test can read: ord_1, item_1, env_3. */
 export const countedIds = (): Ids => {
@@ -341,6 +342,12 @@ export interface WorkerBehaviour {
    * the whole thing being checked.
    */
   readonly merchantId?: string;
+  /**
+   * Which integration's worker this is: the merchant's own code, left out, or
+   * the dashboard's connector for a shop (ADR-0036). A worker of the one its
+   * merchant is not selling through draws nothing.
+   */
+  readonly through?: Integration;
 }
 
 /** A gateway to work against, and the merchant a worker belongs to by default. */
@@ -364,7 +371,9 @@ export async function workOnce(
 ): Promise<number> {
   const { gateway } = worked;
   const merchantId = behaviour.merchantId ?? worked.merchant.id;
-  const { envelopes } = await gateway.poll(merchantId, waitMs);
+  const { envelopes } = await gateway.poll(merchantId, waitMs, {
+    through: behaviour.through ?? "api",
+  });
 
   for (const envelope of envelopes) {
     if (envelope.kind === "order" && behaviour.onOrder !== undefined) {

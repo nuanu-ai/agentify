@@ -118,6 +118,12 @@ export const merchants = pgTable(
     liveApprovedAt: timestamp("live_approved_at", { withTimezone: true, mode: "date" }),
     /** The order machine's own word: open, paused or departed. */
     selling: text("selling").notNull(),
+    /**
+     * The integration this merchant sells through: `api` for their own code,
+     * `woocommerce` for a shop the dashboard connected (ADR-0036). A new
+     * merchant starts on their code; only a switch moves it.
+     */
+    integration: text("integration").notNull().default("api"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
   },
@@ -126,6 +132,7 @@ export const merchants = pgTable(
       "merchants_pending_payout_wallet_whole",
       sql`(${table.pendingPayoutWallet} is null) = (${table.pendingPayoutWalletFrom} is null)`,
     ),
+    check("merchants_integration_known", sql`${table.integration} in ('api', 'woocommerce')`),
   ],
 );
 
@@ -196,8 +203,15 @@ export const cards = pgTable(
      * pause kept in there would be erased by the next edit to a price.
      */
     paused: boolean("paused").notNull().default(false),
+    /**
+     * The integration that first published this card, which a later publish
+     * through the other one does not move (ADR-0036). No default: every
+     * publish says which it is.
+     */
+    integration: text("integration").notNull(),
   },
   (table) => [
+    check("cards_integration_known", sql`${table.integration} in ('api', 'woocommerce')`),
     // Unique inside a merchant and not across the gateway, which is what the
     // card contract has always said a merchant's own identifier means. Held
     // unique globally, the second merchant to publish a "sku-1" would edit the

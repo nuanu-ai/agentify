@@ -29,20 +29,23 @@
 import { isOpen, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import type { Clock, Ids } from "../../ports/clock.js";
-import type {
-  CatalogEntry,
-  MerchantScope,
-  OrderChange,
-  OrderLookup,
-  PaymentClaim,
-  Ran,
-  Store,
-  StoredCard,
-  StoredKey,
-  StoredMerchant,
-  StoredOrder,
-  StoredPayoutWallet,
-  WithTheOrder,
+import {
+  type CatalogEntry,
+  type Integration,
+  type IntegrationSwitch,
+  type MerchantScope,
+  type OrderChange,
+  type OrderLookup,
+  OWING_ONLY_MONEY,
+  type PaymentClaim,
+  type Ran,
+  type Store,
+  type StoredCard,
+  type StoredKey,
+  type StoredMerchant,
+  type StoredOrder,
+  type StoredPayoutWallet,
+  type WithTheOrder,
 } from "../../ports/store.js";
 
 /**
@@ -108,6 +111,8 @@ interface MerchantRow {
   payoutWallet: StoredPayoutWallet;
   /** The first operator grant for live publication, where one was made. */
   liveApprovedAt: number | null;
+  /** The integration this merchant sells through now. */
+  integration: Integration;
 }
 
 export class MemoryStore implements Store {
@@ -159,6 +164,7 @@ export class MemoryStore implements Store {
       sellerSite: null,
       payoutWallet: NO_WALLET,
       liveApprovedAt: null,
+      integration: "api",
     };
     this.#merchants.set(merchant.id, row);
     return storedMerchantOf(row);
@@ -330,17 +336,34 @@ export class MemoryStore implements Store {
 
   // --- the catalog ----------------------------------------------------------
 
-  async publishCard(merchantId: string, card: Card, at: number): Promise<StoredCard> {
+  async publishCard(
+    merchantId: string,
+    card: Card,
+    at: number,
+    integration: Integration = "api",
+  ): Promise<StoredCard> {
     // Republishing under the same merchant key changes the card that is there
     // rather than adding a second one, which is what the portal promises and
     // why the catalog identifier survives the edit.
     const owned = catalogKey(merchantId, card.merchant_item_id);
     const existing = this.#cardIdByMerchantKey.get(owned);
+    const before = existing === undefined ? undefined : this.#cards.get(existing);
+    // A card stays with the integration that first published it.
+    if (before !== undefined && before.integration !== integration) {
+      return before;
+    }
     const id = existing ?? this.#ids("item");
     // A pause survives the edit. A merchant changing a price is not asking for
     // a product they took off sale to go back on it.
-    const paused = existing === undefined ? false : (this.#cards.get(existing)?.paused ?? false);
-    const stored: StoredCard = Object.freeze({ id, merchantId, card, asOf: at, paused });
+    const paused = before?.paused ?? false;
+    const stored: StoredCard = Object.freeze({
+      id,
+      merchantId,
+      card,
+      asOf: at,
+      paused,
+      integration,
+    });
 
     this.#cardIdByMerchantKey.set(owned, id);
     this.#cards.set(id, stored);
@@ -363,6 +386,7 @@ export class MemoryStore implements Store {
       serviceName: this.#merchants.get(card.merchantId)?.serviceName ?? null,
       sellerSite: this.#merchants.get(card.merchantId)?.sellerSite ?? null,
       liveApprovedAt: this.#merchants.get(card.merchantId)?.liveApprovedAt ?? null,
+      integration: this.#merchants.get(card.merchantId)?.integration ?? "api",
     }));
   }
 
@@ -390,13 +414,52 @@ export class MemoryStore implements Store {
     row.selling = selling;
   }
 
+  async switchIntegration(merchantId: string, to: Integration): Promise<IntegrationSwitch> {
+    // No await between the reads and the write, so nothing interleaves with
+    // it in the one process this map lives in, the birth of an order included.
+    const row = this.#merchants.get(merchantId);
+    if (row === undefined) {
+      throw new Error(`there is no merchant ${merchantId} to switch to ${to}`);
+    }
+    if (row.integration === to) {
+      return { switched: true, sellingPaused: false };
+    }
+    const waiting = [...this.#orders.values()]
+      .filter(
+        (record) =>
+          record.merchantId === merchantId &&
+          isOpen(record.order.state) &&
+          !(OWING_ONLY_MONEY as readonly string[]).includes(record.order.state),
+      )
+      .sort((one, other) => one.order.timestamps.createdAt - other.order.timestamps.createdAt)
+      .map((record) => record.order.id);
+    if (waiting.length > 0) {
+      return { switched: false, waiting };
+    }
+    const sellingPaused =
+      to === "api" &&
+      row.selling === "open" &&
+      [...this.#cards.values()].some(
+        (card) => card.merchantId === merchantId && card.integration === to && !card.paused,
+      );
+    row.integration = to;
+    if (sellingPaused) {
+      row.selling = "paused";
+    }
+    return { switched: true, sellingPaused };
+  }
+
   // --- orders ---------------------------------------------------------------
 
-  async addOrder(record: StoredOrder): Promise<void> {
+  async addOrder(record: StoredOrder, through?: Integration): Promise<boolean> {
     if (this.#orders.has(record.order.id)) {
       throw new Error(`the order ${record.order.id} is already written down`);
     }
+    if (through !== undefined && this.#merchants.get(record.merchantId)?.integration !== through) {
+      return false;
+    }
     this.#orders.set(record.order.id, Object.freeze({ ...record }));
+    return true;
   }
 
   async orderById(id: string): Promise<StoredOrder | null> {
@@ -663,6 +726,7 @@ function storedMerchantOf(row: MerchantRow): StoredMerchant {
     payoutWallet: row.payoutWallet,
     liveApprovedAt: row.liveApprovedAt,
     selling: row.selling,
+    integration: row.integration,
     createdAt: row.createdAt,
   };
 }

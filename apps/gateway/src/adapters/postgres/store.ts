@@ -21,24 +21,28 @@
 
 import { isOpen, MERCHANT_SELLING, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
-import { and, eq, exists, isNull, lt, not, or, sql } from "drizzle-orm";
+import { and, eq, exists, inArray, isNull, lt, not, or, sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
 import type { DrizzleTransactionLike } from "pg-boss";
 import type { Ids } from "../../ports/clock.js";
-import type {
-  CatalogEntry,
-  MerchantScope,
-  OrderChange,
-  OrderLookup,
-  PaymentClaim,
-  Ran,
-  Store,
-  StoredCard,
-  StoredKey,
-  StoredMerchant,
-  StoredOrder,
-  StoredPayoutWallet,
+import {
+  type CatalogEntry,
+  INTEGRATIONS,
+  type Integration,
+  type IntegrationSwitch,
+  type MerchantScope,
+  type OrderChange,
+  type OrderLookup,
+  OWING_ONLY_MONEY,
+  type PaymentClaim,
+  type Ran,
+  type Store,
+  type StoredCard,
+  type StoredKey,
+  type StoredMerchant,
+  type StoredOrder,
+  type StoredPayoutWallet,
 } from "../../ports/store.js";
 import { failingWithoutValues } from "../database-failure.js";
 import { cards, merchantKeys, merchants, orders, paymentClaims, receipts } from "./schema.js";
@@ -396,7 +400,12 @@ export class PostgresStore implements Store {
 
   // --- the catalog ----------------------------------------------------------
 
-  async publishCard(merchantId: string, card: Card, at: number): Promise<StoredCard> {
+  async publishCard(
+    merchantId: string,
+    card: Card,
+    at: number,
+    integration: Integration = "api",
+  ): Promise<StoredCard> {
     // Republishing under the same merchant key changes the card that is there.
     // The insert names the identifier it would use, and the conflict clause is
     // what keeps the existing one instead — so a card that is already there
@@ -409,6 +418,7 @@ export class PostgresStore implements Store {
         merchantItemId: card.merchant_item_id,
         card,
         asOf: new Date(at),
+        integration,
       })
       .onConflictDoUpdate({
         // The merchant is half of the target, so a publish only ever edits the
@@ -420,13 +430,25 @@ export class PostgresStore implements Store {
         // a pause that evaporated on the next publish would put stock they do
         // not have in front of an agent.
         set: { card, asOf: new Date(at) },
+        // A card stays with the integration that first published it. Through
+        // the other one the conflict updates nothing and returns no row, in
+        // the same statement, so two publishes racing cannot move it either.
+        setWhere: eq(cards.integration, integration),
       })
       .returning();
-
-    if (row === undefined) {
-      throw new Error(`publishing ${card.merchant_item_id} wrote no row`);
+    if (row !== undefined) {
+      return storedCardOf(row);
     }
-    return storedCardOf(row);
+
+    const [standing] = await this.#db
+      .select()
+      .from(cards)
+      .where(and(eq(cards.merchantId, merchantId), eq(cards.merchantItemId, card.merchant_item_id)))
+      .limit(1);
+    if (standing === undefined) {
+      throw new Error(`publishing ${card.merchant_item_id} wrote no row and found none`);
+    }
+    return storedCardOf(standing);
   }
 
   async cardById(id: string): Promise<StoredCard | null> {
@@ -457,6 +479,7 @@ export class PostgresStore implements Store {
         serviceName: merchants.serviceName,
         sellerSite: merchants.sellerSite,
         liveApprovedAt: merchants.liveApprovedAt,
+        integration: merchants.integration,
       })
       .from(cards)
       .innerJoin(merchants, eq(cards.merchantId, merchants.id))
@@ -468,6 +491,7 @@ export class PostgresStore implements Store {
       serviceName: row.serviceName,
       sellerSite: row.sellerSite,
       liveApprovedAt: row.liveApprovedAt?.getTime() ?? null,
+      integration: integrationOf(row.integration),
     }));
   }
 
@@ -513,11 +537,90 @@ export class PostgresStore implements Store {
     }
   }
 
+  async switchIntegration(merchantId: string, to: Integration): Promise<IntegrationSwitch> {
+    return await this.#db.transaction(async (tx): Promise<IntegrationSwitch> => {
+      // Held for update, so the birth of an order, which holds the same row
+      // for share while it writes (`addOrder`), waits for this or finishes
+      // first — and then the read of the orders below, a statement of its
+      // own, sees it.
+      const [merchant] = await tx
+        .select({ integration: merchants.integration, selling: merchants.selling })
+        .from(merchants)
+        .where(eq(merchants.id, merchantId))
+        .limit(1)
+        .for("update");
+      if (merchant === undefined) {
+        throw new Error(`there is no merchant ${merchantId} to switch to ${to}`);
+      }
+      if (integrationOf(merchant.integration) === to) {
+        return { switched: true, sellingPaused: false };
+      }
+
+      const waiting = await tx
+        .select({ id: orders.id })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.merchantId, merchantId),
+            eq(orders.open, true),
+            not(inArray(orders.state, [...OWING_ONLY_MONEY])),
+          ),
+        )
+        .orderBy(orders.createdAt);
+      if (waiting.length > 0) {
+        return { switched: false, waiting: waiting.map((row) => row.id) };
+      }
+
+      const comingBack =
+        to === "api" && sellingWordOf(merchant.selling) === "open"
+          ? await tx
+              .select({ id: cards.id })
+              .from(cards)
+              .where(
+                and(
+                  eq(cards.merchantId, merchantId),
+                  eq(cards.integration, to),
+                  eq(cards.paused, false),
+                ),
+              )
+              .limit(1)
+          : [];
+      const sellingPaused = comingBack.length > 0;
+      await tx
+        .update(merchants)
+        .set({
+          integration: to,
+          ...(sellingPaused ? { selling: "paused" } : {}),
+          updatedAt: sql`now()`,
+        })
+        .where(eq(merchants.id, merchantId));
+      return { switched: true, sellingPaused };
+    });
+  }
+
   // --- orders ---------------------------------------------------------------
 
-  async addOrder(record: StoredOrder): Promise<void> {
+  async addOrder(record: StoredOrder, through?: Integration): Promise<boolean> {
     try {
-      await this.#db.insert(orders).values(rowFor(record));
+      if (through === undefined) {
+        await this.#db.insert(orders).values(rowFor(record));
+        return true;
+      }
+      return await this.#db.transaction(async (tx) => {
+        // Held for share, which any number of births can hold at once and a
+        // switch cannot (`switchIntegration`).
+        const [merchant] = await tx
+          .select({ integration: merchants.integration })
+          .from(merchants)
+          .where(eq(merchants.id, record.merchantId))
+          .limit(1)
+          .for("share");
+        if (merchant === undefined || integrationOf(merchant.integration) !== through) {
+          return false;
+        }
+        await tx.insert(orders).values(rowFor(record));
+        return true;
+      });
     } catch (thrown) {
       const refused = uniquenessRefused(thrown);
       if (refused === null) {
@@ -985,6 +1088,7 @@ function storedCardOf(row: {
   card: Card;
   asOf: Date;
   paused: boolean;
+  integration: string;
 }): StoredCard {
   return {
     id: row.id,
@@ -992,6 +1096,7 @@ function storedCardOf(row: {
     card: row.card,
     asOf: row.asOf.getTime(),
     paused: row.paused,
+    integration: integrationOf(row.integration),
   };
 }
 
@@ -1032,6 +1137,7 @@ function storedMerchantOf(
     sellerSite: string | null;
     liveApprovedAt: Date | null;
     selling: string;
+    integration: string;
     createdAt: Date;
   },
 ): StoredMerchant {
@@ -1043,6 +1149,7 @@ function storedMerchantOf(
     payoutWallet: payoutWalletOf(row),
     liveApprovedAt: row.liveApprovedAt?.getTime() ?? null,
     selling: sellingWordOf(row.selling),
+    integration: integrationOf(row.integration),
     createdAt: row.createdAt.getTime(),
   };
 }
@@ -1091,6 +1198,13 @@ function sellingWordOf(word: string): MerchantSelling {
     );
   }
   return word as MerchantSelling;
+}
+
+function integrationOf(word: string): Integration {
+  if (!(INTEGRATIONS as readonly string[]).includes(word)) {
+    throw new Error(`the integration is "${word}", which is not one of ${INTEGRATIONS.join(", ")}`);
+  }
+  return word as Integration;
 }
 
 /** The columns, written from the document so they cannot disagree with it. */

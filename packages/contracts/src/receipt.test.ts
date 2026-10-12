@@ -111,4 +111,12 @@ describe("receipt", () => {
   it("refuses a field it does not know", () => {
     expect(errorOf(ReceiptSchema, { ...receipt, refunded: true })).toContain("refunded");
   });
+
+  it("names the transfer the payment layer reported, and never an empty one", () => {
+    // Without it a receipt is matched to the payment on the chain by its time
+    // alone, which is a guess.
+    const named = { ...receipt, transaction: `0x${"ab".repeat(32)}` };
+    expect(ReceiptSchema.parse(named)).toStrictEqual(named);
+    expect(errorOf(ReceiptSchema, { ...receipt, transaction: "" })).toContain("transaction");
+  });
 });

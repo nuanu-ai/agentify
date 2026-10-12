@@ -464,6 +464,13 @@ function onDeparture(order: Order): TransitionResult {
  * order is running against, and it is the deadline the closure will cite:
  * naming a fulfillment deadline on an order that never reached fulfillment
  * would be a claim the machine cannot back.
+ *
+ * Out of attempts is not out of time, so where that deadline is running the
+ * order is not closed here: it waits the deadline out and the deadline closes
+ * it. Closed here, a synchronous order ended a second or more before the eight
+ * its agent was promised while a slow handler's answer was still allowed to
+ * count, and an asynchronous one owed a refund for a deadline that had not
+ * passed.
  */
 function redeliver(
   order: Order,
@@ -482,6 +489,9 @@ function redeliver(
     return ok(order, [
       { kind: "redeliver_order", attempt: decision.attempt, delayMs: decision.delayMs },
     ]);
+  }
+  if (deadlineAt !== null) {
+    return ok(order);
   }
 
   return resolveFulfillmentFailure(order, { cause: "deadline_expired", deadline: giveUp });

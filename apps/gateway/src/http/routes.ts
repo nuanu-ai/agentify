@@ -256,6 +256,13 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
         if (call.response.destroyed) {
           gone.abort();
         }
+        // A merchant selling through a connected shop has their orders filled
+        // by the dashboard's connector, and their code is told so rather than
+        // answered empty for as long as anybody lets it run (ADR-0036). A
+        // switch after this read ends the poll with nothing (`sellThrough`).
+        if ((await gateway.sellsThrough(merchantOf(call))) !== "api") {
+          return written(call.response, CONFLICT, refusal("call_refused", SOLD_THROUGH_A_SHOP));
+        }
         return {
           status: OK,
           // A worker draws its own merchant's stream. It is not a filter over
@@ -269,7 +276,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
             asked.wait_seconds === undefined
               ? gateway.runtime.config.worker.pollWaitMs
               : asked.wait_seconds * 1_000,
-            gone.signal,
+            { gone: gone.signal, keyId: callersKey(call) },
           ),
         };
       },
@@ -892,6 +899,10 @@ function written(response: RouteCall["response"], status: number, document: unkn
   response.status(status).json(document);
   return { written: true };
 }
+
+/** What the code of a merchant selling through a connected shop is told when it polls. */
+const SOLD_THROUGH_A_SHOP =
+  "this merchant sells through the WooCommerce shop connected in the dashboard, and the shop's orders are filled there, so this code receives none; disconnecting the shop in the dashboard brings back the cards this code publishes, with selling stopped until it is started again";
 
 /** One of the refusals worded for both callers, written into the envelope. */
 function refusedWith(response: RouteCall["response"], refused: Refused): RouteAnswer {

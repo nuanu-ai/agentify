@@ -744,7 +744,7 @@ open, without signing in again. `account list` says who is an operator, and
 
 ## The Woo acceptance route on TEST
 
-The experimental WooCommerce fixture is no part of a release. For its
+The WooCommerce fixture is no part of a release. For its
 acceptance runs, one explicit TEST operation installs a systemd unit that
 translates the two named Compose networks' connections to the reviewed public
 address, so DNS stays public and TLS keeps the public names. It lives in

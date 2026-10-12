@@ -39,7 +39,7 @@
  * gets charged twice.
  */
 
-import type { MerchantSelling, Order } from "@agentify/core";
+import type { MerchantSelling, Order, OrderState } from "@agentify/core";
 import type {
   Card,
   Delivery,
@@ -48,6 +48,44 @@ import type {
   ShipTo,
   WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
+
+/**
+ * The two ways a merchant's products reach Agentify and their orders are
+ * filled: their own code through the API, or a WooCommerce shop the dashboard
+ * connected and fills orders from (ADR-0023). A merchant sells through one of
+ * them at a time (ADR-0036).
+ */
+export const INTEGRATIONS = ["api", "woocommerce"] as const;
+
+export type Integration = (typeof INTEGRATIONS)[number];
+
+/**
+ * The open states in which an order waits on nobody's worker: it owes the
+ * buyer a refund, or the buyer owes for goods already delivered. Neither holds
+ * a switch of integration (`IntegrationSwitch`).
+ */
+export const OWING_ONLY_MONEY = [
+  "refund_due",
+  "delivered_unpaid",
+] as const satisfies readonly OrderState[];
+
+/**
+ * What switching a merchant from one integration to the other came to.
+ *
+ * Refused while an order of theirs still waits on the integration being left
+ * — for its first answer, for the payment a price was quoted for, or for the
+ * goods it was taken on for — because once the switch is made nothing of that
+ * integration draws the merchant's stream again. An order that owes a refund
+ * holds nothing: it waits on nobody's worker. `waiting` names the orders.
+ *
+ * Switched, `sellingPaused` says whether the switch stopped the merchant's
+ * selling: going back to the API with cards of the code's that would come
+ * back on sale, it does, because an asynchronous order is paid before the
+ * code answers and the code may not be running.
+ */
+export type IntegrationSwitch =
+  | { readonly switched: true; readonly sellingPaused: boolean }
+  | { readonly switched: false; readonly waiting: readonly string[] };
 
 /** A card as its merchant published it, under the catalog identifier we issued. */
 export interface StoredCard {
@@ -69,6 +107,12 @@ export interface StoredCard {
    * whether a product is for sale.
    */
   readonly paused: boolean;
+  /**
+   * Which integration published it, written at the first publish and never
+   * moved by a later one. A card of the integration its merchant is not
+   * selling through is off sale the way a paused card is (ADR-0036).
+   */
+  readonly integration: Integration;
 }
 
 /**
@@ -427,6 +471,8 @@ export interface StoredMerchant {
    */
   readonly liveApprovedAt: number | null;
   readonly selling: MerchantSelling;
+  /** The integration this merchant sells through now (ADR-0036). */
+  readonly integration: Integration;
   readonly createdAt: number;
 }
 
@@ -505,6 +551,8 @@ export interface CatalogEntry {
   readonly sellerSite: string | null;
   /** The operator's live grant, or null; ignored outside the live surface. */
   readonly liveApprovedAt: number | null;
+  /** The integration that merchant sells through, which their cards are read against. */
+  readonly integration: Integration;
 }
 
 /** Which merchant an order belongs to, where a read is one merchant's alone. */
@@ -740,8 +788,18 @@ export interface Store {
    * The merchant's own identifier is unique inside their catalog and nowhere
    * else, which is what the card contract has always said it means: two
    * merchants may both sell a "sku-1", and neither publish touches the other.
+   *
+   * A card stays with the integration that first published it, the API where
+   * none is named: a publish through the other one under the same identifier
+   * changes nothing and answers the card as it stands, whose integration says
+   * whose it is.
    */
-  publishCard(merchantId: string, card: Card, at: number): Promise<StoredCard>;
+  publishCard(
+    merchantId: string,
+    card: Card,
+    at: number,
+    integration?: Integration,
+  ): Promise<StoredCard>;
 
   /**
    * One card by the catalog identifier, whoever published it.
@@ -790,10 +848,30 @@ export interface Store {
   /** Stops this merchant's selling, or starts it again. */
   setSelling(merchantId: string, selling: MerchantSelling): Promise<void>;
 
+  /**
+   * Moves this merchant to the other integration, or says which orders hold
+   * it where it is (`IntegrationSwitch`). Switching to the one they already
+   * sell through changes nothing and is not refused.
+   *
+   * One transaction, holding the merchant's row against the birth of an
+   * order (`addOrder` with an integration), so no order can be made for a
+   * card in the moment it goes off sale.
+   */
+  switchIntegration(merchantId: string, to: Integration): Promise<IntegrationSwitch>;
+
   // --- orders ---------------------------------------------------------------
 
-  /** Writes an order that is not there yet. The record says whose it is. */
-  addOrder(record: StoredOrder): Promise<void>;
+  /**
+   * Writes an order that is not there yet. The record says whose it is.
+   *
+   * Given the integration its card was sold through, the write is made only
+   * while its merchant still sells through that one, and answers false
+   * otherwise: the birth of an order and a switch wait for each other on the
+   * merchant (`switchIntegration`). Every order a purchase makes names one
+   * (`OrderRunner#create`); without one the write is unconditional, which is
+   * how a test sets an order down.
+   */
+  addOrder(record: StoredOrder, through?: Integration): Promise<boolean>;
 
   /**
    * One order by its identifier, whoever it belongs to.
