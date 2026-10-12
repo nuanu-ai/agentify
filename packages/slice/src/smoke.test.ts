@@ -7,6 +7,7 @@
  */
 
 import { ScriptedFacilitator, type StoredOrder } from "@agentify/gateway";
+import { generatePrivateKey } from "viem/accounts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeBuyer } from "./buyer.js";
 import { EUROPE_ESIM } from "./cards.js";
@@ -14,7 +15,8 @@ import { type Booted, bootGateway } from "./gateway-harness.js";
 import { type MockMerchant, startMerchant } from "./merchant.js";
 import { verdictOnPurchase } from "./smoke.js";
 
-const TEST_BUYER_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+// Any key signs for the scripted facilitator, which settles against no chain.
+const TEST_BUYER_KEY = generatePrivateKey();
 
 describe("the smoke's verdict on a purchase through the gateway", () => {
   let booted: Booted;
