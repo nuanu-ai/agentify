@@ -8,7 +8,14 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { buyOverHttp, type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
+import {
+  buyOverHttp,
+  type Harness,
+  harness,
+  loggedWhile,
+  type Served,
+  serve,
+} from "@agentify/gateway/testing";
 import {
   type AgentOrderStatus,
   type Order,
@@ -2114,5 +2121,127 @@ describe("a shop whose Number of decimals changed after the quote", () => {
 
     expect(answer).toMatchObject({ delivered: { file_name: "Guide", order_number: "13" } });
     expect(shop.asked.filter((one) => one.method === "POST")).toHaveLength(1);
+  });
+});
+
+describe("what the worker writes in the merchant's log when something fails", () => {
+  // A failure from the shop's client or the database can carry the shop's key
+  // and secret or a buyer's address, and a newline in it would start a line of
+  // its own; the log goes places the database does not.
+  const SECRET = "cs_a-secret-from-the-shop";
+  const FORGED = "\n[dashboard] forged";
+  const carrying = (): Error => new Error(`${SECRET}${FORGED}`);
+  const expectNothingCarried = (written: string): void => {
+    expect(written).not.toContain(SECRET);
+    expect(written).not.toContain("forged");
+  };
+
+  const working = (shops: WooShops) =>
+    startWooWorker({
+      shops,
+      now: () => new Date(),
+      identity: {
+        byId: async () => ({
+          id: "acc_1",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1" },
+        }),
+      },
+      clientFor: () => ({}) as never,
+      waitSeconds: 0,
+      betweenTurnsMs: 5,
+      shipmentsEveryMs: 60_000,
+    });
+
+  /** Runs the worker until the log says everything `expected`, or two seconds pass. */
+  const loggedUntil = (shops: WooShops, ...expected: string[]): Promise<string> =>
+    loggedWhile(async () => {
+      const worker = working(shops);
+      try {
+        await vi.waitFor(
+          () => {
+            const said = vi.mocked(console.error).mock.calls.flat().join(" ");
+            for (const line of expected) expect(said).toContain(line);
+          },
+          { timeout: 2_000, interval: 5 },
+        );
+      } finally {
+        await worker.stop();
+      }
+    });
+
+  it("names the account whose turn failed", async () => {
+    const shops = memoryWooShops();
+    await shops.connect(connection());
+    const failing: WooShops = {
+      ...shops,
+      connectionOf: async () => {
+        throw carrying();
+      },
+    };
+
+    const written = await loggedUntil(failing, "a WooCommerce turn failed for acc_1");
+
+    expectNothingCarried(written);
+  });
+
+  it("says the connections could not be read, and nothing the failure carried", async () => {
+    const failing: WooShops = {
+      ...memoryWooShops(),
+      connections: async () => {
+        throw carrying();
+      },
+    };
+
+    const written = await loggedUntil(
+      failing,
+      "could not read its connections",
+      "the parcels could not be followed this time",
+    );
+
+    expectNothingCarried(written);
+  });
+
+  it("names the account whose parcels could not be followed", async () => {
+    const shops = memoryWooShops();
+    await shops.connect(connection());
+    const failing: WooShops = {
+      ...shops,
+      parcelsToFollow: async () => {
+        throw carrying();
+      },
+    };
+
+    const written = await loggedWhile(() =>
+      followShipments({
+        shops: failing,
+        identity: { byId: async () => null },
+        clientFor: () => ({}) as never,
+        now: () => new Date(),
+      }),
+    );
+
+    expect(written).toContain("the parcels of acc_1 could not be followed this time");
+    expectNothingCarried(written);
+  });
+
+  it("names a shop by its origin, so a newline typed into its address starts no line", async () => {
+    // The address is kept as the merchant typed it, and a URL parser drops a
+    // newline inside it without a word.
+    const typed = "https://shop.exam\nple.com";
+    expect(new URL(typed).origin).toBe("https://shop.example.com");
+
+    const written = await loggedWhile(() =>
+      fillFromTheShop(
+        anOrder(),
+        { ...connection(), shopUrl: typed, permissions: "read" },
+        MERCHANT_EMAIL,
+        filling(memoryWooShops(), aShopThatAccepts().place),
+      ),
+    );
+
+    expect(written).toContain("the shop at https://shop.example.com granted");
+    expect(written).not.toContain("exam\nple");
   });
 });
