@@ -42,11 +42,13 @@ was reverted.
 - 0001 (the pilot is exposed on the x402 Bazaar through the CDP facilitator):
   the closing section of `docs/research/04-spike-bazaar-listing.md`; what is
   expensive to reverse stands in ADR-0012, ADR-0019 and ADR-0020.
-- 0007 (the confirmation mode's seam): `docs/research/40-confirmation-mode-seam.md`.
+- 0007 (the confirmation mode's seam):
+  `docs/research/40-confirmation-mode-seam.md`.
 - 0008 (the sandbox facilitator): ADR-0020.
 - 0009 (signing in to the dashboard): ADR-0026.
 - 0015 (mail and confirming an address): ADR-0026.
-- 0021 (what a payment challenge says): `docs/research/25-what-the-challenge-says.md`.
+- 0021 (what a payment challenge says):
+  `docs/research/25-what-the-challenge-says.md`.
 - 0022 (one answer envelope): ADR-0018.
 - 0024 (the scanner's identity without Supabase): ADR-0026.
 - 0025 (the Agentify namespace): a finished rename; its schema URN rule stands

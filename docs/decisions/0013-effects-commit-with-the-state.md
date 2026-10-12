@@ -18,15 +18,15 @@ close or refund.
 
 An effect that cannot be re-driven once the order has moved past it is written
 in the same transaction as the order. Orders, receipts and the queue share one
-Postgres (ADR-0003 §3, §4), and pg-boss accepts a handle that runs one statement,
-so the job is inserted inside the store's transaction and commits or rolls back
-with the order. The store's port names three such writes: an envelope on a
-merchant's stream (a hand-over, a redelivery, a merchant event); a receipt, our
-own row keyed by its order; and the deletion of the envelopes that carry a
-parcel's address (ADR-0032). A fourth is a decision, not a detail. The other
-effects, such as a call to the facilitator, run after the commit and outside
-the row lock: their result is the next event about the same order, which under
-the lock would wait for a lock only it could release.
+Postgres (ADR-0003 §3, §4), and pg-boss accepts a handle that runs one
+statement, so the job is inserted inside the store's transaction and commits or
+rolls back with the order. The store's port names three such writes: an
+envelope on a merchant's stream (a hand-over, a redelivery, a merchant event);
+a receipt, our own row keyed by its order; and the deletion of the envelopes
+that carry a parcel's address (ADR-0032). A fourth is a decision, not a detail.
+The other effects, such as a call to the facilitator, run after the commit and
+outside the row lock: their result is the next event about the same order,
+which under the lock would wait for a lock only it could release.
 
 Deadlines stay outside. A reminder is armed before the order is written, so an
 order with no clock on it cannot happen; a reminder left by a write that then
