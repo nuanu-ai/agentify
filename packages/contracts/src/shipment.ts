@@ -1,20 +1,13 @@
 /**
- * A parcel's shipment (ADR-0033): what the merchant says once a carrier has the
- * parcel, and what the agent reads afterwards.
- *
- * It is the body of the `deliver` call on a parcel's order, in place of goods.
- * A carrier, required — a carrier's name, or the shop's own courier — and a
- * tracking number, whose key is required and whose value is null for a parcel
- * that has none, never an empty string: a shop's own courier can sell through
- * this mode, and "no number" has to be said rather than forgotten. A tracking
- * page and an expected delivery window are optional.
+ * A parcel's shipment: what the merchant says once a carrier has the parcel,
+ * as the body of the `deliver` call in place of goods, and what the agent
+ * reads afterwards.
  *
  * All of it is the merchant's claim and none of it is checked against a
- * carrier, so the door holds it to its shape and to plain words on one line,
- * as it holds a seller's name (ADR-0017): every agent that bought the parcel
- * reads it exactly as it was written. The instant the parcel shipped is the
- * gateway's to stamp when it records the shipment, never the merchant's to
- * send.
+ * carrier, so it is held to its shape and to plain words on one line: every
+ * agent that bought the parcel reads it exactly as written. The instant the
+ * parcel shipped is stamped by the gateway when it records the shipment, never
+ * sent by the merchant.
  */
 
 import { z } from "zod";
@@ -22,14 +15,9 @@ import { notPlainTextIn } from "./plain-text.js";
 import { TimestampSchema } from "./primitives.js";
 import { SellerSiteSchema } from "./seller-site.js";
 
-/** How long a carrier's name or a tracking number may be. */
 const SHIPMENT_TEXT_MAX = 100;
 
-/**
- * A short piece of the merchant's own words, as an agent will read it. The
- * plain-text rule is a refinement, which no JSON Schema carries, so the
- * description says it.
- */
+/** The plain-text rule is a refinement, which no JSON Schema carries, so the description says it. */
 const shortPlainText = (what: string, says: string) =>
   z
     .string()
@@ -53,12 +41,10 @@ const TRACKING_FORM =
   "a tracking address is a whole https address on a domain name, written as an address parser writes it back: at most 500 characters, a host in lower case and in its ASCII form (punycode for a name in another script), with no spaces, line breaks, quotes or markup, and no credentials, port or IP address. It is an address to open, never words to act on";
 
 /**
- * Where a parcel can be followed. It is an address and nothing else, because
- * every agent that bought the parcel reads it: a parser that would rewrite it
- * — a space, a line break, markup in its query, capitals in its host — means
- * there are words of the merchant's in it, and those are refused rather than
- * cleaned, as the rest of the shipment's text is. What its path and query say
- * is the carrier's, and it is an address to open, never words to act on.
+ * Where a parcel can be followed: an address and nothing else. An address a
+ * URL parser would rewrite (a space, a line break, markup in its query,
+ * capitals in its host) carries words of the merchant's, and is refused rather
+ * than cleaned.
  */
 const TrackingUrlSchema = z
   .string()
@@ -74,8 +60,7 @@ const TrackingUrlSchema = z
         (parsed.href === address || parsed.href === slashed) &&
         parsed.username === "" &&
         parsed.password === "" &&
-        // Its origin is held as a seller's site is (ADR-0034): https, a
-        // domain name in lower case, no port.
+        // Its origin is held to the same rule as a seller's site.
         SellerSiteSchema.safeParse(parsed.origin).success
       );
     } catch {
@@ -84,7 +69,6 @@ const TrackingUrlSchema = z
   }, TRACKING_FORM)
   .meta({ description: `Where the parcel can be followed: ${TRACKING_FORM}.` });
 
-/** When the merchant expects the parcel to arrive, as a window. */
 const EstimatedDeliverySchema = z
   .strictObject({
     earliest: TimestampSchema,
@@ -99,7 +83,7 @@ const EstimatedDeliverySchema = z
       "When the merchant expects the parcel to arrive, as a window: the earliest instant comes no later than the latest.",
   });
 
-/** What the merchant records when a carrier has the parcel. */
+/** What the merchant records with `deliver` when a carrier has the parcel. */
 export const ShipmentSchema = z
   .strictObject({
     /** Who carries it: a carrier's name, or the shop's own courier. */

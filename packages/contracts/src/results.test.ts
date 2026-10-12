@@ -12,9 +12,8 @@ import {
 import { errorOf, expectMissingFieldRejected } from "./testing/expect-schema.js";
 
 describe("what publishing a card returns", () => {
-  // The promise: publishing a card never throws. An invalid card comes back as
-  // a list of findings, each pointing at a field, so the edit-and-retry loop
-  // stays short enough to run from a script.
+  // The promise: publishing a card never throws; an invalid card comes back
+  // as findings, each pointing at a field.
 
   it("returns the catalog id when the card is accepted", () => {
     const result = { ok: true, id: "itm_9f2c4a" };
@@ -42,9 +41,7 @@ describe("what publishing a card returns", () => {
   });
 
   it("says which of the two it is in one field, and never in both at once", () => {
-    // The whole of the envelope's promise: a consumer reads `ok` and knows —
-    // in a language where an object under a key would have read as false, and
-    // in one where it would not. An answer that is both is not an answer.
+    // A consumer reads `ok` and knows, in any language.
     expect(PublishResultSchema.parse({ ok: true, id: "itm_9f2c4a" }).ok).toBe(true);
     expect(
       PublishResultSchema.safeParse({
@@ -61,9 +58,7 @@ describe("what publishing a card returns", () => {
   });
 
   it("refuses a refusal with an empty list of findings, and names the field", () => {
-    // An empty `problems` says the card was refused and names nothing, which is
-    // the one answer a merchant cannot act on. Acceptance has its own branch
-    // and does not need to be spelled as "no problems".
+    // An empty `problems` would say the card was refused and name nothing.
     const message = errorOf(PublishResultSchema, {
       ok: false,
       error: { code: CARD_REJECTED, message: "this card was not published", retryable: false },
@@ -85,8 +80,7 @@ describe("what publishing a card returns", () => {
   });
 
   it("refuses an acceptance that names no catalog id, and names the field", () => {
-    // The id is the whole point of the call: it is what the card is known by
-    // in catalogs, in orders and in receipts afterwards.
+    // The id is what the card is known by from then on.
     expect(errorOf(PublishResultSchema, { ok: true })).toContain("id");
   });
 
@@ -98,9 +92,7 @@ describe("what publishing a card returns", () => {
       { ok: "itm_9f2c4a" },
       { ok: { id: "itm_9f2c4a" } },
       { errors: [{ path: [], code: "x", message: "y" }] },
-      // "No" with nothing after it. A refusal is the half of this shape that
-      // has to carry a reason, and an envelope that says only that something
-      // failed is the answer this schema exists to make impossible to send.
+      // "No" with no reason after it.
       { ok: false },
     ]) {
       expect(PublishResultSchema.safeParse(result).success, JSON.stringify(result)).toBe(false);
@@ -108,18 +100,14 @@ describe("what publishing a card returns", () => {
   });
 
   it("names the refusal in the word a merchant's code branches on", () => {
-    // The constant is the wire word and not a label for it: an integration
-    // writes `error.code === 'card_rejected'`, so renaming the string is
-    // changing the contract even where every call site here still compiles.
+    // The constant is the wire word: integrations compare against the string,
+    // so renaming it changes the contract.
     expect(CARD_REJECTED).toBe("card_rejected");
   });
 
   it("names the findings about the merchant in the words a merchant's code branches on", () => {
-    // The same promise as the refusal's own code, one level down: a program
-    // tells "fix the card" from "fix the merchant" by comparing a finding's
-    // code with these, so each constant is the wire word the gateway sends and
-    // not a label for it. Every one of them is a statement about the merchant,
-    // which is why a program can act on it without looking at the card.
+    // A program tells "fix the card" from "fix the merchant" by comparing a
+    // finding's code with these, so each is the wire word the gateway sends.
     expect(Object.values(MERCHANT_FINDINGS)).toStrictEqual([
       "no_seller_name",
       "no_payout_wallet",
@@ -129,10 +117,8 @@ describe("what publishing a card returns", () => {
   });
 
   it("carries a finding that is about the merchant rather than the card", () => {
-    // A merchant with no name set for buyers, or no wallet for their sales to
-    // be paid into, is refused at the publish under the same code and in the
-    // same list — so one answer carries everything standing between this card
-    // and the catalog rather than handing it over one round trip at a time.
+    // Findings about the merchant come in the same list as the card's, so one
+    // answer carries everything standing between the card and the catalog.
     const result = {
       ok: false,
       error: {
@@ -163,9 +149,8 @@ describe("one finding about what was sent", () => {
   }
 
   it("says with an empty path that the finding is about the card as a whole", () => {
-    // The empty path is a statement, not a missing value: "this is about the
-    // card, not about one of its fields". A finding with no path at all would
-    // leave the two indistinguishable.
+    // An empty path means "about the card as a whole", so the field must be
+    // present to tell it from a missing one.
     expect(ProblemSchema.safeParse({ ...finding, path: [] }).success).toBe(true);
   });
 
@@ -179,9 +164,8 @@ describe("one finding about what was sent", () => {
 });
 
 describe("what delivering or refusing an order answers with", () => {
-  // The promise: the merchant's code branches on these, so they are words we
-  // owe them rather than prose we are free to reword. Each one is a different
-  // thing to do next, which is why none of them collapses into another.
+  // The promise: the merchant's code branches on these words, so they are
+  // contract, not prose.
 
   it("names every way the call can succeed", () => {
     expect([...ORDER_CALL_RESULTS]).toStrictEqual([
@@ -195,13 +179,9 @@ describe("what delivering or refusing an order answers with", () => {
   });
 
   it("names a successful acceptance among them, and not among the failures", () => {
-    // The promise: a merchant who takes an order on is not told that something
-    // went wrong. Every handler answer is posted to the answer route, whose
-    // success has to name one of these words; without one for an acceptance
-    // the route can only answer ok:false, and a merchant's integration writes
-    // that down as a problem with an order that is going through perfectly
-    // well. The word being a success rather than an error code is the whole of
-    // what makes the difference.
+    // The promise: a merchant who takes an order on is not told something went
+    // wrong. The answer route's success must name a word, and without one for
+    // an acceptance an integration would record a healthy order as a problem.
     expect(ORDER_CALL_RESULTS).toContain("accepted");
     expect(ORDER_CALL_ERROR_CODES).not.toContain("accepted");
   });
@@ -228,11 +208,9 @@ describe("the error codes the calls answer with", () => {
   });
 
   it("says in the dictionary what each of them means", () => {
-    // The description is the only thing a client generated outside TypeScript
-    // ever reads about these codes; a code promised in the list and missing
-    // from the dictionary is a promise made to nobody. The publish refusal is
-    // asked for by name because it belongs to no list of order-call codes and
-    // would otherwise be promised in prose and documented nowhere.
+    // The description is all a client generated outside TypeScript reads
+    // about these codes. The publish refusal is asked for by name, since it
+    // belongs to no list of order-call codes.
     const dictionary = CallErrorSchema.shape.code.meta()?.description ?? "";
     for (const code of [...ORDER_CALL_ERROR_CODES, CARD_REJECTED]) {
       expect(dictionary, code).toContain(code);
@@ -240,9 +218,8 @@ describe("the error codes the calls answer with", () => {
   });
 
   it("still accepts a code outside the promised ones", () => {
-    // The list is what we promise to mean the same way, not a gate. An error
-    // we have not anticipated has to be able to reach the merchant in words
-    // rather than be flattened into the nearest of them.
+    // The list is a promise of meaning, not a gate: an unanticipated error
+    // must still reach the merchant in words.
     expect(
       CallErrorSchema.safeParse({
         code: "gateway_unavailable",
@@ -282,11 +259,8 @@ describe("an error from a call that did not go through", () => {
   }
 
   it("refuses a retry flag that is not one", () => {
-    // The loop above asks about the flag being absent. This is about it being
-    // present and unreadable. The point of the flag is to separate "the
-    // network dropped, call again, the call is idempotent" from "nothing you
-    // do will change this, write the case down", and a truthy string turns one
-    // of those into a retry loop and the other into a lost order.
+    // A truthy string would turn "call again" into "write it down" or the
+    // reverse.
     for (const retryable of ["true", 1, null, "yes"]) {
       expect(
         CallErrorSchema.safeParse({ ...error, retryable }).success,
@@ -301,9 +275,7 @@ describe("an error from a call that did not go through", () => {
   });
 
   it("carries the findings where the call is refusing what it was handed", () => {
-    // The delivery that is not what its card declares is the case this field
-    // exists for: the merchant is told which fields did not fit rather than
-    // being sent to compare their delivery against the card by hand.
+    // The merchant is told which fields of a misfit delivery did not fit.
     const misfit = {
       code: "delivery_does_not_match_card",
       message: "the goods are not the ones this card declares",
@@ -315,15 +287,14 @@ describe("an error from a call that did not go through", () => {
   });
 
   it("leaves the findings out where there is nothing to point at", () => {
-    // Most failures are about the state of the world rather than about a field
-    // of the request, and an empty list beside them would read as "we looked
-    // and found nothing wrong with what you sent" — which is not what happened.
+    // An empty list beside a failure about the state of the world would read
+    // as "nothing wrong with what you sent".
     expect(CallErrorSchema.parse(error)).not.toHaveProperty("problems");
   });
 
   it("refuses an empty list of findings", () => {
-    // Present and empty says "here are the things at fault" and names none of
-    // them. Absent is how an error says there is nothing to point at.
+    // Present and empty names nothing; absent says there is nothing to point
+    // at.
     expect(CallErrorSchema.safeParse({ ...error, problems: [] }).success).toBe(false);
   });
 });

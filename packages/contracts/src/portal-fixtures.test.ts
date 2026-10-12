@@ -1,55 +1,18 @@
 /**
- * The portal's examples are files of this repository, and this is what holds
- * them to the schemas.
+ * Holds the documentation's payload examples to the schemas. Every example is
+ * one file, `apps/docs/examples/<schema>/<name>.json`, which the page shows by
+ * snippet import (`<<< @/examples/…`), so the bytes a merchant reads are the
+ * bytes this test parses.
  *
- * The charter's rule is that an example a merchant copies out of the
- * documentation has to pass the schemas, and that the documentation and the
- * code may not drift apart quietly. The way that rule used to be kept was a
- * matcher: the examples lived inside the pages, hand-written copies of them
- * lived in this file, and some two hundred lines compared the copy against the
- * page name by name and value by value — with four lists of exceptions for the
- * parts that could not be compared, and a suite of its own to check the
- * comparing. A guard that needs its own suite is a guard that has become the
- * subject.
+ * Every file passes the schema its directory names; every file is shown by at
+ * least one page; every include resolves to a file; and no page carries a
+ * payload inline, which would walk around the rest.
  *
- * There is no copy any more. Every payload example is one file, the page shows
- * that file with VitePress's snippet import (`<<< @/examples/…`), and the bytes
- * a merchant reads on the portal are the bytes this test parses. Nothing is
- * compared against anything, because there is only one of everything.
- *
- * The convention the checks below rest on: an example lives at
- * `apps/docs/examples/<schema>/<name>.json`, and the directory names the schema
- * the file is held to. `SCHEMAS` is that map, and a directory missing from it
- * fails rather than becoming a place where files sit unvalidated.
- *
- * Four checks, and together they mean an example cannot arrive unwatched.
- * Every file parses and passes the schema its directory names. Every file is
- * shown by at least one page, so an example nobody reads cannot sit here going
- * stale. Every include on every page resolves to a file that exists, so a page
- * cannot point at nothing. And no page carries a payload inline, which is what
- * stops the whole mechanism from being walked around by writing the JSON back
- * into a fence.
- *
- * Two things are deliberately outside all of this.
- *
- * The TypeScript fences are outside. They are calling code — `order.delivered({
- * … })`, `q.available(price, asOf)` — and not documents: the merchant writes
- * the call, and the SDK builds what goes on the wire from it. Every one of them
- * is compiled against the real SDK by `packages/sdk/src/portal-fences.test.ts`,
- * which is the check that catches what a merchant meets first, and the document
- * each call puts on the wire is asserted by the SDK's own tests. Transcribing
- * them into JSON here meant certifying a document the portal has never shown
- * anybody.
- *
- * Fragments are outside. An example file is a whole document, because a
- * merchant copies what they see, and a document missing a required field is a
- * claim about what our side accepts that our side would refuse — the charter's
- * fifth gate. Where a page genuinely discusses a piece of something rather than
- * a document — the `result` block of a card, under the heading that explains
- * that one field — the piece stays a plain fence: not included from here, not
- * validated as a document, because it is not one. What keeps that exception
- * from widening is the fourth check: a fragment is TypeScript on the page, and
- * anything written as JSON has to be a file.
+ * TypeScript fences are calling code, not documents, and are compiled against
+ * the SDK by `packages/sdk/src/portal-fences.test.ts`. A page discussing a
+ * piece of a document, such as a card's `result` block, keeps it as a
+ * TypeScript fence; anything written as JSON has to be a whole document in a
+ * file, since a merchant copies what they see.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -64,11 +27,8 @@ const PORTAL = fileURLToPath(new URL("../../../apps/docs/", import.meta.url));
 const EXAMPLES = join(PORTAL, "examples");
 
 /**
- * Which schema each directory of examples is held to.
- *
- * This map is the whole naming convention. A directory that is not in it is a
- * failure below rather than a quiet corner of the tree where an example could
- * live without being checked against anything.
+ * Which schema each directory of examples is held to. A directory missing from
+ * it fails rather than holding unchecked examples.
  */
 const SCHEMAS: Readonly<Record<string, z.ZodType>> = {
   card: CardSchema,
@@ -76,7 +36,7 @@ const SCHEMAS: Readonly<Record<string, z.ZodType>> = {
   "quote-response": QuoteResponseSchema,
 };
 
-/** The house style: the page addressed to us, which the site does not build. */
+/** The writing guide addressed to authors, which the site does not build. */
 const NOT_A_PAGE = "WRITING.md";
 
 const entriesOfExamples = readdirSync(EXAMPLES, { withFileTypes: true });
@@ -96,12 +56,9 @@ const pages: readonly string[] = readdirSync(PORTAL)
 const textOf = (page: string): string => readFileSync(join(PORTAL, page), "utf8");
 
 /**
- * The snippet imports a page writes, as the path each one names.
- *
- * VitePress lets a line carry a region after the path (`#name`) and options
- * after that (`{2,4}`); neither is part of the file's name, so both are cut.
- * The paths on our pages all start `@/`, which is the source root — the portal
- * directory itself.
+ * The snippet imports a page writes, as the path each names. A region
+ * (`#name`) and options (`{2,4}`) after the path are cut; `@/` is the docs
+ * source root.
  */
 const includesOf = (markdown: string): string[] =>
   markdown
@@ -130,10 +87,8 @@ const jsonOf = (file: string): unknown => {
 
 describe("the portal's examples are files, and every file is checked", () => {
   it("finds examples and includes at all", () => {
-    // The negative control for the two directory reads everything else is
-    // generated from. A portal that moved, an include syntax that changed, a
-    // filter that quietly matched nothing — any of those would leave the checks
-    // below with nothing to say and read as a clean run.
+    // The negative control: a moved docs tree, a changed include syntax or a
+    // filter that matched nothing would otherwise read as a clean run.
     expect(files.length, "no example files found under apps/docs/examples").toBeGreaterThan(0);
     expect(included.size, "no page includes anything").toBeGreaterThan(0);
   });
@@ -154,8 +109,8 @@ describe("the portal's examples are files, and every file is checked", () => {
   });
 
   it.each(files)("%s passes the schema its directory names", (file) => {
-    // If this fails, a merchant who copied this example got a document our own
-    // side would refuse.
+    // If this fails, a merchant who copied this example got a document the
+    // gateway would refuse.
     const [directory = ""] = file.split("/");
     const schema = SCHEMAS[directory];
 
@@ -171,8 +126,7 @@ describe("the portal's examples are files, and every file is checked", () => {
   });
 
   it.each(files)("%s is shown by a page", (file) => {
-    // An example nobody includes is an example nobody reads, and it would go on
-    // passing its schema long after the page that once showed it moved on.
+    // An example no page includes goes on passing long after nobody reads it.
     expect(
       included.get(`examples/${file}`) ?? [],
       `no portal page includes apps/docs/examples/${file}; include it or delete it`,
@@ -180,9 +134,7 @@ describe("the portal's examples are files, and every file is checked", () => {
   });
 
   it("includes nothing that is not there", () => {
-    // The other direction: a page pointing at a file that does not exist
-    // renders as an empty block, and the page reads as though the example were
-    // simply missing.
+    // A page pointing at a missing file renders an empty block.
     const known = new Set(files.map((file) => `examples/${file}`));
     const missing = [...included.entries()]
       .filter(([path]) => !known.has(path))
@@ -192,9 +144,8 @@ describe("the portal's examples are files, and every file is checked", () => {
   });
 
   it.each(pages)("%s writes no payload inline", (page) => {
-    // What keeps the mechanism whole. A payload written back into a fence is
-    // one nothing above sees: it passes no schema, it belongs to no file, and
-    // it is exactly the transcription this file was rebuilt to be rid of.
+    // A payload written back into a fence passes no schema and belongs to no
+    // file.
     const inline = textOf(page)
       .split("\n")
       .filter((line) => /^```(json|http)\b/.test(line.trim()));
@@ -208,28 +159,18 @@ describe("the portal's examples are files, and every file is checked", () => {
 
 describe("the pages agree with each other", () => {
   it("shows the same card written short and written out in full", () => {
-    // The card reference prints one product twice: once as the smallest card
-    // that sells, once with nothing written short. It says in so many words
-    // that "a card that uses none of the shorter ones says exactly what the
-    // card at the top says", and a reader takes either spelling and publishes
-    // it. Anything the short form gains or loses on its way — a field, a
-    // currency, a delivered value — is a page selling something the page below
-    // it does not describe.
-    //
-    // Written as a comparison of two parses rather than of two files, because
-    // what has to agree is the card each becomes at our door: the short form
-    // is opened out there, and the two are the same card or they are not.
+    // The card reference prints one product twice, short and written out, and
+    // says the two are the same card. They are compared as parsed, since the
+    // short form is opened out at publication.
     expect(CardSchema.parse(jsonOf("card/access-monthly-short.json"))).toStrictEqual(
       CardSchema.parse(jsonOf("card/access-monthly.json")),
     );
   });
 
   it("every delivery the orders page shows carries what the card example declares", () => {
-    // The promise, and it spans two pages: a merchant who declares a result on
-    // one and copies a delivery call from the other has to end up with a
-    // delivery that goes through. Before the portal said that every declared
-    // field is delivered, the two pages disagreed — the declaration named two
-    // fields and the call sent one.
+    // The promise spans two pages: a merchant who declares a result on one and
+    // copies a delivery call from the other ends up with a delivery that goes
+    // through.
     const card = CardSchema.parse(jsonOf("card/access-monthly.json"));
     const check = deliveryCheckFor(card);
     const orders = textOf("orders.md");

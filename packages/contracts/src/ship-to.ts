@@ -1,31 +1,18 @@
 /**
- * The address a parcel goes to (ADR-0032).
+ * The address a parcel goes to, in the Agentic Commerce Protocol's field names
+ * because that is the address an agent already writes.
  *
- * An agent buying a parcel sends it beside the purchase, in a shape of ours
- * with the Agentic Commerce Protocol's names, because that is the address an
- * agent already writes: `name`, `line_one`, `line_two`, `city`, `state`,
- * `postal_code`, `country`, `phone_number`. One `name`, because a person may
- * have one name and a split name cannot be recovered without guessing; no
- * company, because the second line holds it; a phone, because the carriers a
- * merchant hands a parcel to mostly ask for one and the merchant cannot ask
- * for it themselves.
- *
- * The door checks the shape and no more. Whether a state or a postal code is
- * needed in this country, and whether the merchant ships there at all, is the
- * merchant's to answer in their price check: a per-country table of what is
- * required is a table this contract would keep wrong.
- *
- * The address is the buyer's and passes through Agentify. The merchant's price
- * question receives only the locality — where the parcel goes, not to whom —
- * and the full address reaches the merchant only once the order is paid. Once
- * the merchant takes the order on, or the order ends without them, Agentify
- * erases its copy, and the order reads only when that happened.
+ * One `name`, because a split name cannot be recovered without guessing; no
+ * company, because the second line holds it; a phone, because carriers mostly
+ * ask for one and the merchant cannot ask the buyer themselves. Only the shape
+ * is checked: whether a state or a postal code is needed in a country, and
+ * whether the merchant ships there at all, is the merchant's to answer in
+ * their price check.
  */
 
 import { z } from "zod";
 import { TimestampSchema } from "./primitives.js";
 
-/** A part of an address that has to say something. */
 const said = (what: string) => z.string().regex(/\S/, `${what} is not blank`);
 
 const CountrySchema = z
@@ -71,7 +58,7 @@ export const ShipToLocalitySchema = z
       "Where a parcel goes, as its price is asked: the country, the state, the city and the postal code of the address, and nothing about who receives it. A price question reaches a merchant for purchases that are never made, and a shipping rate needs the place alone.",
   });
 
-/** An address Agentify no longer holds: only when it let it go. */
+/** An address Agentify no longer holds: only the moment it was erased. */
 export const ErasedShipToSchema = z
   .strictObject({
     erased_at: TimestampSchema,
@@ -85,7 +72,7 @@ export type ShipTo = z.infer<typeof ShipToSchema>;
 export type ShipToLocality = z.infer<typeof ShipToLocalitySchema>;
 export type ErasedShipTo = z.infer<typeof ErasedShipToSchema>;
 
-/** The locality of an address, with what it did not give left out. */
+/** The locality of an address: the place, not the person. */
 export const localityOf = (address: ShipTo): ShipToLocality => ({
   country: address.country,
   ...(address.state === undefined ? {} : { state: address.state }),

@@ -20,10 +20,9 @@ const receipt = {
 };
 
 describe("what a receipt says became of the purchase", () => {
-  // The promise: a receipt says exactly what is known, in the same words the
-  // order status uses. "Paid, delivery still running" is a different statement
-  // from "delivered" and from "paid and never delivered", and an agent must
-  // not have to read one as another.
+  // The promise: a receipt says exactly what is known, in the order status's
+  // own words, and "paid, delivery still running" reads as neither
+  // "delivered" nor "paid and never delivered".
   it("tells apart the four states a paid purchase can be in", () => {
     for (const outcome of ["in_progress", "delivered", "refund_due", "refunded"]) {
       expect(ReceiptOutcomeSchema.safeParse(outcome).success, outcome).toBe(true);
@@ -31,9 +30,8 @@ describe("what a receipt says became of the purchase", () => {
   });
 
   it("borrows its words from the order status rather than inventing its own", () => {
-    // A receipt outcome that read `pending` where the order said `in_progress`
-    // would be two names for one state, and whichever an agent happened to
-    // read would look like the whole truth.
+    // `pending` where the order said `in_progress` would be two names for one
+    // state.
     for (const outcome of ReceiptOutcomeSchema.options) {
       expect(OrderStatusSchema.safeParse(outcome).success, outcome).toBe(true);
     }
@@ -41,11 +39,8 @@ describe("what a receipt says became of the purchase", () => {
   });
 
   it("accounts for every order status, on one side of the line or the other", () => {
-    // The partition was argued in a comment and enforced nowhere: a status
-    // added to the machine slipped past without anybody deciding which side of
-    // the receipt line it fell on, and the argument went stale in silence.
-    // Naming the excluded ones here makes the next addition fail until someone
-    // decides.
+    // The excluded statuses are named, so a status added to the order makes
+    // this fail until someone decides which side of the receipt line it is on.
     const withoutAReceipt = [
       "rejected",
       "payment_unresolved",
@@ -61,11 +56,9 @@ describe("what a receipt says became of the purchase", () => {
   });
 
   it("has no value for a purchase whose money never moved", () => {
-    // A refused, declined, expired or cancelled purchase leaves no receipt at
-    // all: nothing moved, and there is nothing to be proof of. Neither does a
-    // synchronous delivery whose payment failed — that is the case where the
-    // merchant produced the goods and no payment executed, so there is no
-    // record of one to write.
+    // A refused, declined, expired or cancelled purchase leaves no receipt,
+    // and neither does a synchronous delivery whose payment failed: no payment
+    // executed.
     for (const outcome of [
       "rejected",
       "payment_unresolved",
@@ -99,9 +92,8 @@ describe("receipt", () => {
     expect(ReceiptSchema.safeParse(withoutPriceId).success).toBe(true);
   });
 
-  // Every field, and `test` is in the list for a reason worth naming: a receipt
-  // is proof of payment, and an unmarked receipt for a test purchase is proof
-  // of a payment that never happened.
+  // `test` is among them because an unmarked receipt for a test purchase is
+  // proof of a payment that never happened.
   for (const field of ["id", "order_id", "item_id", "price", "paid_at", "outcome", "test"]) {
     it(`refuses a receipt without ${field} and names it`, () => {
       expectMissingFieldRejected(ReceiptSchema, receipt, field);

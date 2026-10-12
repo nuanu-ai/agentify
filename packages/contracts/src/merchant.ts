@@ -1,25 +1,10 @@
 /**
  * What a merchant says about themselves: the name their products are sold
- * under, the wallet their sales are paid into, and the keys they open the door
- * with.
+ * under, the wallet their sales are paid into, and their keys.
  *
- * The name is here rather than beside the card because it is a fact about the
- * merchant and about none of their cards, and the one question a reader
- * arrives with is which of the two names a merchant has is which.
- *
- * Two rules run through the file and are worth saying once.
- *
- * The secret appears in one document, the answer to the call that has just
- * made a key. Nothing that is ever drawn again —
- * the list a merchant reads, the row that comes back from disabling one — can
- * carry it, and the shapes below refuse it rather than merely omit it. What is
- * kept on our side is a digest, so there is nothing to put in those documents
- * even if somebody wanted to.
- *
- * And a key that has been revoked stays in the list. `disabled_at` is a moment
- * rather than a flag, and it is always present: after an incident the question
- * is when a key stopped working, and a list that dropped the key answers
- * nothing, while a flag answers only half.
+ * A key's secret appears in one document only, the answer to the call that
+ * made the key; every other shape here refuses it, and Agentify keeps only a
+ * digest. A revoked key stays in the list with the moment it was revoked.
  */
 
 import { z } from "zod";
@@ -29,87 +14,53 @@ import { IdentifierSchema, TimestampSchema } from "./primitives.js";
 import { SellerSiteSchema } from "./seller-site.js";
 
 /**
- * What a merchant calls one of their keys, so one of several can be told from
- * the others.
- *
- * Not empty, and not padded with spaces. Both defeat the only thing a label is
- * for: a blank label is a row in a list with nothing in it, and a space at
- * either end makes two labels that look identical wherever they are printed
- * while being two different strings.
- *
- * What it does not do is worth saying, because a reader could take the rule for
- * more than it is. Nothing here bounds the length, since no channel outside us
- * carries this text and a number would be a bound nobody's format asks for, and
- * nothing here holds a label to one alphabet: unlike the name a discovery
- * catalog lists a seller under, a label never leaves the merchant's own
- * screens, so a label written in Cyrillic is a label. A character that shows
- * nothing is allowed through as well, which is the omission a reader is likeliest
- * to be surprised by — an identifier refuses one, because an identifier is
- * matched on and two that look alike are two keys nobody can tell apart, and a
- * label is only ever read, so the same character makes one odd-looking row.
+ * What a merchant calls one of their keys: not empty and not padded with
+ * spaces, so that two labels that look the same are the same. Any alphabet is
+ * allowed, since a label never leaves the merchant's own screens, and so is a
+ * character that shows nothing: a label is only read, never matched on.
  */
 const KeyLabelSchema = z
   .string()
   .regex(/^\S(?:[\s\S]*\S)?$/u, "a label must not be empty or padded with spaces");
 
 /**
- * The longest label a key is issued with.
- *
- * A label used to have no bound, on the argument that no channel outside us
- * carries it. One does now: on the live deployment the message that tells a
- * merchant of a new key, or of a wallet change made with one, names the key
- * by its label (ADR-0019), and that message is Agentify's words in somebody's
- * inbox. A hundred characters is a line on a list and in a message, and
- * longer than any name a person gives a worker.
+ * The longest label a key is issued with. On the live deployment the message
+ * that tells a merchant of a new key, or of a wallet change made with one,
+ * names the key by its label.
  */
 const LONGEST_KEY_LABEL = 100;
 
 /**
- * A label as a new key is issued with it: the rule above, on one line, and no
- * longer than {@link LONGEST_KEY_LABEL}.
- *
- * Only the request carries the bound. The keys a merchant already holds are
- * read back under whatever they were named, including a key issued at the
- * server's terminal, because refusing the list over one old row would hide
- * every key on it; the message that names such a key cuts it to one line of
- * the same length itself.
+ * A label as a new key is issued with it: one line, at most
+ * {@link LONGEST_KEY_LABEL} characters. Only the request carries the bound;
+ * keys already held are read back under whatever they were named, so one old
+ * row cannot hide the whole list.
  */
 const IssuedKeyLabelSchema = KeyLabelSchema.max(
   LONGEST_KEY_LABEL,
   `a label is at most ${LONGEST_KEY_LABEL} characters, the one line a key is known by`,
 ).regex(
-  // Written as code-point ranges rather than a Unicode property, because this
-  // pattern is published in the JSON Schema a validator in another language
-  // reads, and not every one of those knows the property escapes.
+  // Code-point ranges rather than a Unicode property escape, because the
+  // pattern is published in the JSON Schema and not every validator in another
+  // language knows property escapes.
   // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses
   /^[^\u0000-\u001F\u007F-\u009F\u2028\u2029]*$/u,
   "a label is one line: it cannot carry a line break, a tab or another control character",
 );
 
 /**
- * The key itself, in the only form its owner will ever see it.
- *
- * No whitespace anywhere in it, and that bound belongs to the transport rather
- * than to us: a key travels as a bearer token, and the reader on the other side
- * takes everything up to the first space. A secret with a space in it would
- * arrive as a prefix of itself and open nothing, and the merchant would spend
- * an afternoon on a key that looks perfectly good.
- *
- * Nothing here says how long a key is or what it starts with. Those are the
- * gateway's, which is the side that generates them, and a shape written down
- * here would be a promise about a format we mean to be free to change.
+ * The key itself. It travels as a bearer token, and the reader on the other
+ * side takes everything up to the first space, so a secret with whitespace in
+ * it would arrive as a prefix of itself. Its length and prefix are left to the
+ * gateway that generates it.
  */
 const KeySecretSchema = z
   .string()
   .regex(/^\S+$/, "a key travels as a bearer token, so it carries no whitespace and is not empty");
 
 /**
- * One key a merchant holds, as they read it.
- *
- * The secret is not here and cannot be put here. This is the document a screen
- * lists, drawn again on every visit, and the secret is shown once by the call
- * that made the key and never again — so a shape that could carry one is a
- * shape that eventually does.
+ * One key a merchant holds, as they read it. It has no field for the secret,
+ * which is shown once by the call that made the key and never again.
  */
 export const MerchantKeySchema = z
   .strictObject({
@@ -120,31 +71,17 @@ export const MerchantKeySchema = z
     created_at: TimestampSchema,
 
     /**
-     * The last call this key was seen on, and null where none is recorded.
-     *
-     * It is behind the truth by minutes and says so in the description: the
-     * instant is refreshed only once the one on the row has gone stale, because
-     * the alternative is a write in front of every purchase for a fact somebody
-     * reads when they are deciding what to revoke. What it answers is "this key
-     * was in use around then".
-     *
-     * Null is the absence of a record and not the absence of calls, and nothing
-     * here tells a reader which. A key made before this gateway began writing
-     * the field carries the same null as a key nobody has ever called with, and
-     * there is no field beside this one that separates them — one would be a
-     * permanent question on a public surface for an ambiguity that lasts weeks,
-     * so what carries it is the sentence a screen puts under the column.
+     * The last call this key was seen on, behind the truth by up to a few
+     * minutes, or null where none is recorded. Null is the absence of a record,
+     * not of calls: a key made before the gateway recorded this field carries
+     * the same null as a key nobody ever used.
      */
     last_used_at: TimestampSchema.nullable(),
 
     /**
-     * When this key was revoked, and null while it still opens the door.
-     *
-     * Required and nullable rather than optional, because the two readings of
-     * an absent field are "this key works" and "nobody wrote it down", and a
-     * screen that guessed wrong would show a revoked key as live. The instant
-     * rather than a flag: a flag answers whether the key works, and the
-     * question somebody asks afterwards is when it stopped.
+     * When this key was revoked, and null while it still works. Required and
+     * nullable rather than optional, so that a screen never has to guess
+     * whether an absent field means "works" or "nobody wrote it down".
      */
     disabled_at: TimestampSchema.nullable(),
   })
@@ -154,28 +91,16 @@ export const MerchantKeySchema = z
   });
 
 /**
- * The keys one merchant made for their own code, and the one this call was made
- * with.
+ * The keys one merchant made for their own code, and the one this call was
+ * made with.
  *
- * `this_call` is the field the list cannot be assembled without, and the reason
- * is a rule in the route rather than anything about the shape: a merchant
- * cannot disable the key their own call was made with (ADR-0014 §5). A screen
- * that did not know which of these that was would offer a button the route
- * refuses, on the one page where being refused looks like the product being
- * broken.
- *
- * It is always one of the keys beside it: every key is one a merchant issued
- * for their own code, and the dashboard calls with none (ADR-0030).
- *
- * An object rather than a bare array, for that reason before any other — an
- * array has nowhere to put it.
+ * `this_call` is always one of the keys listed. A merchant cannot disable the
+ * key their own call was made with, and without this field a screen would
+ * offer a button the gateway refuses.
  */
 export const MerchantKeyListSchema = z
   .strictObject({
-    /**
-     * The keys this merchant made for their own code, the revoked ones among
-     * them.
-     */
+    /** The keys this merchant made for their own code, revoked ones included. */
     keys: z.array(MerchantKeySchema),
 
     /** The key the request carrying this answer was made with. */
@@ -197,17 +122,14 @@ export const IssueKeyRequestSchema = z
   });
 
 /**
- * A key that has just been made: the row, and the secret, once.
- *
- * Both halves are needed by the caller. Without the secret there is no key to
- * hand to a worker; without the row there is a string and nothing to say which
- * of the merchant's keys it is, which is the thing they need to disable it
- * later.
+ * A key that has just been made: the row, and the secret, once. The secret is
+ * what a worker needs; the row is what tells the merchant later which key to
+ * disable.
  */
 export const IssuedKeySchema = z
   .strictObject({
     key: MerchantKeySchema,
-    /** The only moment this is readable. Nothing on our side keeps it. */
+    /** Readable only now. Agentify keeps a digest, never the secret. */
     secret: KeySecretSchema,
   })
   .meta({
@@ -216,11 +138,8 @@ export const IssuedKeySchema = z
   });
 
 /**
- * A key that has been revoked, as it now stands.
- *
- * An object rather than the key itself, so the day this answer has to say
- * anything beside the key — how many of the merchant's keys still work, say — it
- * grows a field instead of changing shape under every reader.
+ * A key that has been revoked, as it now stands. Revoking an already revoked
+ * key answers the same way and keeps the first moment.
  */
 export const DisabledKeySchema = z
   .strictObject({
@@ -234,31 +153,23 @@ export const DisabledKeySchema = z
 /**
  * What a merchant's products are sold under, as the merchant reads it back.
  *
- * Null is the fact "nobody has chosen one", which is every merchant on the day
- * they register and is the state they stay in until they do. It is a value
- * rather than an absent field, because an absent field would be
- * indistinguishable from a client that dropped it, and a settings screen
- * reading the second as the first would tell a merchant they are listed under
- * nothing while they are listed under something.
- *
- * The name is held to the rule of the catalog that carries it, which is where
- * this name is going: at most thirty-two characters of printable ASCII. That
- * bound is not ours and is not about our own storage — the catalog drops what
- * it cannot render and tells nobody, so a name refused here is a name the
- * merchant is told about, and a name accepted here and dropped there is a
- * seller trading under something they did not choose.
+ * Null means nobody has chosen a name, which is where every merchant starts;
+ * the field is always present, so it cannot be mistaken for a dropped one.
+ * The name is held to the discovery catalog's rule, at most thirty-two
+ * characters of printable ASCII, because the catalog drops what it cannot
+ * render without telling anybody.
  */
 export const SellerNameSchema = z
   .strictObject({
     /**
-     * What buyers read beside this merchant's products, or nothing — read back
-     * by the rule an agent's `seller` reads it by, which leaves the plain-text
-     * rule to the door that writes it.
+     * What buyers read beside this merchant's products, or null. It is read
+     * back by the rule an agent's `seller` is read by; the plain-text rule is
+     * applied when the name is written.
      */
     seller_name: SellerSchema.shape.name,
     /**
      * The https address of the merchant's own shop, where an agent takes what
-     * an order cannot answer (ADR-0034), or nothing where none was given.
+     * an order cannot answer, or null where none was given.
      */
     seller_site: SellerSiteSchema.nullable(),
   })
@@ -268,33 +179,20 @@ export const SellerNameSchema = z
   });
 
 /**
- * What a merchant sends to change what their products are sold under.
+ * What a merchant sends to change what their products are sold under, their
+ * shop's site, or both. A field left out stays as it was, and at least one
+ * must be there.
  *
- * The same field held to the same rule, and one difference: there is no null.
- * A merchant can go from having no name to having one and from one name to
- * another, and not back. Having none is a starting state rather than a setting,
- * because a payment request names the seller and there would be nobody to name:
- * every card they had already published would come off sale, which is an end to
- * their selling arriving under the name of editing a setting. What somebody
- * reaching for that actually wants is one of two other acts: a different name,
- * which is this same call, or an end to selling, which is the pause — and the
- * pause leaves their cards where they can find them again.
- *
- * So it is two documents rather than one, and a dashboard still reads back the
- * shape it sent. The message on a null is written here rather than left to a
- * type error, because "expected string, received null" describes the shape and
- * says nothing about which act the sender was reaching for.
+ * Null is refused for either, with a sentence saying why. A merchant goes from
+ * no name to a name and from one name to another, never back to none: a
+ * payment request names the seller, so every published card would come off
+ * sale. A merchant who wants to stop selling pauses instead.
  */
 export const SellerNameRequestSchema = z
   .strictObject({
     /**
      * What buyers are to read beside this merchant's products, where it is
-     * changing.
-     *
-     * The rule lives once, in `ServiceNameSchema`, and this reaches it through
-     * a string that carries its own words for "this is not a name at all". A
-     * second copy of the length and the alphabet written out here is the copy
-     * that goes stale.
+     * changing, held to `ServiceNameSchema`.
      */
     seller_name: z
       .string({
@@ -308,10 +206,9 @@ export const SellerNameRequestSchema = z
       .pipe(ServiceNameSchema)
       .optional(),
     /**
-     * The https address of the merchant's own shop, where it is changing
-     * (ADR-0034). Like the name it is changed and never taken away: an agent
-     * holding an order that named a site has been told where to go, and a
-     * site that vanished from the same order would leave it nowhere.
+     * The https address of the merchant's own shop, where it is changing. Like
+     * the name it is changed and never taken away: an agent holding an order
+     * that named a site has been told where to go.
      */
     seller_site: z
       .string({
@@ -335,18 +232,10 @@ export const SellerNameRequestSchema = z
   });
 
 /**
- * A change of the wallet that has been asked for, announced, and has not taken
- * effect yet.
- *
- * It exists because a replacement does not apply at once where the money is
- * real (ADR-0019). The address a merchant is paid at is the one setting whose
- * change redirects money, and a dashboard session that is not the owner's could
- * ask for one, so on the live deployment a replacement is told to every account
- * of the merchant first and takes effect forty-eight hours after that. What this document says is the two facts a
- * merchant needs in that window: what replaces the address, and from when.
- *
- * Both are required. An address with no moment says nothing about when the
- * money moves, and a moment with no address says it moves without saying where.
+ * A change of the payout wallet that has been asked for and announced and has
+ * not taken effect yet. On the live deployment a replacement is announced to
+ * every account of the merchant and takes effect forty-eight hours later,
+ * since the payout address is the one setting whose change redirects money.
  */
 export const PendingPayoutWalletSchema = z
   .strictObject({
@@ -363,41 +252,18 @@ export const PendingPayoutWalletSchema = z
 /**
  * The wallet a merchant's sales are paid into, as the merchant reads it back.
  *
- * Payments here are not held by anybody on the way: a buyer's agent pays the
- * merchant's own address directly, and this is that address. There is no
- * account of theirs on our side with a balance in it and no moment at which
- * their money is ours, which is why this field exists at all — without it there
- * would have to be.
+ * A buyer's agent pays this address directly; nothing holds the money on the
+ * way. Null means nobody has set one, which is where every merchant starts.
+ * The address comes back in the checksummed spelling a wallet shows, whichever
+ * accepted spelling was sent, so a merchant can compare it by eye with their
+ * wallet.
  *
- * Null is the fact "nobody has said where the money goes", which is every
- * merchant on the day they register. It is a value rather than an absent field
- * for the reason the seller name is: a settings screen cannot tell a silence
- * from a client that dropped the field, and reading the second as the first
- * tells a merchant they are set up to be paid when nothing of theirs can be.
+ * `pending` is a replacement waiting to take effect, or null. A merchant who
+ * asked for a new address on the live deployment reads the old one back for
+ * forty-eight hours, and `pending` is what tells them the change was not lost.
  *
- * What comes back is always the spelling a wallet shows, whichever of the two
- * accepted spellings was sent. The door takes both and everything behind it
- * holds one (ADR-0017), and this is the one for a reason that is about the
- * person rather than about the storage: a merchant pastes forty characters out
- * of their wallet and reads them back on a settings screen, and handed the same
- * address in lower case they cannot tell it from a different address without
- * comparing character by character. On the one field money is sent to, that
- * glance is the whole of the checking anybody does.
- *
- * `pending` is the change waiting beside it, and it is always present for the
- * same reason `payout_wallet` is: null says nothing is waiting, and an absent
- * field would be a silence. It is the field that keeps a caller from taking its
- * own write for a failure — a merchant who asked for a new address on the live
- * deployment reads the old one back, correctly, for forty-eight hours, and
- * without this they would ask again, or conclude the change was lost.
- *
- * It is carried without moving `CONTRACT_VERSION`, which is the one known
- * exception to the rule that a new required field moves it once a merchant we
- * do not control runs the SDK (ADR-0006 §2): no worker of the SDK reads this
- * route, so the version would stop every installed worker for a field none of
- * them sees. What that costs is that a
- * merchant's own code holding this schema from an older release of this
- * package refuses the answer until the package is upgraded.
+ * Code that parses this answer with a release of this package that does not
+ * know `pending` refuses it until the package is upgraded.
  */
 export const PayoutWalletSchema = z
   .strictObject({

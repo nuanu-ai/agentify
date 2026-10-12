@@ -1,28 +1,12 @@
 /**
  * One product, in the shapes it has: the card the merchant publishes, the card
- * an agent reads in a catalog, and the card its own merchant reads back.
+ * an agent reads in a catalog, the listing a discovery catalog reads, and the
+ * card its own merchant reads back.
  *
- * The published card comes first and everything the agent sees is drawn from
- * it. The requirement that runs through every field follows from that: an
- * agent holding only this card has to be able to assemble a correct purchase
- * and know what it will get back. A field that fails that test is not a
- * detail, it is a sale that ends in a refusal.
- *
- * The catalog id is not part of the published schema. We issue it when the
- * card is published and hand it back in the result, so a card arriving with
- * one is a card whose author is guessing at our numbering.
- *
- * The first two shapes share this file rather than being separated by
- * audience, because what they have to be is in step with each other. Anything a
- * merchant may publish has to project into something an agent can read, and
- * anything the projection copies is a claim we make to whoever spends money on
- * it. Kept apart, the rule that ties them would live in neither file.
- *
- * The third is not a projection at all and is here for the opposite reason: a
- * merchant reading their own catalog is reading what they wrote, so the card
- * travels whole, wrapped in the two facts they cannot have — the identifier we
- * issued and the word it is selling under. A second projection would be one
- * more shape to keep in step for no gain to anybody.
+ * Everything an agent sees is drawn from the published card, so an agent
+ * holding only the card it read has to be able to assemble a correct purchase
+ * and know what it will get back. The catalog identifier is not part of the
+ * published card: it is issued at publication and handed back in the result.
  */
 
 import { z } from "zod";
@@ -42,15 +26,15 @@ import { type ShipTo, ShipToSchema } from "./ship-to.js";
 import { ShipmentSchema } from "./shipment.js";
 
 /**
- * When the product reaches the agent, and therefore when the money moves.
+ * When the product reaches the agent, and so when the money moves.
  *
- * `sync` — in the answer to the purchase, and the payment executes last, after
- * the merchant has delivered. `async` — later, by a separate call, and the
- * payment executes at the moment of purchase. `confirm` — the merchant is
- * asked first, and the payment executes right after they say yes. `ship` — a
- * parcel the merchant hands to a carrier (ADR-0033): the payment executes at
- * the moment of purchase, as in `async`, and the order carries the buyer's
- * address until the merchant takes it on, or it ends without them.
+ * `sync`: in the answer to the purchase, and the payment executes last, after
+ * the merchant has delivered. `async`: later, by a separate call, with payment
+ * at the moment of purchase. `confirm`: the merchant is asked first and the
+ * payment follows their yes; a card cannot be published in this mode yet.
+ * `ship`: a parcel the merchant hands to a carrier, with payment at the moment
+ * of purchase; the order carries the buyer's address until the merchant takes
+ * it on, or it ends without them.
  */
 export const FulfillmentSchema = z
   .enum(["sync", "async", "confirm", "ship"], {
@@ -66,15 +50,12 @@ export const FulfillmentSchema = z
 const SHIP_WITHIN_AT_MOST_SECONDS = 2_592_000;
 
 /**
- * How the price and availability of this card are asked for, if they are.
- *
- * `"handler"` is the one way there is: the question travels the same outgoing
- * channel as the orders, to the merchant's price handler, and the merchant
- * hosts nothing. A price hook at an address of the merchant's own is designed
- * and not called, so a card cannot name one: accepted, it would be a setting
- * nothing acts on, and the merchant would learn of it from a synchronous card
- * quietly selling at its listed price or an asynchronous one quietly refusing
- * every sale. The refusal says so at the publish instead.
+ * How the price and availability of this card are asked for at purchase.
+ * `"handler"` is the one way: the question travels the same outgoing channel
+ * as the orders to the merchant's price handler, registered with
+ * `on('quote')`. A price hook at an address of the merchant's own is not
+ * called, so a card naming one is refused rather than quietly selling at its
+ * listed price.
  */
 export const PriceCheckSchema = z.literal("handler", {
   error:
@@ -83,8 +64,7 @@ export const PriceCheckSchema = z.literal("handler", {
 
 /**
  * The words for a required field a card left out, in place of the validation
- * library's: a merchant fixing a card reads the sentence, and "expected string,
- * received undefined" makes them translate it into what the field is for.
+ * library's "expected string, received undefined".
  */
 const leftOut =
   (sentence: string) =>
@@ -92,8 +72,8 @@ const leftOut =
     issue.input === undefined ? sentence : undefined;
 
 /**
- * The merchant's own key for the product, the one their database uses. The
- * identifier's own rule, with words of ours for a card that left it out.
+ * The merchant's own key for the product, the one their database uses, with
+ * its own sentence for a card that left it out.
  */
 const MerchantItemIdSchema = z.preprocess((value, ctx) => {
   if (value === undefined) {
@@ -113,30 +93,19 @@ const TitleSchema = z
   .regex(/\S/, "a title must not be empty or blank");
 
 /**
- * The longest a word may be before the discovery channel stops carrying it, and
- * the most words it carries.
- *
- * Both numbers belong to the channel rather than to us, and both are read off
- * its own implementation rather than guessed: a name is at most thirty-two
- * characters of printable ASCII, and at most five tags survive. What the
- * channel does past those limits is drop the value without telling anybody,
- * which is why they are enforced here instead — a merchant whose tag or whose
- * name silently disappeared would have nothing to look at and no reason to
- * suspect anything went wrong.
+ * The longest a listed word may be, and the most tags a listing keeps: the
+ * discovery catalog's own limits, read off its code. Past them it drops the
+ * value without telling anybody, so they are enforced here, where the merchant
+ * is told.
  */
 const LISTED_TEXT_MAX = 32;
 const LISTED_TAGS_MAX = 5;
 
 /**
- * A word the discovery channel can render, held to the channel's own rule.
- *
- * Printable ASCII and nothing else, because that is what the channel's own
- * check tests for before it drops a value: a pattern over the printable range
- * and a length counted in the units a JavaScript string counts in, which is
- * why the same word measures the same on every side that implements this. The
- * restriction is real and it costs something worth saying out loud: a seller
- * whose name is written in Cyrillic, Greek or Arabic cannot be listed under
- * it, and this refuses the name rather than listing them under a mangled one.
+ * A word the discovery catalog can render: printable ASCII only, which is what
+ * the catalog's own check allows. A seller whose name is written in Cyrillic,
+ * Greek or Arabic cannot be listed under it, and the name is refused rather
+ * than listed mangled.
  */
 const listedText = (what: string) =>
   z
@@ -145,26 +114,19 @@ const listedText = (what: string) =>
     .max(LISTED_TEXT_MAX, `a ${what} is at most ${LISTED_TEXT_MAX} characters`)
     .regex(/^[\x20-\x7e]*$/, `a ${what} is printable ASCII, which is all the listing carries`)
     // Blank and padded in one rule. A space at either end survives the listing
-    // untouched, which is worse than being dropped: it makes two spellings of
-    // one word, and a merchant comparing what they typed with what they see
-    // finds them identical.
+    // and makes two spellings of one word that look identical.
     .regex(/^\S(?:[\s\S]*\S)?$/, `a ${what} must not be blank or padded with spaces`);
 
 /**
- * The name the seller of a card is listed under, wherever a catalog names a
- * seller rather than a product.
- *
- * It belongs to the merchant and not to any one card: a merchant sells under
- * one name, and a per-card name would be one seller appearing as several. What
- * holds it is the merchants table, so this schema is the rule alone, applied
- * wherever a merchant's listing name is written down.
+ * The name a merchant sells under, wherever a catalog names a seller rather
+ * than a product. It belongs to the merchant, not to any one card; this schema
+ * is the rule, applied wherever the name is written.
  */
 export const ServiceNameSchema = listedText("service name")
   .superRefine((name, ctx) => {
-    // Every agent reads the name on every card and order of the merchant's
-    // (ADR-0034), so the door holds it to the card's own plain-text rule
-    // (ADR-0017): markup and character references are refused and named,
-    // not cleaned into words the merchant never wrote.
+    // Every agent reads the name on every card and order of the merchant's, so
+    // it is held to the card's plain-text rule: markup and character references
+    // are refused and named, not cleaned.
     for (const phrase of notPlainTextIn(name, "one line")) {
       ctx.addIssue({
         code: "custom",
@@ -178,25 +140,18 @@ export const ServiceNameSchema = listedText("service name")
   });
 
 /**
- * The name as it is stored and read back: every rule the door holds it to
- * except that it is plain text.
- *
- * That rule belongs to the door and not to the reader, for the reason the
- * card's own words give (ADR-0017): a name stored before the rule may carry
- * markup, every answer is held to its contract on the way out, and one old row
- * would fail every card and order of its merchant's instead of being put right
- * the next time the merchant sets their name.
+ * The name as it is stored and read back: every rule a publish holds it to
+ * except plain text. That rule is applied where the name is written, not where
+ * it is read, so one stored name carrying markup cannot fail every card and
+ * order of its merchant.
  */
 const StoredServiceNameSchema = listedText("service name");
 
 /**
  * Who sells, as an agent reads it beside a product and on an order: the name
- * the merchant sells under and the site of their shop (ADR-0034).
- *
- * Both are the merchant's own word and nothing here checked either, which the
- * description says to the reader who acts on it — a name and a site can be
- * anybody's. Null is "none given": a merchant who gave no site has none here,
- * and a name is missing only from an order whose merchant has since lost it.
+ * the merchant sells under and the site of their shop. Both are the merchant's
+ * own word and nothing checked either. Null means none given; a name is
+ * missing only from an order whose merchant has since lost it.
  */
 export const SellerSchema = z
   .strictObject({
@@ -211,88 +166,47 @@ export const SellerSchema = z
 export type Seller = z.infer<typeof SellerSchema>;
 
 /**
- * The words a merchant puts on one product so an agent searching a catalog can
- * find it.
- *
- * They describe this product and not the seller, which is why they sit on the
- * card. At most five, because the catalog keeps the first five and drops the
- * rest without a word.
+ * The words a merchant puts on one product so an agent searching a discovery
+ * catalog can find it: at most five, because the catalog keeps the first five
+ * and drops the rest without a word.
  */
 export const TagsSchema = z
   .array(listedText("tag"))
-  // Not an empty list. To the catalog an empty list and no tags at all are the
-  // same thing — it drops the field either way — so accepting both would give
-  // one meaning two spellings, and the merchant who wrote the brackets could
-  // reasonably think they had said something. One way to say it, and it is
-  // leaving the field out.
+  // Not an empty list: the catalog drops an empty list and a missing field
+  // alike, so a card with no tags leaves the field out.
   .min(1, "a card that names no tags leaves the field out rather than sending an empty list")
   .max(LISTED_TAGS_MAX, `a card carries at most ${LISTED_TAGS_MAX} tags`)
   .refine(
-    // The catalog folds tags together without regard to case and keeps the
-    // first of each, so "Access" and "access" published together become one
-    // tag and the merchant is never told which of the two survived. Refusing
-    // the pair is the version of that a merchant can act on.
+    // The catalog folds tags together regardless of case and keeps the first,
+    // without telling the merchant which survived.
     (tags) => new Set(tags.map((tag) => tag.toLowerCase())).size === tags.length,
     "two tags that differ only in case are one tag to the listing, so both cannot be published",
   )
   .meta({
     description:
       "Words describing this product for an agent searching a discovery catalog. Between 1 and 5 of them, each 1 to 32 characters of printable ASCII with no space at either end, and no two the same without regard to case — because that is what the catalog keeps, and it drops the rest in silence. A card with no tags leaves the field out.",
-    // The case rule is a refinement and zod drops those when it renders a
-    // document. This much of it does cross, so a generated client refuses at
-    // least the identical pair.
+    // zod drops the case rule from the rendered document; this keeps at least
+    // the identical pair refused by a generated client.
     uniqueItems: true,
   });
 
 /**
- * The longest a description may be before a discovery catalog stops carrying
- * all of it.
- *
- * This number is weaker evidence than the other two on this page and the
- * difference matters. The length and the alphabet a listing name and a tag are
- * held to were read out of the catalog's own code, which we run here; this one
- * is read out of the catalog's written documentation, recorded in
- * `docs/research/04-spike-bazaar-listing.md`, and no code of theirs that we can
- * run enforces it — their sanitiser touches the listing name, the tags and the
- * icon, and never the description. A hundred entries walked out of the live
- * catalog are consistent with it and prove nothing: the longest was 468
- * characters and none sat at the boundary, which is what a hard cut would have
- * left behind. So the ceiling is honoured rather than verified.
+ * The longest description a discovery catalog carries whole. Unlike the
+ * listing name and tag limits, this one is taken from the catalog's written
+ * documentation rather than from code of theirs that enforces it, so it is
+ * honoured, not verified.
  */
 const LISTED_DESCRIPTION_MAX = 500;
 
 /**
- * What the buyer gets, what it is good for and what it does not include. Read
- * by a program, so distinguishing facts do the work here.
+ * What the buyer gets, what it is good for and what it does not include, read
+ * by a program. It is the one field of prose that goes out to a discovery
+ * catalog, so the catalog's limit is enforced here, at publication.
  *
- * It is also the one field of prose that goes out to a discovery catalog, and
- * the only one of the three merchant-written fields that reaches a listing with
- * nothing of the catalog's own checking it on arrival. Whatever a catalog does
- * with a description past its limit — cut it, refuse the record, keep it whole
- * — a merchant would learn of it from a listing rather than from us. So the
- * limit is here, at the publish, where somebody is reading the answer.
- *
- * The refusal is written as a function of what arrived rather than as a fixed
- * sentence, and it says two things a fixed one could not. It says how long the
- * text actually is, because the merchant is the only party who cannot see that
- * number and the only one who has to act on it — a shop's editor does not count
- * characters, and "at most 500" with nothing beside it is an instruction to go
- * and count by hand. And it says whose ceiling this is: read on its own, a
- * sentence about five hundred characters could be our rule, the payment
- * protocol's, or something about an alphabet, and a merchant deciding whether
- * to argue with us cannot tell which. It is the discovery catalog's, it is
- * documented rather than enforced by anything of theirs we can run (see the
- * comment on the number above), and the word "documents" in the sentence is
- * carrying that and not decoration.
- *
- * The count is of characters and not of bytes, which is what a merchant writing
- * in Cyrillic would otherwise have to work out from a number twice the size of
- * their text. It is UTF-16 units, precisely: a character outside the basic
- * plane — an emoji, a musical symbol — counts as two. That is not what a person
- * sees on their screen, and it is deliberately the same unit the ceiling is
- * measured in, so the number a merchant is told is always the number they were
- * refused for. Reporting glyphs and refusing on units would be a message that
- * disagrees with the rule it is explaining.
+ * The refusal states the actual length and whose ceiling it is. The length is
+ * counted in UTF-16 units, the unit the ceiling is measured in, so an emoji
+ * counts as two and the number the merchant is told is always the number they
+ * were refused for.
  */
 const DescriptionSchema = z
   .string({
@@ -302,9 +216,8 @@ const DescriptionSchema = z
   })
   .regex(/\S/, "a description must not be empty or blank")
   .max(LISTED_DESCRIPTION_MAX, {
-    // `input` is the string this check ran against: zod reaches a length check
-    // only once the value is known to be a string, so there is no other case
-    // here to write a branch for.
+    // zod reaches a length check only once the value is a string, so `input`
+    // is always one here.
     error: (issue) =>
       `this description is ${String(issue.input).length} characters and a listing carries at` +
       ` most ${LISTED_DESCRIPTION_MAX} — the ceiling is the one the discovery catalog documents,` +
@@ -312,30 +225,21 @@ const DescriptionSchema = z
   });
 
 /**
- * What the agent receives when the delivery goes through. Never empty: a
- * declaration with no fields satisfies the letter of "the card declares its
- * result" while telling the agent nothing about what it is paying for.
+ * What the agent receives when the delivery goes through: at least one field,
+ * and at least one that is not `required: false`, since a declaration that may
+ * arrive empty tells the agent nothing about what it is paying for. The rule
+ * is also written into the metadata as `minProperties`, because zod drops
+ * refinements from the JSON Schema it renders.
  *
- * The rule is written twice again. zod drops refinements when it renders
- * JSON Schema, so the same constraint goes into the metadata as
- * `minProperties`, where a generator can still see it.
- *
- * One rule, held by the published card and by the projection below, because
- * the promise is the same one: what the agent reads before paying is what the
- * merchant is held to afterwards. Two copies of a refinement would be two
- * promises, and the export would carry whichever was edited last. The two
- * declarations it is put on differ only in what else a field may carry: the
- * merchant's is closed, and the agent's takes what is added later
- * (ADR-0006 §5).
+ * The published card and the agent's reading of it share this one rule, so
+ * what the agent reads before paying is what the merchant is held to after.
  */
 const declaringAResult = <Declaration extends z.ZodType<Record<string, FieldSpec>>>(
   declaration: Declaration,
 ) =>
   declaration
     .refine(
-      // Not merely non-empty: at least one field that actually arrives. A
-      // declaration of one field marked `required: false` satisfies "at least
-      // one" and promises the agent exactly as much as an empty one does.
+      // At least one field that actually arrives, not merely one field.
       (spec) => Object.values(spec).some((field) => field.required !== false),
       "a card declares at least one field of what the agent receives, and at least one of them arrives every time",
     )
@@ -348,79 +252,40 @@ const declaringAResult = <Declaration extends z.ZodType<Record<string, FieldSpec
 const DeclaredResultSchema = declaringAResult(ParamSpecSchema);
 
 /**
- * A declaration as an agent reads it: the merchant's fields, each open to what
- * is added to a field later (ADR-0006 §5), so a new attribute of one field
- * leaves the card readable to an agent built before it.
+ * A declaration as an agent reads it: each field open to attributes added
+ * later, so a new attribute leaves the card readable to an agent built before
+ * it.
  */
 const ReadDeclarationSchema = z.record(ParamNameSchema, FieldSpecSchema.loose());
 
 /**
- * The short forms a card may be written in, and the one form they all become.
+ * The short forms a card may be written in at publication, and the one form
+ * they all become.
  *
- * A merchant selling one thing has three facts to give us: what they sell, at
- * what price, and what the buyer receives. Everything else a card can carry is
- * either optional already or has one answer that fits almost every product. The
- * three forms below let such a merchant write only the three facts, and they
- * exist for the publish call and for nothing else.
- *
- * What keeps them from becoming a second contract is that they open out into
- * the canonical card while it is parsed. What is stored, what an agent reads in
- * a catalog, what a delivery is held to and what a discovery catalog is told
- * are all built from the one shape they were always built from — the
- * projections further down this file never see a short form and need no case
- * for one. The mechanism does not fork; only the writing does, in the writer's
- * favour.
- *
- * They are private to this file on purpose. A card is the only document written
- * by a person rather than by a running program, so a short spelling buys
- * nothing anywhere else and would put a second form on the wire if it were
- * offered there. The price of a quote answer and the price on an order stay as
- * they are.
- *
- * Two properties are worth stating, because a reader would otherwise have to
- * test for them.
- *
- * The short forms belong to fields rather than to cards. A card may write its
- * price short and its purchase parameters long, or put a title on one delivered
- * field and leave its neighbours as bare type words. There is no short mode to
- * turn on, so adding one option to one field does not mean rewriting the rest.
- *
- * And a short form neither widens nor narrows what a card may say. The set of
- * types a field may declare is `ParamTypeSchema`'s and is read from there: the
- * expansion writes the word it was given into `type` without judging it, so a
- * word outside the set is refused by the same check and in the same words as
- * `{ type: 'strin' }` always was.
+ * A price may be one string, `"5.00 USD"`; a declared field may be its type
+ * word alone, `access_url: 'string'`; and `fulfillment` may be left out. Each
+ * belongs to its field, so a card may mix short and long freely. They are
+ * opened out into the canonical card while it is parsed, so everything stored,
+ * read or projected is built from the one canonical shape, and a short form
+ * neither widens nor narrows what a card may say.
  */
 
 /** A price written as one string: the amount, one space, the currency code. */
 const PRICE_WRITTEN_SHORT = /^(\S+) (\S+)$/;
 
-/**
- * What a price that is neither of the two forms is told.
- *
- * It names both forms, because the mistake it catches does not say which one
- * was meant: `"5.00"` is the short form with the currency left off and `"USD"`
- * is the short form with the amount left off, and what helps in either case is
- * seeing a whole price written each way.
- */
 /** What a card that names no price is told. */
 const PRICE_LEFT_OUT =
   'a card names its price, the one an agent compares while choosing: the amount and the currency, as "5.00 USD" or { amount: "5.00", currency: "USD" }';
 
+/** What a price in neither form is told; it shows both, since "5.00" or "USD" alone does not say which was meant. */
 const PRICE_EXPECTED =
   'a price is either the amount and the currency as one string, "5.00 USD", or the two written out, { amount: "5.00", currency: "USD" }';
 
 /**
- * A card's price: the two fields, or the one string that becomes them.
- *
- * The string is opened out before `MoneySchema` runs rather than beside it, and
- * that ordering is why this is a preprocess and not a union of the two shapes.
- * Written as a union, a merchant who gave the canonical form and got one half
- * of it wrong is told "invalid input" — zod has two failed branches and no way
- * to choose between them — where today they are told which half and why. Opened
- * out first, the canonical check is the only one that ever speaks, so
- * `{ amount: 'x', currency: 'USD' }` still names the amount, and `"5 dollars"`
- * names the currency, which is the half of it that is wrong.
+ * A card's price: the two fields, or the one string that becomes them. The
+ * string is opened out before `MoneySchema` runs rather than offered as a
+ * union, because a union would answer a half-wrong price with "invalid input"
+ * instead of naming the half that is wrong.
  */
 const CardPriceSchema = z.preprocess((value, ctx) => {
   if (value === undefined) {
@@ -433,10 +298,8 @@ const CardPriceSchema = z.preprocess((value, ctx) => {
 
   if (written === null) {
     ctx.addIssue({ code: "custom", message: PRICE_EXPECTED });
-    // Nothing further to say about this field: the canonical check would only
-    // add "expected object, received string" underneath a sentence that has
-    // already said what was expected. The rest of the card is still checked,
-    // because this sits on the field rather than on the card.
+    // The canonical check would only add "expected object, received string"
+    // under this sentence; the rest of the card is still checked.
     return z.NEVER;
   }
 
@@ -448,19 +311,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
- * A declaration with every field written out, from one where some of them are
- * the type word alone.
- *
- * `access_url: 'string'` becomes `access_url: { type: 'string' }`; a field that
- * is anything else is passed through for the canonical schema to judge, and
- * that includes a word which is not a type.
- *
- * The declaration is rebuilt rather than edited, so nothing here changes the
- * object the caller handed in. The rebuild is also where a key named
- * `__proto__` could have started being kept, or setting a prototype;
- * `Object.fromEntries` defines a property rather than assigning one, so such a
- * key stays an ordinary key and is dropped where it always was — see
- * `PROTOTYPE_KEY_IS_DROPPED` in `param-spec.ts`.
+ * A declaration with every field written out: `access_url: 'string'` becomes
+ * `access_url: { type: 'string' }`, and anything else passes through for the
+ * canonical schema to judge. It builds a new object with `Object.fromEntries`,
+ * which defines rather than assigns, so the caller's object is untouched and a
+ * key named `__proto__` cannot set a prototype here.
  */
 const declarationWrittenOut = (value: unknown): unknown =>
   isRecord(value)
@@ -473,11 +328,9 @@ const declarationWrittenOut = (value: unknown): unknown =>
     : value;
 
 /**
- * The same declaration, also accepting a field written as its type alone.
- *
- * Takes the schema rather than being one, because a card has two declarations
- * held to different rules — the purchase parameters may be empty and the
- * delivery result may not — and both take the short form.
+ * The same declaration, also accepting a field written as its type alone. It
+ * takes the schema as an argument because the purchase parameters and the
+ * delivery result are held to different rules.
  */
 const writtenShort = <Declaration extends z.ZodType>(declaration: Declaration) =>
   z.preprocess(declarationWrittenOut, declaration);
@@ -491,15 +344,12 @@ const CardFieldsSchema = z.strictObject({
   description: DescriptionSchema,
 
   /**
-   * The price in the catalog. Always required, even for a card with a price
-   * check: this is what the agent compares when it is choosing.
+   * The price in the catalog, what the agent compares when choosing; required
+   * even on a card with a price check. Written as the two fields or as one
+   * string, and always stored as the two fields.
    *
-   * Written as the two fields, or as the one string that becomes them. What is
-   * stored and what an agent reads are the two fields either way.
-   *
-   * Publishing holds it to the price rule in `price-rule.ts`, outside this
-   * schema so that a card stored before the rule stays readable; the export
-   * says so, or a generated client would first meet the rule as a refusal.
+   * Publishing also holds it to the price rule in `price-rule.ts`, outside this
+   * schema so that a stored card stays readable.
    */
   price: CardPriceSchema.meta({
     description:
@@ -511,7 +361,7 @@ const CardFieldsSchema = z.strictObject({
 
   /**
    * What the agent receives. Every card declares it except a parcel's, whose
-   * mode fixes it: the record of the parcel's shipment (ADR-0033).
+   * mode fixes it: the record of the parcel's shipment.
    */
   result: writtenShort(DeclaredResultSchema).optional(),
 
@@ -522,27 +372,17 @@ const CardFieldsSchema = z.strictObject({
   tags: TagsSchema.optional(),
 
   /**
-   * When the product reaches the agent, and so when the money moves.
-   *
-   * A card that names no mode is synchronous, which is what almost every
-   * product a person writes a card for by hand is: the goods go back in the
-   * answer to the purchase. The default is filled in here rather than read as
-   * absence downstream, so the stored card, the public card and the discovery
-   * declaration all carry the word — the alternative is three readers each
-   * deciding for themselves what silence meant.
+   * When the product reaches the agent, and so when the money moves. A card
+   * that names no mode is `sync`, and the default is filled in here so that
+   * every reader of the card sees the word.
    */
   fulfillment: FulfillmentSchema.default("sync"),
 
   price_check: PriceCheckSchema.optional(),
 
   /**
-   * How long the merchant may take to answer a confirmation request.
-   *
-   * The seconds themselves belong to the gateway. What a card that names none
-   * is held to is set there and published on the portal — an hour — while the
-   * ceiling on what a card may name is genuinely undecided. So this schema
-   * takes any whole positive number of seconds rather than inventing a limit
-   * that would read as a decision nobody took.
+   * How long the merchant may take to answer a confirmation request, in
+   * seconds. A card that names none is held to the gateway's default.
    */
   confirm_deadline_seconds: z.int().positive().optional(),
 
@@ -550,36 +390,24 @@ const CardFieldsSchema = z.strictObject({
   fulfill_deadline_seconds: z.int().positive().optional(),
 
   /**
-   * On a parcel's card, how long the merchant may take to hand it to a carrier,
-   * counted from the charge (ADR-0033). A name of its own rather than the
-   * delivery deadline's, because on an asynchronous card that number is the
-   * time to deliver, and a number read under the wrong name tells a person
-   * their parcel arrives when it merely leaves. The ceiling is thirty days, the
-   * longest the marketplaces give a seller, and it bounds how long a buyer's
-   * money sits with a merchant before the order becomes a refund owed.
+   * On a parcel's card, how long the merchant may take to hand it to a
+   * carrier, counted from the charge, at most thirty days. It has its own name
+   * because a delivery deadline would read as the time the parcel arrives.
    */
   ship_within_seconds: z.int().positive().max(SHIP_WITHIN_AT_MOST_SECONDS).optional(),
 });
 
 /**
- * Both deadlines are shown to the agent before it pays, which is why a card
- * may only carry the ones its own mode uses. A synchronous card advertising a
- * delivery deadline would be advertising a wait that never happens — and the
- * wait for a synchronous answer is our system-wide budget, the same for every
- * product, so it has no field here at all.
+ * The rules between a card's fields. Every deadline is shown to the agent
+ * before it pays, so a card may carry only the ones its own mode uses; a
+ * synchronous card names none, since its wait is a budget the same for every
+ * product.
  */
 const cardRules = (card: z.output<typeof CardFieldsSchema>, ctx: z.RefinementCtx): void => {
   if (card.fulfillment === "confirm") {
-    // The gate, and the reason it is a refusal rather than a note somewhere.
-    // A confirmation request reaches the merchant before any money moves and
-    // must be answered without delivering — but nothing on the wire marks it
-    // as one, so a handler could not tell it from a paid order. Publishing
-    // such a card would sell the merchant a mode that cannot be served, and
-    // the first they heard of it would be a request they mishandled.
-    //
-    // The value stays in the enumeration: the mode exists in the model and the
-    // state machine knows it. What is missing is its shape on the wire, and
-    // that is a "not yet", not a "no".
+    // A confirmation request reaches the merchant before any money moves, but
+    // nothing on the wire marks it as one, so a handler could not tell it from
+    // a paid order. Until it has a shape, the mode is refused at publication.
     ctx.addIssue({
       code: "custom",
       path: ["fulfillment"],
@@ -587,14 +415,12 @@ const cardRules = (card: z.output<typeof CardFieldsSchema>, ctx: z.RefinementCtx
         'a card cannot be published as "confirm" during the pilot: the confirmation request has no shape on the wire yet, so a handler could not tell one from a paid order',
     });
 
-    // The deadline rules below are unchanged and still right for this mode.
-    // Reporting them alongside the gate would stack a second complaint on a
-    // card that has one problem, and lifting the gate later would uncover it.
+    // The deadline rules below still hold for this mode, but one complaint is
+    // enough for a card that cannot be published at all.
     return;
   }
 
-  // Past the gate no mode is ever asked to confirm — which is why this needs no
-  // test on the mode of its own.
+  // Past the gate no mode confirms, so any confirmation deadline is refused.
   if (card.confirm_deadline_seconds !== undefined) {
     ctx.addIssue({
       code: "custom",
@@ -636,17 +462,13 @@ const cardRules = (card: z.output<typeof CardFieldsSchema>, ctx: z.RefinementCtx
 };
 
 /**
- * What a parcel's card is held to (ADR-0033), beside what every card is.
- *
- * Each rule is about a word an agent or a merchant would otherwise read wrong.
- * The time to ship is required because it is the one promise the agent is
- * given about when the goods leave. A result is refused because the mode fixes
- * it — the record of the shipment — and one a merchant declared would be a
- * second promise beside it. A delivery deadline is refused because the number
- * would read as the time the parcel arrives. The price is the merchant's
- * handler's to answer, because shipping depends on where the parcel goes, and
- * only the merchant knows what it costs to send it there. And the address is
- * not one of the card's parameters, because it travels in its own block.
+ * What a parcel's card is held to, beside what every card is. The time to ship
+ * is required because it is the one promise the agent gets about when the
+ * goods leave. A declared result is refused because the mode fixes it, and a
+ * delivery deadline because it would read as the time the parcel arrives. The
+ * price is asked of the merchant's handler, as shipping depends on where the
+ * parcel goes, and the address travels in its own block rather than as a
+ * parameter.
  */
 const parcelRules = (card: z.output<typeof CardFieldsSchema>, ctx: z.RefinementCtx): void => {
   if (card.ship_within_seconds === undefined) {
@@ -690,11 +512,9 @@ const parcelRules = (card: z.output<typeof CardFieldsSchema>, ctx: z.RefinementC
   }
 };
 
-// JSON Schema has no way to say "this field only when that one has this
-// value", and zod drops the rules above when it renders a document. Left at
-// that, an engineer generating a client from the export would build one that
-// sends deadlines a card cannot carry and only find out on the first publish.
-// Saying it in words is weaker than checking it, and better than silence.
+// JSON Schema cannot say "this field only when that one has this value", and
+// zod drops the rules above from the rendered document, so they travel in the
+// description as words.
 const CARD_RULES_IN_WORDS =
   'A card cannot be published as fulfillment "confirm" during the pilot: the confirmation request has no shape on the wire yet, so a handler could not tell one from a paid order. confirm_deadline_seconds is only allowed when fulfillment is "confirm", and fulfill_deadline_seconds only when fulfillment is "async" or "confirm" — a synchronous card delivers inside the system-wide response budget and names no deadline of its own. result is required on every card except one whose fulfillment is "ship". A "ship" card, a parcel, names ship_within_seconds and is the only card that may; it declares no result and no fulfill_deadline_seconds, its price_check is "handler", and it asks for no ship_to among its params, because the purchase carries the address in a block of its own.';
 
@@ -710,14 +530,10 @@ interface Words {
 }
 
 /**
- * The words on a card that an agent reads: the title, the description, and
- * the title of each field the card declares.
- *
- * It reads whatever arrived rather than a card known to be whole, because the
- * rule runs beside the shape checks and not after them — a merchant told about
- * a price first and about their markup on the next attempt fixes one thing per
- * publish. So anything that is not where a card keeps its words is passed over
- * here and named by the shape check instead.
+ * The words on a card that an agent reads: the title, the description, and the
+ * title of each declared field. It reads whatever arrived, because the
+ * plain-text rule runs beside the shape checks so that one publish reports
+ * both; anything not where a card keeps its words is left to the shape check.
  */
 const wordsOf = (card: unknown): Words[] => {
   if (!isRecord(card)) return [];
@@ -752,14 +568,9 @@ const wordsOf = (card: unknown): Words[] => {
 };
 
 /**
- * The card's words are plain text, and a finding for each kind of thing in them
- * that is not (see `plain-text.ts` for what counts and why the door refuses
- * rather than cleans).
- *
- * Each finding names the field, what was found in it and where, and what the
- * field is held to. The sentence is written for the merchant who has to find
- * the characters in their own editor, which is why it quotes the fragment and
- * counts the position rather than printing the rule.
+ * A finding for each kind of thing in the card's words that is not plain text
+ * (see `plain-text.ts`), naming the field, what was found and where, so the
+ * merchant can find it in their own editor.
  */
 const plainWords = (card: unknown, ctx: z.RefinementCtx): void => {
   for (const words of wordsOf(card)) {
@@ -782,26 +593,18 @@ const PLAIN_TEXT_IN_WORDS =
 
 /**
  * The card as it is stored and as its merchant reads it back: every rule a
- * publish holds it to except that its words are plain text.
- *
- * That one rule belongs to the door and not to the reader. A card stored
- * before it may carry markup, and every answer that carries a stored card is
- * held to its contract on the way out — so holding a stored card to the rule
- * would fail the merchant's whole list, and the page of the catalog it sits
- * on, over one old row, and the merchant could not even see the card they were
- * meant to republish.
+ * publish holds it to except plain text, which is applied when a card is
+ * written. Held on reading, it would let one stored card carrying markup fail
+ * the merchant's whole list and the catalog page it sits on.
  */
 const StoredCardSchema = CardFieldsSchema.superRefine(cardRules).meta({
   description: `A product in the catalog, as it is stored and as its merchant reads it back. Three rules hold beyond the shape below. ${CARD_RULES_IN_WORDS} A publish also holds the title, the description and each declared field's title to plain text; reading a card back does not, so a card stored before that rule is read back exactly as it was stored.`,
 });
 
 /**
- * A card as a merchant publishes it.
- *
- * The plain-text rule runs whatever else is wrong with the card, so a merchant
- * hears about their markup in the same answer as about their price. The rules
- * that compare one field with another run only once the shape is right, as
- * they always have: they need the fields to be what they claim to be.
+ * A card as a merchant publishes it. The plain-text rule runs whatever else is
+ * wrong, so markup is reported in the same answer as the rest; the rules
+ * between fields run only once the shape is right.
  */
 export const CardSchema = CardFieldsSchema.superRefine(cardRules)
   .superRefine(plainWords, { when: () => true })
@@ -814,21 +617,13 @@ export type PriceCheck = z.infer<typeof PriceCheckSchema>;
 export type Card = z.infer<typeof CardSchema>;
 
 /**
- * A card as a merchant may write it, before the short forms are opened out.
+ * A card as a merchant may write it for publication, before the short forms
+ * are opened out. Nothing is ever read back in this shape; `Card` is what
+ * everything else uses.
  *
- * It is the input face of the one schema above rather than a second schema, and
- * it is spelled out by hand because zod cannot describe it: the short forms are
- * read by a step whose own input is `unknown`, so inference would hand a
- * merchant no help at all where this hands them the two spellings each field
- * takes.
- *
- * What that costs is one place to keep in step, and it is bounded: everything
- * except the four fields named below is taken from `Card` itself, so a field
- * added to a card appears here without anybody remembering to add it. A test
- * holds the other direction — a canonical card is a thing a merchant may write.
- *
- * `Card` is what everything else uses. This type is for the call that publishes
- * and for nothing else; nothing is ever read back in this shape.
+ * It is written by hand because zod cannot infer it, but every field except
+ * the four below is taken from `Card`, so a field added to a card appears here
+ * too.
  */
 export type CardInput = Omit<Card, "price" | "params" | "result" | "fulfillment"> & {
   /** `{ amount, currency }`, or the two as one string: `'5.00 USD'`. */
@@ -842,77 +637,39 @@ export type CardInput = Omit<Card, "price" | "params" | "result" | "fulfillment"
 };
 
 /**
- * The check an agent's purchase parameters are held to, for this card.
- *
- * The compiler underneath takes a direction, and a direction is a string a
- * caller can get backwards: compiling a card's result as a purchase silently
- * restores the hole where a delivery promises nothing. These two take the card
- * instead, so the only place that knows which declaration is which is the
- * place that picks.
+ * The check an agent's purchase parameters are held to, for this card. It and
+ * `deliveryCheckFor` take the card rather than a direction, so a caller cannot
+ * compile a card's result as a purchase by passing the wrong word.
  */
 export const purchaseCheckFor = (card: Card): z.ZodType =>
   paramSpecToValidator(card.params ?? {}, "purchase");
 
 /**
  * The check this card's delivery is held to: the goods its `result` declared,
- * or for a parcel, which is not delivered with goods at all, its shipment
- * (ADR-0033).
+ * or for a parcel its shipment.
  */
 export const deliveryCheckFor = (card: Card): z.ZodType =>
   card.result === undefined ? ShipmentSchema : paramSpecToValidator(card.result, "delivery");
 
 /**
- * The fields of a card as an agent reads it in a catalog.
+ * A card as an agent reads it in a catalog: what Agentify says about a product
+ * to somebody about to spend money.
  *
- * The published card is what a merchant writes; this is what we say about it
- * to somebody who is about to spend money. Every difference between the two is
- * a decision, so each one is written down.
+ * It differs from the published card on purpose. `id`, the catalog identifier
+ * every purchase, receipt and status uses, replaces the merchant's own key.
+ * `price_check` becomes the single flag `price_checked_at_purchase`, which says
+ * the merchant is asked, not that they answer. `as_of` is added: when the price
+ * shown was published, the only freshness claim a catalog makes. `tags` are
+ * left out, since they serve discovery catalogs, not this one. `seller` is the
+ * merchant's name and site as they gave them, unchecked.
  *
- * Our catalog identifier replaces the merchant's own key. `id` is what a
- * purchase, a receipt and a status all use, while `merchant_item_id` is unique
- * only inside one merchant's catalog and means nothing outside it. An agent
- * handed both would use the wrong one some of the time, for no gain.
- *
- * `price_check` is gone and one fact out of it stays. How the merchant is
- * asked is between the merchant and us. What an agent does act on is that the
- * price will be asked again: the number in the catalog is
- * what it compares when choosing, and the sale can go through at another. So
- * the projection carries `price_checked_at_purchase` and nothing else about
- * how the asking is done. The flag says we ask, not that we get an answer —
- * what happens when a merchant is silent depends on the mode and is the
- * gateway's, and this document does not claim to know it.
- *
- * Both deadlines stay, because they are the merchant's promise to the agent
- * about how long it may wait, and the agent is told them before it pays. The
- * projection writes each only on a mode that has it, and the document says so
- * in words rather than as structure: it takes fields added later (ADR-0006
- * §5), so a field an agent does not expect is one it ignores, not one it can
- * refuse.
- *
- * The mode is a word whose known values are listed beside it, for the same
- * reason. The storefront has no version, so a mode added later reaches agents
- * that still hold this contract, and to them it has to be a card to pass over
- * rather than a catalog they cannot read.
- *
- * `as_of` is added: the moment the price shown here was published. A price
- * with no moment behind it cannot be judged stale, and this is the only
- * freshness claim a catalog makes.
- *
- * `tags` are gone as well, and that one is a decision rather than an omission.
- * They are words a merchant chose so that a search in a discovery catalog finds
- * this product, held to that catalog's own rule about length and alphabet. Our
- * own catalog is not searched that way — an agent reading it has the whole
- * page — so carrying them here would put a foreign catalog's constraint in
- * front of a reader who has no use for it.
- *
- * Who sells is here as the merchant gave it, a name and the site of their
- * shop (ADR-0034), and as nothing more: no profile, no contact of ours, and no
- * claim that either was checked. Who "we" are to the buyer is a question this
- * document still does not answer.
+ * The document is open: fields and fulfillment modes may be added later, and
+ * a reader ignores a field it does not know and passes over a card whose mode
+ * it does not know.
  */
 export const PublicCardSchema = z
   .looseObject({
-    /** Our catalog identifier, the one a purchase, a receipt and a status use. */
+    /** The catalog identifier, the one a purchase, a receipt and a status use. */
     id: IdentifierSchema,
 
     title: TitleSchema,
@@ -935,13 +692,9 @@ export const PublicCardSchema = z
     result: declaringAResult(ReadDeclarationSchema).optional(),
 
     /**
-     * Whether the merchant is asked for this product's price and availability at
-     * the moment of purchase, so the sale may go through at a price other than
-     * the one above.
-     *
-     * Required rather than defaulted, because both readings of a missing flag
-     * cost the agent something: read as false it budgets against a price that is
-     * about to move, read as true it distrusts a price that never moves.
+     * Whether the merchant is asked for this product's price and availability
+     * at the moment of purchase, so that the sale may go through at a price
+     * other than the one above.
      */
     price_checked_at_purchase: z.boolean(),
 
@@ -954,16 +707,11 @@ export const PublicCardSchema = z
     seller: SellerSchema.loose(),
 
     /**
-     * How the product is sold: "sync", "async" or "confirm" today, and a word
-     * added later reaches this same document. A reader keeps a default arm,
-     * and a card whose mode it does not know is one to pass over.
-     *
-     * Two branches rather than a bare string, so the known values cross into
-     * the exported document as a list a client can switch over, beside the
-     * branch that reads any other word (`OpenWordSchema`). A declared field's
-     * type, inside params and result, stays a closed list: a card with a type
-     * a reader does not know is one it cannot fill in, and it is passed over
-     * like a card of an unknown mode.
+     * How the product is sold. The known values are listed for a client to
+     * switch over, and any other word is accepted too, since modes may be
+     * added: keep a default arm, and pass over a card whose mode you do not
+     * know. A declared field's type, inside params and result, stays a closed
+     * list.
      */
     fulfillment: z.union([FulfillmentSchema, OpenWordSchema]),
 
@@ -980,12 +728,8 @@ export const PublicCardSchema = z
     ship_within_seconds: z.int().positive().optional(),
   })
   .meta({
-    // Everything below is written in prose above as well, and it has to be
-    // written twice: the reader this matters most to is the one holding the
-    // exported document and no TypeScript, and that reader is about to spend
-    // money on what this card claims. `as_of` in particular means something
-    // narrower here than the same name means elsewhere in this contract, and a
-    // reader who assumed otherwise would trust a stale number.
+    // `as_of` means something narrower here than the same name elsewhere in
+    // this contract, so the description says so to readers of the export.
     description:
       "A product an agent can buy, projected from the card its merchant published. as_of is when the price shown here was published, and nothing more: on a card whose price is checked at purchase it says nothing about how fresh that check will be — elsewhere in this contract the same name means the moment a live answer was true. price_checked_at_purchase says the merchant is asked for a price at the moment of purchase, not that they answer; what happens when they are silent depends on the mode and belongs to the gateway. The number above is what an agent compares when choosing and may not be what the sale goes through at. Three rules hold beyond the shape: a synchronous product names no delivery deadline, because it is delivered inside a response budget that is the same for every product on the platform; only a product whose merchant is asked to confirm names a confirmation deadline; and a parcel, fulfillment \"ship\", names ship_within_seconds — the time to hand it to a carrier counted from the charge, not the time it arrives — and no result, because what the agent receives is the record of its shipment, while every other product names a result. On a parcel the price shown is the goods without shipping, and the purchase goes through at the merchant's answer for the whole, shipping to the buyer's place included. seller is who sells, as the merchant gave it: Agentify did not check the name or the site. fulfillment is a word whose known values are listed beside it, and more may be added: a reader keeps a default arm, and a card whose mode it does not know is one to pass over, not a reason to stop reading the catalog. This document and every part inside it may also gain fields; a reader ignores the ones it does not know. The type of a declared field in params and result is a closed list, and a card with a type a reader does not know is one to pass over too.",
   });
@@ -993,16 +737,11 @@ export const PublicCardSchema = z
 export type PublicCard = z.infer<typeof PublicCardSchema>;
 
 /**
- * A card as `publicCardOf` builds it: the card's own fields without the index
- * signature the open schema adds, and a mode this version knows.
- *
- * An agent reads a card with `PublicCardSchema`, which takes fields and modes
- * added later (ADR-0006 §5); what is built is held to the opposite. The type
- * catches part of that: an unknown field written straight into the returned
- * object is a compile error. It does not reach inside the card's parts, which
- * keep the open schema's index signatures, nor tie a deadline to its mode. The
- * gateway's outbound check holds the rest, at every depth, before anything is
- * sent (`checksBeforeSending`).
+ * A card as `publicCardOf` builds it: the card's own fields without the open
+ * schema's index signature, and a mode this version knows. An unknown field
+ * written straight into the returned object is a compile error; deeper parts,
+ * and the tie between a deadline and its mode, are held by the gateway's check
+ * before anything is sent.
  */
 export type ProjectedCard = {
   [Field in keyof PublicCard as string extends Field ? never : Field]: PublicCard[Field];
@@ -1011,16 +750,11 @@ export type ProjectedCard = {
 /**
  * The card as an agent reads it, built from the card the merchant published.
  *
- * It exists so there is one projection rather than one per caller. The
- * decision about what an agent may see is made once, here, and it is made by
- * naming each field that is copied. Built the other way — copy the card, then
- * remove what is internal — a field added to the published card would reach
- * every agent by default, and the first anybody heard of it would be a
- * merchant's pricing address in a public catalog.
- *
- * The three things the card cannot know are passed in: the catalog identifier
- * we issued when it was published, the moment its price was published, and
- * who sells it as their merchant stands now.
+ * Each field that is copied is named, rather than the card copied and the
+ * internal fields removed, so a field added to the published card never
+ * reaches agents by default. The three things the card cannot know are passed
+ * in: the catalog identifier, the moment its price was published, and who
+ * sells it as their merchant stands now.
  */
 export const publicCardOf = (
   card: Card,
@@ -1072,38 +806,15 @@ export const publicCardOf = (
 };
 
 /**
- * One card as a discovery catalog reads it: what an agent that has never seen
- * our own catalog finds when it searches somewhere else.
+ * One card as a discovery catalog reads it: the material an x402 payment
+ * challenge is assembled from, by the protocol's own library at the edge. It
+ * is built, like the agent's card, by naming each field that is copied.
  *
- * This is the second projection of a card and it sits beside the first because
- * the two have to be read together. Both are claims we make to somebody about
- * to spend money, both are built by naming what is copied rather than by
- * copying the card and removing what is internal, and a field added to a card
- * has to be considered against both or it reaches one audience by accident.
- *
- * What comes out is not a wire document of ours. It is the material an x402
- * payment challenge is assembled from — the resource block, an example of the
- * purchase body, the JSON Schema that body is held to, and an example of what a
- * delivery carries — and the assembling is done at the edge, by the protocol's
- * own library, from exactly these pieces. Keeping the projection here and the
- * assembly there is what stops this package growing a payment library's
- * dependency tree, which is the merchant SDK's dependency tree (ADR-0003 §8).
- *
- * Two decisions inside are worth reading before the code.
- *
- * The card's title is not sent. The resource block has one field of prose and
- * the card has two, and joining a merchant's headline to a merchant's
- * description with punctuation of our own would be us writing their listing for
- * them. The description is the field a card writes for a program to read, so it
- * is the one that goes.
- *
- * The examples are shapes rather than facts. A card declares the types of what
- * it takes and what it returns and carries no example values, so what goes out
- * is every declared field holding a value that stands for its type and nothing
- * more. That is a claim we can keep — a test holds the input example to this
- * card's own purchase check and the output example to its own delivery check,
- * so what we publish is something our own door would accept — and it is not a
- * claim about anybody's real data, which we do not have and will not invent.
+ * The card's title is not sent: the resource block has one field of prose,
+ * and the description is the one a card writes for a program to read. The
+ * examples are shapes rather than facts, each declared field holding a value
+ * that stands for its type, because a card carries no example values and none
+ * are invented; a test holds them to the card's own checks.
  */
 export interface BazaarDeclaration {
   /** The resource block: what is being paid for, and who is selling it. */
@@ -1127,13 +838,9 @@ export interface BazaarDeclaration {
 }
 
 /**
- * One declared field as a value standing for its own type.
- *
- * A string is the word `string` rather than an empty one, and that is not a
- * flourish: a delivered string has to carry something, so an example built out
- * of empty strings would be an example this system's own delivery check
- * refuses — published to strangers as what they will receive. The word says
- * what goes there, which is more than an empty string said anyway.
+ * One declared field as a value standing for its type. A string is the word
+ * `string`, not an empty one, because a delivered string must carry something
+ * and the example must pass the card's own delivery check.
  */
 const standInFor = (type: ParamType): unknown => {
   switch (type) {
@@ -1152,20 +859,16 @@ const exampleOf = (spec: ParamSpec): Record<string, unknown> =>
   Object.fromEntries(Object.entries(spec).map(([name, field]) => [name, standInFor(field.type)]));
 
 /**
- * The JSON Schema a purchase body is held to.
- *
- * It is rendered from the very check the gateway runs against an agent's
- * parameters, so the document a stranger reads and the door they meet cannot
- * disagree. The rendered document names its own dialect at the top, which is
- * right for a document standing alone and wrong for one about to be nested
- * inside another schema, so that one line is dropped here.
+ * The JSON Schema a purchase body is held to, rendered from the very check the
+ * gateway runs, without the `$schema` line, which is wrong for a schema about
+ * to be nested inside another.
  */
 const purchaseBodySchemaOf = (card: Card): Record<string, unknown> => {
   const { $schema, ...body } = z.toJSONSchema(
     z.strictObject({
       params: purchaseCheckFor(card),
       // A parcel's purchase carries the address it goes to beside its
-      // parameters, and is refused without one (ADR-0032).
+      // parameters, and is refused without one.
       ...(card.fulfillment === "ship" ? { ship_to: ShipToSchema } : {}),
     }),
   );
@@ -1173,9 +876,9 @@ const purchaseBodySchemaOf = (card: Card): Record<string, unknown> => {
 };
 
 /**
- * Where a parcel goes, in a listing's example purchase: Agentify's own office
- * (ADR-0033), with the number taken out of it, so that the example is a real
- * place and nobody's home.
+ * Where a parcel goes in a listing's example purchase: Agentify's own office,
+ * with the phone number blanked out, so that the example is a real place and
+ * nobody's home.
  */
 const LISTED_SHIP_TO: ShipTo = {
   name: "Agentify",
@@ -1201,15 +904,11 @@ const LISTED_SHIPMENT = {
 };
 
 /**
- * The card as a discovery catalog reads it.
- *
- * The two things a card cannot know are passed in: the address this resource
- * answers at, which is pinned by whoever runs the gateway rather than worked
- * out from a request, and the name its seller is listed under, which belongs to
- * the merchant. A seller with no listing name and a card with no tags leave
- * those fields out altogether — an empty string and an empty list are values a
- * catalog would render, and the absence is the only way to say that nobody
- * named one.
+ * The card as a discovery catalog reads it. The two things a card cannot know
+ * are passed in: the address this resource answers at, pinned by whoever runs
+ * the gateway, and the name its seller is listed under. A seller with no name
+ * and a card with no tags leave those fields out, since a catalog would render
+ * an empty string or list.
  */
 export const bazaarDeclarationOf = (
   card: Card,
@@ -1233,32 +932,18 @@ export const bazaarDeclarationOf = (
 });
 
 /**
- * One card as the merchant who published it reads it back.
+ * One card as the merchant who published it reads it back: the card whole,
+ * with the catalog identifier and where it stands.
  *
- * The public catalog answers none of what a merchant needs from their own
- * catalog. It is unscoped, so nothing in it says which entries are theirs; it
- * carries our identifier in place of their key; and a card that is off sale is
- * not in it at all, which is precisely the card a merchant is looking for when
- * they go to put it back on sale.
- *
- * So the card travels whole rather than as a third projection. Everything the
- * merchant wrote is theirs already, and copying a subset of it here would be
- * one more shape to hold in step with the published card — the drift the
- * projection above exists to prevent once, repeated for no gain.
- *
- * Two fields say where the card stands, and they are two rather than one for a
- * reason that is invisible from the shape. `selling` is what a purchase of this
- * card meets right now, and it is the same word the order machine is given at
- * the birth of an order, so a card reading "paused" here is a card that refuses
- * new orders there. `paused` says whether the pause is this card's own. They
- * differ exactly when the merchant has stopped all selling: every card then
- * reads `selling: "paused"`, and only the ones with `paused: true` are still
- * paused after the merchant starts selling again. A merchant given only the
- * first would press resume on a card and watch nothing change.
+ * `selling` is what a purchase of this card meets right now, and `paused` says
+ * whether the pause is this card's own. They differ when the merchant has
+ * stopped all selling: every card then reads `selling: "paused"`, and only
+ * those with `paused: true` stay paused once selling resumes, so resuming a
+ * card whose `paused` is already false changes nothing until then.
  */
 export const MerchantCardSchema = z
   .strictObject({
-    /** Our catalog identifier, the one a purchase, a receipt and a status use. */
+    /** The catalog identifier, the one a purchase, a receipt and a status use. */
     id: IdentifierSchema,
 
     /** When this version of the card was published. */

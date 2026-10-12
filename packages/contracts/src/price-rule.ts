@@ -1,57 +1,24 @@
 /**
  * What a price a merchant sets has to be before Agentify will sell at it.
  *
- * A price comes in by two doors: on a card, when it is published, and in the
- * answer to a price question, when a purchase is priced live. The gateway holds
- * both to the rule below, and the merchant SDK's own check of a card holds it
- * to the same rule, so a card the check passes is not refused at publication
- * for its price. Three parts, each standing for a payment that cannot be
- * taken.
+ * A price comes in on a card when it is published and in the answer to a price
+ * question when a purchase is priced live. The gateway holds both to this rule,
+ * and the SDK's own check of a card holds it to the same rule, so a card the
+ * check passes is not refused at publication for its price.
  *
- * A price of zero is refused, by design. A payment request for nothing asks
- * for something that cannot be done, and a gateway that took free items would
- * be hosting content rather than selling it. A merchant gives a free item away
- * from their own site, with no payment request in front of it (ADR-0002 §2).
- *
- * A currency other than the dollar is refused, because there is no exchange
- * rate anywhere in this system to charge it at.
- *
- * An amount is written in dollars with at least two digits after the dot, so
- * that a merchant who counts in cents and writes "500" for five dollars is
- * refused rather than listed at five hundred. Fractions of a cent stay allowed,
- * because a price per call is often below one, down to the finest amount the
- * token a buyer pays in can carry and no further: past that there is no exact
- * amount to charge, and a rounded charge is a different charge.
- *
- * So a price the door took is a price the payment edge can charge. The edge
- * reads the currencies from here, and the places its token carries on every
- * chain it can charge on are held equal to `PAYABLE_DECIMALS` by a test beside
- * it, so the door and the edge cannot become two answers.
- *
- * It is a rule applied at the doors rather than part of any schema, and that is
- * the point of it being a function. The schemas also read back every document
- * already written — every answer that carries a card is held to the contract
- * on its way out — so a rule written into the card's schema would turn the
- * whole list of a merchant who published such a price before the rule existed
- * into a failure, for cards they could otherwise see, pause and replace.
+ * This is a function applied where a price comes in rather than part of a
+ * schema, because the schemas also read back documents already written, and a
+ * rule in the card's schema would make a merchant's whole list unreadable over
+ * one card published before the rule.
  */
 
 import type { Money } from "./primitives.js";
 import type { Problem } from "./results.js";
 
 /**
- * The currencies a price may be written in, and the one conversion Agentify
- * makes.
- *
- * A card priced in dollars is charged in the network's own dollar-denominated
- * asset, one for one. That is a decision and not the absence of one, so it is
- * written here rather than left to be inferred from the fact that it works: a
- * merchant who writes "USD" is charging their buyer USDC on the configured
- * chain, and the two are held to be the same number of dollars.
- *
- * Everything else is refused. Nobody has decided where an exchange rate would
- * come from, and a charge based on an invented one would be the clearest
- * possible claim beyond the evidence.
+ * The currencies a price may be written in. A card priced in "USD" is charged
+ * in USDC on the configured chain, one for one. Every other currency is
+ * refused: there is no exchange rate anywhere in Agentify to charge it at.
  */
 export const PAYABLE_CURRENCIES: readonly string[] = Object.freeze(["USD", "USDC"]);
 
@@ -63,16 +30,15 @@ export const PAYABLE_CURRENCIES: readonly string[] = Object.freeze(["USD", "USDC
 export const PAYABLE_DECIMALS = 6;
 
 /**
- * What stands between this price and a sale, as findings on the fields of the
- * document that carried it — empty where nothing does.
+ * What stands between this price and a sale, as findings under the path
+ * `price` of the card or price answer that carried it; empty when nothing does.
  *
- * The paths name `price` because a card and a price answer both carry the
- * price under that name, so one finding reads right in either. An amount gets
- * at most one finding: zero is said before the places, because "0" written as
- * "0.00" would only be refused again.
- *
- * The amount has already passed `AmountSchema`, so it is digits with at most
- * one dot, and the places are what follows the dot.
+ * A price of zero is refused, since a free item is given away from the
+ * merchant's own site, not sold. An amount needs at least two digits after the
+ * dot, so that "500" meant as cents is never charged as five hundred dollars,
+ * and at most `PAYABLE_DECIMALS`, past which there is no exact amount to
+ * charge. A currency outside `PAYABLE_CURRENCIES` is refused. An amount gets at
+ * most one finding. The amount is expected to have passed `AmountSchema`.
  */
 export function priceProblemsOf(price: Money): Problem[] {
   const problems: Problem[] = [];

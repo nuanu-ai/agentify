@@ -9,10 +9,7 @@ import { errorOf, expectMissingFieldRejected } from "./testing/expect-schema.js"
 
 describe("what a handler may answer", () => {
   // The promise: a handler has exactly three final answers, and a temporary
-  // failure is none of them. An exception, a dead process or a dropped
-  // connection is an order that was not delivered and comes back; a refusal is
-  // final and closes the order. Widening this set would blur that line, and a
-  // supplier who timed out once would look like a product that cannot be sold.
+  // failure is none of them; it is an order not delivered, which comes back.
 
   it("accepts a delivery", () => {
     const answer = { delivered: { access_url: "https://example.com/a/9f2c4a" } };
@@ -29,8 +26,7 @@ describe("what a handler may answer", () => {
   });
 
   it("refuses an answer that says two things at once", () => {
-    // Delivered and refused at the same time is not an answer we can act on,
-    // and picking one of them for the merchant would be picking what happens
+    // Picking one of the two for the merchant would be deciding what happens
     // to someone's money.
     const message = errorOf(HandlerAnswerSchema, {
       delivered: { access_url: "https://example.com/a" },
@@ -48,8 +44,8 @@ describe("what a handler may answer", () => {
   });
 
   it("refuses a delivery that is not shaped like a card's result", () => {
-    // The delivery is handed to the agent as it is, against the result the
-    // card declared. A bare string has no field names to check against it.
+    // The delivery is checked against the card's declared result, and a bare
+    // value has no field names to check.
     for (const delivered of ["https://example.com/a", 42, null, ["a"]]) {
       expect(HandlerAnswerSchema.safeParse({ delivered }).success, JSON.stringify(delivered)).toBe(
         false,
@@ -58,9 +54,8 @@ describe("what a handler may answer", () => {
   });
 
   it("refuses an estimate of delivery time, which nothing kept, in words that say so", () => {
-    // An acceptance once carried eta_seconds, and nothing kept it or showed it
-    // to an agent: a setting accepted and then ignored. It is refused rather
-    // than dropped, so a merchant still sending it learns it does nothing.
+    // `eta_seconds` is refused, not dropped, with a sentence saying it does
+    // nothing.
     expect(HandlerAnswerSchema.safeParse({ accepted: { eta_seconds: 60 } }).success).toBe(false);
     const refused = AcceptanceSchema.safeParse({ eta_seconds: 60 });
 
@@ -88,19 +83,16 @@ describe("a refusal", () => {
   }
 
   it("accepts a code no dictionary of ours contains", () => {
-    // The set is open on purpose: a merchant whose reason fits none of ours
-    // says so in their own word rather than flattening it into the nearest
-    // approximation. What they lose by doing that is the availability metric,
-    // which only `out_of_stock` feeds — and that is a documented trade, not a
-    // validation error.
+    // The set is open: a merchant's own word is accepted, though only
+    // `out_of_stock` counts toward the missing-product measure.
     for (const code of ["supplier_declined", "kyc_required", "route_unavailable"]) {
       expect(RefusalSchema.safeParse({ ...refusal, code }).success, code).toBe(true);
     }
   });
 
   it("refuses a blank code or a blank reason", () => {
-    // A refusal with no code is a refusal nobody can count, and one with no
-    // reason leaves the person who picks up the case with nothing to read.
+    // A refusal with no code cannot be counted, and one with no reason leaves
+    // the person picking up the case nothing to read.
     expect(RefusalSchema.safeParse({ ...refusal, code: "" }).success).toBe(false);
     expect(RefusalSchema.safeParse({ ...refusal, code: "  " }).success).toBe(false);
     expect(RefusalSchema.safeParse({ ...refusal, message: "" }).success).toBe(false);

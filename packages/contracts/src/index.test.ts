@@ -9,11 +9,8 @@ const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.
 };
 
 /**
- * A schema nested inside another one, as an object.
- *
- * JSON Schema allows `true` and `false` in the places a sub-schema can sit,
- * and none of ours are ever that — so the tests below say so once here rather
- * than at every step of a path.
+ * A schema nested inside another one, as an object. JSON Schema allows `true`
+ * and `false` where a sub-schema sits, and none of ours are ever that.
  */
 const nested = (value: JsonSchemaDocument[keyof JsonSchemaDocument]): JsonSchemaDocument => {
   expect(value, "expected a nested schema object").toBeTypeOf("object");
@@ -26,10 +23,9 @@ interface ZodInternals {
 }
 
 /**
- * The keys under which zod stores one schema inside another, as of zod 4.
- *
- * `shape` and `options` hold several; the rest hold one. `getter` is `z.lazy`,
- * which has to be called to yield anything.
+ * The keys under which zod 4 stores one schema inside another. `shape` and
+ * `options` hold several; the rest hold one. `getter` is `z.lazy`, which has
+ * to be called to yield anything.
  */
 const WAYS_A_SCHEMA_HOLDS_ANOTHER = [
   "shape",
@@ -58,13 +54,9 @@ const isRefined = (schema: unknown): boolean =>
 
 /**
  * Every schema in the registry that carries a refinement, by the path it sits
- * at — including the ones nested inside another schema, which is where the
- * defect hid the first time.
- *
- * The walk follows the shapes zod builds a schema out of. It is coupled to
- * those internals on purpose: a walk that quietly stopped finding anything
- * would leave the invariant below passing over nothing, so a companion test
- * pins what it finds today.
+ * at, nested ones included. The walk is coupled to zod's internals on purpose;
+ * a companion test pins what it finds, so a walk that quietly found nothing
+ * would fail rather than pass over nothing.
  */
 const walkRefined = (
   schema: unknown,
@@ -83,10 +75,8 @@ const walkRefined = (
     found.push({ path, described: (meta?.description ?? "").length > 0 });
   }
 
-  // Every way zod holds one schema inside another. The list was short once and
-  // a refinement inside a tuple went unseen — which is the failure this whole
-  // invariant exists to prevent, so the walk is tested against each of these
-  // rather than trusted to be complete.
+  // Every way zod holds one schema inside another; the walk is tested against
+  // each, since a container it cannot enter hides a refinement silently.
   for (const key of WAYS_A_SCHEMA_HOLDS_ANOTHER) {
     const child = key === "getter" ? callGetter(def[key]) : def[key];
     if (child === undefined) continue;
@@ -128,27 +118,19 @@ const refinedSchemasWithoutDescription = (): string[] =>
 
 describe("@nuanu-ai/agentify-contracts", () => {
   it("declares the contract version and keeps zod its only runtime dependency", () => {
-    // The version is what the merchant's SDK and the gateway use to tell that
-    // they are talking about the same thing. Version 0 meant that no external
-    // install existed; the first registry release started the compatibility
-    // clock at 1 (ADR-0006). It stands at 2 because the publish answer changed
-    // shape: a strict reader built against 1 cannot parse the envelope that
-    // replaced it, and it has to stop at the handshake rather than report a
-    // published card as an answer it could not read (ADR-0006 §2).
+    // The version is how the SDK and the gateway tell that they speak the same
+    // contract.
     expect(CONTRACT_VERSION).toBe("2");
 
-    // Contracts is the only package the SDK drags along, so its dependency
-    // tree is the SDK's dependency tree (ADR-0003 §8). A failing check means
-    // the merchant got something extra when installing.
+    // This package is the whole of what the SDK brings into a merchant's
+    // install besides zod, so anything more here is something extra for them.
     expect(Object.keys(manifest.dependencies ?? {})).toStrictEqual(["zod"]);
   });
 
   it("validates with the very version of zod the gateway does", () => {
-    // A merchant's offline card check and our publication are meant to be one
-    // check. A range let a merchant's install take a newer zod than the
-    // gateway runs, and one release of it counted a string's length
-    // differently, so a card the merchant's check passed was refused at
-    // publication. One exact version, the same on both sides (ADR-0003 §8).
+    // A merchant's offline card check and the gateway's publication are one
+    // check only on one exact zod version: releases have differed, for one, in
+    // how they count a string's length.
     const zodOf = (path: string): string | undefined =>
       (
         JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as {
@@ -165,10 +147,9 @@ describe("@nuanu-ai/agentify-contracts", () => {
 
 describe("the registry of schemas", () => {
   it("holds every schema this package exports", () => {
-    // The promise: the contract has one list, and it is this one. A schema
-    // that exists but is not registered is invisible to the JSON Schema export
-    // below, which is the only way an engineer outside TypeScript reads any of
-    // this — and nobody notices until they ask why a field is undocumented.
+    // The promise: the contract has one list. A schema not registered is
+    // invisible to the JSON Schema export, the only way an engineer outside
+    // TypeScript reads it.
     const registered = new Set<unknown>(Object.values(schemas));
     const missing = Object.entries(contracts)
       .filter(([name, value]) => name.endsWith("Schema") && !registered.has(value))
@@ -178,14 +159,9 @@ describe("the registry of schemas", () => {
   });
 
   it("is reachable from outside this package, every bit of it", async () => {
-    // The direction nothing was checking, and it hid a whole round's work:
-    // `order_status`, `order_call_result` and the two card helpers existed,
-    // were registered, and were re-exported by nobody — so the JSON Schema
-    // reader could see them and the SDK could not. The package exposes one
-    // entry point, so anything not named here does not exist for a consumer.
-    //
-    // Walking the modules rather than listing them is the point: the next
-    // schema added to a file nobody remembers to re-export fails here.
+    // The package has one entry point, so a schema not re-exported from it
+    // does not exist for a consumer. Walking the modules, rather than listing
+    // them, catches the next schema added to a file nobody re-exports.
     const publicModules = readdirSync(new URL(".", import.meta.url))
       .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts") && file !== "index.ts")
       .sort();
@@ -206,9 +182,8 @@ describe("the registry of schemas", () => {
   });
 
   it("registers nothing under a name that is not written the way the wire is", () => {
-    // The registry names are what a consumer outside TypeScript sees, and the
-    // fields on the wire are snake_case. A registry that mixed conventions
-    // would make the export read like two contracts.
+    // Registry names are what a consumer outside TypeScript sees, and wire
+    // fields are snake_case.
     for (const name of Object.keys(schemas)) {
       expect(name, name).toMatch(/^[a-z][a-z0-9_]*$/);
     }
@@ -217,21 +192,16 @@ describe("the registry of schemas", () => {
 
 describe("the contract as JSON Schema", () => {
   it("converts every schema in the registry", () => {
-    // The promise: a merchant's engineer working in a language that is not
-    // TypeScript gets the contract we do. A schema built out of something that
-    // has no JSON Schema equivalent fails here, at our build, instead of
-    // failing in their generator.
+    // The promise: an engineer outside TypeScript gets the same contract. A
+    // schema with no JSON Schema equivalent fails here, not in their generator.
     const documents = toJsonSchemas();
 
     expect(Object.keys(documents).sort()).toStrictEqual(Object.keys(schemas).sort());
   });
 
   it("describes something in every document, not only the ones read back below", () => {
-    // The tests further down read seven documents in detail, and that left
-    // twenty describing nothing without a single failure — including `order`,
-    // `receipt` and `quote_request`, which are the ones an engineer actually
-    // generates from. Detailed reading does not scale to every schema; this
-    // does, and it is the line that catches a document reduced to its name.
+    // The tests below read a few documents in detail; this catches any
+    // document reduced to its name.
     const empty = Object.entries(toJsonSchemas())
       .filter(
         ([, document]) =>
@@ -243,9 +213,8 @@ describe("the contract as JSON Schema", () => {
   });
 
   it("stamps each document with the contract version it came from", () => {
-    // Without it the document is a contract of unknown vintage. The version
-    // exists so the two sides can tell they mean the same thing, and the
-    // readers furthest from us are the ones who cannot ask.
+    // Without it the document is a contract of unknown version, and the
+    // readers furthest away cannot ask.
     const documents = toJsonSchemas();
 
     for (const [name, document] of Object.entries(documents)) {
@@ -253,9 +222,8 @@ describe("the contract as JSON Schema", () => {
     }
   });
 
-  // A conversion that quietly produced an empty document for everything would
-  // satisfy a test that only counts keys. These read documents back, one per
-  // kind of structure the registry contains, so a stub is not enough.
+  // These read documents back, one per kind of structure the registry holds,
+  // so a conversion producing empty documents cannot pass.
 
   it("describes an object with its required fields and its closed shape", () => {
     const money = toJsonSchemas().money;
@@ -267,11 +235,8 @@ describe("the contract as JSON Schema", () => {
   });
 
   it("describes an enumeration as its values and nothing else", () => {
-    // One enumeration is enough to show how an enumeration renders. The
-    // fulfillment modes were here too and are asserted in `card.test.ts`,
-    // where the words themselves are the claim: the mode that cannot be
-    // published during the pilot still has to appear in the document an
-    // engineer generates a client from.
+    // One enumeration shows how enumerations render; the fulfillment modes are
+    // asserted in `card.test.ts`.
     expect(toJsonSchemas().receipt_outcome.enum).toStrictEqual([
       "in_progress",
       "delivered",
@@ -302,7 +267,7 @@ describe("the contract as JSON Schema", () => {
       true,
       false,
     ]);
-    // The whole point of the two branches: a price on one, none on the other.
+    // A price on one branch, none on the other.
     expect(branches[0]?.required).toContain("price");
     expect(branches[1]?.required).not.toContain("price");
     expect(branches[1]?.properties?.price).toBeUndefined();
@@ -316,11 +281,9 @@ describe("the contract as JSON Schema", () => {
   });
 
   it("exports the identifier rule whole, and it means the same thing there", () => {
-    // The rule is one pattern rather than several checks precisely so that all
-    // of it crosses into the document: a generated client should refuse the
-    // keys we refuse. The pattern is read back out and run, because a pattern
-    // that is present and matches everything would pass a test that only
-    // looked for one.
+    // The pattern is read back and run, since a pattern that is present and
+    // matches everything would pass a test that only looked for one; a
+    // generated client should refuse the keys this contract refuses.
     const pattern = toJsonSchemas().identifier.pattern;
 
     expect(pattern).toBeTypeOf("string");
@@ -335,16 +298,10 @@ describe("the contract as JSON Schema", () => {
   });
 
   it("leaves no refinement undescribed, anywhere in the registry", () => {
-    // This is the abstraction the second review asked for, and the reason is
-    // that the same defect arrived twice: a rule written as a refinement
-    // vanishes from the export without a word, and remembering to describe it
-    // per schema failed the first time it was tried. The invariant replaces
-    // the remembering — add a refinement anywhere and the build asks for the
-    // sentence that tells a generator's reader what is not being checked.
-    //
-    // It reads zod's own internals to find the refinements, which is a
-    // deliberate coupling: if that shape ever changes, this test breaks
-    // loudly, and a silently empty walk would be worse than a broken one.
+    // A rule written as a refinement vanishes from the export without a word.
+    // Add a refinement anywhere and this asks for the sentence that tells a
+    // generator's reader what is not being checked. It reads zod's internals
+    // on purpose: if their shape changes, this breaks loudly.
     const undescribed = refinedSchemasWithoutDescription();
 
     expect(undescribed).toStrictEqual([]);
@@ -352,49 +309,24 @@ describe("the contract as JSON Schema", () => {
 
   it("finds the refinements it is supposed to be checking", () => {
     // The other half: a walk that found nothing would satisfy the invariant
-    // above and check nothing at all. These two are the refinements the
-    // package has today, one of them nested inside another schema.
+    // above and check nothing. These are the refinements the package has.
     //
-    // `card.result` and `public_card.result` are one rule on two declarations:
-    // the published card's, which is closed, and the one an agent reads, whose
-    // fields take attributes added later (ADR-0006 §5). The rule is built once
-    // and put on both, so that what they both promise cannot be edited in one
-    // place only, and the walk finds it under each.
-    //
-    // `card.tags` is the same story: the rule that two tags differing only in
-    // case are one tag to a discovery listing cannot be said in JSON Schema,
-    // so it is a refinement here and a sentence in the document.
-    //
-    // `evm_address` is the third of the same kind and the one with money on
-    // it: the capitals of an address are a checksum over the address, which
-    // needs a hash to check and so cannot be a pattern. It is reached from the
-    // payout wallet documents too, and reported once, under the entry the walk
-    // meets first.
-    //
-    // `merchant_card.card` is the card as it is stored and read back. It
-    // carries the rules that compare one field with another, as the published
-    // card does, and not the rule that a card's words are plain text, which is
-    // the publish door's alone — so it is a schema of its own rather than the
-    // published card's instance, and the walk finds it separately.
-    //
-    // `agent_order_status.seller.site` is a seller's site (ADR-0034): a pattern
-    // says it is an https address with nothing after the host, and only the
-    // URL parser can say it is written as its own origin — in lower case, with
-    // no default port spelled out. It is reported under the first entry that
-    // reaches it; the catalog's cards and the seller-name documents share it.
-    //
-    // `seller_name_request` is the rule that a request names the name, the
-    // site or both, which compares two fields; `seller_name_request.seller_name`
-    // is the name's plain-text rule, the door's alone, reached through the one
-    // request that writes a name.
-    //
-    // `agent_order_status.shipment.carrier` and `.tracking_number` are a
-    // parcel's shipment held to plain text (ADR-0033), `.tracking_url` to an
-    // address and nothing else, and `.estimated_delivery` compares its two
-    // ends. The shipment the merchant sends and the recorded one share them,
-    // reported under the entry the walk meets first — all but the window,
-    // which an agent reads open and which is therefore a schema of its own,
-    // met again under `shipment`.
+    // `card.result` and `public_card.result` are one rule on two declarations,
+    // the published card's closed one and the agent's open one. `card.tags`:
+    // two tags differing only in case are one tag to a discovery listing.
+    // `evm_address`: the checksum needs a hash, so it cannot be a pattern; the
+    // payout wallet documents reach it too, reported once under the entry the
+    // walk meets first. `merchant_card.card` is the stored card, with the rules
+    // between fields but not the plain-text rule. `agent_order_status.seller.site`
+    // is a seller's site, whose origin only the URL parser can check; the
+    // catalog's cards and the seller-name documents share it.
+    // `seller_name_request` compares its two fields, and
+    // `seller_name_request.seller_name` is the name's plain-text rule.
+    // `agent_order_status.shipment.carrier` and `.tracking_number` are held to
+    // plain text, `.tracking_url` to an address, and `.estimated_delivery`
+    // compares its two ends; the merchant's shipment shares them, except the
+    // window, which an agent reads open and which is met again under
+    // `shipment`.
     expect(refinedSchemaPaths().sort()).toStrictEqual([
       "agent_order_status.seller.site",
       "agent_order_status.shipment.carrier",
@@ -414,10 +346,9 @@ describe("the contract as JSON Schema", () => {
   });
 
   it("would notice an undescribed refinement, including a nested one", () => {
-    // And the third part, which the mutation self-check asked for: with every
-    // refinement in the package described, the invariant passes whether it is
-    // demanding a description or not. These two schemas are built here, never
-    // registered, purely so the demand itself is exercised.
+    // The third part: with every refinement described, the invariant passes
+    // whether or not it demands a description. These unregistered schemas
+    // exercise the demand itself.
     const undescribed = z.string().refine(() => true);
     const described = z
       .string()
@@ -427,7 +358,7 @@ describe("the contract as JSON Schema", () => {
     expect(refinementsIn(undescribed, "bare")).toStrictEqual([{ path: "bare", described: false }]);
     expect(refinementsIn(described, "bare")).toStrictEqual([{ path: "bare", described: true }]);
 
-    // Nested, which is where the defect actually hid.
+    // Nested.
     expect(refinementsIn(z.strictObject({ field: undescribed }), "holder")).toStrictEqual([
       { path: "holder.field", described: false },
     ]);
@@ -437,12 +368,9 @@ describe("the contract as JSON Schema", () => {
   });
 
   it("reaches inside every way zod holds one schema in another", () => {
-    // The companion test above pins what the walk finds in the registry, which
-    // is not the guard it looks like: a container the walk cannot enter simply
-    // contributes nothing, and the found set stays exactly as expected. A
-    // refinement inside a tuple went unseen that way — and unseen means its
-    // rule vanishes from the export in silence, the defect this file has now
-    // paid for three times.
+    // The companion test above is not the guard it looks like: a container the
+    // walk cannot enter contributes nothing, and the found set stays as
+    // expected while a refinement's rule vanishes from the export.
     const hidden = z.string().refine(() => true);
     const containers: [string, z.ZodType][] = [
       ["object", z.strictObject({ field: hidden })],
@@ -456,8 +384,7 @@ describe("the contract as JSON Schema", () => {
       ["tuple rest", z.tuple([z.string()], hidden)],
       ["intersection left", z.intersection(hidden, z.string())],
       ["intersection right", z.intersection(z.string(), hidden)],
-      // A pipe holds one on each side, and testing only one of them let the
-      // other's key be dropped from the walk without a failure.
+      // A pipe holds one on each side, and each is tested.
       ["pipe out", z.string().pipe(hidden)],
       ["pipe in", hidden.pipe(z.string())],
       ["lazy", z.lazy(() => hidden)],
@@ -472,11 +399,8 @@ describe("the contract as JSON Schema", () => {
   });
 
   it("carries the open code dictionaries, which no structure can hold", () => {
-    // An open set has no `enum` to render, so the recommended codes reached
-    // the export as `{type: "string"}` and nothing else. `index.ts` claims
-    // this package owns the refusal codes as wire vocabulary; owning them and
-    // not shipping them to the one reader the export exists for is the fifth
-    // gate's truncation, unsaid.
+    // An open set has no `enum` to render, so without a description the
+    // recommended codes would reach the export as a bare string type.
     const documents = toJsonSchemas();
     const refusal = documents.refusal_code.description ?? "";
 
@@ -490,9 +414,8 @@ describe("the contract as JSON Schema", () => {
       expect(callError, code).toContain(code);
     }
 
-    // A finding's code is open too — the card's findings carry whatever the
-    // validator names — and the three about the merchant are the ones a
-    // program branches on, so they travel with the field that carries them.
+    // A finding's code is open too, and the merchant findings are the ones a
+    // program branches on, so they travel with the field.
     const finding = nested(documents.problem.properties?.code).description ?? "";
     for (const code of Object.values(contracts.MERCHANT_FINDINGS)) {
       expect(finding, code).toContain(code);
@@ -500,18 +423,16 @@ describe("the contract as JSON Schema", () => {
   });
 
   it("carries the rules it cannot express as structure in words instead", () => {
-    // The honest half of the export. JSON Schema cannot say "this field only
-    // when that one has this value", and zod drops such a rule without a word;
-    // a reader who was not told would take the document for the whole
-    // contract. The card's two deadline rules are the case in point.
+    // JSON Schema cannot say "this field only when that one has this value",
+    // so the card's rules between fields are told in words, or a reader would
+    // take the document for the whole contract.
     const card = toJsonSchemas().card;
 
     expect(card.description).toContain("confirm_deadline_seconds");
     expect(card.description).toContain("fulfill_deadline_seconds");
 
-    // And where a rule can be expressed after all, it is: the card's result
-    // declaration is never empty, and a price check is the handler and
-    // nothing else, so a client generated from the export offers no address.
+    // Where a rule can be expressed as structure, it is: a result is never
+    // empty, and a price check is the handler, so a client offers no address.
     expect(card.properties?.result).toMatchObject({ minProperties: 1 });
     expect(nested(card.properties?.price_check)).toMatchObject({ const: "handler" });
   });

@@ -10,9 +10,8 @@ import {
 import { errorOf, expectMissingFieldRejected } from "./testing/expect-schema.js";
 
 describe("amount", () => {
-  // The promise: an amount is an exact decimal number written as text. A
-  // consumer that reads an amount and formats it back gets the same string,
-  // and no rounding happens on the way.
+  // The promise: an amount is an exact decimal number written as text, and
+  // formatting it back gives the same string.
   it("accepts decimal strings the way a merchant writes prices", () => {
     for (const amount of ["5.00", "0", "0.01", "12", "1999.99", "0.000001"]) {
       expect(AmountSchema.safeParse(amount).success, amount).toBe(true);
@@ -30,9 +29,8 @@ describe("amount", () => {
   });
 
   it("refuses spellings that are not one exact decimal number", () => {
-    // Every entry here is a real way a caller gets it wrong: exponent
-    // notation, a thousands separator, a negative price, a padded number that
-    // would sit in a receipt as a different string for the same money.
+    // Each is a real way a caller gets it wrong: exponent notation, a
+    // thousands separator, a negative price, a padded number.
     for (const amount of ["1e3", "5,00", "-1", "05.00", "5.", ".5", "", " 5.00", "5.00 ", "NaN"]) {
       expect(AmountSchema.safeParse(amount).success, JSON.stringify(amount)).toBe(false);
     }
@@ -44,8 +42,8 @@ describe("amount", () => {
 });
 
 describe("currency code", () => {
-  // The promise: whatever the gateway ends up accepting, the code on the wire
-  // is a plain uppercase code, so "USD" and "usd" are never two currencies.
+  // The promise: a currency code on the wire is upper case, so "USD" and
+  // "usd" are never two currencies.
   it("accepts the codes this contract has to carry", () => {
     for (const code of ["USD", "EUR", "USDC", "EURC"]) {
       expect(CurrencyCodeSchema.safeParse(code).success, code).toBe(true);
@@ -73,18 +71,14 @@ describe("money", () => {
   }
 
   it("refuses a field it does not know", () => {
-    // A price that carries something we ignore is a price we silently
-    // truncated. The merchant hears about it here instead of wondering later
-    // why the field never arrived anywhere.
+    // A field silently ignored would be a price silently truncated.
     expect(errorOf(MoneySchema, { ...money, currency_symbol: "$" })).toContain("currency_symbol");
   });
 });
 
 describe("timestamp", () => {
-  // The promise: a moment on the wire is a moment, not a time of day in an
-  // unnamed place. `as_of` is parsed into an instant and kept in the record of
-  // the sale, and a naive local time is not an instant — two machines reading
-  // it would land on two different moments.
+  // The promise: a moment on the wire is an instant, not a time of day in an
+  // unnamed place that two machines would read as two moments.
   it("accepts ISO 8601 moments with a zone", () => {
     for (const moment of [
       "2026-08-26T10:15:00Z",
@@ -115,9 +109,8 @@ describe("timestamp", () => {
 });
 
 describe("identifier", () => {
-  // The promise: an identifier identifies something. Blank strings are the
-  // shape a missing value takes when it travels through a template, and an
-  // order keyed by "" is an order nobody can find again.
+  // The promise: an identifier identifies something; an order keyed by "" is
+  // an order nobody can find again.
   it("accepts identifiers from both sides of the contract", () => {
     for (const id of ["ord_7c1e05", "itm_9f2c4a", "access-monthly", "SKU 100/1"]) {
       expect(IdentifierSchema.safeParse(id).success, id).toBe(true);
@@ -131,21 +124,17 @@ describe("identifier", () => {
   });
 
   it("refuses an identifier padded with whitespace", () => {
-    // Republishing a card matches on the merchant's own key. A trailing space
-    // reads as the same key on every screen and in every log, and would
-    // quietly create the second card the portal promises cannot appear.
+    // Republishing a card matches on the merchant's own key, and a trailing
+    // space would quietly create a second card that looks identical.
     for (const id of [" access-monthly", "access-monthly ", "\taccess-monthly", "ord_7c1e05\n"]) {
       expect(IdentifierSchema.safeParse(id).success, JSON.stringify(id)).toBe(false);
     }
   });
 
   it("refuses an identifier carrying a character that shows nothing", () => {
-    // The characters that make the harm real. A trailing space at least looks
-    // like something in a monospaced log; a zero-width space is a key that is
-    // pixel-for-pixel identical to another one and republishes as a second
-    // card the portal promises cannot appear. Refused in the middle too, for
-    // the same reason: a zero-width space between two letters of a key leaves
-    // it reading exactly like the key without one.
+    // A zero-width character, at the edge or in the middle, makes a key
+    // pixel-for-pixel identical to another one, and it would republish as a
+    // second card.
     for (const id of [
       "\u200baccess-monthly",
       "access-monthly\u200b",
@@ -174,9 +163,8 @@ describe("identifier", () => {
 });
 
 describe("sale price", () => {
-  // The promise to the merchant's handler: the sum, its currency, when the
-  // purchase happened and how fresh the price behind it was. Enough to write
-  // the sale down without looking the card up.
+  // The promise to the merchant's handler: enough to record the sale without
+  // looking the card up.
   const salePrice = {
     amount: "5.00",
     currency: "USD",

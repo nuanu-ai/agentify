@@ -1,16 +1,10 @@
 /**
- * A card's own words are plain text, and the publish door refuses the ones
- * that are not rather than cleaning them.
- *
- * The promise to a merchant: text an agent will read — the title, the
- * description, and the title of each declared field — is refused at the
- * publish when it carries HTML markup, an HTML character reference or a
- * control character, and the refusal names what it found and where. Nothing
- * is rewritten on the way in, so what an agent reads is what the merchant
- * wrote. The promise to an agent is the same fact from the other side.
- *
- * The second promise is to the merchant whose card was stored before the rule:
- * reading it back, and serving it in the catalog, does not fail on its words.
+ * The promise to a merchant: the words an agent reads on a card (the title,
+ * the description, each declared field's title) are refused at publication
+ * when they carry HTML markup, an HTML character reference or a control
+ * character, and the refusal names what it found and where. Nothing is
+ * rewritten on the way in. A card stored before the rule still reads back and
+ * serves in the catalog.
  */
 
 import { describe, expect, it } from "vitest";
@@ -52,8 +46,8 @@ const findingsAt = (value: unknown, path: string): string[] =>
 
 describe("a card's own words are plain text", () => {
   it("takes the ordinary characters that also begin markup and references", () => {
-    // Precise, not paranoid: an ampersand between words, a comparison and an
-    // arrow are text, and a merchant writing them is not writing HTML.
+    // An ampersand between words, a comparison and an arrow are text, not
+    // HTML.
     for (const text of [
       "Tea & coffee",
       "A&B",
@@ -218,8 +212,8 @@ describe("a card's own words are plain text", () => {
   });
 
   it("tells a description broken with a carriage return what a line break is", () => {
-    // What a form on Windows submits between two lines. The finding names the
-    // one line break a description does take, so the fix is not a guess.
+    // What a Windows form submits between two lines; the finding names the
+    // line break a description does take.
     const [finding] = findingsAt({ ...card, description: "One.\r\nTwo." }, "description");
 
     expect(finding).toContain("U+000D");
@@ -234,9 +228,8 @@ describe("a card's own words are plain text", () => {
   });
 
   it("lets a description run to several lines, and holds a title to one", () => {
-    // A description is prose of up to five hundred characters and may be
-    // paragraphs; a line feed is the one line break every reader agrees on. A
-    // title is the one line a catalog shows, and so is a field's title.
+    // A description may run to paragraphs, separated by line feeds; a title,
+    // and a field's title, is one line.
     const twoLines = "Valid for twelve months.\nBooking is required.";
 
     expect(findingsOf({ ...card, description: twoLines })).toStrictEqual([]);
@@ -282,11 +275,9 @@ describe("a card's own words are plain text", () => {
   });
 
   it("reports it in the same pass as everything else wrong with the card", () => {
-    // A merchant told one thing at a time fixes it, publishes again, and only
-    // then learns the rest. The words are checked even when the shape is not
-    // right yet.
-    // A key of the wrong type is the kind of finding that stops zod checking
-    // anything that looks at the card as a whole.
+    // The words are checked even when the shape is not right yet, so a
+    // merchant hears everything in one answer. A key of the wrong type is the
+    // kind of finding that stops zod checking the card as a whole.
     const findings = findingsOf({
       ...card,
       merchant_item_id: 7,
@@ -308,9 +299,8 @@ describe("a card's own words are plain text", () => {
   });
 
   it("takes no longer on words built to be slow than on ordinary ones", () => {
-    // The door runs in the gateway's own process, and a publish body may be a
-    // quarter of a megabyte. Words crafted to make a pattern backtrack would
-    // stall every sale behind one merchant's publish.
+    // The rule runs in the gateway's own process on a body of up to a quarter
+    // of a megabyte, and a pattern made to backtrack would stall every sale.
     const hostile = [
       `<a${" a".repeat(100_000)}`,
       "<a ".repeat(70_000),
@@ -324,9 +314,9 @@ describe("a card's own words are plain text", () => {
       "<a '".repeat(60_000),
       `<a b="${"<a ".repeat(80_000)}`,
       `<a b='${"x".repeat(240_000)}`,
-      // Short on purpose: a pattern that lets a quotation mark be read two
-      // ways goes exponential here, and a synchronous match cannot be stopped,
-      // so a long one would hang the run instead of failing it.
+      // Short on purpose: if a quotation mark could be read two ways the match
+      // would go exponential here, and a long input would hang the run rather
+      // than fail it.
       `<a${' "x"'.repeat(20)}`,
       `<a${" 'x'".repeat(20)}`,
     ];
@@ -346,10 +336,9 @@ describe("a card's own words are plain text", () => {
 });
 
 describe("a card stored before the rule", () => {
-  // The rule is the publish door's. A card published before it may carry any
-  // of what it refuses, and reading one back must not fail on its words: the
-  // merchant's own list, the catalog an agent reads and every document in
-  // between would otherwise fail whole over one old row.
+  // The rule applies when a card is published. A card stored before it must
+  // still read back, or one old card would fail the merchant's whole list and
+  // the catalog an agent reads.
   const stored = {
     ...card,
     title: "Coffee &#038; Brunch Gift Card",
@@ -388,9 +377,8 @@ describe("a card stored before the rule", () => {
 });
 
 describe("the rule, for a connector that turns a shop's pages into cards", () => {
-  // A shop connector converts the shop's HTML into text before the text
-  // reaches the door, and it asks the door's own rule whether it succeeded, so
-  // there is one definition of plain text rather than two that drift.
+  // A shop connector asks this same rule whether its HTML-to-text conversion
+  // succeeded, so there is one definition of plain text.
   it("finds nothing in plain text", () => {
     expect(notPlainTextIn("Coffee & brunch, 5 < 10", "one line")).toStrictEqual([]);
     expect(notPlainTextIn("Two\nlines", "several lines")).toStrictEqual([]);

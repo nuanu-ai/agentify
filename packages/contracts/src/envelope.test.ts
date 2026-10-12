@@ -55,10 +55,8 @@ const envelopes = {
 } as const satisfies Record<string, Record<string, unknown>>;
 
 describe("the worker envelope", () => {
-  // The promise: one stream carries orders, price questions and events, and a
-  // worker reading a message off it can tell which it is holding before it
-  // does anything with it. A stream a consumer has to guess at is three
-  // streams badly muxed.
+  // The promise: a worker reading a message off the one stream can tell which
+  // of the three kinds it holds before doing anything with it.
 
   for (const kind of WORKER_ENVELOPE_KINDS) {
     it(`carries a ${kind} without changing it`, () => {
@@ -71,10 +69,8 @@ describe("the worker envelope", () => {
   });
 
   it("refuses a kind it has never heard of, and says which values it knows", () => {
-    // A consumer switching on the kind has to read an unknown one as a version
-    // mismatch. The refusal is what turns "we started sending a fourth kind"
-    // into a loud failure at the boundary instead of a silent drop inside a
-    // switch statement with no default.
+    // A consumer switching on the kind must read an unknown one as a version
+    // mismatch, so a fourth kind fails loudly at the boundary.
     const complaint = errorOf(WorkerEnvelopeSchema, {
       kind: "confirmation_request",
       id: "msg_4a19be",
@@ -92,13 +88,9 @@ describe("the worker envelope", () => {
     expect(errorOf(WorkerEnvelopeSchema, withoutKind)).toContain("kind");
   });
 
-  // Three fields of one kind rather than of all three. The union is built by
-  // `envelopeOf`, one factory called three times, so `id`, `sent_at` and
-  // `payload` are the same declaration in every branch and asking each branch
-  // separately asked the same question three times. The day a branch is
-  // written out by hand instead of built, that stops being true and the loop
-  // over the kinds has to come back — which is why it is said here rather than
-  // left for somebody to work out from a passing suite.
+  // Asked of one kind only: `envelopeOf` builds every branch from one
+  // declaration. If a branch is ever written out by hand, this has to loop
+  // over the kinds again.
   for (const field of ["id", "sent_at", "payload"]) {
     it(`refuses an envelope without ${field} and names it`, () => {
       expectMissingFieldRejected(WorkerEnvelopeSchema, envelopes.order, field);
@@ -106,9 +98,8 @@ describe("the worker envelope", () => {
   }
 
   it("holds the payload to the schema its kind names, and refuses another kind's", () => {
-    // The whole value of the marker: an order envelope carrying a price
-    // question is a message that would reach an order handler. Without this
-    // the marker would be a label nobody checks.
+    // An order envelope carrying a price question would reach an order
+    // handler; without this the marker is a label nobody checks.
     expect(
       WorkerEnvelopeSchema.safeParse({ ...envelopes.order, payload: quoteRequest }).success,
     ).toBe(false);
@@ -121,16 +112,14 @@ describe("the worker envelope", () => {
   });
 
   it("refuses a field it does not know", () => {
-    // An envelope carrying something a worker is meant to act on and which we
-    // never defined is a promise we did not make. A receipt handle or an
-    // attempt counter added by one side would arrive here first.
+    // A field a worker might act on that the contract never defined is a
+    // promise nobody made.
     expect(errorOf(WorkerEnvelopeSchema, { ...envelopes.order, attempt: 2 })).toContain("attempt");
   });
 
   it("keeps the message's own identifier apart from the payload's", () => {
-    // The nesting exists for this: an order already has an `id`, and it is the
-    // idempotency key a handler answers from. Spread into one object the two
-    // would collide and one of them would win silently.
+    // An order's `id` is its idempotency key; spread into one object with the
+    // envelope's, one of the two would win silently.
     const parsed = WorkerEnvelopeSchema.parse(envelopes.order);
 
     expect(parsed.kind).toBe("order");
@@ -155,10 +144,8 @@ describe("the worker envelope", () => {
 
 describe("the kinds and the registry", () => {
   it("names each kind after the schema in the registry that its payload is held to", () => {
-    // One source of truth rather than two: the marker on the wire is the name
-    // the contract already publishes for that document. A kind invented
-    // separately would be a second vocabulary for the same three things, and
-    // the JSON Schema reader — who has only the registry — could not follow it.
+    // The marker on the wire is the name the registry publishes for that
+    // document, so a reader of the JSON Schema alone can follow it.
     for (const kind of WORKER_ENVELOPE_KINDS) {
       expect(Object.keys(schemas), kind).toContain(kind);
       expect(WORKER_ENVELOPE_PAYLOADS[kind], kind).toBe(schemas[kind]);

@@ -23,9 +23,8 @@ const paymentFailed = {
 };
 
 describe("the events a merchant hears without asking", () => {
-  // The promise: the three things that can happen to an order without the
-  // merchant's participation arrive on the same subscription as the orders,
-  // so none of them has to be found by reconciling records by hand.
+  // The promise: what happens to an order without the merchant's doing
+  // arrives on the same subscription as the orders.
 
   it("names the three", () => {
     expect(Object.values(ORDER_EVENT_TYPES)).toStrictEqual([
@@ -48,9 +47,8 @@ describe("the events a merchant hears without asking", () => {
   });
 
   it("refuses an event of a kind we do not send", () => {
-    // The catalog grows by adding a shape here, not by a sender inventing a
-    // name. A consumer that switches on the type has to be able to trust that
-    // an unknown one is a version mismatch and not a typo.
+    // A consumer switching on the type must be able to read an unknown one as
+    // a version mismatch, not a typo.
     for (const type of ["refund_due", "order.refunded", "order.delivered", ""]) {
       expect(OrderEventSchema.safeParse({ ...unpaid, type }).success, JSON.stringify(type)).toBe(
         false,
@@ -72,9 +70,7 @@ describe("the events a merchant hears without asking", () => {
 
 describe("an order that owes a refund", () => {
   // The promise: the merchant learns which order, how much and why in one
-  // message. The money went to their wallet directly, so the sum is theirs to
-  // send back, and a message that named only the order would leave them
-  // looking it up.
+  // message, since returning the money is theirs to do.
 
   for (const field of ["price", "reason"]) {
     it(`refuses a refund-due event without ${field} and names it`, () => {
@@ -100,9 +96,8 @@ describe("an order that owes a refund", () => {
   });
 
   it("does not carry a sum on the events where no sum is owed", () => {
-    // A confirmed order that went unpaid cost the merchant nothing, and a
-    // synchronous delivery whose payment failed leaves them holding the
-    // question, not a debt. Attaching money to either would read as one.
+    // Neither of these leaves the merchant owing money, and attaching a sum
+    // would read as if it did.
     expect(
       OrderEventSchema.safeParse({ ...unpaid, price: { amount: "5.00", currency: "USD" } }).success,
     ).toBe(false);

@@ -3,10 +3,8 @@ import { toJsonSchemas } from "./index.js";
 import { SELLING_STATES, SellingStateSchema } from "./selling.js";
 
 describe("whether a merchant is taking new orders", () => {
-  // The promise: the merchant's dashboard, the merchant's own tooling and the
-  // order machine use one word for the same situation. A dashboard that showed
-  // "off" where the machine said "paused" would be a second vocabulary for one
-  // switch, and the merchant would have to learn both.
+  // The promise: the dashboard, the merchant's own tooling and the order
+  // machine use one word for the same situation.
   it("carries the three words the order machine is given, and no others", () => {
     for (const state of ["open", "paused", "departed"]) {
       expect(SellingStateSchema.safeParse(state).success, state).toBe(true);
@@ -17,13 +15,9 @@ describe("whether a merchant is taking new orders", () => {
   });
 
   it("says in the exported document that leaving is not a heavier pause", () => {
-    // The distinction is the reason there are three words rather than a
-    // boolean, and it is invisible from the shape: a reader with the document
-    // and no TypeScript sees three strings. Pausing takes the cards off sale
-    // and lets the open orders play out; leaving closes them and leaves the
-    // merchant owing refunds on whatever was paid for and never delivered. A
-    // reader who took a departure for a deeper pause would expect it to be
-    // undone the way a pause is.
+    // Pausing lets open orders play out; leaving closes them and leaves the
+    // merchant owing refunds. A reader of the exported document sees only
+    // three strings, so the description has to say it.
     const description = toJsonSchemas().selling_state.description ?? "";
 
     expect(description).toContain("already accepted play out");

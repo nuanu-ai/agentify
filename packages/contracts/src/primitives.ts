@@ -2,18 +2,12 @@
  * The vocabulary every other contract in this package is built from: a sum of
  * money, a currency, a moment in time, an identifier.
  *
- * Two rules run through the file and are worth stating once.
- *
  * Money never travels as a floating point number. An amount is a decimal
- * string, because 0.1 + 0.2 is not 0.3 in binary floating point and a price is
- * a promise about someone else's money. A merchant who writes "5.00" gets
- * "5.00" back, trailing zero and all, in the order and in the receipt.
+ * string, and a merchant who writes "5.00" gets "5.00" back, trailing zero and
+ * all, in the order and in the receipt.
  *
- * These schemas bound formats, not business policy. How long a title may be,
- * how far away a deadline may sit, how stale a price may get — those numbers
- * are named before the pilot and belong to the gateway. A number invented here
- * would read as a decision that nobody took. Where a bound belongs to the
- * format itself, it is written down together with the reason.
+ * These schemas bound formats, not business policy: how long a title may be or
+ * how stale a price may get is the gateway's to decide, not this package's.
  */
 
 import { z } from "zod";
@@ -21,16 +15,10 @@ import { z } from "zod";
 /**
  * A decimal number written as text: digits, optionally a dot and more digits.
  *
- * Exponent notation, thousands separators and a leading plus are out, because
- * the same money must always be the same string — a receipt compares badly
- * when "5.00" and "5.0e0" both mean five dollars. Leading zeros go for the
- * same reason. Negative amounts are out because nothing in this contract sells
- * for less than nothing; a refund is a direction, not a sign on a price.
- *
- * The bounds are the format's own. Eighteen fractional digits is the most an
- * ERC-20 token carries, so any stablecoin amount fits exactly; eighteen digits
- * before the dot is past any price a catalog will hold. Beyond that a string
- * of digits is not a price and refusing it early is cheaper than carrying it.
+ * Exponent notation, thousands separators, a leading plus, leading zeros and a
+ * minus sign are refused, so that the same money is always the same string. Up
+ * to eighteen digits are allowed on each side of the dot; eighteen fractional
+ * digits is the most an ERC-20 token carries.
  */
 export const AmountSchema = z
   .string()
@@ -40,20 +28,12 @@ export const AmountSchema = z
   );
 
 /**
- * A currency code, upper case.
+ * A currency code in upper case: three to eight characters, starting with a
+ * letter, such as `USD`, `USDC` or `USD1`.
  *
- * Three to eight characters, starting with a letter, digits allowed after it.
- * A card is priced in one currency and settled in another and this contract
- * does not yet say which of the two it carries, so the shape has to admit
- * both: a national code is three letters (`USD`), and a token ticker is longer
- * and sometimes carries a digit (`USDC`, `USD1`). Eight admits every ticker
- * this contract has had to carry.
- *
- * What this does not do is check membership in any list. Which currencies a
- * merchant may set a price in is answered once, by the price rule in
- * `price-rule.ts`, at the moment a price comes in. This shape also reads back
- * every document already written, and a list here would make one written
- * before the list changed unreadable.
+ * This checks the shape only. Which currencies a price may be set in is decided
+ * by the price rule in `price-rule.ts`; a list here would make documents
+ * written before the list changed unreadable.
  */
 export const CurrencyCodeSchema = z
   .string()
@@ -66,63 +46,41 @@ export const MoneySchema = z.strictObject({
 });
 
 /**
- * A moment in time, ISO 8601, with its zone.
+ * A moment in time, ISO 8601, with its zone: an explicit offset or `Z`.
  *
- * The zone is not decoration. What arrives here is parsed into an instant and
- * then kept — `as_of` travels into the order the merchant's handler is given
- * and into the record of the sale, which is what somebody reconciles a charge
- * against months later — and a local time with no offset is not an instant. It
- * is an hour of the day, and two machines reading it would land on two
- * different moments. Both an explicit offset and `Z` are accepted; what a
- * merchant's clock reports is their business, as long as it names a point in
- * time.
+ * A local time with no offset is refused, because two machines would read it
+ * as two different moments, and these timestamps are what a charge is
+ * reconciled against later.
  */
 export const TimestampSchema = z.iso.datetime({ offset: true });
 
-/**
- * An identifier — ours or the merchant's.
- *
- * Three things are asked of it, and each one is a way an identifier stops
- * identifying. It cannot be blank, because a blank string is what a missing
- * value turns into on its way through a template and an order keyed by "" is
- * an order nobody finds again. It cannot begin or end with whitespace: a
- * merchant's key is what republishing a card matches on, and
- * `"access-monthly "` would look identical to `"access-monthly"` in every log
- * and every screen while quietly creating the second card the portal promises
- * cannot appear. And it carries no control characters, which nothing means to
- * type and which make a key unreadable wherever it is printed.
- *
- * The shape beyond that is deliberately left alone: the merchant's own key is
- * theirs and our own key formats are ours to change. So is the length. A
- * ceiling would be a policy number, and the numbers of this contract are named
- * before the pilot rather than invented here; until then the bound on an
- * identifier is whatever the transport carrying it allows.
- */
 const UNPRINTABLE = "\\u0000-\\u001f\\u007f\\u200b-\\u200f\\u2060-\\u2064\\ufeff";
 
+/**
+ * An identifier, Agentify's or the merchant's.
+ *
+ * It must not be blank, must not begin or end with whitespace, and carries no
+ * control or invisible characters. A merchant's key is what republishing a card
+ * matches on, so `"access-monthly "` would quietly create a second card that
+ * looks identical in every log. Beyond that the shape and the length are left
+ * open.
+ */
 export const IdentifierSchema = z.string().regex(
-  // One pattern, not three checks, because a rule written as a refinement is
-  // dropped from the JSON Schema export without a word — the defect this
-  // package has already paid for twice. As a pattern it crosses intact, and a
-  // generated client refuses the same keys we do.
-  //
-  // It reads: a first character that is neither whitespace nor unprintable,
-  // then anything printable, then a last character under the same rule as the
-  // first. One character on its own is allowed; nothing at all is not.
+  // One pattern rather than three refinements, because a refinement is dropped
+  // from the JSON Schema export without a word, while a pattern crosses intact
+  // and a generated client refuses the same keys.
   new RegExp(`^[^\\s${UNPRINTABLE}](?:[^${UNPRINTABLE}]*[^\\s${UNPRINTABLE}])?$`, "u"),
   "an identifier must not be empty, padded with whitespace, or carry characters that show nothing",
 );
 
 /**
- * A word of a vocabulary that grows without a version (ADR-0006 §5): a mode
- * on the card an agent reads, a status on its order.
+ * A word of a vocabulary that grows without a version: a mode on the card an
+ * agent reads, a status on its order.
  *
- * The storefront has no version, so a word added later reaches agents that
- * still hold this contract, and they read it rather than refuse the document.
- * Open is not anything at all, though: a word is read by a program and shown
- * to a person, so it has the shape every word in those lists already has —
- * lower-case letters, digits and underscores, starting with a letter — and
- * markup, padding or a page of text is not one.
+ * A word added later reaches agents that still hold this contract, and they
+ * should read it rather than refuse the document. It is still held to the
+ * shape every word in those lists has: lower-case letters, digits and
+ * underscores, starting with a letter, at most sixty-four characters.
  */
 export const OpenWordSchema = z
   .string()
@@ -132,26 +90,18 @@ export const OpenWordSchema = z
   );
 
 /**
- * The price a purchase actually went through at.
+ * The price a purchase actually went through at, complete enough for the
+ * merchant's handler to record the sale without looking the card up.
  *
- * Four fields because the merchant's handler is meant to write the sale down
- * without looking the card up: the sum and its currency, `at` — the moment this
- * price was fixed for this sale, and `as_of` — the moment the price behind it
- * was true. The two differ on purpose. A merchant whose answer lands at 10:15,
- * out of a price list published at 10:00, sells at an `at` of 10:15 and an
- * `as_of` of 10:00; a card with no price check is quoted off its own snapshot
- * the instant the agent asks, so `at` is that instant and `as_of` is when the
- * card's price was published.
+ * `at` is the moment this price was fixed for this sale, and `as_of` the moment
+ * the price behind it was true. A merchant whose answer lands at 10:15 out of a
+ * price list published at 10:00 sells at an `at` of 10:15 and an `as_of` of
+ * 10:00. A card sold from its own price, never checked live, carries as `as_of`
+ * the moment that price was last published.
  *
- * Neither of them is when the money moved, and a handler that read `at` as the
- * charge would file the sale under the wrong minute. On a card with a price
- * check the agent may take as long as it likes between the answer and the
- * payment, and in the synchronous mode the charge executes after the goods. The
- * moment of payment is on the receipt, as `paid_at`, and is not in this shape.
- *
- * A card sold from its own price and never checked live also carries `as_of`:
- * the moment that card price was last published. That is a fact, not a guess,
- * and it keeps the handler from having to treat a missing field as "fresh".
+ * Neither is when the money moved: an agent may pay long after the price was
+ * fixed, and in synchronous fulfillment the charge executes after the goods.
+ * The moment of payment is the receipt's `paid_at`.
  */
 export const SalePriceSchema = z.strictObject({
   amount: AmountSchema,

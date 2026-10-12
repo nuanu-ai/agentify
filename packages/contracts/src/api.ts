@@ -1,48 +1,24 @@
 /**
  * The HTTP surface: which calls exist, at which addresses, with which document
- * going each way.
+ * going each way. The gateway serves these calls and the SDK makes them, and
+ * both import this table, so they cannot disagree about an address or a shape.
  *
- * It is written as data rather than as prose because two programs read it. The
- * gateway serves these calls and the SDK makes them, and each of them
- * previously would have learned the surface from a document a person had
- * transcribed — which is how one side ends up posting to `/v0/order/:id/deliver`
- * while the other serves `/v0/orders/:id/deliver`, and how a response shape
- * agreed in a meeting becomes two shapes in two repositories. Here the table is
- * the agreement, and both sides import it.
+ * The table carries what both sides must agree on: the address, the method,
+ * the door (`auth`) and the documents. The header a key travels in is
+ * `MERCHANT_KEY_HEADER`; status codes, base addresses, timeouts and retry
+ * policy are the gateway's. Every refusal, from any call, arrives in the one
+ * envelope `ErrorEnvelopeSchema` describes.
  *
- * What the table does not carry is deliberate. There is no header name for the
- * merchant key, no status codes, no base address, no timeouts and no retry
- * policy. `auth` says which door a call is behind, not how the door is built;
- * the key's header, the status code a refusal comes back under and where the
- * service lives are the gateway's, and a number invented here would read as a
- * decision nobody took. What belongs here is what both sides have to agree on
- * or fail: the address, the method, the door, and the documents.
+ * Paths are written as an express-style router writes them,
+ * `/v0/orders/:order_id/deliver`, so the gateway mounts them unchanged. Fill
+ * them in with `expandPath`, never by hand: an identifier may contain a slash
+ * or a space ("SKU 100/1"), and unencoded it becomes a different route.
  *
- * The paths are written the way an express-style router writes them — a colon
- * and a lowercase name, `/v0/orders/:order_id/deliver`. That form was chosen
- * over the braces of OpenAPI for one reason: the gateway can mount these
- * strings unchanged, so the side that must never be wrong about an address is
- * the side that does no translation at all. The SDK is the side that
- * substitutes, and it does not write its own substitution either: `pathParamsOf`
- * and `expandPath` below are here so that the encoding is done once. That is
- * not a nicety. An identifier in this contract may contain a slash and a space
- * — "SKU 100/1" is one we accept — and pasted into an address unencoded it
- * becomes two path segments and a different route.
- *
- * What each route names is the document it answers with when the call works.
- * How it says no is not a per-route question and is not written route by
- * route: every refusal on this surface, from any call, arrives in the one
- * envelope `ErrorEnvelopeSchema` describes below.
- *
- * Two ways of answering for an order sit in the table and they are not the
- * same thing, which is worth reading before either is used. What a merchant's
- * handler returns — delivered, refused, taken on — goes to the answer route,
- * in every mode, and the SDK sends it without the merchant asking. `deliver`
- * and `refuse` are the asynchronous mode's explicit closure verbs, called
- * later by a merchant who took an order on and now has the goods or has run
- * out of them. The order machine keeps the same two apart, and in the
- * synchronous mode it is the returned answer that exists and the explicit
- * calls that do not. ADR-0004 §2 settles this.
+ * Two ways of answering for an order are here and they differ. What a
+ * merchant's handler returns (delivered, refused, taken on) goes to the answer
+ * route, in every mode, sent by the SDK without being asked. `deliver` and
+ * `refuse` are the asynchronous mode's explicit calls, made later by a
+ * merchant who took an order on; in the synchronous mode they do not exist.
  */
 
 import { z } from "zod";
@@ -82,15 +58,9 @@ import { ShipToSchema } from "./ship-to.js";
 import { RecordedShipmentSchema } from "./shipment.js";
 
 /**
- * An order together with the word for where it stands.
- *
- * The order itself carries no state — reading state back is a separate call,
- * and this is that call's document. It is the order with one field added
- * rather than the order nested inside a wrapper, because to the merchant it is
- * one order that has a status, and a wrapper would exist only to keep a strict
- * parser happy. The consequence is worth naming: this is a different document
- * from an order off the worker stream, and `OrderSchema` refuses it. That is
- * the intended reading, not an accident of strictness.
+ * An order together with the word for where it stands: the document of the
+ * calls that read orders back. It is a different document from an order off
+ * the worker stream, and `OrderSchema` refuses it.
  */
 export const OrderWithStatusSchema = OrderSchema.extend({
   /** Where the order stands, in the words an agent and a merchant both read. */
@@ -98,12 +68,8 @@ export const OrderWithStatusSchema = OrderSchema.extend({
 });
 
 /**
- * Every order the merchant asked for.
- *
- * An object rather than a bare array, because a bare array is the one shape
- * that cannot grow. The day this list needs a cursor or a count, an array
- * would have to become an object and every reader that already parses it would
- * break at once.
+ * Every order the merchant asked for. An object rather than a bare array, so
+ * that paging can be added as a field without changing the shape.
  */
 export const OrderListSchema = z.strictObject({
   orders: z.array(OrderWithStatusSchema),
@@ -111,16 +77,9 @@ export const OrderListSchema = z.strictObject({
 
 /**
  * A merchant's own catalog: their cards, and whether they are selling at all.
- *
- * The merchant's own word sits beside the cards rather than being left to be
- * inferred from them, because the two answer different questions and a screen
- * needs both. Every card of a merchant who has stopped all selling reads
- * paused, and nothing in the cards themselves says whether that is five
- * separate decisions or one — which is exactly the difference between resuming
- * a card and resuming the catalog.
- *
- * An object rather than a bare array for the reason the order list gives, and
- * one more: a bare array has nowhere to put the merchant's own word at all.
+ * Every card of a merchant who has stopped all selling reads paused, so the
+ * merchant's own word is carried beside the cards; it is the difference
+ * between resuming a card and resuming the catalog.
  */
 export const MerchantCardListSchema = z
   .strictObject({
@@ -135,16 +94,9 @@ export const MerchantCardListSchema = z
   });
 
 /**
- * Every receipt this merchant has.
- *
- * A receipt exists from the moment the money moves, so this is the list a
- * merchant reconciles their wallet against. What it cannot show is worth
- * knowing before it is reconciled from: a purchase that ended before any
- * payment leaves no receipt at all, and no receipt is written while it is
- * unknown whether the buyer was charged — `ReceiptSchema` works both through.
- *
- * An object rather than a bare array, so the day it needs paging it grows the
- * field that says so instead of changing shape under every reader.
+ * Every receipt this merchant has: the list a merchant reconciles their wallet
+ * against. A purchase that ended before any payment has no receipt, and none
+ * is written while it is unknown whether the buyer was charged.
  */
 export const ReceiptListSchema = z
   .strictObject({
@@ -156,21 +108,12 @@ export const ReceiptListSchema = z
   });
 
 /**
- * The question a merchant puts in the query string when listing orders.
+ * The query string of the order list. `open=true` narrows it to the orders a
+ * restarted worker should walk; leaving it out asks for everything.
  *
- * `open=true` narrows the list to the orders a restarted worker should walk:
- * ones the merchant was handed and has not finished, and the two that stay
- * open after the purchase itself is over, an order owing a refund and one
- * delivered but never paid for. An order that was priced and never paid, and
- * never reached the handler, is not in that narrowing. Leaving the field out
- * asks for everything.
- *
- * The value is text and not a boolean, because that is what a query string
- * carries. Written as a boolean it would export as one, and an engineer
- * generating a client from that document would build a request nobody can
- * send. The two words are exact on purpose: a merchant who wrote `open=1`,
- * meant "only the open ones" and silently received all of them would reconcile
- * their books against the wrong list.
+ * The value is text, not a boolean, because a query string carries text, and
+ * only the exact words `true` and `false` are accepted, so `open=1` is refused
+ * rather than silently answered with every order.
  */
 export const OrderListQuerySchema = z
   .strictObject({
@@ -182,38 +125,22 @@ export const OrderListQuerySchema = z
   });
 
 /**
- * What a worker asks of one poll.
- *
- * Neither field carries a ceiling, and the absence is deliberate. A first
- * draft put a maximum on each and called them bounds on the format; they were
- * not. The bounds this package does write down are anchored in something
- * outside itself — eighteen fractional digits because that is what an ERC-20
- * token carries — and no such anchor exists for a number of seconds or a
- * number of messages. A card is already held to that rule from the other side:
- * it takes any whole positive number of seconds for its deadlines rather than
- * inventing a limit that would read as a decision nobody took. How long the
- * gateway will actually hold a request and how many envelopes it will actually
- * return are the gateway's, and it is the one that has to answer for them.
- *
- * The two lower bounds stay, because each refuses something that is not a
- * request at all rather than something that is merely large.
+ * What a worker asks of one poll. Neither field has a ceiling here: how long
+ * the gateway holds a request and how many envelopes it returns are the
+ * gateway's own limits, applied whatever is asked.
  */
 export const WorkerPollRequestSchema = z
   .strictObject({
     /**
      * How long the gateway may hold the request open waiting for something to
-     * arrive. Zero is allowed and means a drain: answer with whatever is
-     * queued right now and come straight back, which is what a worker shutting
-     * down asks for. The gateway will hold it for its own window at most, and
-     * that window is shorter than anything worth asking for.
+     * arrive. Zero means a drain: answer with whatever is queued now, which is
+     * what a worker shutting down asks for.
      */
     wait_seconds: z.int().min(0).optional(),
 
     /**
-     * At most this many envelopes in the answer. One is the smallest request
-     * that means anything — at most zero envelopes is a call asking for
-     * nothing, answered with an empty batch forever and indistinguishable from
-     * a quiet queue.
+     * At most this many envelopes in the answer; at least one, since a call
+     * asking for none would be indistinguishable from a quiet queue.
      */
     max: z.int().min(1).optional(),
   })
@@ -223,16 +150,12 @@ export const WorkerPollRequestSchema = z
   });
 
 /**
- * What a poll answers with.
- *
- * The list may be empty, and an empty batch is the ordinary answer to a quiet
- * window rather than a failure. A worker that read it as one would tear down
- * and rebuild its subscription every time nothing happened.
+ * What a poll answers with. An empty batch is the ordinary answer to a quiet
+ * window, not a failure.
  *
  * The contract version rides here because this is the call every worker makes
- * first and then forever. The SDK checks it and refuses to start against a
- * gateway speaking another dialect, which is the difference between failing at
- * startup and failing on somebody's first order.
+ * first; the SDK refuses to start against a gateway speaking another version,
+ * rather than failing on somebody's first order.
  */
 export const WorkerPollResponseSchema = z.strictObject({
   /** The version of the contract this gateway speaks. */
@@ -241,35 +164,18 @@ export const WorkerPollResponseSchema = z.strictObject({
   envelopes: z.array(WorkerEnvelopeSchema),
 });
 
-/**
- * The failure branch every order call shares: it did not go through, here is
- * why, and here is whether calling again could change that.
- */
+/** The failure branch every order call shares. */
 const OrderCallFailedSchema = z.strictObject({
   ok: z.literal(false),
   error: CallErrorSchema,
 });
 
 /**
- * What delivering or refusing an order comes back as.
- *
- * `ok` is a value rather than a key, and it is the same envelope every
- * merchant-facing call of this surface answers in; the reasons are written down
- * once, in `results.ts`, rather than argued again at each route. What this
- * route adds to them is a word for which success it was: the marker of success
- * is one and the same for a first delivery and for a repeated one, so a
- * merchant who wrote `if (result === "delivered")` would have turned their own
- * safe retry into a failure branch, and branching on `ok` and recording the
- * word is what this shape makes the easy thing to do.
- *
- * The failure is one `error` and not a list, and that is not an asymmetry with
- * the publish. A call fails for one reason, wherever it is; what may be wrong
- * in several places at once is the document that was sent, and those findings
- * ride inside the error under `problems` — which is exactly what a delivery
- * that is not what its card declares comes back with.
- *
- * Nothing here travels as an exception. A merchant's integration code is
- * expected to read this, branch on it and write some of it down.
+ * What delivering, refusing or answering for an order comes back as: `ok`, and
+ * on success a word for which success it was. A repeated delivery succeeds as
+ * `already_delivered`, not `delivered`, so branch on `ok` and record the word.
+ * A failure is one `error`; findings about the body sent ride inside it under
+ * `problems`.
  */
 export const OrderCallResponseSchema = z.discriminatedUnion("ok", [
   z.strictObject({ ok: z.literal(true), result: OrderCallResultSchema }),
@@ -277,27 +183,10 @@ export const OrderCallResponseSchema = z.discriminatedUnion("ok", [
 ]);
 
 /**
- * What taking an order on comes back as.
- *
- * The success carries no word, and that is a choice rather than a gap. The
- * published results include `accepted`, so there is a word to carry; this
- * route declines to carry it. Underneath, taking on an order that is waiting
- * and taking on one already delivered are two different answers, and this
- * route reports both as the same bare success — a merchant who takes on an
- * order they have already finished learns nothing new here, which is what
- * makes a repeat harmless. The answer route is where the word earns its
- * place, because it carries whichever of the three things a handler returned
- * and its success has to name which. `ok: true` here is a whole sentence on
- * its own: true is true in every language, and the shape leaves room for a
- * word beside it the day this route needs to tell two successes apart.
- *
- * Repeats are ordinary here. Delivery is at least once, so an order already
- * taken on is taken on again every time it is redelivered, and an answer with
- * no word in it has nothing to get wrong on the second pass.
- *
- * The failures are the same ones the other order calls have — accepting an
- * order that has already closed, or accepting in a mode where acceptance does
- * not exist.
+ * What taking an order on comes back as. Success carries no word: taking on an
+ * order that is waiting and one already delivered both answer `ok: true`, so a
+ * repeat after a redelivery is harmless. The failures are those of the other
+ * order calls, such as an order already closed or a mode with no acceptance.
  */
 export const OrderAcceptResponseSchema = z.discriminatedUnion("ok", [
   z.strictObject({ ok: z.literal(true) }),
@@ -305,19 +194,10 @@ export const OrderAcceptResponseSchema = z.discriminatedUnion("ok", [
 ]);
 
 /**
- * What answering a price question comes back as.
- *
- * One fact, because one fact is what the merchant acts on. A merchant who set
- * stock aside against the question needs to know whether the answer arrived in
- * time to price the purchase; if it did not, they can release what they held.
- *
- * `used: false` also covers a question we no longer hold at all — a worker
- * that restarted and replayed an envelope from an hour ago. The two are folded
- * into one word deliberately, because the merchant does the same thing in
- * either case, and the fold is written down here rather than left to be
- * discovered. The flag is required, not defaulted: read as used, a missing
- * flag leaves stock held forever; read as unused, it releases stock out from
- * under a sale that is going through.
+ * What answering a price question comes back as: whether the answer arrived in
+ * time to price the purchase. `used: false` also covers a question the gateway
+ * no longer holds, such as one replayed after a worker restart; in both cases
+ * stock held against it can be released.
  */
 export const QuoteAnswerAckSchema = z
   .strictObject({
@@ -329,29 +209,21 @@ export const QuoteAnswerAckSchema = z
   });
 
 /**
- * What an agent sends to buy.
- *
- * The parameters are always there, empty for a product that needs no input,
- * for the same reason an order's are: nobody downstream should have to tell
- * "no parameters" from "the field did not arrive".
- *
- * This document holds the envelope and not the contents. Whether these
- * particular values fit this particular card is checked against that card's
- * own declaration at the moment of purchase — one card, one check, one error
- * message — and no schema written in advance of a catalog can do it.
+ * What an agent sends to buy. The parameters are always present, empty for a
+ * product that needs no input. Whether the values fit the card is checked
+ * against that card's declaration at the moment of purchase.
  */
 export const PurchaseRequestSchema = z
   .strictObject({
-    // The same dropped key as everywhere this contract parses free-form names;
-    // see `PROTOTYPE_KEY_IS_DROPPED` in `param-spec.ts`.
+    // The same key is dropped as everywhere this contract parses free-form
+    // names; see `PROTOTYPE_KEY_IS_DROPPED` in `param-spec.ts`.
     params: z.record(ParamNameSchema, z.unknown()),
 
     /**
-     * Where a parcel goes (ADR-0032). Required on the purchase of a card whose
-     * fulfillment is "ship", and refused on any other: only a parcel needs an
-     * address, and one sent with anything else would be a buyer's details
-     * handed over for nothing. Sent again with the payment it must be the one
-     * that was priced, or be left out.
+     * Where a parcel goes. Required on the purchase of a card whose
+     * fulfillment is "ship" and refused on any other, so a buyer's address is
+     * never handed over for nothing. Sent again with the payment it must be
+     * the address that was priced, or be left out.
      */
     ship_to: ShipToSchema.optional(),
   })
@@ -360,84 +232,41 @@ export const PurchaseRequestSchema = z
       "What an agent supplies to buy: the purchase parameters, empty for a product that needs none, and for a parcel the address it goes to. The names are held to the shape a card could have declared and no further — that these values fit this card is checked against that card at the moment of purchase. ship_to is required when the card's fulfillment is \"ship\" and refused on any other card. The merchant's price question receives only its locality; the merchant receives the whole address once the order is paid. Sent again with the payment it must be the same address, or be left out, in which case the payment is for the address that was priced; a different one is refused before the payment is checked, and is a new purchase. That holds while Agentify still holds the address: once it has let go of it — the order taken on, ended, or owing a refund without being taken on — there is nothing to compare with, a payment's ship_to is checked for its shape only, and the answer is the order as it stands.",
   });
 
-/**
- * What became of a purchase, told to the agent that made it.
- *
- * The shape of the list is the decision rather than its length. This document
- * is what the buyer is owed — where their order stands, what it cost them, the
- * goods once those exist, and where to ask again — and it is deliberately
- * smaller than the merchant's own view of the same order. It carries no
- * merchant, no merchant's key for the product, none of the parameters the
- * buyer sent and nothing about any other order, because whoever holds an
- * order's identifier can read it (ADR-0011) and an answer assembled from the
- * merchant's record would hand all of that to whoever guessed one.
- *
- * Both of the agent's doors answer in it, and that is one concept rather than
- * two: the purchase and the later read are the same question — where does my
- * order stand — asked at two moments. Two documents for it would be two
- * readers for an integrator to write, and the one that came back from the
- * purchase was the merchant's own, with the merchant's key for the product and
- * the buyer's own parameters in it. What a purchase answers with beyond this
- * document is the payment exchange that precedes it, which is a header and not
- * a document at all.
- *
- * The two nullable fields are required rather than optional, and that is the
- * fifth gate written into a shape. `price` is null for an order nobody ever
- * named a price for — a product that was gone, a price question that went
- * unanswered — and `delivered` is null while there are no goods to hand over.
- * Left out instead, either would be a silence a reader cannot tell from an
- * oversight; present and null, it is a fact.
- *
- * The status vocabulary folds several of the machine's endings into `rejected`
- * on the argument that the reason travels separately, in the refusal code, and
- * `refusal` is where it travels. It is optional because most endings have no
- * refusal behind them, and what remains coarse is said in that field's own
- * words rather than left to be discovered: a product that was gone and a
- * payment that failed its check both still arrive as a bare `rejected`,
- * because neither was worded by anybody.
- */
-/**
- * A shipment's expected window as an agent reads it: open, as the shipment
- * around it is, so a field added to the window later is ignored by an agent
- * built before it rather than making the whole status unreadable (ADR-0006
- * §5). Opening it makes a new schema, which carries none of the old one's
- * description, so the description is carried across.
- */
+// A shipment's expected window as an agent reads it, open to fields added
+// later. Opening it makes a new schema without the old one's description, so
+// the description is carried across.
 const closedWindow = RecordedShipmentSchema.shape.estimated_delivery.unwrap();
 const openWindow = closedWindow.loose().meta(closedWindow.meta() ?? {});
 
+/**
+ * What became of a purchase, told to the agent that made it: the answer to
+ * the purchase itself and to every later read of the order.
+ *
+ * It carries what the buyer is owed and nothing more: no merchant account, no
+ * merchant's key for the product, none of the parameters the buyer sent.
+ * Anyone holding an order's identifier can read it.
+ *
+ * `price` and `delivered` are required and nullable, so that "none yet" is a
+ * stated fact rather than a missing field. `refusal` is present only where a
+ * merchant's refusal ended the order, and `reason` only where Agentify ended
+ * it; a product that was gone or a payment that failed its check can still
+ * arrive as a bare `rejected`.
+ */
 export const AgentOrderStatusSchema = z
   .looseObject({
     order_id: IdentifierSchema,
 
     /**
      * Where this order is read again: the whole address of its status route,
-     * scheme and host included.
+     * scheme and host included, ready to call. An agent that bought goods that
+     * come later collects them here, and cannot work the address out from the
+     * purchase address.
      *
-     * It exists for the agent that bought goods that come later. That agent
-     * holds this document and nothing else, it has already paid, and the
-     * goods are collected at this address. The path is not something it could
-     * work out from what it holds — the purchase was made at an address that
-     * names the product rather than the order — and a guess that misses is
-     * answered `no_such_route`, which says nothing about the order at all.
-     *
-     * Absolute, so that it is called as it stands: a bare path would have to
-     * be joined onto a host the agent was never told was the right one. It is
-     * built from the address the gateway is configured to answer as and never
-     * from the request that asked, because behind the proxy that ends an
-     * agent's TLS connection the request says plain http and names whatever
-     * host the proxy or the caller wrote. Plain http is allowed by the pattern
-     * all the same, because a gateway on a developer's own machine answers on
-     * it; a deployment's address is https because its configuration is.
-     *
-     * The scheme is a pattern rather than zod's own protocol option because a
-     * pattern is what survives into the JSON Schema export — zod renders a URL
-     * as `format: "uri"` and drops the rest — so a client generated from that
-     * document refuses a bare path as well. It is case-sensitive because
-     * a flag on a pattern does not survive that export, and a schema that read
-     * the scheme without regard to case would accept what the exported
-     * document refuses. Nothing is lost by it: the gateway's configuration
-     * already requires its public address in lower case.
+     * It is built from the address the gateway is configured to answer as,
+     * never from the request, which behind a TLS-ending proxy says plain http.
+     * Plain http is accepted for a gateway on a developer's machine. The scheme
+     * is checked by a case-sensitive pattern rather than zod's protocol option,
+     * because only a pattern survives into the JSON Schema export.
      */
     status_url: z
       .url()
@@ -447,52 +276,34 @@ export const AgentOrderStatusSchema = z
       ),
 
     /**
-     * Where the order stands, as a word whose known values are listed beside
-     * it (ADR-0006 §5). The storefront has no version, so a word added later
-     * reaches agents that still hold this contract: one they do not know is
-     * not an ending they know, and they ask again later rather than buy again
-     * on its strength. The merchant's own view of the order reads the same
-     * words from a closed list. Two branches, as a card's mode is
-     * (`PublicCardSchema`), so the known words still cross into the export.
+     * Where the order stands. Words may be added later, so a word an agent
+     * does not know is not an ending it knows: ask again later rather than buy
+     * again. Two branches, so the known words still cross into the export.
      */
     status: z.union([OrderStatusSchema, OpenWordSchema]),
 
     /**
-     * The price this order was priced at, or null where nobody ever named one
-     * for it. It is the order's own price and not the card's number: a card
-     * with a price check is priced at what the check answered.
-     *
-     * "Priced at" and not "sold for", and the difference is worth the extra
-     * word. An order that was priced and then ended without a sale — the
-     * product was gone, a deadline ran out, the merchant left — still carries
-     * the number it was priced at, because that is what the buyer was asked
-     * for. Whether any money moved is the status's business and not this
-     * field's, and a reader taking this for an amount charged would be
-     * reconciling against sales that never happened.
+     * The price this order was priced at, or null where nobody ever named one.
+     * It is the order's own price, not the card's: a card with a price check
+     * is priced at what the check answered. "Priced at", not "sold for": an
+     * order that ended without a sale still carries the number the buyer was
+     * asked for, and whether money moved is the status's to say.
      */
     price: SalePriceSchema.loose().nullable(),
 
     /**
-     * The goods, once they are the buyer's — the delivery as the merchant
-     * wrote it, and null until then.
-     *
-     * "Once they are the buyer's" is narrower than "once the merchant handed
-     * them over", and the gap between the two is a real one. A synchronous
-     * delivery whose charge did not go through leaves goods sitting on an
-     * order nothing was paid for; the purchase itself refuses to hand those
-     * over and waits for a repeat that carries the payment, and this document
-     * says null for exactly as long as that is true.
+     * The goods once they are the buyer's, as the merchant wrote them, and
+     * null until then. A synchronous delivery whose charge did not go through
+     * leaves goods on an unpaid order; they stay null here until a repeat
+     * purchase carries the payment.
      */
     delivered: DeliverySchema.nullable(),
 
     /**
      * A parcel's shipment once its merchant has recorded it, and null until
-     * then (ADR-0033). Present on a parcel's order and on no other.
-     *
-     * It is beside `delivered` rather than in it because nothing reached the
-     * agent: what the merchant handed a carrier is not goods in hand, and
-     * `delivered` stays null on a parcel for that reason. It is the last thing
-     * Agentify knows about the parcel.
+     * then; present on a parcel's order only. It sits beside `delivered`,
+     * which stays null on a parcel, because a parcel handed to a carrier is
+     * not goods in hand. It is the last thing Agentify knows about the parcel.
      */
     shipment: RecordedShipmentSchema.extend({ estimated_delivery: openWindow.optional() })
       .loose()
@@ -500,46 +311,27 @@ export const AgentOrderStatusSchema = z
       .optional(),
 
     /**
-     * When a parcel has to be with its carrier by, as an absolute instant: the
-     * card's time to ship counted from the charge, and null until the order is
-     * paid (ADR-0033). Present on a parcel's order and on no other. A parcel
-     * not shipped by then leaves its merchant owing a refund, which this
-     * document then says.
+     * When a parcel has to be with its carrier by: the card's time to ship
+     * counted from the charge, and null until the order is paid; present on a
+     * parcel's order only. A parcel not shipped by then leaves its merchant
+     * owing a refund, which this document then says.
      */
     ship_by: TimestampSchema.nullable().optional(),
 
     /**
-     * Whether the money behind this purchase was real.
-     *
-     * The receipt a merchant reads carries this word already, and the buyer's
-     * own view of the same purchase is the one place it matters more: a
-     * sandbox settles against nothing (ADR-0020) and every other field here
-     * reads exactly as it would after a real charge. Without it, this document
-     * is indistinguishable from proof of a purchase that moved money, which is
-     * the one thing it must never be mistaken for.
+     * Whether this was a test purchase. A sandbox settles against nothing and
+     * every other field reads as it would after a real charge, so without this
+     * the document could be mistaken for proof that money moved.
      */
     test: z.boolean(),
 
     /**
-     * Why the merchant would not sell, where a merchant's refusal is what
-     * closed this order — their own code and their own sentence, carried
-     * across word for word.
-     *
-     * It is the shape a merchant's handler answers in (`RefusalSchema`) and
-     * not a copy of it, because it is the same fact travelling one hop
-     * further: what the merchant wrote is what the agent reads, and two
-     * shapes for that would be two chances to say it differently. The code is
-     * what an agent branches on — `out_of_stock`, `invalid_params`,
-     * `cannot_fulfill`, or a word of the merchant's own, so an unfamiliar one
-     * has to fall through to the sentence rather than break a reader. The
-     * sentence is what it can show a person.
-     *
-     * Optional, and what its absence means is the whole of the fifth gate
-     * here. It is absent exactly where no merchant refused this order. So an
-     * absent pair says "no refusal to quote", never "there was one and we
-     * dropped it", and a present pair is always somebody's actual answer
-     * rather than a word this gateway picked for them. Where the ending was
-     * this gateway's to decide, it says so in `reason`, in its own voice.
+     * Why the merchant would not sell, where a merchant's refusal closed this
+     * order: their own code and sentence, word for word, in the shape a
+     * handler answers in. The code may be one of the recommended codes or a
+     * word of the merchant's own, so an unfamiliar one falls through to the
+     * sentence. Absent means no merchant refused, never that a refusal was
+     * dropped.
      */
     refusal: RefusalSchema.loose().optional(),
 
@@ -548,16 +340,13 @@ export const AgentOrderStatusSchema = z
      * the status word alone covers endings that call for different next steps:
      * `rejected` for a product that is gone, a price check that went
      * unanswered or a charge that did not go through; `expired` for a price
-     * that ran out before the payment or a merchant who did not answer a
+     * that ran out before payment or a merchant who did not answer a
      * synchronous purchase in time.
      *
-     * A code to branch on and a sentence that says what to do next — try
-     * again later, start a new purchase, or buy elsewhere. These are this
-     * gateway's words about its own decisions, so they never sit beside a
-     * merchant's `refusal`: where the merchant refused, their words are the
-     * whole answer. The code is an open word whose known values are listed
-     * beside it, like `status`: a word a reader does not know falls through to
-     * the sentence. Absent wherever the status needs nothing added.
+     * A code to branch on and a sentence saying what to do next. These are
+     * Agentify's words, so they never sit beside a merchant's `refusal`. The
+     * code is an open word like `status`. Absent wherever the status needs
+     * nothing added.
      */
     reason: z
       .looseObject({
@@ -567,14 +356,9 @@ export const AgentOrderStatusSchema = z
       .optional(),
 
     /**
-     * Who sold it: the name and the site the merchant gave, read as their
-     * merchant stands now (ADR-0034).
-     *
-     * An agent holding an order and nothing else is the one with a question
-     * the order cannot answer — a parcel that did not arrive, a return — and
-     * this is where it learns where to take it. It is what the catalog already
-     * shows every agent beside the merchant's cards and nothing more: not the
-     * merchant's account, not their own key for the product, not the card.
+     * Who sold it: the name and site the merchant gave, as their merchant
+     * stands now. An agent with a question the order cannot answer, such as a
+     * parcel that did not arrive, learns here where to take it.
      */
     seller: SellerSchema.loose(),
   })
@@ -584,19 +368,11 @@ export const AgentOrderStatusSchema = z
   });
 
 /**
- * The catalog as an agent reads it.
+ * The catalog as an agent reads it. It makes no claim to be complete: the
+ * absence of a paging field is not a promise that there is nothing more.
  *
- * An object rather than a bare array, so that the day it needs paging it can
- * grow the field that says so instead of changing shape under every reader.
- * Until then it makes no claim about completeness, and that is stated in the
- * document itself: an agent must not read the absence of a field about paging
- * as a promise that there is nothing more.
- *
- * It is read card by card (ADR-0006 §5). The storefront has no version, so a
- * card of a mode or a shape added later reaches agents that still hold this
- * contract, and one card they cannot read must leave every other card for
- * sale. So the page holds its items as whatever they are, and `cardsOf` reads
- * each one on its own against the card an agent reads.
+ * Items are held as whatever they are, and `cardsOf` reads each on its own,
+ * so a card of a mode or shape added later leaves every other card readable.
  */
 export const CatalogPageSchema = z
   .looseObject({
@@ -613,13 +389,11 @@ export const CatalogPageSchema = z
   });
 
 /**
- * The cards of a catalog page a reader of this contract can buy from, each read
- * on its own.
- *
- * Two kinds of item are passed over, and the rest of the page stands. One that
- * does not read as a card at all, and one that does but is sold in a mode this
- * contract does not name: its reader cannot know when such goods arrive or when
- * the money moves, so it must not buy on it.
+ * The cards of a catalog page that a reader of this contract can buy from,
+ * each read on its own. An item that is not a card, or a card sold in a mode
+ * this contract does not name, is passed over and the rest of the page
+ * stands: its reader cannot know when the goods arrive or when the money
+ * moves.
  */
 export const cardsOf = (
   page: CatalogPage,
@@ -639,83 +413,46 @@ export type HttpMethod = (typeof HTTP_METHODS)[number];
 /**
  * Which door a call is behind.
  *
- * `merchant_key` is a key the merchant holds, sent as a bearer token; it names
- * the merchant it belongs to, and a call behind this door acts on that
- * merchant's cards, orders and receipts and on nobody else's. `none` is a
- * call anybody may make — the catalog an agent browses, and the purchase,
- * where the payment is what stands in for authorisation.
+ * `merchant_key`: a key the merchant holds, sent as a bearer token; the call
+ * acts on that merchant's cards, orders and receipts and nobody else's.
+ * `none`: anybody may call, as for the catalog and the purchase, where the
+ * payment stands in for authorisation.
  *
- * `order_id` is the agent's own door and there is exactly one route behind it:
- * knowing an order's identifier is what stands in for a key (ADR-0011). What
- * that leans on is the identifier being generated from a random source and long
- * enough not to be guessed — not on it being secret, which it is not. It
- * travels in the payment challenge, on the merchant's stream and in the
- * merchant's receipts, so the merchant who sold an order holds every identifier
- * they would need to read one of these documents. That is why ownership of an
- * order is settled by the verified payer and not by the identifier, and why the
- * document behind this door carries only what the buyer is owed.
+ * `order_id`: knowing an order's identifier stands in for a key. That rests on
+ * the identifier being random and long enough not to be guessed, not on it
+ * being secret: it travels in the payment challenge and to the merchant, and
+ * anyone who obtains it can read that order. So the document behind this door
+ * carries only what the buyer is owed, and a gateway must answer an
+ * identifier that names no order exactly as any other unknown one.
  *
- * It is a separate word from `none` because the two are not the same call: a
- * route marked `none` answers everybody the same thing, and this one answers
- * about the order the caller named and about no other. Whoever mounts it reads
- * that difference off the word rather than out of a sentence. The weakness is
- * stated in the decision rather than hidden: anyone who obtains an identifier
- * can read that order, and the first real payment is the trigger to narrow it.
- *
- * `undecided` is not a scheme at all. It is the honest word for a route whose
- * door nobody has chosen yet, and it exists because "I do not know" and "I
- * know there is no door" cannot be the same value. A gateway must refuse to
- * mount a route marked this way until somebody decides, which is exactly the
- * behaviour wanted: the alternative is a route quietly serving everybody
- * because `none` was the closest word to hand.
+ * `undecided`: no door has been chosen. A gateway must not mount such a route;
+ * see `mountableRoutes`.
  */
 export const AUTH_MODES = Object.freeze(["merchant_key", "none", "order_id", "undecided"] as const);
 
 export type AuthMode = (typeof AUTH_MODES)[number];
 
 /**
- * The header the merchant's key travels in, and the two helpers that put a key
- * into it and read one back out.
- *
- * `auth` above says which door a call is behind and not how the door is built,
- * and that omission is deliberate — but how the door is built is still a thing
- * the gateway and the SDK have to agree on exactly, because a mismatch is a call
- * that fails with an authorisation error while both repositories look correct.
- * They had agreed, by each writing the same two strings down apart from the
- * other: the gateway parsed an `Authorization: Bearer` header and the SDK sent
- * one. That is agreement by luck, and it is the very thing this table exists to
- * remove for the addresses and the documents. So the strings live here now, in
- * the one place both sides already import, and a change to either is a change in
- * one file rather than a silent drift between two.
- *
- * The name is `authorization` and the scheme is `Bearer`. The name
- * is lower-case because that is how a client writes a header and how the wire
- * carries it; a reader on the gateway matches it without regard to case anyway.
+ * The header the merchant's key travels in, `authorization`, with the scheme
+ * `Bearer`. It lives here with the helpers below so that the gateway and the
+ * SDK use the same strings.
  */
 export const MERCHANT_KEY_HEADER = "authorization";
 
-/** The scheme the merchant's key travels under. */
 const MERCHANT_KEY_SCHEME = "Bearer";
 
-/**
- * The value of the {@link MERCHANT_KEY_HEADER} header for a given key — what the
- * SDK sends, so that what the gateway parses is never guessed at.
- */
+/** The value of the {@link MERCHANT_KEY_HEADER} header for a given key. */
 export const merchantKeyHeaderValue = (key: string): string => `${MERCHANT_KEY_SCHEME} ${key}`;
 
-// Built once and matched case-insensitively: an auth scheme is case-insensitive
-// (RFC 7235 §2.1), so a client that wrote "bearer" holds a key that is correct,
-// and rejecting it would cost that merchant an afternoon on a key that works.
+// An auth scheme is case-insensitive (RFC 7235 §2.1), so a client that wrote
+// "bearer" holds a key that is correct.
 const MERCHANT_KEY_PATTERN = new RegExp(`^${MERCHANT_KEY_SCHEME}[ \\t]+(\\S+)$`, "i");
 
 /**
- * The key inside a merchant-key header value, or null where there is not one.
- *
- * Null is every way the value is not a bearer token this contract issued: no
- * header at all, another scheme, or the scheme with nothing after it. The caller
- * is handed a key it can compare or nothing to compare, and never a half-parsed
- * string that a constant-time comparison would then match against a prefix of
- * the real key.
+ * The key inside a merchant-key header value, or null where there is not one:
+ * no header, another scheme, or the scheme with nothing after it. The caller
+ * never gets a half-parsed string that a constant-time comparison would match
+ * against a prefix of the real key.
  */
 export const merchantKeyFrom = (headerValue: string | undefined): string | null => {
   if (headerValue === undefined) {
@@ -726,38 +463,14 @@ export const merchantKeyFrom = (headerValue: string | undefined): string | null 
 };
 
 /**
- * How every call on this surface says no.
+ * How every call on this surface says no: `{ "error": { code, message,
+ * retryable } }`, whatever the route and the HTTP status.
  *
- * One shape, for every refusal of every route, whatever it is about and
- * whatever status it arrives under: an object whose only field is `error`, and
- * inside it a machine-readable `code` and a sentence a person can act on. It
- * is declared here, once, rather than being described route by route — a
- * refusal shape written down twenty-six times is a refusal shape that is
- * already twenty-six shapes, and the one thing a caller does with every call
- * it makes is find out whether the call was refused.
- *
- * Both fields are required, and the sentence is the one worth arguing for. A
- * refusal with a code and no words is a refusal only the code's author can
- * read: an integrator meeting it for the first time has a string to search our
- * source for and nothing to act on, and the caller printing it has an empty
- * space where the reason belongs. That is why this is required rather than
- * optional, and why a refusal that carries findings — a card's problems, a
- * body that did not fit — carries them beside the sentence rather than instead
- * of it.
- *
- * Inside `error` the shape is open, and that is deliberate in both directions.
- * A refusal may say more about itself than these two fields, and several do:
- * where an order ended, whether the payment layer might vouch for a second
- * attempt, which fields of a document did not fit. What no refusal may do is
- * ride beside the envelope rather than inside it, which is why the outer
- * object is closed: `{ "error": … }` and nothing else is how a reader tells a
- * refusal from a document that happens to mention an error.
- *
- * The set of codes is open, and is not enumerated here. A gateway meets
- * situations this contract has not named, and a closed list would leave it
- * choosing between the nearest wrong word and no answer at all. What is
- * promised is the shape, so that a caller can always find out that it was
- * refused and always have something to print.
+ * All three fields are required; the sentence is for the person who has to do
+ * something about it. Inside `error` the shape is open, and some refusals say
+ * more, such as which fields did not fit. The outer object is closed, so
+ * `{ "error": … }` and nothing else marks a refusal. The set of codes is open:
+ * switch over `ERROR_CODES` and keep a default arm that shows the message.
  */
 export const ErrorEnvelopeSchema = z
   .strictObject({
@@ -769,21 +482,10 @@ export const ErrorEnvelopeSchema = z
       message: z.string().regex(/\S/, "a refusal carries an explanation a person can read"),
 
       /**
-       * Whether making this same call again could succeed.
-       *
-       * A fact about this refusal, not an instruction: how long to wait, how
-       * many times, and whether to bother at all are the caller's, who knows
-       * what the call was worth. What the caller cannot know from outside is
-       * whether the door is shut or merely was shut a moment ago, and that is
-       * the one thing said here.
-       *
-       * The gateway assigns it conservatively. True is claimed only where
-       * repeating this very call is genuinely the way through — the call that
-       * fell over before anything was decided, the answer that is not ready
-       * yet. Everything definitive, and everything arguable, is false: a
-       * caller who stops early loses one call they could have made again,
-       * and a caller who loops against a door that will never open spends
-       * until somebody notices.
+       * Whether making this same call again could succeed. A fact about this
+       * refusal, not an instruction: how long to wait and how often are the
+       * caller's. It is true only where repeating the call is genuinely the way
+       * through; anything definitive or arguable is false.
        */
       retryable: z.boolean(),
     }),
@@ -796,39 +498,14 @@ export const ErrorEnvelopeSchema = z
 export type ErrorEnvelope = z.infer<typeof ErrorEnvelopeSchema>;
 
 /**
- * Every code this contract's gateway refuses a call with today.
+ * Every code the gateway refuses a call with today, for `error.code`. Not to
+ * be confused with `RefusalCode`, a merchant's reason for not delivering one
+ * order.
  *
- * Named after the field it lands in — `error.code` — rather than "refusal
- * code", which this contract already uses for something else: what a
- * merchant's handler answers when it cannot deliver an order it was given
- * (`RefusalCode` in `handler.ts`). Those are a merchant's words about one
- * order; these are the surface's words about one call, and a reader who ran
- * the two together would go looking for `out_of_stock` here.
- *
- * Two halves, and a consumer that takes only one of them will be wrong about
- * this surface sooner or later.
- *
- * The wire is open. `ErrorEnvelopeSchema` holds `code` to a non-blank string
- * and not to this list, deliberately and for the reason `results.ts` gives
- * about its own codes: a situation nobody anticipated has to reach the caller
- * in its own words rather than break the parse on the way. A gateway newer
- * than the client, another implementation of this surface, or something
- * standing in front of one, can all answer with a code that is not here, and
- * the answer is still a refusal and still readable.
- *
- * So this list is what to switch over, not what to validate against. A
- * consumer covers these exhaustively — the compiler tells them when the list
- * grows — and keeps a default arm for the code it has never seen, which is not
- * an error path: the envelope's `message` is required precisely so that arm
- * has a sentence to show, written by the side that knows why. A consumer that
- * refused an unknown code, or rendered nothing for it, would turn a version
- * skew into a blank screen over a refusal the gateway explained perfectly
- * well.
- *
- * The list is alphabetical because it is looked up rather than read through,
- * and it is the codes and not their meanings: what each one means to whoever
- * has to act on it belongs to the route that sends it and to the sentence the
- * refusal carries.
+ * Switch over this list, but do not validate against it: the wire is open, so
+ * a newer gateway or something in front of one can answer with a code that is
+ * not here. Keep a default arm for an unknown code and show its `message`; an
+ * unknown code is still a readable refusal.
  */
 export const ERROR_CODES = Object.freeze([
   "body_too_large",
@@ -862,15 +539,8 @@ export const ERROR_CODES = Object.freeze([
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
 /**
- * What a call answers with when it works.
- *
- * One document per route, always — how a call says no is not written here, it
- * is {@link ErrorEnvelopeSchema} and it is the same for all of them. The
- * purchase used to be the exception, on the grounds that it is a payment
- * exchange before it is a document; it names a document now, and the exchange
- * that precedes it is described in that route's own words. A route that
- * genuinely cannot name one is a change to this type, made deliberately,
- * rather than a field somebody left out.
+ * What a call answers with when it works: one document per route. How a call
+ * says no is {@link ErrorEnvelopeSchema}, the same for all of them.
  */
 export interface RouteResponse {
   readonly document: z.ZodType;
@@ -890,48 +560,27 @@ export interface RouteDefinition {
   readonly request?: z.ZodType;
   readonly response: RouteResponse;
   /**
-   * Other methods this address has to answer on, where something outside our
-   * design requires it.
-   *
-   * One route has this and the reason has already been paid for once: the
-   * validators and crawlers that list a paid resource ask for it with GET, and
-   * a paywall bound to a single method makes the resource invisible to them.
-   * It is a field rather than a sentence in the description because a gateway
-   * mounts from data, and a sentence would be mounted by nobody.
-   *
-   * These methods carry no body. Whatever `request` names travels on `method`
-   * and on nothing else.
+   * Other methods this address also answers on, without a body. The purchase
+   * route answers GET too, because validators and crawlers that list a paid
+   * resource ask with GET, and a paywall bound to one method hides it from
+   * them.
    */
   readonly also_answers_on?: readonly HttpMethod[];
 }
 
 /**
  * Every call of the surface, under the name it is known by in both programs.
+ * A test holds that no two routes share an address and a method, and that
+ * every schema named here is published in the contract registry.
  *
- * The name is the key, so two routes cannot share one; a test holds the rest —
- * that no two sit at one address under one method, and that every schema named
- * here is one the contract registry publishes, since the registry and this
- * table are the whole of what a reader outside TypeScript has.
+ * `/v0` is the merchant's API, versioned so that integration code keeps
+ * working while shapes change. `/x402` is the storefront, with no version in
+ * the path: discovery catalogs key listings on these addresses and agents
+ * build them from a base and an identifier, so the protocol is versioned
+ * inside the payment challenge instead.
  *
- * Two prefixes are in this table and they are two different kinds of address.
- * `/v0` is the merchant's API, and it is versioned for the ordinary reason a
- * classic API is: an integrator writes code against it, and the number is what
- * lets that code keep working while the shapes underneath it change. `/x402` is
- * the storefront — the catalog an agent browses, the address it buys at, and
- * the door it comes back to for its own order — and it carries no version at
- * all. Those three addresses are not something an integrator holds in a client
- * library; they are a product identity. A discovery catalog keys a listing on
- * the address it was given, strangers' agents construct them from a base and an
- * identifier, and both of those outlive any dialect we speak. So the protocol
- * versions where the protocol can be read — the `x402Version` field inside the
- * challenge — and the address stays put. A version segment in a storefront path
- * would be a promise to keep every old segment answering forever, made to
- * catalogs we do not run.
- *
- * Which door a call is behind is still `auth` and never the prefix. The two
- * happen to agree today, and a reader who took that for the rule would mount
- * the next route by its address; `apps/gateway/src/http/server.ts` says what
- * that costs.
+ * Which door a call is behind is `auth`, never the prefix, even where the two
+ * happen to agree.
  */
 export const API_ROUTES = Object.freeze({
   publish_card: {
@@ -1166,15 +815,11 @@ export const API_ROUTES = Object.freeze({
 /** The name of one call in the table. */
 export type RouteName = keyof typeof API_ROUTES;
 
-/**
- * The shape of a path parameter's name: lowercase, the way the fields on the
- * wire are written, so an address reads like the documents it carries.
- */
+/** A path parameter's name: lowercase, as fields on the wire are written. */
 const PARAMETER_NAME = "[a-z][a-z0-9_]*";
 
-// Built fresh on each call rather than kept in a module constant, because a
-// global regular expression carries a cursor between calls and sharing one
-// between a scan and a replace is a bug waiting for the second caller.
+// Built fresh on each call: a global regular expression carries a cursor
+// between calls, and sharing one between a scan and a replace is a bug.
 const pathParameterPattern = (): RegExp => new RegExp(`:(${PARAMETER_NAME})`, "g");
 
 /** The parameters an address takes, in the order it writes them. */
@@ -1182,28 +827,13 @@ export const pathParamsOf = (path: string): string[] =>
   [...path.matchAll(pathParameterPattern())].map((match) => match[1] ?? "");
 
 /**
- * The address of one call, with its parameters filled in and encoded.
+ * The address of one call, with its parameters filled in and URL-encoded.
  *
- * Encoding is the reason this is not left to the caller. An identifier in this
- * contract may hold a slash and a space — "SKU 100/1" is one we accept — and
- * concatenated into a path unencoded it becomes two segments and a different
- * route.
- *
- * A missing value and a value for a parameter the address does not take are
- * both refused, and both are refused by throwing rather than by returning
- * something. Everything this package returns rather than throws is a condition
- * a consumer is expected to handle; this is not one of those. An address built
- * with a hole in it is a bug in the caller, and the request it would send
- * reads in a log as a route that exists and answers nothing to anybody.
- *
- * Three refusals are less obvious and each is a way an address stops being the
- * one that was meant. A value is looked up with `Object.hasOwn`, because a
- * parameter named `constructor` would otherwise find something on the
- * prototype and expand into the source of a function. A value of "." or ".."
- * is refused, because a relative-URL resolver walks it and the request lands
- * somewhere else entirely. And a value that is not a string is refused rather
- * than stringified: `null` would otherwise become the four letters that spell
- * it, and the SDK is not always the one holding the types.
+ * Throws a `TypeError` for a missing or empty value, a value for a parameter
+ * the address does not take, a value that is not a string, and "." or "..",
+ * which a URL resolver would walk. Each is a bug in the caller, not a
+ * condition to handle. Values are looked up with `Object.hasOwn`, so a
+ * parameter named `constructor` finds nothing on the prototype.
  */
 export const expandPath = (path: string, values: Readonly<Record<string, string>>): string => {
   const wanted = pathParamsOf(path);
@@ -1233,18 +863,9 @@ export const expandPath = (path: string, values: Readonly<Record<string, string>
 };
 
 /**
- * The routes a gateway may serve: every route whose door somebody has chosen.
- *
- * It exists because the natural way to mount a table is to ask whether a route
- * needs the merchant key and to treat everything else as open — and that
- * reading serves a route nobody has chosen a door for to the whole world.
- * Mounting from this list instead makes the safe reading the easy one, and a
- * route appears here the day its door is decided.
- *
- * Every route in the table has a door today, so this list is the whole of it.
- * That is a fact about the table and not a reason to mount from `API_ROUTES`
- * directly: the next route to be written down before it is designed is exactly
- * the one this filter is for.
+ * The routes a gateway may serve: every route whose door has been chosen.
+ * Mount from this list rather than from `API_ROUTES`, so that a route marked
+ * `undecided` is never served to the whole world for want of a key check.
  */
 export const mountableRoutes = (): [RouteName, RouteDefinition][] =>
   (Object.entries(API_ROUTES) as [RouteName, RouteDefinition][]).filter(

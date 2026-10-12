@@ -1,34 +1,12 @@
 /**
  * What state an order is in, in the words an agent and a merchant both read.
  *
- * These are the state machine's own endings, and they live here because they
- * are wire names: an agent asks what became of its purchase, a merchant
- * restarting a worker asks what is still open, and both have to get the same
- * answer. A second list kept anywhere else would be a second answer to one
- * question, and the one the machine keeps would win without anybody noticing.
- *
- * Every value below says what the agent can be told truthfully, which is not
- * always everything the machine knows. Where the two differ the value says so
- * in its own words: `rejected` is coarser than the machine's states behind it,
- * and `in_progress` covers every step of a purchase that has not finished —
- * an order just sent to the merchant and one the merchant has taken on and
- * owes a delivery for are one word here, because to the buyer they are one
- * situation. A merchant who needs those apart is not reading this vocabulary;
- * they are reading their own order, which carries the answer they gave.
- *
- * The word for a purchase still running exists on purpose: an agent that had
- * to read silence as an answer would take an unfinished order for a refused
- * one, and hold a budget against a sale that is still going to happen.
- *
- * Two of the machine's own distinctions are deliberately not here, and saying
- * which is the point — a list that claims to name every ending has to admit
- * what it folded. The machine separates a purchase that never reached the
- * merchant from one the merchant refused, and it separates an order sent to
- * the merchant from one the merchant has taken on. Both distinctions are the
- * merchant's: the first their metrics need, the second their own record
- * already holds. To the buyer each pair is one situation, and this vocabulary
- * is the buyer's. A merchant reading it and expecting their own view of the
- * order is reading the wrong list.
+ * Every value says what the agent can be told truthfully, which is not always
+ * everything Agentify knows. `in_progress` covers every step of a purchase that
+ * has not finished, and `rejected` covers both a purchase that never reached
+ * the merchant and one the merchant refused, because to the buyer each is one
+ * situation. A merchant who needs those apart reads their own order, which
+ * carries the answer they gave.
  */
 
 import { z } from "zod";
@@ -39,56 +17,32 @@ export const ORDER_STATUSES = Object.freeze([
   /** Success: the product is with the agent and the money with the merchant. */
   "delivered",
   /**
-   * A parcel is with the carrier and the money with the merchant (ADR-0033):
-   * the merchant recorded its shipment, and the order carries it. This is the
-   * last word Agentify has about the parcel. Every protocol that uses the word
-   * goes on past it to arrival; this one does not, because nothing reports an
-   * arrival here, and whether the parcel arrives is between the buyer and the
-   * merchant — the seller's site is where to ask.
+   * A parcel is with the carrier and the money with the merchant: the merchant
+   * recorded its shipment, and the order carries it. This is the last word
+   * Agentify has about the parcel; nothing reports an arrival, and whether it
+   * arrives is between the buyer and the merchant, whose site is where to ask.
    */
   "shipped",
   /**
-   * Closed and the buyer's money is known not to have moved — the product was
+   * Closed, and the buyer's money is known not to have moved: the product was
    * gone, the parameters did not fit, the payment failed its check, the charge
-   * came back failed, or a synchronous handler refused. On a parcel, the
-   * product being gone is the merchant's price answer saying "not available",
-   * which there can also mean the merchant does not ship to that place or the
-   * address lacks what their carrier needs.
+   * came back failed, or a synchronous handler refused. On a parcel, "gone" can
+   * also mean the merchant does not ship to that place or the address lacks
+   * what their carrier needs.
    *
-   * The machine keeps a finer distinction behind this word: a purchase that
-   * never reached the merchant and one the merchant refused are separate
-   * states there, because the merchant's own accounting needs them apart. To
-   * the agent both are one sentence — a refusal — and folding them was argued
-   * on the grounds that the reason travels separately, in the refusal code.
-   *
-   * It does travel, and what it carries is worth being exact about. The
-   * agent's status document has a `refusal` beside this word, and where a
-   * merchant refused the order it holds the two things the merchant actually
-   * wrote: a short code to branch on and a sentence to show. The word here
-   * stays coarse because that is the agent's vocabulary, and the pair beside
-   * it is what makes the coarseness affordable.
-   *
-   * The rest of the fold is told apart in another voice. Where this gateway
-   * and not the merchant ended the order — a product the price check reported
-   * gone, a price check that did not answer, a charge that did not go through
-   * — the status carries a `reason` of its own (`ORDER_ENDING_REASONS`), and
-   * never beside the merchant's words: inventing a merchant's code for an
-   * ending they never worded would be putting words in a mouth that never
-   * opened, so ours are said as ours.
+   * Where the merchant refused, the agent's status document carries their
+   * `refusal` beside this word: a short code to branch on and a sentence to
+   * show. Where Agentify ended the order, it carries a `reason` from
+   * `ORDER_ENDING_REASONS` instead, never beside the merchant's words, so that
+   * no merchant is credited with words they did not write.
    */
   "rejected",
   /**
    * Nobody can say whether the buyer was charged: the payment network was
-   * asked and never answered. The order may still be open — the goods may
-   * already be made — and a later read can still move. Closed is not what
-   * this word says.
-   *
-   * Deliberately not `rejected`, and this is the fifth gate in one value. An
-   * agent told its purchase did not happen goes and buys the same thing
-   * elsewhere without looking at its wallet — a claim we would be making with
-   * no evidence behind it. What we know is that we asked and heard nothing;
-   * saying so is the honest answer, and it is what a dispute, an error text
-   * and the merchant's reconciliation all read.
+   * asked and never answered. The order may still be open, the goods may
+   * already exist, and a later read can still move. This is not `rejected` on
+   * purpose: an agent told its purchase did not happen would buy again without
+   * looking at its wallet.
    */
   "payment_unresolved",
   /** The merchant answered a confirmation request with "I will not deliver". */
@@ -106,11 +60,10 @@ export const ORDER_STATUSES = Object.freeze([
    * its own. Goods the merchant delivers after it still reach the buyer, settle
    * the debt and make the order `delivered`.
    *
-   * What it cannot say is whether the money has already gone back. The
-   * merchant pays a refund from their own wallet and the gateway has no way yet
-   * to record that they did, so until it has one nothing moves an order on to
-   * `refunded`, and a buyer the merchant has already paid back still reads
-   * this word.
+   * It does not say whether the money has already gone back. The merchant pays
+   * a refund from their own wallet and the gateway has no way to record that
+   * they did, so nothing moves an order on to `refunded`, and a buyer already
+   * paid back still reads this word.
    */
   "refund_due",
   /** That debt has since been paid back to the buyer. */
@@ -130,8 +83,8 @@ export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 /**
  * Why an order ended, where Agentify and not its merchant decided it and one
  * status word would otherwise cover endings that call for different next
- * steps. These are this gateway's own words about its own decisions; a
- * merchant's refusal travels in theirs and never gets one of these beside it.
+ * steps. A merchant's refusal travels in their own words and never gets one of
+ * these beside it.
  */
 export const ORDER_ENDING_REASONS = Object.freeze([
   /**
