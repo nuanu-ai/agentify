@@ -1,5 +1,30 @@
 # Merchant SDK release history
 
+## 0.5.1
+
+### Patch Changes
+
+- 6f8dc38: An acceptance given an argument says so. TypeScript refuses an argument to
+  `order.accepted()` and `order.accept()`, but JavaScript can pass one, the
+  removed `eta_seconds` above all, and it went nowhere without a word. The order
+  is still taken on, and the worker's problem channel now reports
+  `acceptance_argument_ignored` naming the order.
+- a2bbe78: The doc comments an editor shows for the client, the worker, the errors and
+  the contract's schemas are rewritten for the engineer integrating a shop: what
+  a call does, what it refuses and what it returns. Two published route
+  descriptions are corrected: accepting an order no longer says the merchant
+  states how long delivery will take, since the acceptance carries no field and
+  the card's delivery deadline holds; and the order-status description no longer
+  cites an internal document. No schema, type or behaviour changes.
+- 6f8dc38: A poll the gateway refuses for good no longer reports that a revoked key has
+  to be replaced whatever the refusal was. The worker's problem now says that no
+  new orders arrive until what the gateway's own words name is fixed; a revoked
+  key is one such case, and a merchant selling through a connected WooCommerce
+  shop is another.
+- Updated dependencies [a2bbe78]
+- Updated dependencies [6f8dc38]
+  - @nuanu-ai/agentify-contracts@0.10.0
+
 ## 0.5.0
 
 ### Minor Changes
