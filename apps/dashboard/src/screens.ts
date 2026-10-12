@@ -23,8 +23,7 @@ export interface Viewer {
   /**
    * Where the screen asked the gateway for it. Null is a merchant who has
    * chosen none, and until one is set every card their code publishes is
-   * refused. Absent where the screen did not ask (the keys, for the reason
-   * `html.ts` gives).
+   * refused. Absent where the screen did not ask.
    */
   readonly sellerName?: string | null;
   /**

@@ -26,7 +26,7 @@ const TABS: readonly (readonly [Tab, string, "drawn" | "string"])[] = [
   ["orders", "Orders", "drawn"],
   ["receipts", "Receipts", "drawn"],
   ["integrations", "Integrations", "drawn"],
-  ["keys", "API keys", "string"],
+  ["keys", "API keys", "drawn"],
   ["settings", "Settings", "drawn"],
 ];
 

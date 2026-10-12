@@ -45,6 +45,9 @@ export default [
         route("payout-wallet/cancel", "routes/settings-payout-wallet-cancel.ts"),
       ]),
       route("settings/payout-wallet", "routes/settings-payout-wallet.tsx"),
+      route("keys", "routes/keys.tsx"),
+      route("keys/new", "routes/keys-new.ts"),
+      route("keys/:key_id/disable", "routes/keys-disable.ts"),
     ]),
   ]),
 ] satisfies RouteConfig;

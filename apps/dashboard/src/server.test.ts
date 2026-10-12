@@ -2907,7 +2907,11 @@ describe("the keys screen", () => {
 
     expect(keys.issued).toStrictEqual(["the second worker"]);
     expect(issued.status).toBe(200);
-    expect(issued.html).toContain(SECRET);
+    // Read where a person reads it: the page's data carries it too, drawn or
+    // not.
+    expect(readable(issued.html)).toContain(SECRET);
+    // Kept by no cache, so nothing can hand the page back later.
+    expect(issued.headers.get("cache-control")).toBe("private, no-store");
     expect(readable(issued.html)).toMatch(/only time|once/i);
     expect(readable(issued.html)).toContain("Copy key");
 
@@ -2918,6 +2922,84 @@ describe("the keys screen", () => {
     // Gone from every later page: the list is drawn from documents that carry
     // no secret.
     expect((await browser.get("/keys")).html).not.toContain(SECRET);
+  });
+
+  it("hands the secret only to the press that issued it, in an answer no cache keeps", async () => {
+    // Where script runs, React Router sends the press as a data request and
+    // draws the page from its answer. Whatever a reload, a prefetch, Back or
+    // the page itself asks the server for afterwards is answered without it;
+    // what the browser does with the press's answer is held where the page
+    // runs, in the route's own tests.
+    const keys = withKeys();
+    const { browser } = await started({ client: keys.client });
+    await browser.signIn();
+    await browser.get("/keys");
+
+    const pressed = await browser.post("/keys.data", { label: "the second worker" });
+
+    expect(keys.issued).toStrictEqual(["the second worker"]);
+    expect(pressed.html).toContain(SECRET);
+    expect(pressed.headers.get("cache-control")).toBe("private, no-store");
+    for (const asked of [
+      "/keys.data",
+      `/keys.data?_routes=${encodeURIComponent("routes/gate,routes/keys")}`,
+      "/keys",
+      "/keys/new",
+      "/keys/new.data",
+    ]) {
+      expect((await browser.get(asked)).html, asked).not.toContain(SECRET);
+    }
+    expect(keys.issued).toStrictEqual(["the second worker"]);
+  });
+
+  it("never lets a browser keep the list's data, so a key revoked a moment ago never reads as working", async () => {
+    // The list is the screen a merchant opens when a key has leaked. A browser
+    // keeps a page's data under the address it asked with, and a press posts
+    // to another one, so data kept from before a revoke would show the key
+    // still working, with its Revoke button.
+    const { browser } = await started({ client: withKeys().client });
+    await browser.signIn();
+
+    for (const asked of [
+      "/keys.data",
+      `/keys.data?_routes=${encodeURIComponent("routes/keys")}`,
+      `/keys.data?_routes=${encodeURIComponent("routes/gate,routes/keys")}`,
+    ]) {
+      const data = await browser.get(asked);
+      expect(data.status, asked).toBe(200);
+      expect(data.html, asked).toContain(NIGHTLY.id);
+      expect(data.headers.get("cache-control"), asked).toBe("private, no-store");
+    }
+  });
+
+  it("shows the secret of the key it issued even when the list cannot be read right after", async () => {
+    // A key issued and never seen is one the merchant cannot use and must find
+    // and revoke, so nothing read after the issue may stand between the press
+    // and the one page that shows the secret.
+    const keys = withKeys();
+    let issuing = false;
+    const { browser } = await started({
+      client: (real) => {
+        const decorated = keys.client(real);
+        return {
+          ...decorated,
+          keys: async () =>
+            issuing
+              ? { ok: false, status: 0, why: "the gateway did not answer in time" }
+              : await decorated.keys(),
+        };
+      },
+    });
+    await browser.signIn();
+    await browser.get("/keys");
+    issuing = true;
+
+    const issued = await browser.post("/keys", { label: "the second worker" });
+
+    expect(keys.issued).toStrictEqual(["the second worker"]);
+    expect(issued.status).toBe(200);
+    expect(readable(issued.html)).toContain(SECRET);
+    expect(readable(issued.html)).not.toContain("Something went wrong");
   });
 
   it("revokes a key only on a second, deliberate press", async () => {
@@ -3072,6 +3154,54 @@ describe("the keys screen", () => {
     expect(seen.html).toContain('action="/keys"');
     // It does not count absent rows as though some worked.
     expect(text).not.toMatch(/\b0 of the 0\b/);
+  });
+
+  it("does nothing for a press sent as React Router's data request from a page drawn for somebody else", async () => {
+    // Where script runs the presses go out as data requests, and the gate holds
+    // for those as it does for a form the browser posts itself.
+    const keys = withKeys();
+    const running = await started({ client: keys.client });
+    await running.identity.make(OTHER, running.theMerchant);
+    await running.browser.signIn();
+    const leftOpen = hiddenIn((await running.browser.get("/keys")).html, "/keys");
+    await running.browser.post("/sign-out");
+    await running.browser.signIn(OTHER);
+
+    for (const [path, form] of [
+      ["/keys.data", { ...leftOpen, label: "the second worker" }],
+      [`/keys/${NIGHTLY.id}/disable.data`, leftOpen],
+      ["/keys.data", { [DRAWN_FOR]: "", label: "the second worker" }],
+    ] as const) {
+      const pressed = await running.browser.post(path, form);
+      expect(pressed.status, path).toBe(409);
+      expect(pressed.html, path).not.toContain(SECRET);
+    }
+    expect(keys.issued).toStrictEqual([]);
+    expect(keys.disabled).toStrictEqual([]);
+  });
+
+  it("issues, revokes and leads back to the list under the dashboard's mount point", async () => {
+    // Deployed under /dashboard, so a form or a redirect written without it
+    // reaches an address nothing answers.
+    const keys = withKeys();
+    const { browser } = await started({ base: "/dashboard", client: keys.client });
+    await browser.signIn();
+
+    const list = await browser.get("/dashboard/keys");
+    expect(postingFormsIn(list.html).map(({ action }) => action)).toEqual(
+      expect.arrayContaining([
+        "/dashboard/keys",
+        `/dashboard/keys/${NIGHTLY.id}/disable`,
+        "/dashboard/sign-out",
+      ]),
+    );
+    const issued = await browser.post("/dashboard/keys", { label: "the second worker" });
+    expect(readable(issued.html)).toContain(SECRET);
+    expect(issued.html).toContain('href="/dashboard/keys"');
+    expect((await browser.get("/dashboard/keys/new")).to).toBe("/dashboard/keys");
+    const revoked = await browser.post(`/dashboard/keys/${NIGHTLY.id}/disable`);
+    expect(revoked.to).toBe("/dashboard/keys");
+    expect(keys.disabled).toStrictEqual([NIGHTLY.id]);
   });
 });
 
@@ -3919,6 +4049,55 @@ describe("naming a new key", () => {
     expect((listed.body as MerchantKeyList).keys.some((key) => key.label.startsWith("kkk"))).toBe(
       false,
     );
+  });
+});
+
+describe("a key issued from the dashboard, against the real gateway", () => {
+  const LIVE = {
+    PAYMENT_NETWORK: "eip155:8453",
+    FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+  };
+  const issuedOn = async (live: boolean): Promise<{ running: Running; issued: Visit }> => {
+    const running = await started(
+      live
+        ? {
+            gateway: { ...LIVE, CDP_API_KEY_ID: "key-id", CDP_API_KEY_SECRET: "key-secret" },
+            dashboard: LIVE,
+          }
+        : {},
+    );
+    await running.browser.signIn();
+    await running.browser.get("/keys");
+    return { running, issued: await running.browser.post("/keys", { label: "the stock worker" }) };
+  };
+
+  it("carries the prefix of the site it works on, which its holder can read", async () => {
+    // A key from the other site is refused with a sentence naming the site it
+    // works on, so the prefix the merchant copies is the site's own.
+    const { issued: onTest } = await issuedOn(false);
+    expect(onTest.status).toBe(200);
+    expect(readable(onTest.html)).toMatch(/\bcsk_test_\S+/);
+    expect(onTest.html).not.toContain("csk_live_");
+    await open?.browser.close();
+
+    const { issued: onLive } = await issuedOn(true);
+    expect(onLive.status).toBe(200);
+    expect(readable(onLive.html)).toMatch(/\bcsk_live_\S+/);
+    expect(onLive.html).not.toContain("csk_test_");
+  });
+
+  it("is announced on live to the merchant's accounts, naming the address the session is signed in as", async () => {
+    const { running, issued } = await issuedOn(true);
+
+    expect(issued.status).toBe(200);
+    expect(running.harnessed.announcer.announced).toMatchObject([
+      {
+        kind: "key_issued",
+        merchant_id: running.theMerchant,
+        key: { label: "the stock worker" },
+        asked_with: { kind: "signed_in", email: PERSON },
+      },
+    ]);
   });
 });
 

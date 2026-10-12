@@ -10,11 +10,13 @@ import { DRAWN_FOR } from "../../src/drawn-for.js";
  *
  * `document` posts with a whole page load, for an action still served by a
  * string page or one answered with a page at its own address (the settings');
- * otherwise React Router sends it. Either way it is an HTML form that works
- * with no script, and with script its button shows the press at once and takes
- * no second one until the page that answers it is drawn, so a page read again
- * after the press never shows the old state pressable; a page that answers its
- * own press keeps the person where they were on it.
+ * otherwise React Router sends it. `replace={false}` gives the answer a history
+ * entry of its own even where it is drawn at the page's own address, so Back
+ * returns to the page the press was made on. Either way it is an HTML form that
+ * works with no script, and with script its button shows the press at once and
+ * takes no second one until the page that answers it is drawn, so a page read
+ * again after the press never shows the old state pressable; a page that
+ * answers its own press keeps the person where they were on it.
  *
  * `autoComplete="off"` because Firefox restores a hidden field's old value on
  * reload, which would put the first address back into a page redrawn for
@@ -23,12 +25,14 @@ import { DRAWN_FOR } from "../../src/drawn-for.js";
 export function PostForm({
   action,
   document = false,
+  replace,
   className,
   children,
 }: Readonly<{
   /** A path under the dashboard's prefix, without it. */
   action: string;
   document?: boolean;
+  replace?: boolean;
   className?: string;
   children: (pending: boolean) => ReactNode;
 }>) {
@@ -46,6 +50,7 @@ export function PostForm({
       action={action}
       reloadDocument={document}
       preventScrollReset
+      {...(replace === undefined ? {} : { replace })}
       className={className}
       onSubmit={document ? () => setSent(true) : undefined}
     >

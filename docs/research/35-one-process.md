@@ -82,10 +82,11 @@ dashboard's listener, in front of the pages still built as HTML strings, and a
 request reaches React Router only where one of its routes answers that path
 and method, so every other path falls through to the strings until the last
 screen moves. The sign-in, the page a mailed link lands on, the sign-out, the
-cards, the orders and the receipts have moved (`apps/dashboard/app`); the rest
-are strings. Both draw from the gateway's application in the process, behind
-one gate decided in one place (`apps/dashboard/src/gate.ts`), and both are
-tested over HTTP against the real gateway.
+cards, the orders, the receipts and the API keys have moved
+(`apps/dashboard/app`); the rest are strings. Both draw from the gateway's
+application in the process, behind one gate decided in one place
+(`apps/dashboard/src/gate.ts`), and both are tested over HTTP against the real
+gateway.
 
 Every form is an HTML form that works without script. With script, a moved
 page's forms show the press at once and its section links open without a page
@@ -93,14 +94,16 @@ load, fetched while the pointer rests on them. A press answered back on its own
 page stays inside the application, which reads the page again; every press
 gives the browser a new cookie, and the page data a browser keeps for that
 fetch varies by cookie, so nothing kept before a press is shown after it. The
-page a mailed link lands on
-runs no script at all, because it holds a one-time token. The page that shows
-a new key's secret, once, still carries an inline script that replaces its
-history entry so that a reload returns to the list instead of issuing another
-key, and copies the secret at a press (`apps/dashboard/src/keys.ts`); without
-it the secret is selected by hand, and the page warns against resending the
-form. The front page is the scanner's, everywhere, and the scanner is still a
-Next.js application, which moves after the dashboard.
+page a mailed link lands on runs no script at all, because it holds a one-time
+token. The page that shows a new key's secret, once, is the answer to the press
+that issues the key and to nothing else, and no cache keeps it. With script,
+React Router keeps it in the page's memory and never in history, and the page
+takes it off the screen as it is left, so a reload, a return to it through Back
+and Forward, or a later visit draws the list, and the secret is copied at a
+press (`apps/dashboard/app/routes/keys.tsx`); without script the secret is
+selected by hand, and the page warns against resending the form. The front page
+is the scanner's, everywhere, and the scanner is still a Next.js application,
+which moves after the dashboard.
 
 The whole chain, Postgres included, comes up locally from `docker compose up`
 behind the same route table the channels use (ADR-0005), so a person clicks

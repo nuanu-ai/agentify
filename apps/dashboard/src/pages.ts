@@ -144,7 +144,7 @@ interface Served {
    * no script never has its data asked for by its own page, so whatever asks
    * for it is not a prefetch, and nothing of it is kept; nor is any of a page
    * that says `keepsData: false`, because what it shows must be what is held
-   * now.
+   * now, nor the data of a page whose `handle` says `{ fresh: true }`.
    */
   readonly keepsData: boolean;
 }
@@ -161,7 +161,7 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
         default?: unknown;
         loader?: unknown;
         action?: unknown;
-        handle?: { script?: boolean; keepsData?: boolean };
+        handle?: { script?: boolean; keepsData?: boolean; fresh?: boolean };
       };
       // A layout with no path of its own, the root among them, is a frame
       // around pages and never a page, even while nothing is nested in it.
@@ -173,7 +173,10 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
             ? module.loader !== undefined ||
               (module.default !== undefined && (module.action === undefined || data))
             : method === "POST" && module.action !== undefined),
-        keepsData: module.handle?.script !== false && module.handle?.keepsData !== false,
+        keepsData:
+          module.handle?.script !== false &&
+          module.handle?.keepsData !== false &&
+          module.handle?.fresh !== true,
       };
       const shared = {
         id: route.id,
