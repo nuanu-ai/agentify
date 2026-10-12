@@ -1,5 +1,25 @@
 # Contracts release history
 
+## 0.10.0
+
+### Minor Changes
+
+- 6f8dc38: A receipt names the transfer behind it. `transaction` is the payment layer's
+  own name for the transfer, on an EVM chain the hash of the transaction, so a
+  receipt can be matched to the payment on the chain by more than its time. It
+  is absent where the layer named none. A receipt is a strict object, so a
+  reader on an older version of this package refuses a receipt that carries it.
+
+### Patch Changes
+
+- a2bbe78: The doc comments an editor shows for the client, the worker, the errors and
+  the contract's schemas are rewritten for the engineer integrating a shop: what
+  a call does, what it refuses and what it returns. Two published route
+  descriptions are corrected: accepting an order no longer says the merchant
+  states how long delivery will take, since the acceptance carries no field and
+  the card's delivery deadline holds; and the order-status description no longer
+  cites an internal document. No schema, type or behaviour changes.
+
 ## 0.9.0
 
 ### Minor Changes
