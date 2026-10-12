@@ -11,10 +11,12 @@ import { EventEmitter } from "node:events";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import type { Job, JobResult, PgBoss } from "pg-boss";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RecordingAnnouncer } from "./adapters/memory/announcer.js";
 import { PgBossQueue } from "./adapters/pgboss/queue.js";
 import { connect, type Database, PostgresStore } from "./adapters/postgres/store.js";
 import { SWEEP_EFFECTS } from "./app/runner.js";
 import type { Reminder } from "./ports/queue.js";
+import { startGateway } from "./start.js";
 import {
   countedIds,
   type Harness,
@@ -22,6 +24,7 @@ import {
   loggedWhile,
   type Served,
   serve,
+  testConfig,
   workOnce,
 } from "./testing/harness.js";
 
@@ -243,6 +246,22 @@ describe("a failure in the gateway's log", () => {
 });
 
 describe("a failure beneath the gateway, in its log", () => {
+  it("names the database a starting gateway could not reach, and not its password", async () => {
+    // A password may hold a colon, and an address may carry it again in its
+    // query; nothing listens on port 1, so the start fails at once.
+    const config = testConfig({
+      DATABASE_URL: "postgres://agentify:s3cr:et-password@127.0.0.1:1/agentify",
+    });
+
+    const written = await loggedWhile(async () => {
+      await expect(startGateway(config, new RecordingAnnouncer())).rejects.toBeDefined();
+    });
+
+    expect(written).toContain("127.0.0.1:1/agentify");
+    expect(written).not.toContain("s3cr");
+    expect(written).not.toContain("et-password");
+  });
+
   it("names a database connection that failed, and nothing the driver carried", async () => {
     // A connection failure arrives as an event on the pool, held or idle.
     const { pool } = connect("postgres://nobody@127.0.0.1:1/nowhere");
