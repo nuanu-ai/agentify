@@ -30,11 +30,19 @@ export default [
   route("sign-in", "routes/sign-in.tsx"),
   route("sign-in/open", "routes/sign-in-open.tsx"),
   route("sign-out", "routes/sign-out.ts"),
+  route("woocommerce/return", "routes/woocommerce-return.tsx"),
   layout("routes/gate.tsx", [
     layout("routes/merchant-only.tsx", [
       route("cards", "routes/cards.tsx"),
       route("orders", "routes/orders.tsx"),
       route("receipts", "routes/receipts.tsx"),
+      route("woocommerce", "routes/woocommerce.tsx"),
+      layout("routes/woocommerce-presses.tsx", [
+        route("woocommerce/connect", "routes/woocommerce-connect.tsx"),
+        route("woocommerce/import", "routes/woocommerce-import.tsx"),
+        route("woocommerce/switch", "routes/woocommerce-switch.tsx"),
+        route("woocommerce/disconnect", "routes/woocommerce-disconnect.tsx"),
+      ]),
     ]),
   ]),
 ] satisfies RouteConfig;

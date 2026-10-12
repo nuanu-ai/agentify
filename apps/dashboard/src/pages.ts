@@ -135,9 +135,11 @@ interface Served {
 
 /**
  * The build's routes as a tree, for asking whether a path is one of them
- * before handing the request over.
+ * before handing the request over. A route of the WooCommerce connector says
+ * so in its `handle`, and where the connector is not offered it is no page:
+ * its path falls through to the string pages, which answer it as no such page.
  */
-const routesOf = (build: ServerBuild): RouteObject[] => {
+const routesOf = (build: ServerBuild, wooOffered: boolean): RouteObject[] => {
   const childrenOf = (parentId: string | undefined): RouteObject[] =>
     Object.values(build.routes).flatMap((route): RouteObject[] => {
       if (route === undefined || route.parentId !== parentId) return [];
@@ -145,11 +147,13 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
         default?: unknown;
         loader?: unknown;
         action?: unknown;
-        handle?: { script?: boolean };
+        handle?: { script?: boolean; woocommerce?: boolean };
       };
       // A layout with no path of its own, the root among them, is a frame
       // around pages and never a page, even while nothing is nested in it.
-      const page = route.index === true || (route.path ?? "") !== "";
+      const page =
+        (route.index === true || (route.path ?? "") !== "") &&
+        (module.handle?.woocommerce !== true || wooOffered);
       const served: Served = {
         answers: (method) =>
           page &&
@@ -238,7 +242,7 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
     };
     const made: Mounted = {
       build,
-      routes: routesOf(build),
+      routes: routesOf(build, services.woo !== null),
       handle: createRequestHandler({
         build,
         mode: pages.mode,

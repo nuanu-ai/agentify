@@ -55,7 +55,7 @@ const throughTheGate = async (request: Request, identity: ReturnType<typeof iden
           clientFor: () => {
             throw new Error("the gate asks the gateway nothing");
           },
-          wooOffered: false,
+          woo: null,
         }),
       ],
     ]),

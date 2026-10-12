@@ -11,7 +11,7 @@ import { MERCHANT_FINDINGS } from "@nuanu-ai/agentify-contracts";
 import { bare, brandLockup, escaped, page } from "./html.js";
 import type { PayoutWallet } from "./payout-wallet.js";
 // A type-only import, so the two files are not a cycle at run time.
-import type { ShopTile } from "./woo-screens.js";
+import type { ShopTile } from "./woo-views.js";
 import type { Unset } from "./words.js";
 
 export interface Viewer {

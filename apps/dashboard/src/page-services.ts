@@ -30,6 +30,7 @@ import {
   type ReceiptsView,
   receiptsView,
 } from "./views.js";
+import type { WooPages } from "./woo-pages.js";
 
 /** A view to draw, a place to send the browser, or a problem to show instead. */
 export type Outcome<View> =
@@ -42,7 +43,10 @@ export type Outcome<View> =
     }>
   | Readonly<{
       kind: "redirect";
-      /** A path on this site, the dashboard's prefix included where it is the dashboard's. */
+      /**
+       * A path on this site, the dashboard's prefix included where it is the
+       * dashboard's; or a whole address on another site, such as a shop's.
+       */
       location: string;
       headers?: Readonly<Record<string, string>>;
       setCookies?: readonly string[];
@@ -118,6 +122,8 @@ export interface PageServices {
     orders(person: Person, query: URLSearchParams): Promise<Outcome<OrdersView>>;
     receipts(person: Person): Promise<Outcome<ReceiptsView>>;
   };
+  /** The WooCommerce connector's screens where it is offered; null elsewhere. */
+  readonly woo: WooPages | null;
 }
 
 export interface PageParts {
@@ -127,8 +133,11 @@ export interface PageParts {
    * account's row, built per request so two people are two merchants.
    */
   readonly clientFor: (acting: Acting) => GatewayClient;
-  /** Whether this dashboard offers the WooCommerce connector at all. */
-  readonly wooOffered: boolean;
+  /**
+   * The WooCommerce connector's screens where this dashboard offers it; null
+   * elsewhere, where no screen offers it and none of its pages is answered.
+   */
+  readonly woo: WooPages | null;
 }
 
 /**
@@ -138,7 +147,7 @@ export interface PageParts {
  * refusal keeps the gateway's status, and nothing is claimed beyond what it
  * said.
  */
-const problemOf = (answer: Answer<unknown> & { ok: false }): Outcome<never> => ({
+export const problemOf = (answer: Answer<unknown> & { ok: false }): Outcome<never> => ({
   kind: "problem",
   problem: {
     status: answer.status === 0 ? 504 : answer.status,
@@ -256,6 +265,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       words: SURFACE_WORDS[config.surfaceMode],
     },
     gate: gateFor(base, identity, config.cookieSecure),
+    woo: parts.woo,
 
     signIn: {
       async page(cookie, query) {
@@ -410,7 +420,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             },
             cards.document,
             config.publicBaseUrl,
-            parts.wooOffered,
+            parts.woo !== null,
             integration.document,
           ),
         };
