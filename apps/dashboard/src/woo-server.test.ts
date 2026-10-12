@@ -94,6 +94,23 @@ interface Running {
   close(): Promise<void>;
 }
 
+/** Everything written to the console while `during` runs, as one text. */
+const loggedDuring = async (during: () => Promise<void>): Promise<string> => {
+  const lines: string[] = [];
+  const collect = (...parts: unknown[]) => {
+    lines.push(parts.map((part) => (part instanceof Error ? part.stack : String(part))).join(" "));
+  };
+  const spies = (["log", "warn", "error"] as const).map((level) =>
+    vi.spyOn(console, level).mockImplementation(collect),
+  );
+  try {
+    await during();
+  } finally {
+    for (const spy of spies) spy.mockRestore();
+  }
+  return lines.join("\n");
+};
+
 let open: Running | null = null;
 
 afterEach(async () => {
@@ -510,6 +527,33 @@ describe("the keys arriving from the shop", () => {
     expect(connections).toHaveLength(1);
     expect(connections[0]?.shopUrl).toBe(SHOP);
     expect(connections[0]?.consumerKey).toBe("ck_a-key-from-the-shop");
+  });
+
+  it("writes down a callback it could not keep without the keys or anything a stranger sent", async () => {
+    // The failure of a write can carry the values it was given, the shop's
+    // secret among them, and the token is text anybody can send; a status
+    // still tells the shop to take its key back.
+    const running = await started();
+    await running.signIn();
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const carried = "cs_a-secret-from-the-shop\n[dashboard] forged";
+    Object.assign(running.shops, {
+      connectFromGrant: async () => {
+        throw new Error(carried);
+      },
+    });
+
+    let status = 0;
+    const written = await loggedDuring(async () => {
+      status = (
+        await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? "")))
+      ).status;
+    });
+
+    expect(status).toBe(500);
+    expect(written).toMatch(/could not be written down/);
+    expect(written).not.toContain("cs_a-secret-from-the-shop");
+    expect(written).not.toContain("forged");
   });
 
   it("refuses a token nobody issued, and writes nothing", async () => {
@@ -943,6 +987,23 @@ describe("importing the catalogue", () => {
     expect(text).toContain("1 got no verdict");
     expect(text).toContain("1 not attempted");
     expect(text).toContain("whether it was published is not known");
+  });
+
+  it("writes down a publish that failed in our own code without what the failure carried", async () => {
+    // A store's exception can carry the values it was given; the log goes
+    // places the database does not.
+    const running = await started({
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+      silent: "publishing fails",
+    });
+    await connected(running);
+
+    const written = await loggedDuring(async () => {
+      await running.post("/woocommerce/import");
+    });
+
+    expect(written).toMatch(/publishing a card failed/);
+    expect(written).not.toContain("the database went away");
   });
 
   it("stops after the first unknown publish and names the products it did not attempt", async () => {
