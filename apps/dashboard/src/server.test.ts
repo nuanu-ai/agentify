@@ -62,6 +62,8 @@ const PAY_TO = "0x0000000000000000000000000000000000000001";
 
 /** On the plain-http local origin. */
 const COOKIE = "agentify.session_token";
+/** Given anew by every press, so page data kept before it no longer matches. */
+const PRESSED = "agentify.dashboard_pressed";
 /**
  * The browser refuses a `__Host-` cookie unless it is Secure, for the whole
  * origin and with no Domain, so another host under the same registrable domain
@@ -2975,6 +2977,35 @@ describe("what every screen says about the address", () => {
       expect(data.headers.get("cache-control"), path).toBe("private, max-age=10");
       expect(data.headers.get("vary"), path).toMatch(/cookie/i);
     }
+  });
+
+  it("leaves nothing a browser kept of any page to be read after a press, wherever the press was posted", async () => {
+    // The data is kept per cookie, and the page's script reads its page again
+    // after a press at the very address a prefetch or the press before filled;
+    // kept data handed to that read would show the merchant the state before
+    // what they just did. Every press therefore gives the browser a new value,
+    // and the answer it leaves behind no longer matches.
+    const { browser, gateway } = await started();
+    const itemId = await publish(gateway, roomCard);
+    await browser.signIn();
+    const kept = await browser.get("/cards.data");
+    expect(kept.headers.get("vary")).toMatch(/cookie/i);
+
+    const presses: [string, () => Promise<Visit>][] = [
+      ["a switch sent by the page's script", () => browser.post(`/cards.data?pause=${itemId}`)],
+      ["a switch sent as a plain form", () => browser.post(switchOf(itemId, "resume"))],
+      ["a press on a page still drawn as a string", () => browser.post("/keys", { label: "ci" })],
+    ];
+    const given: string[] = [];
+    for (const [name, press] of presses) {
+      const answered = await press();
+      expect(answered.status, name).toBeLessThan(400);
+      const line = answered.headers.getSetCookie().find((one) => one.startsWith(`${PRESSED}=`));
+      expect(line, name).toBeDefined();
+      given.push(line?.split(";")[0] ?? "");
+    }
+
+    expect(new Set(given).size).toBe(presses.length);
   });
 
   it("answers a signed-out browser's request for a page's data with the sign-in, not the data", async () => {
