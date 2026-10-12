@@ -53,10 +53,10 @@ its page was drawn for, and one naming another or none is refused unacted.
 
 **4. The merchant is made on the dashboard's explicit request.** A signed-in
 person without one is offered one control, and only its same-origin POST asks
-the gateway's application, inside the shared process (ADR-0030), for the
-merchant; under `Lax` a link from another site arrives signed in, so opening one
-makes nothing. That press is the only way to a merchant, as the link is to an
-account (ADR-0014).
+the gateway's application, inside the shared process
+(`docs/research/35-one-process.md`), for the merchant; under `Lax` a link from
+another site arrives signed in, so opening one makes nothing. That press is the
+only way to a merchant, as the link is to an account (ADR-0014).
 
 **5. The door to the shared catalogue is live publication**, not an invitation,
 which stops nobody. One rule, `readinessOf` in `packages/core`, asked by every
@@ -83,7 +83,8 @@ The mailbox is the whole key, to sign in and to recover access, and delivery is
 the way in's single point of failure. A session left open moves no money, since
 a payout wallet change waits (ADR-0019), so a short session would protect
 nothing. A dashboard that is down stops sign-in and, sharing the gateway's
-process (ADR-0030), sales. A second factor outside the mailbox is a later stage.
+process (`docs/research/35-one-process.md`), sales. A second factor outside the
+mailbox is a later stage.
 
 Rejected: identity written by hand, as tokens, expiry and resend limits are the
 hard half; a hosted or separate identity service, one more system to be up

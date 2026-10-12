@@ -1,37 +1,128 @@
-# One process for the gateway and the cabinet
+# One process for the gateway and the dashboard
 
-Date: 2026-09-25. A design note: a survey of how the gateway and the cabinet
-are two processes today, what that boundary costs and buys, and the design for
-making them one. The product owner set the direction on 2026-09-25 and
-accepted the note's recommendations the same day; the decision is ADR-0030,
-and this note holds the detail it rests on.
+Date: 2026-09-25. A design note: the gateway and the merchant's dashboard run
+as one process, why, what that costs, and the survey and the order of the move
+it rests on. The product owner set the direction on 2026-09-25 and accepted
+the note's recommendations the same day. The move was built in four steps,
+pull requests #90, #91, #95 and #97, the last on 2026-10-09.
 
 ## How to read this note
 
-Every fact about the code was read at commit 33f8c43d on `main` and names its
-file. Nothing was run: no test, no stack, nothing on either deployed host.
-Where a claim could not be checked by reading, it says so.
-
-Two branches change the same files and are expected to merge before any of
-this is built. One renames the gateway's route to the cabinet. The names it
-introduces were read from that branch's uncommitted work on 2026-09-25 and may
-still move: the secret `ANNOUNCEMENT_SECRET` becomes `GATEWAY_CABINET_SECRET`,
-the gateway's variable `CABINET_ANNOUNCEMENT_URL` becomes
-`CABINET_INTERNAL_URL`, the path `/internal/announcements` becomes
-`/internal/gateway` on the same port 3003, and the cabinet's listener moves
-from `apps/dashboard/src/announcement-server.ts` to `gateway-server.ts`. This
-note uses the new names and cites the old files. The other branch removes
-every way a merchant comes into being except the link mailed to a person and
-the cabinet's one control; where this note depends on what it leaves behind,
-it says so.
+The first section states the design as it runs. Everything after it was
+written before the move and keeps the words of that time. The dashboard was
+then called the *cabinet* and served at `/cabinet`; it has since been renamed,
+in the code (`apps/dashboard`) and in its address (`/dashboard`). The survey
+describes the two processes as they were at commit 33f8c43d on `main`, and
+every fact about the code there names its file. Nothing was run for the
+survey: no test, no stack, nothing on either deployed host. Where a claim
+could not be checked by reading, it says so.
 
 Three words are used throughout. The *money path* is the gateway: the merchant
 API under `/v0`, the storefront an agent buys at under `/x402`, the order
-machine and its queue. The *cabinet key* is the key the cabinet calls the
-gateway with on a merchant's behalf, one per account. A *hop* is a call from
-one of the two processes to the other over the network.
+machine and its queue. The *cabinet key* was the key the cabinet called the
+gateway with on a merchant's behalf, one per account; it no longer exists. A
+*hop* is a call from one of the two processes to the other over the network.
 
-## The two processes today
+## The design as it runs
+
+### One process
+
+The gateway is the money path, and the dashboard is the merchant's pages; the
+dashboard owns people (ADR-0026 §2) and the gateway knows none. They run as one
+process, the `app` service, named after the image it runs from. Two public
+listeners let each surface keep its middleware and Caddy change only host
+names: port 3000 serves `/v0`, `/x402` and `/healthz`, port 3001 serves
+`/dashboard` and `/dashboard/healthz`, and the container's health check asks
+both. Port 3002 stays the scanner's route to the dashboard (ADR-0026 §2). The
+scanner stays a process of its own, and Caddy is the one door (ADR-0005).
+
+As two processes, everything between them was a network call with a
+credential: a key per account for the dashboard to call as its merchant, a
+route with its own secret for the gateway to have a merchant mailed, and a
+refusal for a dashboard that did not answer. That boundary protected little:
+both wrote the one database with one account (ADR-0003 §3), payout wallets
+included, and ran from one image, released together.
+
+### The dashboard calls the application
+
+The dashboard calls the application, not the HTTP API. Its screens and its
+WooCommerce worker call the `Gateway` methods the `/v0` handlers call, as the
+merchant named on the signed-in account's row, with requests and answers held
+to the contract's schemas. Registering and setting the payout wallet are the
+dashboard's alone and have no route (ADR-0014, ADR-0019), and their address and
+answer are held to the same schemas. A message about a payout wallet change,
+which only the dashboard can ask for, names the account the session is signed
+in as (ADR-0019).
+
+The dashboard then proves that the application and the contract's documents
+can draw every screen. What proves the HTTP API is what a merchant's engineer
+uses: the SDK's tests, the purchase through the real gateway in
+`packages/slice`, the portal's examples run as fixtures and the gateway's HTTP
+test of every `/v0` route. A screen that needs what a merchant's code could
+need still gets a contract route.
+
+### Nothing between the two needs a credential
+
+Inside the process the gateway tells the dashboard by a call, with no route,
+secret or refusal for silence. No key is made for the dashboard, so every key
+the gateway knows is one the merchant issued: there are no routes at
+`/v0/keys/dashboard`, no `merchant_key` column, no registration route or
+invitation code, and no wallet write on `/v0`, which only such a key reached.
+Of the payout wallet refusals, only the race and those about the mail
+provider, still outside the process, remain, worded by the dashboard with no
+published code. No SDK worker called those routes or read those codes, so the
+contract version did not move: the exception in ADR-0006 §2 covers them. The
+key's rows and column were deleted by two one-way migrations, which only a
+restore point taken before them undoes (`deploy/README.md`).
+
+### What it costs
+
+A defect in the dashboard stops sales. An uncaught error, a leak or a blocked
+event loop in a page, in Better Auth or in the WooCommerce worker ends the
+process that holds every parked purchase and every parked worker poll; `queueOn`
+in `apps/gateway/src/adapters/pgboss/queue.ts` explains why that process is
+the one that must not die. Orders survive in Postgres and resume after the
+restart the container's policy makes (ADR-0013); a synchronous purchase in
+flight is lost to its agent, which retries. As two processes, the same defect
+stopped sign-in, full reports and wallet changes and left selling running.
+What makes it acceptable is that the two were already released and restarted
+together, and that at this scale a crash is a defect to fix rather than a load
+to isolate.
+
+The money path shares a process with sessions, mail and the power to remove a
+person, powers ADR-0019 refuses to give it by way of the scanner's route. What
+separates them is the package boundary and review, which is what already
+separated them in the database (ADR-0003).
+
+The trigger to split again is a measured incident in which the dashboard took
+sales down, or a dashboard that needs a runtime the gateway cannot share, such
+as the client framework ADR-0005 §4 names as its own trigger.
+
+### Alternatives rejected
+
+Microservices: more network, more secrets and more states of "did not answer",
+the cost this design removes. A growing internal route: each fact about people
+the money path needs becomes one more call with its own refusal for silence.
+Keeping the dashboard on `/v0`: over loopback something on the public listener
+must name the merchant, the second mode of authentication ADR-0014 rejects, and
+in-process the published contract would describe a caller with no key ("What
+dogfooding turns into" below has the detail). Merging the scanner: a
+browser-driving worker whose one call to the dashboard is about identity, not
+money, would add the crash cost for nothing.
+
+## The two processes before the move
+
+Two branches changed the same files and were expected to merge before any of
+this was built. One renamed the gateway's route to the cabinet. The names it
+introduced were read from that branch's uncommitted work on 2026-09-25: the
+secret `ANNOUNCEMENT_SECRET` became `GATEWAY_CABINET_SECRET`, the gateway's
+variable `CABINET_ANNOUNCEMENT_URL` became `CABINET_INTERNAL_URL`, the path
+`/internal/announcements` became `/internal/gateway` on the same port 3003,
+and the cabinet's listener moved from `apps/dashboard/src/announcement-server.ts`
+to `gateway-server.ts`. The survey uses the new names and cites the old files.
+The other branch removed every way a merchant comes into being except the link
+mailed to a person and the cabinet's one control; where the survey depends on
+what it leaves behind, it says so.
 
 ### Entry points and listeners
 
@@ -75,7 +166,7 @@ the one-shot `migrate`, `gateway`, `cabinet`, and the laptop's mock merchant,
 which `deploy/compose.public.yaml` puts under a `fixtures` profile so no
 deployed channel runs it. Deployed channels pin the image by digest in
 `deploy/compose.images.yaml`. So a deployed channel already runs one image as
-two long-lived containers and one migration, which is the shape ADR-0030
+two long-lived containers and one migration, which is the shape the move
 collapses. Each service names its own command; the image's default
 starts the gateway (`deploy/Dockerfile.app`, line 48).
 
@@ -317,7 +408,11 @@ the seller name in `seller-name.test.ts`; the payout wallet in
 test fixtures (`packages/contracts/src/portal-fixtures.test.ts`,
 `packages/sdk/src/portal-fences.test.ts`).
 
-## The design
+## The design as proposed, in detail
+
+This is the design as the note proposed it before the move, with the reasoning
+behind each choice. Where it says *today*, it means the two processes surveyed
+above.
 
 ### One process
 
@@ -452,27 +547,7 @@ database and a process, so the two writes could become one transaction; that
 means the gateway's store and the identity component sharing a connection, and
 it is a separate change.
 
-### What is lost
-
-A defect in the cabinet's code now stops sales. An uncaught error, a leak or a
-blocked event loop in a page, in Better Auth or in the WooCommerce worker ends
-the process that holds every parked purchase and every parked worker poll;
-`queueOn` in `apps/gateway/src/adapters/pgboss/queue.ts` already explains why
-that process is the one that must not die. Orders survive in Postgres and
-resume after the restart the container's policy makes (ADR-0013); a
-synchronous purchase in flight is lost to its agent, which retries. Today the
-same defect stops sign-in, full reports and wallet changes and leaves selling
-running. What makes it acceptable is that the two are already released and
-restarted together, and that at this scale a crash is a defect to fix rather
-than a load to isolate. The trigger to split again is a measured incident in
-which the cabinet took sales down, or a cabinet that needs a runtime the
-gateway cannot share, such as the client framework ADR-0005 §4 names as its own
-trigger.
-
-The money path shares a process with sessions, mail and the power to remove a
-person, powers ADR-0019 refused to give it by way of the scanner's route. What
-separates them now is the package boundary and review, which is what already
-separated them in the database.
+### What the move changed for operators
 
 The release's per-service checks collapse into one service's. Its
 cross-service comparisons go because there is one environment; its proof of
@@ -490,7 +565,7 @@ and `exec gateway` in `deploy/README.md` and in the headers of
 upstream ports in `ops/scripts/caddy-routing-smoke.mjs`; and the
 service lists in `deploy/test_activate.py`.
 
-### The order of the move
+## The order of the move
 
 Each step is one pull request that leaves `main` working and releasable, and
 the steps are ordered so that the one that touches deployment carries no
@@ -541,91 +616,11 @@ worker for words none of them sees. ADR-0006 §2's exception, which names only
 the payout-wallet route, widens to cover the routes and codes only the cabinet
 ever used.
 
-## Records each step changes
+Each step's pull request edited, in the same change, the decisions that step
+made true, and none earlier: a decision must not describe a state the code has
+not reached.
 
-No other decision is edited with ADR-0030 itself. Each step's pull request
-edits, in the same change, the paragraphs that step makes true, and none
-earlier, for two reasons. A decision must not describe a state the code has
-not reached. And ADR-0014 and ADR-0019 are being edited now by the
-registration change, so an edit made ahead of the step would collide with it
-and might describe a registration that change does not leave.
-
-**Step 1, one process.**
-
-- ADR-0003: `apps/app` joins the workspace's split beside `apps/gateway`
-  (the split now lives in `docs/research/45-stack-toolchain.md`).
-- ADR-0005 §1, the paragraph on `/healthz`: it answers for the process's
-  gateway listener and `/cabinet/healthz` for its cabinet listener, and the
-  reason for having no aggregate health document stays, for the scanner and
-  Postgres. §2, "the cabinet is its own process", becomes a pointer to
-  ADR-0030, and the rejected alternative "the cabinet inside the gateway" is
-  deleted, since ADR-0030 answers its objection.
-- ADR-0024, the consequences: where each of the cabinet's internal credentials
-  is held by its own two processes, the scanner's is held by `app` and the
-  scanner, and the gateway's by `app` alone.
-- ADR-0026, the consequences: the cabinet's absence stops sales as well as
-  every sign-in, every full report and the dashboard.
-
-**Step 2, the gateway tells the cabinet in-process.**
-
-- ADR-0005 §3, the narrowing paragraph: the one call the other way is a call
-  inside the process.
-- ADR-0019: the paragraph on how the gateway asks the cabinet loses the
-  internal route, its secret, the caution about the scanner's route and the
-  case of a cabinet that did not answer, leaving nobody to tell, a message not
-  handed over, and the race; the serialization sentence's "a call to another
-  process and a mail provider" becomes a call to a mail provider; the
-  consequence "depends on the cabinet and the mail provider being up" keeps
-  only the mail provider.
-- ADR-0024, the consequences: the gateway's credential goes, and the scanner's
-  is the cabinet's only internal credential.
-
-**Step 3, the cabinet calls the application in-process.**
-
-- ADR-0005 §3: the cabinet calls the application as the signed-in account's
-  merchant rather than the public API with a key, and the proof of the API is
-  named as in ADR-0030; the consequences' "the cabinet proves the API is usable
-  by construction" narrows to the application and the contract's documents;
-  the rejected "the cabinet talking to Postgres directly" becomes "the cabinet
-  querying the gateway's tables".
-- ADR-0014 §2: the gateway client built per request from the account's key
-  becomes the calls made as that merchant.
-- ADR-0010, the rejected "scoping in the cabinet only": the cabinet is a caller
-  of the application, and scoping still lives in the gateway's store.
-- ADR-0014 §1: registration is a call inside the process, and a gateway that
-  does not answer becomes a database that does not answer. §2: the renewal and
-  its schedule go. §3, as far as the registration change leaves it: the
-  invitation leaves the configuration.
-- ADR-0019: the context's "the cabinet's, or one that lives in the merchant's
-  own server environment" becomes a key or a person in the cabinet; the
-  message names the signed-in person for a change asked for in the cabinet,
-  and the key for one asked for with a key; the cancel paragraph's "if the key
-  that asked is the cabinet's own, a session acted" becomes a person in the
-  cabinet.
-- ADR-0023: "Cabinet fills the order as the merchant's worker" does so
-  in-process.
-- ADR-0026 §4: the press asks the application for the merchant, and a gateway
-  that does not answer becomes a database that does not answer.
-
-**Step 4, the cabinet key is deleted.**
-
-- ADR-0006 §2: the exception covers the routes and codes only the cabinet ever
-  used.
-- ADR-0014: the title and §1 lose the key; §2 reduces to "an account names its
-  merchant"; §3 loses the public registration route, as far as the
-  registration change leaves it; §5 keeps the three routes over the merchant's
-  own keys and the rule about the key on the call, and loses the two
-  cabinet-key routes, the unswept leftovers and "the way back in is a key of
-  the other kind"; the rejected "encrypting the stored key" goes.
-- ADR-0019: "a copy of a key made for a dashboard sets nothing from outside"
-  and "a key made for a dashboard is never announced" go, and the refusal of a
-  key made for the merchant's own code is said for a gateway that knows no
-  other kind.
-- ADR-0030: the status line says the move is built, and the wallet write is
-  among what went.
-- `deploy/README.md`: a release section for the two one-way migrations.
-
-## What was not verified
+## What the survey did not verify
 
 Nothing was executed, so every consequence for running code is read, not
 measured: the memory and event-loop profile of one process carrying both, and
@@ -635,22 +630,3 @@ without surprises, though both packages pin the same express, 5.2.1. Whether
 outside this repository ever called the cabinet-key routes or registration;
 the argument that none could rests on their refusals, read in `routes.ts`. The
 names from the rename branch were read from uncommitted work.
-
-## Where the move stands
-
-Read on 2026-10-09 at `main` cb22013b. ADR-0030 records the decision and its
-security boundary; the order of the move, above, is this note's.
-
-Steps 1, 2 and 3 have landed, as pull requests #90, #91 and #95, together with
-the edits to other decisions listed for them. The cabinet has since been
-renamed the dashboard (`apps/dashboard`, served at `/dashboard`), so what step 2
-removed went under the names `GATEWAY_DASHBOARD_SECRET` and
-`DASHBOARD_INTERNAL_URL`. The decisions have since been shortened, and the
-step 4 list above names their sentences as they now read.
-
-Step 4 is the change that removes the key made for a dashboard, its routes at
-`/v0/keys/dashboard`, the `merchant_key` column, the registration route with
-the gateway's `REGISTRATION_INVITATION`, and the wallet write at
-`/v0/payout-wallet`, by two one-way migrations; it edits the decisions listed
-for it above and does not move the contract version. Production takes steps 3
-and 4 together (`deploy/README.md`).

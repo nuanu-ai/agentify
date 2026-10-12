@@ -24,8 +24,8 @@ storefront's reader is different: a stranger's agent that no handshake reaches.
    serves them says so here. The exception is what no SDK worker reads: the
    payout wallet's pending fields (ADR-0019), and the routes and refusal codes
    only the dashboard called, which left the contract with its key
-   (ADR-0030). Such a change leaves the version alone, and an older contracts
-   package refuses it until upgraded.
+   (`docs/research/35-one-process.md`). Such a change leaves the version alone,
+   and an older contracts package refuses it until upgraded.
 3. The published SDK stays strict. Even a result word beside `ok: true`, which
    informs rather than directs, is in the generated schema and the typed result
    a merchant records, so from the first merchant we do not control (§2) every

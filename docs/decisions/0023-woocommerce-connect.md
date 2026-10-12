@@ -59,20 +59,21 @@ sent, and Completed in the shop is its shipment. The connector keeps and logs
 nothing of the address; the mechanics are in research 41.
 
 The dashboard fills the order as the merchant's worker, calling the gateway's
-application inside the shared process (ADR-0030): it checks the product again,
-claims the order in a ledger, creates one paid WooCommerce order and records its
-permission, or a parcel's shop order, before answering, so a redelivery returns
-the stored result, never a second order. The ledger moves forward only: a
-refusal proved before the create request is `precreate_refused`; once that
-request is sent the order is `create_unknown`, never resent on its own, until a
-validated, correlated answer makes it `placed`, which needs no shop credential
-to deliver and is final for a download; a placed parcel is followed until it
-ships or the shop ends it. A private command for one order, not a public route
-or SDK method, closes a download's paid failures: a pre-create refusal may
-create once after the merchant reconnects the same shop and the product still
-qualifies; an unknown create binds only an order id an operator supplies, read
-back and matched on every fact of the sale. A mismatch stays a refund owed, and
-so does a parcel's, whose address is gone by then.
+application inside the shared process (`docs/research/35-one-process.md`): it
+checks the product again, claims the order in a ledger, creates one paid
+WooCommerce order and records its permission, or a parcel's shop order, before
+answering, so a redelivery returns the stored result, never a second order. The
+ledger moves forward only: a refusal proved before the create request is
+`precreate_refused`; once that request is sent the order is `create_unknown`,
+never resent on its own, until a validated, correlated answer makes it
+`placed`, which needs no shop credential to deliver and is final for a
+download; a placed parcel is followed until it ships or the shop ends it. A
+private command for one order, not a public route or SDK method, closes a
+download's paid failures: a pre-create refusal may create once after the
+merchant reconnects the same shop and the product still qualifies; an unknown
+create binds only an order id an operator supplies, read back and matched on
+every fact of the sale. A mismatch stays a refund owed, and so does a parcel's,
+whose address is gone by then.
 
 ## Consequences
 

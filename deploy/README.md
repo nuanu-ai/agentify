@@ -91,15 +91,15 @@ scanner image started alone with that configuration and no network, which has
 to pass its own start-up checks and its configuration check at
 `/api/health/live` — the very code the scanner runs when it starts. Then it
 writes the channel's transition record, stops the application (the gateway
-and the dashboard in one process, ADR-0030), the scanner and its worker, takes
-a restore point of the database, runs the
+and the dashboard in one process, `docs/research/35-one-process.md`), the
+scanner and its worker, takes a restore point of the database, runs the
 migrations, starts everything again, on PRODUCTION installs the edge's route
 table, which the edge's own Caddy has validated before the stop, checks eleven
 public routes, checks that every card on sale before the stop is still on sale
 and answers its payment challenge on the channel's network, schedules the
 nightly privacy job, writes `current`, removes the record, and drops the
-databases an earlier restore replaced. The command needs no GitHub credential, and nothing in GitHub can reach a
-host.
+databases an earlier restore replaced. The command needs no GitHub credential,
+and nothing in GitHub can reach a host.
 
 The card check spends nothing: a GET on a purchase address is always answered
 with the challenge and never read for payment. It reads the catalog as the one
@@ -116,14 +116,15 @@ succeeded.
 ## The release that runs the gateway and the dashboard as one process
 
 From this release the gateway and the dashboard run in one process, the
-Compose service `app`, in the container `agentify-app-1` (ADR-0030). Until it
-they were the services `gateway` and `dashboard`, in `agentify-gateway-1` and
-`agentify-dashboard-1`. Nothing in the release carries the old names over, so
-two things are done by hand on each host: one just before releasing it there,
-one after. Nothing in the host's file changes. Sales, the dashboard and the
-WooCommerce connection's fulfilment are down from the first step until the
-release has started `app`, a window that includes pulling the images; an
-order paid in it waits, or ends when its time runs out.
+Compose service `app`, in the container `agentify-app-1`
+(`docs/research/35-one-process.md`). Until it they were the services `gateway`
+and `dashboard`, in `agentify-gateway-1` and `agentify-dashboard-1`. Nothing in
+the release carries the old names over, so two things are done by hand on each
+host: one just before releasing it there, one after. Nothing in the host's file
+changes. Sales, the dashboard and the WooCommerce connection's fulfilment are
+down from the first step until the release has started `app`, a window that
+includes pulling the images; an order paid in it waits, or ends when its time
+runs out.
 
 First, the cards on sale are written down, because the release's own check of
 them reads the catalog only after the gateway is already stopped, and so
@@ -188,12 +189,12 @@ and remove it once that release is verified.
 ## The release that takes the gateway's route into the dashboard away
 
 From this release the gateway has the dashboard tell a merchant of a change by
-a call inside the application (ADR-0030), and the dashboard opens no listener
-on 3003. Nothing has to be done on either host before it. Afterwards
-`GATEWAY_DASHBOARD_SECRET` in the host's file is read by nothing. Take its line
-out once going back to an earlier revision is no longer wanted, since an
-earlier revision's preflight refuses a file without it. The last line prints
-`0`, and the file keeps its owner and mode, `root 600`:
+a call inside the application (`docs/research/35-one-process.md`), and the
+dashboard opens no listener on 3003. Nothing has to be done on either host
+before it. Afterwards `GATEWAY_DASHBOARD_SECRET` in the host's file is read by
+nothing. Take its line out once going back to an earlier revision is no longer
+wanted, since an earlier revision's preflight refuses a file without it. The
+last line prints `0`, and the file keeps its owner and mode, `root 600`:
 
 ```sh
 ssh agentify-test "sudo sed -i '/^GATEWAY_DASHBOARD_SECRET=/d' /etc/agentify/test.env"
@@ -207,17 +208,17 @@ On PRODUCTION the same commands run over `ssh agentify`, with
 ## The release that has the dashboard call the gateway in its own process
 
 From this release the dashboard calls the gateway's application inside the
-process it shares with it (ADR-0030), makes a merchant with no invitation, and
-reads no key off an account's row. Nothing has to be done on either host
-before it. On PRODUCTION, release it together with the one that deletes the
-keys made for a dashboard (step 4 in `docs/research/35-one-process.md`), not
-before: from this release on, the key on each account row is neither renewed
-nor forgotten, so a copy of the database taken in between, a backup included,
-holds keys that open the API. Afterwards `AGENTIFY_INVITATION` in the host's
-file is read by nothing. Take its line out once going back to an earlier
-revision is no longer wanted, since an earlier revision's preflight refuses a
-file without it. The last line prints `0`, and the file keeps its owner and
-mode, `root 600`:
+process it shares with it (`docs/research/35-one-process.md`), makes a merchant
+with no invitation, and reads no key off an account's row. Nothing has to be
+done on either host before it. On PRODUCTION, release it together with the one
+that deletes the keys made for a dashboard (step 4 in
+`docs/research/35-one-process.md`), not before: from this release on, the key
+on each account row is neither renewed nor forgotten, so a copy of the database
+taken in between, a backup included, holds keys that open the API. Afterwards
+`AGENTIFY_INVITATION` in the host's file is read by nothing. Take its line out
+once going back to an earlier revision is no longer wanted, since an earlier
+revision's preflight refuses a file without it. The last line prints `0`, and
+the file keeps its owner and mode, `root 600`:
 
 ```sh
 ssh agentify-test "sudo sed -i '/^AGENTIFY_INVITATION=/d' /etc/agentify/test.env"
@@ -231,12 +232,12 @@ On PRODUCTION the same commands run over `ssh agentify`, with
 ## The release that deletes the keys made for a dashboard
 
 From this release no key is made for a dashboard and none is kept
-(ADR-0030). Its two migrations are one way. The gateway's deletes every key
-made for a dashboard, the one written at registration and any a renewal left
-behind, and then the column that told the two kinds of key apart. The
-dashboard's drops the key each account row held beside its merchant; every
-account keeps the merchant it names. A merchant's own keys, the ones their
-code calls with, are not touched.
+(`docs/research/35-one-process.md`). Its two migrations are one way. The
+gateway's deletes every key made for a dashboard, the one written at
+registration and any a renewal left behind, and then the column that told the
+two kinds of key apart. The dashboard's drops the key each account row held
+beside its merchant; every account keeps the merchant it names. A merchant's
+own keys, the ones their code calls with, are not touched.
 
 Nothing has to be done on either host before it. The release takes its
 restore point before it migrates, as every release does, and that restore
