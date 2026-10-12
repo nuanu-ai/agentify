@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 import { checkCard } from "./check-card.js";
 
 /**
- * The card the portal's quickstart publishes, which is the card a merchant
- * meets first. Copied here as an object rather than read out of the page: the
- * page's own examples are held to the schemas by the contracts package, and
- * what this file is about is what the checker says, not what the page says.
+ * The card the documentation's quickstart publishes, the card a merchant meets
+ * first. Copied as an object: what this file is about is what the checker
+ * says, and the page's examples are held to the schemas in the contracts
+ * package.
  */
 const validCard = {
   merchant_item_id: "access-monthly",
@@ -32,9 +32,8 @@ describe("checking a card before it is published", () => {
   });
 
   it("names the field that is missing, in the shape the publish call answers in", () => {
-    // The promise: a finding a merchant reads is the same kind of object the
-    // gateway would have sent back, so the two never have to be read
-    // differently — one path, one code, one sentence for a person.
+    // The promise: a finding the merchant reads locally is the same kind of
+    // object the gateway sends back: a path, a code and a sentence.
     const { problems } = checkCard({ ...validCard, title: undefined });
 
     expect(problems).toHaveLength(1);
@@ -42,14 +41,13 @@ describe("checking a card before it is published", () => {
       expect(ProblemSchema.safeParse(problem).success).toBe(true);
     }
     expect(problems[0]?.path).toStrictEqual(["title"]);
-    // In our words, saying what the field is, rather than the validator's.
+    // In words that say what the field is, not the validator's.
     expect(problems[0]?.message).not.toMatch(/received undefined/);
   });
 
   it("reports every problem of one pass at once rather than the first", () => {
-    // The promise the portal makes about the edit cycle: a merchant fixes
-    // what is wrong and calls again, instead of discovering one field per
-    // round trip.
+    // The promise: a merchant sees every finding at once, not one per round
+    // trip.
     const paths = pathsOf({
       ...validCard,
       title: undefined,
@@ -62,23 +60,15 @@ describe("checking a card before it is published", () => {
     expect(paths).toContainEqual(["fulfillment"]);
   });
 
-  // Three cases stood here that walked one card rule each through the checker
-  // — an empty result, the mode with no shape on the wire, a delivery deadline
-  // on a synchronous card. `checkCard` is `CardSchema` and nothing beside it,
-  // so each of them was the schema's own test written a second time, and
-  // `card.test.ts` in the contracts package is where the rule lives. Removing
-  // each rule in turn from the schema was tried: every one of them fails a test
-  // over there, which is what says these were spare rather than load-bearing.
-  // What this file is for is the answer's shape — a finding in the shape the
-  // publish call answers in, and the report saying what a short list does and
-  // does not imply — and that is what is left.
+  // The card rules themselves are tested in the contracts package's
+  // `card.test.ts`; `checkCard` is `CardSchema` and the price rule. What this
+  // file holds is the shape of the answer.
 
   it("finds a price the publish call would refuse, and passes one it would take", () => {
-    // The promise the portal makes: a card this check passes is not refused at
-    // publication for anything about the card. The price rule is applied by
-    // the gateway's door rather than by the card's schema, so it is read here
-    // too — one case of each kind, because the rule itself is walked at the
-    // door. What stands on each side of it is what matters here.
+    // The promise: a card this check passes is not refused at publication for
+    // anything about the card. The price rule is applied outside the card's
+    // schema, so it is read here too; one case of each kind, as the rule is
+    // walked in the contracts package.
     for (const [price, field] of [
       [{ amount: "0.00", currency: "USD" }, "amount"],
       ["500 USD", "amount"],
@@ -93,10 +83,8 @@ describe("checking a card before it is published", () => {
   });
 
   it("stops before the rules that compare fields when the shape itself is wrong", () => {
-    // Pinned rather than assumed, because a merchant is entitled to know that
-    // a clean second run is not implied by a short first one. The card below
-    // has two problems — a field nobody declared, and a delivery deadline on
-    // a synchronous card — and one pass sees only the first.
+    // A merchant should know a clean second run is not implied by a short
+    // first one: this card has two problems, and one pass sees only the first.
     const paths = pathsOf({ ...validCard, nonsense: 1, fulfill_deadline_seconds: 600 });
 
     expect(paths).toStrictEqual([[]]);
@@ -104,9 +92,8 @@ describe("checking a card before it is published", () => {
   });
 
   it("says so about a card as a whole when what it was handed is not a card", () => {
-    // A merchant whose file held a list, a string or nothing at all gets a
-    // finding about the card rather than a crash, and the empty path is what
-    // says "this is about the card, not about a field of it".
+    // A file holding a list, a string or nothing gets a finding about the
+    // card, with an empty path, rather than a crash.
     for (const value of [null, "a card", 42, [], undefined]) {
       const { problems } = checkCard(value);
 

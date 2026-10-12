@@ -1,20 +1,9 @@
 /**
- * The portal's table of closing-call codes, held to the codes themselves.
- *
- * That table is the thing a merchant writes their `switch` from. It names
- * seven codes as promised to mean one thing each, and the promise is only worth
- * the paper it is on if the seven are the seven the code actually sends: a code
- * added to the contract and not to the page is a case the merchant never writes
- * an arm for, and a code on the page that nothing sends is an arm they wrote
- * for nothing.
- *
- * The names are imported rather than typed out here. A copy in a test is a
- * third place to keep in step, and a test that drifts along with the page it
- * guards catches nothing.
- *
- * What is checked is the names and how many there are, not a word of the prose
- * around them: what each code means is the page's to say, and pinning that
- * would make every improvement to a sentence a failing test.
+ * The documentation's table of closing-call codes, held to the codes
+ * themselves: a merchant writes their `switch` from it, so a code missing from
+ * the page is an arm never written and a code nothing sends is an arm written
+ * for nothing. The names are imported, not typed out, and only the names and
+ * their count are checked, not the prose around them.
  */
 
 import { readFileSync } from "node:fs";
@@ -32,11 +21,9 @@ const FROM_THE_TOOLS = [CALL_DID_NOT_REACH_US, ANSWER_NOT_UNDERSTOOD, OUTCOME_UN
 const SECTION = "### When a closing call does not go through";
 
 /**
- * The first column of the first table under that heading.
- *
- * A row is taken as a code only where its first cell is a single backticked
- * word, which is what separates the codes from the header and the rule beneath
- * it without matching on either's spelling.
+ * The first column of the first table under that heading. A row is a code
+ * where its first cell is a single backticked word, which separates the codes
+ * from the header without matching on its spelling.
  */
 const codesOnThePage = (): string[] => {
   const markdown = readFileSync(page, "utf8");
@@ -71,18 +58,15 @@ describe("the portal's table of codes a closing call fails under", () => {
     const printed = codesOnThePage();
 
     expect([...printed].sort()).toStrictEqual([...promised].sort());
-    // Said separately from the comparison above, because a code printed twice
-    // sorts into a list that still contains all the right names.
+    // A code printed twice would still sort into a list with the right names.
     expect(printed).toHaveLength(promised.length);
   });
 
   it("counts them in the sentence above the table the way the table counts", () => {
-    // The page says how many there are and how they split before it lists
-    // them, which is the sentence a merchant sizes their `switch` from. It is
-    // read the way `apps/gateway/src/portal-numbers.test.ts` reads the
-    // deadlines: enough of the sentence is quoted for the pin to die when the
-    // sentence is rewritten, and the numbers it must agree with are counted
-    // from the lists rather than written down here a second time.
+    // The page's sentence saying how many codes there are and how they split
+    // is what a merchant sizes their `switch` from. Enough of it is quoted for
+    // the pin to die when it is rewritten, and the numbers are counted from
+    // the lists.
     const words: Record<string, number> = { three: 3, four: 4, five: 5, seven: 7, eight: 8 };
     const said =
       /(\w+) codes are promised to mean one thing each — (\w+) sent by us, and (\w+) the tools produce/.exec(

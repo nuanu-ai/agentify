@@ -30,10 +30,8 @@ afterEach(() => {
   directory = undefined;
 });
 
-// The answers are written out as numbers rather than read from the module.
-// They are what a merchant's build branches on and what the usage text
-// promises, and a test comparing the answer with the constant that produced it
-// would stay green when the number moved.
+// The exit codes are written out as numbers: a merchant's build branches on
+// them, and comparing with the constant would stay green if the number moved.
 const verifying = async (...argv: string[]): Promise<{ code: number; said: string }> => {
   const lines: string[] = [];
   const code = await runVerify(argv, (line) => lines.push(line));
@@ -43,10 +41,8 @@ const verifying = async (...argv: string[]): Promise<{ code: number; said: strin
 
 describe("agentify verify", () => {
   it("answers zero for cards that are complete, and says what it does not check", async () => {
-    // A build that runs this before publishing reads its exit code, and a
-    // complete card has to read as one. What the command does not check —
-    // whether the handler makes second goods for an order delivered twice —
-    // is said in its output as outside it, not reported as a check that failed.
+    // A complete card must read as success to a build. What the command does
+    // not check is said in its output, not counted as a failed check.
     const { code, said } = await verifying("verify", fileHolding("card.json", validCard));
 
     expect(said).toMatch(/access-monthly/);
@@ -65,8 +61,7 @@ describe("agentify verify", () => {
   });
 
   it("checks every card it was given, not just the first that failed", async () => {
-    // The portal promises a short edit cycle. A command that stopped at the
-    // first bad card would turn one round of fixes into several.
+    // One run reports every bad card, not just the first.
     const { code, said } = await verifying(
       "verify",
       fileHolding("one.json", { ...validCard, result: {} }),
@@ -87,9 +82,7 @@ describe("agentify verify", () => {
   });
 
   it("warns that a card which failed its shape may have more findings behind it", async () => {
-    // The checker stops before the rules that compare fields when the shape
-    // itself is wrong, and a merchant reading a short list is entitled to
-    // know a clean second run is not implied by it.
+    // A short list does not imply a clean second run, and the output says so.
     const { said } = await verifying(
       "verify",
       fileHolding("card.json", { ...validCard, nonsense: 1 }),
@@ -99,22 +92,11 @@ describe("agentify verify", () => {
   });
 
   it("stops rather than scolds when it is given no card files", async () => {
-    // The documentation shows the bare command, and the bare command cannot
-    // work: it takes no key and no address, so nothing that was published is
-    // within its reach — and the call that would hand those cards back,
-    // list_merchant_cards, returns cards that passed this very check on their
-    // way in. It is answered as a call the command cannot work from.
-    //
-    // Every part of the reason is pinned, because the reason is what the
-    // merchant is owed here, and this text went stale once already: it named
-    // an absent call after the call had been added. The tense is pinned too.
-    // "passed on the day they went out" is the claim the code can support;
-    // "have passed" would be a promise about a schema that is allowed to move.
-    //
-    // The message is also addressed to whoever ran the command, and most of
-    // them reached it through `npx` with no idea that a repository exists.
-    // So it says "you" throughout and never "a merchant", and it talks about
-    // the command they typed rather than about a package in a workspace.
+    // The bare command takes no key and so cannot reach published cards, and
+    // those passed this same check on their way in. Every part of the reason is
+    // pinned, the tense included: "passed on the day they went out" is what the
+    // code can support. Most people reach this through `npx`, so the message
+    // says "you" and talks about the command they typed.
     const { code, said } = await verifying("verify");
 
     expect(said).toMatch(/takes no key and no address/);

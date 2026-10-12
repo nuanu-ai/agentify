@@ -1,37 +1,23 @@
 /**
- * The SDK driven by a merchant that is not the documentation's.
+ * The SDK driven by a real merchant's catalog rather than the documentation's
+ * example: a rented phone number sold synchronously at a price computed per
+ * sale, and an eSIM plan whose profile arrives after the money has moved.
  *
- * Every other test in this package works from the portal's own example — one
- * card, one order, one delivery field — which is exactly the way a client
- * library can look finished and still not fit anything real. The products
- * below are the pilot merchant's, as recorded in
- * `docs/research/11-freeland-api-facts.md`: a rented phone number sold
- * synchronously at a price computed per sale, and an eSIM plan whose profile
- * arrives after the money has moved.
+ * Taken from the merchant's API: the two products and their modes; the
+ * number's price of $8.75, reached from the supplier's $7.00 by the markup in
+ * the merchant's worked example, computed per sale; the eSIM delivery fields
+ * (the ICCID, the LPA string and the iOS link); the supplier answering that no
+ * profile is available; and the idempotency key their purchase API requires.
  *
- * What comes from that record and what does not is worth separating, because
- * this file's whole argument is that it is not working from invented material.
+ * Constructed, and this list is the whole of it: the eSIM plan's price of
+ * $18.90, both identifiers, titles and descriptions, the eSIM's delivery
+ * deadline of 900 seconds, the number's `phone_number` result field, and every
+ * timestamp on this page.
  *
- * From the record: the two products and their modes; the number's price of
- * $8.75, reached from the supplier's $7.00 by the markup that record works
- * through, and the fact that it is computed per sale rather than fixed; the
- * eSIM delivery fields —
- * the ICCID, the LPA string and the iOS link — and the supplier answering that
- * no profile is available, which is the documented shape of a product that has
- * run out; and the idempotency key that merchant's own purchase API already
- * requires.
- *
- * Constructed, because the record does not carry them, and this list is the
- * whole of it: the eSIM plan's price of $18.90, both identifiers, both titles
- * and both descriptions, the eSIM's delivery deadline of 900 seconds, the
- * number's `phone_number` result field, and every timestamp on this page.
- *
- * The point of the run is that nothing here is a fixture of the SDK's. One
- * merchant publishes two cards, answers a price question, delivers one order
- * inside the handler and another by a call made later, refuses a third when
- * the supplier has nothing left, receives an event, and handles the same order
- * twice without provisioning it twice — over one subscription, against a
- * gateway that is nothing but the route table.
+ * One merchant publishes two cards, answers a price question, delivers one
+ * order inside the handler and another by a later call, refuses a third,
+ * receives an event, and handles the same order twice without provisioning it
+ * twice, over one subscription against a gateway made of the route table.
  */
 
 import type {
@@ -131,14 +117,13 @@ afterEach(async () => {
 });
 
 it("carries one merchant's two products from publishing to the last refusal", async () => {
-  // What breaks if this fails: the SDK works for the documentation's one
-  // example and not for a catalog anybody actually sells.
+  // If this fails, the SDK fits the documentation's example and not a catalog
+  // anybody sells.
   expect(checkCard(numberCard).problems).toStrictEqual([]);
   expect(checkCard(esimCard).problems).toStrictEqual([]);
 
-  // The merchant's own systems, standing in for their API. Their purchase
-  // endpoint takes an idempotency key, which is what makes the repeated
-  // delivery below safe on their side as well as ours.
+  // The merchant's own systems, standing in for their API, whose purchase
+  // endpoint takes an idempotency key.
   const supplierCostUsd = "7.00";
   const provisioned = new Map<string, { iccid: string; lpa: string; ios: string }>();
   let profilesLeft = 1;
@@ -161,8 +146,7 @@ it("carries one merchant's two products from publishing to the last refusal", as
     carrying(envelope("quote_request", "env-q1", numberQuestion)),
     carrying(envelope("order", "env-o1", numberOrder)),
     carrying(envelope("order", "env-o2", esimOrder)),
-    // The same eSIM order again: delivery is at least once, and a restart or a
-    // dropped answer brings it back under the same identifier.
+    // The same eSIM order again: delivery is at least once.
     carrying(envelope("order", "env-o2", esimOrder)),
     carrying(envelope("order", "env-o3", soldOutOrder)),
     carrying(envelope("order_event", "env-e1", refundDue)),
@@ -206,10 +190,9 @@ it("carries one merchant's two products from publishing to the last refusal", as
       return order.delivered({ phone_number: "+31 970 1020 3040" });
     }
 
-    // The asynchronous product: say it is taken on, provision behind the
-    // answer, and close it with a call made later. What is kept for that call
-    // is the order itself and not its identifier. The idempotency key is still
-    // the order's identifier, so the redelivery below provisions nothing twice.
+    // The asynchronous product: taken on, provisioned behind the answer, and
+    // closed later by a call on the kept order. The order's identifier is the
+    // idempotency key, so the redelivery provisions nothing twice.
     accepted.push(order.id);
     takenOn.set(order.id, order);
     provision(order.id);
@@ -228,10 +211,9 @@ it("carries one merchant's two products from publishing to the last refusal", as
       return question.unavailable(AT);
     }
 
-    // The markup comes from the worked example in the record — $7.00 becomes
-    // $8.75 — rather than from the sentence beside it, which calls the same
-    // markup a fifth. The two do not agree, and a pair of real numbers is the
-    // firmer of the two facts.
+    // The markup comes from the merchant's worked example, $7.00 to $8.75,
+    // rather than from the sentence beside it calling it a fifth; the two
+    // disagree, and the pair of real numbers is the firmer fact.
     const cost = Number(supplierCostUsd);
 
     return question.available({ amount: (cost * (8.75 / 7)).toFixed(2), currency: "USD" }, AT);
@@ -242,8 +224,8 @@ it("carries one merchant's two products from publishing to the last refusal", as
 
   await waitUntil(() => events.length === 1, "everything through the subscription");
 
-  // The price question was answered against its own identifier, at the price
-  // the merchant computed and not the one on the card.
+  // Answered against its own identifier, at the price the merchant computed,
+  // not the card's.
   expect(gateway.callsTo("answer_quote")).toHaveLength(1);
   expect(gateway.callsTo("answer_quote")[0]?.params).toStrictEqual({ price_id: "price-nl-1" });
   expect(gateway.callsTo("answer_quote")[0]?.body).toStrictEqual({
@@ -252,9 +234,8 @@ it("carries one merchant's two products from publishing to the last refusal", as
     as_of: AT,
   });
 
-  // The synchronous order was answered by the handler's return, and the
-  // asynchronous ones were taken on — the second time as well as the first,
-  // which is what a redelivery is meant to look like.
+  // The synchronous order answered by the handler's return; the asynchronous
+  // ones taken on, the redelivery as well.
   const answers = gateway.callsTo("answer_order");
   expect(answers.map((call) => call.params.order_id)).toStrictEqual([
     numberOrder.id,
@@ -265,14 +246,13 @@ it("carries one merchant's two products from publishing to the last refusal", as
   expect(answers[0]?.body).toStrictEqual({ delivered: { phone_number: "+31 970 1020 3040" } });
   expect(answers[1]?.body).toStrictEqual({ accepted: {} });
 
-  // The handler ran on every delivery and the merchant's own system issued one
-  // profile: the idempotency the portal asks of them, kept by them.
+  // The handler ran on every delivery and the merchant's system issued one
+  // profile.
   expect(accepted).toStrictEqual([esimOrder.id, esimOrder.id, soldOutOrder.id]);
   expect(provisioned.size).toBe(1);
   expect(profilesLeft).toBe(0);
 
-  // The profile that was issued is closed by a call made later, out of the
-  // handler entirely.
+  // The issued profile is closed by a later call, outside the handler.
   const issued = provisioned.get(esimOrder.id);
   const delivered = await takenOn.get(esimOrder.id)?.deliver({
     iccid: issued?.iccid,
@@ -282,8 +262,8 @@ it("carries one merchant's two products from publishing to the last refusal", as
 
   expect(delivered).toStrictEqual({ ok: true, result: "delivered" });
 
-  // The one the supplier had nothing left for is refused, without waiting for
-  // the delivery deadline to arrive at the same place by silence.
+  // The one the supplier had nothing for is refused, rather than left to run
+  // out its deadline.
   const refused = await takenOn.get(soldOutOrder.id)?.refuse({
     code: "out_of_stock",
     message: "the supplier has no profile available for this plan",
@@ -291,8 +271,8 @@ it("carries one merchant's two products from publishing to the last refusal", as
 
   expect(refused).toStrictEqual({ ok: true, result: "refused" });
 
-  // And the debt that refusal created came back as an event, with nothing
-  // sent in reply to it.
+  // The debt that refusal created came back as an event, with nothing sent in
+  // reply.
   expect(events).toStrictEqual([refundDue]);
   expect(problems).toStrictEqual([]);
 });

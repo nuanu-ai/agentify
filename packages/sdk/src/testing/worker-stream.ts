@@ -1,18 +1,10 @@
 /**
- * The stream a test hands the worker, written the way the gateway writes it.
- *
- * Two pieces. `batch` builds one poll answer — the contract version the SDK
- * speaks and the envelopes in it — so a test says what arrives and not how a
- * poll answer is spelled. `polling` plays the answers in order and then holds
- * the poll open the way a gateway holds a long poll, which is the part that is
- * easy to get wrong: a script that runs out and answers `undefined` leaves a
- * loop whose sleeps the test has made instant asking as fast as it can for as
- * long as the test runs.
- *
- * The envelopes are typed as the contract's own, so a fixture that has drifted
- * from what the wire carries stops this package compiling rather than being
- * scripted into a test that then proves the SDK reads something no gateway
- * would send.
+ * The stream a test hands the worker. `batch` builds one poll answer at the
+ * version this SDK speaks; `polling` plays the answers in order and then holds
+ * the poll open as a gateway holds a long poll, since a script that ran out
+ * would leave a loop with instant sleeps polling as fast as it can. The
+ * envelopes are typed as the contract's own, so a drifted fixture stops the
+ * package compiling.
  */
 
 import type { WorkerEnvelope } from "@nuanu-ai/agentify-contracts";

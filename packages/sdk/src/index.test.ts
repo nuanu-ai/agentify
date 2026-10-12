@@ -23,14 +23,9 @@ const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.
 };
 
 /**
- * The source file a published path is compiled from.
- *
- * The build is `tsc` with `src` as its root and `dist` as its output, so every
- * `./dist/x.js` and `./dist/x.d.ts` the manifest names comes from `./src/x.ts`
- * and from nowhere else. Reversing that mapping is what lets this test check
- * the manifest against the tree without running the build: a file renamed in
- * `src` turns a published path into a promise nothing keeps, and the merchant
- * would be the one to find out.
+ * The source file a published path is compiled from. The build is `tsc` from
+ * `src` into `dist`, so `./dist/x.js` comes from `./src/x.ts` only; reversing
+ * that checks the manifest against the tree without a build.
  */
 const sourceOf = (published: string): string =>
   published.replace(/^\.\/dist\//, "./src/").replace(/\.d\.ts$|\.js$/, ".ts");
@@ -39,34 +34,25 @@ const inPackage = (path: string): boolean => existsSync(new URL(`../${path}`, im
 
 describe("@nuanu-ai/agentify", () => {
   it("checks the contract version and refuses a foreign one", () => {
-    // The promise to the merchant: a divergence of dialects is discovered at
-    // worker startup, not on an order, where it costs the buyer money.
+    // The promise: a contract version mismatch is found at worker startup, not
+    // on an order, where it costs the buyer money.
     expect(contractVersion).toBe(CONTRACT_VERSION);
     expect(speaksContract(CONTRACT_VERSION)).toBe(true);
     expect(speaksContract(`${CONTRACT_VERSION}-foreign`)).toBe(false);
   });
 
   it("hands a merchant this much surface and no more", () => {
-    // Everything named here is area a merchant is obliged to learn and we are
-    // obliged to keep, so the list is the decision and this is where it is
-    // recorded. It caught a real widening: the verify command's own insides —
-    // its exit codes, its "not JSON" finding code, the runner itself — were
-    // exported beside `checkCard`, and nothing a merchant writes calls any of
-    // them. The command is run from a terminal and `checkCard` is called from
-    // code; neither needs the other's constants.
-    //
-    // Runtime exports only, because that is what a module has at runtime. The
-    // types beside them are held by the compiler instead: `portal-fences.test.ts`
-    // compiles the documentation's examples against this entry point, and
-    // `pnpm outside` type-checks it from a project installed off the tarball.
+    // Every name here is something a merchant has to learn and the package has
+    // to keep, so this list is the public surface, written down. Runtime
+    // exports only; the types are held by the compiler, through
+    // `portal-fences.test.ts` and the `pnpm outside` type check.
     expect(Object.keys(sdk).sort()).toStrictEqual([
       "ANSWER_NOT_UNDERSTOOD",
       "AgentifyError",
       "CALL_DID_NOT_REACH_US",
       "CARD_REJECTED",
-      // The three findings a refused publish names about the merchant rather
-      // than the card. They were on the wire before they were here; exporting
-      // them is typing what a merchant's code already had to compare against.
+      // The findings a refused publish names about the merchant rather than
+      // the card, typed for the code that compares against them.
       "MERCHANT_FINDINGS",
       "ORDER_EVENT_TYPES",
       "OUTCOME_UNKNOWN",
@@ -80,11 +66,9 @@ describe("@nuanu-ai/agentify", () => {
   });
 
   it("declares no third-party dependency of its own", () => {
-    // The tree the merchant gets is `@nuanu-ai/agentify-contracts` and `zod`, nothing
-    // else. This is one half of the pin — the SDK adds nothing of its own; the
-    // other half is the contracts test, which holds contracts to exactly zod.
-    // A failing check means a third-party package entered the merchant's
-    // production along with the SDK without a recorded decision (ADR-0003 §8).
+    // The tree a merchant gets is `@nuanu-ai/agentify-contracts` and `zod`,
+    // nothing else. This is one half; the contracts package's test holds it to
+    // zod alone.
     const thirdParty = Object.entries(manifest.dependencies ?? {}).filter(
       ([, range]) => !range.startsWith("workspace:"),
     );
@@ -93,22 +77,15 @@ describe("@nuanu-ai/agentify", () => {
   });
 
   it("advertises the command the documentation tells a merchant to run", () => {
-    // The promise: `agentify verify` starts. npx finds a command through
-    // this field, so a package without it makes step 4 of the quickstart
-    // impossible for everyone who is not us. What the field points at has to
-    // be the built command and not the source, because Node runs the one and
-    // not the other.
+    // The promise: `agentify verify` starts. npx finds a command through this
+    // field, and it must point at the built command, which Node can run.
     expect(manifest.publishConfig?.bin).toStrictEqual({ agentify: "./dist/cli.js" });
   });
 
   it("publishes its build and develops against its source", () => {
-    // Two promises at once, and they pull in opposite directions. Outside this
-    // repository the entry point has to be compiled JavaScript with types
-    // beside it, because a merchant's Node cannot run our TypeScript. Inside
-    // it, every app and every test still imports `src` directly, so a change
-    // is visible without a compile step. `publishConfig` is what keeps both:
-    // pnpm swaps these fields in when it packs, and the working tree never
-    // sees them.
+    // Outside this repository the entry point must be compiled JavaScript with
+    // types; inside it, imports read `src` directly. pnpm swaps in
+    // `publishConfig` when it packs.
     expect(manifest.exports).toStrictEqual({ ".": "./src/index.ts" });
     expect(manifest.publishConfig?.exports).toStrictEqual({
       ".": { types: "./dist/index.d.ts", default: "./dist/index.js" },
@@ -116,11 +93,9 @@ describe("@nuanu-ai/agentify", () => {
   });
 
   it("names only published paths its own source can produce", () => {
-    // The drift this catches: `src/cli.ts` renamed, or the entry point moved,
-    // leaving the manifest advertising a file the build will not write. The
-    // tarball would then install and fail on first use — which is exactly the
-    // failure nobody sees from inside the workspace. `pnpm outside` proves the
-    // build really produces them; this holds the mapping without a build.
+    // A renamed `src/cli.ts` or a moved entry point would leave the manifest
+    // advertising a file the build does not write, and the tarball would
+    // install and fail on first use.
     const published = [
       ...Object.values(manifest.publishConfig?.bin ?? {}),
       ...Object.values(manifest.publishConfig?.exports ?? {}).flatMap((entry) =>
@@ -133,15 +108,9 @@ describe("@nuanu-ai/agentify", () => {
   });
 
   it("carries what npm needs to publish it, and builds before it is packed", () => {
-    // A merchant installs this from a registry, so the fields a registry reads
-    // are part of the deliverable. `files` is the one with teeth: without it
-    // npm ships the whole directory, and our tests, our fixtures and our
-    // fake gateway would land in someone else's production.
-    //
-    // `prepack` is the other. Packing a tree whose `dist` is absent otherwise
-    // produces a tarball holding nothing but this manifest — no error, no
-    // warning — while `publishConfig` still names an entry point and a command
-    // that are not in it. That package installs and dies on first use.
+    // `files` keeps the tests, fixtures and fake gateway out of a merchant's
+    // production. Without `prepack`, packing a tree with no `dist` silently
+    // produces a tarball holding only this manifest.
     expect(manifest.name).toBe("@nuanu-ai/agentify");
     expect(manifest.private).toBeUndefined();
     expect(manifest.version).not.toBe("0.0.0");
@@ -149,7 +118,7 @@ describe("@nuanu-ai/agentify", () => {
     expect(manifest.license).toBe("Apache-2.0");
     expect(manifest.repository).toBeDefined();
     expect(manifest.engines?.node).toBeDefined();
-    // Defined is not enough: it is the build that puts `dist` in the tarball.
+    // Defined is not enough: it has to be the build.
     expect(manifest.scripts?.prepack).toBe("pnpm run build");
     expect(manifest.publishConfig?.access).toBe("public");
     expect(existsSync(new URL("../README.md", import.meta.url))).toBe(true);

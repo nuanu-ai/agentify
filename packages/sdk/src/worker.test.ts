@@ -122,8 +122,8 @@ const workerOver = async (
 
 describe("an order off the worker stream", () => {
   it("reaches the handler as an order, not as the envelope it travelled in", async () => {
-    // The promise of ADR-0004 §5: the merchant's code never learns what the
-    // transport is, so switching it later does not touch their handler.
+    // The promise: the merchant's code never learns what the transport is, so
+    // changing it does not touch their handler.
     const seen: Order[] = [];
 
     await workerOver(
@@ -141,9 +141,8 @@ describe("an order off the worker stream", () => {
 
     await waitUntil(() => seen.length === 1, "the order to reach the handler");
 
-    // The order as the contract writes it, field for field. What the handler
-    // is actually given carries the calls that close it too, so the comparison
-    // is against the fields rather than against the whole object.
+    // The handler is also given the calls that close the order, so the fields
+    // are compared, not the whole object.
     const { id, merchant_item_id, params, price, test } = seen[0] as Order;
 
     expect({ id, merchant_item_id, params, price, test }).toStrictEqual(order);
@@ -156,9 +155,8 @@ describe("an order off the worker stream", () => {
   ])(
     "sends what the handler returned — %s — to the order's answer route",
     async (_what, answer) => {
-      // ADR-0004 §2: the handler's return has an address of its
-      // own, and the SDK posts it in every mode. Without it a synchronous
-      // handler's answer reaches nobody.
+      // The handler's return has its own route, posted in every mode; without
+      // it a synchronous handler's answer reaches nobody.
       await workerOver(
         {
           poll_worker: polling(batch(envelopes.order)),
@@ -176,10 +174,9 @@ describe("an order off the worker stream", () => {
   );
 
   it("answers nothing when the handler throws, and handles the redelivery", async () => {
-    // A temporary failure is an exception, and an exception means the order
-    // was not delivered: it comes back on the gateway's own timer, and the
-    // handler runs again. A retry written on this side would be a second
-    // opinion about how many times a merchant's code may run.
+    // An exception means the order was not delivered: it comes back on the
+    // gateway's timer and the handler runs again. A retry on this side would
+    // be a second opinion about how often a merchant's code may run.
     let attempts = 0;
 
     await workerOver(
@@ -222,9 +219,8 @@ describe("an order off the worker stream", () => {
   });
 
   it("sends nothing when the handler answers with something the contract refuses", async () => {
-    // "Not right now" is not one of the three answers, and sent as one it
-    // would be read as something. Held back, the order is redelivered — which
-    // is what a temporary failure means — and the merchant is told why.
+    // "Not right now" is not one of the three answers. Held back, the order
+    // is redelivered and the merchant is told why.
     const { problems } = await workerOver(
       { poll_worker: polling(batch(envelopes.order)) },
       {
@@ -238,8 +234,8 @@ describe("an order off the worker stream", () => {
   });
 
   it("says so when the gateway would not take the answer", async () => {
-    // An order that closed while the handler was working: the merchant needs
-    // to know their delivery landed nowhere, because on their side it happened.
+    // The order closed while the handler worked; the merchant needs to know
+    // their delivery landed nowhere.
     const { problems } = await workerOver(
       {
         poll_worker: polling(batch(envelopes.order)),
@@ -260,8 +256,8 @@ describe("an order off the worker stream", () => {
   });
 
   it("leaves an order unanswered when nobody subscribed, and says so", async () => {
-    // A process that registered only a price handler still receives orders,
-    // and swallowing them silently would look exactly like a gateway fault.
+    // Orders still arrive at a process with only a price handler, and
+    // swallowing them would look like a gateway fault.
     gateway = await startFakeGateway({
       apiKey: API_KEY,
       routes: { poll_worker: polling(batch(envelopes.order)) },
@@ -298,8 +294,7 @@ describe("a price question off the same stream", () => {
 
     await waitUntil(() => (gateway?.callsTo("answer_quote").length ?? 0) === 1, "the price answer");
 
-    // The question as the contract writes it; what the handler is given also
-    // carries the two answers it can be given, so the fields are compared.
+    // The handler is also given its two answers, so the fields are compared.
     const { merchant_item_id, price_id, purpose, expires_at } = seen[0] as QuoteRequest;
 
     expect({ merchant_item_id, price_id, purpose, expires_at }).toStrictEqual(question);
@@ -312,11 +307,9 @@ describe("a price question off the same stream", () => {
   });
 
   it("holds the price handler's answer to the contract before sending it", async () => {
-    // The same treatment the order handler's answer gets, and for the same
-    // reason. An amount written as a number rather than as text is the easiest
-    // mistake to make here; sent out, it comes back as the gateway complaining
-    // about a document, which reads as our fault and buries the merchant's own
-    // field inside a quoted blob.
+    // Held to the contract before sending, as the order's answer is: an amount
+    // written as a number would otherwise come back as the gateway's complaint
+    // about a document, burying the merchant's own field.
     const problems: WorkerProblem[] = [];
 
     gateway = await startFakeGateway({
@@ -345,10 +338,8 @@ describe("a price question off the same stream", () => {
   });
 
   it("holds the price handler's answer to the price rule before sending it", async () => {
-    // The gateway refuses an answer priced at zero, or cent-less, or in a
-    // currency it cannot charge. Caught here, the merchant is told which field
-    // of their own answer it was, as a refused answer, rather than reading it
-    // as a call that failed.
+    // A price of zero, without cents or in a currency the gateway cannot
+    // charge is caught here and named as the merchant's own field.
     const problems: WorkerProblem[] = [];
 
     gateway = await startFakeGateway({
@@ -376,8 +367,8 @@ describe("a price question off the same stream", () => {
   });
 
   it("tells the merchant when their price arrived too late to be used", async () => {
-    // A merchant who set stock aside against the question can release it, and
-    // the acknowledgement is the only notice they get.
+    // The acknowledgement is the only notice that stock set aside can be
+    // released.
     const problems: WorkerProblem[] = [];
 
     gateway = await startFakeGateway({
@@ -404,11 +395,8 @@ describe("a price question off the same stream", () => {
 
 describe("an event off the same stream", () => {
   it("arrives with the identity of the message it travelled in", async () => {
-    // An order is answered against its own identifier and a price question
-    // against its price_id, so a repeat of either is harmless by
-    // construction. An event has neither, and the contract gives every
-    // envelope an identifier and a delivery time precisely so that a repeat
-    // can be recognised. Withheld, the merchant has no way to recognise one.
+    // An event is answered against nothing, so the envelope's identifier and
+    // delivery time are the only way to name the message.
     const delivered: { id: string; sent_at: string }[] = [];
 
     gateway = await startFakeGateway({
@@ -434,8 +422,7 @@ describe("an event off the same stream", () => {
   });
 
   it("is handed over and acknowledged with nothing", async () => {
-    // An event notifies, it does not ask for work. A call back to the gateway
-    // would be a fourth way of naming a message three surfaces already name.
+    // An event notifies and asks for no work, so nothing is sent back.
     const { events } = await workerOver(
       { poll_worker: polling(batch(envelopes.event)) },
       {
@@ -452,8 +439,7 @@ describe("an event off the same stream", () => {
 
 describe("a gateway speaking another dialect", () => {
   it("stops the worker and names both versions", async () => {
-    // The difference between failing at startup and failing on somebody's
-    // first order, where a divergence of dialects costs the buyer money.
+    // Failing at startup rather than on somebody's first order.
     const problems: WorkerProblem[] = [];
 
     gateway = await startFakeGateway({
@@ -481,12 +467,9 @@ describe("a gateway speaking another dialect", () => {
   });
 
   it("passes on the version it saw in an answer it could not read, and keeps going", async () => {
-    // A gateway of another version answers with a document this SDK refuses,
-    // so the version it names is worth telling the merchant — and it is the
-    // one thing here that was never held to a schema of ours. Acted on as a
-    // verdict, a proxy's error envelope with a field of that name would stop
-    // a merchant's worker for good over something that needed waiting out. So
-    // it is a remark inside a retryable problem and nothing more.
+    // The version a body this SDK refuses names is worth telling the merchant,
+    // but that body was held to no schema: acted on, a proxy's error page
+    // could stop a worker for good. So it is a remark in a retryable problem.
     const problems: WorkerProblem[] = [];
 
     gateway = await startFakeGateway({
@@ -512,7 +495,7 @@ describe("a gateway speaking another dialect", () => {
     expect(problems[0]?.message).toContain("99");
     expect(problems[0]?.message).toContain("may mean");
 
-    // And it went on asking, which is the half that matters.
+    // And it went on asking.
     await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 3, "further polls");
   });
 
@@ -521,10 +504,8 @@ describe("a gateway speaking another dialect", () => {
     ["an error envelope somebody added", { text: JSON.stringify({ error: "no such worker" }) }],
     ["a version that is not a word", { text: JSON.stringify({ contract_version: 99 }) }],
   ])("still blames the transport for %s", async (_what, answer) => {
-    // The other half of the same rule, and the more dangerous half. A proxy's
-    // page, an error envelope, a field of the wrong type — none of them is a
-    // dialect, and a worker stopped for good on one of those is a merchant
-    // taken off the air by something that only needed waiting out.
+    // A proxy's page, an error envelope or a field of the wrong type is not
+    // another version, and must not stop a worker for good.
     const problems: WorkerProblem[] = [];
 
     gateway = await startFakeGateway({ apiKey: API_KEY, routes: { poll_worker: () => answer } });
@@ -542,10 +523,8 @@ describe("a gateway speaking another dialect", () => {
   });
 
   it("keeps the merchant's handlers and reporter when a loop is started again", async () => {
-    // The loop ended and the client did not. Everything the merchant
-    // registered is still registered, so starting again is one line and not a
-    // rebuild — and a client that quietly dropped the order handler or the
-    // reporter on the way would look exactly the same until an order arrived.
+    // The loop ended and the client did not: everything registered stays, so
+    // starting again is one line.
     const problems: WorkerProblem[] = [];
     const orders: string[] = [];
 
@@ -573,17 +552,16 @@ describe("a gateway speaking another dialect", () => {
     await waitUntil(() => problems.length === 1, "the mismatch that ends the first loop");
     expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.CONTRACT_VERSION_MISMATCH);
 
-    // The loop died of its own accord, so nothing has to be stopped first.
+    // The loop ended on its own, so nothing has to be stopped first.
     running = agentify;
     await agentify.start();
 
     await waitUntil(() => orders.length > 0, "the order handler to keep receiving");
     expect(orders[0]).toBe(order.id);
 
-    // And stopping still stops what is running: after it, no further order
-    // reaches the handler. Counting polls instead would count a request the
-    // gateway records a moment after the caller has gone, which says nothing
-    // about whether the loop is still working.
+    // Stopping still stops what is running: no further order reaches the
+    // handler. Polls are not counted, since the gateway may record one a
+    // moment after the caller has gone.
     await agentify.stop();
 
     const deliveredWhenItStopped = orders.length;
@@ -592,10 +570,8 @@ describe("a gateway speaking another dialect", () => {
   });
 
   it("meets a gateway of another dialect again rather than pretending to run", async () => {
-    // A process whose loop died on a mismatch and which starts again. What it
-    // must not get is a client that reports "started" over nothing: the reason
-    // the first loop ended has not gone away, and hearing about it a second
-    // time is the answer the merchant can act on.
+    // Starting again after a mismatch must not report "started" over nothing;
+    // the reason has not gone away, and the merchant hears it again.
     const problems: WorkerProblem[] = [];
 
     gateway = await startFakeGateway({
@@ -622,12 +598,9 @@ describe("a gateway speaking another dialect", () => {
 
 describe("a poll that goes quiet", () => {
   it("is given up on, rather than waited for as long as the runtime allows", async () => {
-    // A connection dropped silently by something in the middle — a load
-    // balancer that recycled it, a firewall that forgot it — leaves this side
-    // waiting on an answer that will never come. Without a deadline of the
-    // SDK's own, what eventually breaks that is whatever the runtime happens
-    // to default to, which is a number nobody here chose and is measured in
-    // minutes against a window measured in seconds.
+    // A connection dropped silently in the middle leaves this side waiting for
+    // ever; without its own deadline the worker would wait out the runtime's
+    // default of minutes.
     const problems: WorkerProblem[] = [];
 
     gateway = await startFakeGateway({ apiKey: API_KEY, routes: { poll_worker: polling() } });
@@ -644,38 +617,31 @@ describe("a poll that goes quiet", () => {
     expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.POLL_FAILED);
     expect(problems[0]?.fatal).toBe(false);
 
-    // And it goes on asking, which is the point of giving up on one.
+    // And it goes on asking.
     await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 2, "a further poll");
   });
 
   it("is given up on soon enough that a watcher can still tell an outage from a recovery", () => {
     // A gateway that accepts a poll and never answers fails it only when the
-    // deadline runs out, so two reports of that failure are the deadline plus
-    // the longest rest apart. Whoever watches for a recovery has to wait
-    // longer than that sum before calling the quiet one: the slice's
-    // subscription line waits ninety seconds (DOUBT_MS in
-    // packages/slice/src/subscription.ts), and either term raised until the
-    // sum reaches it would read a dead subscription as one that came back. The slice pins the
-    // same sum from its side; this is the side where the two terms move.
+    // deadline runs out, so two reports are the deadline plus the longest rest
+    // apart. `DOUBT_MS` in packages/slice/src/subscription.ts waits ninety
+    // seconds before calling the quiet a recovery; this side's two terms must
+    // stay under it.
     expect(POLL_DEADLINE_MS + RETRY_CEILING_MS).toBeLessThan(90_000);
   });
 });
 
 describe("what the worker asks of a poll", () => {
   it("names the wait window the decision gave it", async () => {
-    // ADR-0004 §1 says the worker asks for a window of about twenty-five
-    // seconds. Asking for nothing would leave the field the contract argues
-    // over with no sender, and a gateway that wanted to answer sooner with no
-    // way to see what we expected.
+    // The worker asks for a window of about twenty-five seconds, so a gateway
+    // can see what it expects.
     gateway = await startFakeGateway({ apiKey: API_KEY, routes: { poll_worker: polling() } });
 
     running = startWorker({ apiKey: API_KEY, baseUrl: gateway.url }, { problem: () => {} });
 
     await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) === 1, "the first poll");
 
-    // The literal, not the constant the sender used: comparing a value
-    // against the same constant that produced it is an assertion that cannot
-    // fail, and the number is what the decision names.
+    // The literal, not the sender's constant, which could not fail.
     expect(gateway.callsTo("poll_worker")[0]?.body).toStrictEqual({ wait_seconds: 25 });
     expect(POLL_WAIT_SECONDS).toBe(25);
   });
@@ -684,7 +650,7 @@ describe("what the worker asks of a poll", () => {
 describe("a gateway that is not answering", () => {
   it("waits longer after each failure in a row and starts over after a success", async () => {
     // The promise: an outage does not become a flood of requests, and the
-    // worker comes back on its own when the gateway does.
+    // worker comes back on its own.
     const clock = recordingClock();
     const problems: WorkerProblem[] = [];
 
@@ -717,18 +683,15 @@ describe("a gateway that is not answering", () => {
       FIRST_RETRY_MS * 2,
       FIRST_RETRY_MS * 4,
     ]);
-    // The fourth poll succeeded with an empty batch, so what follows is the
-    // quiet floor and not a retry; the failure after it starts from the top.
+    // The fourth poll succeeded empty, so what follows is the quiet floor; the
+    // failure after it starts from the top.
     expect(clock.waits[3]).toBe(QUIET_POLL_FLOOR_MS);
     expect(clock.waits[4]).toBe(FIRST_RETRY_MS);
   });
 
   it("does not go on to the next poll until the wait is over", async () => {
-    // The recording clock above asserts which delays are asked for; this one
-    // asserts that the loop actually waits for them, which is the half a
-    // recorded number cannot show. The wait is a promise this test resolves,
-    // so what is being observed is the loop's own ordering and not how fast
-    // the machine happened to be.
+    // The clock above records which delays are asked for; this checks that
+    // the loop waits for them, with a wait the test itself resolves.
     let waitIsOver: (() => void) | undefined;
     const waiting = new Promise<void>((resolve) => {
       waitIsOver = resolve;
@@ -761,8 +724,7 @@ describe("a gateway that is not answering", () => {
 
 describe("the clock the worker runs on by default", () => {
   it("waits the whole time it was given, and gives up the moment it is stopped", async () => {
-    // The seam the tests above replace, tested once on its own so that
-    // replacing it elsewhere does not mean the real one is never exercised.
+    // The real clock, tested once, since the others replace it.
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
     try {
@@ -779,8 +741,7 @@ describe("the clock the worker runs on by default", () => {
       await vi.advanceTimersByTimeAsync(1);
       expect(over).toBe(true);
 
-      // Stopping cuts a wait short, which is what makes a parked worker shut
-      // down at once instead of half a minute later.
+      // Stopping cuts a wait short, so a parked worker shuts down at once.
       let cutShort = false;
       const second = new AbortController();
 
@@ -792,7 +753,7 @@ describe("the clock the worker runs on by default", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(cutShort).toBe(true);
 
-      // And a wait asked for after the stop does not happen at all.
+      // A wait asked for after the stop does not happen at all.
       let afterwards = false;
 
       void systemClock.sleep(FIRST_RETRY_MS, second.signal).then(() => {
@@ -809,11 +770,9 @@ describe("the clock the worker runs on by default", () => {
 
 describe("a quiet stream", () => {
   it("asks again at once when the gateway held the request, and paces itself when it did not", async () => {
-    // The long poll is parked server-side, so a batch that took the window to
-    // come back is followed by another poll immediately — that is what keeps a
-    // waiting agent's price question free of polling lag. A gateway that
-    // answers empty the instant it is asked is a gateway that is not holding
-    // anything, and the floor is what keeps that from becoming a busy loop.
+    // A batch that took the window is followed by another poll at once, which
+    // keeps a waiting agent's price question free of lag. The floor applies
+    // only to a gateway that answers empty instantly and so holds nothing.
     const clock = recordingClock();
 
     gateway = await startFakeGateway({
@@ -832,18 +791,16 @@ describe("a quiet stream", () => {
     await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 3, "three polls");
     await running.stop();
 
-    // One wait in total, after the batch that came back instantly. Had the
-    // loop paced every quiet poll, three polls would have cost three waits.
+    // One wait, after the instant batch; pacing every quiet poll would cost
+    // three.
     expect(clock.waits).toStrictEqual([QUIET_POLL_FLOOR_MS]);
   });
 });
 
 describe("an answer that could not be delivered", () => {
   it("promises the redelivery only where nothing was handed over", async () => {
-    // The one positive claim in this design. An answer refused a connection
-    // certainly left the order unanswered, so it comes back — and a merchant
-    // is entitled to that sentence, because it is the difference between
-    // waiting and reconciling by hand.
+    // An answer refused a connection certainly left the order unanswered, so
+    // it comes back, and the merchant is told so.
     const problems: WorkerProblem[] = [];
 
     gateway = await startFakeGateway({
@@ -857,8 +814,8 @@ describe("an answer that could not be delivered", () => {
       { apiKey: API_KEY, baseUrl: gateway.url },
       {
         order: async () => {
-          // The gateway goes away between the order arriving and the answer
-          // being sent, so the answer is refused a connection outright.
+          // The gateway goes away between the order and the answer, so the
+          // answer is refused a connection.
           await closing.close();
           return { delivered: { access_url: "https://a.example" } };
         },
@@ -878,10 +835,8 @@ describe("an answer that could not be delivered", () => {
 
 describe("a delivery carrying the field this contract removes", () => {
   it("tells the merchant it will not reach the agent", async () => {
-    // The one silent loss the contract documents, and this is the place it
-    // named as where the loss would actually cost something. Removed before
-    // any check runs, the field goes out of the merchant's handler and does
-    // not arrive, and without this nobody is told.
+    // A `__proto__` field leaves the handler and does not arrive; without
+    // this nobody is told.
     const problems: WorkerProblem[] = [];
 
     gateway = await startFakeGateway({
@@ -914,11 +869,9 @@ describe("a delivery carrying the field this contract removes", () => {
 
 describe("a merchant who passed no reporter at all", () => {
   it("is given the exception as well as the sentence", async () => {
-    // The console is the only channel such a merchant has, and it is the one
-    // every merchant following the documentation is on, because no page
-    // mentions onProblem. The sentence already carries what the exception
-    // says; what it cannot carry is the stack, which is the whole of what
-    // somebody debugging their own handler is looking for.
+    // The console is the only channel a merchant without a reporter has. The
+    // stack goes beside the sentence, since it is what someone debugging their
+    // handler needs.
     const written: unknown[][] = [];
     const console_error = console.error;
 
@@ -953,12 +906,9 @@ describe("a merchant who passed no reporter at all", () => {
 
 describe("a reporter that itself fails", () => {
   it("does not take the worker, or the merchant's process, down with it", async () => {
-    // The reporter is the merchant's code — a logger over a stream that
-    // closed during shutdown, a client that was never configured. An
-    // exception out of it would otherwise unwind the loop and escape as an
-    // unhandled rejection, which under Node's default ends their process, so
-    // this listens for exactly that rather than taking the loop's survival as
-    // evidence of it.
+    // The reporter is the merchant's code; an exception from it would escape as
+    // an unhandled rejection and, under Node's default, end their process. This
+    // listens for exactly that.
     const escaped: unknown[] = [];
     const catchIt = (reason: unknown): void => {
       escaped.push(reason);
@@ -997,19 +947,11 @@ describe("a reporter that itself fails", () => {
 
 describe("the loop failing in a way nothing in it anticipated", () => {
   it("hands the merchant the defect instead of ending in silence", async () => {
-    // The channel that fires once everything else has already failed. Every
-    // way the loop expects to go wrong has its own kind and its own place to
-    // be caught: a poll that did not reach us, a handler that threw, an answer
-    // the gateway would not take. Arriving here means none of those applied,
-    // so the SDK has a defect and the merchant's worker is down until their
-    // process is restarted — and that is the one problem a merchant cannot
-    // learn about by waiting, because a loop that has stopped reports nothing
-    // more. Unreported, the merchant hears about it from a buyer.
-    //
-    // A defect cannot be staged from outside the package, so it is injected at
-    // the seam the loop already has for tests: the clock. This one answers the
-    // first question and fails the second, which puts the failure after a
-    // complete healthy poll rather than before the worker has done anything.
+    // Every failure the loop expects has its own kind; reaching this one means
+    // a defect in the SDK, and the worker is down until the process restarts.
+    // A stopped loop reports nothing more, so this report is the merchant's
+    // only notice. The defect is injected through the clock, failing after one
+    // healthy poll.
     const problems: WorkerProblem[] = [];
     const broken = new Error("the clock stopped");
     let asked = 0;
@@ -1036,19 +978,17 @@ describe("the loop failing in a way nothing in it anticipated", () => {
 
     const failed = problems.find((problem) => problem.kind === WORKER_PROBLEM_KINDS.WORKER_FAILED);
 
-    // Fatal, because it is: nothing restarts the loop from here.
+    // Fatal: nothing restarts the loop from here.
     expect(failed?.fatal).toBe(true);
-    // The exception itself travels with it. The sentence says where the fault
-    // lies and the cause is what a merchant sends us to have it fixed.
+    // The exception travels with it, for the merchant to send in.
     expect(failed?.cause).toBe(broken);
     expect(failed?.message).toMatch(/defect in the Agentify SDK/);
     expect(failed?.message).toContain(String(broken));
-    // Not filed as a poll that failed, which is the kind a merchant waits out.
+    // Not a failed poll, which a merchant waits out.
     expect(problems.map((problem) => problem.kind)).not.toContain(WORKER_PROBLEM_KINDS.POLL_FAILED);
-    // It had been working: one poll went out and came back before this.
+    // One poll went out and came back first.
     expect(gateway.callsTo("poll_worker")).toHaveLength(1);
-    // And `running()` agrees, so a process supervising its worker sees it is
-    // down without waiting for a problem that will never come.
+    // `running()` agrees, so a supervisor sees the worker is down.
     await waitUntil(() => !worker.running(), "the loop to be over");
     await expect(worker.stop()).resolves.toBeUndefined();
   });
@@ -1056,10 +996,8 @@ describe("the loop failing in a way nothing in it anticipated", () => {
 
 describe("stopping", () => {
   it("says so when an answer the handler produced did not get through", async () => {
-    // The handler has already run: goods may have been issued. Redelivery
-    // makes the system right and leaves the merchant uninformed, and a
-    // merchant reconciling a shutdown is owed the fact that an answer for
-    // this order went nowhere.
+    // The handler has run and goods may have been issued, so a merchant
+    // reconciling a shutdown is told this answer went nowhere.
     const problems: WorkerProblem[] = [];
     let answering: (() => void) | undefined;
     const held = new Promise<void>((resolve) => {
@@ -1090,22 +1028,18 @@ describe("stopping", () => {
 
     expect(problems.map((problem) => problem.kind)).toContain(WORKER_PROBLEM_KINDS.ANSWER_FAILED);
     expect(problems[0]?.subject).toBe(order.id);
-    // The answer was abandoned when the worker stopped, so whether the gateway
-    // has it is not something this side knows. Promising a redelivery here
-    // would have a merchant waiting for an order that may already be closed.
+    // Abandoned when the worker stopped, so whether the gateway has it is not
+    // known, and no redelivery is promised.
     expect(problems[0]?.message).toMatch(/not known here/);
     expect(problems[0]?.message).not.toMatch(/will be delivered again/);
-    // Nor may it say the answer was sent. An abort is raised against a request
-    // this process may or may not have finished writing, and the exception it
-    // arrives as carries no code to tell the two apart — so "it was sent" here
-    // is a fact nobody has, told to the one person reconciling on it.
+    // An abort carries no code to say whether the request was fully written,
+    // so "it was sent" would be a fact nobody has.
     expect(problems[0]?.message).not.toMatch(/it was sent/);
   });
 
   it("says how much of a batch it left unread", async () => {
-    // Orders and price questions come back on their own; an event does not,
-    // because nothing here can ask for one again. Either way a merchant who
-    // stopped mid-batch should not have to guess what went unread.
+    // Orders and price questions come back on their own, an event does not;
+    // the merchant is told what went unread.
     const problems: WorkerProblem[] = [];
     let handling: (() => void) | undefined;
     const inTheHandler = new Promise<void>((resolve) => {
@@ -1116,9 +1050,8 @@ describe("stopping", () => {
       apiKey: API_KEY,
       routes: {
         poll_worker: polling(batch(envelopes.order, envelopes.quote, envelopes.event)),
-        // Held open, so the loop is certainly still inside the first envelope
-        // when the worker is stopped. Left to finish, whether the second
-        // envelope had been reached would depend on how fast the machine was.
+        // Held open, so the loop is certainly inside the first envelope when
+        // the worker stops, whatever the machine's speed.
         answer_order: () => {
           handling?.();
           return new Promise<never>(() => {});
@@ -1161,11 +1094,9 @@ describe("stopping", () => {
 
 describe("shutting down a subscription the merchant built", () => {
   it("sends the last problems to the reporter that subscription was given", async () => {
-    // The layer the worker's own tests cannot see. Everything the loop reports
-    // while it is stopping — an answer that did not get through, a batch it
-    // left unread — is reported through whatever reporter is registered at
-    // that moment. Torn down before the loop has finished, that is the console,
-    // and the merchant who asked to hear about it hears nothing at all.
+    // Everything the loop reports while stopping goes to the reporter
+    // registered at that moment; torn down early, that is the console, and
+    // the merchant hears nothing.
     const problems: WorkerProblem[] = [];
     let answering: (() => void) | undefined;
     const held = new Promise<void>((resolve) => {
@@ -1199,9 +1130,8 @@ describe("shutting down a subscription the merchant built", () => {
   });
 
   it("waits for the loop however many callers ask it to stop", async () => {
-    // A shutdown routine and a signal handler both calling stop() is ordinary.
-    // A second caller that returned at once would let the process exit with a
-    // delivery still in flight.
+    // Two callers of stop() are ordinary; a second that returned at once would
+    // let the process exit with a delivery in flight.
     let inTheHandler: (() => void) | undefined;
     const reached = new Promise<void>((resolve) => {
       inTheHandler = resolve;
@@ -1225,10 +1155,8 @@ describe("shutting down a subscription the merchant built", () => {
     agentify.on("order", async (arrived) => {
       inTheHandler?.();
       await handlerMayFinish;
-      // A turn of the event loop between being released and being done, so
-      // that a stop() which returned without waiting would be observed
-      // returning early rather than being saved by the order microtasks
-      // happen to run in.
+      // A turn between release and done, so a stop() that returned without
+      // waiting is caught rather than saved by microtask order.
       await new Promise((resolve) => setTimeout(resolve, 0));
       handlerFinished = true;
       return arrived.delivered({ access_url: "https://a.example" });
@@ -1242,20 +1170,17 @@ describe("shutting down a subscription the merchant built", () => {
 
     releaseHandler?.();
 
-    // The second caller is awaited on its own: waiting for both would pass
-    // even if this one had returned at once, which is the failure being
-    // looked for.
+    // Awaited on its own: awaiting both would pass even if this one returned
+    // at once.
     await second;
     expect(handlerFinished).toBe(true);
     await first;
   });
 
   it("refuses to start again while a stop is still in flight", async () => {
-    // Two loops for one merchant would open two long polls, and an envelope
-    // handed to the one that is going away is an envelope the one that stays
-    // never sees. Registering during a stop is a different matter and is
-    // allowed: handlers belong to the client, not to the loop, so one
-    // registered here is in place for the loop that comes next.
+    // Two loops would open two long polls, and an envelope handed to the one
+    // going away is lost. Registering during a stop is allowed: handlers
+    // belong to the client and are in place for the next loop.
     let inTheHandler: (() => void) | undefined;
     const reached = new Promise<void>((resolve) => {
       inTheHandler = resolve;
@@ -1292,8 +1217,8 @@ describe("shutting down a subscription the merchant built", () => {
     releaseHandler?.();
     await stopping;
 
-    // And once it has stopped, starting works again, on the handler registered
-    // while the stop was in flight as well as the one from before it.
+    // Once stopped, starting works again, with the handler registered during
+    // the stop as well as the earlier one.
     running = agentify;
     await agentify.start();
   });
@@ -1301,10 +1226,8 @@ describe("shutting down a subscription the merchant built", () => {
 
 describe("one loop for one process", () => {
   it("carries the orders and the prices of one process on one subscription", async () => {
-    // The portal promises one subscription for all three kinds. Two loops
-    // would mean two long polls open at once per merchant, and two places for
-    // an envelope to be lost — so what is counted here is how many polls were
-    // in flight together, not how many were made.
+    // One subscription for all three kinds: what is counted is how many polls
+    // were in flight together.
     const script = polling(batch(envelopes.order, envelopes.quote));
     let inFlight = 0;
     let mostAtOnce = 0;

@@ -1,47 +1,21 @@
 /**
- * The documentation's TypeScript examples are compiled against this SDK.
+ * The documentation's TypeScript examples, compiled against this SDK, so that
+ * a renamed method or a changed argument breaks the build rather than the
+ * code a merchant pastes from the quickstart. Every ```ts fence on the pages a
+ * merchant integrates from becomes a file compiled against the real types.
  *
- * The charter's rule is that the documentation's examples are fixtures of the
- * code. The contracts package already holds the portal's JSON to its schemas;
- * this is the same rule one step further out, and it is the one that catches
- * the failure a merchant meets first. A method renamed here, an argument that
- * changed shape, an answer that lost a field — each of those turns the code on
- * the quickstart page into code that does not build, and the merchant finds
- * out by pasting it into their editor. So every ```ts fence on the pages a
- * merchant integrates from is written out as a TypeScript file, compiled
- * against the real SDK types, and the build fails if any of them stops
- * compiling.
+ * This package's README is one of those pages, and the one with the least
+ * margin: it is published in the tarball and is what every reader on npm has
+ * until the next release.
  *
- * This package's own README is one of those pages, and it is the one with the
- * least margin for error. The portal is served from this repository and can be
- * corrected the hour a mistake is noticed; the README is packed into a tarball
- * and published, and until the next release it is what every stranger reading
- * npm has. It also reaches people who cannot open this repository at all, so
- * nobody among its readers is in a position to check it against the source. It
- * was drifting unread for the same reason the landing page once was — no test
- * had ever opened it — and the fix is the same one: read it here.
- *
- * Two things had to be decided to make that possible, and both are visible
- * rather than hidden in a helper.
- *
- * The examples call the merchant's own functions — `grantAccess`,
- * `startProvisioning`, `currentPriceOf`, `lookupItem` — and use values the
- * page never shows being created, such as the order a merchant saved earlier.
- * None of those are ours and none of them can be inferred from the page. They
- * are declared as globals in the harness below, with the shapes the examples
- * imply and nothing more, and those declarations are the harness's
- * assumptions rather than the portal's promises. What is being checked is that
- * the SDK's own side of each line type-checks; what a merchant's own function
- * returns is theirs.
- *
- * One fence on the cards page is not a program but the middle of a card — the
- * `result` block on its own. It is compiled as what it is, the `result` field
- * of a card, and the table below says so for that one fence. A fence with no
- * entry is compiled as it stands.
- *
- * The count of fences per page is asserted, so an example added to the portal
- * cannot slip past this file unchecked. When that assertion fails the answer
- * is to decide how the new fence is compiled, not to raise the number.
+ * The examples call the merchant's own functions (`grantAccess`,
+ * `startProvisioning`, `currentPriceOf`, `lookupItem`) and use values the page
+ * never creates, such as an order saved earlier. Those are declared as globals
+ * in the harness below with the shapes the examples imply; they are the
+ * harness's assumptions, not promises of the documentation. One fence on the
+ * cards page is the `result` block of a card on its own and is compiled as
+ * that field. The count of fences per page is asserted, so a new example
+ * cannot slip past: when it fails, decide how the new fence is compiled.
  */
 
 import { execFileSync } from "node:child_process";
@@ -60,11 +34,9 @@ const README = "packages/sdk/README.md";
 const CARD = "apps/docs/examples/card/access-monthly-short.json";
 
 /**
- * The values and functions the examples use that are the merchant's own.
- *
- * `declare global` rather than declarations pasted into each file, so that a
- * fence which declares a name of its own — the orders page reads an order back
- * into `order` — shadows the global instead of colliding with it.
+ * The values and functions the examples use that are the merchant's own,
+ * declared globally so that a fence declaring a name of its own shadows the
+ * global instead of colliding with it.
  */
 const HARNESS = `
 import type { AgentifyClient, LiveOrder } from "@nuanu-ai/agentify";
@@ -132,11 +104,8 @@ const PAGES: readonly Page[] = [
 ];
 
 /**
- * The fenced blocks of one language, in the order the page writes them. Not a
- * markdown parser: it looks for the line that opens a fence and the line that
- * closes it, which is enough for pages that have no nested and no indented
- * fences — and if one ever appears, the text comes out wrong and the
- * compilation fails loudly, which is the failure we want.
+ * The fenced blocks of one language, in page order. Not a markdown parser: a
+ * nested or indented fence would come out wrong and fail compilation loudly.
  */
 const fencesOf = (markdown: string, language: string): string[] => {
   const blocks: string[] = [];
@@ -169,8 +138,7 @@ const examplesOf = (page: Page): Example[] => {
   const fences = fencesOf(markdown, "ts");
 
   return fences.map((body, index) => ({
-    // The path, flattened: these become file names in one directory, so a page
-    // outside `apps/docs/` must not put a directory separator in one.
+    // Flattened into one directory, so the name carries no separator.
     name: `${page.file.replace(/\.md$/, "").replaceAll("/", "-")}-${index + 1}`,
     source: page.pieces?.[index]?.(body) ?? `${body}\n`,
   }));
@@ -182,19 +150,12 @@ interface Compilation {
 }
 
 /**
- * Writes the examples out beside a harness and a configuration, and runs the
- * compiler over the lot in one pass.
- *
- * The configuration is the repository's own, with four differences and each
- * one is a decision. It resolves `@nuanu-ai/agentify` to this package's source,
- * because the examples import it by the name a merchant installs. It carries
- * its own `package.json` saying the files are modules, because two of the
- * examples await at the top level and a directory with no such file would be
- * read as the other kind. It names the type roots outright, since the
- * generated files sit outside the repository and would otherwise find no
- * description of Node. And it turns off the complaint about unused locals: an
- * example is an excerpt, and a `const` the page declares to show its shape is
- * exactly what an excerpt does.
+ * Writes the examples out beside a harness and a configuration and compiles
+ * them in one pass. The configuration is the repository's own, except that it
+ * resolves `@nuanu-ai/agentify` to this package's source, carries a
+ * `package.json` marking the files as modules (two examples await at the top
+ * level), names the type roots outright (the files sit outside the
+ * repository), and allows unused locals, since an example is an excerpt.
  */
 const compile = (examples: readonly Example[]): Compilation => {
   const directory = mkdtempSync(join(tmpdir(), "agentify-fences-"));
@@ -245,36 +206,25 @@ const compile = (examples: readonly Example[]): Compilation => {
 
 describe("the portal's TypeScript examples", () => {
   it("compiles every example on every page against this SDK", () => {
-    // If this fails, a merchant who copies the page into their editor gets a
-    // type error, and the first they hear of it is when they try.
-    //
-    // One compiler for all three pages rather than one each. Starting `tsc` is
-    // most of what this costs and the work itself is a rounding error beside
-    // it, and nothing about a page needs its own pass: every generated file is
-    // named for the page and the fence it came from, so the compiler's own
-    // output says which example broke. What one pass adds is that the examples
-    // now share a compilation — an excerpt that declares a name at the top
-    // level of a file the compiler reads as a script would meet the same name
-    // from another page. That has not happened, and if it does the fix is on
-    // the page, which is where two examples contradicting each other belongs.
+    // If this fails, a merchant who copies the page gets a type error. One
+    // compiler pass for all pages, since starting `tsc` is most of the cost;
+    // each file is named for its page and fence, so the output says which
+    // example broke.
     const compiled = compile(PAGES.flatMap(examplesOf));
 
     expect(compiled.ok, compiled.output).toBe(true);
   });
 
   it.each(PAGES)("has the examples this harness knows about on $file", (page) => {
-    // An example added to the portal has to be compiled too. Raising this
-    // number is the moment to decide how the new fence is compiled, and doing
-    // it without looking is how a page starts drifting away from the code.
+    // A new example has to be compiled too; raising this number is the moment
+    // to decide how.
     expect(examplesOf(page)).toHaveLength(page.fences);
   });
 
   it("compiles the pages' own code and not a blank stand-in for it", () => {
-    // Everything above also passes if the fences arrive empty, because empty
-    // files compile. What is asserted here is that the text reaching the
-    // compiler is the merchant's whole promised surface, method by method: it
-    // fails if the harness stops reading the pages, and equally if the pages
-    // stop documenting one of these calls.
+    // Empty fences compile too. This checks that the compiler is given the
+    // merchant's whole promised surface, method by method, so it fails if the
+    // harness stops reading the pages or a page stops documenting a call.
     const everything = PAGES.flatMap((page) => examplesOf(page))
       .map((example) => example.source)
       .join("\n");
@@ -299,16 +249,15 @@ describe("the portal's TypeScript examples", () => {
   });
 
   it("would notice a method this SDK does not have", () => {
-    // The negative control for the harness itself. Everything above passes
-    // just as well if the compiler is never really seeing the SDK, or if the
-    // examples are never really reaching the compiler; this is what tells the
-    // two apart.
+    // The negative control for the harness: the checks above would pass just
+    // as well if the compiler never saw the SDK or the examples never reached
+    // it.
     const broken = compile([
       { name: "renamed", source: "await agentify.catalog.publishTheCard({})\n" },
       { name: "wrong-argument", source: "await agentify.orders.get(42)\n" },
       {
-        // The kind a handler is registered under is checked too: a merchant
-        // who wrote `orders` would otherwise get a handler nothing calls.
+        // The handler's kind is checked too; `orders` would register a handler
+        // nothing calls.
         name: "wrong-kind",
         source: "agentify.on('orders', () => ({ accepted: {} }))\n",
       },
@@ -350,21 +299,11 @@ const CARD_FENCE = 1;
 
 describe("the card on the SDK's npm front page", () => {
   it("is the card the portal's examples hold, rendered as the call that publishes it", () => {
-    // The charter's rule is one file with two readers: the page renders the
-    // very file the test runs, because likeness between two copies is not a
-    // check. npm cannot render a file by reference — the tarball carries the
-    // README's own bytes and nothing else — so this one page has to hold a copy
-    // of the card, and this is the assertion that makes the copy safe. The
-    // fence is not compared against a second copy kept beside it; it is
-    // compared against the text rendered here out of the fixture itself. A card
-    // edited where it lives reaches the README, and a README edited by hand
-    // does not stay edited.
-    //
-    // The same fixture is what the landing page renders and what
-    // `portal-fixtures.test.ts` holds to `CardSchema`, so the smallest card
-    // that sells is one card everywhere it is shown, and it is a card our own
-    // door accepts. If this fails, the fix is to change the fixture, not to
-    // retype the fence.
+    // npm cannot render a file by reference, so the README holds a copy of the
+    // card, and this keeps the copy safe: the fence is compared against text
+    // rendered from the fixture itself, the same fixture the landing page
+    // renders and `portal-fixtures.test.ts` holds to `CardSchema`. If this
+    // fails, change the fixture, not the fence.
     const card: unknown = JSON.parse(readFileSync(join(repoRoot, CARD), "utf8"));
 
     expect(isRecord(card), `${CARD} is not an object`).toBe(true);
@@ -376,12 +315,9 @@ describe("the card on the SDK's npm front page", () => {
   });
 
   it("shows every name and every value that card carries", () => {
-    // The control on the rendering, read off the page rather than off the
-    // renderer. The assertion above passes just as well if this file's renderer
-    // quietly drops a field: the README would carry exactly what it produced,
-    // and the two would agree with each other about a card neither of them
-    // shows. A shortened card is the defect worth catching — a stranger reading
-    // a card with no `result` would be reading a product that promises nothing.
+    // The control on the rendering, read off the page: the assertion above
+    // also passes if the renderer drops a field, and a card with no `result`
+    // would be a product promising nothing.
     const card: unknown = JSON.parse(readFileSync(join(repoRoot, CARD), "utf8"));
     const wordsOf = (value: unknown): string[] =>
       isRecord(value)

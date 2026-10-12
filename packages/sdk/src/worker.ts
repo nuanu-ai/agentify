@@ -1,54 +1,21 @@
 /**
- * The one loop that carries everything the merchant's process receives.
+ * The one loop that carries everything the merchant's process receives, over
+ * HTTP long polling: the worker asks for the next batch, and the gateway holds
+ * the request until something arrives or its own window closes. An empty batch
+ * is the ordinary answer to a quiet window.
  *
- * The transport is HTTP long polling against the gateway (ADR-0004): the
- * worker asks for the next batch, the gateway holds the request until
- * something arrives or its own window closes, and the answer is a batch of
- * envelopes or an empty one. An empty batch is the ordinary answer to a quiet
- * window and not a failure. There is one loop and not three, because the
- * stream carries three kinds on one connection and the portal promises the
- * merchant one subscription.
+ * An order goes to the merchant's handler, and what the handler returns is
+ * posted to the order's answer route in every mode. A price question goes to
+ * the price handler, and its answer to the quote route against the question's
+ * `price_id`. An event is handed over and nothing is sent back.
  *
- * How each kind is answered is the part worth reading before changing
- * anything, because the three are answered in three different places and none
- * of them is an acknowledgement of the envelope itself.
- *
- * An order is given to the merchant's handler, and whatever the handler
- * returns is posted to the order's answer route — in every mode, without the
- * merchant asking. In the synchronous mode that return is the whole of the
- * merchant's answer; in the asynchronous one it is usually an acceptance, and
- * the goods follow later through the explicit `deliver` call, which is the
- * merchant's to make and not this loop's.
- *
- * A price question is given to the price handler and the answer goes to the
- * quote route against the `price_id` the question carried.
- *
- * An event is handed over and nothing is sent back. An event notifies, it does
- * not ask for work.
- *
- * What happens when a handler throws is the design decision the rest follows
- * from: nothing is sent. An order nobody answered comes back on its own,
- * because the gateway's own order machine is watching for that answer and
- * decides there should be another attempt — that is the machine's meaning of
- * "not delivered". A retry written on this side would be a second machine with
- * a second opinion about how many times a merchant's handler may run, and the
- * two would disagree the first time one of them restarted. The same holds for a
- * handler that answers with something the contract refuses, and for an envelope
- * that arrives with no handler registered for its kind: the merchant is told
- * through the problem channel, and an order or a price question comes back on
- * its own.
- *
- * An event is the exception and it is worth knowing about. It carries no
- * acknowledgement, so nothing here can ask for one again and nothing on the
- * other side is waiting for a reply to notice that it went unanswered. The
- * contract makes no promise that one is ever sent a second time, and whether a
- * particular gateway sends one anyway is that gateway's business. A handler
- * that throws on an event has lost what it carried.
- *
- * The transport failures are the one thing this loop does retry, because there
- * is nothing else to do with them: a poll that did not reach the gateway
- * delivered no envelope to anybody. That retry is the backoff in
- * `backoff.ts` and nothing more.
+ * When a handler throws, nothing is sent and nothing is retried here: an
+ * unanswered order comes back because the gateway decides on another attempt,
+ * and a second retry policy on this side would disagree with it. The same
+ * holds for an answer the contract refuses and for a kind with no handler; the
+ * merchant is told through the problem reporter. An event is not sent again,
+ * so a handler that throws on one has lost what it carried. The only retry
+ * here is of a poll that failed, with the backoff in `backoff.ts`.
  */
 
 import {
@@ -70,15 +37,10 @@ import { describeProblems, problemsOf } from "./schema.js";
 import { callRoute, type Gateway, REACH, type TransportFailure, whatIsKnown } from "./transport.js";
 
 /**
- * What follows from a failed answer for the order it was about.
- *
- * The three cases are three different things to tell a merchant, and only one
- * of them is a promise. An answer that never left certainly leaves the order
- * unanswered, so it comes back. An answer that reached us, or that vanished
- * into silence, may have closed the order already — saying it will be
- * delivered again would be promising a redelivery we have no grounds to
- * expect, and a merchant who acted on that promise would be waiting for an
- * order that never comes.
+ * What follows from a failed answer for the order it was about. Only an
+ * answer that never left is certain to leave the order unanswered, so only
+ * then is a redelivery promised; one that reached the gateway or vanished may
+ * already have closed the order.
  */
 const andSoTheOrder = (failure: TransportFailure): string =>
   failure.reach === REACH.NOT_RECEIVED
@@ -86,13 +48,9 @@ const andSoTheOrder = (failure: TransportFailure): string =>
     : ", so whether the order is delivered again is not something this side can say";
 
 /**
- * What this loop calls with one paid order off the stream.
- *
- * It is not what a merchant writes. The order a merchant's handler receives
- * carries the calls that close it, and putting those on it is `client.ts`'s
- * job: this loop reads the envelope and knows nothing about a gateway address
- * or an API key beyond the one it polls with. So the client registers a
- * function of this shape which wraps the merchant's own.
+ * What this loop calls with one paid order off the stream. `client.ts`
+ * registers a function of this shape that attaches the order's calls and then
+ * calls the merchant's own handler.
  */
 export type OrderDispatch = (order: Order) => HandlerAnswer | Promise<HandlerAnswer>;
 
@@ -100,12 +58,10 @@ export type OrderDispatch = (order: Order) => HandlerAnswer | Promise<HandlerAns
 export type QuoteDispatch = (question: QuoteRequest) => QuoteResponse | Promise<QuoteResponse>;
 
 /**
- * How this delivery of a message is named, for the one kind that needs it.
- *
- * `id` names this message and `sent_at` names when it went out. What the pair is
- * not is a dependable way to recognise a repeat: a gateway sending an order
- * again builds a fresh envelope around it under a fresh `id`, and what holds
- * still across such a repeat is the order's own identifier in the payload.
+ * The name of one delivery of a message: its envelope's `id` and when it was
+ * sent. It is no way to recognise a repeat; an order sent again comes in a
+ * fresh envelope with a fresh `id`, and what holds still is the order's own
+ * identifier.
  */
 export interface Delivered {
   readonly id: string;
@@ -115,27 +71,17 @@ export interface Delivered {
 /**
  * What the merchant's code does with something that happened to an order.
  *
- * The second argument is this delivery's own name, and it is the reason this
- * signature is not just the event. An order is answered against its own
- * identifier and a price question against its `price_id`; an event is answered
- * against nothing at all, so this pair is the only thing naming the message
- * itself rather than the order it is about, which is what a log line or a
- * question to us afterwards needs.
- *
- * It is not there to be deduplicated against. Nothing acknowledges an event, so
- * nothing asks for one again, and the contract makes no promise that one is ever
- * sent twice — which means the risk an event handler is written against is a
- * message that never arrives rather than one that arrives twice.
+ * The second argument names this delivery of the message, for a log line or a
+ * question to Agentify afterwards, since an event is answered against nothing.
+ * An event is sent at most once, so the risk to write against is an event that
+ * never arrives, not one that arrives twice; reading open orders with
+ * `orders.list({ open: true })` finds a refund owed whose event went missing.
  */
 export type EventHandler = (event: OrderEvent, delivered: Delivered) => void | Promise<void>;
 
 /**
- * The things the worker has to tell the merchant about, under the names their
- * code can branch on.
- *
- * They are one vocabulary rather than several channels because every one of
- * them has the same shape of consequence — something did not get through — and
- * a merchant who wants to count them wants to count them together.
+ * The things the worker tells the merchant about, under names their code can
+ * branch on, through the reporter registered with `on('problem')`.
  */
 export const WORKER_PROBLEM_KINDS = Object.freeze({
   /** The gateway speaks another dialect of the contract. The loop stops. */
@@ -164,6 +110,7 @@ export const WORKER_PROBLEM_KINDS = Object.freeze({
 
 export type WorkerProblemKind = (typeof WORKER_PROBLEM_KINDS)[keyof typeof WORKER_PROBLEM_KINDS];
 
+/** One thing the worker has to tell the merchant about. */
 export interface WorkerProblem {
   readonly kind: WorkerProblemKind;
   /** What happened, in one sentence a person can act on. */
@@ -176,64 +123,41 @@ export interface WorkerProblem {
   readonly subject?: string;
 }
 
+/**
+ * Where the worker reports problems, registered with `on('problem')`. It is
+ * called synchronously; whatever it throws or rejects with is swallowed, so a
+ * failing reporter cannot stop the worker. Without one, problems go to
+ * `console.error`.
+ */
 export type ProblemReporter = (problem: WorkerProblem) => void;
 
 /**
- * Calls a merchant's reporter and lets nothing it does escape.
- *
- * Reporting must not be able to end the loop that reports. A merchant's
- * reporter is their code — a logger over a stream that closed during shutdown,
- * a client that was never configured — and an exception out of it would
- * otherwise unwind the worker and, from the worker's own last-resort handler,
- * escape as an unhandled rejection and take the host process down with it.
- * There is nowhere left to report a reporter that throws, so it is swallowed.
- *
- * Both ways of throwing, and the second is the one that hid. A reporter
- * declared `void` may still be an `async` function — TypeScript allows it, and
- * a merchant shipping problems to an HTTP logger will write one — and such a
- * reporter does not throw, it returns a promise that rejects a turn later, past
- * this `catch`, with nothing holding it. That is the unhandled rejection this
- * comment claims not to allow, arriving by the door the `try` does not cover.
- * So what comes back is settled too, and its failure dropped in the same
- * silence and for the same reason.
- *
- * It is at the top of the file rather than inside the loop because the loop is
- * not the only thing that reports: a merchant calling `deliver` on an order
- * directly has a reporter too, and the same reasoning covers it exactly.
+ * Calls a merchant's reporter and lets nothing it does escape. A reporter that
+ * throws, or that is `async` and rejects a turn later, would otherwise end the
+ * loop or surface as an unhandled rejection and take the host process down;
+ * there is nowhere left to report it, so it is swallowed. A merchant calling
+ * `deliver` directly reports through this too.
  */
 export const reportSafely = (reporter: ProblemReporter, problem: WorkerProblem): void => {
   try {
-    // Anything with a `then` and not only a real Promise: a reporter built on
-    // another library's promise, or one from another realm, fails in exactly
-    // the same way and must be settled in exactly the same silence.
+    // Anything with a `then`, not only a real Promise: another library's
+    // promise, or one from another realm, fails the same way.
     const reporting = reporter(problem) as { then?: unknown } | undefined;
 
     if (typeof reporting?.then === "function") {
       void Promise.resolve(reporting).catch(() => {});
     }
   } catch {
-    // Nowhere to say it. See above.
+    // Nowhere to say it.
   }
 };
 
 /**
- * The one loss in this contract that nobody is told about, said out loud here
- * because this is the place it would reach the agent.
- *
- * A field named `__proto__` is removed while a delivery is parsed, before any
- * check runs — it is neither carried nor refused, and the merchant's handler
- * has no way to know that what it returned is not what went out. The contracts
- * package names the delivery as the place the loss lands in what the agent is
- * handed — `DeliverySchema` in its `handler.ts` — and a delivery is written
- * here, so this file says it too.
- *
- * No card can declare such a field, so nothing legitimate reaches here; a
- * merchant only meets it by delivering a name nobody asked for.
- *
- * It is one function because there are two roads to the same gateway and the
- * loss is the same on both: the worker answering with what a handler returned,
- * and a merchant calling `deliver` on an order himself. Written twice, one of
- * them would drift or, as it did, never be written at all.
+ * The warning for a delivery carrying a field named `__proto__`, which is
+ * removed while the delivery is parsed: the agent never receives it, and
+ * without this the merchant would not know. No card can declare such a field.
+ * Both roads to the gateway use it, the worker answering for a handler and a
+ * merchant calling `deliver` directly.
  */
 export const droppedFieldWarning = (
   orderId: string,
@@ -252,18 +176,11 @@ export const droppedFieldWarning = (
 };
 
 /**
- * Which registration each kind on the stream is answered by, in the word a
- * merchant passes to `on`.
- *
- * This table is the vocabulary, and everything that has to know the stream's
- * kinds is derived from it rather than written out again: what a merchant may
- * register, what the registry holds, what `start` counts as an answer, and the
- * sentence that names a registration a merchant is missing. It is written over
- * the contract's own kinds, so a fourth kind added to the envelope — the
- * confirmation request, whose shape the contract does not carry yet — stops
- * this file compiling until it has a word of its own here. The `switch` in
- * `dispatch` below is the second half of that guard, and it is the one that
- * demands the behaviour.
+ * Which registration answers each kind on the stream, by the word a merchant
+ * passes to `on`. Everything that has to know the stream's kinds derives from
+ * this table, and the `satisfies` clause stops the file compiling when the
+ * contract gains a kind this table lacks; the `switch` in `dispatch` demands
+ * the behaviour for it.
  */
 export const REGISTERED_AS = Object.freeze({
   order: "order",
@@ -272,23 +189,14 @@ export const REGISTERED_AS = Object.freeze({
 } as const satisfies { readonly [Kind in WorkerEnvelopeKind]: string });
 
 /**
- * The words a merchant registers something on the stream under.
- *
- * Indexed by the table's own keys and not by the contract's kinds, which reads
- * the same today and behaves very differently on the day a fourth kind is
- * added. Indexing by a key the table does not have yet collapses this type, and
- * with it `Handlers[Kind]` and the contextual type of every `agentify.on(...)`
- * call — so the first compile after the contract grows reports sixty errors, of
- * which fifty-five are implicit-any at call sites that are not the problem, and
- * the three places that do need a hand are buried among them. Indexed this way
- * that same compile names two places, both real.
- *
- * Completeness is not what was lost: the `satisfies` clause on the table above
- * is what demands a word per contract kind, and it still fires.
+ * The words a merchant registers something on the stream under. Indexed by
+ * the table's own keys rather than the contract's kinds, so that when the
+ * contract grows a kind, the compile errors name the two places that need
+ * work instead of collapsing every `on(...)` call site into implicit `any`.
  */
 export type StreamHandlerKind = (typeof REGISTERED_AS)[keyof typeof REGISTERED_AS];
 
-/** What answers each of them, in the shape this loop calls. */
+/** What answers each kind, in the shape this loop calls. */
 export interface StreamDispatch {
   order: OrderDispatch;
   quote: QuoteDispatch;
@@ -296,13 +204,9 @@ export interface StreamDispatch {
 }
 
 /**
- * The handlers the loop dispatches to, read at the moment an envelope is
- * handled rather than captured when the loop starts.
- *
- * The registry belongs to the client and outlives any one loop. A merchant
- * registers what their process answers, starts, stops, and starts again on the
- * same handlers — and a handler registered while a loop is already running is
- * in place for the next envelope rather than for the next loop.
+ * The handlers the loop dispatches to, read when an envelope is handled rather
+ * than when the loop starts, so a handler registered while the loop runs is in
+ * place for the next envelope. It belongs to the client and outlives any loop.
  */
 export type HandlerRegistry = {
   [Kind in StreamHandlerKind]?: StreamDispatch[Kind] | undefined;
@@ -311,12 +215,8 @@ export type HandlerRegistry = {
 };
 
 /**
- * Time, as the loop sees it.
- *
- * A seam rather than a call to `setTimeout` in the middle of the loop, so that
- * a test can assert which delays were asked for without waiting through them.
- * It is not part of the published surface: a merchant has no business
- * replacing the clock their worker runs on.
+ * Time, as the loop sees it: a seam so a test can check which delays were
+ * asked for without waiting. Not part of the published surface.
  */
 export interface WorkerClock {
   now(): number;
@@ -325,10 +225,9 @@ export interface WorkerClock {
 }
 
 export const systemClock: WorkerClock = {
-  // Monotonic rather than the wall clock. The only thing this clock is asked
-  // is how long something took, and a wall clock stepped backwards by an hour
-  // — which is what a machine does when it corrects its time — would turn that
-  // question into an hour-long sleep.
+  // Monotonic rather than the wall clock: this clock only measures how long
+  // something took, and a wall clock stepped back an hour would become an
+  // hour-long sleep.
   now: () => performance.now(),
   random: () => Math.random(),
   sleep: (ms, signal) =>
@@ -353,30 +252,17 @@ export const systemClock: WorkerClock = {
 };
 
 /**
- * The shortest a quiet poll may take before the next one.
- *
- * The gateway holds a poll open for its own window, so in ordinary work this
- * costs nothing: by the time an empty batch comes back, the floor has long
- * passed and the next poll goes out at once — which is what keeps a waiting
- * agent's price question free of any polling lag (ADR-0004 §4). It exists for
- * the gateway that is not holding requests at all, misconfigured or half
- * broken, where a loop with no floor turns into as many requests a second as
- * the network allows. One second is the whole of the claim: slow enough that
- * nothing is hammered, fast enough that it is invisible against a window
- * measured in tens of seconds.
+ * The shortest a quiet poll may take before the next one. Against a gateway
+ * that holds polls open it costs nothing, since the window is far longer; it
+ * exists so a gateway that answers at once does not get as many requests a
+ * second as the network allows.
  */
 export const QUIET_POLL_FLOOR_MS = 1_000;
 
 /**
- * The contract version named inside something the SDK could not parse.
- *
- * A gateway that added an envelope kind, or a field, answers with a document
- * this SDK refuses, and the version it names is the one thing still readable
- * in what it sent. It goes into the sentence the merchant reads and no
- * further: this body was held to no schema of ours, so a proxy's error
- * envelope that happens to carry a field of that name must not be able to stop
- * a worker. One field is read, and only when it is a string; anything else is
- * a body with nothing to say about versions.
+ * The contract version named inside a body the SDK could not parse. It goes
+ * into the merchant's sentence and no further: the body was held to no schema,
+ * so a proxy's error page with a field of that name must not stop a worker.
  */
 const versionSpokenIn = (body: unknown): string | undefined => {
   if (typeof body !== "object" || body === null) return undefined;
@@ -394,78 +280,32 @@ const assertEveryKindIsHandled = (envelope: never): never => {
 };
 
 /**
- * How long the worker asks the gateway to hold a poll open, per ADR-0004 §1.
- *
- * It is a request and not an expectation. The gateway holds it for its own
- * window at most, and the contract says as much, so a shorter answer is
- * ordinary rather than a fault. Asking is what makes the number visible on the
- * wire, where a gateway that wanted to answer sooner can see it.
+ * How long the worker asks the gateway to hold a poll open. The gateway holds
+ * it for its own window at most, so a shorter answer is ordinary.
  */
 export const POLL_WAIT_SECONDS = 25;
 
 /**
- * How long the worker will wait for a poll before giving up on it.
+ * How long the worker waits for a poll before giving up on it: twice the
+ * window asked for, so a gateway that answers late is never cut off, while a
+ * connection dropped silently by something in the middle costs one window
+ * rather than the runtime's default of minutes.
  *
- * A window asked for is not a promise kept: a connection dropped silently by
- * something in the middle — a load balancer that recycled it, a firewall that
- * forgot it — leaves this side waiting on an answer that will never come, with
- * nothing reported and nothing retried. Without a deadline of our own the only
- * thing that eventually breaks that is whatever timeout the runtime happens to
- * default to, which is a number nobody here chose and which is measured in
- * minutes against a window measured in seconds.
- *
- * Twice the window, so a gateway that holds the full window and answers late is
- * never cut off, and a connection that has gone quiet costs one window of
- * silence rather than several minutes of it.
- *
- * This worker never comes near it against the gateway in this repository, and
- * that is not luck: every poll names the window it wants, and that gateway
- * holds a poll for the smaller of the window asked for and its own, so the wait
- * is bounded by the twenty-five seconds above however the gateway is
- * configured. Naming the window is this side's guarantee. The deadline is for
- * the other case — a connection that died without saying so.
- *
- * A second belt exists on the gateway's side, and it is not for this worker.
- * The window is optional on the wire, and a poll that names none is held for
- * the gateway's whole configured window instead; that window is refused above a
- * ceiling set under this number (`WORKER_POLL_WAIT_CEILING_MS` in
- * `apps/gateway/src/config.ts`), which is where this figure is copied. The
- * gateway depends on the contracts and the core machine rather than on the SDK,
- * so it cannot read it, and nothing checks that the copy still matches:
- * changing what is written here means changing it there in the same breath.
- *
- * It is also the reason two poll failures can be a minute and a half apart,
- * which matters to anybody counting them from outside. A gateway that refuses
- * connections fails a poll at once and the backoff is the whole gap; one that
- * accepts and never answers fails only when this deadline runs out, so the gap
- * is this plus the backoff. `DOUBT_MS` in packages/slice/src/subscription.ts is
- * that sum, and it is named here because raising this number silently narrows
- * it — and a window too narrow reads the quiet between two failures as a
- * recovery.
+ * Two copies elsewhere must move with it. `WORKER_POLL_WAIT_CEILING_MS` in
+ * `apps/gateway/src/config.ts` is set under this number, and nothing checks
+ * that it still is. `DOUBT_MS` in packages/slice/src/subscription.ts is this
+ * plus the backoff ceiling, since a gateway that accepts and never answers
+ * fails a poll only when this runs out; raise this alone and a healthcheck
+ * reads the quiet between two failures as a recovery.
  */
 export const POLL_DEADLINE_MS = POLL_WAIT_SECONDS * 2 * 1_000;
 
 /** What `startWorker` hands its caller, which is the client and never a merchant. */
 export interface RunningWorker {
   /**
-   * Stops the loop and waits for it to finish. Safe to call twice.
-   *
-   * Two things are abandoned rather than finished, and they are not abandoned
-   * on the same terms. A poll parked at the gateway is dropped, and the
-   * gateway stops it and keeps whatever arrives for the next poll; only
-   * something taken in the instant before the drop is lost, and that is an
-   * order, which comes again, or an event, which is sent once — the list of
-   * open orders is what finds a refund owed whose event went missing.
-   * An answer already on its way — a delivery the handler produced a moment
-   * ago — is dropped too, and there the honest thing to say is that nobody on
-   * this side knows whether it arrived first: the order may already be closed
-   * by it, or may come back. The merchant is told which of their orders that
-   * happened to, because on their side the work happened.
-   *
-   * Stopping does not drain. The contract has a word for a poll that asks for
-   * whatever is queued right now and comes straight back, and it is not what a
-   * worker shutting down wants: draining pulls more work into a process that
-   * is going away.
+   * Stops the loop and waits for it to finish. Safe to call twice. A parked
+   * poll is dropped, and so is an answer already on its way, which the
+   * merchant is told about by order; the queue is not drained.
    */
   stop(): Promise<void>;
   /** Whether the loop is still going. False once it has stopped for any reason. */
@@ -476,12 +316,7 @@ export const startWorker = (
   gateway: Gateway,
   handlers: HandlerRegistry,
   clock: WorkerClock = systemClock,
-  /**
-   * The deadline is a parameter for the same reason the clock is: a test
-   * cannot wait out fifty seconds to find out whether the worker gives up on a
-   * poll, and a deadline nothing exercises is a deadline nobody has seen work.
-   * It is not part of anything a merchant passes.
-   */
+  /** A parameter so a test can see the deadline work without waiting it out. */
   deadlineMs: number = POLL_DEADLINE_MS,
 ): RunningWorker => {
   const controller = new AbortController();
@@ -498,8 +333,8 @@ export const startWorker = (
     report({
       kind: WORKER_PROBLEM_KINDS.CONTRACT_VERSION_MISMATCH,
       fatal: true,
-      // Both numbers are in the sentence: a merchant reading only one of them
-      // cannot tell which of the two ends needs upgrading.
+      // Both versions are in the sentence, so the merchant can tell which end
+      // needs upgrading.
       message: `the gateway speaks contract version ${spoken} and this SDK speaks ${contractVersion}; the worker stopped rather than handle orders in a dialect it may be reading wrong`,
     });
   };
@@ -512,10 +347,8 @@ export const startWorker = (
     });
 
     if (!sent.ok) {
-      // Reported even when the worker is stopping, and especially then. The
-      // handler has already run: goods may have been issued, and a merchant
-      // reconciling a shutdown is entitled to know that an answer for this
-      // order went nowhere.
+      // Reported even while stopping: the handler has run, goods may have been
+      // issued, and the merchant needs to know this answer went nowhere.
       report({
         kind: WORKER_PROBLEM_KINDS.ANSWER_FAILED,
         fatal: false,
@@ -535,7 +368,7 @@ export const startWorker = (
     }
   };
 
-  /** See `droppedFieldWarning`: the same loss, on the handler's road. */
+  /** See `droppedFieldWarning`. */
   const warnAboutTheDroppedKey = (order: Order, answer: HandlerAnswer): void => {
     const dropped = droppedFieldWarning(
       order.id,
@@ -618,15 +451,12 @@ export const startWorker = (
       return;
     }
 
-    // Held to the contract before it is sent, for the same reason an order's
-    // answer is: an amount written as a number instead of text is the easiest
-    // mistake there is to make here, and sent out it would come back as the
-    // gateway's complaint about a document, which reads as our fault and
-    // names the merchant's field only inside a quoted blob.
+    // Held to the contract before it is sent, so that the easiest mistake, an
+    // amount written as a number, is named as the merchant's own field rather
+    // than coming back as the gateway's complaint.
     const checked = QuoteResponseSchema.safeParse(answer);
-    // The gateway holds the price to the rule a card's price meets, outside the
-    // schema; applied here too, a zero or a missing cent is named as the
-    // merchant's own field rather than coming back as a call that failed.
+    // The gateway holds the price to the rule a card's price meets; applied
+    // here too, a zero or a missing cent names the merchant's own field.
     const problems = checked.success
       ? checked.data.available
         ? priceProblemsOf(checked.data.price)
@@ -654,11 +484,9 @@ export const startWorker = (
         kind: WORKER_PROBLEM_KINDS.ANSWER_FAILED,
         fatal: false,
         subject: question.price_id,
-        // The advice about stock holds whichever of the three this was, which
-        // is why it is not branched the way an order's consequence is. A price
-        // that did arrive and was used produces an order before the question
-        // expires, and a merchant releasing stock at that moment is releasing
-        // stock they have already committed to an order they hold.
+        // The advice about stock is the same whichever reach this was: a price
+        // that was used produces an order before the question expires, so
+        // stock is released only once it has expired.
         message: `the price for question ${question.price_id} was answered and ${whatIsKnown(sent.failure)}; stock set aside under that identifier can be released once the question expires, whichever of those it was: ${sent.failure.reason}`,
       });
       return;
@@ -695,14 +523,9 @@ export const startWorker = (
         fatal: false,
         cause,
         subject: event.order_id,
-        // Nothing here can ask for the event again — an event carries no
-        // acknowledgement, so there is no call that says "send that one
-        // once more". Whether the gateway sends it again anyway is the
-        // gateway's, and this SDK does not know: the contract gives every
-        // envelope an identifier and a delivery time precisely so that a
-        // repeat can be recognised, which only means something if repeats
-        // happen. So the honest thing to tell a merchant is that we cannot
-        // get it back, not that it is gone.
+        // An event carries no acknowledgement, so nothing here can ask for it
+        // again, and whether the gateway would resend it is not known here:
+        // the merchant is told it cannot be got back, not that it is gone.
         message: `the event handler threw on ${event.type} for order ${event.order_id}; nothing here can ask for that event again, and whether it is sent again is not something this SDK knows: ${String(cause)}`,
       });
     }
@@ -720,21 +543,15 @@ export const startWorker = (
         await handleEvent(envelope.payload, { id: envelope.id, sent_at: envelope.sent_at });
         return;
       default:
-        // Unreachable while the contract carries three kinds, and here so
-        // that a fourth added there stops this file compiling rather than
-        // being dropped in silence by a switch with nothing to say about it.
+        // Unreachable while the contract carries three kinds; a fourth stops
+        // this file compiling instead of being dropped in silence.
         return assertEveryKindIsHandled(envelope);
     }
   };
 
   const run = async (): Promise<void> => {
-    // One turn before the first poll goes out, so that a process which calls
-    // start() without awaiting it and registers on the next line has that
-    // registration in place before anything is asked of the gateway. A
-    // handler registered later than that is in place too — the registry is
-    // read when an envelope is dispatched, not when the loop begins — so this
-    // buys only the synchronous lines immediately after the call, which is
-    // exactly where a merchant writes them.
+    // One turn before the first poll, so that a process which calls start()
+    // without awaiting it and registers on the next line is ready first.
     await Promise.resolve();
 
     let failures = 0;
@@ -743,33 +560,26 @@ export const startWorker = (
       const startedAt = clock.now();
       const answer = await callRoute(gateway, "poll_worker", {
         body: { wait_seconds: POLL_WAIT_SECONDS },
-        // Two ways this call can end early, and they are different: the worker
-        // was stopped, or the answer took longer than any answer should.
+        // Ends early when the worker is stopped or the answer takes longer
+        // than any answer should.
         signal: AbortSignal.any([controller.signal, AbortSignal.timeout(deadlineMs)]),
       });
 
       if (stopping) break;
 
       if (!answer.ok) {
-        // A gateway of another dialect answers with a document this SDK cannot
-        // parse, so the version it names is worth passing on — but only as a
-        // remark, never as a verdict. Whatever this field was read out of was
-        // not held to any schema of ours: a proxy's error envelope carrying a
-        // field of that name would otherwise stop a merchant's worker for
-        // good over something that needed waiting out. The one place a
-        // mismatch is decided is a poll answer that parsed.
+        // The version a failed body names is passed on as a remark, never as a
+        // verdict: that body was held to no schema, and only a poll answer
+        // that parsed decides a mismatch.
         const spoken = versionSpokenIn(answer.failure.body);
         const remark =
           spoken !== undefined && !speaksContract(spoken)
             ? ` — what answered names contract version ${spoken} while this SDK speaks ${contractVersion}, which may mean the gateway is of another version`
             : "";
 
-        // A refusal that says waiting will not change it — a key revoked or
-        // never accepted is the case that matters — is still not taken as the
-        // end: one such answer from a proxy must not stop a merchant's worker
-        // for good. But it is said for what it is, because "asking again"
-        // alone reads as something that will pass, and a revoked key takes no
-        // new orders until it is replaced.
+        // A refusal that says waiting will not help, such as a revoked key, is
+        // still not taken as the end, since one such answer may come from a
+        // proxy; but it is said for what it is.
         const settled = answer.failure.refusal?.retryable === false;
         failures += 1;
         report({
@@ -800,11 +610,8 @@ export const startWorker = (
       }
 
       if (handled < batch.length) {
-        // Said rather than left as a silence. An order or a price question
-        // left in the batch comes back on its own; an event carries no
-        // acknowledgement, so nothing here can ask for that one again, and a
-        // merchant who stopped a worker mid-batch is entitled to know which
-        // kinds went unread.
+        // Said rather than left silent: an order or price question left in the
+        // batch comes back on its own, but an event does not.
         report({
           kind: WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
           fatal: false,
@@ -825,10 +632,8 @@ export const startWorker = (
 
   const finished = run()
     .catch((cause: unknown) => {
-      // Under its own name rather than as a failed poll, because nothing about
-      // a poll failed: everything the loop expects to go wrong is handled
-      // inside it, so reaching here means this SDK has a defect and the
-      // merchant's worker is down until their process is restarted.
+      // Reaching here means a defect in this SDK, not a failed poll: the
+      // merchant's worker is down until their process restarts.
       report({
         kind: WORKER_PROBLEM_KINDS.WORKER_FAILED,
         fatal: true,
@@ -837,8 +642,8 @@ export const startWorker = (
       });
     })
     .finally(() => {
-      // However the loop ended — stopped, or fatally — it is over, and both
-      // this worker and whoever is holding it should agree about that.
+      // However the loop ended, it is over, and the worker and its holder
+      // must agree.
       ended = true;
       stopping = true;
     });

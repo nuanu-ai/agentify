@@ -1,36 +1,24 @@
 /**
- * The Agentify merchant SDK: what someone else's engineer installs so that
- * their catalog sells to agents.
+ * The Agentify merchant SDK: what a merchant's engineer installs so that their
+ * catalog sells to agents.
  *
- * There are two things in here and they are one process. `createClient` builds
- * a handle on the gateway from a key and an address; through it a merchant
- * says what their process answers with `on`, opens one outgoing subscription
- * that carries paid orders, price questions and order events together, and
- * closes orders they took on earlier off the orders themselves. Beside it,
- * `checkCard` is the check a merchant runs on their own cards before
- * publishing them — the same check the documentation calls
- * `agentify verify`, which the published package installs as a command of
- * that name. The command's own insides are not exported: what a merchant calls
- * from their code is `checkCard`, and what they run from a terminal is the
- * command, and neither of those needs the other's exit codes.
+ * `createClient` builds a handle on the gateway from a key and an address.
+ * Through it a merchant says what their process answers with `on`, opens one
+ * outgoing subscription that carries paid orders, price questions and order
+ * events together, and closes orders they took on earlier. `checkCard` is the
+ * check a merchant runs on their own cards before publishing them; the package
+ * also installs it as the `agentify verify` command.
  *
- * Every call that can fail answers in one envelope — `ok` says which, and a
+ * Every call that can fail answers in one envelope: `ok` says which, and a
  * failure carries one `error` with a code, a sentence, whether repeating could
- * help, and the findings under `problems` where the call is refusing what it
- * was handed. What throws instead is a call with no such branch, as
- * `AgentifyError`, under the same codes.
+ * help, and the findings under `problems` where the call refuses what it was
+ * handed. A call with no such branch throws `AgentifyError` instead, under the
+ * same codes.
  *
- * The runtime dependency tree is minimal and listed in full: our own
- * `@nuanu-ai/agentify-contracts`, and zod underneath it, and nothing else. A merchant
- * installing the SDK into their production should know exactly what arrives
- * with it, rather than inherit a foreign package tree they would then be
- * maintaining themselves. Every new third-party package in this tree is a
- * recorded decision (ADR-0003 §8), and a test in this package holds the line.
- *
- * The types a merchant needs to write their own functions against — what a
- * card is, what an order carries, what a handler may answer — are re-exported
- * here from the contracts package, so that integration code has one import and
- * not two.
+ * The runtime dependencies are `@nuanu-ai/agentify-contracts` and zod beneath
+ * it, and nothing else. The types an integration is written against — a card,
+ * an order, a handler's answer — are re-exported here, so integration code
+ * needs one import.
  */
 
 export type {
