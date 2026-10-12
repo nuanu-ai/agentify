@@ -211,7 +211,8 @@ its own.
 | `apps/web` | The scanner: the public site, the checks, the report. |
 | `apps/scanner-worker`, `apps/browser-observer-actor` | The scanner's background process and its passive browser observation. |
 | `apps/gateway` | The payment edge, the order runner and the queue. Ports in `src/ports`, their implementations in `src/adapters`. |
-| `apps/dashboard` | The merchant's screens: sign-in, cards, orders, receipts, keys, and the identity route the scanner calls. Server-rendered, no client build (`docs/research/35-one-process.md`). |
+| `apps/dashboard` | The merchant's screens: sign-in, cards, orders, receipts, keys, and the identity route the scanner calls. Server-rendered in the application's process; the screens moved so far are React Router pages under `app/`, built by `pnpm --filter @agentify/dashboard build`, and the rest are still HTML strings (`docs/research/35-one-process.md`). |
+| `packages/ui` | `@agentify/ui`: the React components every surface draws with, thin wrappers over the classes of `packages/visual`. |
 | `apps/docs` | The merchant documentation, a VitePress site served at `/docs`. Its JSON examples are test fixtures (see below). |
 | `packages/contracts` | `@nuanu-ai/agentify-contracts`: every shape that crosses a boundary, as zod schemas, and the route table both sides import instead of transcribing. |
 | `packages/core` | The order state machine: pure logic, zero IO, zero runtime dependencies. |
