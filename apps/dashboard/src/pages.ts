@@ -230,6 +230,14 @@ const pageOf = (path: string): string => {
   return page.length > 1 && page.endsWith("/") ? page.slice(0, -1) : page;
 };
 
+const addressOf = (written: string): URL | null => {
+  try {
+    return new URL(`http://dashboard${written}`);
+  } catch {
+    return null;
+  }
+};
+
 const decodes = (path: string): boolean => {
   try {
     decodeURI(path);
@@ -316,19 +324,20 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       const { build, routes, handle } = mount(
         typeof pages.build === "function" ? await pages.build() : pages.build,
       );
+      // The address as React Router reads it, which its adapter builds the
+      // same way: dot segments taken out, the query everything after the
+      // first `?`. Every decision below is about that address, never the one
+      // as written, which may lead somewhere else.
+      const url = addressOf(request.originalUrl);
+      if (url === null) {
+        next();
+        return;
+      }
       // A path that cannot be decoded is no address any route could have, and
       // matching it would have React Router write it, as the stranger sent
       // it, to the log; the route table matches each path it is asked about.
-      const asked = request.path === manifestPath(build);
-      // Read as React Router reads it, from everything after the first `?`.
-      const query = request.originalUrl.indexOf("?");
-      const paths = asked
-        ? (
-            new URLSearchParams(query === -1 ? "" : request.originalUrl.slice(query + 1)).get(
-              "paths",
-            ) ?? ""
-          ).split(",")
-        : [request.path];
+      const asked = url.pathname === manifestPath(build);
+      const paths = asked ? (url.searchParams.get("paths") ?? "").split(",") : [url.pathname];
       if (!paths.every(decodes)) {
         if (asked) {
           response.status(400).type("text/plain").send("Invalid Request");
@@ -341,8 +350,8 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
         handle(request, response, next);
         return;
       }
-      const data = request.path.endsWith(".data");
-      const matches = matchRoutes(routes, pageOf(request.path), basename) ?? [];
+      const data = url.pathname.endsWith(".data");
+      const matches = matchRoutes(routes, pageOf(url.pathname), basename) ?? [];
       const served = matches.at(-1)?.route.handle as Served | undefined;
       if (served === undefined || !served.answers(request.method)) {
         next();
