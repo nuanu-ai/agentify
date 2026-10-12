@@ -3346,6 +3346,19 @@ describe("what every screen says about the address", () => {
     expect(attributesOf(line ?? "").get("path")).toBe("/dashboard");
   });
 
+  it("marks the press's cookie Secure wherever the session's is", async () => {
+    // Behind https the session cookie is Secure, and the press's goes the same
+    // way rather than being the one cookie of the dashboard's sent in clear.
+    const running = await started({ base: "/dashboard", dashboard: { COOKIE_SECURE: "true" } });
+    await running.browser.signIn();
+
+    const answered = await running.browser.post("/dashboard/cards?selling=pause");
+
+    const line = answered.headers.getSetCookie().find((one) => one.startsWith(`${PRESSED}=`));
+    expect(line).toBeDefined();
+    expect(attributesOf(line ?? "").has("secure")).toBe(true);
+  });
+
   it("answers a signed-out browser's request for a page's data with the sign-in, not the data", async () => {
     const { browser } = await started();
     await browser.signIn();
