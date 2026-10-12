@@ -10,7 +10,7 @@
     "./start": "./src/start.ts"
   },
   "scripts": {
-    "build": "react-router build",
+    "build": "react-router build && tsx src/precompress.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "account": "tsx src/account.ts",
     "approve": "tsx src/approve.ts",

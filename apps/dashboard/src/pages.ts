@@ -13,7 +13,8 @@
  */
 
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { readdir } from "node:fs/promises";
+import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequestHandler } from "@react-router/express";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
@@ -37,6 +38,10 @@ declare module "react-router" {
 
 const APP_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const BUILT_SERVER = join(APP_ROOT, "dist", "server", "index.js");
+
+/** Where Vite puts the browser's files, under the build's public path. */
+const ASSETS_DIRECTORY = "assets";
+const BUILT_ASSETS = join(APP_ROOT, "dist", "client", ASSETS_DIRECTORY);
 
 /** The largest form any page here posts, and more than any of them needs. */
 const FORM_AT_MOST = 16 * 1024;
@@ -70,7 +75,15 @@ export async function builtPages(): Promise<Pages> {
     );
   }
   const build = (await import(BUILT_SERVER)) as ServerBuild;
-  return { build, assets: null, mode: "production", close: async () => {} };
+  return {
+    build,
+    assets: {
+      path: `${build.publicPath}${ASSETS_DIRECTORY}`,
+      handle: await precompressedFrom(BUILT_ASSETS),
+    },
+    mode: "production",
+    close: async () => {},
+  };
 }
 
 /**
@@ -228,5 +241,65 @@ export function pagesHandler(pages: Pages, services: PageServices): RequestHandl
       }
       handle(request, response, next);
     })().catch(next);
+  };
+}
+
+const TYPES: Readonly<Record<string, string>> = {
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+};
+
+/**
+ * The encodings a browser accepts, best first. Only the ones the build writes
+ * are asked about; one named with `q=0` is refused, as the header's grammar
+ * says.
+ */
+const accepted = (header: string | undefined): readonly string[] => {
+  const said = (header ?? "").split(",").map((part) => {
+    const [name = "", ...parameters] = part.trim().toLowerCase().split(";");
+    const refused = parameters.some((parameter) => /^\s*q=0(?:\.0*)?\s*$/.test(parameter));
+    return refused ? "" : name.trim();
+  });
+  return ["br", "gzip"].filter((encoding) => said.includes(encoding) || said.includes("*"));
+};
+
+/**
+ * The built scripts and styles, which carry a content hash in their names and
+ * so may be kept by any cache for a year. Each is sent compressed as the build
+ * wrote it where the browser accepts that encoding. Only files listed when the
+ * process started are answered, so no path in a request reaches the disk.
+ */
+export async function precompressedFrom(directory: string): Promise<RequestHandler> {
+  const names = new Set(await readdir(directory));
+  return (request, response, next) => {
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      next();
+      return;
+    }
+    const name = decodeURIComponent(request.path.slice(1));
+    const type = TYPES[extname(name)];
+    if (!names.has(name) || type === undefined) {
+      response.status(404).type("text/plain").send("No such file.");
+      return;
+    }
+    const encoding = accepted(request.headers["accept-encoding"]).find((each) =>
+      names.has(`${name}.${each === "gzip" ? "gz" : each}`),
+    );
+    response.setHeader("cache-control", "public, max-age=31536000, immutable");
+    response.setHeader("vary", "accept-encoding");
+    response.setHeader("content-type", type);
+    if (encoding !== undefined) {
+      response.setHeader("content-encoding", encoding);
+    }
+    response.sendFile(
+      join(
+        directory,
+        encoding === undefined ? name : `${name}.${encoding === "gzip" ? "gz" : encoding}`,
+      ),
+      (error) => {
+        if (error !== undefined && !response.headersSent) next(error);
+      },
+    );
   };
 }
