@@ -709,7 +709,7 @@ export async function runBootstrap(
   say(`buyer: ${reach.buyerAddress} (the public address; the key is never printed)`);
   say(`target: ${settings.baseUrl}`);
   say(
-    `caps: $${settings.maxUsd} per purchase, $${settings.totalUsd} for the run — both are also the payment client's own`,
+    `caps: $${settings.maxUsd} per purchase, $${settings.totalUsd} for the run — the per-purchase cap is also the payment client's own; the run total is held by this command`,
   );
   say(
     settings.confirm

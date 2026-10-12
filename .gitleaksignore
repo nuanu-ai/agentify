@@ -53,3 +53,6 @@ fbdfc4092e6f6abf584307d60a0b413b75b2b529:packages/slice/src/bootstrap-command.te
 # The first local-devnet account's public, valueless key in a catalog test, since
 # replaced by a computed one; the commit stays in the branch's history.
 7d3322e319a4ec9b583265540cc72cbc2d84dbe7:packages/slice/src/catalog-reading.test.ts:generic-api-key:19
+# The same public key in the smoke's test, since replaced by a generated one;
+# the commit stays in the branch's history.
+bafb4db326a127291d4bf4f27e4f471faf42102d:packages/slice/src/smoke.test.ts:generic-api-key:17
