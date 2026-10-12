@@ -7,6 +7,7 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
+import type { Integration } from "@agentify/gateway";
 import { bare, brandLockup, escaped, page, when } from "./html.js";
 import { refusedForNoName, type Viewer } from "./screens.js";
 import type { SkippedProduct } from "./woo-catalog.js";
@@ -65,8 +66,25 @@ export interface WooView {
    */
   readonly refused?: readonly Unset[];
   readonly problem?: string;
+  /**
+   * Why going back to their own code was just refused: drawn beside the
+   * control that asked, not under the Connect box.
+   */
+  readonly leaving?: string;
+  /**
+   * Why selling through the connected shop was refused, or why Import was,
+   * for a merchant still on their code: drawn beside the switch.
+   */
+  readonly switching?: string;
+  /** Whether the merchant's selling is stopped, so that nothing imported sells. */
+  readonly stopped?: boolean;
   /** So a refusal leaves the box as they left it. */
   readonly typed?: string;
+  /**
+   * The integration the merchant sells through, read off the gateway when the
+   * page was drawn.
+   */
+  readonly through: Integration;
   /**
    * Set by the return route for any browser with a session, whatever query it
    * carried, so typing the address in sets it too. It changes what the page
@@ -108,11 +126,12 @@ ${action}
 };
 
 /**
- * Said once, here, where Connect and Import are; the integrations block links
- * here.
+ * Said once, here, on the page with Connect and Import, which is the only
+ * place the connector is described; the integrations block links here.
  */
-const WHAT_CONNECTING_DOES = `<p>This experimental WooCommerce connector currently works in test mode only. It imports published simple products priced in USD, with no stock management, from a shop whose tax calculation is turned off, in two narrow configurations. A virtual download with one protected file and unlimited downloads is handed to the agent once it is paid for. A physical product, neither virtual nor downloadable, is sold as a parcel: the agent pays its price plus your shop's own cheapest shipping rate to the buyer's place, and your shop gets a paid order carrying the buyer's shipping address.</p>
-  <p class="quiet">Connecting gives Agentify access to your shop, and importing publishes supported products as cards. You approve access in WooCommerce; Agentify never asks for your shop password.</p>`;
+const WHAT_CONNECTING_DOES = `<p>The WooCommerce connector works in test mode only for now. It imports published simple products priced in USD, with no stock management, from a shop whose tax calculation is turned off, in two narrow configurations. A virtual download with one protected file and unlimited downloads is handed to the agent once it is paid for. A physical product, neither virtual nor downloadable, is sold as a parcel: the agent pays its price plus your shop's own cheapest shipping rate to the buyer's place, and your shop gets a paid order carrying the buyer's shipping address.</p>
+  <p class="quiet">Connecting gives Agentify access to your shop, and importing publishes supported products as cards. You approve access in WooCommerce; Agentify never asks for your shop password.</p>
+  <p class="quiet">You sell through your shop or through your own code, one at a time. While you sell through the shop, the cards your code published are off sale and your code receives no orders; disconnecting the shop here brings them back.</p>`;
 
 export const wooScreen = (viewer: Viewer, view: WooView): string => {
   const { base } = viewer;
@@ -127,7 +146,7 @@ export const wooScreen = (viewer: Viewer, view: WooView): string => {
 ${view.cameBack === true && view.state.kind === "connected" ? KEYS_ARRIVED : ""}${
   view.state.kind === "connected"
     ? theConnection(base, view.state.shop, view)
-    : `${noKeysYet(
+    : `${view.through === "woocommerce" ? theWayBack(base, view) : ""}${noKeysYet(
         view.state,
         // Only the wait has a next step of its own; a Connect that ran out is
         // answered by the form below it.
@@ -189,10 +208,54 @@ export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
     null,
   );
 
+/**
+ * The way back to the merchant's own code for one who sells through a shop
+ * that is not connected: they pressed Connect and never approved, or the
+ * account was put on the shop by cards it had imported, with no shop
+ * connected. Nothing reads a shop for them, so the shop's cards cannot sell,
+ * and the code's are off sale until they press this.
+ */
+const theWayBack = (
+  base: string,
+  view: WooView,
+): string => `  <form class="issue" method="post" action="${escaped(base)}/woocommerce/disconnect">
+    <div>
+      <label>You sell through a WooCommerce shop, and none is connected</label>
+      <p class="quiet">Nothing sells until a shop is connected. To sell through your own code instead, switch back: the cards your code published come back, with selling stopped until you start it again on Cards.</p>
+      ${view.leaving === undefined ? "" : `<p class="problem">${escaped(view.leaving)}</p>`}
+    </div>
+    <button class="button button-secondary" type="submit">Sell through your own code</button>
+  </form>
+`;
+
+/**
+ * The switch to the connected shop, for a merchant whose shop is here while
+ * they sell through their own code: a Disconnect cut off between moving them
+ * back and forgetting the shop leaves them so, and so can two tabs. Nothing
+ * imported sells until they press it.
+ */
+const theSwitch = (
+  base: string,
+  view: WooView,
+): string => `  <form class="issue" method="post" action="${escaped(base)}/woocommerce/switch">
+    <div>
+      <label>You sell through your own code</label>
+      <p class="quiet">This shop is connected, but its cards are off sale and nothing can be imported while you sell through your own code. Selling through the shop takes the cards your code published off sale, and your code receives no orders until you disconnect the shop here.</p>
+      ${view.switching === undefined ? "" : `<p class="problem">${escaped(view.switching)}</p>`}
+    </div>
+    <button class="button button-primary" type="submit">Sell through this shop</button>
+  </form>
+`;
+
 const theForm = (base: string, view: WooView): string => `  <div class="lede">
     <div>
       <h2>Connect your shop</h2>
-      <p>Type the address you open your own shop at. Your browser goes there next, so that WooCommerce can ask you to approve.</p>
+      <p>Type the address you open your own shop at. Your browser goes there next, so that WooCommerce can ask you to approve.</p>${
+        view.through === "api"
+          ? `
+      <p class="quiet">Pressing Connect switches you to selling through the shop at once, before you approve: the cards your code published go off sale and your code receives no orders. Orders your code is still working on have to finish first.</p>`
+          : ""
+      }
       <p class="quiet">Use the public https address at the root of the shop. WooCommerce permalinks must be set to anything other than Plain.</p>
     </div>
   </div>
@@ -227,7 +290,12 @@ const theConnection = (
       }
     </div>
   </div>
-  <form class="issue" method="post" action="${escaped(base)}/woocommerce/import">
+${view.through === "api" ? theSwitch(base, view) : ""}${
+  view.stopped === true
+    ? `  <p class="quiet">Selling is stopped, so nothing imported sells until you start it again on <a href="${escaped(base)}/cards">Cards</a>.</p>
+`
+    : ""
+}  <form class="issue" method="post" action="${escaped(base)}/woocommerce/import">
     <div>
       <label>Import the catalog</label>
       <p class="quiet">Reads up to ${PRODUCTS_AT_MOST} products and publishes only the product configuration currently supported by this connector, described above. Other products stay in your shop. If the shop has more than ${PRODUCTS_AT_MOST} products, the whole import is refused. Running it again updates the same cards.</p>
@@ -241,7 +309,8 @@ const theConnection = (
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/disconnect">
     <div>
       <label>Disconnect</label>
-      <p class="quiet">Deletes the keys your shop gave us. Cards stay listed, but without a connection a new purchase cannot get a price and is refused before payment. You still have to fulfill orders that are already paid. If agents should no longer see the cards, pause them first. To revoke the keys, open WooCommerce → Settings → Advanced → REST API.</p>
+      <p class="quiet">Deletes the keys your shop gave us and switches you back to selling through your own code: the shop's cards go off sale, and the cards your code published come back, with selling stopped until you start it again on Cards. Orders still waiting on the shop have to finish first, a parcel until it is marked Completed in WooCommerce. A parcel already owed a refund is no longer followed once the shop is disconnected, so marking it Completed after that does not clear the debt. To revoke the keys in the shop too, open WooCommerce → Settings → Advanced → REST API.</p>
+      ${view.leaving === undefined ? "" : `<p class="problem">${escaped(view.leaving)}</p>`}
     </div>
     <button class="button button-secondary" type="submit">Forget this shop</button>
   </form>
@@ -480,13 +549,13 @@ export const wooSettingsBlock = (base: string, state: ShopTile): string => {
       }
       <div class="connect-actions"><a class="button button-secondary" href="${escaped(base)}/woocommerce">Your shop</a></div>`
         : state.kind === "none"
-          ? `<p>This experimental connector imports two narrow WooCommerce configurations, a download and a parcel, which the shop screen describes.</p>
+          ? `<p>The connector imports two narrow WooCommerce configurations, a download and a parcel, which the shop screen describes. You sell through it or through your own code, one at a time.</p>
       <div class="connect-actions"><a class="button button-primary" href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></div>`
           : `${noKeysYet(state)}
       <div class="connect-actions"><a class="button button-primary" href="${escaped(base)}/woocommerce">${state.kind === "waiting" ? "Check the connection" : "Connect again"}</a></div>`;
 
   return `
-      <h3>WooCommerce (experimental)</h3>
+      <h3>WooCommerce</h3>
       ${said}
 `;
 };

@@ -55,9 +55,10 @@ have answered them we have no more questions for you.
    the test channel only, where the money is not real: it can be tried there
    end to end, and it is not sold live until a lost parcel's refund can be
    recorded ([Orders](/orders)).
-4. How the goods are delivered. The working path uses the Agentify SDK: a
-   handler runs beside your API, takes paid orders and gives out the goods. A
-   WooCommerce connector is experimental and is not required for the SDK path.
+4. How the goods are delivered. The Agentify SDK runs a handler beside your
+   API that takes paid orders and gives out the goods. A WooCommerce shop can
+   be connected in the dashboard instead, on the test channel for now, and its
+   orders are filled from the shop. You sell through one of the two at a time.
    Delivery by a message that you confirm by hand is not available.
 
 ## Your hands or ours

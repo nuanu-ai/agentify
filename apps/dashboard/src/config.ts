@@ -151,6 +151,12 @@ function emptyIsAbsent(rule: z.ZodType<string, string>) {
 
 export interface DashboardConfig {
   readonly surfaceMode: SurfaceMode;
+  /**
+   * The page a transaction on this deployment's chain is looked at on, which
+   * its hash is appended to, or null where there is none: the sandbox settles
+   * nothing, and a chain not listed here has no page we vouch for.
+   */
+  readonly transactionPage: string | null;
   readonly basePath: string;
   readonly cookieSecure: boolean;
   readonly databaseUrl: string;
@@ -165,6 +171,14 @@ export interface DashboardConfig {
 
 /** Used only in the sandbox, where messages go to the log. */
 const NOBODY_READS_THIS = "Agentify <no-reply@localhost>";
+
+/** Each chain a deployment may run on, and where a transaction on it is looked at. */
+const TRANSACTION_PAGES: Readonly<Record<string, string>> = {
+  "eip155:8453": "https://basescan.org/tx/",
+  "eip155:84532": "https://sepolia.basescan.org/tx/",
+  "eip155:11155111": "https://sepolia.etherscan.io/tx/",
+  "eip155:80002": "https://amoy.polygonscan.com/tx/",
+};
 
 export function loadConfig(environment: Record<string, string | undefined>): DashboardConfig {
   const parsed = environmentSchema.safeParse(environment);
@@ -236,6 +250,8 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
 
   return {
     surfaceMode,
+    transactionPage:
+      surfaceMode === "sandbox" ? null : (TRANSACTION_PAGES[values.PAYMENT_NETWORK] ?? null),
     basePath: values.BASE_PATH,
     cookieSecure: values.COOKIE_SECURE,
     databaseUrl: values.DATABASE_URL,

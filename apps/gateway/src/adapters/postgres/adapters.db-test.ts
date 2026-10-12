@@ -35,7 +35,7 @@ import { nobodyAnnounces } from "../../ports/announcer.js";
 import type { OrderChange } from "../../ports/store.js";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "../../testing/database.js";
 import { countedIds, testConfig, workUntilStopped } from "../../testing/harness.js";
-import { describeStore } from "../../testing/store-contract.js";
+import { anOrder, describeStore } from "../../testing/store-contract.js";
 import { ScriptedFacilitator } from "../memory/facilitator.js";
 import { PgBossQueue, streamOf } from "../pgboss/queue.js";
 import { connect, PostgresStore } from "./store.js";
@@ -273,6 +273,77 @@ if (databaseUrl === null) {
       await expect(store.selling(A)).rejects.toThrow(/sort-of/);
 
       await store.setSelling(A, "open");
+    });
+
+    describe("the birth of an order and a switch of integration", () => {
+      // A birth holds its merchant's row for share while it writes, and a
+      // switch holds it for update while it counts the orders that hold it, so
+      // neither can land inside the other. The store contract runs them one
+      // after the other; only two connections can show they wait.
+      const settledWithin = async (pending: Promise<unknown>, ms: number): Promise<boolean> => {
+        let settled = false;
+        void pending.then(
+          () => {
+            settled = true;
+          },
+          () => {
+            settled = true;
+          },
+        );
+        await new Promise((resolve) => setTimeout(resolve, ms));
+        return settled;
+      };
+
+      afterEach(async () => {
+        await pool.query("delete from orders where merchant_id = $1", [A]);
+        await pool.query("update merchants set integration = 'api' where id = $1", [A]);
+      });
+
+      it("makes a birth wait for a switch, and writes nothing once the switch has moved the merchant", async () => {
+        const switching = await pool.connect();
+        try {
+          await switching.query("begin");
+          await switching.query("select id from merchants where id = $1 for update", [A]);
+
+          const born = store.addOrder(
+            anOrder("ord_born_in_the_switch", "quoted", { merchantId: A }),
+            "api",
+          );
+          expect(await settledWithin(born, 300)).toBe(false);
+
+          await switching.query("update merchants set integration = 'woocommerce' where id = $1", [
+            A,
+          ]);
+          await switching.query("commit");
+
+          expect(await born).toBe(false);
+          expect(await store.orderById("ord_born_in_the_switch")).toBeNull();
+        } finally {
+          switching.release();
+        }
+      });
+
+      it("makes a switch wait for a birth, and counts the order it wrote", async () => {
+        const birth = await pool.connect();
+        try {
+          await birth.query("begin");
+          await birth.query("select id from merchants where id = $1 for share", [A]);
+
+          const switched = store.switchIntegration(A, "woocommerce");
+          expect(await settledWithin(switched, 300)).toBe(false);
+
+          await birth.query(
+            `insert into orders (id, state, open, merchant_id, item_id, merchant_item_id, record, created_at, updated_at)
+             values ('ord_born_first', 'paid', true, $1, 'item_x', 'sku-x', '{}', now(), now())`,
+            [A],
+          );
+          await birth.query("commit");
+
+          expect(await switched).toStrictEqual({ switched: false, waiting: ["ord_born_first"] });
+        } finally {
+          birth.release();
+        }
+      });
     });
 
     it("lets one of two separate database clients take an order, and makes the other wait to find out", async () => {

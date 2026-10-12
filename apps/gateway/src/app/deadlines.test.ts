@@ -277,10 +277,11 @@ describe("when the time runs out", () => {
 });
 
 describe("a card that names no delivery deadline", () => {
-  it("holds its merchant to ours, and shows the agent no deadline at all", async () => {
+  it("holds its merchant to ours, and shows the agent that time on the card", async () => {
     // With no deadline on the card the gateway's default applies and runs out
-    // into a refund as a merchant's own would, yet the agent is shown no deadline
-    // at all. The portal has to say so rather than promise one.
+    // into a refund as a merchant's own would. The card shows that default in
+    // whole seconds, rounded up, so an agent that waits as long as the card
+    // says never gives up on an order still allowed to arrive.
     const harnessed = await started();
     const published = await harnessed.gateway.publishCard(harnessed.merchant.id, asyncCard);
     if (!published.ok) throw new Error("the card would not publish");
@@ -289,7 +290,11 @@ describe("a card that names no delivery deadline", () => {
     const shown = (await harnessed.gateway.catalog()).items[0];
     if (shown === undefined) throw new Error("the card did not reach the catalog");
     expect(shown.fulfillment).toBe("async");
-    expect("fulfill_deadline_seconds" in shown).toBe(false);
+    const heldMs = harnessed.runtime.config.deadlines.defaultAsyncFulfillmentMs;
+    const shownMs =
+      ("fulfill_deadline_seconds" in shown ? (shown.fulfill_deadline_seconds ?? 0) : 0) * 1_000;
+    expect(shownMs).toBeGreaterThanOrEqual(heldMs);
+    expect(shownMs - heldMs).toBeLessThan(1_000);
 
     const offered = await harnessed.gateway.beginPurchase(published.id, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
@@ -366,19 +371,26 @@ describe("when a delivery goes unanswered", () => {
     expect(new Set(seen.map((each) => each.message)).size).toBe(seen.length);
   });
 
-  it("stops repeating once the attempts are spent, and leaves the debt behind", async () => {
-    // The fulfilment deadline is far away, so reaching refund_due inside this
-    // test can only be the attempt cap.
+  it("stops repeating once the attempts are spent, and leaves the debt to the deadline", async () => {
+    // Running out of attempts is not running out of time: the merchant may
+    // still deliver until the deadline, and the debt comes from the deadline
+    // passing. The money moved at the purchase, so what is left is a debt
+    // rather than a free ending.
     const harnessed = await started({
       HANDLER_ANSWER_MS: "10",
       REDELIVERY_BASE_DELAY_MS: "5",
       REDELIVERY_MAX_ATTEMPTS: "2",
-      DEFAULT_ASYNC_FULFILLMENT_MS: "60000",
+      DEFAULT_ASYNC_FULFILLMENT_MS: "400",
     });
     const orderId = await bought(harnessed, asyncCard);
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
     const silent = workUntilStopped(harnessed, {});
+    await vi.waitFor(
+      async () => expect((await state(harnessed, orderId))?.dispatch.attempts).toBe(2),
+      { timeout: 2_000, interval: 5 },
+    );
+    expect((await state(harnessed, orderId))?.state).toBe("dispatched");
     await vi.waitFor(
       async () => expect((await state(harnessed, orderId))?.state).toBe("refund_due"),
       { timeout: 2_000, interval: 5 },
@@ -388,6 +400,10 @@ describe("when a delivery goes unanswered", () => {
     const owing = await state(harnessed, orderId);
     expect(owing?.dispatch.attempts).toBe(2);
     expect(owing?.payment).toBe("settled");
+    expect(owing?.closure).toStrictEqual({
+      cause: "deadline_expired",
+      deadline: "async_fulfillment",
+    });
   });
 
   it("does not send an order again to a merchant who answered the delivery he was given", async () => {

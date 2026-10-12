@@ -482,6 +482,8 @@ describe("the whole way through, against a real gateway", () => {
       merchantId: open.merchant.id,
       email: MERCHANT_EMAIL,
     });
+    // What pressing Connect does before the merchant is sent to their shop.
+    expect((await gateway.sellThrough("woocommerce")).ok).toBe(true);
 
     // Published through the same path as every other card, with no leniency of
     // its own.
@@ -515,6 +517,7 @@ describe("the whole way through, against a real gateway", () => {
     const connected: WooConnection = { ...connection(), shopUrl: shop.url };
 
     const bought = await buyOverHttp(open, served, itemId, {
+      through: "woocommerce",
       onOrder: async (order) => {
         const answer = await fillFromTheShop(order, connected, MERCHANT_EMAIL, parts);
         if (answer === null) {
@@ -608,6 +611,7 @@ describe("the whole way through, against a real gateway", () => {
     await open.queue.publish(open.merchant.id, anEvent("msg_ours"));
     await open.queue.publish(other.id, anEvent("msg_theirs"));
     const application = open.gateway;
+    await application.sellThrough(open.merchant.id, "woocommerce");
 
     const turned = await turnOnce(connection(), {
       shops: memoryWooShops(),
@@ -1685,6 +1689,7 @@ describe("a parcel the whole way through, against a real gateway", () => {
     const harnessed = open;
     const acting = { merchantId: harnessed.merchant.id, email: MERCHANT_EMAIL };
     const gateway = gatewayFor(harnessed.gateway, acting);
+    await harnessed.gateway.sellThrough(harnessed.merchant.id, "woocommerce");
     await harnessed.gateway.setSellerName(harnessed.merchant.id, {
       seller_site: "https://shop.example.com",
     });
@@ -1736,6 +1741,7 @@ describe("a parcel the whole way through, against a real gateway", () => {
       served,
       itemId,
       {
+        through: "woocommerce",
         // The harness hands the question over as the envelope carried it.
         onQuote: async (question) => {
           const answer = await quoteFromTheShop(

@@ -216,8 +216,10 @@ failure. An exception in the handler, a process that fell over, a connection
 that broke — for us each of these means the order never reached you: the answer
 did not arrive, so we send the order again, after a delay, until the mode's
 deadline runs out or we have delivered it five times, whichever comes first.
-Five is what this system is set to, and no card changes it. Either way the order
-closes as though the deadline had passed. We read a refusal the other way, as a
+Five is what this system is set to, and no card changes it. Once we stop sending
+it, the order stays open until its deadline: an answer or a delivery that
+arrives before then still counts, and at the deadline the order closes as any
+order whose deadline passed. We read a refusal the other way, as a
 final "this cannot be delivered", and we close the order on it. So a supplier
 that did not answer within five seconds is not worth a refusal: throw instead.
 

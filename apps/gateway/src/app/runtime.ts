@@ -12,7 +12,13 @@ import type { Announcer } from "../ports/announcer.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Facilitator } from "../ports/facilitator.js";
 import type { Queue } from "../ports/queue.js";
-import type { Store, StoredCard, StoredMerchant, StoredPayoutWallet } from "../ports/store.js";
+import type {
+  Integration,
+  Store,
+  StoredCard,
+  StoredMerchant,
+  StoredPayoutWallet,
+} from "../ports/store.js";
 
 export interface Runtime {
   readonly config: GatewayConfig;
@@ -54,6 +60,31 @@ export function policyFor(card: Card, config: GatewayConfig): OrderPolicy {
   };
 }
 
+/**
+ * The card as an agent reads it in the catalog: where the merchant named no
+ * deadline, the gateway's default that `policyFor` applies is written in, so
+ * the agent sees the clock its order runs on. Rounded up to the second, so an
+ * agent that waits as long as the card says never gives up on an order still
+ * allowed to arrive.
+ */
+export function cardAsHeld(card: Card, config: GatewayConfig): Card {
+  const { deadlines } = policyFor(card, config);
+  const seconds = (ms: number): number => Math.ceil(ms / 1_000);
+  switch (card.fulfillment) {
+    case "async":
+      return { ...card, fulfill_deadline_seconds: seconds(deadlines.asyncFulfillmentMs) };
+    case "confirm":
+      return {
+        ...card,
+        confirm_deadline_seconds: seconds(deadlines.confirmationResponseMs),
+        fulfill_deadline_seconds: seconds(deadlines.asyncFulfillmentMs),
+      };
+    case "sync":
+    case "ship":
+      return card;
+  }
+}
+
 export function modeForCard(card: Card): OrderMode {
   return modeOf(card.fulfillment);
 }
@@ -70,13 +101,20 @@ export function priceCheckOf(card: Card): "none" | "merchant" {
  * opened, or the order would be one nobody can pay; the operator's own address
  * never stands in for a missing one. A departed merchant stays departed
  * whatever the card says.
+ *
+ * A card published through an integration the merchant is not selling through
+ * reads as paused too: nothing of that integration draws the merchant's
+ * orders, so an order for it would be paid for and filled by nobody.
  */
 export function sellingFor(
   merchant: MerchantSelling,
   card: StoredCard,
   sellable: boolean,
+  through: Integration,
 ): MerchantSelling {
-  return merchant === "open" && (card.paused || !sellable) ? "paused" : merchant;
+  return merchant === "open" && (card.paused || !sellable || card.integration !== through)
+    ? "paused"
+    : merchant;
 }
 
 /**

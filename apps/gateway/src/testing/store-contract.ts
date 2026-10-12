@@ -40,7 +40,7 @@ const card = (merchantItemId: string, title: string): Card => ({
  * `createdAt` values: Postgres sorts a merchant's list by it, and ties come back
  * in whatever order the planner picks, which makes a suite flicker.
  */
-const anOrder = (
+export const anOrder = (
   id: string,
   state: Order["state"],
   at: { readonly merchantId?: string; readonly createdAt?: number } = {},
@@ -349,6 +349,146 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
         await expect(store.selling("mch_nobody")).rejects.toThrow(/mch_nobody/);
         await expect(store.setSelling("mch_nobody", "paused")).rejects.toThrow(/mch_nobody/);
+      });
+    });
+
+    describe("the integration a merchant sells through", () => {
+      // A card is off sale while its integration is not the one its merchant
+      // sells through. What the store owes that rule: every card says what
+      // published it, a switch never strands an order that still waits on the
+      // integration being left, and no order is born for a card in the moment
+      // it goes off sale.
+
+      it("starts on the merchant's code, with each card on whatever published it", async () => {
+        const store = await twoMerchants();
+
+        const coded = await store.publishCard(A, card("sku-1", "A room"), 10_000);
+        const imported = await store.publishCard(A, card("woo-1", "A mug"), 20_000, "woocommerce");
+
+        expect((await store.merchantById(A))?.integration).toBe("api");
+        expect(coded.integration).toBe("api");
+        expect(imported.integration).toBe("woocommerce");
+        expect((await store.cardById(imported.id))?.integration).toBe("woocommerce");
+        expect((await store.catalogEntries()).map((entry) => entry.integration)).toStrictEqual([
+          "api",
+          "api",
+        ]);
+      });
+
+      it("keeps a card with the integration that first published it", async () => {
+        // A publish through the other integration under the same identifier
+        // would otherwise take over a product whose orders the first one fills.
+        const store = await twoMerchants();
+        const first = await store.publishCard(A, card("sku-1", "A room"), 10_000);
+
+        const other = await store.publishCard(
+          A,
+          card("sku-1", "A room from the shop"),
+          20_000,
+          "woocommerce",
+        );
+
+        expect(other.id).toBe(first.id);
+        expect(other.integration).toBe("api");
+        expect((await store.cards(A)).map((held) => held.card.title)).toStrictEqual(["A room"]);
+        const again = await store.publishCard(A, card("sku-1", "A room, dearer"), 30_000, "api");
+        expect(again.card.title).toBe("A room, dearer");
+      });
+
+      it("moves to the other one and back, for the merchant asked and nobody else", async () => {
+        const store = await twoMerchants();
+
+        expect(await store.switchIntegration(A, "woocommerce")).toStrictEqual({
+          switched: true,
+          sellingPaused: false,
+        });
+        expect((await store.merchantById(A))?.integration).toBe("woocommerce");
+        expect((await store.merchantById(B))?.integration).toBe("api");
+        // Asking for the one already in use changes nothing and is no refusal.
+        expect(await store.switchIntegration(A, "woocommerce")).toStrictEqual({
+          switched: true,
+          sellingPaused: false,
+        });
+
+        await store.switchIntegration(A, "api");
+        expect((await store.merchantById(A))?.integration).toBe("api");
+      });
+
+      it("stays where it is while an order waits on it, and names the order", async () => {
+        // Nothing of the integration being left draws the stream once the
+        // switch is made, so an order still waiting on it — to be paid at a
+        // price it was quoted, or answered, or delivered — would wait for good.
+        const store = await twoMerchants();
+        await store.addOrder(anOrder("ord_quoted", "quoted", { merchantId: A, createdAt: 1 }));
+        await store.addOrder(anOrder("ord_paid", "paid", { merchantId: A, createdAt: 2 }));
+        await store.addOrder(anOrder("ord_owed", "refund_due", { merchantId: A, createdAt: 3 }));
+        await store.addOrder(anOrder("ord_done", "delivered", { merchantId: A, createdAt: 4 }));
+        await store.addOrder(anOrder("ord_theirs", "paid", { merchantId: B, createdAt: 5 }));
+
+        expect(await store.switchIntegration(A, "woocommerce")).toStrictEqual({
+          switched: false,
+          waiting: ["ord_quoted", "ord_paid"],
+        });
+        expect((await store.merchantById(A))?.integration).toBe("api");
+      });
+
+      it("is not held by an order that owes nothing but money", async () => {
+        const store = await twoMerchants();
+        await store.addOrder(anOrder("ord_owed", "refund_due", { merchantId: A }));
+        await store.addOrder(anOrder("ord_unpaid", "delivered_unpaid", { merchantId: A }));
+
+        expect((await store.switchIntegration(A, "woocommerce")).switched).toBe(true);
+      });
+
+      it("stops selling on the way back to the code where its cards would come back on sale", async () => {
+        // An order of the code's asynchronous card is paid before the code
+        // answers, and the code may not have run since the shop took over.
+        const store = await twoMerchants();
+        await store.publishCard(A, card("sku-1", "A room"), 10_000);
+        await store.switchIntegration(A, "woocommerce");
+
+        expect(await store.switchIntegration(A, "api")).toStrictEqual({
+          switched: true,
+          sellingPaused: true,
+        });
+        expect(await store.selling(A)).toBe("paused");
+      });
+
+      it("leaves selling alone on the way back where none of the code's cards would sell", async () => {
+        const store = await twoMerchants();
+        const paused = await store.publishCard(A, card("sku-1", "A room"), 10_000);
+        await store.setCardPaused(A, paused.id, true);
+        await store.publishCard(A, card("woo-1", "A mug"), 20_000, "woocommerce");
+        await store.switchIntegration(A, "woocommerce");
+
+        expect(await store.switchIntegration(A, "api")).toStrictEqual({
+          switched: true,
+          sellingPaused: false,
+        });
+        expect(await store.selling(A)).toBe("open");
+      });
+
+      it("writes no order sold through an integration its merchant has left", async () => {
+        // The birth of an order and a switch wait for each other on the
+        // merchant, so an order read as on sale a moment before the switch is
+        // not written after it.
+        const store = await twoMerchants();
+        await store.switchIntegration(A, "woocommerce");
+
+        expect(await store.addOrder(anOrder("ord_1", "quoted", { merchantId: A }), "api")).toBe(
+          false,
+        );
+        expect(await store.orderById("ord_1")).toBeNull();
+        expect(
+          await store.addOrder(anOrder("ord_2", "quoted", { merchantId: A }), "woocommerce"),
+        ).toBe(true);
+        expect(await store.orderById("ord_2")).not.toBeNull();
+      });
+
+      it("is refused for a merchant the store does not hold", async () => {
+        const store = await twoMerchants();
+
+        await expect(store.switchIntegration("mch_nobody", "api")).rejects.toThrow(/mch_nobody/);
       });
     });
 

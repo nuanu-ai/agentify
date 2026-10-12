@@ -3,12 +3,13 @@
 ## Stage
 Stage 4 of the pilot plan: an external merchant integrates through the SDK,
 publishes their own products, and fulfills an agent's purchase through
-Agentify. The SDK is the primary product path. WooCommerce is an experimental,
-unproven connector; it is not the product's acceptance gate or a prerequisite
-for SDK delivery. The Freeland pilot passed on the product owner's word,
-2026-09-14. The first merchant we do not control is this charter's
-compatibility boundary. Product code is being written, so the "Code" section
-is in force. Decisions live in `docs/decisions/`.
+Agentify. The WooCommerce connector is developed on equal terms with the SDK
+(the product owner's word, 2026-10-11); a merchant sells through one of the
+two at a time (ADR-0036), and the connector stays off the live channel until
+its orders pass end to end on the test channel. The Freeland pilot passed on
+the product owner's word, 2026-09-14. The first merchant we do not control is
+this charter's compatibility boundary. Product code is being written, so the
+"Code" section is in force. Decisions live in `docs/decisions/`.
 
 A stage opens on the product owner's word, and the architect then changes this
 paragraph.

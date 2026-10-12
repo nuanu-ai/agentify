@@ -130,6 +130,11 @@ the synchronous mode the charge comes seconds after the goods, and on a card
 whose price is checked at the purchase the agent may take minutes between the
 price and the payment.
 
+A receipt also names the transfer itself (`transaction`): the hash of the
+transaction the payment layer reported, which the dashboard links to the
+chain's explorer, so a receipt can be matched to the payment in your wallet
+without going by its time.
+
 An order paid for and never delivered leaves no receipt, because no goods went
 out. What you have for that case is the order itself and the event telling you
 a refund is owed.

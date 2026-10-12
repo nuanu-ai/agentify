@@ -6,6 +6,7 @@
  */
 
 import { type Readiness, readinessOf, type SurfaceMode, UNKNOWN } from "@agentify/core";
+import type { Integration } from "@agentify/gateway";
 import {
   API_ROUTES,
   expandPath,
@@ -16,9 +17,11 @@ import {
   type ReceiptList,
 } from "@nuanu-ai/agentify-contracts";
 import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
+import type { RefundCause } from "./gateway.js";
 import {
   bare,
   brandLockup,
+  type Cell,
   escaped,
   momentCell,
   page,
@@ -190,13 +193,23 @@ const cardAside = (entry: MerchantCard): string => {
  * says selling was stopped. A missing live approval is said as such; a card
  * paused where the rule finds nothing missing (only a change between two reads
  * can do that) is said to be off sale and no more.
+ *
+ * A card published by the integration not in use is off sale for that reason
+ * whatever else holds it, and that is said first: neither resuming it nor
+ * anything set in Settings would put it on sale.
  */
 const cardControl = (
   base: string,
   entry: MerchantCard,
   merchant: MerchantCardList["selling"],
   door: Readiness,
+  integration: CardsIntegration,
 ): string => {
+  if (integration.offSale.includes(entry.id)) {
+    return integration.through === "woocommerce"
+      ? '<span class="quiet">Off sale while you sell through your WooCommerce shop</span>'
+      : '<span class="quiet">Off sale while you sell through your own code</span>';
+  }
   if (entry.paused) {
     return `<form class="inline" method="post" action="${escaped(base)}/cards/${encodeURIComponent(entry.id)}/resume">
 <button class="button button-compact button-primary" type="submit">Resume</button></form>`;
@@ -242,10 +255,10 @@ const wrappable = (address: string): string => {
 };
 
 /**
- * The SDK comes first, as the product's path; the WooCommerce connector after
- * it, named as an experiment, and only where this dashboard has one. While no
- * name is set, everything published is refused, so the line says so rather than
- * leaving a merchant to work out why their card never arrived.
+ * The SDK comes first and the WooCommerce connector after it, only where this
+ * dashboard has one. While no name is set, everything published is refused, so
+ * the line says so rather than leaving a merchant to work out why their card
+ * never arrived.
  */
 const emptyCatalogue = (viewer: Viewer, wooAvailable: boolean): string => {
   const why = refusedForNoName(viewer)
@@ -257,16 +270,28 @@ const emptyCatalogue = (viewer: Viewer, wooAvailable: boolean): string => {
     <p>${escaped(why)}</p>
     <div class="connect-actions">
       <a class="button button-primary" href="/docs/quickstart">Publish your first card through the SDK</a>
-      ${wooAvailable ? `<a class="button button-secondary" href="${escaped(viewer.base)}/woocommerce">Try the experimental WooCommerce connector</a>` : ""}
+      ${wooAvailable ? `<a class="button button-secondary" href="${escaped(viewer.base)}/woocommerce">Connect a WooCommerce shop</a>` : ""}
     </div>
   </div>`;
 };
+
+/**
+ * The integration the merchant sells through, and their cards that are off
+ * sale because the other one published them.
+ */
+export interface CardsIntegration {
+  readonly through: Integration;
+  readonly offSale: readonly string[];
+}
+
+const ALL_THROUGH_THE_CODE: CardsIntegration = { through: "api", offSale: [] };
 
 export const cardsScreen = (
   viewer: Viewer,
   cards: MerchantCardList,
   origin: string,
   wooAvailable = false,
+  integration: CardsIntegration = ALL_THROUGH_THE_CODE,
 ): string => {
   const { base } = viewer;
   const paused = cards.cards.filter((entry) => entry.paused).length;
@@ -289,7 +314,7 @@ export const cardsScreen = (
         { kind: "amount", html: escaped(money(entry.card.price)) },
         { kind: "quiet", html: escaped(FULFILLMENT_WORDS[entry.card.fulfillment]) },
         { html: state(SELLING_WORDS[entry.selling]) },
-        { kind: "control", html: cardControl(base, entry, cards.selling, door) },
+        { kind: "control", html: cardControl(base, entry, cards.selling, door, integration) },
       ],
     }),
   );
@@ -358,6 +383,7 @@ export const ordersScreen = (
   cards: MerchantCardList,
   orders: OrderList,
   open: boolean,
+  owed: Readonly<Record<string, RefundCause>> = {},
 ): string => {
   const { base } = viewer;
   const titles = new Map(
@@ -397,7 +423,9 @@ ${table(
   // where the price is checked at purchase the buyer may pay well after it.
   ["Order", "Product", "Amount", "State", "Price set"],
   rows,
-  open ? "Nothing is open. Every order you have is finished." : "No orders yet.",
+  open
+    ? "Nothing is open: no order is owed goods or money. A purchase still at its price question or waiting to be paid is not listed here; All shows it."
+    : "No orders yet.",
 )}
   <p class="note">${escaped(
     "Purchases that closed before they had a price do not appear here: for example, you said the product was out of stock, or you did not answer a price request. No money was charged for them.",
@@ -406,7 +434,7 @@ ${wanting
   .map(
     (order) => `  <div class="callout">
     <div class="what">Order <span class="mono">${escaped(order.id)}</span> ${escaped(ORDER_WORDS[order.status].text)}</div>
-    <div class="why">${escaped(whyItNeedsYou(order.status))}${whereTheRestIs(order.status)}</div>
+    <div class="why">${escaped(whyItNeedsYou(order.status, owed[order.id]))}${whereTheRestIs(order.status)}</div>
   </div>
 `,
   )
@@ -449,9 +477,28 @@ const testOrders = (orders: OrderList): string => {
   )}</p>`;
 };
 
-const whyItNeedsYou = (status: OrderList["orders"][number]["status"]): string =>
+/**
+ * How a refund came to be owed, said as it happened. Where the cause could not
+ * be read the sentence says only what holds for every debt, rather than
+ * guessing the commonest cause.
+ */
+const OWED_BECAUSE: Readonly<Record<RefundCause, string>> = {
+  refused:
+    "The payment was received, then your integration refused the order, so the product was not delivered.",
+  deadline_passed:
+    "The payment was received, the delivery window ran out, and the product was not delivered.",
+  merchant_left:
+    "The payment was received, and the order closed undelivered when you left Agentify.",
+  charge_confirmed_late:
+    "The payment network confirmed the payment only after we had stopped waiting for it and closed the order, so the product was not delivered.",
+};
+
+const whyItNeedsYou = (
+  status: OrderList["orders"][number]["status"],
+  cause: RefundCause | undefined,
+): string =>
   status === "refund_due"
-    ? "The payment was received, the delivery window ran out, and the product was not delivered. You return it from your own wallet — we recorded the amount and the order. A late delivery still clears the debt."
+    ? `${cause === undefined ? "The payment was received and the product was not delivered." : OWED_BECAUSE[cause]} You return it from your own wallet — we recorded the amount and the order. A late delivery still clears the debt.`
     : "Your integration returned the product, but the payment did not go through, so the product was not released to the buyer. The order stays open.";
 
 /**
@@ -467,10 +514,32 @@ const whereTheRestIs = (status: OrderList["orders"][number]["status"]): string =
         "What can still happen to it",
       );
 
+/**
+ * The transfer behind a receipt, as the payment layer named it: a link to the
+ * chain's page for it where this deployment has one and the name is a
+ * transaction hash, the name as written otherwise. Written out whole, because
+ * a shortened hash is a different string to whoever pastes it. A receipt
+ * without one says only that this receipt does not carry it, not that there
+ * was no transfer: older receipts and payments an operator recorded by hand
+ * had one all the same.
+ */
+const transferCell = (transaction: string | undefined, page: string | null): Cell => {
+  if (transaction === undefined) {
+    return { kind: "quiet", html: "Not on this receipt" };
+  }
+  return page !== null && /^0x[0-9a-fA-F]{64}$/.test(transaction)
+    ? {
+        kind: "ident",
+        html: `<a href="${escaped(`${page}${transaction}`)}" rel="noreferrer">${escaped(transaction)}</a>`,
+      }
+    : { kind: "ident", html: escaped(transaction) };
+};
+
 export const receiptsScreen = (
   viewer: Viewer,
   cards: MerchantCardList,
   receipts: ReceiptList,
+  transactionPage: string | null = null,
 ): string => {
   const titles = new Map(cards.cards.map((entry) => [entry.id, entry.card.title]));
   // A shipped parcel is a sale as much as goods handed over: the money is the
@@ -492,6 +561,7 @@ export const receiptsScreen = (
         momentCell(receipt.paid_at),
         momentCell(receipt.price.at),
         momentCell(receipt.price.as_of),
+        transferCell(receipt.transaction, transactionPage),
       ],
     }),
   );
@@ -529,7 +599,17 @@ export const receiptsScreen = (
     <p>This page does not show all of your money. Payments for products not yet delivered and refunds you owe are on Orders. A purchase that was never paid leaves no receipt, and no receipt appears while it is unknown whether the buyer was charged.</p>
   </div>
 ${table(
-  ["Receipt", "Order", "Product", "Amount", "Outcome", "Paid", "Price set", "Price as of"],
+  [
+    "Receipt",
+    "Order",
+    "Product",
+    "Amount",
+    "Outcome",
+    "Paid",
+    "Price set",
+    "Price as of",
+    "Transfer",
+  ],
   rows,
   "No receipts yet. One appears when a product is released to the buyer.",
 )}

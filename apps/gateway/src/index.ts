@@ -72,6 +72,8 @@ export type { Charge, Facilitator, SettleOutcome, VerifyOutcome } from "./ports/
 export type { DrawnEnvelope, Queue, Reminder } from "./ports/queue.js";
 export type {
   CatalogEntry,
+  Integration,
+  IntegrationSwitch,
   MerchantScope,
   OrderChange,
   OrderLookup,

@@ -875,4 +875,117 @@ if (databaseUrl === null) {
       expect(columns.rows.map((column) => column.column_name)).not.toContain("purpose");
     });
   });
+
+  describe("the migration that records which integration sells", () => {
+    // Rows already there carry no integration, so the shape of the merchant
+    // item id decides: the import writes `woo_`, sixteen hex digits and a
+    // product number, and nothing else does.
+    const url = databaseUrl;
+    let pool: Pool;
+
+    const run = async (file: string): Promise<void> => {
+      for (const statement of await statementsOf(file)) {
+        await pool.query(statement);
+      }
+    };
+
+    const writeMerchant = async (id: string): Promise<void> => {
+      await pool.query(
+        `insert into merchants (id, name, selling, created_at, updated_at)
+         values ($1, $1, 'open', now(), now())`,
+        [id],
+      );
+    };
+
+    const writeCard = async (id: string, merchantId: string, merchantItemId: string) => {
+      await pool.query(
+        `insert into cards (id, merchant_id, merchant_item_id, card, as_of)
+         values ($1, $2, $3, '{}', now())`,
+        [id, merchantId, merchantItemId],
+      );
+    };
+
+    const integrations = async (table: "cards" | "merchants") =>
+      Object.fromEntries(
+        (
+          await pool.query<{ id: string; integration: string }>(
+            `select id, integration from ${table} order by id`,
+          )
+        ).rows.map((row) => [row.id, row.integration]),
+      );
+
+    beforeAll(async () => {
+      pool = connect(url).pool;
+    }, 60_000);
+
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    beforeEach(async () => {
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      for (const file of [
+        "0000_init.sql",
+        "0001_payment_claims.sql",
+        "0002_selling.sql",
+        "0003_merchant_tenancy.sql",
+        "0004_merchant_service_name.sql",
+        "0005_merchant_payout_wallet.sql",
+        "0006_order_pay_to_backfill.sql",
+        "0007_cabinet_keys.sql",
+        "0008_key_last_use.sql",
+        "0009_live_approval.sql",
+        "0010_pending_payout_wallet.sql",
+        "0011_merchant_seller_site.sql",
+        "0012_dashboard_keys.sql",
+        "0013_delete_dashboard_keys.sql",
+      ]) {
+        await run(file);
+      }
+    });
+
+    it("puts imported cards and their merchants on the shop, and everything else on the code", async () => {
+      await writeMerchant("mch_coded");
+      await writeMerchant("mch_shop");
+      await writeMerchant("mch_both");
+      await writeMerchant("mch_none");
+      await writeCard("item_coded", "mch_coded", "sku-1");
+      await writeCard("item_shop", "mch_shop", "woo_0123456789abcdef_42");
+      await writeCard("item_both_coded", "mch_both", "room-101");
+      await writeCard("item_both_shop", "mch_both", "woo_fedcba9876543210_7");
+      // Close to the shape and not it: an SDK merchant's own word for a product.
+      await writeCard("item_lookalike", "mch_coded", "woo_mug_7");
+
+      await run("0014_one_integration.sql");
+
+      expect(await integrations("cards")).toStrictEqual({
+        item_both_coded: "api",
+        item_both_shop: "woocommerce",
+        item_coded: "api",
+        item_lookalike: "api",
+        item_shop: "woocommerce",
+      });
+      expect(await integrations("merchants")).toStrictEqual({
+        mch_both: "woocommerce",
+        mch_coded: "api",
+        mch_none: "api",
+        mch_shop: "woocommerce",
+      });
+    });
+
+    it("starts a new merchant on the code and refuses a card that says no integration", async () => {
+      await run("0014_one_integration.sql");
+      await writeMerchant("mch_new");
+
+      expect(await integrations("merchants")).toStrictEqual({ mch_new: "api" });
+      await expect(writeCard("item_silent", "mch_new", "sku-1")).rejects.toThrow(/integration/);
+      await expect(
+        pool.query(
+          `insert into cards (id, merchant_id, merchant_item_id, card, as_of, integration)
+           values ('item_odd', 'mch_new', 'sku-2', '{}', now(), 'shopify')`,
+        ),
+      ).rejects.toThrow(/cards_integration_known/);
+    });
+  });
 }

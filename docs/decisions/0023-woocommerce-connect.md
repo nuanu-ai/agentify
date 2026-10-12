@@ -1,10 +1,11 @@
 # 0023. A connected WooCommerce shop is a merchant credential we hold and fill orders with
 
 Date: 2026-09-14
-Status: accepted; the connector is experimental and offered off the live
-channel only: there the dashboard mounts none of its screens and runs no
-worker, so a connection made there earlier stays unused and its cards' price
-questions go unanswered, refusing every sale before payment. Parcels were added
+Status: accepted; the connector is developed on equal terms with the SDK (the
+product owner, 2026-10-11), a merchant sells through one of the two at a time
+(ADR-0036), and it is offered off the live channel only until its orders pass
+end to end on the test channel: there the dashboard mounts none of its screens
+and runs no worker, so a connection made there earlier stays unused. Parcels were added
 on the product owner's word on 2026-10-09 and sell on the test channel only, as
 every parcel does (ADR-0033).
 
@@ -16,8 +17,7 @@ order and grant a protected download (`docs/research/33-woo-connect-probe.md`),
 and its Store API cart prices shipping for a client with no browser
 (`docs/research/41-woo-parcel-probe.md`), so connecting a shop hands us a third
 party's write credential and the duty to give the buying agent actual goods,
-which an order number is not. The connector is experimental and not the
-product's acceptance gate; the SDK is its path.
+which an order number is not.
 
 ## Decision
 

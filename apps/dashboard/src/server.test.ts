@@ -2170,7 +2170,24 @@ describe("the orders screen", () => {
     // The sale is over, so it is not in the open list, and the empty list says
     // so rather than looking like a failed load.
     expect(openOnly).toContain("Nothing is open");
-    expect(openOnly).toContain("Every order you have is finished");
+  });
+
+  it("does not call every order finished while a buyer's price is still unpaid", async () => {
+    // A price a buyer asked for and has not paid is an order under way, and it
+    // is left off the open list on purpose; the empty list must not then say
+    // that everything is finished, while All shows that order in progress.
+    const { browser, gateway, harnessed } = await started();
+    const itemId = await publish(gateway, roomCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    await browser.signIn();
+
+    const all = readable((await browser.get("/orders")).html);
+    const openOnly = readable((await browser.get("/orders?open=true")).html);
+
+    expect(all).toContain("in progress");
+    expect(openOnly).toContain("Nothing is open");
+    expect(openOnly).not.toMatch(/finished/i);
   });
 
   it("does not tell a merchant nothing is owed while an order is still running", async () => {
@@ -2244,6 +2261,25 @@ describe("the orders screen", () => {
     expect(text).not.toContain("refund_due");
   });
 
+  it("says why a refund is owed as it happened, and not always that a window ran out", async () => {
+    // A refund falls due when the merchant refuses an order already paid for,
+    // and the callout used to say the delivery window had run out whatever the
+    // cause: a merchant reconciling it looked
+    // for a deadline that never passed.
+    const { browser, gateway, harnessed } = await started();
+    const itemId = await publish(gateway, esimCard);
+    await buyOverHttp(harnessed, gateway, itemId, {
+      onOrder: () => ({ refused: { code: "out_of_stock", message: "no eSIMs left" } }),
+    });
+
+    await browser.signIn();
+    const text = readable((await browser.get("/orders?open=true")).html);
+
+    expect(text).toContain("1 order needs you");
+    expect(text).toMatch(/your integration refused/i);
+    expect(text).not.toMatch(/window ran out/i);
+  });
+
   it("says held goods need a fresh payment on the same purchase", async () => {
     const { browser, gateway, harnessed } = await started();
     harnessed.facilitator.willSettle({ settled: false, reason: "the transfer reverted" });
@@ -2291,6 +2327,25 @@ describe("the receipts screen", () => {
     expect(row.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/g)).toHaveLength(3);
     // The summary counts what it can stand behind.
     expect(text).toContain("Delivered or shipped 1 of 1 receipt");
+  });
+
+  it("links each receipt to its transfer on the chain the money moved on", async () => {
+    // A merchant matching a receipt to their wallet had only its time to go
+    // by.
+    const transfer = `0x${"5e".repeat(32)}`;
+    const { browser, gateway, harnessed } = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    harnessed.facilitator.willSettle({ settled: true, transaction: transfer });
+    const itemId = await publish(gateway, roomCard);
+    await buyOverHttp(harnessed, gateway, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    await browser.signIn();
+
+    const html = (await browser.get("/receipts")).html;
+
+    expect(html).toContain(`href="https://sepolia.basescan.org/tx/${transfer}"`);
   });
 
   it("marks money that was never real as what it is", async () => {
@@ -2802,6 +2857,8 @@ describe("when something goes wrong that the merchant has to get out of", () => 
           seller: answer,
           setSellerSite: answer,
           payoutWallet: answer,
+          integration: answer,
+          refundsOwed: answer,
         }) as never,
     });
     return { browser, close: async () => undefined };
@@ -3128,6 +3185,25 @@ describe("when the gateway will not answer", () => {
     const text = readable(answered.html);
     expect(text).toContain("Agentify did not answer");
     expect(text).toMatch(/may or may not have been done/);
+  });
+});
+
+describe("the page that says a call to the gateway failed", () => {
+  it("tries the page the merchant was on again, not another one", async () => {
+    // A merchant reading Receipts who presses "Try again" wants Receipts
+    // again; sent to Cards, they lose their place and press their way back.
+    const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
+    await browser.signIn();
+    silenceGateway();
+
+    const failed = await browser.get("/receipts");
+    const again =
+      /<(?:a|form)\b[^>]*\b(?:href|action)="([^"]*)"[^>]*>(?:(?!<\/(?:a|form)>)[\s\S])*?Try again/.exec(
+        failed.html,
+      )?.[1];
+
+    expect(failed.status).toBe(504);
+    expect(again).toMatch(/\/receipts$/);
   });
 });
 

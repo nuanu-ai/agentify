@@ -97,7 +97,7 @@ describe("an order that cannot be true", () => {
     open = await harness();
     const record = impossible();
 
-    await expect(open.gateway.runner.create(record, [], open.now())).rejects.toThrow(
+    await expect(open.gateway.runner.create(record, [], open.now(), "api")).rejects.toThrow(
       /breaks what must be true about money/,
     );
 
@@ -211,11 +211,11 @@ describe("an order that holds an address it should not", () => {
       },
     };
 
-    await expect(open.gateway.runner.create(waiting, [], open.now())).rejects.toThrow(
+    await expect(open.gateway.runner.create(waiting, [], open.now(), "api")).rejects.toThrow(
       /is a parcel with no address/,
     );
     await expect(
-      open.gateway.runner.create({ ...waiting, shipTo: { erasedAt: 0 } }, [], open.now()),
+      open.gateway.runner.create({ ...waiting, shipTo: { erasedAt: 0 } }, [], open.now(), "api"),
     ).rejects.toThrow(/has erased the address its merchant still needs/);
     expect(await open.store.orderById("ord_parcel")).toBeNull();
   });
@@ -234,7 +234,7 @@ describe("an order that holds an address it should not", () => {
       shipTo: address,
     };
 
-    await expect(open.gateway.runner.create(paid, [], open.now())).rejects.toThrow(
+    await expect(open.gateway.runner.create(paid, [], open.now(), "api")).rejects.toThrow(
       /holds an address and is not a parcel/,
     );
   });
@@ -268,7 +268,7 @@ describe("an effect that must be written down, asked for at the birth of an orde
     };
 
     await expect(
-      open.gateway.runner.create(born, [{ kind: "dispatch_order" }], open.now()),
+      open.gateway.runner.create(born, [{ kind: "dispatch_order" }], open.now(), "api"),
     ).rejects.toThrow(/nowhere to write them/);
 
     expect(await open.store.orderById("ord_born")).toBeNull();

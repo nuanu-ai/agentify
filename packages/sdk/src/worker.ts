@@ -106,6 +106,8 @@ export const WORKER_PROBLEM_KINDS = Object.freeze({
   WORKER_FAILED: "worker_failed",
   /** A delivery carried the one field name this contract removes in silence. */
   DELIVERY_FIELD_DROPPED: "delivery_field_dropped",
+  /** An acceptance was given an argument, which it does not carry. The order is taken on. */
+  ACCEPTANCE_ARGUMENT_IGNORED: "acceptance_argument_ignored",
 } as const);
 
 export type WorkerProblemKind = (typeof WORKER_PROBLEM_KINDS)[keyof typeof WORKER_PROBLEM_KINDS];
@@ -174,6 +176,19 @@ export const droppedFieldWarning = (
     message: `the delivery for order ${orderId} carried a field named ${PROTOTYPE_KEY_IS_DROPPED}, which is removed before anything can check it: the agent will not receive it, and no card can declare it`,
   };
 };
+
+/**
+ * The warning reported when `accepted` or `accept` is given an argument.
+ * TypeScript refuses one, but JavaScript code can pass it, and nothing passed
+ * reaches the gateway. The order is accepted all the same, because refusing
+ * would strand an order its buyer has paid for.
+ */
+export const acceptanceArgumentWarning = (orderId: string): WorkerProblem => ({
+  kind: WORKER_PROBLEM_KINDS.ACCEPTANCE_ARGUMENT_IGNORED,
+  fatal: false,
+  subject: orderId,
+  message: `order ${orderId} was accepted with an argument, and an acceptance carries nothing: whatever was passed was not sent (eta_seconds was removed), so call accepted() or accept() with nothing in it`,
+});
 
 /**
  * Which registration answers each kind on the stream, by the word a merchant
@@ -586,7 +601,7 @@ export const startWorker = (
           kind: WORKER_PROBLEM_KINDS.POLL_FAILED,
           fatal: false,
           message: settled
-            ? `${answer.failure.reason}${remark} — the gateway says asking again will not change this, and no new orders arrive until it is fixed (a revoked key has to be replaced); asking again after a wait in case it was not the gateway that answered`
+            ? `${answer.failure.reason}${remark} — the gateway says asking again will not change this, and no new orders arrive until what it names is fixed; asking again after a wait in case it was not the gateway that answered`
             : `${answer.failure.reason}${remark} — asking again after a wait`,
         });
         await rest(retryDelayMs(failures, clock.random()));

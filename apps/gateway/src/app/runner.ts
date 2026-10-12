@@ -55,6 +55,7 @@ import type { GatewayConfig } from "../config.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { Reminder } from "../ports/queue.js";
 import type {
+  Integration,
   MerchantScope,
   OrderChange,
   PaymentWord,
@@ -204,9 +205,17 @@ export class OrderRunner {
 
   /**
    * Writes down a new order and carries out the effects its creation asked
-   * for; the machine has already decided that the order exists.
+   * for; the machine has already decided that the order exists. `through` is
+   * the integration its card was sold through: if the merchant has stopped
+   * selling through it by the time the order would be written, nothing is
+   * written or carried out and null comes back.
    */
-  async create(record: StoredOrder, effects: readonly Effect[], at: number): Promise<StoredOrder> {
+  async create(
+    record: StoredOrder,
+    effects: readonly Effect[],
+    at: number,
+    through: Integration,
+  ): Promise<StoredOrder | null> {
     refuseToWriteAnImpossibleOrder(record.order);
     refuseToKeepAnAddressPastItsTime(record);
     // The clock is started before the order is written: a reminder for an order
@@ -223,7 +232,9 @@ export class OrderRunner {
       );
     }
 
-    await this.#runtime.store.addOrder(record);
+    if (!(await this.#runtime.store.addOrder(record, through))) {
+      return null;
+    }
     await this.#run(record, effects, at);
     return record;
   }
@@ -915,6 +926,11 @@ export class OrderRunner {
       ...(record.priceId === null ? {} : { price_id: record.priceId }),
       paid_at: asTimestamp(paidAt),
       outcome: receiptOutcomeOf(record.order),
+      // An empty transaction is left off: the contract refuses one, and a
+      // single refused receipt would break the merchant's whole list.
+      ...(record.settlement === null || record.settlement.transaction.trim() === ""
+        ? {}
+        : { transaction: record.settlement.transaction }),
       test: record.order.test,
     };
   }

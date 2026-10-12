@@ -72,7 +72,14 @@ import {
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
-import type { StoredCard, StoredKey, StoredOrder, StoredPayoutWallet } from "../ports/store.js";
+import type {
+  Integration,
+  IntegrationSwitch,
+  StoredCard,
+  StoredKey,
+  StoredOrder,
+  StoredPayoutWallet,
+} from "../ports/store.js";
 import { orderCallResponseOf } from "./answers.js";
 import {
   issueKey,
@@ -84,6 +91,7 @@ import {
 } from "./merchants.js";
 import { OrderRunner, orderDocumentOf, SWEEP_EFFECTS } from "./runner.js";
 import {
+  cardAsHeld,
   missingFrom,
   modeForCard,
   payoutWalletAt,
@@ -217,6 +225,83 @@ export type PurchaseAttempt =
  */
 const PASSED_AT_MOST = 32;
 
+/** The facts every card of one merchant is read through (`Gateway#howTheySell`). */
+interface HowTheySell {
+  readonly selling: MerchantSelling;
+  readonly sellable: boolean;
+  readonly integration: Integration;
+}
+
+/** What an agent is told of a product that went off sale as its order was made. */
+const NOT_ON_SALE = "this product is not on sale at the moment, so no new order is taken";
+
+/**
+ * Why a publish through the integration not in use is refused. About the
+ * merchant rather than a field, so the path is empty; short enough that the
+ * refusal's one line carries it whole.
+ */
+const NOT_THE_INTEGRATION_IN_USE: Readonly<Record<Integration, Problem>> = {
+  api: {
+    path: [],
+    code: "sells_through_a_shop",
+    message:
+      "this merchant sells through the WooCommerce shop connected in the dashboard; disconnecting it there brings back the cards their own code publishes",
+  },
+  woocommerce: {
+    path: [],
+    code: "sells_through_their_code",
+    message:
+      "this merchant sells through their own code; connecting the WooCommerce shop in the dashboard switches them to it",
+  },
+};
+
+/** Why a card the other integration published is not taken over by this one. */
+function heldByTheOther(integration: Integration, merchantItemId: string): Problem {
+  return {
+    path: ["merchant_item_id"],
+    code: "published_by_the_other_integration",
+    message:
+      integration === "api"
+        ? `"${merchantItemId}" names a product imported from the merchant's WooCommerce shop, and a card stays with what first published it; publish this one under its own merchant_item_id`
+        : `"${merchantItemId}" names a card the merchant's own code published, and a card stays with what first published it, so this product was not imported`,
+  };
+}
+
+/** Waits out a poll's window with nothing to draw, or less where the poll is ended. */
+function quietFor(ms: number, ended: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (ended.aborted || ms <= 0) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(done, ms);
+    function done(): void {
+      clearTimeout(timer);
+      ended.removeEventListener("abort", done);
+      resolve();
+    }
+    ended.addEventListener("abort", done, { once: true });
+  });
+}
+
+/**
+ * Who is drawing a merchant's stream, beside the merchant: the connection
+ * that ends the poll when it closes, the key it came in on, and the
+ * integration drawing (`Gateway#poll`). A poll a test or the dashboard makes
+ * names none of the first two.
+ */
+export interface PollDrawing {
+  readonly gone?: AbortSignal;
+  readonly keyId?: string | null;
+  readonly through?: Integration;
+}
+
+/** One poll held open, the key it came in on, and the way to end it early. */
+interface HeldPoll {
+  readonly keyId: string | null;
+  readonly stop: AbortController;
+}
+
 export class Gateway {
   readonly runtime: Runtime;
   readonly runner: OrderRunner;
@@ -229,6 +314,13 @@ export class Gateway {
    * from a log could set the price of somebody else's purchase.
    */
   readonly #questions = new Map<string, { orderId: string; merchantId: string }>();
+  /**
+   * The polls held open right now, by merchant, with the key each came in on,
+   * so revoking a key ends its waiting at once. Otherwise a held poll draws
+   * whatever arrives in its window, and code the merchant had just cut off
+   * would take the next order.
+   */
+  readonly #held = new Map<string, Set<HeldPoll>>();
 
   constructor(runtime: Runtime) {
     this.runtime = runtime;
@@ -330,7 +422,11 @@ export class Gateway {
    * first, so a screen that shows one finding shows the one the card cannot
    * explain.
    */
-  async publishCard(merchantId: string, body: unknown): Promise<PublishResult> {
+  async publishCard(
+    merchantId: string,
+    body: unknown,
+    integration: Integration = "api",
+  ): Promise<PublishResult> {
     const parsed = CardSchema.safeParse(body);
 
     const merchant = await this.runtime.store.merchantById(merchantId);
@@ -339,6 +435,11 @@ export class Gateway {
     // publish finding.
     if (merchant === null) {
       throw new Error(`publishing resolved to ${merchantId}, and there is no such merchant`);
+    }
+    // Asked first and alone: nothing else about the card matters while it
+    // would go off sale the moment it was published.
+    if (merchant.integration !== integration) {
+      return cardRejected([], [NOT_THE_INTEGRATION_IN_USE[integration]]);
     }
     // The question the selling word asks of every card later, asked here where
     // somebody can be told what is missing.
@@ -372,7 +473,11 @@ export class Gateway {
       merchantId,
       parsed.data,
       this.runtime.clock(),
+      integration,
     );
+    if (stored.integration !== integration) {
+      return cardRejected([], [heldByTheOther(integration, parsed.data.merchant_item_id)]);
+    }
     return { ok: true, id: stored.id };
   }
 
@@ -387,11 +492,15 @@ export class Gateway {
       items: entries
         .filter(
           (entry) =>
-            sellingFor(entry.merchant, entry.card, sellableBy(entry, this.runtime.config)) ===
-            "open",
+            sellingFor(
+              entry.merchant,
+              entry.card,
+              sellableBy(entry, this.runtime.config),
+              entry.integration,
+            ) === "open",
         )
         .map((entry) =>
-          publicCardOf(entry.card.card, {
+          publicCardOf(cardAsHeld(entry.card.card, this.runtime.config), {
             id: entry.card.id,
             as_of: asTimestamp(entry.card.asOf),
             seller: { name: entry.serviceName, site: entry.sellerSite },
@@ -420,7 +529,12 @@ export class Gateway {
       selling:
         merchant === null
           ? "paused"
-          : sellingFor(merchant.selling, stored, sellableBy(merchant, this.runtime.config)),
+          : sellingFor(
+              merchant.selling,
+              stored,
+              sellableBy(merchant, this.runtime.config),
+              merchant.integration,
+            ),
       serviceName: merchant?.serviceName ?? null,
       // A pending wallet change is the address once its moment has come, and
       // not before.
@@ -439,20 +553,22 @@ export class Gateway {
    * selected rather than selected and filtered out.
    */
   async merchantCards(merchantId: string): Promise<MerchantCardList> {
-    const { selling, sellable } = await this.#howTheySell(merchantId);
+    const theirs = await this.#howTheySell(merchantId);
     const cards = await this.runtime.store.cards(merchantId);
-    return { selling, cards: cards.map((stored) => merchantCardOf(stored, selling, sellable)) };
+    return {
+      selling: theirs.selling,
+      cards: cards.map((stored) => merchantCardOf(stored, theirs)),
+    };
   }
 
   /**
-   * The merchant's selling word, and whether a sale of theirs could be made at
-   * all (a payout wallet and a name). Every key and every card names a merchant
-   * that exists, so a missing one is a defect and this throws rather than
-   * answer "open" for somebody nobody can find.
+   * The merchant's selling word, the integration they sell through, and
+   * whether a sale of theirs could be made at all (a payout wallet and a name).
+   * Every key and every card names a merchant that exists, so a missing one is
+   * a defect and this throws rather than answer "open" for somebody nobody can
+   * find.
    */
-  async #howTheySell(
-    merchantId: string,
-  ): Promise<{ readonly selling: MerchantSelling; readonly sellable: boolean }> {
+  async #howTheySell(merchantId: string): Promise<HowTheySell> {
     const merchant = await this.runtime.store.merchantById(merchantId);
     if (merchant === null) {
       throw new Error(`there is no merchant ${merchantId}, so there is no word for their selling`);
@@ -460,6 +576,7 @@ export class Gateway {
     return {
       selling: merchant.selling,
       sellable: sellableBy(merchant, this.runtime.config),
+      integration: merchant.integration,
     };
   }
 
@@ -478,8 +595,7 @@ export class Gateway {
       // pause call cannot probe what somebody else sells.
       return null;
     }
-    const { selling, sellable } = await this.#howTheySell(merchantId);
-    return merchantCardOf(stored, selling, sellable);
+    return merchantCardOf(stored, await this.#howTheySell(merchantId));
   }
 
   /**
@@ -497,6 +613,53 @@ export class Gateway {
     }
     await this.runtime.store.setSelling(merchantId, selling);
     return { ok: true, cards: await this.merchantCards(merchantId) };
+  }
+
+  /**
+   * The integration this merchant sells through now, their cards that are off
+   * sale because the other one published them, and their own selling word,
+   * for the screens that say why a card is not selling.
+   */
+  async integrationOf(merchantId: string): Promise<{
+    readonly through: Integration;
+    readonly offSale: readonly string[];
+    readonly selling: MerchantSelling;
+  }> {
+    const merchant = await this.runtime.store.merchantById(merchantId);
+    if (merchant === null) {
+      throw new Error(`there is no merchant ${merchantId}, so nothing they sell through`);
+    }
+    const through = merchant.integration;
+    const cards = await this.runtime.store.cards(merchantId);
+    return {
+      through,
+      offSale: cards.filter((card) => card.integration !== through).map((card) => card.id),
+      selling: merchant.selling,
+    };
+  }
+
+  /** The integration this merchant sells through now. */
+  async sellsThrough(merchantId: string): Promise<Integration> {
+    const merchant = await this.runtime.store.merchantById(merchantId);
+    if (merchant === null) {
+      throw new Error(`there is no merchant ${merchantId}, so nothing they sell through`);
+    }
+    return merchant.integration;
+  }
+
+  /**
+   * Moves this merchant to the other integration, or says which orders hold
+   * them where they are (`IntegrationSwitch`). A poll held open across the
+   * switch ends with nothing, whichever integration's it was: the one being
+   * left has nothing more coming to it, and the one taking over has just been
+   * told what it is.
+   */
+  async sellThrough(merchantId: string, to: Integration): Promise<IntegrationSwitch> {
+    const switched = await this.runtime.store.switchIntegration(merchantId, to);
+    if (switched.switched) {
+      this.#letGo(merchantId, () => true);
+    }
+    return switched;
   }
 
   /**
@@ -865,7 +1028,11 @@ export class Gateway {
       return "locked_out";
     }
     const disabled = await this.runtime.store.disableKeyOf(merchantId, keyId, this.runtime.clock());
-    return disabled === null ? null : { key: merchantKeyOf(disabled) };
+    if (disabled === null) {
+      return null;
+    }
+    this.#letGo(merchantId, (held) => held.keyId === keyId);
+    return { key: merchantKeyOf(disabled) };
   }
 
   // --- buying ---------------------------------------------------------------
@@ -925,10 +1092,11 @@ export class Gateway {
       // environment decides. The receipt copies it from the order, so this is
       // the one place it is set.
       test: this.runtime.config.environment === "test",
-      // The merchant's switch, the card's own pause and whether the merchant
-      // could make a sale at all (a payout wallet, a name), folded into one
-      // word the machine refuses on before an order exists.
-      selling: sellingFor(theirs.selling, stored, theirs.sellable),
+      // The merchant's switch, the card's own pause, whether the card's
+      // integration is the one the merchant sells through, and whether the
+      // merchant could make a sale at all (a payout wallet, a name), folded
+      // into one word the machine refuses on before an order exists.
+      selling: sellingFor(theirs.selling, stored, theirs.sellable, theirs.integration),
     });
 
     if (!created.ok) {
@@ -967,7 +1135,13 @@ export class Gateway {
       paymentWordsDropped: 0,
       openDeliveryId: null,
     };
-    await this.runner.create(record, created.effects, at);
+    // Written only while the merchant still sells through the card's
+    // integration: a switch landing between the word above and this write
+    // would otherwise leave an order nothing will draw.
+    const written = await this.runner.create(record, created.effects, at, stored.integration);
+    if (written === null) {
+      return { step: "not_selling", message: NOT_ON_SALE };
+    }
 
     if (priceQuestion !== null) {
       await this.#askThePrice(record, stored, priceQuestion);
@@ -1080,9 +1254,11 @@ export class Gateway {
       // charged.
       const why =
         verified.verified === false
-          ? `${verified.message}; nothing was charged: ${NEXT_STEP_AFTER[verified.reason]}`
+          ? `nothing was charged: ${NEXT_STEP_AFTER[verified.reason]}; the payment layer said: ${briefly(verified.message)}`
           : verified.message;
-      console.warn(`[gateway] a payment for ${orderId} did not verify: ${why}`);
+      // The log keeps the layer's words whole: the agent is told the gist,
+      // and the operator working out why a payment failed needs all of it.
+      console.warn(`[gateway] a payment for ${orderId} did not verify: ${verified.message}`);
       return {
         step: "payment_not_verified",
         why,
@@ -1264,8 +1440,67 @@ export class Gateway {
    * order at the back of a batch would wait out the handler calls ahead of it
    * and be taken for a silence, spending one of its deliveries. An order that
    * has moved on since it was queued is not handed out.
+   *
+   * A poll held open ends with nothing once the key it came in on is revoked
+   * (`#held`), and a merchant selling through an integration other than
+   * `drawing.through` is handed nothing.
    */
-  async poll(merchantId: string, waitMs: number, gone?: AbortSignal): Promise<WorkerPollResponse> {
+  async poll(
+    merchantId: string,
+    waitMs: number,
+    drawing: PollDrawing = {},
+  ): Promise<WorkerPollResponse> {
+    const { gone, keyId = null, through = "api" } = drawing;
+    const held: HeldPoll = { keyId, stop: new AbortController() };
+    const holding = this.#held.get(merchantId) ?? new Set<HeldPoll>();
+    holding.add(held);
+    this.#held.set(merchantId, holding);
+    const signal =
+      gone === undefined ? held.stop.signal : AbortSignal.any([gone, held.stop.signal]);
+    try {
+      // The key is asked again once the poll is held: a revocation between the
+      // door letting it in and this point found no held poll to end
+      // (`disableMerchantKey`). Answered at once, because the next poll is the
+      // door's to refuse.
+      if (keyId !== null && !(await this.#keyStillWorks(merchantId, keyId))) {
+        return { contract_version: CONTRACT_VERSION, envelopes: [] };
+      }
+      // Asked once the poll is held, so a switch either came before this read
+      // and is seen by it, or comes after and ends the poll (`sellThrough`).
+      // Answered as a quiet stream is, after its window: answered at once, a
+      // worker that polls again on an empty answer would spin.
+      if ((await this.sellsThrough(merchantId)) !== through) {
+        await quietFor(Math.min(waitMs, this.runtime.config.worker.pollWaitMs), signal);
+        return { contract_version: CONTRACT_VERSION, envelopes: [] };
+      }
+      return await this.#drawFor(merchantId, waitMs, signal);
+    } finally {
+      holding.delete(held);
+      if (holding.size === 0 && this.#held.get(merchantId) === holding) {
+        this.#held.delete(merchantId);
+      }
+    }
+  }
+
+  async #keyStillWorks(merchantId: string, keyId: string): Promise<boolean> {
+    const keys = await this.runtime.store.keysOf(merchantId);
+    return keys.some((key) => key.id === keyId && key.disabledAt === null);
+  }
+
+  /** Ends the held polls of one merchant that `which` picks out, with nothing. */
+  #letGo(merchantId: string, which: (held: HeldPoll) => boolean): void {
+    for (const held of this.#held.get(merchantId) ?? []) {
+      if (which(held)) {
+        held.stop.abort();
+      }
+    }
+  }
+
+  async #drawFor(
+    merchantId: string,
+    waitMs: number,
+    gone: AbortSignal,
+  ): Promise<WorkerPollResponse> {
     const { config, queue } = this.runtime;
     // Real time, not the order clock: the window bounds how long a worker's
     // request is held.
@@ -1281,6 +1516,9 @@ export class Gateway {
     // window, and any poll after `PASSED_AT_MOST` envelopes turned away, the
     // only bound a drain with no window has.
     for (let passed = 1; ; passed += 1) {
+      if (gone.aborted) {
+        return nothing;
+      }
       const drawn = await queue.draw(merchantId, 1, Math.max(0, until - performance.now()), gone);
       if (drawn.length === 0) {
         return nothing;
@@ -1846,6 +2084,18 @@ export class Gateway {
   }
 }
 
+/**
+ * The payment layer's own words, as many as an agent reads at a glance: its
+ * first line, cut at a sentence's length and said to be cut. A refusal can
+ * carry a contract call's whole diagnostic, and none of it changes what the
+ * agent does next.
+ */
+function briefly(said: string): string {
+  const line = said.split("\n")[0]?.trim() ?? "";
+  const cut = line.length > 200 ? `${line.slice(0, 200)}…` : line;
+  return cut === said.trim() ? cut : `${cut} (shortened)`;
+}
+
 /** What an agent whose payment was refused does next, by why it was refused. */
 const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
   price_stale:
@@ -1907,16 +2157,12 @@ function sentNow(envelope: WorkerEnvelope, at: number): WorkerEnvelope {
  * own flag, so the merchant still sees which cards they paused themselves
  * while all selling is stopped.
  */
-function merchantCardOf(
-  stored: StoredCard,
-  merchant: MerchantSelling,
-  sellable: boolean,
-): MerchantCard {
+function merchantCardOf(stored: StoredCard, theirs: HowTheySell): MerchantCard {
   return {
     id: stored.id,
     as_of: asTimestamp(stored.asOf),
     card: stored.card,
-    selling: sellingFor(merchant, stored, sellable),
+    selling: sellingFor(theirs.selling, stored, theirs.sellable, theirs.integration),
     paused: stored.paused,
   };
 }

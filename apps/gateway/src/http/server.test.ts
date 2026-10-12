@@ -1172,6 +1172,73 @@ describe("the worker's calls over HTTP", () => {
     ]);
   });
 
+  it("takes nothing into a poll whose key is revoked while it waits", async () => {
+    // Revoking a key cuts that code off from the merchant's orders, including
+    // a poll it already holds open: otherwise the next order to arrive would
+    // go to the code the merchant had just cut off. The order waits for a key
+    // that still works.
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, {
+      ...syncCard,
+      merchant_item_id: "esim",
+      fulfillment: "async",
+    });
+    const kept = await harnessed.addKey(harnessed.merchant.id);
+
+    const holding = served.call("POST", "/v0/worker/poll", {
+      body: { wait_seconds: 20 },
+      headers: asMerchant,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const revoked = await harnessed.gateway.disableMerchantKey(
+      harnessed.merchant.id,
+      harnessed.merchant.keyId,
+      { kind: "signed_in", email: "owner@example.com" },
+    );
+    expect(revoked).not.toBeNull();
+
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+
+    expect((await holding).body).toMatchObject({ envelopes: [] });
+    const next = await served.call("POST", "/v0/worker/poll", {
+      body: { wait_seconds: 0 },
+      headers: { authorization: `Bearer ${kept}` },
+    });
+    const { envelopes } = next.body as { envelopes: { payload: { id: string } }[] };
+    expect(envelopes.map((envelope) => envelope.payload.id)).toStrictEqual([
+      offered.order.order.id,
+    ]);
+  });
+
+  it("refuses the code's poll while its merchant sells through a shop, for good", async () => {
+    // Answered empty, a worker whose merchant connected a shop would look
+    // healthy and idle for as long as anybody let it run; the refusal is what
+    // its log shows.
+    const { served, harnessed } = await started();
+    await harnessed.gateway.sellThrough(harnessed.merchant.id, "woocommerce");
+
+    const refused = await served.call("POST", "/v0/worker/poll", {
+      body: { wait_seconds: 0 },
+      headers: asMerchant,
+    });
+
+    expect(refused.status).toBe(409);
+    const { error } = refused.body as {
+      error: { code: string; message: string; retryable: boolean };
+    };
+    expect(error.code).toBe("call_refused");
+    expect(error.retryable).toBe(false);
+
+    await harnessed.gateway.sellThrough(harnessed.merchant.id, "api");
+    const working = await served.call("POST", "/v0/worker/poll", {
+      body: { wait_seconds: 0 },
+      headers: asMerchant,
+    });
+    expect(working.status).toBe(200);
+  });
+
   it("draws the stream and answers an order through the routes the SDK uses", async () => {
     const { served, harnessed } = await started();
     const itemId = await publish(served, {

@@ -1264,13 +1264,27 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     const drawTheShop = async (
       request: Request,
       response: Response,
-      view: { problem?: string; typed?: string; cameBack?: boolean; refused?: readonly Unset[] },
+      view: {
+        problem?: string;
+        leaving?: string;
+        switching?: string;
+        typed?: string;
+        cameBack?: boolean;
+        refused?: readonly Unset[];
+      },
       status = 200,
     ): Promise<void> => {
       const person = whoIs(request);
-      const [state, standing] = await Promise.all([shopStateFor(person.id), standingOf(request)]);
+      const [state, standing, integration] = await Promise.all([
+        shopStateFor(person.id),
+        standingOf(request),
+        gatewayAs(request).integration(),
+      ]);
       if (!standing.ok) {
         return trouble(response, base, standing);
+      }
+      if (!integration.ok) {
+        return trouble(response, base, integration);
       }
       if (state === undefined) {
         // Unreachable: these routes are mounted only where there is a store.
@@ -1287,6 +1301,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
             ...view,
             state,
             unset: standing.document.unset,
+            through: integration.document.through,
+            stopped: integration.document.selling !== "open",
           }),
         );
     };
@@ -1348,6 +1364,16 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         return await drawTheShop(request, response, { problem: looked.why, typed }, 400);
       }
 
+      // The merchant moves to the shop here, before they are sent to it, and
+      // not when the keys arrive: refused at the callback, the switch could
+      // only be told to the shop's server; refused here, it is told to the
+      // merchant beside the button. One who goes and never approves sells
+      // through a shop with none connected, and the page offers the way back.
+      const switched = await gatewayAs(request).sellThrough("woocommerce");
+      if (!switched.ok) {
+        return await drawTheShop(request, response, { problem: switched.why, typed }, 409);
+      }
+
       // Written only now: a Connect nobody could complete is a row nobody comes
       // back for.
       const person = whoIs(request);
@@ -1371,6 +1397,25 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       if (connection === null) {
         response.redirect(303, `${base}/woocommerce`);
         return;
+      }
+
+      // Asked before the shop is read, like the settings below: a merchant
+      // selling through their code would have every imported card refused, so
+      // the shop screen offers them the switch instead.
+      const integration = await gatewayAs(request).integration();
+      if (!integration.ok) {
+        return trouble(response, base, integration);
+      }
+      if (integration.document.through !== "woocommerce") {
+        return await drawTheShop(
+          request,
+          response,
+          {
+            switching:
+              "Nothing was imported: you sell through your own code, so nothing imported would sell. Sell through this shop first.",
+          },
+          409,
+        );
       }
 
       // Asked before the shop: the gateway refuses every card of a merchant
@@ -1493,10 +1538,36 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       );
     });
 
+    app.post(`${base}/woocommerce/switch`, async (request, response) => {
+      // The switch for a merchant whose shop is connected while they sell
+      // through their code: what Connect does before sending them to the shop,
+      // for one whose shop is already here.
+      const switched = await gatewayAs(request).sellThrough("woocommerce");
+      if (!switched.ok) {
+        return await drawTheShop(request, response, { switching: switched.why }, 409);
+      }
+      noted(whoIs(request), "switched to selling through their connected WooCommerce shop");
+      response.redirect(303, `${base}/woocommerce`);
+    });
+
     app.post(`${base}/woocommerce/disconnect`, async (request, response) => {
+      // Back to the merchant's own code first, and the keys forgotten only
+      // once that held: a shop forgotten while one of its orders still waits
+      // would leave that order to nobody, since a parcel's shipment is read
+      // off the shop, and only while it is connected.
+      const switched = await gatewayAs(request).sellThrough("api");
+      if (!switched.ok) {
+        return await drawTheShop(request, response, { leaving: switched.why }, 409);
+      }
       const person = whoIs(request);
       const shopUrl = await shops.forget(person.id);
       noted(person, "forgot the keys their WooCommerce shop had given");
+      // Where the code's cards came back with selling stopped, the merchant is
+      // sent to the screen that starts it again, which says it is stopped.
+      if (switched.document.sellingPaused) {
+        response.redirect(303, `${base}/cards`);
+        return;
+      }
       const query = shopUrl === null ? "" : `?${new URLSearchParams({ shop_url: shopUrl })}`;
       response.redirect(303, `${base}/woocommerce${query}`);
     });
@@ -1506,14 +1577,18 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     const gateway = gatewayAs(request);
     // A card can read paused for want of any of these, and the control beside
     // it says which (`cardControl`).
-    const [cards, name, wallet, approval] = await Promise.all([
+    const [cards, name, wallet, approval, integration] = await Promise.all([
       gateway.cards(),
       gateway.sellerName(),
       gateway.payoutWallet(),
       approvalOn(gateway),
+      gateway.integration(),
     ]);
     if (!cards.ok) {
       return trouble(response, base, cards);
+    }
+    if (!integration.ok) {
+      return trouble(response, base, integration);
     }
     if (!name.ok) {
       return trouble(response, base, name);
@@ -1534,6 +1609,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         cards.document,
         config.publicBaseUrl,
         shops !== undefined,
+        integration.document,
       ),
     );
   });
@@ -1542,10 +1618,11 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     // Only the exact word narrows the list, as the contract says.
     const open = request.query.open === "true";
     const gateway = gatewayAs(request);
-    const [cards, orders, name] = await Promise.all([
+    const [cards, orders, name, owed] = await Promise.all([
       gateway.cards(),
       gateway.orders(open),
       gateway.sellerName(),
+      gateway.refundsOwed(),
     ]);
     if (!cards.ok) {
       return trouble(response, base, cards);
@@ -1556,10 +1633,19 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     if (!name.ok) {
       return trouble(response, base, name);
     }
+    if (!owed.ok) {
+      return trouble(response, base, owed);
+    }
     response
       .type("html")
       .send(
-        ordersScreen(viewing(request, base, name.document), cards.document, orders.document, open),
+        ordersScreen(
+          viewing(request, base, name.document),
+          cards.document,
+          orders.document,
+          open,
+          owed.document,
+        ),
       );
   });
 
@@ -1582,7 +1668,12 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     response
       .type("html")
       .send(
-        receiptsScreen(viewing(request, base, name.document), cards.document, receipts.document),
+        receiptsScreen(
+          viewing(request, base, name.document),
+          cards.document,
+          receipts.document,
+          config.transactionPage,
+        ),
       );
   });
 
@@ -1971,14 +2062,14 @@ function troubleAt(
     response
       .status(504)
       .type("html")
-      .send(problemPageAt(base, mode, answer.why));
+      .send(problemPageAt(base, mode, answer.why, again(response)));
     return;
   }
   // A refusal, under its own status; nothing is claimed beyond what it said.
   response
     .status(answer.status)
     .type("html")
-    .send(problemPageAt(base, mode, answer.why));
+    .send(problemPageAt(base, mode, answer.why, again(response)));
 }
 
 /**
@@ -2000,17 +2091,41 @@ function tooLarge(thrown: unknown): boolean {
  */
 const asSentence = (said: string): string => `${said.slice(0, 1).toUpperCase()}${said.slice(1)}`;
 
-function problemPageAt(base: string, mode: DashboardConfig["surfaceMode"], said: string): string {
+/**
+ * The address to try again at: the page itself where it was a page that
+ * failed, and only as a path of this site, never one a browser would read as
+ * another host's.
+ */
+const again = (response: Response): string | undefined => {
+  const url = response.req.originalUrl;
+  return response.req.method === "GET" && url.startsWith("/") && !url.startsWith("//")
+    ? url
+    : undefined;
+};
+
+function problemPageAt(
+  base: string,
+  mode: DashboardConfig["surfaceMode"],
+  said: string,
+  again?: string,
+): string {
+  // A page that failed to draw is tried again at its own address, so the
+  // merchant keeps their place; a form that failed cannot be sent again from
+  // here, so its way on is the dashboard's first screen, named as that.
+  const onward =
+    again === undefined
+      ? `<a class="button button-primary" href="${escaped(base)}/cards">Back to Cards</a>`
+      : `<a class="button button-primary" href="${escaped(again)}">Try again</a>`;
   return bare(
     base,
     "Something went wrong",
     `<div class="gate">
 ${brandLockup("/")}
-<form class="gate-card" method="get" action="${escaped(base)}/cards">
+<div class="gate-card">
 <h1>Something went wrong</h1>
 <p>${escaped(asSentence(said))}</p>
-<button class="button button-primary" type="submit">Try again</button>
-</form>
+${onward}
+</div>
 </div>`,
     mode,
     null,
