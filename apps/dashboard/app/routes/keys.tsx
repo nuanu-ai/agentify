@@ -20,6 +20,12 @@ import { KeysScreen, NewKeyScreen } from "../screens/keys.js";
 import { services, signedIn } from "../services.js";
 
 /**
+ * Read afresh at every look: a key revoked a moment ago must not read as
+ * working on the screen a merchant opens when a key has leaked.
+ */
+export const handle = { fresh: true };
+
+/**
  * Set by the press. Where no script sent it, React Router loads the page's
  * data after the press in the same request, and a list that failed to load
  * there would draw a problem in place of the one showing of a key's secret;
