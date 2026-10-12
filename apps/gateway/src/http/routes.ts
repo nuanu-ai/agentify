@@ -270,6 +270,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
               ? gateway.runtime.config.worker.pollWaitMs
               : asked.wait_seconds * 1_000,
             gone.signal,
+            callersKey(call),
           ),
         };
       },

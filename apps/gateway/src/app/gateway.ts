@@ -254,6 +254,12 @@ export type PurchaseAttempt =
  */
 const PASSED_AT_MOST = 32;
 
+/** One poll held open, the key it came in on, and the way to end it early. */
+interface HeldPoll {
+  readonly keyId: string | null;
+  readonly stop: AbortController;
+}
+
 export class Gateway {
   readonly runtime: Runtime;
   readonly runner: OrderRunner;
@@ -268,6 +274,14 @@ export class Gateway {
    * could name the price somebody else's purchase settled at.
    */
   readonly #questions = new Map<string, { orderId: string; merchantId: string }>();
+  /**
+   * The polls held open right now, by merchant, each with the key it came in
+   * on, so that the moment a merchant cuts some code off is the moment its
+   * waiting stops. A held poll otherwise draws whatever arrives in its window,
+   * and the merchant who had just revoked the key would watch that code take
+   * the next order.
+   */
+  readonly #held = new Map<string, Set<HeldPoll>>();
 
   constructor(runtime: Runtime) {
     this.runtime = runtime;
@@ -1114,7 +1128,11 @@ export class Gateway {
       return "locked_out";
     }
     const disabled = await this.runtime.store.disableKeyOf(merchantId, keyId, this.runtime.clock());
-    return disabled === null ? null : { key: merchantKeyOf(disabled) };
+    if (disabled === null) {
+      return null;
+    }
+    this.#letGo(merchantId, (held) => held.keyId === keyId);
+    return { key: merchantKeyOf(disabled) };
   }
 
   // --- buying ---------------------------------------------------------------
@@ -1629,8 +1647,48 @@ export class Gateway {
    * An order that has moved on since it was queued is not handed out: the
    * machine refuses the hand-over, and passing it to a handler anyway would ask
    * a merchant to work on a purchase that is over.
+   *
+   * The key is the one the poll came in on, where it came in on one, and a
+   * poll held open ends with nothing once that key is revoked (`#held`).
    */
-  async poll(merchantId: string, waitMs: number, gone?: AbortSignal): Promise<WorkerPollResponse> {
+  async poll(
+    merchantId: string,
+    waitMs: number,
+    gone?: AbortSignal,
+    keyId: string | null = null,
+  ): Promise<WorkerPollResponse> {
+    const held: HeldPoll = { keyId, stop: new AbortController() };
+    const holding = this.#held.get(merchantId) ?? new Set<HeldPoll>();
+    holding.add(held);
+    this.#held.set(merchantId, holding);
+    try {
+      return await this.#drawFor(
+        merchantId,
+        waitMs,
+        gone === undefined ? held.stop.signal : AbortSignal.any([gone, held.stop.signal]),
+      );
+    } finally {
+      holding.delete(held);
+      if (holding.size === 0 && this.#held.get(merchantId) === holding) {
+        this.#held.delete(merchantId);
+      }
+    }
+  }
+
+  /** Ends the held polls of one merchant that `which` picks out, with nothing. */
+  #letGo(merchantId: string, which: (held: HeldPoll) => boolean): void {
+    for (const held of this.#held.get(merchantId) ?? []) {
+      if (which(held)) {
+        held.stop.abort();
+      }
+    }
+  }
+
+  async #drawFor(
+    merchantId: string,
+    waitMs: number,
+    gone: AbortSignal,
+  ): Promise<WorkerPollResponse> {
     const { config, queue } = this.runtime;
     // The window is real time, as the queue's own wait is: it bounds how long a
     // worker's request is held, and the order clock has nothing to do with it.
@@ -1655,6 +1713,9 @@ export class Gateway {
     // has. Answered empty after its whole window, the SDK's worker does not rest
     // before it polls again.
     for (let passed = 1; ; passed += 1) {
+      if (gone.aborted) {
+        return nothing;
+      }
       const drawn = await queue.draw(merchantId, 1, Math.max(0, until - performance.now()), gone);
       if (drawn.length === 0) {
         return nothing;
