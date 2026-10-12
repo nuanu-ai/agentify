@@ -3669,6 +3669,35 @@ describe("a press that fails in a way nobody planned for", () => {
     expect(written).not.toContain("raw-key");
     expect(written).not.toContain("raw-session");
   });
+
+  it("answers a sign-in press that fails with the dashboard's page saying so, and logs nothing it carried", async () => {
+    // Nothing is drawn after a press that throws but what the press answers,
+    // so the page around the answer has to come with it.
+    const marker = "token=raw-token session=raw-session";
+    const broken = async (): Promise<never> => {
+      throw new Error(marker);
+    };
+    const { browser } = await started({
+      identity: (real) => ({ ...real, requestLink: broken, openLink: broken }),
+    });
+
+    const written = await said(async () => {
+      for (const [path, form] of [
+        ["/sign-in", { email: PERSON }],
+        ["/sign-in/open", { token: "C".repeat(32) }],
+      ] as const) {
+        const pressed = await browser.post(path, form);
+
+        expect(pressed.status, path).toBe(500);
+        expect(readable(pressed.html), path).toContain(
+          "Something in the dashboard is broken. Check the page you were on before deciding whether it went through.",
+        );
+      }
+    });
+
+    expect(written).toMatch(/request failed/i);
+    expect(written).not.toContain(marker);
+  });
 });
 
 describe("naming a new key", () => {
