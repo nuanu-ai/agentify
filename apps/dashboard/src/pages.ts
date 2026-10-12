@@ -117,9 +117,11 @@ export async function pagesFromSource({ live }: { readonly live: boolean }): Pro
 }
 
 /**
- * Which methods a route answers: a read where it draws a page or loads data,
- * and a post where it acts. No other method reaches an action, because the
- * origin check reads posts alone.
+ * Which methods a route answers: a read where it loads data or draws a page
+ * that acts on nothing, and a post where it acts. A route that only draws the
+ * answer to its own post, which it needs a component for, is not opened by a
+ * read. No other method reaches an action, because the origin check reads
+ * posts alone.
  */
 type Answers = (method: string) => boolean;
 
@@ -154,7 +156,8 @@ const routesOf = (build: ServerBuild): RouteObject[] => {
         answers: (method) =>
           page &&
           (method === "GET" || method === "HEAD"
-            ? module.default !== undefined || module.loader !== undefined
+            ? module.loader !== undefined ||
+              (module.default !== undefined && module.action === undefined)
             : method === "POST" && module.action !== undefined),
         keepsData: module.handle?.script !== false,
       };

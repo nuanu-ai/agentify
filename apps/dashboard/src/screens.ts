@@ -27,12 +27,10 @@ export interface Viewer {
    * `html.ts` gives).
    */
   readonly sellerName?: string | null;
-  /** Null where none was given. Present only on the settings screen. */
-  readonly sellerSite?: string | null;
   /**
-   * Present only where the screen asked the gateway for the address: settings,
-   * which draws the block, and the cards, which say what holds a card off sale.
-   * A page that did not ask must not tell a merchant they have set no address.
+   * Present only where the screen asked the gateway for the address: the cards,
+   * which say what holds a card off sale. A page that did not ask must not tell
+   * a merchant they have set no address.
    */
   readonly payout?: PayoutWallet;
   /**
@@ -40,11 +38,6 @@ export interface Viewer {
    * publishing waits for it.
    */
   readonly liveApproval?: boolean;
-  /**
-   * What became of signing out every other device; present only on the
-   * settings screen drawn as the answer to that press.
-   */
-  readonly accountNotice?: string;
 }
 
 /**

@@ -1,17 +1,15 @@
 /**
- * The screens where the name buyers read beside every product is chosen and
- * changed. Skipping is allowed on the first screen, but never silently: until a
- * name is set, publishing a card is refused, and every screen a merchant works
- * on says so with a way to fix it.
+ * The screen where the name buyers read beside every product is first chosen,
+ * and the rules the name and the shop's site are held to wherever they are set.
+ * Skipping is allowed on the first screen, but never silently: until a name is
+ * set, publishing a card is refused, and every screen a merchant works on says
+ * so with a way to fix it.
  */
 
 import { SellerSiteSchema, ServiceNameSchema } from "@nuanu-ai/agentify-contracts";
-import { accountSettings } from "./account-settings.js";
 import { STOP_ALL_SELLING } from "./control-labels.js";
-import { bare, brandLockup, escaped, page } from "./html.js";
-import { payoutWalletBlock } from "./payout-wallet.js";
-import { refusedForNoName, type Viewer } from "./screens.js";
-import { APPROVAL_GIVEN, APPROVAL_PENDING } from "./words.js";
+import { bare, brandLockup, escaped } from "./html.js";
+import type { Viewer } from "./screens.js";
 
 /**
  * The rule itself is the contract's `ServiceNameSchema`, the discovery
@@ -74,11 +72,6 @@ export const SITE_CANNOT_BE_TAKEN_AWAY =
 export const whatIsWrongWithTheSite = (site: string): string | null =>
   SellerSiteSchema.safeParse(site).success ? null : SITE_REFUSED;
 
-export interface RefusedSite {
-  readonly problem: string;
-  readonly typed: string;
-}
-
 /**
  * The example is the shape of the common mistake: the name people already know,
  * not a description of the goods. A catalogue written into this box becomes the
@@ -119,86 +112,3 @@ ${brandLockup("/")}
     mode,
     who,
   );
-
-/**
- * The name buyers read, the payout wallet (`payout-wallet.ts`) and the account
- * (`account-settings.ts`), each under its own heading.
- *
- * After a refusal the name box keeps the rejected value so the merchant can
- * correct it; the heading still says which name is actually saved.
- */
-export const settingsScreen = (
-  viewer: Viewer,
-  problem?: string,
-  typedName?: string,
-  refusedSite?: RefusedSite,
-): string => {
-  const { base } = viewer;
-  const name = viewer.sellerName ?? null;
-  const site = viewer.sellerSite ?? null;
-
-  const body = `
-  <div class="lede">
-    <div>
-      <h1>Settings</h1>
-      <p>${escaped(
-        name === null
-          ? `You have not set a seller name yet.${refusedForNoName(viewer) ? " Until you do, cards cannot be published." : ""}`
-          : `Your products are sold under ${name}.`,
-      )}</p>
-      ${
-        // Only in live mode, and only when the route read the approval: a
-        // screen that did not ask says nothing rather than guess.
-        viewer.mode === "live" && viewer.liveApproval !== undefined
-          ? `<p>${escaped(viewer.liveApproval ? APPROVAL_GIVEN : APPROVAL_PENDING)}</p>`
-          : ""
-      }
-    </div>
-  </div>
-  <div class="settings-grid">
-  <section class="settings-panel settings-pair">
-  <div class="panel-top">
-  <div class="lede">
-    <div>
-      <h2>Seller name</h2>
-      <p class="quiet">${escaped(NAME_RULE)}</p>
-      ${problem === NAME_CANNOT_BE_TAKEN_AWAY ? "" : `<p class="quiet">${escaped(NAME_CANNOT_BE_TAKEN_AWAY)}</p>`}
-    </div>
-  </div>
-  </div>
-  <form class="issue" method="post" action="${escaped(base)}/settings">
-    <div>
-      <label for="seller_name">Your seller name</label>
-      <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typedName ?? name ?? "")}" required>
-    </div>
-    <button class="button button-primary" type="submit">Save</button>
-  </form>
-  <div class="panel-messages">${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
-  <div class="panel-follow">
-  <h2>Your shop's site</h2>
-  <p class="quiet">${escaped(SITE_RULE)}</p>
-  <form class="issue" method="post" action="${escaped(base)}/settings/site">
-    <div>
-      <label for="seller_site">Your shop's site</label>
-      <input id="seller_site" name="seller_site" type="url" autocomplete="url" inputmode="url" placeholder="https://yourshop.com" value="${escaped(refusedSite?.typed ?? site ?? "")}" required>
-    </div>
-    <button class="button button-primary" type="submit">Save</button>
-  </form>
-  ${refusedSite === undefined ? "" : `<p class="problem">${escaped(refusedSite.problem)}</p>`}
-  </div>
-  </div>
-  </section>
-  <section class="settings-panel settings-pair">${payoutWalletBlock(viewer)}</section>
-  <section class="settings-panel settings-wide settings-account">${accountSettings(viewer)}</section>
-  </div>`;
-
-  return page({
-    mode: viewer.mode,
-    base,
-    who: viewer.who,
-    confirmed: viewer.confirmed,
-    tab: "settings",
-    title: "Settings",
-    body,
-  });
-};

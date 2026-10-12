@@ -24,10 +24,8 @@ import { readinessOf, UNKNOWN } from "@agentify/core";
 import type { Gateway } from "@agentify/gateway";
 import {
   type CardInput,
-  EvmAddressSchema,
   IssueKeyRequestSchema,
   MERCHANT_FINDINGS,
-  type PayoutWallet as PayoutWalletDocument,
   type PublishResult,
 } from "@nuanu-ai/agentify-contracts";
 import express, { type Express, type Request, type Response } from "express";
@@ -48,18 +46,9 @@ import { keysScreen, newKeyScreen } from "./keys.js";
 import { noted } from "./noted.js";
 import { pageServicesFor } from "./page-services.js";
 import { type Pages, pagesHandler } from "./pages.js";
-import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import { printable } from "./printable.js";
 import { notDrawnForYouScreen, notFoundScreen, unsetIn, type Viewer } from "./screens.js";
-import {
-  chooseNameScreen,
-  NAME_CANNOT_BE_TAKEN_AWAY,
-  NAME_NEEDED,
-  SITE_CANNOT_BE_TAKEN_AWAY,
-  settingsScreen,
-  whatIsWrongWithTheName,
-  whatIsWrongWithTheSite,
-} from "./seller-name.js";
+import { chooseNameScreen, NAME_NEEDED, whatIsWrongWithTheName } from "./seller-name.js";
 import { merchantSetupScreen } from "./sign-in.js";
 import {
   cardsFromTheShop,
@@ -92,7 +81,7 @@ import {
   type ProductInspection,
 } from "./woo-shop.js";
 import { type WooConnection, type WooShops, wooOfferedOn } from "./woo-shops.js";
-import { moment, SITE_IN_SETTINGS, type Unset } from "./words.js";
+import { SITE_IN_SETTINGS, type Unset } from "./words.js";
 
 /** Preserves input order while bounding calls into one merchant's shop. */
 const mapAtMost = async <Input, Output>(
@@ -113,15 +102,6 @@ const mapAtMost = async <Input, Output>(
   await Promise.all(Array.from({ length: Math.min(atMost, values.length) }, worker));
   return results;
 };
-
-/**
- * Longer than a screen's ten seconds: on live the gateway answers only after
- * this dashboard has handed every announcement to the mail provider, which may
- * take twenty seconds (`ANNOUNCEMENT_ANSWER_MS` in the gateway). Stopping
- * sooner would tell a person the gateway did not answer while their change was
- * being recorded.
- */
-const WALLET_CHANGE_MS = 30_000;
 
 /**
  * The shared visual language, then the dashboard's own layout, read once at
@@ -162,7 +142,8 @@ export interface DashboardParts {
    * Built per request from whoever is signed in, so two people signed into one
    * dashboard are two merchants. Only tests pass another, to get a refusal or a
    * call that never finishes. The deadline is the caller's because a wallet
-   * change waits longer than a screen does (`WALLET_CHANGE_MS`).
+   * change waits longer than a screen does (`WALLET_CHANGE_MS` in
+   * `payout-wallet.ts`).
    */
   readonly clientFor?: (acting: Acting, answerWithinMs?: number) => GatewayClient;
   /**
@@ -197,19 +178,6 @@ export interface DashboardParts {
  */
 const people = new WeakMap<Request, Person>();
 
-/**
- * The shop is present only where this dashboard has somewhere to keep a
- * connection; absent draws no block about a shop. `unread` is a store that did
- * not answer.
- */
-interface Settings {
-  readonly sellerName: string | null;
-  readonly sellerSite: string | null;
-  readonly payoutWallet: PayoutWalletDocument;
-  /** Read on the live channel only. */
-  readonly liveApproval?: boolean;
-}
-
 export function buildApp(config: DashboardConfig, parts: DashboardParts): Express {
   const app = express();
   const base = config.basePath;
@@ -218,22 +186,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   const wooShops = wooOfferedOn(config.surfaceMode) ? parts.wooShops : undefined;
   const viewing = (request: Request, pageBase: string, sellerName?: string | null): Viewer =>
     viewingAt(request, pageBase, config.surfaceMode, sellerName);
-  /**
-   * Read only on live, the one place publishing needs it; elsewhere nothing is
-   * read or said about it.
-   */
-  const approvalOn = async (gateway: GatewayClient): Promise<Answer<boolean | undefined>> =>
-    config.surfaceMode === "live"
-      ? await gateway.liveApproval()
-      : { ok: true, document: undefined };
-  const viewingSettings = (
-    request: Request,
-    pageBase: string,
-    settings: Settings,
-    walletProblem?: string,
-    walletTyped?: string,
-  ): Viewer =>
-    viewingSettingsAt(request, pageBase, config.surfaceMode, settings, walletProblem, walletTyped);
   const problemPage = (pageBase: string, said: string): string =>
     problemPageAt(pageBase, config.surfaceMode, said);
   const trouble = (response: Response, pageBase: string, answer: Answer<unknown>): void =>
@@ -294,7 +246,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       parts.pages,
       pageServicesFor(config, {
         identity,
-        clientFor: (acting) => clientFor(acting),
+        clientFor,
         wooOffered: wooShops !== undefined,
         // Asked per request, by which time the function below is defined.
         shopState: (accountId) => shopStateFor(accountId),
@@ -594,355 +546,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       startedMinutesAgo: Math.floor((now - waiting.startedAt.getTime()) / 60_000),
     };
   };
-
-  /**
-   * In one place because the screen is reached three ways (opened, and redrawn
-   * after either form is refused), and a forgotten answer in one of them would
-   * look like a merchant who has set nothing. The calls go out together. Either
-   * gateway call failing fails the page: drawn without an answer, it would
-   * claim something about a field nobody asked about.
-   */
-  const settingsOf = async (request: Request): Promise<Answer<Settings>> => {
-    const gateway = gatewayAs(request);
-    const [seller, wallet, approval] = await Promise.all([
-      gateway.seller(),
-      gateway.payoutWallet(),
-      approvalOn(gateway),
-    ]);
-    if (!seller.ok) {
-      return seller;
-    }
-    if (!wallet.ok) {
-      return wallet;
-    }
-    if (!approval.ok) {
-      return approval;
-    }
-    return {
-      ok: true,
-      document: {
-        sellerName: seller.document.name,
-        sellerSite: seller.document.site,
-        payoutWallet: wallet.document,
-        ...(approval.document === undefined ? {} : { liveApproval: approval.document }),
-      },
-    };
-  };
-
-  app.get(`${base}/settings`, async (request, response) => {
-    const settings = await settingsOf(request);
-    if (!settings.ok) {
-      return trouble(response, base, settings);
-    }
-    response.type("html").send(settingsScreen(viewingSettings(request, base, settings.document)));
-  });
-
-  // Opened from history or the address bar after a refusal; it leads to the
-  // page the form lives on.
-  app.get(`${base}/settings/payout-wallet`, (_request, response) => {
-    response.redirect(303, `${base}/settings`);
-  });
-
-  app.post(`${base}/settings`, async (request, response) => {
-    const typed = nameIn(request);
-    // Empty is a merchant trying to stop being listed, and the sentence names
-    // the control that does that; refused here, the answer is about what they
-    // meant.
-    const wrong = typed === "" ? NAME_CANNOT_BE_TAKEN_AWAY : whatIsWrongWithTheName(typed);
-    if (wrong !== null) {
-      // Drawn from what the gateway has rather than what was typed: a refused
-      // name in the box under "the name buyers read" would be a name they are
-      // not listed under.
-      const settings = await settingsOf(request);
-      if (!settings.ok) {
-        return trouble(response, base, settings);
-      }
-      response
-        .status(400)
-        .type("html")
-        .send(settingsScreen(viewingSettings(request, base, settings.document), wrong, typed));
-      return;
-    }
-
-    const set = await gatewayAs(request).setSellerName(typed);
-    if (!set.ok) {
-      return trouble(response, base, set);
-    }
-    noted(whoIs(request), "changed the name their products are sold under");
-    // A redirect, so a reload does not send the name again.
-    response.redirect(303, `${base}/settings`);
-  });
-
-  app.post(`${base}/settings/site`, async (request, response) => {
-    const typed = siteIn(request);
-    // Empty is a merchant trying to remove the site, which the gateway refuses;
-    // the sentence says what to do instead.
-    const wrong = typed === "" ? SITE_CANNOT_BE_TAKEN_AWAY : whatIsWrongWithTheSite(typed);
-    if (wrong !== null) {
-      // Drawn from what the gateway has, with the typed value kept in the box
-      // to be corrected.
-      const settings = await settingsOf(request);
-      if (!settings.ok) {
-        return trouble(response, base, settings);
-      }
-      response
-        .status(400)
-        .type("html")
-        .send(
-          settingsScreen(viewingSettings(request, base, settings.document), undefined, undefined, {
-            problem: wrong,
-            typed,
-          }),
-        );
-      return;
-    }
-
-    const set = await gatewayAs(request).setSellerSite(typed);
-    if (!set.ok) {
-      return trouble(response, base, set);
-    }
-    noted(whoIs(request), "changed the site of their shop");
-    response.redirect(303, `${base}/settings`);
-  });
-
-  /**
-   * Ends every other session of this account and keeps this one: the answer to
-   * a session left open somewhere or held by somebody else. It ends no other
-   * account's sessions and touches no key. The page says how many it ended, the
-   * one thing the person could not otherwise see.
-   */
-  app.post(`${base}/settings/sign-out-others`, async (request, response) => {
-    const person = whoIs(request);
-    const ended = await identity.endOtherSessionsOfPerson(person.id, request.headers.cookie);
-    noted(person, `signed out every other device of their account, ${ended} sessions in all`);
-    const settings = await settingsOf(request);
-    if (!settings.ok) {
-      return trouble(response, base, settings);
-    }
-    response.type("html").send(
-      settingsScreen({
-        ...viewingSettings(request, base, settings.document),
-        accountNotice:
-          ended === 0
-            ? "No other session of this account was signed in, so none was signed out."
-            : ended === 1
-              ? "1 other session of this account was signed out."
-              : `${ended} other sessions of this account were signed out.`,
-      }),
-    );
-  });
-
-  const signOutTheOthers = async (request: Request): Promise<number> => {
-    const person = whoIs(request);
-    return person.merchant === null
-      ? 0
-      : await identity.endOtherSessionsOfMerchant(person.merchant.id, request.headers.cookie);
-  };
-
-  /** With one sentence above the wallet. */
-  const withNotice = async (
-    request: Request,
-    response: Response,
-    notice: string,
-    status = 200,
-  ): Promise<void> => {
-    const settings = await settingsOf(request);
-    if (!settings.ok) {
-      return trouble(response, base, settings);
-    }
-    const viewer = viewingSettings(request, base, settings.document);
-    response
-      .status(status)
-      .type("html")
-      .send(
-        settingsScreen(
-          viewer.payout === undefined
-            ? viewer
-            : { ...viewer, payout: { ...viewer.payout, notice } },
-        ),
-      );
-  };
-
-  /**
-   * Cancelling is asking the gateway for the address that applies now. Reached
-   * by the Cancel control or by typing that address while a change waits;
-   * typed, the person may not know they cancelled, so the screen says so. Other
-   * sessions end, or the one that asked for the change could ask again. A
-   * change that took effect between the read and the request is not cancelled:
-   * the old address is then a change back, which waits and is announced, and
-   * the page and log say so.
-   */
-  const cancelWaiting = async (
-    request: Request,
-    response: Response,
-    gateway: GatewayClient,
-    applies: string,
-    pending: { readonly payout_wallet: string; readonly takes_effect_at: string },
-    typedIn: boolean,
-  ): Promise<void> => {
-    const person = whoIs(request);
-    const cancelled = await gateway.setPayoutWallet(applies);
-    if (!cancelled.ok) {
-      return trouble(response, base, cancelled);
-    }
-    const ended = await signOutTheOthers(request);
-    if (cancelled.document.pending === null) {
-      noted(
-        person,
-        `cancelled a waiting change of the address their money arrives at, and ${ended} other sessions of the merchant were ended`,
-      );
-      if (typedIn) {
-        return await withNotice(
-          request,
-          response,
-          `${applies} is the address your sales are paid into now, so the waiting change to ${pending.payout_wallet} was cancelled. ` +
-            "Every other session of your merchant was signed out.",
-        );
-      }
-      response.redirect(303, `${base}/settings`);
-      return;
-    }
-    noted(
-      person,
-      `asked for the address their money arrives at back as a change of it took effect; that now waits, and ${ended} other sessions of the merchant were ended`,
-    );
-    return await withNotice(
-      request,
-      response,
-      `The change to ${pending.payout_wallet} took effect at ${moment(pending.takes_effect_at)}, just before your request reached it. ` +
-        `Asking for ${applies} back is a change like any other: it waits forty-eight hours and every account of your merchant was sent a message about it. ` +
-        "Every other session of your merchant was signed out.",
-    );
-  };
-
-  /**
-   * A press from a page drawn while a change waited, arriving after it took
-   * effect. Nothing takes the change back at once, so the gateway is not asked;
-   * the page says when it took effect and how the old address comes back, and
-   * the other sessions end, since an unwanted change has just landed.
-   */
-  const tookEffectBeforePress = async (
-    request: Request,
-    response: Response,
-    shown: { readonly waiting: string; readonly from: string | null; readonly paid: string | null },
-    how: string,
-  ): Promise<void> => {
-    const ended = await signOutTheOthers(request);
-    noted(
-      whoIs(request),
-      `${how} after a change of the address their money arrives at had taken effect, and ${ended} other sessions of the merchant were ended`,
-    );
-    return await withNotice(
-      request,
-      response,
-      `The change to ${shown.waiting} took effect at ${shown.from === null ? "its moment" : moment(shown.from)}, before you pressed, and your sales are now paid into it. ` +
-        (shown.paid === null
-          ? "Setting another address back is a change like any other: it waits forty-eight hours and is announced. "
-          : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
-        "Every other session of your merchant was signed out.",
-    );
-  };
-
-  /**
-   * Its own route rather than a second field on the name's: sharing one would
-   * make every name save also rewrite the address, which turns a typo in one
-   * box into a payment sent elsewhere. Checked here as well as at the gateway,
-   * so an address of the wrong shape never leaves this process.
-   */
-  app.post(`${base}/settings/payout-wallet`, async (request, response) => {
-    const typed = walletIn(request);
-    const wrong = typed === "" ? WALLET_NEEDED : whatIsWrongWithTheWallet(typed);
-    if (wrong !== null) {
-      const settings = await settingsOf(request);
-      if (!settings.ok) {
-        return trouble(response, base, settings);
-      }
-      // Redrawn from the address the gateway has, so a refused merchant still
-      // sees where their money actually goes.
-      response
-        .status(400)
-        .type("html")
-        .send(settingsScreen(viewingSettings(request, base, settings.document, wrong, typed)));
-      return;
-    }
-
-    const gateway = gatewayAs(request, WALLET_CHANGE_MS);
-    // With a change waiting, the current address is a cancel at the gateway,
-    // and is treated as one here.
-    const read = await gateway.payoutWallet();
-    if (!read.ok) {
-      return trouble(response, base, read);
-    }
-    const { payout_wallet: applies, pending } = read.document;
-    if (pending !== null && applies !== null && typed.toLowerCase() === applies.toLowerCase()) {
-      return await cancelWaiting(request, response, gateway, applies, pending, true);
-    }
-    // The same act as pressing Cancel on that page, answered the same way.
-    const shown = shownIn(request);
-    if (
-      pending === null &&
-      shown !== null &&
-      applies === shown.waiting &&
-      shown.paid !== null &&
-      typed.toLowerCase() === shown.paid.toLowerCase()
-    ) {
-      return await tookEffectBeforePress(
-        request,
-        response,
-        shown,
-        "typed the previous address back",
-      );
-    }
-
-    const set = await gateway.setPayoutWallet(typed);
-    if (!set.ok) {
-      return trouble(response, base, set);
-    }
-    // The address stays out of the line: not a secret, but this log records who
-    // changed it, not what to.
-    noted(
-      whoIs(request),
-      set.document.pending === null
-        ? "changed the address their money arrives at"
-        : "asked for a change of the address their money arrives at, which now waits",
-    );
-    response.redirect(303, `${base}/settings`);
-  });
-
-  /**
-   * Asked as the signed-in person (a key of the merchant's code cannot set the
-   * wallet), after reading the wallet fresh rather than trusting a page that
-   * may be a day old. Other sessions end because the change may have come from
-   * one of them, but only once the press achieved something: a refused cancel
-   * leaves the change waiting, and signing people out then would take away
-   * sessions that might press again.
-   *
-   * The form carries the change it showed, so a press arriving after that
-   * change took effect is recognised and not called a cancel: the money already
-   * goes to the new address, and the old one comes back only through a change
-   * that waits and is announced. A change taking effect between the read and
-   * the press turns the request into exactly such a change back, and the page
-   * says so.
-   */
-  app.post(`${base}/settings/payout-wallet/cancel`, async (request, response) => {
-    const gateway = gatewayAs(request, WALLET_CHANGE_MS);
-    const read = await gateway.payoutWallet();
-    if (!read.ok) {
-      return trouble(response, base, read);
-    }
-    const shown = shownIn(request);
-    const { payout_wallet: applies, pending } = read.document;
-
-    if (pending !== null && applies !== null) {
-      return await cancelWaiting(request, response, gateway, applies, pending, false);
-    }
-
-    if (shown !== null && applies === shown.waiting) {
-      return await tookEffectBeforePress(request, response, shown, "pressed cancel");
-    }
-
-    response.redirect(303, `${base}/settings`);
-  });
 
   /**
    * Mounted only where there is a store, so a deployment without the tables
@@ -1569,35 +1172,6 @@ const viewingAt = (
 };
 
 /**
- * Separate from `viewing`, so screens that did not ask the gateway for the
- * address have no way to say anything about it.
- */
-const viewingSettingsAt = (
-  request: Request,
-  base: string,
-  mode: Viewer["mode"],
-  settings: Settings,
-  walletProblem?: string,
-  walletTyped?: string,
-): Viewer => ({
-  ...viewingAt(request, base, mode, settings.sellerName),
-  sellerSite: settings.sellerSite,
-  ...(settings.liveApproval === undefined ? {} : { liveApproval: settings.liveApproval }),
-  payout: {
-    wallet: settings.payoutWallet.payout_wallet,
-    pending:
-      settings.payoutWallet.pending === null
-        ? null
-        : {
-            wallet: settings.payoutWallet.pending.payout_wallet,
-            takesEffectAt: settings.payoutWallet.pending.takes_effect_at,
-          },
-    ...(walletProblem === undefined ? {} : { problem: walletProblem }),
-    ...(walletTyped === undefined ? {} : { typed: walletTyped }),
-  },
-});
-
-/**
  * Trimmed rather than refused, because a leading space is a typing accident and
  * the catalogue's rule would make a padded name a second spelling. A missing
  * field reads as an empty one.
@@ -1605,40 +1179,6 @@ const viewingSettingsAt = (
 const nameIn = (request: Request): string => {
   const form = (request.body ?? {}) as { seller_name?: unknown };
   return typeof form.seller_name === "string" ? form.seller_name.trim() : "";
-};
-
-/** Trimmed, as the name is. */
-const siteIn = (request: Request): string => {
-  const form = (request.body ?? {}) as { seller_site?: unknown };
-  return typeof form.seller_site === "string" ? form.seller_site.trim() : "";
-};
-
-/**
- * Each value is held to its shape before anything reads it: the post can carry
- * anything, and these values are shown back on the page.
- */
-const shownIn = (
-  request: Request,
-): { waiting: string; from: string | null; paid: string | null } | null => {
-  const form = (request.body ?? {}) as Record<string, unknown>;
-  const address = (value: unknown): string | null =>
-    typeof value === "string" && EvmAddressSchema.safeParse(value).success ? value : null;
-  const waiting = address(form.waiting);
-  if (waiting === null) return null;
-  const from =
-    typeof form.waiting_from === "string" && !Number.isNaN(Date.parse(form.waiting_from))
-      ? form.waiting_from
-      : null;
-  return { waiting, from, paid: address(form.paid) };
-};
-
-/**
- * Trimmed, because a wallet often hands an address over with a trailing
- * newline. The case is untouched: the capitals are the address's own checksum.
- */
-const walletIn = (request: Request): string => {
-  const form = (request.body ?? {}) as { payout_wallet?: unknown };
-  return typeof form.payout_wallet === "string" ? form.payout_wallet.trim() : "";
 };
 
 /**

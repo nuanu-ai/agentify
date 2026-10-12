@@ -36,6 +36,12 @@ export default [
       route("orders", "routes/orders.tsx"),
       route("receipts", "routes/receipts.tsx"),
       route("integrations", "routes/integrations.tsx"),
+      route("settings", "routes/settings.tsx", [
+        route("site", "routes/settings-site.ts"),
+        route("sign-out-others", "routes/settings-sign-out-others.ts"),
+        route("payout-wallet", "routes/settings-payout-wallet.ts"),
+        route("payout-wallet/cancel", "routes/settings-payout-wallet-cancel.ts"),
+      ]),
     ]),
   ]),
 ] satisfies RouteConfig;

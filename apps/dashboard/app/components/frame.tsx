@@ -27,7 +27,7 @@ const TABS: readonly (readonly [Tab, string, "drawn" | "string"])[] = [
   ["receipts", "Receipts", "drawn"],
   ["integrations", "Integrations", "drawn"],
   ["keys", "API keys", "string"],
-  ["settings", "Settings", "string"],
+  ["settings", "Settings", "drawn"],
 ];
 
 const FOOT = [

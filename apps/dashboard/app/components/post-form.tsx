@@ -9,9 +9,10 @@ import { DRAWN_FOR } from "../../src/drawn-for.js";
  * signed in.
  *
  * `document` posts with a whole page load, for an action still served by a
- * string page; otherwise React Router sends it. Either way it is an HTML form
- * that works with no script, and with script its button shows the press at
- * once and takes no second one.
+ * string page or one answered with a page at its own address (the settings');
+ * otherwise React Router sends it. Either way it is an HTML form that works
+ * with no script, and with script its button shows the press at once and takes
+ * no second one.
  *
  * `autoComplete="off"` because Firefox restores a hidden field's old value on
  * reload, which would put the first address back into a page redrawn for
