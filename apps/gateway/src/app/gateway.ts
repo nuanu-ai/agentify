@@ -69,6 +69,7 @@ import {
   type AskedWith,
   announcedLabel,
 } from "../announcements.js";
+import { failureNamed } from "../failure-named.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
@@ -340,8 +341,7 @@ export class Gateway {
         // the queue's retry is what delivers it again. Catching and re-arming
         // here would mean writing to the database whose failure just threw.
         console.error(
-          `[gateway] a reminder failed (${reminder.kind}, order ${reminder.orderId})`,
-          thrown,
+          `[gateway] a reminder failed (${reminder.kind}, order ${reminder.orderId}): ${failureNamed(thrown)}`,
         );
         throw thrown;
       }
@@ -931,7 +931,9 @@ export class Gateway {
       }
       return told;
     } catch (thrown) {
-      console.error(`[gateway] an announcement (${announcement.kind}) failed`, thrown);
+      console.error(
+        `[gateway] an announcement (${announcement.kind}) failed: ${failureNamed(thrown)}`,
+      );
       return "not_handed_over";
     } finally {
       clearTimeout(cut);
@@ -1256,9 +1258,16 @@ export class Gateway {
         verified.verified === false
           ? `nothing was charged: ${NEXT_STEP_AFTER[verified.reason]}; the payment layer said: ${briefly(verified.message)}`
           : verified.message;
-      // The log keeps the layer's words whole: the agent is told the gist,
-      // and the operator working out why a payment failed needs all of it.
-      console.warn(`[gateway] a payment for ${orderId} did not verify: ${verified.message}`);
+      // The layer's words go to the agent and not the log: they can quote the
+      // payment presented, and a mismatch is described with what the payer's
+      // client put in it, newlines included.
+      console.warn(
+        `[gateway] a payment for ${orderId} did not verify: ${
+          verified.verified === false
+            ? `refused as ${verified.reason}`
+            : "the payment layer could not be asked, or did not answer"
+        }`,
+      );
       return {
         step: "payment_not_verified",
         why,
@@ -1423,7 +1432,9 @@ export class Gateway {
     try {
       await this.runtime.store.noteKeyUse(key.id, at);
     } catch (thrown) {
-      console.error(`[gateway] the last use of the key ${key.id} was not written down`, thrown);
+      console.error(
+        `[gateway] the last use of the key ${key.id} was not written down: ${failureNamed(thrown)}`,
+      );
     }
   }
 
@@ -1572,7 +1583,9 @@ export class Gateway {
         // Recording the hand-over failed. The envelope goes back on the
         // stream rather than being lost with a failed response, and the poll
         // draws past it to whatever is next.
-        console.error(`[gateway] could not record the hand-over of ${orderId}`, thrown);
+        console.error(
+          `[gateway] could not record the hand-over of ${orderId}: ${failureNamed(thrown)}`,
+        );
         await this.#putBack(merchantId, delivery.envelope, at, config.settleInFlightRetryMs);
         finished.push(delivery.handle);
         continue;
