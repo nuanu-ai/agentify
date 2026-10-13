@@ -516,6 +516,40 @@ p {
   }
 }
 
+/* The bar that says the next page is on its way. Fixed to the window, so it
+   covers the top edge rather than pushing the page down; a stripe runs along
+   it while it is shown, and stands still for a reader who asked for less
+   motion. */
+.on-its-way {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 100;
+  height: 3px;
+  background:
+    linear-gradient(90deg, transparent, var(--accent), transparent) 0 0 / 40% 100% no-repeat;
+  animation: on-its-way 1.1s ease-in-out infinite;
+}
+
+.on-its-way[hidden] {
+  display: none;
+}
+
+@keyframes on-its-way {
+  from {
+    background-position: -40% 0;
+  }
+  to {
+    background-position: 140% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .on-its-way {
+    animation: none;
+    background: var(--accent);
+  }
+}
+
 /* The brand lockup (mark and name). It is a link home, so the hover rule
    cancels the link underline and colour change. */
 .brand {

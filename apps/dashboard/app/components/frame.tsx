@@ -4,13 +4,13 @@
  * merchant's selling state and who is signed in with the way out.
  */
 
-import { BrandLockup, Footer, type Section, SectionNav, SignedIn } from "@agentify/ui";
+import { BrandLockup, Footer, OnItsWay, type Section, SectionNav, SignedIn } from "@agentify/ui";
 import type { ReactNode } from "react";
 import { useRouteLoaderData } from "react-router";
 import type { DashboardDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
 import { useChrome } from "../answer.js";
-import { OnItsWay, useGoingTo } from "./on-its-way.js";
+import { useGoingTo } from "./going-to.js";
 import { SurfaceNote } from "./surface-note.js";
 import { Word } from "./word.js";
 

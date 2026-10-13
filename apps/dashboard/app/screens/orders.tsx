@@ -1,8 +1,8 @@
 import { Table } from "@agentify/ui";
 import { Link } from "react-router";
 import type { OrdersView } from "../../src/views.js";
+import { useGoingTo } from "../components/going-to.js";
 import { Moment } from "../components/moment.js";
-import { useGoingTo } from "../components/on-its-way.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
 
