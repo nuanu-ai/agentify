@@ -20,7 +20,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, extname, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { AliasOptions, Plugin } from "vite";
 import { type BrowserReact, drawnInBrowser } from "./browser.js";
 import type { GalleryState, GallerySurface } from "./index.js";
@@ -79,7 +79,7 @@ const MEDIA_TYPES: Readonly<Record<string, string>> = {
 
 /** The marks and faces the origin serves at its root to every surface. */
 export const SHARED_FILES = dirname(
-  dirname(createRequire(import.meta.url).resolve("@agentify/visual/public/styles/fonts.css")),
+  dirname(fileURLToPath(import.meta.resolve("@agentify/visual/public/styles/fonts.css"))),
 );
 
 /** The file a browser would get at this address, or null where no folder holds one. */
