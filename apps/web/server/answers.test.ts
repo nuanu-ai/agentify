@@ -5,8 +5,9 @@
  * it does not have, and the line a failure leaves in the log.
  */
 
+import { request } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ask } from "../testing/scanner";
+import { ask, testScanner } from "../testing/scanner";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -190,6 +191,39 @@ describe("an address with a trailing slash", () => {
   it("leaves the front page where it is", async () => {
     expect((await ask("/")).status).toBe(200);
   });
+});
+
+/** Where the scanner sends a path as written, slashes and all, which `fetch` would tidy first. */
+const sentFrom = async (path: string): Promise<{ status: number; location?: string }> => {
+  const { origin } = await testScanner();
+  return new Promise((resolve, reject) => {
+    request(`${origin}/`, { path, agent: false }, (answered) => {
+      answered.resume();
+      resolve({
+        status: answered.statusCode ?? 0,
+        ...(answered.headers.location === undefined ? {} : { location: answered.headers.location }),
+      });
+    })
+      .on("error", reject)
+      .end();
+  });
+};
+
+describe("an address written with repeated slashes", () => {
+  it.each([
+    ["//elsewhere.example/", "/elsewhere.example/"],
+    ["//elsewhere.example", "/elsewhere.example"],
+    ["/\\elsewhere.example/", "/elsewhere.example/"],
+    ["/methodology//?from=a-link", "/methodology/?from=a-link"],
+  ])(
+    "is sent to the same address on this site with one slash at each step: %s",
+    async (path, to) => {
+      const answered = await sentFrom(path);
+
+      expect(answered.status).toBe(308);
+      expect(answered.location).toBe(to);
+    },
+  );
 });
 
 describe("a request that fails where nothing caught it", () => {
