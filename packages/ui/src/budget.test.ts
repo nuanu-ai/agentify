@@ -130,7 +130,7 @@ const fits = async (mode: "lazy" | "initial", limit: number): Promise<boolean> =
     build: built(mode),
     clientDirectory: client,
     assetsAt,
-    limit,
+    limitOf: () => limit,
   });
   return !failures.some((failure) => failure.startsWith("routes/home "));
 };

@@ -1,7 +1,7 @@
 /**
  * The speed budget of a React Router build, checked against the build itself:
  * a page fails when the script it loads on its first visit, compressed with
- * brotli as it is sent, grows past the limit, and the build fails when a file
+ * brotli as it is sent, grows past its limit, and the build fails when a file
  * it wrote for the browser lacks the content hash in its name or is served
  * without the year-long immutable cache the hash makes safe. Each file is
  * fetched from where the application serves it, so the header checked is the
@@ -103,8 +103,8 @@ export interface Budget {
   readonly clientDirectory: string;
   /** The address the application serves `assets/` at, for the header check. */
   readonly assetsAt: string;
-  /** Bytes of brotli-compressed script a page may load on its first visit. */
-  readonly limit: number;
+  /** Bytes of brotli-compressed script the page may load on its first visit. */
+  readonly limitOf: (routeId: string) => number;
   /** A page sent with no script at all, which loads none and is left out. */
   readonly scriptless?: (routeId: string) => boolean;
 }
@@ -116,7 +116,7 @@ export interface Budget {
  * the one record of which chunk imports which later.
  */
 export async function brokenBudget(budget: Budget): Promise<readonly string[]> {
-  const { build, clientDirectory, limit, label } = budget;
+  const { build, clientDirectory, label } = budget;
   const assets = join(clientDirectory, "assets");
   const failures: string[] = [];
   const manifest = JSON.parse(
@@ -141,15 +141,22 @@ export async function brokenBudget(budget: Budget): Promise<readonly string[]> {
     pages.map(async (id) => {
       const first = firstVisitScripts(build, manifest, id);
       const later = new Set([...reached(manifest, first, true)].filter((file) => !first.has(file)));
-      return { id, first: await sizeOf(first), later: await sizeOf(later) };
+      return {
+        id,
+        first: await sizeOf(first),
+        later: await sizeOf(later),
+        limit: budget.limitOf(id),
+      };
     }),
   );
   measured.sort((a, b) => b.first - a.first);
   const kb = (bytes: number): string => (bytes / 1024).toFixed(1).padStart(6);
-  for (const { id, first, later } of measured) {
+  for (const { id, first, later, limit } of measured) {
     const over = first > limit;
     const afterwards = later > 0 ? `   later up to ${kb(later).trim()} KB more` : "";
-    console.log(`${label} ${over ? "OVER " : "     "}${kb(first)} KB  ${id}${afterwards}`);
+    console.log(
+      `${label} ${over ? "OVER " : "     "}${kb(first)} of ${kb(limit).trim()} KB  ${id}${afterwards}`,
+    );
     if (over)
       failures.push(`${id} loads ${first} bytes of script on its first visit, over ${limit}`);
   }
@@ -168,7 +175,7 @@ export async function brokenBudget(budget: Budget): Promise<readonly string[]> {
   }
   if (failures.length === 0) {
     console.log(
-      `${label} every page loads at most ${limit / 1024} KB of script on its first visit, and all ${written.length} files are hashed and kept for a year`,
+      `${label} every page keeps to its limit of script on its first visit, and all ${written.length} files are hashed and kept for a year`,
     );
   }
   return failures;

@@ -31,7 +31,7 @@ try {
     build,
     clientDirectory: fileURLToPath(new URL("../dist/client", import.meta.url)),
     assetsAt: `http://127.0.0.1:${port}${pages.assets.path}`,
-    limit: SCRIPT_BUDGET,
+    limitOf: () => SCRIPT_BUDGET,
     scriptless: (id) =>
       (build.routes[id]?.module as { handle?: { script?: boolean } } | undefined)?.handle
         ?.script === false,
