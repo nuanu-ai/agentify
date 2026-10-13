@@ -94,6 +94,36 @@ describe("the landings for a kind of business", () => {
   );
 });
 
+describe("the owner landing's old address", () => {
+  it.each([
+    ["read", "/owner", "GET"],
+    ["read with a query", "/owner?utm_source=a-link", "GET"],
+    ["asked for its headers", "/owner", "HEAD"],
+  ])("sends a visitor permanently to the front page when %s", async (_how, path, method) => {
+    const answered = await ask(path, { method });
+
+    expect(answered.status).toBe(308);
+    expect(answered.headers.get("location")).toBe("/");
+  });
+
+  it("is a redirect no cache keeps, so a browser never loops on a stale one", async () => {
+    const answered = await ask("/owner");
+
+    expect(answered.headers.get("cache-control")).toBe(
+      "private, no-cache, no-store, max-age=0, must-revalidate",
+    );
+    expect(answered.headers.get("x-frame-options")).toBe("DENY");
+  });
+
+  it("is not the owner's landing under a second address", async () => {
+    const answered = await ask("/owner", { headers: { accept: "text/markdown" } });
+
+    expect(answered.status).toBe(308);
+    expect(answered.headers.get("location")).toBe("/");
+    expect(await answered.text()).not.toContain("# ");
+  });
+});
+
 describe("the methodology", () => {
   it("is the trust page about how the scan works, with the doors to the documentation and the dashboard", async () => {
     const { html, links } = await page("/methodology");
