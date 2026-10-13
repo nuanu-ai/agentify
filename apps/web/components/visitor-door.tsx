@@ -7,7 +7,8 @@ import { useVisitor } from "../lib/visitor";
  * Drawn in the browser so the page it sits on stays the same for everybody and
  * may be cached as one; a browser that runs no script sees no address. The
  * sign-out is the dashboard's own same-origin form, which ends the session
- * everywhere on the site.
+ * everywhere on the site. Not knowing who is visiting is said in words short
+ * enough for the doors' row on a phone.
  */
 export function VisitorDoor() {
   const visitor = useVisitor();
@@ -16,7 +17,7 @@ export function VisitorDoor() {
   return (
     <span aria-busy={visitor.status === "loading"} className="site-visitor">
       {visitor.status === "unknown" ? (
-        <span className="site-unknown">We cannot tell who is visiting right now</span>
+        <span className="site-unknown">Sign-in unknown</span>
       ) : visitor.status === "signed_in" ? (
         <>
           {visitor.operator ? <a href="/admin">Admin</a> : null}

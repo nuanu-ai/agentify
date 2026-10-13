@@ -58,16 +58,16 @@ describe("the header's doors", () => {
     }
   });
 
-  it("says it cannot tell who is visiting when the dashboard does not answer", async () => {
+  it("says it does not know who is signed in when the dashboard does not answer", async () => {
     visitorIs(503, { status: "unknown" });
 
     const { container } = render(<SiteDoors />);
 
-    expect(await screen.findByText(/cannot tell who is visiting/i)).toBeTruthy();
+    expect(await screen.findByText(/sign-in unknown/i)).toBeTruthy();
     expect(container.querySelector('form[action="/dashboard/sign-out"]')).toBeNull();
   });
 
-  it("says it cannot tell who is visiting when the answer is not one it knows", async () => {
+  it("says it does not know who is signed in when the answer is not one it knows", async () => {
     for (const body of [
       { status: "signed_in", operator: false },
       { status: "signed_in", email: "", operator: false },
@@ -78,10 +78,7 @@ describe("the header's doors", () => {
       visitorIs(200, body);
       const { container } = render(<SiteDoors />);
 
-      expect(
-        await screen.findByText(/cannot tell who is visiting/i),
-        JSON.stringify(body),
-      ).toBeTruthy();
+      expect(await screen.findByText(/sign-in unknown/i), JSON.stringify(body)).toBeTruthy();
       expect(container.querySelector('form[action="/dashboard/sign-out"]')).toBeNull();
       vi.restoreAllMocks();
       cleanup();
@@ -93,7 +90,7 @@ describe("the header's doors", () => {
 
     render(<SiteDoors />);
 
-    expect(await screen.findByText(/cannot tell who is visiting/i)).toBeTruthy();
+    expect(await screen.findByText(/sign-in unknown/i)).toBeTruthy();
   });
 
   it("shows a stranger the doors and nobody's address", async () => {
@@ -107,7 +104,7 @@ describe("the header's doors", () => {
     expect(container.querySelector('a[href="/docs/"]')).toBeTruthy();
     expect(container.querySelector('a[href="/dashboard/sign-in"]')).toBeTruthy();
     expect(container.querySelector('form[action="/dashboard/sign-out"]')).toBeNull();
-    expect(screen.queryByText(/cannot tell/i)).toBeNull();
+    expect(screen.queryByText(/sign-in unknown/i)).toBeNull();
   });
 
   it("asks who is visiting once for a page that shows it twice", async () => {

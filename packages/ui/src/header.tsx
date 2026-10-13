@@ -84,7 +84,8 @@ export function BrandLockup({ home = "/" }: Readonly<{ home?: string }>) {
  * The doors out of the surface, the documentation and the dashboard, and who
  * is signed in, which the surface draws in `visitor` since each knows it its
  * own way. When the bar runs out of room the section links go, never these:
- * the doors wrap instead, down to the narrowest page.
+ * the doors wrap instead, and on a phone the signed-in address gives way to
+ * keep them on one row.
  */
 export function SiteDoors({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: ReactNode }>) {
   return (
@@ -177,10 +178,10 @@ export function SectionNav({
 
 /**
  * Who is signed in, for the site header's doors. The whole address is in the
- * title, since the bar cuts it short where it is narrow. The way out is a
- * form, because signing out changes something and a link can be followed by
- * anything that reads the page; it loads the next page whole, so nothing drawn
- * for the address stays in the tab's memory.
+ * title, since the bar cuts it short where it is narrow and leaves it out on
+ * a phone. The way out is a form, because signing out changes something and a
+ * link can be followed by anything that reads the page; it loads the next page
+ * whole, so nothing drawn for the address stays in the tab's memory.
  */
 export function SignedIn({
   who,

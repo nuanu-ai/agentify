@@ -618,3 +618,55 @@ describe("a scan in Chromium", () => {
     await page.context().close();
   });
 });
+
+describe("the doors on a phone", () => {
+  it.each([
+    [
+      "a scan",
+      `/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`,
+      "main section",
+      "7 of 18 checks reported",
+    ],
+    [
+      "a report",
+      "/report/0190f4c5-0000-7000-8000-00000000f002",
+      "h1",
+      "Private report access required",
+    ],
+  ])(
+    "keep their row when the signed-in address arrives, so %s does not move",
+    async (_page, path, under, drawn) => {
+      // The narrowest page the site is drawn for.
+      const context = await browser.newContext({ viewport: { width: 320, height: 640 } });
+      const page = await context.newPage();
+      let release = () => {};
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await page.route(`**/api/v1/scans/${SCAN_ID}/status`, (route) =>
+        route.fulfill({ json: RUNNING }),
+      );
+      await page.route("**/api/v2/session", async (route) => {
+        await released;
+        await route.fulfill({
+          json: {
+            status: "signed_in",
+            email: "accounts-payable@an-example-company.com",
+            operator: false,
+          },
+        });
+      });
+
+      // The session's answer is held until the page under the doors is drawn.
+      await page.goto(`${origin}${path}`);
+      await page.getByText(drawn).first().waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      const before = await page.locator(under).first().boundingBox();
+      release();
+      await page.getByRole("button", { name: "Sign out" }).waitFor();
+
+      expect(await page.locator(under).first().boundingBox()).toEqual(before);
+      await context.close();
+    },
+  );
+});
