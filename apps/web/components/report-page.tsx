@@ -1,10 +1,7 @@
-import { Suspense } from "react";
-
 import type { ReportView } from "../lib/report-view";
-import "./browser-observations.module.css";
-import "./card-signal.module.css";
+import { BrowserObservations } from "./browser-observations";
+import { CardSignal } from "./card-signal";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
-import { lazyPart } from "./lazy-part";
 import { PrivacyChoicesButton } from "./privacy-choices-button";
 import { ReportActionPanel } from "./report-action-panel";
 import { ReportBenchmark } from "./report-benchmark";
@@ -14,15 +11,6 @@ import styles from "./report-page.module.css";
 import { RobotsNotice } from "./robots-notice";
 import { SiteLink } from "./site-link";
 import { StatusBadge } from "./status-badge";
-
-// The browser's observations and the card signal are each drawn only where
-// they are switched on, so a report without them does not load their script.
-// The server draws them before their script arrives, so their styles come
-// with the page.
-const BrowserObservations = lazyPart(() =>
-  import("./browser-observations").then((module) => module.BrowserObservations),
-);
-const CardSignal = lazyPart(() => import("./card-signal").then((module) => module.CardSignal));
 
 /** A full report, for the person it is filed under, drawn from what the server composed. */
 export function ReportPage({ view }: Readonly<{ view: ReportView }>) {
@@ -123,26 +111,22 @@ export function ReportPage({ view }: Readonly<{ view: ReportView }>) {
       </section>
       {view.browserObservation ? (
         <div className={styles.browserSection}>
-          <Suspense fallback={null}>
-            <BrowserObservations
-              fixPrompts={view.browserFixPrompts}
-              initialData={view.browserObservation}
-              scanId={view.scanId}
-              surface="report"
-            />
-          </Suspense>
+          <BrowserObservations
+            fixPrompts={view.browserFixPrompts}
+            initialData={view.browserObservation}
+            scanId={view.scanId}
+            surface="report"
+          />
         </div>
       ) : null}
       {view.cardSignal ? (
-        <Suspense fallback={null}>
-          <CardSignal
-            adapter={view.cardSignal.adapter}
-            enabled
-            initialSignal={view.cardSignal.initialSignal}
-            publishableKey={view.cardSignal.publishableKey}
-            scanId={view.scanId}
-          />
-        </Suspense>
+        <CardSignal
+          adapter={view.cardSignal.adapter}
+          enabled
+          initialSignal={view.cardSignal.initialSignal}
+          publishableKey={view.cardSignal.publishableKey}
+          scanId={view.scanId}
+        />
       ) : null}
       <nav className={styles.account}>
         <SiteLink to="/email/unsubscribe">Email preferences</SiteLink>
