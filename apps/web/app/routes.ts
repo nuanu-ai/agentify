@@ -47,6 +47,8 @@ export default [
   at("scanner", "routes/scanner.tsx"),
   at("privacy", "routes/privacy.tsx"),
   at("terms", "routes/terms.tsx"),
+  at("agentic-shop", "routes/agentic-shop.tsx"),
+  at("agentic-shop/privacy", "routes/agentic-shop.privacy.tsx"),
   at("api/health", "routes/api/health.ts"),
   at("api/health/live", "routes/api/health.live.ts"),
   at("api/v1/consent", "routes/api/v1/consent.ts"),

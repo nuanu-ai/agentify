@@ -106,27 +106,51 @@ const visit = async (
 const timesAsked = (path: string): number => asked.filter((one) => one === path).length;
 
 describe("a page in Chromium", () => {
-  it.each(["/", "/store", "/local", "/methodology", "/scanner", "/privacy", "/terms"])(
-    "comes alive without a complaint: %s",
-    async (path) => {
-      const { page, complaints } = await visit(path);
-      await page.evaluate(() => {
-        (window as Window & { stayed?: boolean }).stayed = true;
-      });
+  it.each([
+    "/",
+    "/store",
+    "/local",
+    "/methodology",
+    "/scanner",
+    "/privacy",
+    "/terms",
+    "/agentic-shop",
+    "/agentic-shop/privacy",
+  ])("comes alive without a complaint: %s", async (path) => {
+    const { page, complaints } = await visit(path);
+    await page.evaluate(() => {
+      (window as Window & { stayed?: boolean }).stayed = true;
+    });
 
-      // Only a page the router took over in the browser follows its own link
-      // without loading a document; one drawn there otherwise than on the
-      // server is a complaint React logs.
-      await page.locator("header a.brand").click();
-      await page.waitForURL(`${origin}/`);
-      await page.locator("h1").first().waitFor();
-      expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(
-        true,
-      );
-      expect(complaints).toEqual([]);
-      await page.context().close();
-    },
-  );
+    // Only a page the router took over in the browser follows its own link
+    // without loading a document; one drawn there otherwise than on the
+    // server is a complaint React logs.
+    await page.locator("header a.brand").click();
+    await page.waitForURL(`${origin}/`);
+    await page.locator("h1").first().waitFor();
+    expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+});
+
+describe("the sell-to-agents page", () => {
+  it("shows its still life", async () => {
+    const { page } = await visit("/agentic-shop");
+    const image = page.locator("main img").first();
+    await page.waitForFunction(
+      (element) => element instanceof HTMLImageElement && element.complete,
+      await image.elementHandle(),
+    );
+
+    const shown = await image.evaluate((element: HTMLImageElement) => ({
+      width: element.naturalWidth,
+      from: new URL(element.currentSrc).pathname,
+    }));
+    expect(shown.width).toBeGreaterThan(0);
+    expect(shown.from).toMatch(/^\/agentic-shop\/merchant-still-life-\d+\.webp$/);
+    await page.context().close();
+  });
 });
 
 describe("a click on a link", () => {
