@@ -6,7 +6,8 @@
   "description": "The React components every surface on the origin draws with, thin wrappers over the classes of the shared visual language, and the server half that sends their built files",
   "exports": {
     ".": "./src/index.ts",
-    "./assets": "./src/assets.ts"
+    "./assets": "./src/assets.ts",
+    "./budget": "./src/budget.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
