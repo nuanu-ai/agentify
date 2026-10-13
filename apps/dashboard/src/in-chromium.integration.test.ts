@@ -12,11 +12,11 @@
  * the browser says about its cache.
  */
 
-import { existsSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { type Harness, harness } from "@agentify/gateway/testing";
+import { launchChromium } from "@agentify/ui/chromium";
 import express from "express";
-import { type Browser, chromium, type Page } from "playwright";
+import type { Browser, Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import { identityFor } from "./identity.js";
@@ -96,12 +96,7 @@ beforeAll(async () => {
   const server = counted.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  // The Chrome a Mac already has, as the browser observer's test does;
-  // Playwright's own Chromium wherever there is none.
-  const macChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  browser = await chromium.launch(
-    process.platform === "darwin" && existsSync(macChrome) ? { executablePath: macChrome } : {},
-  );
+  browser = await launchChromium();
   close = async () => {
     await browser.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));

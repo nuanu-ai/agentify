@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./assets": "./src/assets.ts",
-    "./budget": "./src/budget.ts"
+    "./budget": "./src/budget.ts",
+    "./chromium": "./src/chromium.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
@@ -23,6 +24,7 @@
     "@types/react-dom": "19.2.3",
     "express": "5.2.1",
     "jsdom": "30.1.0",
+    "playwright": "1.61.1",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-router": "8.4.0",
