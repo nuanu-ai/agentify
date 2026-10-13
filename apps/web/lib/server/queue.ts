@@ -34,13 +34,19 @@ export function getScanQueue(): Promise<PgBoss> {
     // A dropped connection and a failure of the queue's own upkeep arrive as
     // `error` events, which with no listener end the process.
     boss.on("error", (failed) => logBackgroundFailure("web_queue_failed", failed));
-    await boss.start();
-    await boss.createQueue("scan-v1", {
-      retryLimit: 1,
-      retryDelay: 1,
-      expireInSeconds: 60,
-    });
-    return boss;
+    try {
+      await boss.start();
+      await boss.createQueue("scan-v1", {
+        retryLimit: 1,
+        retryDelay: 1,
+        expireInSeconds: 60,
+      });
+      return boss;
+    } catch (failed) {
+      // What the start left running would otherwise stay, once per try.
+      await boss.stop({ graceful: false }).catch(() => undefined);
+      throw failed;
+    }
   })();
   globalQueue.agentifyWebQueue = starting;
   starting.catch(() => {
