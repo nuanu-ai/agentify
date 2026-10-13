@@ -7,9 +7,9 @@ import { drawPng, HUMAN_FONT, MONO_FONT } from "./drawing";
 
 const TONE: Record<ShareTone, { color: string; soft: string }> = {
   critical: { color: "#B4462F", soft: "#F7E9E4" },
-  warning: { color: "#9A6811", soft: "#F3ECD9" },
+  warning: { color: "#926310", soft: "#F3ECD9" },
   neutral: { color: "#0F736E", soft: "#E6F0EF" },
-  positive: { color: "#2E7D53", soft: "#E7F1EA" },
+  positive: { color: "#2C774F", soft: "#E7F1EA" },
 };
 
 const SHARE_IMAGE_SIZE = { width: 1200, height: 630 } as const;
@@ -78,7 +78,7 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
             </strong>
             <span
               style={{
-                color: "#8A8781",
+                color: "#726F69",
                 fontFamily: MONO_FONT,
                 fontSize: 20,
                 letterSpacing: 2,
@@ -89,7 +89,7 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
           </div>
           <span
             style={{
-              color: "#8A8781",
+              color: "#726F69",
               fontFamily: MONO_FONT,
               fontSize: 20,
             }}
@@ -174,7 +174,7 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
               >
                 {score}
               </strong>
-              <span style={{ fontSize: 30, color: "#8A8781" }}>/100</span>
+              <span style={{ fontSize: 30, color: "#726F69" }}>/100</span>
             </div>
           </div>
         </div>
@@ -207,13 +207,13 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
                     display: "flex",
                     flexDirection: "column",
                     gap: 2,
-                    color: active ? tone.color : "#8A8781",
+                    color: active ? tone.color : "#726F69",
                     fontFamily: MONO_FONT,
                     fontWeight: active ? 600 : 400,
                   }}
                 >
                   <span style={{ fontSize: 18 }}>{zone.name}</span>
-                  <span style={{ fontSize: 15, color: "#8A8781" }}>{zone.range}</span>
+                  <span style={{ fontSize: 15, color: "#726F69" }}>{zone.range}</span>
                 </div>
               );
             })}
@@ -228,7 +228,7 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
               fontSize: 19,
             }}
           >
-            <span style={{ color: "#8A8781" }}>Diagnostic, not a certification</span>
+            <span style={{ color: "#726F69" }}>Diagnostic, not a certification</span>
             <span style={{ color: "#0F736E", fontWeight: 500 }}>Scan yours → agentify.ad</span>
           </div>
         </div>
