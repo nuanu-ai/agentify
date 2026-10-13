@@ -469,6 +469,46 @@ const answered = async (...statuses: readonly object[]) => {
   return { page, complaints };
 };
 
+type CardFrame = Readonly<{
+  complete: boolean;
+  result: boolean;
+  reading: boolean;
+  stepsDone: boolean;
+}>;
+
+/**
+ * Has the page note, at every frame it draws, what the scan's card shows: a
+ * badge that says the scan is complete, the result's heading, the words that
+ * say the scan's state is still being read, and a list of the scan's steps
+ * with every one of them done. Only a change is noted.
+ */
+const watchCardFrames = (page: Page) =>
+  page.addInitScript(() => {
+    const frames: CardFrame[] = [];
+    (window as Window & { cardFrames?: CardFrame[] }).cardFrames = frames;
+    const look = () => {
+      const card = document.querySelector("main section");
+      if (card !== null) {
+        const frame = {
+          complete: card.querySelector("header")?.textContent?.includes("complete") === true,
+          result: card.querySelector("h1")?.textContent === "Readable",
+          reading: card.textContent?.includes("Reading the scan state") === true,
+          stepsDone:
+            card.querySelector("ol") !== null &&
+            [...card.querySelectorAll("ol > li")].every(
+              (step) => step.lastElementChild?.textContent === "done",
+            ),
+        };
+        if (JSON.stringify(frames.at(-1)) !== JSON.stringify(frame)) frames.push(frame);
+      }
+      requestAnimationFrame(look);
+    };
+    requestAnimationFrame(look);
+  });
+
+const cardFrames = (page: Page): Promise<CardFrame[]> =>
+  page.evaluate(() => (window as Window & { cardFrames?: CardFrame[] }).cardFrames ?? []);
+
 describe("a scan in Chromium", () => {
   it("goes from the front page's form to the scan's progress, its result and the ask for the full report, without a complaint and with no token left in the address", async () => {
     const { page, complaints } = await answered(RUNNING, FINISHED);
@@ -486,6 +526,41 @@ describe("a scan in Chromium", () => {
       await page.evaluate((key) => sessionStorage.getItem(key), `agentify:scan-token:${SCAN_ID}`),
     ).toBe(SCAN_TOKEN);
     expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+
+  it("fetches the result's script while the scan runs, and draws the result in the frame that first says the scan is complete", async () => {
+    const { page, complaints } = await answered(RUNNING, RUNNING, FINISHED);
+    const teaser = page.waitForRequest(/\/assets\/scan-teaser-[^/]*\.js$/);
+    await watchCardFrames(page);
+
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    await teaser;
+    expect(await page.locator("main section header").textContent()).not.toContain("complete");
+    await page.getByLabel("Email").waitFor();
+
+    const frames = await cardFrames(page);
+    expect(frames.filter((frame) => frame.complete && !frame.result)).toEqual([]);
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+
+  it("shows the finished progress, and never words that doubt the scan is complete, while the result's script is on its way", async () => {
+    const { page } = await answered(FINISHED);
+    await page.route("**/assets/scan-teaser-*.js", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await route.continue();
+    });
+    await watchCardFrames(page);
+
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    await page.getByLabel("Email").waitFor();
+
+    const waiting = (await cardFrames(page)).filter((frame) => frame.complete && !frame.result);
+    expect(waiting.length).toBeGreaterThan(0);
+    for (const frame of waiting) {
+      expect(frame).toEqual({ complete: true, result: false, reading: false, stepsDone: true });
+    }
     await page.context().close();
   });
 
