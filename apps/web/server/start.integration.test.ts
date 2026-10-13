@@ -2,10 +2,11 @@
  * The built scanner started the way its image starts it: `server.js`, the
  * package's manifest and `dist`, alone in a directory with no `node_modules`
  * anywhere above it, run by Node. It must come up, answer its liveness probe
- * and a page whose every script it serves, and stop when told to. Nothing
- * else exercises the start: the budget and the browser test load the build's
- * server module themselves, so a build that `server.js` cannot start passes
- * both.
+ * and a page whose every script it serves, draw the pictures that page's head
+ * names with the renderer and fonts its build carries, and stop when told to.
+ * Nothing else exercises the start: the budget and the browser test load the
+ * build's server module themselves, so a build that `server.js` cannot start
+ * passes both.
  *
  * It is asked of the build as it was written, and of the same build laid out
  * as Vite lays it out once an `import()` in server code splits it: the entry
@@ -131,6 +132,22 @@ describe.each(LAYOUTS)("the built scanner %s, started as its image starts it", (
     expect(scripts.length).toBeGreaterThan(0);
     for (const script of new Set(scripts)) {
       expect((await fetch(`${origin}${script}`)).status, script).toBe(200);
+    }
+  });
+
+  it("draws the pictures the front page's head names, from what its build carries", async () => {
+    const head = await (await fetch(`${origin}/`)).text();
+    const pictures = [
+      head.match(/<meta property="og:image" content="([^"]+)"/)?.[1],
+      head.match(/<link rel="apple-touch-icon" href="([^"]+)"/)?.[1],
+    ].map((address) => new URL(address ?? "", origin).pathname);
+
+    for (const picture of pictures) {
+      const answered = await fetch(`${origin}${picture}`);
+      const bytes = new Uint8Array(await answered.arrayBuffer());
+      expect(answered.status, `${picture}\n${output}`).toBe(200);
+      expect(answered.headers.get("content-type"), picture).toBe("image/png");
+      expect([...bytes.subarray(1, 4)], picture).toEqual([0x50, 0x4e, 0x47]);
     }
   });
 
