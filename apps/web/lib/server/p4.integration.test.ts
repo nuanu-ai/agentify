@@ -420,10 +420,6 @@ describe("P4 dashboard-owned scanner identity", () => {
         }),
       );
       expect(response.status).toBe(202);
-      // The visitor is followed for thirty days by a cookie the page's script cannot read.
-      expect(response.headers.get("set-cookie")).toMatch(
-        /^agentify_anonymous=[^;]+; Path=\/; Expires=[^;]+; Max-Age=2592000; HttpOnly; SameSite=lax$/,
-      );
       return (await response.json()) as { scan_id: string };
     };
 
@@ -448,6 +444,31 @@ describe("P4 dashboard-owned scanner identity", () => {
       .where(sql`${scans.id} in (${explicit.scan_id}, ${omitted.scan_id})`);
     expect(rows.find(({ id }) => id === explicit.scan_id)?.submittedWithoutScheme).toBe(false);
     expect(rows.find(({ id }) => id === omitted.scan_id)?.submittedWithoutScheme).toBe(true);
+  });
+
+  it("follows a first visitor with an anonymous cookie for thirty days that the page's script cannot read", async () => {
+    const response = await acceptScan(
+      new Request("http://localhost:3000/api/v1/scans", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+          "idempotency-key": `first-visit-cookie-${createUuidV7()}`,
+          "x-forwarded-for": "203.0.113.45",
+        },
+        body: JSON.stringify({
+          url: "https://first-visit-cookie.example/",
+          segment: "owner",
+          landing_variant: "owner-v1",
+          turnstile_token: null,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(response.headers.get("set-cookie")).toMatch(
+      /^agentify_anonymous=[^;]+; Path=\/; Expires=[^;]+; Max-Age=2592000; HttpOnly; SameSite=lax$/,
+    );
   });
 
   it("calls a database failure before acceptance temporary, not an invalid address", async () => {
@@ -681,6 +702,55 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(await visitorSession()).toMatchObject({ lastLandingVariant: "store-v2" });
   });
 
+  it("keeps a partner's click for thirty days in a cookie the page's script cannot read, once its visitor allows ads measurement", async () => {
+    const partnerClickId = "Rt5sJ2QpR4vN7bL0aZ9wMh";
+    const consented = await persistConsent(
+      new Request("http://localhost:3000/api/v1/consent", {
+        method: "POST",
+        headers: { origin: "http://localhost:3000", "content-type": "application/json" },
+        body: JSON.stringify({
+          policy_version: CONSENT_POLICY_VERSION,
+          categories: {
+            essential_processing: true,
+            product_analytics: true,
+            ads_measurement: true,
+            marketing_email: false,
+            dataset_reuse: false,
+            card_signal: false,
+          },
+        }),
+      }),
+    );
+    expect(consented.status).toBe(201);
+    const visitor =
+      /agentify_anonymous=[^;]+/.exec(consented.headers.get("set-cookie") ?? "")?.[0] ?? "";
+    expect(visitor).not.toBe("");
+
+    const attributed = await persistAttribution(
+      new Request("http://localhost:3000/api/v1/attribution", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          cookie: visitor,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          segment: "owner",
+          landing_variant: "owner-v1",
+          touch: {},
+          partner_click_id: partnerClickId,
+        }),
+      }),
+    );
+
+    expect(attributed.status).toBe(204);
+    expect(attributed.headers.get("set-cookie")).toMatch(
+      new RegExp(
+        `^clickid=${partnerClickId}; Path=/; Expires=[^;]+; Max-Age=2592000; HttpOnly; SameSite=lax$`,
+      ),
+    );
+  });
+
   it("keeps attribution neutral and both accepted registration links usable", async () => {
     const { db } = getDatabase();
     const attributionRequest = (campaign: string, fbclidHash: string) =>
@@ -762,14 +832,9 @@ describe("P4 dashboard-owned scanner identity", () => {
         }),
       });
     expect((await persistConsent(consentRequest(true))).status).toBe(201);
-    // The partner's click is kept for thirty days, out of reach of the page's script.
     expect(
       (await persistAttribution(partnerAttributionRequest())).headers.get("set-cookie"),
-    ).toMatch(
-      new RegExp(
-        `^clickid=${partnerClickId}; Path=/; Expires=[^;]+; Max-Age=2592000; HttpOnly; SameSite=lax$`,
-      ),
-    );
+    ).toContain(`clickid=${partnerClickId}`);
     const revoked = await persistConsent(consentRequest(false));
     expect(revoked.headers.get("set-cookie")).toMatch(/clickid=;.*Max-Age=0/i);
     const piiAttribution = await persistAttribution(
