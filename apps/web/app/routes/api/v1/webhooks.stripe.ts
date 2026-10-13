@@ -1,11 +1,8 @@
-import { NextResponse } from "next/server";
+import { errorResponse } from "../../../../lib/server/http";
+import { methods } from "../../../../lib/server/methods";
+import { processCardSignalWebhook } from "../../../../lib/server/stripe-card-signal";
 
-import { errorResponse } from "../../../../../lib/server/http";
-import { processCardSignalWebhook } from "../../../../../lib/server/stripe-card-signal";
-
-export const runtime = "nodejs";
-
-export async function POST(request: Request) {
+async function stripeEvent(request: Request): Promise<Response> {
   const signature = request.headers.get("stripe-signature");
   if (!signature)
     return errorResponse(
@@ -14,10 +11,12 @@ export async function POST(request: Request) {
       "stripe_signature_missing",
       "The webhook signature is missing.",
     );
+  // Stripe signs the body's bytes as sent, so nothing in the process may read
+  // or parse the body before this.
   const rawBody = await request.text();
   try {
     const result = await processCardSignalWebhook({ rawBody, signature });
-    return NextResponse.json(result, {
+    return Response.json(result, {
       headers: { "Cache-Control": "no-store" },
     });
   } catch {
@@ -30,3 +29,6 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export const loader = methods({ POST: stripeEvent });
+export const action = loader;

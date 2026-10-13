@@ -1,16 +1,10 @@
 import { uuidV7Schema } from "@agentify/scanner-contracts";
-import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { visitorOf } from "../../../../../lib/server/auth";
-import {
-  errorResponse,
-  hasSameOrigin,
-  visitorUnknownResponse,
-} from "../../../../../lib/server/http";
-import { setupCardSignal } from "../../../../../lib/server/stripe-card-signal";
-
-export const runtime = "nodejs";
+import { visitorOf } from "../../../../lib/server/auth";
+import { errorResponse, hasSameOrigin, visitorUnknownResponse } from "../../../../lib/server/http";
+import { methods } from "../../../../lib/server/methods";
+import { setupCardSignal } from "../../../../lib/server/stripe-card-signal";
 
 const setupRequest = z
   .object({
@@ -19,7 +13,7 @@ const setupRequest = z
   })
   .strict();
 
-export async function POST(request: NextRequest) {
+async function setUp(request: Request): Promise<Response> {
   if (!hasSameOrigin(request))
     return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
   const idempotencyKey = request.headers.get("idempotency-key");
@@ -55,7 +49,7 @@ export async function POST(request: NextRequest) {
       );
     if (result.status === "unauthorized")
       return errorResponse(request, 404, "report_not_found", "The verified report was not found.");
-    return NextResponse.json(
+    return Response.json(
       {
         signal_id: result.signalId,
         status: result.status,
@@ -77,3 +71,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const loader = methods({ POST: setUp });
+export const action = loader;

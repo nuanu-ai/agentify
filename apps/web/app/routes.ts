@@ -43,6 +43,16 @@ export default [
   at("methodology", "routes/methodology.tsx"),
   at("api/health", "routes/api/health.ts"),
   at("api/health/live", "routes/api/health.live.ts"),
+  at("api/v1/card-signals/setup-intents", "routes/api/v1/card-signals.setup-intents.ts"),
+  at("api/v1/card-signals/:signalId", "routes/api/v1/card-signals.signalId.ts"),
+  at(
+    "api/v1/card-signals/:signalId/local-confirm",
+    "routes/api/v1/card-signals.signalId.local-confirm.ts",
+  ),
+  at(
+    "api/v1/card-signals/:signalId/payment-method",
+    "routes/api/v1/card-signals.signalId.payment-method.ts",
+  ),
   at("api/v1/consent", "routes/api/v1/consent.ts"),
   at("api/v1/reports/:scanId", "routes/api/v1/reports.scanId.ts"),
   at(
@@ -64,5 +74,6 @@ export default [
   at("api/v1/scans/:id/share", "routes/api/v1/scans.id.share.ts"),
   at("api/v1/scans/:id/status", "routes/api/v1/scans.id.status.ts"),
   at("api/v1/shares/:slug", "routes/api/v1/shares.slug.ts"),
+  at("api/v1/webhooks/stripe", "routes/api/v1/webhooks.stripe.ts"),
   at("*", "routes/not-found.tsx"),
 ] satisfies RouteConfig;

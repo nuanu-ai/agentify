@@ -1,27 +1,17 @@
-import { type NextRequest, NextResponse } from "next/server";
+import type { Params } from "react-router";
+import { visitorOf } from "../../../../lib/server/auth";
+import { errorResponse, hasSameOrigin, visitorUnknownResponse } from "../../../../lib/server/http";
+import { methods } from "../../../../lib/server/methods";
+import { detachCardSignal } from "../../../../lib/server/stripe-card-signal";
 
-import { visitorOf } from "../../../../../../lib/server/auth";
-import {
-  errorResponse,
-  hasSameOrigin,
-  visitorUnknownResponse,
-} from "../../../../../../lib/server/http";
-import { detachCardSignal } from "../../../../../../lib/server/stripe-card-signal";
-
-export const runtime = "nodejs";
-
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ signalId: string }> },
-) {
+async function detach(request: Request, params: Params): Promise<Response> {
   if (!hasSameOrigin(request))
     return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
-  const { signalId } = await params;
   const visitor = await visitorOf(request.headers.get("cookie"));
   if (visitor.kind === "unknown") return visitorUnknownResponse(request);
   try {
     const result = await detachCardSignal({
-      signalId,
+      signalId: params.signalId ?? "",
       visitor,
     });
     if (!result)
@@ -33,7 +23,7 @@ export async function DELETE(
         "card_signal_not_attached",
         "No attached payment method is available to remove.",
       );
-    return NextResponse.json(result, {
+    return Response.json(result, {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch {
@@ -46,3 +36,6 @@ export async function DELETE(
     );
   }
 }
+
+export const loader = methods({ DELETE: detach });
+export const action = loader;
