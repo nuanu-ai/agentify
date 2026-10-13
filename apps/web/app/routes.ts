@@ -79,5 +79,8 @@ export default [
   at("api/v1/scans/:id/status", "routes/api/v1/scans.id.status.ts"),
   at("api/v1/shares/:slug", "routes/api/v1/shares.slug.ts"),
   at("api/v1/webhooks/stripe", "routes/api/v1/webhooks.stripe.ts"),
+  at("api/v2/scans/:id/contact-access", "routes/api/v2/scans.id.contact-access.ts"),
+  at("api/v2/scans/:id/registrations", "routes/api/v2/scans.id.registrations.ts"),
+  at("api/v2/session", "routes/api/v2/session.ts"),
   at("*", "routes/not-found.tsx"),
 ] satisfies RouteConfig;

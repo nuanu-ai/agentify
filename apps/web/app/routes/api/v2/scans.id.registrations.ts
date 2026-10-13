@@ -1,26 +1,26 @@
 import { partnerClickIdSchema, registrationRequestSchema } from "@agentify/scanner-contracts";
-import { type NextRequest, NextResponse } from "next/server";
-import { PARTNER_CLICK_ID_COOKIE } from "../../../../../../lib/server/attribution";
-import { visitorOf } from "../../../../../../lib/server/auth";
-import { getServerConfig } from "../../../../../../lib/server/config";
-import { normalizeEmail } from "../../../../../../lib/server/crypto";
+import type { Params } from "react-router";
+import { PARTNER_CLICK_ID_COOKIE } from "../../../../lib/server/attribution";
+import { visitorOf } from "../../../../lib/server/auth";
+import { getServerConfig } from "../../../../lib/server/config";
+import { readCookie } from "../../../../lib/server/cookies";
+import { normalizeEmail } from "../../../../lib/server/crypto";
 import {
   bearerToken,
   errorResponse,
   hasSameOrigin,
   waitResponse,
   waitSeconds,
-} from "../../../../../../lib/server/http";
-import { linkCooldownResponse } from "../../../../../../lib/server/link-wait";
+} from "../../../../lib/server/http";
+import { linkCooldownResponse } from "../../../../lib/server/link-wait";
+import { methods } from "../../../../lib/server/methods";
 import {
   askAsSignedIn,
   createScannerRegistrationIntent,
-} from "../../../../../../lib/server/scanner-registration";
-import { authorizeScan } from "../../../../../../lib/server/scans";
+} from "../../../../lib/server/scanner-registration";
+import { authorizeScan } from "../../../../lib/server/scans";
 
-export const runtime = "nodejs";
-
-export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function register(request: Request, params: Params): Promise<Response> {
   if (!hasSameOrigin(request))
     return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
   if (!getServerConfig().REGISTRATION_ENABLED)
@@ -33,10 +33,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       3600,
     );
   const token = bearerToken(request);
-  const { id } = await params;
   if (!token)
     return errorResponse(request, 401, "unauthorized", "A private scan token is required.");
-  const scan = await authorizeScan(id, token);
+  const scan = await authorizeScan(params.id ?? "", token);
   if (!scan) return errorResponse(request, 404, "scan_not_found", "The scan was not found.");
   if (scan.status !== "completed" && scan.status !== "partial")
     return errorResponse(
@@ -90,7 +89,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       "Enter the email address the report should be sent to.",
     );
   const partnerClickId = partnerClickIdSchema.safeParse(
-    request.cookies.get(PARTNER_CLICK_ID_COOKIE)?.value,
+    readCookie(request, PARTNER_CLICK_ID_COOKIE),
   );
   const partner = partnerClickId.success ? { partnerClickId: partnerClickId.data } : {};
   try {
@@ -119,7 +118,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           seconds,
         );
       }
-      return NextResponse.json(
+      return Response.json(
         {
           status: "report_ready",
           report_url: `/report/${encodeURIComponent(scan.id)}`,
@@ -134,7 +133,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       partner,
     );
     if (!result.sent) return linkCooldownResponse(request, result);
-    return NextResponse.json(
+    return Response.json(
       { status: "verification_sent" },
       { status: 202, headers: { "Cache-Control": "no-store" } },
     );
@@ -149,3 +148,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
   }
 }
+
+export const loader = methods({ POST: register });
+export const action = loader;
