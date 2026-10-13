@@ -79,11 +79,11 @@ describe("the site's pictures", () => {
     });
   });
 
-  it("include the card for the page about selling to agents, as that page describes it", async () => {
+  it("include the card for the page about selling to agents, of a link card's size", async () => {
     expect(await picture(SELL_TO_AGENTS_PICTURE.path)).toMatchObject({
       status: 200,
-      type: SELL_TO_AGENTS_PICTURE.type,
-      size: { width: SELL_TO_AGENTS_PICTURE.width, height: SELL_TO_AGENTS_PICTURE.height },
+      type: "image/png",
+      size: { width: 1200, height: 630 },
     });
   });
 
@@ -116,7 +116,7 @@ describe("a drawing", () => {
 
   // Two characters none of the fonts has are drawn as the same empty box, so a
   // drawing that differs from that box drew the character itself.
-  it("draws the same box for any character none of its fonts has, and fetches nothing for it", async () => {
+  it("draws the same box for any character none of its fonts has", async () => {
     expect((await draw("漢")).equals(await draw("丁"))).toBe(true);
     expect((await draw("漢")).equals(await draw(""))).toBe(false);
   });
