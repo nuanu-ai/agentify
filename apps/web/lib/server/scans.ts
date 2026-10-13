@@ -61,26 +61,6 @@ function scanBodyHash(body: CreateScanRequest, submittedWithoutScheme: boolean):
   );
 }
 
-function legacyScanBodyHash(body: CreateScanRequest): string {
-  const normalized = canonicalizeSubmittedUrl(body.url);
-  return sha256(
-    JSON.stringify({
-      url: normalized.canonical,
-      segment: body.segment,
-      landing_variant: body.landing_variant,
-    }),
-  );
-}
-
-function scanBodyMatches(
-  storedHash: string,
-  body: CreateScanRequest,
-  submittedWithoutScheme: boolean,
-): boolean {
-  if (storedHash === scanBodyHash(body, submittedWithoutScheme)) return true;
-  return !submittedWithoutScheme && storedHash === legacyScanBodyHash(body);
-}
-
 export async function lookupScanReplay(
   body: CreateScanRequest,
   idempotencyKey: string,
@@ -107,7 +87,7 @@ export async function lookupScanReplay(
   return {
     scanId: existing.id,
     accessToken: deriveCapability(config.hmacSecret, "scan-access", session.id, idempotencyHash),
-    conflict: !scanBodyMatches(existing.idempotencyBodyHash, body, submittedWithoutScheme),
+    conflict: existing.idempotencyBodyHash !== scanBodyHash(body, submittedWithoutScheme),
     status: existing.status,
   };
 }
@@ -212,7 +192,7 @@ export async function createOrReplayScan(
       idempotencyHash,
     );
     if (existing) {
-      const conflict = !scanBodyMatches(existing.idempotencyBodyHash, body, submittedWithoutScheme);
+      const conflict = existing.idempotencyBodyHash !== bodyHash;
       if (!conflict && existing.status === "accepted") {
         await enqueueScanInTransaction(tx, {
           scanId: existing.id,
