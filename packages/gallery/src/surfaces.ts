@@ -1,8 +1,14 @@
+import { fileURLToPath } from "node:url";
 import type { SurfaceSource } from "./draw.js";
+
+const app = (name: string): string =>
+  fileURLToPath(new URL(`../../../apps/${name}`, import.meta.url));
 
 /**
  * Every surface whose states the gallery draws, in the order the page lists
  * them. A surface joins with a module exporting `gallery` (a `GallerySurface`)
  * and a line here.
  */
-export const SURFACES: readonly SurfaceSource[] = [];
+export const SURFACES: readonly SurfaceSource[] = [
+  { root: app("dashboard"), module: "app/gallery.tsx" },
+];
