@@ -30,11 +30,6 @@ const HERO = {
   sizes: "(max-width: 800px) calc(100vw - 40px), 50vw",
 };
 
-/** The still life is fetched with the page rather than once the stylesheet has laid it out. */
-export const links = () => [
-  { rel: "preload", as: "image", imageSrcSet: HERO.srcSet, imageSizes: HERO.sizes },
-];
-
 function Arrow({ diagonal = false }: { diagonal?: boolean }) {
   return <span aria-hidden="true">{diagonal ? "↗" : "→"}</span>;
 }
