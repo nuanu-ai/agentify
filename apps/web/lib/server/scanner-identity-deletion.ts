@@ -19,7 +19,7 @@ const RETRY_BATCH_SIZE = 10;
 
 type DashboardResult = "deleted" | "already_absent" | "retained";
 
-export async function beginScannerIdentityDeletion(leadId: string) {
+async function beginScannerIdentityDeletion(leadId: string) {
   return await getDatabase().db.transaction(async (tx) => {
     const snapshot = (
       await tx

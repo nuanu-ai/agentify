@@ -9,7 +9,7 @@ import styles from "./url-scan-form.module.css";
 
 type FormState = "default" | "submitting" | "error";
 
-export function showSchemeHint(url: string) {
+function showSchemeHint(url: string) {
   return url.length === 0;
 }
 

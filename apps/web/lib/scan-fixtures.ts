@@ -9,7 +9,7 @@
 
 import { CHECK_DEFINITIONS, type ScanStatusResponse } from "@agentify/scanner-contracts";
 
-export const SCAN_FIXTURES = [
+const SCAN_FIXTURES = [
   "running",
   "partial",
   "failed",

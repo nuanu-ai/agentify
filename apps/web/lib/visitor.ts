@@ -42,7 +42,7 @@ function visitorIn(answer: unknown): Visitor | null {
  */
 let inFlight: Promise<Visitor> | null = null;
 
-export function askWhoIsVisiting(): Promise<Visitor> {
+function askWhoIsVisiting(): Promise<Visitor> {
   inFlight ??= ask().finally(() => {
     inFlight = null;
   });

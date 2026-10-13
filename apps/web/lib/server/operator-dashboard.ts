@@ -142,7 +142,7 @@ const asIso = (value: unknown): string => {
   return String(value);
 };
 
-export type OperatorOverview = {
+type OperatorOverview = {
   visitorsTotal: number;
   visitors30d: number;
   landingViews30d: number;
@@ -167,7 +167,7 @@ export type OperatorDailyFunnel = {
   shares: number;
 };
 
-export type OperatorRecentScan = {
+type OperatorRecentScan = {
   scanId: string;
   targetHost: string;
   segment: string;
@@ -181,7 +181,7 @@ export type OperatorRecentScan = {
   browserStatus: string | null;
 };
 
-export type OperatorSelfScan = {
+type OperatorSelfScan = {
   scanId: string;
   targetHost: string;
   segment: string;

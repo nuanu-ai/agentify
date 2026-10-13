@@ -29,7 +29,7 @@ type LockedRateEntry = Readonly<{
 }>;
 
 /** One rolling event spent, which a caller that did not use it can refund. */
-export type SpentRateEvent = Readonly<{ kind: RateKind; eventId: string }>;
+type SpentRateEvent = Readonly<{ kind: RateKind; eventId: string }>;
 
 export type RateLimitOutcome =
   | Readonly<{ allowed: true; spent: readonly SpentRateEvent[] }>
@@ -42,7 +42,7 @@ function usesRollingWindow(kind: RateKind): boolean {
   return kind.endsWith("_hour");
 }
 
-export function rateWindowStart(kind: RateKind, now = new Date()): Date {
+function rateWindowStart(kind: RateKind, now = new Date()): Date {
   const value = new Date(now);
   if (kind.endsWith("_day")) value.setUTCHours(0, 0, 0, 0);
   else value.setUTCMinutes(0, 0, 0);

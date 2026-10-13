@@ -32,7 +32,7 @@ export type PageHead = Readonly<{
  * an image left out is the site's. With `addressed`, the card names the page's
  * canonical address and calls it a website.
  */
-export type PageCard = Readonly<{
+type PageCard = Readonly<{
   title?: string;
   description?: string;
   image?: Picture;
