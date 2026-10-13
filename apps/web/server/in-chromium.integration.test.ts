@@ -278,20 +278,35 @@ describe("the merchant landing", () => {
     await page.context().close();
   });
 
-  it("is, behind the live channel's edge, the page that says there is none, and stays it once the browser takes over", async () => {
+  it("is, behind the live channel's edge, the page that says there is none, and stays it once the browser takes over, back and forth", async () => {
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const page = await context.newPage();
     const complaints: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error" && !message.text().startsWith("Failed to load resource")) {
+        complaints.push(message.text());
+      }
+    });
     page.on("pageerror", (error) => complaints.push(error.message));
+    const withheld = async () => {
+      await page.waitForLoadState("networkidle");
+      expect(new URL(page.url()).pathname).toBe("/sell");
+      expect(await page.locator("h1").first().textContent()).toBe("Page not found");
+      expect(await page.locator(".sell").count()).toBe(0);
+    };
 
     const answered = await page.goto(`${liveOrigin}/sell`);
-    await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(300);
-
     expect(answered?.status()).toBe(404);
-    expect(await page.locator("h1").first().textContent()).toBe("Page not found");
-    expect(await page.locator(".masthead").count()).toBe(0);
-    expect(new URL(page.url()).pathname).toBe("/sell");
+    await withheld();
+
+    // Going back is the router's own navigation: it asks for the landing's
+    // route and data itself, which the edge must withhold as it does the page.
+    await page.locator("a.brand").click();
+    await page.waitForURL(`${liveOrigin}/`);
+    const home = await page.locator("h1").first().textContent();
+    await page.goBack();
+    await page.waitForFunction((left) => document.querySelector("h1")?.textContent !== left, home);
+    await withheld();
     expect(complaints).toEqual([]);
     await context.close();
   });
