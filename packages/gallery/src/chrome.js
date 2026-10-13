@@ -41,13 +41,10 @@
       ? "phone"
       : "desktop";
 
-  // The doctype keeps the frame out of quirks mode. It is written in two parts
-  // so the published file holds no document markup of its own, which its host
-  // adds; the parser supplies the rest of the frame's document.
-  const documentOf = (state) =>
-    `<!${"doctype"} html><meta charset="utf-8">` +
-    `<meta name="viewport" content="width=device-width, initial-scale=1">` +
-    `<style>${fonts}</style><style>${data.css[state.surface]}</style>${state.html}`;
+  const documentOf = (state) => {
+    const surface = data.surfaces[state.surface];
+    return galleryFrameDocument(surface.lang, fonts, surface.css, state.html);
+  };
 
   /** The frame's document runs no script of its own, so it is held from here. */
   const hold = (inside) => {

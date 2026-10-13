@@ -27,6 +27,8 @@ import {
   createRoutesStub,
   UNSAFE_ErrorResponseImpl as ErrorResponseImpl,
   type HydrationState,
+  Meta,
+  type MetaFunction,
 } from "react-router";
 import {
   OperatorDashboard,
@@ -50,6 +52,7 @@ import routes from "./routes";
 interface PageModule {
   readonly default?: ComponentType;
   readonly ErrorBoundary?: ComponentType;
+  readonly meta?: MetaFunction;
   readonly loader?: () => unknown;
   readonly SiteBody?: ComponentType<{ children: ReactNode }>;
 }
@@ -81,6 +84,7 @@ const stubOf = (entry: RouteConfigEntry): StubRoute => {
     path: entry.path,
     Component: page?.default,
     ErrorBoundary: page?.ErrorBoundary,
+    meta: page?.meta,
   };
   return entry.index === true
     ? { ...route, index: true }
@@ -91,15 +95,21 @@ const ROOT = pageAt("root.tsx");
 const { SiteBody } = ROOT;
 if (SiteBody === undefined) throw new Error("the root draws no body for its pages");
 
-/** In the body every page is drawn in, as the document's layout draws it. */
+/**
+ * In the body every page is drawn in, as the document's layout draws it, after
+ * the title and the description the layout writes into the head.
+ */
 const inBody = (Page: ComponentType | undefined) =>
   Page === undefined
     ? undefined
     : function InBody() {
         return (
-          <SiteBody>
-            <Page />
-          </SiteBody>
+          <>
+            <Meta />
+            <SiteBody>
+              <Page />
+            </SiteBody>
+          </>
         );
       };
 
@@ -109,6 +119,7 @@ const TREE: StubRoute[] = [
     path: "/",
     Component: inBody(ROOT.default),
     ErrorBoundary: inBody(ROOT.ErrorBoundary),
+    meta: ROOT.meta,
     children: routes.map(stubOf),
   },
 ];
@@ -1355,5 +1366,6 @@ const ACCOUNT: GalleryState[] = [
 export const gallery: GallerySurface = {
   id: "scanner",
   name: "Scanner and public site",
+  lang: "en-US",
   states: [...PUBLIC, ...SCANNING, ...REPORTS, ...ACCOUNT],
 };

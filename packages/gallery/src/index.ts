@@ -63,5 +63,7 @@ export interface GallerySurface {
   readonly id: string;
   /** As a person would call it. */
   readonly name: string;
+  /** The language its documents declare, as its layout writes it. */
+  readonly lang: string;
   readonly states: readonly GalleryState[];
 }

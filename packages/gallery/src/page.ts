@@ -50,11 +50,19 @@ const screensOf = (surface: DrawnSurface) => {
   return [...screens.entries()];
 };
 
+/**
+ * A link that names the page's canonical address or another language's is
+ * read, never fetched.
+ */
+const NAMES_AN_ADDRESS = /\srel="(?:canonical|alternate)"/i;
+
 /** What a frame would fetch: any source, or a linked file, that is not already in the page. */
 const fetchedBy = (html: string): string[] =>
   [
     ...[...html.matchAll(/\ssrc="([^"]*)"/gi)].map(([, address = ""]) => address),
-    ...[...html.matchAll(/<link\b[^>]*\shref="([^"]*)"/gi)].map(([, address = ""]) => address),
+    ...[...html.matchAll(/<link\b[^>]*>/gi)]
+      .filter(([link]) => !NAMES_AN_ADDRESS.test(link))
+      .flatMap(([link]) => /\shref="([^"]*)"/i.exec(link)?.[1] ?? []),
     ...[...html.matchAll(/\ssrcset="([^"]*)"/gi)].flatMap(([, candidates = ""]) =>
       candidates.split(/,\s+/).map((candidate) => candidate.trim().split(/\s+/)[0] ?? ""),
     ),
@@ -152,7 +160,9 @@ export function pageOf({ surfaces, fonts, css, script, mark }: PageParts): strin
   const states = surfaces.flatMap((surface) => surface.states);
   const screens = surfaces.reduce((sum, surface) => sum + screensOf(surface).length, 0);
   const data = {
-    css: Object.fromEntries(surfaces.map((surface) => [surface.id, surface.css])),
+    surfaces: Object.fromEntries(
+      surfaces.map((surface) => [surface.id, { lang: surface.lang, css: surface.css }]),
+    ),
     states: Object.fromEntries(
       surfaces.flatMap((surface) =>
         surface.states.map((state) => [

@@ -21,7 +21,11 @@ const page = pageOf({
   surfaces,
   fonts: await productFonts(),
   css: await readFile(join(HERE, "chrome.css"), "utf8"),
-  script: await readFile(join(HERE, "chrome.js"), "utf8"),
+  // The frame's document first, which the gallery's own script composes with.
+  script: [
+    await readFile(join(HERE, "frame.js"), "utf8"),
+    await readFile(join(HERE, "chrome.js"), "utf8"),
+  ].join("\n"),
   mark: `data:image/svg+xml;base64,${mark.toString("base64")}`,
 });
 
