@@ -1,12 +1,19 @@
 // @vitest-environment jsdom
 
+/**
+ * The scan page in a browser, with the API answered at the network's edge:
+ * where the token comes from and where it is kept, how often the page asks,
+ * and each state a scan can show, from waiting for capacity to the result.
+ */
+
 import { CHECK_DEFINITIONS } from "@agentify/scanner-contracts";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { onSite } from "../testing/on-site";
 import { ScanExperience } from "./scan-experience";
 
 const scanId = "019f5b6a-4b9f-7000-8000-0000000000bb";
+const TOKEN_KEY = `agentify:scan-token:${scanId}`;
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -14,55 +21,247 @@ const json = (status: number, body: unknown) =>
     headers: { "content-type": "application/json" },
   });
 
+const checks = (status: (id: number) => string) =>
+  CHECK_DEFINITIONS.map((check) => ({
+    id: check.id,
+    label_code: check.labelCode,
+    status: status(check.id),
+    robots: null,
+  }));
+
+const scan = (fields: Record<string, unknown>) => ({
+  status: "running",
+  progress: { completed: 7, total: 18 },
+  checks: checks((id) => (id < 8 ? "pass" : id === 8 ? "running" : "pending")),
+  updated_at: "2026-10-10T12:00:00.000Z",
+  target_host: "shop.example",
+  ...fields,
+});
+
 /**
  * The status of a scan the worker ended because the site answered its home
  * page with a bot challenge: the checks that needed the home page are
  * unavailable, the rest were read, and no verdict was given.
  */
-const blockedScan = {
+const blockedScan = scan({
   status: "failed",
   progress: { completed: 18, total: 18 },
-  checks: CHECK_DEFINITIONS.map((check) => ({
-    id: check.id,
-    label_code: check.labelCode,
-    status: [5, 6, 12, 13, 14, 15, 18].includes(check.id) ? "unavailable" : "pass",
-    robots: null,
-  })),
-  updated_at: "2026-10-10T12:00:00.000Z",
-  target_host: "shop.example",
+  checks: checks((id) => ([5, 6, 12, 13, 14, 15, 18].includes(id) ? "unavailable" : "pass")),
   blocked: true,
-};
+});
+
+const finishedScan = scan({
+  status: "completed",
+  progress: { completed: 18, total: 18 },
+  checks: checks(() => "pass"),
+  teaser: {
+    score: 46,
+    coverage: 1,
+    level: "readable",
+    top_findings: ["vertical_jsonld_missing"],
+    positive: "ssr_content_substantive",
+    hidden_count: 7,
+  },
+});
+
+/** Every status the page asked for, in order; the page's asks are what is observed. */
+let statusAsks: { authorization: string | null }[] = [];
+
+/** The API answering the status with each of `answers` in turn, the last one from then on. */
+function apiAnswers(...answers: (() => Response | Promise<Response>)[]) {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const address = String(input);
+    if (address.endsWith("/api/v2/session")) return json(200, { status: "signed_out" });
+    if (address.endsWith(`/api/v1/scans/${scanId}/status`)) {
+      statusAsks.push({
+        authorization: new Headers(init?.headers).get("authorization"),
+      });
+      const answer = answers[Math.min(statusAsks.length, answers.length) - 1];
+      if (answer === undefined) throw new Error("no answer given");
+      return answer();
+    }
+    return json(404, {});
+  });
+}
+
+const visit = () =>
+  render(
+    onSite(
+      <ScanExperience
+        browserObservationsEnabled={false}
+        publicShareEnabled
+        registrationEnabled
+        remediationPromptEnabled
+        scanId={scanId}
+        segment="store"
+      />,
+    ),
+  );
+
+beforeEach(() => {
+  statusAsks = [];
+});
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   sessionStorage.clear();
+  window.history.replaceState(null, "", "/");
   cleanup();
 });
 
-describe("a scan the site turned away", () => {
-  it("says the site blocked the reader and shows no score", async () => {
-    sessionStorage.setItem(`agentify:scan-token:${scanId}`, "scan-token");
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
-      String(input).endsWith("/status")
-        ? json(200, blockedScan)
-        : json(200, { status: "signed_out" }),
+describe("the token that reads a scan", () => {
+  it("is taken from the link's fragment, kept for the tab under the scan's key, and taken off the address", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      `/scan/${scanId}?segment=store#access_token=from-the-link`,
     );
+    apiAnswers(() => json(200, scan({})));
 
-    render(
-      onSite(
-        <ScanExperience
-          browserObservationsEnabled={false}
-          publicShareEnabled
-          registrationEnabled
-          remediationPromptEnabled
-          scanId={scanId}
-          segment="store"
-        />,
+    visit();
+
+    await screen.findByText("Reading public signals…");
+    expect(sessionStorage.getItem(TOKEN_KEY)).toBe("from-the-link");
+    expect(statusAsks[0]?.authorization).toBe("Bearer from-the-link");
+    expect(window.location.hash).toBe("");
+    expect(window.location.search).toBe("?segment=store");
+  });
+
+  it("is asked for when the tab holds none, and the scan is not asked about", async () => {
+    apiAnswers(() => json(200, scan({})));
+
+    visit();
+
+    expect(await screen.findByText("Open the original private scan link")).toBeTruthy();
+    expect(statusAsks).toEqual([]);
+  });
+
+  it("is said to be no longer valid when the API refuses it, and the page stops asking", async () => {
+    sessionStorage.setItem(TOKEN_KEY, "a-revoked-token");
+    apiAnswers(() => json(401, { error: { code: "unauthorized" } }));
+
+    visit();
+
+    expect(await screen.findByText("This scan link is no longer valid")).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 2_100));
+    expect(statusAsks).toHaveLength(1);
+  });
+});
+
+describe("how often the page asks", () => {
+  it.each([
+    ["queued", 2_000],
+    ["running", 1_000],
+  ])("asks again every %s scan's interval: %ims", async (status, interval) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    sessionStorage.setItem(TOKEN_KEY, "scan-token");
+    apiAnswers(() => json(200, scan({ status })));
+    visit();
+    await waitFor(() => expect(statusAsks).toHaveLength(1));
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    const before = statusAsks.length;
+
+    await act(() => vi.advanceTimersByTimeAsync(interval - 50));
+    expect(statusAsks).toHaveLength(before);
+    await act(() => vi.advanceTimersByTimeAsync(100));
+    expect(statusAsks).toHaveLength(before + 1);
+  });
+
+  it("stops asking once the scan has ended", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    sessionStorage.setItem(TOKEN_KEY, "scan-token");
+    apiAnswers(() => json(200, blockedScan));
+    visit();
+    await screen.findByText("The site blocked our reader");
+
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    expect(statusAsks).toHaveLength(1);
+  });
+});
+
+describe("a scan's states", () => {
+  beforeEach(() => {
+    sessionStorage.setItem(TOKEN_KEY, "scan-token");
+  });
+
+  it("says a queued scan waits for capacity", async () => {
+    apiAnswers(() => json(200, scan({ status: "queued", checks: [] })));
+
+    visit();
+
+    expect(await screen.findAllByText("Waiting for scanner capacity")).toHaveLength(2);
+  });
+
+  it("shows a running scan's step and count, the store's own step among them", async () => {
+    apiAnswers(() => json(200, scan({})));
+
+    visit();
+
+    expect(await screen.findByText("7 of 18 checks reported")).toBeTruthy();
+    expect(screen.getByText("Checking catalog signals")).toBeTruthy();
+  });
+
+  it("says a scan without enough coverage produced no reliable diagnostic, and offers to start again", async () => {
+    apiAnswers(() =>
+      json(
+        200,
+        scan({
+          status: "failed",
+          progress: { completed: 4, total: 18 },
+          checks: checks(() => "unavailable").slice(0, 4),
+        }),
       ),
     );
+
+    visit();
+
+    expect(await screen.findByText("No reliable diagnostic was produced")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+  });
+
+  it("says the site blocked the reader and shows no score", async () => {
+    apiAnswers(() => json(200, blockedScan));
+
+    visit();
 
     await waitFor(() => expect(document.querySelector("h1[data-access-blocked]")).not.toBeNull());
     expect(screen.queryByRole("meter")).toBeNull();
     expect(screen.queryByLabelText("Email")).toBeNull();
+  });
+
+  it("shows a finished scan's level and score, and the ask for the full report", async () => {
+    apiAnswers(() => json(200, finishedScan));
+
+    visit();
+
+    expect(await screen.findByRole("meter")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Readable");
+    expect(await screen.findByLabelText("Email")).toBeTruthy();
+  });
+
+  it("says an answer that is no scan's state is not one, rather than drawing it", async () => {
+    apiAnswers(() => json(200, scan({ status: "somewhere" })));
+
+    visit();
+
+    expect(
+      await screen.findByText("The scanner returned an invalid or unavailable status response."),
+    ).toBeTruthy();
+  });
+
+  it("says it cannot reach the scanner while it cannot, and recovers once it answers again", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    apiAnswers(
+      () => Promise.reject(new TypeError("Failed to fetch")),
+      () => json(200, scan({})),
+    );
+
+    visit();
+    expect(await screen.findByText(/temporarily unreachable/)).toBeTruthy();
+    await act(() => vi.advanceTimersByTimeAsync(2_100));
+
+    expect(await screen.findByText("7 of 18 checks reported")).toBeTruthy();
+    expect(screen.queryByText(/temporarily unreachable/)).toBeNull();
   });
 });

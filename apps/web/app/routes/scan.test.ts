@@ -6,7 +6,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { visitTo } from "../../testing/loader-args";
 import { ask } from "../../testing/scanner";
+import { loader as scanLoader } from "./scan.id";
 import { loader as pendingLoader } from "./scan.pending";
 
 beforeEach(() => {
@@ -27,6 +29,7 @@ const page = async (path: string) => {
   const head = html.slice(0, html.indexOf("</head>"));
   return {
     answered,
+    html,
     h1: html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/)?.[1]?.replace(/<[^>]+>/g, ""),
     title: head.match(/<title>([^<]*)<\/title>/)?.[1],
     meta: (name: string) => head.match(new RegExp(`<meta name="${name}" content="([^"]*)"`))?.[1],
@@ -59,5 +62,63 @@ describe("the page a scan request is handed to", () => {
 
     expect(configured.turnstileSiteKey).toBe("a-runtime-site-key");
     expect(absent.turnstileSiteKey).toBeNull();
+  });
+});
+
+const SCAN = "0190f4c5-0000-7000-8000-000000000000";
+
+const scanPage = (query = "") =>
+  scanLoader(visitTo(`https://agentify.ad/scan/${SCAN}${query}`, { id: SCAN }));
+
+describe("a scan's page", () => {
+  it("says it is reading the scan's state before its script asks, kept by nobody", async () => {
+    const { answered, html } = await page(`/scan/${SCAN}?segment=store`);
+
+    expect(answered.status).toBe(200);
+    expect(answered.headers.get("cache-control")).toBe("private, no-store");
+    expect(answered.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(html).toContain("Reading the scan state");
+  });
+
+  it("is titled as private scan progress, indexed by no crawler, and leaves no referrer", async () => {
+    const { title, meta } = await page(`/scan/${SCAN}`);
+
+    expect(title).toBe("Private scan progress · Agentify");
+    expect(meta("robots")).toBe("noindex, nofollow");
+    expect(meta("referrer")).toBe("no-referrer");
+  });
+
+  it("offers the ask for the full report only where the process has registration on", () => {
+    vi.stubEnv("REGISTRATION_ENABLED", "true");
+    const enabled = scanPage();
+    vi.stubEnv("REGISTRATION_ENABLED", "false");
+    const disabled = scanPage();
+
+    expect(enabled.registrationEnabled).toBe(true);
+    expect(disabled.registrationEnabled).toBe(false);
+  });
+
+  it.each([
+    ["?segment=store", "store"],
+    ["?segment=local", "local"],
+    ["", "owner"],
+    ["?segment=somewhere", "owner"],
+    ["?segment=store&segment=local", "owner"],
+  ])("names the segment the scan was started from: %s", (query, segment) => {
+    expect(scanPage(query).segment).toBe(segment);
+  });
+
+  it("draws an example state where it is asked for outside production, and never in it", () => {
+    const outside = scanPage("?fixture=teaser");
+    const unknown = scanPage("?fixture=no-such-state");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("TOKEN_HMAC_SECRET", "a".repeat(32));
+    vi.stubEnv("DASHBOARD_IDENTITY_URL", "http://127.0.0.1:1");
+    vi.stubEnv("REPORT_IDENTITY_SECRET", "b".repeat(32));
+    const inProduction = scanPage("?fixture=teaser");
+
+    expect(outside.fixture?.status.teaser?.level).toBe("readable");
+    expect(unknown.fixture).toBeNull();
+    expect(inProduction.fixture).toBeNull();
   });
 });

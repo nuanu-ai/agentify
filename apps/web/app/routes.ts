@@ -44,6 +44,7 @@ export default [
   at("report/latest", "routes/report.latest.tsx"),
   at("s/:slug", "routes/s.slug.tsx"),
   at("scan/pending", "routes/scan.pending.tsx"),
+  at("scan/:id", "routes/scan.id.tsx"),
   at("api/health", "routes/api/health.ts"),
   at("api/health/live", "routes/api/health.live.ts"),
   at("api/v1/consent", "routes/api/v1/consent.ts"),
