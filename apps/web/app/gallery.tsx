@@ -324,17 +324,23 @@ const scan = (told: Told, seen: ScanSeen): GalleryState =>
 
 const ended = (name: ScanFixtureName) => ({ status: 200, body: fixtureStatus(name) });
 
-/** A form field by its name, as a person types into it. */
+/**
+ * A form field by its name, as a person types into it. The markup is written
+ * too, since the page is read as markup and a typed value lives only in the
+ * field's state.
+ */
 const typeInto = (page: Document, name: string, value: string) => {
   const field = page.querySelector<HTMLInputElement>(`[name="${name}"]`);
   if (field === null) throw new Error(`no field named ${name}`);
   field.value = value;
+  field.setAttribute("value", value);
 };
 
 const tick = (page: Document, name: string) => {
   const box = page.querySelector<HTMLInputElement>(`input[name="${name}"]`);
   if (box === null) throw new Error(`no box named ${name}`);
   box.checked = true;
+  box.setAttribute("checked", "");
 };
 
 const press = (page: Document, words: string) => {
