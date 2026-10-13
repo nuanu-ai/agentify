@@ -70,13 +70,14 @@ const reads = (request: Request): boolean => request.method === "GET" || request
 
 /**
  * The Markdown variant of a public page, for a visit whose `Accept` prefers it
- * to HTML; null for any other request, which goes on to the page.
+ * to HTML; null for any other request, which goes on to the page. A `HEAD` is
+ * answered with the headers alone by the router, as every answer is.
  */
 export function markdownAnswer(request: Request): Response | null {
   const { page, data } = pageOf(new URL(request.url).pathname);
   if (data || !reads(request) || !isPublicPage(page) || isPrefetch(request.headers)) return null;
   if (!prefersMarkdown(request.headers.get("accept"))) return null;
-  return new Response(request.method === "HEAD" ? null : getPublicPageMarkdown(page), {
+  return new Response(getPublicPageMarkdown(page), {
     status: 200,
     headers: {
       ...PUBLIC_PAGE,
