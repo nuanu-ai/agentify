@@ -99,11 +99,17 @@
     for (const frame of frames) size(frame);
   };
 
-  /** The state being read, so a change of width does not lose the reader's place. */
-  const reading = () =>
-    [...document.querySelectorAll(".gallery-state")].find(
-      (state) => state.getBoundingClientRect().bottom > 80,
-    );
+  const states = [...document.querySelectorAll(".gallery-state")];
+
+  /**
+   * The state being read: the last whose top has reached the line a jump to a
+   * state puts its top on, just under the bar. A state shorter than the window
+   * leaves the next one in view below it, so "in view" would name the wrong one.
+   */
+  const reading = () => {
+    const line = Number.parseFloat(getComputedStyle(states[0]).scrollMarginTop) + 8;
+    return states.findLast((state) => state.getBoundingClientRect().top <= line) ?? states[0];
+  };
 
   for (const button of document.querySelectorAll(".gallery-widths button")) {
     button.addEventListener("click", () => {
@@ -139,33 +145,59 @@
   const links = new Map(
     [...nav.querySelectorAll("a[href^='#']")].map((link) => [link.hash.slice(1), link]),
   );
-  const current = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        for (const link of links.values()) link.removeAttribute("aria-current");
-        const link = links.get(entry.target.id);
-        if (link === undefined) continue;
-        link.setAttribute("aria-current", "true");
-        // The list scrolls on its own beside the page, so the state being read
-        // is kept in its view; a scroll of the page itself would lose the place.
-        const top = link.offsetTop - nav.scrollTop;
-        if (top < 0 || top > nav.clientHeight - link.offsetHeight) {
-          nav.scrollTop = link.offsetTop - nav.clientHeight / 3;
-        }
-      }
+  const mark = (id) => {
+    const link = links.get(id);
+    if (link === undefined || link.getAttribute("aria-current") === "true") return;
+    for (const other of links.values()) other.removeAttribute("aria-current");
+    link.setAttribute("aria-current", "true");
+    // The list scrolls on its own beside the page, so the state being read
+    // is kept in its view; a scroll of the page itself would lose the place.
+    const top = link.offsetTop - nav.scrollTop;
+    if (top < 0 || top > nav.clientHeight - link.offsetHeight) {
+      nav.scrollTop = link.offsetTop - nav.clientHeight / 3;
+    }
+  };
+
+  // A state chosen from the list stays marked until the reader scrolls on
+  // their own: the last states cannot reach the top of a page that ends.
+  let chosen = false;
+  nav.addEventListener("click", (event) => {
+    const link = event.target.closest("a[href^='#']");
+    if (link === null) return;
+    chosen = true;
+    mark(link.hash.slice(1));
+  });
+  for (const own of ["wheel", "touchmove", "keydown", "pointerdown"]) {
+    window.addEventListener(own, () => {
+      chosen = false;
+    });
+  }
+  let pending = false;
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (chosen || pending) return;
+      pending = true;
+      requestAnimationFrame(() => {
+        pending = false;
+        mark(reading().id);
+      });
     },
-    { rootMargin: "-30% 0px -60% 0px" },
+    { passive: true },
   );
 
   choose(device);
   for (const frame of frames) near.observe(frame);
-  for (const state of document.querySelectorAll(".gallery-state")) current.observe(state);
   new ResizeObserver(() => {
     for (const frame of frames) size(frame);
   }).observe(document.querySelector(".gallery-main"));
 
   // The frames above an opened state have their heights only now.
   const asked = decodeURIComponent(location.hash.slice(1));
-  if (asked !== "") document.getElementById(asked)?.scrollIntoView({ block: "start" });
+  const opened = asked === "" ? null : document.getElementById(asked);
+  if (opened !== null) {
+    chosen = true;
+    opened.scrollIntoView({ block: "start" });
+  }
+  mark(opened?.id ?? reading().id);
 })();
