@@ -56,8 +56,11 @@ describe("a scan and a report", () => {
     ["/scan/0190f4c5-0000-7000-8000-000000000000", "no-referrer"],
     ["/scan/pending.data", "no-referrer"],
     ["/report/0190f4c5-0000-7000-8000-000000000000", "strict-origin"],
+    ["/sc%61n/0190f4c5-0000-7000-8000-000000000000", "no-referrer"],
+    ["/%73can/pending.data", "no-referrer"],
+    ["/rep%6Frt/0190f4c5-0000-7000-8000-000000000000", "strict-origin"],
   ])(
-    "are kept by nobody, leave no address behind and are indexed by no crawler: %s",
+    "are kept by nobody, leave no address behind and are indexed by no crawler, however the address is spelled: %s",
     async (path, referrer) => {
       const answered = await ask(path);
 
@@ -104,6 +107,19 @@ describe("a public page", () => {
       expect(body).not.toContain("<html");
     },
   );
+
+  it("is kept and offered as Markdown the same way where its address is percent-encoded", async () => {
+    const page = await ask("/m%65thodology", { headers: { accept: "text/html" } });
+    const markdown = await ask("/m%65thodology", { headers: { accept: "text/markdown" } });
+    const data = await ask("/m%65thodology.data");
+
+    expect(page.status).toBe(200);
+    expect(page.headers.get("cache-control")).toBe("public, max-age=0, s-maxage=3600");
+    expect(page.headers.get("content-language")).toBe("en-US");
+    expect(page.headers.get("vary")).toMatch(/\baccept\b/i);
+    expect(markdown.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
+    expect(data.headers.get("cache-control")).toBe("public, max-age=10");
+  });
 
   it("answers a HEAD for its Markdown with the Markdown's headers and no body", async () => {
     const answered = await ask("/methodology", {
