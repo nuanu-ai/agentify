@@ -350,6 +350,22 @@ describe("a scan in Chromium", () => {
     await page.context().close();
   });
 
+  it("reloads only once where the result's script cannot be fetched at all, and then says something failed", async () => {
+    const { page } = await answered(FINISHED);
+    await page.route("**/assets/scan-teaser-*.js", (route) => route.fulfill({ status: 404 }));
+    let documents = 0;
+    page.on("request", (request) => {
+      if (request.resourceType() === "document") documents += 1;
+    });
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+
+    await page.getByText("Something went wrong").waitFor();
+    await page.waitForTimeout(2_000);
+
+    expect(documents).toBe(2);
+    await page.context().close();
+  });
+
   it("asks a stranger at a report to sign in, and its own links need no reload", async () => {
     const { page, complaints } = await visit("/report/0190f4c5-0000-7000-8000-00000000f002");
     await page.evaluate(() => {
