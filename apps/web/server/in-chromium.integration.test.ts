@@ -37,6 +37,17 @@ let build: ServerBuild;
 let viteManifest: ViteManifest;
 const asked: string[] = [];
 
+// The scan's and the report's pages read the scanner's settings, which name a
+// database; none is asked, since every API a browser asks here is answered by
+// the browser's own stub or needs no database.
+beforeAll(() => {
+  vi.stubEnv("DATABASE_URL", "postgresql://nobody:unused@127.0.0.1:1/nowhere");
+});
+
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
+
 beforeAll(async () => {
   const built = (await import(pathToFileURL(join(DIST, "server", "index.js")).href)) as {
     build: ServerBuild;
@@ -139,6 +150,9 @@ describe("a page's first visit in Chromium", () => {
     ["/", "routes/home"],
     ["/methodology", "routes/methodology"],
     ["/no-such-page", "routes/not-found"],
+    ["/scan/0190f4c5-0000-7000-8000-00000000f003", "routes/scan.id"],
+    ["/scan/pending", "routes/scan.pending"],
+    ["/report/0190f4c5-0000-7000-8000-00000000f004", "routes/report.scanId"],
   ])(
     "loads the scripts the speed budget counts for it, no more and no fewer: %s",
     async (path, routeId) => {
@@ -298,16 +312,6 @@ const answered = async (...statuses: readonly object[]) => {
 };
 
 describe("a scan in Chromium", () => {
-  // The scan's pages read the scanner's settings, which name a database; none
-  // is asked, since the API the browser asks is answered here.
-  beforeAll(() => {
-    vi.stubEnv("DATABASE_URL", "postgresql://nobody:unused@127.0.0.1:1/nowhere");
-  });
-
-  afterAll(() => {
-    vi.unstubAllEnvs();
-  });
-
   it("goes from the front page's form to the scan's progress, its result and the ask for the full report, without a complaint and with no token left in the address", async () => {
     const { page, complaints } = await answered(RUNNING, FINISHED);
 
