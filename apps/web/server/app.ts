@@ -29,7 +29,7 @@ import express, {
 } from "express";
 import { matchRoutes, type RouteObject, type ServerBuild } from "react-router";
 import { pageOf, SECURITY_HEADERS, UNKEPT_PAGE_CACHE } from "../lib/server/answer-headers";
-import { logUnhandledRequestError } from "../lib/server/http";
+import { logBackgroundFailure, logUnhandledRequestError } from "../lib/server/http";
 import { retryPendingScannerIdentityDeletions } from "../lib/server/scanner-identity-deletion";
 import { startDeletionRetries } from "./deletion-retries";
 
@@ -161,13 +161,23 @@ const CLOSING_GRACE_MS = 5_000;
  * (3000) of `HOSTNAME` (every interface), with the background retry of
  * identity deletions where the dashboard's private route is configured. On
  * SIGTERM or SIGINT it stops taking requests, lets those in flight finish
- * within the grace, and exits.
+ * within the grace, and exits. An exception or a rejection nothing caught
+ * leaves the process in a state nobody knows, so it is logged by its kind
+ * alone and the process exits with 1, for its supervisor to start afresh.
  *
  * The folder is named by the caller, because this code is wherever the build
  * put it: in `dist/server/index.js`, or in a chunk beside it once an
  * `import()` splits the build.
  */
 export async function serve({ client }: Readonly<{ client: string }>): Promise<Server> {
+  process.once("uncaughtException", (thrown) => {
+    logBackgroundFailure("web_uncaught_exception", thrown);
+    process.exit(1);
+  });
+  process.once("unhandledRejection", (thrown) => {
+    logBackgroundFailure("web_unhandled_rejection", thrown);
+    process.exit(1);
+  });
   const app = scannerApp({
     assets: await precompressedFrom(join(client, "assets")),
     files: express.static(client, { index: false, redirect: false }),
