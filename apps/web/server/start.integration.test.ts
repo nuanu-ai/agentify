@@ -70,11 +70,12 @@ interface Started {
 const startIn = async (
   directory: string,
   settings: Readonly<Record<string, string>> = {},
+  nodeArguments: readonly string[] = [],
 ): Promise<Started> => {
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
   let output = "";
-  const scanner = spawn(process.execPath, ["server.js"], {
+  const scanner = spawn(process.execPath, [...nodeArguments, "server.js"], {
     cwd: directory,
     env: {
       PATH: process.env.PATH ?? "",
@@ -234,4 +235,45 @@ describe("the built scanner, when a failure reaches it that no request waits on"
       await database.close();
     }
   });
+
+  it.each([
+    ["an exception", "web_uncaught_exception", "throw failure"],
+    ["a rejection", "web_unhandled_rejection", "void Promise.reject(failure)"],
+  ])(
+    "ends with status 1 on %s nothing caught, for its supervisor to start afresh, and logs its kind, never its words",
+    async (_what, event, how) => {
+      const words = "a failure quoting postgresql://someone@db.internal:5432/rows";
+      // Loaded before the process, it fails as nothing in the process expects
+      // once the test asks it to.
+      await writeFile(
+        join(directory, "fails-when-asked.mjs"),
+        `process.on("SIGUSR2", () => {
+          const failure = Object.assign(new Error(${JSON.stringify(words)}), { code: "E_STAND_IN" });
+          ${how};
+        });\n`,
+      );
+      const started = await startIn(directory, {}, ["--import", "./fails-when-asked.mjs"]);
+      try {
+        const before = started.output().length;
+        const exited = once(started.scanner, "exit") as Promise<[number | null]>;
+
+        started.scanner.kill("SIGUSR2");
+        const [code] = await exited;
+
+        const after = started.output().slice(before);
+        expect(code, after).toBe(1);
+        expect(after).not.toContain(words);
+        expect(
+          after
+            .split("\n")
+            .filter((line) => line.startsWith("{"))
+            .map((line) => JSON.parse(line)),
+        ).toEqual([
+          expect.objectContaining({ event, error_type: "Error", error_code: "E_STAND_IN" }),
+        ]);
+      } finally {
+        await stop(started);
+      }
+    },
+  );
 });
