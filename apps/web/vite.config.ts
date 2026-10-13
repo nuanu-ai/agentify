@@ -21,6 +21,21 @@ export default defineConfig(({ command }) => ({
     manifest: true,
   },
   environments: {
+    client: {
+      build: {
+        rollupOptions: {
+          output: {
+            // The framework every page loads is one chunk of its own, so what
+            // one page imports cannot move its code between the chunks every
+            // page shares, and every page's script with it.
+            manualChunks: (id) =>
+              /[\\/]node_modules[\\/](?:react|react-dom|react-router|scheduler)[\\/]/.test(id)
+                ? "framework"
+                : undefined,
+          },
+        },
+      },
+    },
     ssr: {
       build: { rollupOptions: { input: "./server/app.ts" } },
       ...(command === "build" ? { resolve: { noExternal: true } } : {}),

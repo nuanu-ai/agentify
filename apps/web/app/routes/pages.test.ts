@@ -126,12 +126,15 @@ describe("the owner landing's old address", () => {
 });
 
 describe("the methodology", () => {
-  it("is the trust page about how the scan works, with the doors to the documentation and the dashboard", async () => {
+  it("is the trust page about how the scan works, under the site header the front page carries", async () => {
     const { html, links } = await page("/methodology");
+    const header = html.match(/<header class="site-header">[\s\S]*?<\/header>/)?.[0] ?? "";
 
     expect(html).toContain("How the agent-readiness scan works");
+    for (const href of ["/agentic-shop", "/scanner", "/privacy", "/docs/", "/dashboard/sign-in"]) {
+      expect(header, href).toContain(`href="${href}"`);
+    }
     expect(links).toContain("/docs/");
-    expect(links).toContain("/dashboard/sign-in");
   });
 
   it("carries its title after the site's name and its own address", async () => {

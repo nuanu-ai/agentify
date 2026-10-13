@@ -1,5 +1,5 @@
+import { BrandMark } from "@agentify/ui";
 import { DISPLAY_BRAND } from "../lib/brand";
-import { BrandMark } from "./brand-mark";
 import { SiteLink } from "./site-link";
 
 export function Brand({ inverse = false }: Readonly<{ inverse?: boolean }>) {

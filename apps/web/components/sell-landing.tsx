@@ -1,9 +1,8 @@
 import "./sell-landing.css";
 
+import { BrandMark } from "@agentify/ui";
 import { Fragment, useEffect, useRef, useState } from "react";
-
 import type { SellLanding } from "../content/sell";
-import { BrandMark } from "./brand-mark";
 import { SiteLink } from "./site-link";
 
 const SIGN_IN = "/dashboard/sign-in";

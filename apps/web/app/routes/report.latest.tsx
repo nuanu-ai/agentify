@@ -1,7 +1,7 @@
 import { type LoaderFunctionArgs, type MetaArgs, redirect, redirectDocument } from "react-router";
 
 import { LatestReportUnknown } from "../../components/report-locked";
-import { privatePageMeta, siteConfigOf } from "../../lib/page-meta";
+import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 import { latestReportOf, visitorOf } from "../../lib/server/auth";
 
 /**
@@ -25,7 +25,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const meta = ({ matches }: MetaArgs) =>
-  privatePageMeta(siteConfigOf(matches), "Your latest report");
+  pageMeta(siteConfigOf(matches), { title: "Your latest report", robots: "noindex, nofollow" });
 
 export default function LatestReportRoute() {
   return <LatestReportUnknown />;

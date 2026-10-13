@@ -1,7 +1,7 @@
 import { type MetaArgs, useLoaderData } from "react-router";
 
 import { PendingScanExperience } from "../../components/pending-scan-experience";
-import { privatePageMeta, siteConfigOf } from "../../lib/page-meta";
+import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 import { getServerConfig } from "../../lib/server/config";
 
 /**
@@ -12,7 +12,11 @@ import { getServerConfig } from "../../lib/server/config";
 export const loader = () => ({ turnstileSiteKey: getServerConfig().TURNSTILE_SITE_KEY ?? null });
 
 export const meta = ({ matches }: MetaArgs) =>
-  privatePageMeta(siteConfigOf(matches), "Starting private scan", "no-referrer");
+  pageMeta(siteConfigOf(matches), {
+    title: "Starting private scan",
+    robots: "noindex, nofollow",
+    referrer: "no-referrer",
+  });
 
 export default function PendingScanRoute() {
   return (

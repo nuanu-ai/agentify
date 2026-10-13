@@ -16,7 +16,7 @@ describe("Markdown Accept negotiation", () => {
   });
 
   it("preserves existing Vary tokens without duplicates", () => {
-    expect(appendVary("RSC, Accept-Encoding", "Accept")).toBe("RSC, Accept-Encoding, Accept");
+    expect(appendVary("Origin, Cookie", "Accept")).toBe("Origin, Cookie, Accept");
     expect(appendVary("Accept", "accept")).toBe("accept");
   });
 

@@ -576,6 +576,186 @@ p {
   flex: none;
 }
 
+/*
+ * The site header: the lockup, the public site's sections, and the doors to
+ * the documentation, the dashboard and the session. It stays at the top of the
+ * window, translucent over what scrolls under it.
+ */
+.site-header {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  border-bottom: var(--hairline) solid var(--line);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.site-header-inner {
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.site-header-links {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.site-nav {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  font-size: var(--text-small);
+}
+
+/* Written for both surfaces: one colours every link with the accent and the
+   other lets a link take the colour of the block it sits in. */
+.site-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.site-nav a:hover,
+.site-nav a:focus-visible {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.site-doors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 18px;
+  padding-left: 24px;
+  border-left: var(--hairline) solid var(--line);
+  font-size: var(--text-small);
+  font-weight: 500;
+}
+
+.site-doors a {
+  color: var(--fg);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.site-doors a:hover,
+.site-doors a:focus-visible {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* Who is visiting takes no room of its own in the row of doors. */
+.site-visitor {
+  display: contents;
+}
+
+/* The signed-in address: a label, not a door. A long address is cut at the
+   end with its whole self in the title, so the bar never runs off the page. */
+.site-doors .site-who {
+  max-width: 24ch;
+  overflow: hidden;
+  color: var(--muted);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-doors .site-who:hover {
+  color: var(--fg);
+}
+
+.site-unknown {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.site-sign-out {
+  display: inline;
+  margin: 0;
+}
+
+.site-sign-out button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+}
+
+.site-sign-out button:hover,
+.site-sign-out button:focus-visible {
+  color: var(--accent);
+}
+
+/*
+ * The header yields its section links before it yields a door, and its doors
+ * wrap onto a second line before the bar grows, so above 900px it keeps to
+ * 68px. The steps are measured against the current labels ("Sell to agents" is
+ * the widest) and the longest address the doors show: the merchant link goes
+ * at 910px where the doors carry a signed-in address, which would otherwise
+ * take a third line and then run past the edge, and at 760px where they carry
+ * none; at 640px the scanner link goes too, and under 480px only the lockup
+ * and the doors fit in the 320px body minimum. A page clips what runs past its
+ * edge, so a link that did not fit would be cut, not scrolled to.
+ */
+@media (max-width: 760px) {
+  .site-nav a:first-child {
+    display: none;
+  }
+}
+
+@media (max-width: 910px) {
+  .site-header:has(.site-who) .site-nav a:first-child {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .site-header-inner {
+    min-height: 60px;
+  }
+
+  .site-nav {
+    gap: 14px;
+    font-size: var(--text-label);
+  }
+
+  .site-nav a:nth-child(2) {
+    display: none;
+  }
+
+  .site-header-links {
+    gap: 14px;
+  }
+
+  .site-doors {
+    gap: 4px 12px;
+    padding-left: 14px;
+    font-size: var(--text-label);
+  }
+
+  .site-doors .site-who {
+    max-width: 16ch;
+  }
+}
+
+@media (max-width: 480px) {
+  .site-nav {
+    display: none;
+  }
+
+  .site-doors {
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+
 /* The ink band at the foot of a page. `margin-top: auto` holds it against the
    bottom of a short page wherever the page is a full-height flex column. */
 .foot {

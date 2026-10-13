@@ -1,6 +1,6 @@
 import type { PublicShareSnapshot } from "@agentify/scanner-contracts";
 
-import { BrandMark } from "../../components/brand-mark";
+import { BrandMark } from "@agentify/ui";
 import { getPublicAppConfig } from "../app-config";
 import { type ShareTone, shareCopy } from "../share-copy";
 import { drawPng, HUMAN_FONT, MONO_FONT } from "./drawing";

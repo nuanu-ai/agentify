@@ -5,8 +5,8 @@
  * process runs, so each is drawn once, when first asked for.
  */
 
-import { BrandMark } from "../../components/brand-mark";
-import { SELL_TO_AGENTS_PICTURE } from "../../content/pictures";
+import { BrandMark } from "@agentify/ui";
+import { SELL_TO_AGENTS_PICTURE, SITE_PICTURE } from "../../content/pictures";
 import { DISPLAY_BRAND } from "../brand";
 import { drawPng, HUMAN_FONT, MONO_FONT } from "./drawing";
 
@@ -23,8 +23,7 @@ const once = (draw: () => Promise<Png>): (() => Promise<Png>) => {
   };
 };
 
-export const SITE_PICTURE_SIZE = { width: 1200, height: 630 } as const;
-export const APPLE_ICON_SIZE = { width: 180, height: 180 } as const;
+const APPLE_ICON_SIZE = { width: 180, height: 180 } as const;
 
 export const sitePicture = once(() =>
   drawPng(
@@ -102,7 +101,7 @@ export const sitePicture = once(() =>
         </div>
       </div>
     </div>,
-    SITE_PICTURE_SIZE,
+    { width: SITE_PICTURE.width, height: SITE_PICTURE.height },
   ),
 );
 

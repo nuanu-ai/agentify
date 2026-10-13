@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const ROOT = fileURLToPath(new URL("../../../..", import.meta.url));
-const SKIP = new Set(["node_modules", "dist", ".next", "coverage", ".git", ".claude"]);
+const SKIP = new Set(["node_modules", "dist", "coverage", ".git", ".claude"]);
 
 function sources(directory: string, extensions: readonly string[]): string[] {
   const found: string[] = [];

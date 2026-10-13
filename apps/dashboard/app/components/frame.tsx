@@ -1,12 +1,13 @@
 /**
- * The frame every screen about a merchant's selling is drawn in: the numbered
- * sections in a sidebar, and over the page a bar with the screen's title, the
- * merchant's selling state and who is signed in with the way out.
+ * The frame every screen about a merchant's selling is drawn in: the site
+ * header with who is signed in and the way out, and under it the dashboard's
+ * working area, its numbered sections in a sidebar beside a bar with the
+ * screen's title and the merchant's selling state.
  */
 
-import { BrandLockup, Footer, OnItsWay, type Section, SectionNav, SignedIn } from "@agentify/ui";
+import { Footer, OnItsWay, type Section, SectionNav, SignedIn, SiteHeader } from "@agentify/ui";
 import type { ReactNode } from "react";
-import { useRouteLoaderData } from "react-router";
+import { Link, useRouteLoaderData } from "react-router";
 import type { DashboardDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
 import { useChrome } from "../answer.js";
@@ -96,20 +97,24 @@ export function Frame({
     <div className="page">
       <title>{`${title} — Agentify`}</title>
       <OnItsWay />
+      <SiteHeader
+        surface="dashboard"
+        link={Link}
+        visitor={
+          <SignedIn who={gate.who} account={`${chrome.base}/settings`} signOut="/sign-out" />
+        }
+      />
       <div className="app-shell">
         <aside className="app-sidebar">
-          <div className="app-sidebar-brand">
-            <BrandLockup home="/" />
-            <span>SELLER DASHBOARD</span>
-          </div>
+          <div className="app-sidebar-name">Seller dashboard</div>
           <SectionNav className="tabs" label="Dashboard sections" sections={sections} />
           <div className="sidebar-help">
             <span>Need help?</span>
             <a href="/docs/">Open the docs →</a>
           </div>
           {/* A details element, so it opens and closes with no script. Who is
-              signed in and the way out stay in the bar at every width, so the
-              menu does not repeat them. */}
+              signed in and the way out stay in the site header at every
+              width, so the menu does not repeat them. */}
           <details className="app-menu">
             <summary aria-label="Menu">
               <span />
@@ -133,19 +138,13 @@ export function Frame({
               band above the full-height sticky sidebar would push its foot
               below the first screen. */}
           <SurfaceNote surface={chrome.surface} />
-          <header className="top">
+          <div className="top">
             <div className="top-inner">
               <h1 className="top-title">{heading}</h1>
               {frame.selling === undefined ? null : <Word word={frame.selling} />}
-              <SignedIn
-                className="account"
-                who={gate.who}
-                account={`${chrome.base}/settings`}
-                signOut="/sign-out"
-              />
             </div>
-          </header>
-          <main className="app-content">
+          </div>
+          <main className="app-content" id="main">
             {frame.unnamed ? <Unnamed base={chrome.base} /> : null}
             {children}
           </main>

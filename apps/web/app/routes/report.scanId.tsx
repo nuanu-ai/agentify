@@ -3,7 +3,7 @@ import { type LoaderFunctionArgs, type MetaArgs, useLoaderData } from "react-rou
 import { ReportLocked, type ReportLockedData } from "../../components/report-locked";
 import { ReportPage } from "../../components/report-page";
 import { getPublicAppConfig } from "../../lib/app-config";
-import { privatePageMeta, siteConfigOf } from "../../lib/page-meta";
+import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 import { type ReportView, reportView } from "../../lib/report-view";
 import { getServerConfig } from "../../lib/server/config";
 import { loadReportPage } from "../../lib/server/reporting";
@@ -57,7 +57,11 @@ export const loader = async ({
 };
 
 export const meta = ({ matches }: MetaArgs) =>
-  privatePageMeta(siteConfigOf(matches), "Private diagnostic report", "strict-origin");
+  pageMeta(siteConfigOf(matches), {
+    title: "Private diagnostic report",
+    robots: "noindex, nofollow",
+    referrer: "strict-origin",
+  });
 
 export default function ReportRoute() {
   const page = useLoaderData<typeof loader>();

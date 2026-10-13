@@ -4,10 +4,8 @@ import { AccountActions } from "../../components/account-actions";
 import { EditorialPage } from "../../components/editorial-page";
 import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 
-export const meta = ({ matches }: MetaArgs) => [
-  ...pageMeta(siteConfigOf(matches), { title: "Email preferences" }),
-  { name: "robots", content: "noindex, nofollow" },
-];
+export const meta = ({ matches }: MetaArgs) =>
+  pageMeta(siteConfigOf(matches), { title: "Email preferences", robots: "noindex, nofollow" });
 
 export default function EmailPreferencesPage() {
   return (

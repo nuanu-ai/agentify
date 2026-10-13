@@ -66,7 +66,9 @@ export const shouldRevalidate = () => false;
 export const meta = ({ loaderData, error }: MetaArgs<typeof loader>) =>
   loaderData === undefined
     ? [{ title: siteTitle(DISPLAY_BRAND) }]
-    : pageMeta(loaderData.app, { noindex: isRouteErrorResponse(error) && error.status === 404 });
+    : pageMeta(loaderData.app, {
+        robots: isRouteErrorResponse(error) && error.status === 404 ? "noindex" : undefined,
+      });
 
 /**
  * What every page's body carries around the page: the site's settings for the

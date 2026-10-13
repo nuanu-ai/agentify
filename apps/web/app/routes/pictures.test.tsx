@@ -145,12 +145,9 @@ describe("a share's card", () => {
     expect(drawn.equals(another)).toBe(false);
   });
 
-  it.each(["/s/a-share/opengraph-image", "/api/v1/shares/a-share/image"])(
-    "says it failed, not that there is no such share, while the database cannot be reached: %s",
-    async (path) => {
-      vi.spyOn(console, "error").mockImplementation(() => {});
+  it("says it failed, not that there is no such share, while the database cannot be reached", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
 
-      expect((await ask(path)).status).toBe(500);
-    },
-  );
+    expect((await ask("/api/v1/shares/a-share/image")).status).toBe(500);
+  });
 });

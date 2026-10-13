@@ -5,9 +5,9 @@ import {
 import { type MetaArgs, useLoaderData } from "react-router";
 
 import { usePublicConfig } from "../../components/public-config";
-import { MarketingHeader, SiteFooter } from "../../components/site-chrome";
+import { SiteFooter, SiteHeader } from "../../components/site-chrome";
 import { SiteLink } from "../../components/site-link";
-import { AGENTIC_SHOP_CARD_IMAGE } from "../../content/agentic-shop";
+import { SELL_TO_AGENTS_PICTURE } from "../../content/pictures";
 import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 import styles from "./agentic-shop.module.css";
 
@@ -23,7 +23,7 @@ export const meta = ({ matches }: MetaArgs) =>
     description:
       "How Agentify retains and removes information submitted through the retired merchant application form.",
     canonical: "/agentic-shop/privacy",
-    card: { image: AGENTIC_SHOP_CARD_IMAGE },
+    card: { image: SELL_TO_AGENTS_PICTURE },
   });
 
 export default function MerchantPrivacyPage() {
@@ -31,7 +31,7 @@ export default function MerchantPrivacyPage() {
   const notice = useLoaderData<typeof loader>();
   return (
     <div className={styles.page}>
-      <MarketingHeader />
+      <SiteHeader />
       <main className={`container ${styles.privacy}`} id="main">
         <p className={styles.eyebrow}>Historical merchant applications · September 9, 2026</p>
         <h1>

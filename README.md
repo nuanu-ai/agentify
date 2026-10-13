@@ -239,11 +239,11 @@ its own.
 
 | Path | What it is |
 | --- | --- |
-| `apps/web` | The scanner: the public site, the checks, the report. |
+| `apps/web` | The scanner: the public site, the checks, the report, and the merchant landing at `/sell`, which only the test channel shows. React Router pages and API routes under `app/`, on Express in `server/`; `pnpm --filter @agentify/web build` makes one process with every package it imports bundled in, which its image runs with nothing installed beside it. |
 | `apps/scanner-worker`, `apps/browser-observer-actor` | The scanner's background process and its passive browser observation. |
 | `apps/gateway` | The payment edge, the order runner and the queue. Ports in `src/ports`, their implementations in `src/adapters`. |
 | `apps/dashboard` | The merchant's screens: sign-in, cards, orders, receipts, integrations, keys, settings and the WooCommerce connector, and the identity route the scanner calls. React Router pages under `app/`, server-rendered in the application's process and built by `pnpm --filter @agentify/dashboard build`; their server half is in `src/` (`docs/research/35-one-process.md`). |
-| `packages/ui` | `@agentify/ui`: the React components every surface draws with, thin wrappers over the classes of `packages/visual`. |
+| `packages/ui` | `@agentify/ui`: the React components every surface draws with, the site header among them, thin wrappers over the classes of `packages/visual`. |
 | `apps/docs` | The merchant documentation, a VitePress site served at `/docs`. Its JSON examples are test fixtures (see below). |
 | `packages/contracts` | `@nuanu-ai/agentify-contracts`: every shape that crosses a boundary, as zod schemas, and the route table both sides import instead of transcribing. |
 | `packages/core` | The order state machine: pure logic, zero IO, zero runtime dependencies. |
@@ -314,6 +314,18 @@ kept apart for that reason:
   allowed to keep, the click after a hover being answered from the hover's
   fetch and nothing kept before a press shown after it, and that a press
   answered on its own page leaves the merchant where they were on it.
+- `pnpm scanner:test:browser` builds the scanner and drives the same Chromium
+  over its pages: they come alive without a complaint, a click shows at once,
+  a hover's fetch serves the click, and the consent banner takes a choice
+  without a reload. `pnpm scanner:test:start` starts that build the way its
+  image does, with nothing installed beside it, and stops it.
+- Each surface's speed budget reads its build:
+  `pnpm --filter @agentify/dashboard budget` and
+  `pnpm --filter @agentify/web budget` fail when a page's first visit asks for
+  more compressed script than its limit: 100 KB on the dashboard, 105 KB on a
+  scanner page a stranger lands on, and 130 KB on one reached by somebody
+  already using the scanner, a scan, a report, the account forms and the
+  operator's figures.
 
 ## Releasing
 

@@ -5,11 +5,12 @@ import { EditorialPage, Notice, ProseList } from "../../components/editorial-pag
 import { usePublicConfig } from "../../components/public-config";
 import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 
-export const meta = ({ matches }: MetaArgs) => [
-  ...pageMeta(siteConfigOf(matches), { title: "Data request" }),
-  { name: "robots", content: "noindex, nofollow" },
-  { name: "referrer", content: "no-referrer" },
-];
+export const meta = ({ matches }: MetaArgs) =>
+  pageMeta(siteConfigOf(matches), {
+    title: "Data request",
+    robots: "noindex, nofollow",
+    referrer: "no-referrer",
+  });
 
 export default function DataRequestPage() {
   const config = usePublicConfig();

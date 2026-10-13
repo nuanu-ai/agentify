@@ -2,6 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";
+import { routeDataOf } from "./route-data-lib.mjs";
 
 const image = process.argv[2];
 const postgresImage = process.argv[3] ?? "postgres:17-alpine";
@@ -167,23 +168,19 @@ async function assertRuntime(baseUrl, channel, reportPath, reportCookie) {
   assertIncludes(robots, `Sitemap: ${origin}/sitemap.xml`, `${channel} robots origin`);
   assertIncludes(sitemap, `<loc>${origin}/</loc>`, `${channel} sitemap origin`);
   assertIncludes(llms, `](${origin}/)`, `${channel} llms origin`);
-  // Next renders the root canonical as the bare origin, no trailing slash.
+  // The front page's canonical address is the bare origin, with no slash.
   assertIncludes(front, `rel="canonical" href="${origin}"/>`, `${channel} canonical metadata`);
   assertIncludes(front, `posthog-${own}`, `${channel} PostHog key`);
   assertIncludes(front, `posthog-${own}.example.com`, `${channel} PostHog host`);
   assertIncludes(front, `meta-${own}`, `${channel} Meta destination`);
-  const serializedOwner = owner.replaceAll("\\", "");
+  const { analytics } = routeDataOf(front).root;
   assert(
-    new RegExp(
-      `posthog.{0,240}destinationEnvironment.{0,30}${isTest ? "preview" : "production"}`,
-    ).test(serializedOwner),
-    `${channel} PostHog destination environment was absent`,
+    analytics.posthog.destinationEnvironment === (isTest ? "preview" : "production"),
+    `${channel} PostHog destination environment was ${analytics.posthog.destinationEnvironment}`,
   );
   assert(
-    new RegExp(`meta.{0,240}destinationEnvironment.{0,30}${isTest ? "local" : "preview"}`).test(
-      serializedOwner,
-    ),
-    `${channel} Meta destination environment was absent`,
+    analytics.meta.destinationEnvironment === (isTest ? "local" : "preview"),
+    `${channel} Meta destination environment was ${analytics.meta.destinationEnvironment}`,
   );
   assertIncludes(front, `abuse-${own}@example.com`, `${channel} abuse contact`);
   assertExcludes(front, other, `${channel} analytics configuration`);
@@ -194,8 +191,8 @@ async function assertRuntime(baseUrl, channel, reportPath, reportCookie) {
   else assertExcludes(privacy, pendingLegalIdentity, `${channel} legal status`);
   assertExcludes(privacy, other, `${channel} legal configuration`);
   assert(
-    new RegExp(`registrationEnabled.{0,12}${isTest ? "false" : "true"}`).test(scan),
-    `${channel} registration flag was absent`,
+    routeDataOf(scan)["routes/scan.id"].registrationEnabled === !isTest,
+    `${channel} registration flag was not ${!isTest}`,
   );
   assertIncludes(pending, `turnstile-${own}`, `${channel} Turnstile site key`);
   assertExcludes(pending, other, `${channel} Turnstile configuration`);
