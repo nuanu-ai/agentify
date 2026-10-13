@@ -55,15 +55,21 @@ export function scannerApp(parts: ScannerParts): Express {
     next();
   });
 
-  // `/methodology/` is `/methodology`, permanently, with the query kept.
+  // `/methodology/` is `/methodology`, permanently, with the query kept. A
+  // path written with repeated slashes or a backslash is sent first to the
+  // same path with single slashes, so no address it is sent to starts with
+  // `//`, which a browser reads as another site.
   app.use((request, response, next) => {
     const at = request.originalUrl.indexOf("?");
     const path = at === -1 ? request.originalUrl : request.originalUrl.slice(0, at);
-    if (path.length < 2 || !path.endsWith("/")) {
+    const single = path.replace(/[/\\]+/g, "/");
+    const to =
+      single !== path ? single : path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : null;
+    if (to === null) {
       next();
       return;
     }
-    const location = `${path.replace(/\/+$/, "") || "/"}${at === -1 ? "" : request.originalUrl.slice(at)}`;
+    const location = `${to}${at === -1 ? "" : request.originalUrl.slice(at)}`;
     response.status(308).setHeader("location", location);
     response.setHeader("refresh", `0;url=${location}`);
     response.end(location);
