@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef } from "react";
 import type { TurnstileAction } from "../lib/server/turnstile";
 import styles from "./turnstile-challenge.module.css";
