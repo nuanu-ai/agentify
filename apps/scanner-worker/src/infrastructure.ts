@@ -83,6 +83,25 @@ const throttledErrorLog = (
   };
 };
 
+/**
+ * The worker's pool. A connection that fails while nobody holds it marks the
+ * database down for readiness, and is logged by its kind at most once a
+ * minute, as every database failure of the worker is.
+ */
+function workerDatabase(
+  databaseUrl: string,
+  health: WorkerHealth,
+  logger: StructuredLogger,
+) {
+  const logDatabaseError = throttledErrorLog(logger, "worker_database_error", () => {
+    health.databaseConnected = false;
+    health.ready = false;
+  });
+  const { db, pool } = createDatabase(databaseUrl);
+  pool.on("error", logDatabaseError);
+  return { db, pool, logDatabaseError };
+}
+
 export async function startWorkerInfrastructure(
   env: WorkerEnv,
   health: WorkerHealth,
@@ -97,7 +116,7 @@ export async function startWorkerInfrastructure(
     configured_concurrency: env.SCANNER_CONCURRENCY,
     browser_mode: env.APIFY_BROWSER_MODE,
   });
-  const { db, pool } = createDatabase(env.DATABASE_URL);
+  const { db, pool, logDatabaseError } = workerDatabase(env.DATABASE_URL, health, logger);
   await pool.query("select 1");
   health.databaseConnected = true;
 
@@ -105,11 +124,6 @@ export async function startWorkerInfrastructure(
     health.queueConnected = false;
     health.ready = false;
   });
-  const logDatabaseError = throttledErrorLog(logger, "worker_database_error", () => {
-    health.databaseConnected = false;
-    health.ready = false;
-  });
-  pool.on("error", logDatabaseError);
 
   // The one `pgboss` schema the gateway's queue uses too (queue-schema.test.ts).
   // The gateway's nightly schedules are its own to send, so this client sends
