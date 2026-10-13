@@ -37,11 +37,12 @@ export type Visitor =
 /**
  * Who a cookie header belongs to.
  *
- * Pass `renew` only from a caller that can hand the browser the renewed cookie;
- * a page drawn on the server cannot set one. A waiting request the session
- * names is finished here; if that fails it is logged and the next visit
- * finishes it. A page reads this once and passes it down, so a dashboard that
- * stops answering mid-page cannot give one page two different visitors.
+ * Pass `renew` only from a caller that hands the browser the renewed cookie,
+ * `setCookies`, in the headers of its answer, as any route's loader or action
+ * can. A waiting request the session names is finished here; if that fails it
+ * is logged and the next visit finishes it. A page reads this once and passes
+ * it down, so a dashboard that stops answering mid-page cannot give one page
+ * two different visitors.
  */
 export async function visitorOf(
   cookieHeader: string | undefined | null,
