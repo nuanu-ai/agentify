@@ -1,3 +1,8 @@
+/**
+ * A Markdown file the browser saves rather than shows. `nosniff` is not written
+ * here: the process writes it on every answer, and written here as well it
+ * would be sent twice.
+ */
 export function markdownDownloadResponse(content: string, filename: string): Response {
   const safeFilename = filename.replace(/[^a-z0-9._-]+/gi, "-");
   return new Response(content, {
@@ -9,7 +14,6 @@ export function markdownDownloadResponse(content: string, filename: string): Res
       "Content-Type": "text/markdown; charset=utf-8",
       "Cross-Origin-Resource-Policy": "same-origin",
       "Referrer-Policy": "no-referrer",
-      "X-Content-Type-Options": "nosniff",
       "X-Robots-Tag": "noindex, nofollow",
     },
   });
