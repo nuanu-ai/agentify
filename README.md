@@ -270,11 +270,12 @@ so none of them mistakes another's entries for its own.
 ```sh
 pnpm check          # formatting and lint
 pnpm typecheck
+pnpm deadcode       # files, exports and dependencies nothing uses
 pnpm test           # offline, free, no network
 pnpm check:decisions
 ```
 
-That is the gate before a push. CI runs the same four on every push and pull
+That is the gate before a push. CI runs the same five on every push and pull
 request, and beyond them the database suite, the build of every package and of
 the portal, and the scanner's integration tests; the workflow is
 `.github/workflows/ci.yml`. A green run publishes nothing and deploys nothing.
