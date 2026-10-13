@@ -17,7 +17,6 @@
 
 import type { Server } from "node:http";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import * as build from "virtual:react-router/server-build";
 import { precompressedFrom } from "@agentify/ui/assets";
 import { createRequestHandler } from "@react-router/express";
@@ -158,13 +157,17 @@ export function scannerApp(parts: ScannerParts): Express {
 const CLOSING_GRACE_MS = 5_000;
 
 /**
- * Starts the built scanner: on `PORT` (3000) of `HOSTNAME` (every interface),
- * with the background retry of identity deletions where the dashboard's
- * private route is configured. On SIGTERM or SIGINT it stops taking requests,
- * lets those in flight finish within the grace, and exits.
+ * Starts the built scanner, with the browser's files from `client`: on `PORT`
+ * (3000) of `HOSTNAME` (every interface), with the background retry of
+ * identity deletions where the dashboard's private route is configured. On
+ * SIGTERM or SIGINT it stops taking requests, lets those in flight finish
+ * within the grace, and exits.
+ *
+ * The folder is named by the caller, because this code is wherever the build
+ * put it: in `dist/server/index.js`, or in a chunk beside it once an
+ * `import()` splits the build.
  */
-export async function serve(): Promise<Server> {
-  const client = fileURLToPath(new URL("../client", import.meta.url));
+export async function serve({ client }: Readonly<{ client: string }>): Promise<Server> {
   const app = scannerApp({
     assets: await precompressedFrom(join(client, "assets")),
     files: express.static(client, { index: false, redirect: false }),
