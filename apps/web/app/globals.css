@@ -1,6 +1,6 @@
 /*
  * What the scanner needs on top of `@agentify/visual/tokens.css`, which
- * app/layout.tsx imports ahead of this file. Colours, font families and radii
+ * app/root.tsx imports ahead of this file. Colours, font families and radii
  * belong there, not here.
  */
 
@@ -21,6 +21,12 @@ textarea {
 button,
 a {
   -webkit-tap-highlight-color: transparent;
+}
+
+/* A link clicked whose page is still on its way (components/site-link.tsx). */
+a[data-going] {
+  cursor: progress;
+  opacity: 0.6;
 }
 
 /* While the fixed consent banner is up it sets its height here

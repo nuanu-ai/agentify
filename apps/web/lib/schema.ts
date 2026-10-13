@@ -1,12 +1,11 @@
-import { getPublicAppConfig } from "./app-config";
+import type { PublicAppConfig } from "./app-config";
 
 // What a crawler reads as the site's description. It says what the
 // /methodology intro says to a person (content/public-editorial.ts).
 const SITE_DESCRIPTION =
   "A diagnostic for public, machine-readable website signals. We do not modify sites or test a particular model's answer.";
 
-export function publicSiteSchema(): object {
-  const config = getPublicAppConfig();
+export function publicSiteSchema(config: PublicAppConfig): object {
   const baseUrl = new URL(config.baseUrl).toString();
   const organizationId = new URL("/#organization", baseUrl).toString();
   const websiteId = new URL("/#website", baseUrl).toString();

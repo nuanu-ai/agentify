@@ -137,7 +137,8 @@ scanner tables beside it, so it needs `docker compose down -v` once.
 
 Editing the scanner is faster outside a container, and `pnpm scanner:dev` runs
 its two processes on the host against the same database the stack uses — the
-web application on port 3000, the worker's health endpoint on 8081. It reads
+web application on port 3000 of loopback, compiled from its source by Vite on
+each request, and the worker's health endpoint on 8081. It reads
 `.env.scanner` rather than the `.env` the stack above takes its settings from:
 
 ```sh

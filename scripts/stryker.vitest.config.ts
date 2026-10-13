@@ -19,7 +19,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { defineConfig, mergeConfig } from "vitest/config";
-import { jsxRuntime, unitTests } from "../vitest.config.js";
+import { unitTests } from "../vitest.config.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const packageDir = process.env.AGENTIFY_MUTATION_PACKAGE_DIR;
@@ -93,7 +93,7 @@ const scannerTarget = defineConfig({
 });
 
 export default mergeConfig(
-  defineConfig({ oxc: jsxRuntime, test: unitTests }),
+  defineConfig({ test: unitTests }),
   defineConfig({
     ...(family === "scanner" ? scannerTarget : {}),
     resolve: { alias },

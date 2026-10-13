@@ -1,12 +1,11 @@
 import { CONSENT_POLICY_VERSION } from "@agentify/analytics/browser";
-import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { PARTNER_CLICK_ID_COOKIE } from "../../../../lib/server/attribution";
 import { getServerConfig } from "../../../../lib/server/config";
 import { CONSENT_COOKIE, persistConsentSnapshot } from "../../../../lib/server/consent";
+import { cookieHeader, readCookie } from "../../../../lib/server/cookies";
 import { errorResponse, hasSameOrigin } from "../../../../lib/server/http";
-
-export const runtime = "nodejs";
+import { methods } from "../../../../lib/server/methods";
 
 const categoriesSchema = z
   .object({
@@ -26,7 +25,7 @@ const requestSchema = z
   })
   .strict();
 
-export async function POST(request: NextRequest) {
+async function consent(request: Request): Promise<Response> {
   if (!hasSameOrigin(request)) {
     return errorResponse(request, 403, "origin_forbidden", "Request origin is not allowed.");
   }
@@ -38,31 +37,37 @@ export async function POST(request: NextRequest) {
   const country = countryHeader && /^[A-Z]{2}$/i.test(countryHeader) ? countryHeader : undefined;
   try {
     const result = await persistConsentSnapshot({
-      anonymousToken: request.cookies.get(CONSENT_COOKIE)?.value,
+      anonymousToken: readCookie(request, CONSENT_COOKIE),
       decisions: parsed.data.categories,
       ...(country ? { country } : {}),
     });
-    const response = NextResponse.json(
+    const response = Response.json(
       { status: "saved", policy_version: CONSENT_POLICY_VERSION },
       { status: 201, headers: { "Cache-Control": "no-store" } },
     );
     if (result.anonymousToken) {
-      response.cookies.set(CONSENT_COOKIE, result.anonymousToken, {
-        httpOnly: true,
-        secure: getServerConfig().production,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 13 * 30 * 24 * 60 * 60,
-      });
+      response.headers.append(
+        "Set-Cookie",
+        cookieHeader(CONSENT_COOKIE, result.anonymousToken, {
+          httpOnly: true,
+          secure: getServerConfig().production,
+          sameSite: "lax",
+          path: "/",
+          maxAge: 13 * 30 * 24 * 60 * 60,
+        }),
+      );
     }
     if (!parsed.data.categories.ads_measurement) {
-      response.cookies.set(PARTNER_CLICK_ID_COOKIE, "", {
-        httpOnly: true,
-        secure: getServerConfig().production,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 0,
-      });
+      response.headers.append(
+        "Set-Cookie",
+        cookieHeader(PARTNER_CLICK_ID_COOKIE, "", {
+          httpOnly: true,
+          secure: getServerConfig().production,
+          sameSite: "lax",
+          path: "/",
+          maxAge: 0,
+        }),
+      );
     }
     return response;
   } catch {
@@ -76,3 +81,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const loader = methods({ POST: consent });
+export const action = loader;

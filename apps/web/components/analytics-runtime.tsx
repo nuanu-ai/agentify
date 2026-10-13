@@ -7,9 +7,9 @@ import {
   readCurrentConsent,
 } from "@agentify/analytics/browser";
 import type { AnalyticsEventName, Segment } from "@agentify/scanner-contracts";
-import { usePathname } from "next/navigation";
 import type { PostHog } from "posthog-js";
 import { useCallback, useEffect, useRef } from "react";
+import { useLocation } from "react-router";
 
 import {
   createClientOwnedEventId,
@@ -50,7 +50,7 @@ const META_CLIENT_EVENT = {
 } as const;
 
 export function AnalyticsRuntime({ config }: Readonly<{ config: BrowserAnalyticsConfig }>) {
-  const pathname = usePathname();
+  const { pathname } = useLocation();
   const consent = useRef<ConsentSnapshot | undefined>(undefined);
 
   const track = useCallback(

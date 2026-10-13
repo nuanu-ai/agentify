@@ -67,7 +67,7 @@ async function waitForServer() {
       });
       if (response.ok) return;
     } catch {
-      // The standalone server may still be starting.
+      // The built server may still be starting.
     }
     if (server?.exitCode !== null && server?.exitCode !== undefined)
       fail(`candidate server exited early (${server.exitCode})\n${serverOutput}`);
@@ -79,7 +79,7 @@ async function waitForServer() {
 async function startServer() {
   if (process.env.SELF_READINESS_BASE_URL) return;
   const port = new URL(baseUrl).port;
-  server = spawn(process.execPath, ["apps/web/.next/standalone/apps/web/server.js"], {
+  server = spawn(process.execPath, ["apps/web/server.js"], {
     cwd: process.cwd(),
     detached: true,
     env: {

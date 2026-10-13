@@ -4,7 +4,6 @@ import {
   safeErrorCode,
   safeErrorType,
 } from "@agentify/observability";
-import { NextResponse } from "next/server";
 
 import { getServerConfig } from "./config";
 
@@ -48,6 +47,26 @@ export function logServerError(
   });
 }
 
+/**
+ * The line for a request that failed where nothing caught it: a page that
+ * could not be drawn, a route that threw. It names the failure by its type and
+ * code alone, because an exception from the database or a provider can carry
+ * bound values, tokens and addresses, and a log goes places the database does
+ * not. The request's id is the one it arrived with, unchecked, as sent.
+ */
+export function logUnhandledRequestError(
+  error: unknown,
+  request: Readonly<{ method: string; path: string; requestId: string | null }>,
+): void {
+  logger.error("web_unhandled_request_error", {
+    request_id: request.requestId ?? undefined,
+    route: classifyHttpRoute(request.path),
+    method: request.method,
+    error_type: safeErrorType(error),
+    error_code: safeErrorCode(error),
+  });
+}
+
 export function errorResponse(
   request: Request,
   status: number,
@@ -68,7 +87,7 @@ export function errorResponse(
   if (status >= 500) logger.error("api_error", attributes);
   else logger.warn("api_error", attributes);
 
-  return NextResponse.json(
+  return Response.json(
     {
       error: {
         code,

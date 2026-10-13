@@ -2,6 +2,7 @@ import { parseJsonLd } from "@agentify/scanner";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { getPublicAppConfig } from "../lib/app-config";
 import { publicSiteSchema } from "../lib/schema";
 import { StructuredData } from "./structured-data";
 
@@ -15,7 +16,9 @@ afterEach(() => {
 describe("StructuredData", () => {
   it("emits an owner-quality Organization and WebSite graph", () => {
     process.env.APP_BASE_URL = "https://agentify.ad";
-    const html = renderToStaticMarkup(<StructuredData schema={publicSiteSchema()} />);
+    const html = renderToStaticMarkup(
+      <StructuredData schema={publicSiteSchema(getPublicAppConfig())} />,
+    );
     const parsed = parseJsonLd(html);
     const organization = parsed.nodes.find((node) => node["@type"] === "Organization");
 

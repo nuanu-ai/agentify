@@ -8,8 +8,8 @@ import {
   readCurrentConsent,
   saveConsentDecision,
 } from "@agentify/analytics/browser";
-import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router";
 
 import { DISPLAY_BRAND } from "../lib/brand";
 import styles from "./consent-banner.module.css";
@@ -110,7 +110,7 @@ export function ConsentPreferencesPanel(props: {
 }
 
 export function ConsentBanner() {
-  const pathname = usePathname();
+  const { pathname } = useLocation();
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return null;
   return <ConsentBannerContent />;
 }

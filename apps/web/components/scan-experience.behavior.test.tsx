@@ -3,7 +3,7 @@
 import { CHECK_DEFINITIONS } from "@agentify/scanner-contracts";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { onSite } from "../testing/on-site";
 import { ScanExperience } from "./scan-experience";
 
 const scanId = "019f5b6a-4b9f-7000-8000-0000000000bb";
@@ -49,14 +49,16 @@ describe("a scan the site turned away", () => {
     );
 
     render(
-      <ScanExperience
-        browserObservationsEnabled={false}
-        publicShareEnabled
-        registrationEnabled
-        remediationPromptEnabled
-        scanId={scanId}
-        segment="store"
-      />,
+      onSite(
+        <ScanExperience
+          browserObservationsEnabled={false}
+          publicShareEnabled
+          registrationEnabled
+          remediationPromptEnabled
+          scanId={scanId}
+          segment="store"
+        />,
+      ),
     );
 
     await waitFor(() => expect(document.querySelector("h1[data-access-blocked]")).not.toBeNull());

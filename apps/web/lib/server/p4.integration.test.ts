@@ -25,7 +25,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { POST as requestDataAction } from "../../app/api/v1/account/data-request/route";
 import { POST as unsubscribeAction } from "../../app/api/v1/account/unsubscribe/route";
 import { POST as persistAttribution } from "../../app/api/v1/attribution/route";
-import { POST as persistConsent } from "../../app/api/v1/consent/route";
 import { POST as persistClientEvent } from "../../app/api/v1/events/route";
 import { GET as downloadFullPrompt } from "../../app/api/v1/reports/[scanId]/remediation-prompt/download/route";
 import { GET as readFullReport } from "../../app/api/v1/reports/[scanId]/route";
@@ -37,6 +36,7 @@ import { POST as acceptScan } from "../../app/api/v1/scans/route";
 import { GET as getContactAccess } from "../../app/api/v2/scans/[id]/contact-access/route";
 import { POST as requestScannerRegistration } from "../../app/api/v2/scans/[id]/registrations/route";
 import { GET as readVisitor } from "../../app/api/v2/session/route";
+import { action as consent } from "../../app/routes/api/v1/consent";
 import { latestReportOf, visitorOf } from "./auth";
 import { getServerConfig } from "./config";
 import { encryptEmail, hmacHex, sha256 } from "./crypto";
@@ -54,6 +54,8 @@ import {
 import { requestScannerIdentityDeletion } from "./scanner-identity-deletion";
 import { createScannerRegistrationIntent } from "./scanner-registration";
 import { authorizeScan, createOrReplayScan, getScanStatus } from "./scans";
+
+const persistConsent = (request: Request) => consent({ request, params: {} });
 
 const connectionString = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!connectionString?.includes("_migration_test")) {

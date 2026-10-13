@@ -66,7 +66,7 @@ export const unitTests: TestOptions = {
     "packages/*/**/*.test.ts",
     "packages/*/**/*.test.tsx",
   ],
-  exclude: [...configDefaults.exclude, "**/.next/**", "**/*.integration.test.ts"],
+  exclude: [...configDefaults.exclude, "**/*.integration.test.ts"],
 };
 
 /** The ones that own a database, a browser, a built server or more than one. */
@@ -74,7 +74,6 @@ const integrationTests: TestOptions = {
   ...shared,
   name: "integration",
   include: ["apps/*/**/*.integration.test.ts", "packages/*/**/*.integration.test.ts"],
-  exclude: [...configDefaults.exclude, "**/.next/**"],
 };
 
 export const scannerSourceAlias = scannerSources.map(([specifier, path]) => ({
@@ -82,18 +81,8 @@ export const scannerSourceAlias = scannerSources.map(([specifier, path]) => ({
   replacement: source(path),
 }));
 
-/**
- * `apps/web` says `preserve` in its tsconfig because Next asks for it; left
- * alone, the test transform would read that and hand the runner untransformed
- * JSX.
- */
-export const jsxRuntime: NonNullable<ViteUserConfig["oxc"]> = {
-  jsx: { runtime: "automatic", importSource: "react" },
-};
-
 export default defineConfig({
   resolve: { alias: scannerSourceAlias },
-  oxc: jsxRuntime,
   test: {
     // Two projects rather than two configs: a file the configuration does not
     // collect cannot be run by naming it, so the integration commands name

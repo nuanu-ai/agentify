@@ -1,20 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getPublicAppConfig } from "../lib/app-config";
 import { getCardSignalPublicConfig } from "../lib/server/stripe-card-signal-config";
-import RootLayout from "./layout";
+import { loader } from "./root";
 
 const originalEnv = { ...process.env };
 
 afterEach(() => {
   process.env = { ...originalEnv };
 });
-
-function analyticsConfigFromLayout() {
-  const layout = RootLayout({ children: null });
-  const body = layout.props.children;
-  const analytics = body.props.children[1];
-  return analytics.props.config;
-}
 
 describe("browser-visible runtime configuration", () => {
   it("reads legal and contact claims from ordinary runtime variables", () => {
@@ -26,7 +18,7 @@ describe("browser-visible runtime configuration", () => {
       LEGAL_IDENTITY_CONFIRMED: "true",
     });
 
-    expect(getPublicAppConfig()).toMatchObject({
+    expect(loader().app).toMatchObject({
       displayBrand: "Agentify",
       baseUrl: "https://test.agentify.ad",
       privacyEmail: "privacy-test@example.com",
@@ -36,7 +28,7 @@ describe("browser-visible runtime configuration", () => {
     });
   });
 
-  it("passes analytics destinations from the server into the client runtime", () => {
+  it("hands the browser the analytics destinations the server was given", () => {
     Object.assign(process.env, {
       ANALYTICS_RUNTIME_ENV: "test",
       POSTHOG_BROWSER_KEY: "phc_runtime_test",
@@ -46,7 +38,7 @@ describe("browser-visible runtime configuration", () => {
       META_DESTINATION_ENV: "test",
     });
 
-    expect(analyticsConfigFromLayout()).toEqual({
+    expect(loader().analytics).toEqual({
       runtimeEnvironment: "test",
       posthog: {
         key: "phc_runtime_test",
@@ -66,7 +58,7 @@ describe("browser-visible runtime configuration", () => {
       POSTHOG_BROWSER_HOST: "",
     });
 
-    expect(() => RootLayout({ children: null })).toThrow("browser_posthog_requires_key_and_host");
+    expect(() => loader()).toThrow("browser_posthog_requires_key_and_host");
   });
 
   it("passes the Stripe publishable key through the authenticated report server boundary", () => {

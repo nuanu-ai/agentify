@@ -1,6 +1,7 @@
-import { SystemMessagePage } from "../components/system-message-page";
+import { SystemMessagePage } from "./system-message-page";
 
-export default function NotFoundPage() {
+/** Any address the scanner has no page for, answered with status 404. */
+export function NotFoundPage() {
   return (
     <SystemMessagePage
       actionLabel="Start a scan"

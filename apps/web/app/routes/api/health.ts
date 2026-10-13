@@ -1,8 +1,8 @@
 import { SCAN_RUBRIC_VERSION } from "@agentify/scanner-contracts";
-import { NextResponse } from "next/server";
 
 import { getDatabase } from "../../../lib/server/database";
 import { logServerError, requestHeaders } from "../../../lib/server/http";
+import { methods } from "../../../lib/server/methods";
 import {
   evaluateOperationalSignals,
   evaluateWorkerHeartbeat,
@@ -11,9 +11,7 @@ import {
   type WorkerHeartbeatRow,
 } from "../../../lib/server/worker-health";
 
-export const dynamic = "force-dynamic";
-
-export async function GET(request: Request) {
+async function health(request: Request): Promise<Response> {
   try {
     const [workerResult, signalsResult] = await Promise.all([
       getDatabase().pool.query<WorkerHeartbeatRow>(
@@ -62,7 +60,7 @@ export async function GET(request: Request) {
       },
     );
     const healthy = worker.ready && signals.scannerCapacity && signals.analyticsOutbox;
-    return NextResponse.json(
+    return Response.json(
       {
         status: healthy ? "ok" : "degraded",
         service: "web",
@@ -88,7 +86,7 @@ export async function GET(request: Request) {
       status_code: 503,
       error_code: "database_unavailable",
     });
-    return NextResponse.json(
+    return Response.json(
       {
         status: "unavailable",
         service: "web",
@@ -100,3 +98,6 @@ export async function GET(request: Request) {
     );
   }
 }
+
+export const loader = methods({ GET: health });
+export const action = loader;

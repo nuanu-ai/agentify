@@ -1,8 +1,8 @@
 "use client";
 
 import type { Segment } from "@agentify/scanner-contracts";
-import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useId, useRef, useState } from "react";
+import { type FormEvent, useId, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 
 import { captureLandingAttribution } from "../lib/attribution-client";
 import { savePendingScan } from "../lib/pending-scan";
@@ -26,17 +26,13 @@ export function UrlScanForm({
   variant: string;
   compact?: boolean;
 }>) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const inputId = useId();
   const [url, setUrl] = useState("");
   const [state, setState] = useState<FormState>("default");
   const [message, setMessage] = useState("");
   const idempotencyKey = useRef("");
   const submitting = state === "submitting";
-
-  useEffect(() => {
-    router.prefetch("/scan/pending");
-  }, [router]);
 
   function submitScan() {
     const validation = validateSubmittedUrl(url);
@@ -69,7 +65,7 @@ export function UrlScanForm({
     setState("submitting");
     setMessage("Opening your private scan…");
     void captureLandingAttribution(segment, variant, attributionSource);
-    router.push(`/scan/pending?segment=${segment}`);
+    void navigate(`/scan/pending?segment=${segment}`);
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {

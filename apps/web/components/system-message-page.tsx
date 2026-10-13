@@ -1,6 +1,5 @@
-import Link from "next/link";
-
 import { Brand } from "./brand";
+import { SiteLink } from "./site-link";
 import styles from "./system-message-page.module.css";
 
 export function SystemMessagePage({
@@ -20,9 +19,9 @@ export function SystemMessagePage({
       <section className={styles.card}>
         <h1>{title}</h1>
         <p>{description}</p>
-        <Link className="button button-primary" href={href}>
+        <SiteLink className="button button-primary" to={href}>
           {actionLabel}
-        </Link>
+        </SiteLink>
       </section>
     </main>
   );

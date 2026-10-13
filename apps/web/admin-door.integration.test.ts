@@ -4,8 +4,8 @@
  *
  * `/admin` opens only for a session whose account carries the operator flag.
  * Everybody else, and everybody while the seller dashboard cannot confirm the
- * flag, gets the same 404 page as `/nimda`, a path no route has. Next draws
- * that answer from the page's refusal, so this runs the standalone build
+ * flag, gets the same 404 page as `/nimda`, a path no route has. The router
+ * draws that answer from the page's refusal, so this runs the scanner's build
  * rather than importing the page. The `*_migration_test` database is emptied
  * and built by the migrations alone, with nothing installed beside them.
  *
@@ -28,8 +28,8 @@ const connectionString = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!connectionString?.includes("_migration_test")) {
   throw new Error("the admin door test requires a dedicated *_migration_test database");
 }
-const built = fileURLToPath(new URL("./.next/standalone/apps/web/server.js", import.meta.url));
-if (!existsSync(built)) {
+const built = fileURLToPath(new URL("./server.js", import.meta.url));
+if (!existsSync(fileURLToPath(new URL("./dist/server/index.js", import.meta.url)))) {
   throw new Error(
     "the admin door test runs the scanner's build: pnpm --filter @agentify/web build",
   );
@@ -84,26 +84,23 @@ function standInSellerDashboard(): Server {
 }
 
 type Answer = Readonly<{ status: number; headers: readonly string[][]; body: string }>;
-type Asking = Readonly<{ method?: "GET" | "HEAD"; cookie?: string; rsc?: boolean }>;
+type Asking = Readonly<{ method?: "GET" | "HEAD"; cookie?: string; data?: boolean }>;
 
 /**
  * One request and its whole answer, header names as they came on the wire.
  * Only the date is left out, which is the one header two answers a moment
  * apart cannot share.
  */
-function ask(path: string, { method = "GET", cookie, rsc = false }: Asking = {}): Promise<Answer> {
-  const target = new URL(path, base);
-  if (rsc) target.searchParams.set("_rsc", "door");
+function ask(path: string, { method = "GET", cookie, data = false }: Asking = {}): Promise<Answer> {
+  // A client navigation asks for the page's data at `<page>.data`.
+  const target = new URL(data ? `${path}.data` : path, base);
   return new Promise((resolve, reject) => {
     const sent = httpRequest(
       target,
       {
         method,
         agent: false,
-        headers: {
-          ...(cookie === undefined ? {} : { cookie }),
-          ...(rsc ? { rsc: "1" } : {}),
-        },
+        headers: cookie === undefined ? {} : { cookie },
       },
       (response) => {
         let body = "";
@@ -134,10 +131,8 @@ const DOORS = ["/admin", "/admin/users"] as const;
 
 /**
  * Asserts that `/admin` and what is under it are the site's 404 page for this
- * visitor, asked as a page, as a HEAD and as a client navigation. A client
- * navigation's status says nothing, because Next carries the refusal inside
- * the payload, so there the payload must be the 404 page and none of the
- * operator's dashboard.
+ * visitor, asked as a page, as a HEAD and as a client navigation, whose data
+ * must be refused the same way and carry none of the operator's dashboard.
  */
 async function expectMissingPages(visitor: Asking, who: string): Promise<void> {
   for (const door of DOORS) {
@@ -160,8 +155,8 @@ async function expectMissingPages(visitor: Asking, who: string): Promise<void> {
 
     expect((await ask(door, { ...visitor, method: "HEAD" })).status, `${label} HEAD`).toBe(404);
 
-    const navigated = await ask(door, { ...visitor, rsc: true });
-    expect(navigated.body, `${label} navigation`).toContain(heading);
+    const navigated = await ask(door, { ...visitor, data: true });
+    expect(navigated.status, `${label} navigation`).toBe(404);
     for (const answer of [answered, navigated]) {
       expect(answer.body, label).not.toContain(HEADING);
       expect(answer.body, label).not.toContain("Operator dashboard");

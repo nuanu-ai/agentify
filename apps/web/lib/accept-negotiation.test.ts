@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { appendVary, isReactServerComponentRequest, prefersMarkdown } from "./accept-negotiation";
+import { appendVary, isPrefetch, prefersMarkdown } from "./accept-negotiation";
 
 describe("Markdown Accept negotiation", () => {
   it.each([
@@ -20,9 +20,9 @@ describe("Markdown Accept negotiation", () => {
     expect(appendVary("Accept", "accept")).toBe("accept");
   });
 
-  it("does not negotiate RSC or prefetch traffic", () => {
-    expect(isReactServerComponentRequest(new Headers({ rsc: "1" }))).toBe(true);
-    expect(isReactServerComponentRequest(new Headers({ purpose: "prefetch" }))).toBe(true);
-    expect(isReactServerComponentRequest(new Headers())).toBe(false);
+  it("tells a prefetch from a visit", () => {
+    expect(isPrefetch(new Headers({ purpose: "prefetch" }))).toBe(true);
+    expect(isPrefetch(new Headers({ purpose: "Prefetch" }))).toBe(true);
+    expect(isPrefetch(new Headers())).toBe(false);
   });
 });

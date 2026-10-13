@@ -1,9 +1,8 @@
-import Link from "next/link";
-
-import { getPublicAppConfig } from "../lib/app-config";
 import { Brand } from "./brand";
 import { PrivacyChoicesButton } from "./privacy-choices-button";
+import { usePublicConfig } from "./public-config";
 import styles from "./site-chrome.module.css";
+import { SiteLink } from "./site-link";
 import { VisitorDoor } from "./visitor-door";
 
 /**
@@ -35,10 +34,10 @@ export function MarketingHeader() {
         <Brand />
         <div className={styles.headerLinks}>
           <nav aria-label="Primary" className={styles.nav}>
-            <Link href="/agentic-shop">Sell to agents</Link>
-            <Link href="/scanner">Scanner</Link>
-            <Link href="/methodology">Methodology</Link>
-            <Link href="/privacy">Privacy</Link>
+            <SiteLink to="/agentic-shop">Sell to agents</SiteLink>
+            <SiteLink to="/scanner">Scanner</SiteLink>
+            <SiteLink to="/methodology">Methodology</SiteLink>
+            <SiteLink to="/privacy">Privacy</SiteLink>
           </nav>
           <SiteDoors />
         </div>
@@ -48,21 +47,21 @@ export function MarketingHeader() {
 }
 
 export function SiteFooter() {
-  const config = getPublicAppConfig();
+  const config = usePublicConfig();
 
   return (
     <footer className={styles.footer}>
       <div className={`${styles.footerRow} container`}>
         <Brand inverse />
         <nav aria-label="Site" className={styles.footerLinks}>
-          <Link href="/agentic-shop">Sell to agents</Link>
-          <Link href="/store">For stores</Link>
-          <Link href="/local">For local</Link>
-          <Link href="/scanner">Scanner</Link>
-          <Link href="/methodology">Methodology</Link>
-          <Link href="/privacy">Privacy</Link>
-          <Link href="/terms">Terms</Link>
-          <Link href="/data-request">Data request</Link>
+          <SiteLink to="/agentic-shop">Sell to agents</SiteLink>
+          <SiteLink to="/store">For stores</SiteLink>
+          <SiteLink to="/local">For local</SiteLink>
+          <SiteLink to="/scanner">Scanner</SiteLink>
+          <SiteLink to="/methodology">Methodology</SiteLink>
+          <SiteLink to="/privacy">Privacy</SiteLink>
+          <SiteLink to="/terms">Terms</SiteLink>
+          <SiteLink to="/data-request">Data request</SiteLink>
           <PrivacyChoicesButton className={styles.footerAction} />
           <a href={`mailto:${config.abuseEmail}`}>Report abuse</a>
         </nav>
