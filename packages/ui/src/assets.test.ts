@@ -32,6 +32,11 @@ beforeAll(async () => {
   await writeFile(join(directory, "entry-AbC123.js.gz"), gzipSync(SCRIPT));
   // Built without compressed copies, as nothing compressed a file this small.
   await writeFile(join(directory, "styles-XyZ789.css"), "body{margin:0}");
+  // The faces and pictures a stylesheet names, which the build writes beside it.
+  await writeFile(join(directory, "face-latin-Fa1C3x9Z.woff2"), "wOF2");
+  await writeFile(join(directory, "face-latin-Fa1C3x9Z.woff"), "wOFF");
+  await writeFile(join(directory, "mark-Mk4R7q2W.svg"), "<svg/>");
+  await writeFile(join(directory, "photo-Ph0T8o1S.png"), "PNG");
   await writeFile(join(directory, "notes.txt"), "not something the build writes");
   const app = express();
   app.use("/assets", await precompressedFrom(directory));
@@ -112,6 +117,23 @@ describe("the browser's scripts and styles", () => {
       );
     }
   });
+
+  it.each([
+    ["face-latin-Fa1C3x9Z.woff2", "font/woff2"],
+    ["face-latin-Fa1C3x9Z.woff", "font/woff"],
+    ["mark-Mk4R7q2W.svg", "image/svg+xml"],
+    ["photo-Ph0T8o1S.png", "image/png"],
+  ])(
+    "send the faces and pictures a stylesheet names as they are, kept for a year: %s",
+    async (name, type) => {
+      const { answered } = await asked(name, "br, gzip");
+
+      expect(answered.status).toBe(200);
+      expect(answered.headers.get("content-type")).toBe(type);
+      expect(answered.headers.get("content-encoding")).toBeNull();
+      expect(answered.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    },
+  );
 
   it("answers nothing the build did not write as a script or a style, and reaches no other path", async () => {
     for (const name of [
