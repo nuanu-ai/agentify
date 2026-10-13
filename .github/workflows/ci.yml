@@ -154,6 +154,12 @@ jobs:
       # before a press is shown after it, and that a press keeps the scroll.
       - run: pnpm dashboard:test:browser
 
+      # Builds the scanner and checks, in the same Chromium, that its pages
+      # come alive without a complaint, that a click shows at once, that a
+      # hover's fetch serves the click, and that the consent banner takes a
+      # choice without a reload.
+      - run: pnpm scanner:test:browser
+
   # The portal keeps a separate gate because its rendered examples are a
   # distinct release promise. It installs from the same workspace lockfile.
   portal:
