@@ -108,10 +108,17 @@ const timesAsked = (path: string): number => asked.filter((one) => one === path)
 describe("a page in Chromium", () => {
   it.each(["/", "/methodology"])("comes alive without a complaint: %s", async (path) => {
     const { page, complaints } = await visit(path);
+    await page.evaluate(() => {
+      (window as Window & { stayed?: boolean }).stayed = true;
+    });
 
-    // A page drawn in the browser otherwise than on the server is a complaint
-    // React logs here.
-    expect(await page.locator("h1").count()).toBe(1);
+    // Only a page the router took over in the browser follows its own link
+    // without loading a document; one drawn there otherwise than on the
+    // server is a complaint React logs.
+    await page.locator("header a.brand").click();
+    await page.waitForURL(`${origin}/`);
+    await page.locator("h1").first().waitFor();
+    expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
     expect(complaints).toEqual([]);
     await page.context().close();
   });
