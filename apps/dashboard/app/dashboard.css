@@ -873,9 +873,11 @@ h2 {
 /*
  * The working area under the site header: the numbered sections in a sidebar
  * beside the workspace, and a bar at the top of the workspace with the
- * screen's title and the selling light. On a laptop the sidebar and the bar
- * stay in view under the site header, which is 68px tall there; the sidebar
- * and the bar sit under it, never over it.
+ * screen's title and the selling light. On a laptop the sections and the bar
+ * stay in view under the site header, which is 68px tall there; they sit
+ * under it, never over it. Only the sidebar's own words stay in view, at
+ * their own height, so the foot of a long page pushes none of them under
+ * the header.
  */
 .app-shell {
   min-height: calc(100vh - 68px);
@@ -884,14 +886,16 @@ h2 {
 }
 
 .app-sidebar {
-  position: sticky;
-  top: 68px;
-  height: calc(100vh - 68px);
-  display: flex;
-  flex-direction: column;
   border-right: var(--hairline) solid var(--line);
   background: var(--surface);
+}
+
+.app-sidebar-inner {
+  position: sticky;
+  top: 68px;
   z-index: 10;
+  display: flex;
+  flex-direction: column;
 }
 
 .app-sidebar-name {
@@ -945,7 +949,7 @@ h2 {
 }
 
 .sidebar-help {
-  margin: auto 14px 12px;
+  margin: 4px 14px 12px;
   padding: 14px;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-card);
@@ -1201,6 +1205,22 @@ h2 {
     width: calc(100% - 36px);
     min-height: 64px;
     padding-block: 14px;
+  }
+}
+
+/* The site header over the frame starts its lockup on the sidebar's line of
+   words and ends its doors on the content's right edge, as the foot under the
+   frame does, rather than centring them in the window. */
+.app-frame .site-header-inner {
+  --workspace: calc(100% - 252px);
+  --content: min(1180px, calc(var(--workspace) - clamp(44px, 8vw, 104px)));
+  width: auto;
+  margin-inline: 0;
+  padding-inline: 26px calc((var(--workspace) - var(--content)) / 2);
+}
+@media (max-width: 900px) {
+  .app-frame .site-header-inner {
+    padding-inline: 18px;
   }
 }
 
