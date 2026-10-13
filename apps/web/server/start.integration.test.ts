@@ -27,6 +27,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { fakePostgres } from "../testing/fake-postgres";
 
 const APP = fileURLToPath(new URL("..", import.meta.url));
 if (!existsSync(join(APP, "dist", "server", "index.js"))) {
@@ -58,65 +59,94 @@ const LAYOUTS = [
   ["split as an import() in server code splits it", splitAsAnImportSplitsIt],
 ] as const;
 
+/** The built scanner started from `directory` as its image starts it, once it answers. */
+interface Started {
+  readonly scanner: ChildProcess;
+  readonly origin: string;
+  /** Everything it has written to stdout and stderr so far. */
+  output(): string;
+}
+
+const startIn = async (
+  directory: string,
+  settings: Readonly<Record<string, string>> = {},
+): Promise<Started> => {
+  const port = await freePort();
+  const origin = `http://127.0.0.1:${port}`;
+  let output = "";
+  const scanner = spawn(process.execPath, ["server.js"], {
+    cwd: directory,
+    env: {
+      PATH: process.env.PATH ?? "",
+      NODE_ENV: "production",
+      HOSTNAME: "127.0.0.1",
+      PORT: String(port),
+      APP_BASE_URL: "https://agentify.ad",
+      DATABASE_URL: "postgresql://nobody:unused@127.0.0.1:1/nowhere",
+      TOKEN_HMAC_SECRET: "t".repeat(32),
+      REGISTRATION_ENABLED: "false",
+      ...settings,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  for (const stream of [scanner.stdout, scanner.stderr]) {
+    stream?.on("data", (chunk) => {
+      output = `${output}${chunk}`.slice(-20_000);
+    });
+  }
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const live = await fetch(`${origin}/api/health/live`).then(
+      (answer) => answer.status,
+      () => 0,
+    );
+    if (live !== 0) break;
+    if (scanner.exitCode !== null || Date.now() > deadline) {
+      throw new Error(`the built scanner did not start\n${output}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return { scanner, origin, output: () => output };
+};
+
+const stop = async ({ scanner }: Started): Promise<void> => {
+  if (scanner.exitCode === null && scanner.signalCode === null) {
+    scanner.kill("SIGKILL");
+    await once(scanner, "exit");
+  }
+};
+
+/** A copy of the build, as the image holds it, in a directory of its own. */
+const imageIn = async (): Promise<string> => {
+  const directory = await mkdtemp(join(tmpdir(), "scanner-image-"));
+  for (const part of ["server.js", "package.json", "dist"]) {
+    await cp(join(APP, part), join(directory, part), { recursive: true });
+  }
+  return directory;
+};
+
 describe.each(LAYOUTS)("the built scanner %s, started as its image starts it", (_layout, lay) => {
   let directory = "";
-  let scanner: ChildProcess;
-  let output = "";
+  let started: Started;
   let origin = "";
+  const output = () => started.output();
 
   beforeAll(async () => {
-    directory = await mkdtemp(join(tmpdir(), "scanner-image-"));
-    for (const part of ["server.js", "package.json", "dist"]) {
-      await cp(join(APP, part), join(directory, part), { recursive: true });
-    }
+    directory = await imageIn();
     await lay(directory);
-    const port = await freePort();
-    origin = `http://127.0.0.1:${port}`;
-    scanner = spawn(process.execPath, ["server.js"], {
-      cwd: directory,
-      env: {
-        PATH: process.env.PATH ?? "",
-        NODE_ENV: "production",
-        HOSTNAME: "127.0.0.1",
-        PORT: String(port),
-        APP_BASE_URL: "https://agentify.ad",
-        DATABASE_URL: "postgresql://nobody:unused@127.0.0.1:1/nowhere",
-        TOKEN_HMAC_SECRET: "t".repeat(32),
-        REGISTRATION_ENABLED: "false",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    for (const stream of [scanner.stdout, scanner.stderr]) {
-      stream?.on("data", (chunk) => {
-        output = `${output}${chunk}`.slice(-20_000);
-      });
-    }
-    const deadline = Date.now() + 30_000;
-    for (;;) {
-      const live = await fetch(`${origin}/api/health/live`).then(
-        (answer) => answer.status,
-        () => 0,
-      );
-      if (live !== 0) break;
-      if (scanner.exitCode !== null || Date.now() > deadline) {
-        throw new Error(`the built scanner did not start\n${output}`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
+    started = await startIn(directory);
+    origin = started.origin;
   });
 
   afterAll(async () => {
-    if (scanner?.exitCode === null) {
-      scanner.kill("SIGKILL");
-      await once(scanner, "exit");
-    }
+    if (started !== undefined) await stop(started);
     if (directory !== "") await rm(directory, { recursive: true, force: true });
   });
 
   it("answers its liveness probe", async () => {
     const answered = await fetch(`${origin}/api/health/live`);
 
-    expect(answered.status, output).toBe(200);
+    expect(answered.status, output()).toBe(200);
     expect(await answered.json()).toMatchObject({ status: "ok", service: "web" });
   });
 
@@ -127,7 +157,7 @@ describe.each(LAYOUTS)("the built scanner %s, started as its image starts it", (
       ...html.matchAll(/(?:<link rel="modulepreload" href=|import\(?\s*)"(\/assets\/[^"]+\.js)"/g),
     ].map((match) => match[1] ?? "");
 
-    expect(answered.status, output).toBe(200);
+    expect(answered.status, output()).toBe(200);
     expect(html).toContain("<h1");
     expect(scripts.length).toBeGreaterThan(0);
     for (const script of new Set(scripts)) {
@@ -145,16 +175,63 @@ describe.each(LAYOUTS)("the built scanner %s, started as its image starts it", (
     for (const picture of pictures) {
       const answered = await fetch(`${origin}${picture}`);
       const bytes = new Uint8Array(await answered.arrayBuffer());
-      expect(answered.status, `${picture}\n${output}`).toBe(200);
+      expect(answered.status, `${picture}\n${output()}`).toBe(200);
       expect(answered.headers.get("content-type"), picture).toBe("image/png");
       expect([...bytes.subarray(1, 4)], picture).toEqual([0x50, 0x4e, 0x47]);
     }
   });
 
   it("stops when told to", async () => {
-    scanner.kill("SIGTERM");
-    const [code] = (await once(scanner, "exit")) as [number | null];
+    started.scanner.kill("SIGTERM");
+    const [code] = (await once(started.scanner, "exit")) as [number | null];
 
     expect(code).toBe(143);
+  });
+});
+
+/** Until `done` holds or five seconds pass, then a moment longer for whatever follows it. */
+const settled = async (done: () => boolean): Promise<void> => {
+  for (let waited = 0; !done() && waited < 5_000; waited += 20) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  await new Promise((resolve) => setTimeout(resolve, 200));
+};
+
+describe("the built scanner, when a failure reaches it that no request waits on", () => {
+  let directory = "";
+
+  beforeAll(async () => {
+    directory = await imageIn();
+  });
+
+  afterAll(async () => {
+    if (directory !== "") await rm(directory, { recursive: true, force: true });
+  });
+
+  it("goes on answering when the database closes its idle connections, and its log names no user, database or port", async () => {
+    const database = await fakePostgres();
+    const started = await startIn(directory, { DATABASE_URL: database.url });
+    try {
+      // Readiness asks the database twice, which leaves its connections idle in the pool.
+      const ready = (await (await fetch(`${started.origin}/api/health`)).json()) as {
+        dependencies: { database: string };
+      };
+      expect(ready.dependencies.database, started.output()).toBe("ok");
+      const before = started.output().length;
+
+      database.drop();
+      await settled(() => started.output().length > before || started.scanner.exitCode !== null);
+
+      const after = started.output().slice(before);
+      expect(started.scanner.exitCode, after).toBeNull();
+      expect((await fetch(`${started.origin}/api/health/live`)).status).toBe(200);
+      expect(after).toContain('"event":"web_database_connection_failed"');
+      expect(after).not.toContain(database.user);
+      expect(after).not.toContain(database.database);
+      expect(after).not.toMatch(new RegExp(`\\b${database.port}\\b`));
+    } finally {
+      await stop(started);
+      await database.close();
+    }
   });
 });
