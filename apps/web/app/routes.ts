@@ -40,6 +40,7 @@ const at = (path: string, file: string) => route(path, file, { caseSensitive: tr
 
 export default [
   index("routes/home.tsx"),
+  at("admin", "routes/admin.tsx"),
   at("methodology", "routes/methodology.tsx"),
   at("data-request", "routes/data-request.tsx"),
   at("email/unsubscribe", "routes/email.unsubscribe.tsx"),

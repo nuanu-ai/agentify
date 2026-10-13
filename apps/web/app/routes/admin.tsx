@@ -2,21 +2,19 @@
  * The operator's dashboard: read-only numbers about the scanner, for a session
  * whose account carries the operator flag.
  *
- * Nothing stands in front of /admin: the proxy's matcher does not include it
- * and Caddy adds nothing, so this page, and any page added beside it, must
- * refuse by itself. Anybody the seller dashboard does not confirm as an
- * operator gets the site's 404, including everybody while the seller dashboard
- * cannot answer. Metadata
- * refuses too: it is resolved on its own, and a title shown to a visitor who is
- * then refused would tell them what this page is.
+ * Nothing stands in front of /admin, so this page, and any page added beside
+ * it, must refuse by itself. Anybody the seller dashboard does not confirm as
+ * an operator gets the site's 404, including everybody while the seller
+ * dashboard cannot answer. The refusal is the loader's, before any data or
+ * head of this page is drawn: a title shown to a visitor who is then refused
+ * would tell them what this page is.
  */
 
-import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { notFound } from "next/navigation";
-import { cache } from "react";
+import { data, type LoaderFunctionArgs, type MetaArgs, useLoaderData } from "react-router";
 
 import { Brand } from "../../components/brand";
+import { SiteLink } from "../../components/site-link";
+import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 import { isOperator } from "../../lib/server/operator";
 import {
   getOperatorDashboard,
@@ -25,16 +23,15 @@ import {
 
 import styles from "./admin.module.css";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-/** Whether this request's session is an operator's, asked once per request. */
-const operatorVisiting = cache(async () => await isOperator((await headers()).get("cookie")));
-
-export async function generateMetadata(): Promise<Metadata> {
-  if (!(await operatorVisiting())) notFound();
-  return { title: "Operator dashboard", robots: { index: false, follow: false } };
+export async function loader({ request }: LoaderFunctionArgs) {
+  if (!(await isOperator(request.headers.get("cookie")))) throw data(null, { status: 404 });
+  return getOperatorDashboard();
 }
+
+export const meta = ({ matches }: MetaArgs) => [
+  ...pageMeta(siteConfigOf(matches), { title: "Operator dashboard" }),
+  { name: "robots", content: "noindex, nofollow" },
+];
 
 const number = new Intl.NumberFormat("en-US");
 const percent = new Intl.NumberFormat("en-US", {
@@ -104,9 +101,8 @@ const statusClass = (status: string | null) => {
   return styles.neutral;
 };
 
-export default async function AdminPage() {
-  if (!(await operatorVisiting())) notFound();
-  const data = await getOperatorDashboard();
+export default function AdminPage() {
+  const data = useLoaderData<typeof loader>();
   const { overview, selfScan } = data;
 
   return (
@@ -126,9 +122,9 @@ export default async function AdminPage() {
           Traffic, conversion, scanned sites, scanner health, and the latest self-check. Contact
           details and raw evidence are deliberately absent.
         </p>
-        <a className="button button-secondary" href="/admin">
+        <SiteLink className="button button-secondary" to="/admin">
           Refresh data
-        </a>
+        </SiteLink>
       </section>
 
       <section aria-labelledby="overview-title">
