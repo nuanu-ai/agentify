@@ -143,6 +143,16 @@ body {
   text-decoration: underline;
 }
 
+/* A link inside running text is told from the words around it by an
+   underline as well as its colour, which alone is too close to the text's.
+   Navigation, a header, a footer and a link drawn as a button are not running
+   text and keep their own look; neither is a table cell, which is not among
+   the blocks named here. */
+:where(p, li, dd, blockquote, figcaption) :where(a:not(.button, nav a, header a, footer a)) {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
 /* Translucent so the ring shows on both paper and a filled control without
    redrawing the control's edge. */
 :focus-visible {
