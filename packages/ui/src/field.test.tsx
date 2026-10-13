@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub, Form, useActionData } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,21 +17,29 @@ const describedBy = (box: HTMLElement): string =>
     .map((id) => document.getElementById(id)?.textContent ?? `(nothing has the id ${id})`)
     .join(" ");
 
+/** A field is drawn on a page, inside the router every page is drawn in. */
+const onAPage = (drawn: ReactElement) => {
+  const Stub = createRoutesStub([{ path: "/", Component: () => drawn }]);
+  return <Stub initialEntries={["/"]} />;
+};
+
 describe("a field", () => {
   it("is named by its label", () => {
-    render(<Field label="Email address" name="email" />);
+    render(onAPage(<Field label="Email address" name="email" />));
 
     expect(screen.getByLabelText("Email address").getAttribute("name")).toBe("email");
   });
 
   it("shows why what was typed was refused, and has it read out with the box", () => {
     render(
-      <Field
-        label="Email address"
-        name="email"
-        hint="We send the link here."
-        error="Enter an address of the shape someone@example.com."
-      />,
+      onAPage(
+        <Field
+          label="Email address"
+          name="email"
+          hint="We send the link here."
+          error="Enter an address of the shape someone@example.com."
+        />,
+      ),
     );
     const box = screen.getByLabelText("Email address");
 
@@ -39,27 +48,6 @@ describe("a field", () => {
     expect(box.getAttribute("aria-invalid")).toBe("true");
     // The refusal takes the hint's place rather than sitting under it.
     expect(screen.queryByText("We send the link here.")).toBeNull();
-  });
-
-  it("takes the focus when what was typed is refused, so the person can correct it at once", () => {
-    const drawn = render(
-      <>
-        <Field label="Seller name" name="seller_name" />
-        <button type="button">Use this name</button>
-      </>,
-    );
-    screen.getByText("Use this name").focus();
-
-    act(() => {
-      drawn.rerender(
-        <>
-          <Field label="Seller name" name="seller_name" error="Too long." />
-          <button type="button">Use this name</button>
-        </>,
-      );
-    });
-
-    expect(document.activeElement).toBe(screen.getByLabelText("Seller name"));
   });
 
   it("takes the focus at each refusal, though its words are the last one's", async () => {
@@ -97,13 +85,15 @@ describe("a field", () => {
   });
 
   it("asks a browser drawing it refused to put the cursor in it, with no script to do so", () => {
-    const html = renderToString(<Field label="Seller name" name="seller_name" error="Too long." />);
+    const html = renderToString(
+      onAPage(<Field label="Seller name" name="seller_name" error="Too long." />),
+    );
 
     expect(html).toMatch(/<input[^>]*autofocus/i);
   });
 
   it("has its hint read out with the box while nothing is wrong, and is not marked invalid", () => {
-    render(<Field label="Email address" name="email" hint="We send the link here." />);
+    render(onAPage(<Field label="Email address" name="email" hint="We send the link here." />));
     const box = screen.getByLabelText("Email address");
 
     expect(describedBy(box)).toBe("We send the link here.");
@@ -111,17 +101,19 @@ describe("a field", () => {
   });
 
   it("names no description when there is no line under the box", () => {
-    render(<Field label="Email address" name="email" />);
+    render(onAPage(<Field label="Email address" name="email" />));
 
     expect(screen.getByLabelText("Email address").hasAttribute("aria-describedby")).toBe(false);
   });
 
   it("keeps two fields on one page apart", () => {
     render(
-      <>
-        <Field label="Seller name" name="seller_name" error="Too long." />
-        <Field label="Site" name="seller_site" error="Not an address." />
-      </>,
+      onAPage(
+        <>
+          <Field label="Seller name" name="seller_name" error="Too long." />
+          <Field label="Site" name="seller_site" error="Not an address." />
+        </>,
+      ),
     );
 
     expect(describedBy(screen.getByLabelText("Seller name"))).toBe("Too long.");
