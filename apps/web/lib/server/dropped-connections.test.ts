@@ -70,7 +70,7 @@ const namedByKindAlone = (logged: readonly string[]): unknown[] => {
   expect(text).not.toContain(database.user);
   expect(text).not.toContain(database.database);
   expect(text).not.toMatch(new RegExp(`\\b${database.port}\\b`));
-  expect(text).not.toMatch(/terminated/i);
+  expect(text).not.toMatch(/terminat|administrator/i);
   return logged.map((line) => JSON.parse(line));
 };
 

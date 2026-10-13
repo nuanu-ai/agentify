@@ -20,7 +20,11 @@ export interface FakePostgres {
   readonly port: number;
   readonly user: string;
   readonly database: string;
-  /** Closes every connection it holds, as a database going away does. */
+  /**
+   * Closes every connection it holds as Postgres does when it restarts or a
+   * backend is terminated: a fatal error naming the administrator's command,
+   * then the end of the connection.
+   */
   drop(): void;
   /** The simple queries it refuses from now on, or none. */
   refusing: RegExp | undefined;
@@ -60,6 +64,12 @@ const ANSWERS: Readonly<Record<string, Buffer>> = {
   C: message("3"),
   S: READY,
 };
+
+/** What a backend sends before it closes on a restart or a terminate. */
+const TERMINATING = message(
+  "E",
+  "SFATAL\0VFATAL\0C57P01\0Mterminating connection due to administrator command\0\0",
+);
 
 /** Insufficient privilege, as Postgres refuses a statement its user may not run. */
 const REFUSED = Buffer.concat([
@@ -153,7 +163,7 @@ export async function fakePostgres(answers: readonly Answer[] = []): Promise<Fak
   const user = "scanner_owner_in_the_log";
   const database = "scanner_rows_in_the_log";
   const drop = () => {
-    for (const socket of sockets) socket.destroy();
+    for (const socket of sockets) socket.end(TERMINATING);
   };
   return {
     url: `postgresql://${user}@127.0.0.1:${port}/${database}`,
@@ -169,7 +179,7 @@ export async function fakePostgres(answers: readonly Answer[] = []): Promise<Fak
     },
     connections: () => sockets.size,
     close: async () => {
-      drop();
+      for (const socket of sockets) socket.destroy();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },
   };
