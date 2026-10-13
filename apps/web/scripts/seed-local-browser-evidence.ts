@@ -31,7 +31,7 @@ import {
 } from "@agentify/scanner-database";
 import { eq } from "drizzle-orm";
 import { getServerConfig } from "../lib/server/config";
-import { encryptEmail, hmacHex, sha256 } from "../lib/server/crypto";
+import { encryptSensitiveValue, hmacHex, sha256 } from "../lib/server/crypto";
 import { getDatabase } from "../lib/server/database";
 
 if (process.env.LOCAL_E2E_FIXTURE_ACK !== "yes")
@@ -188,7 +188,7 @@ async function main() {
     );
     await db.insert(leads).values({
       id: leadId,
-      emailNormalizedCiphertext: encryptEmail(email, config.encryptionKey),
+      emailNormalizedCiphertext: encryptSensitiveValue(email, config.encryptionKey),
       emailLookupHash: hmacHex(config.hmacSecret, "email", email),
       phoneE164Ciphertext: `local-phone-encrypted-${suffix}`,
       phoneLookupHash: `local-phone-hash-${suffix}`,

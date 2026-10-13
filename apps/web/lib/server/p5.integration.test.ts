@@ -27,7 +27,7 @@ import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { visitorOf } from "./auth";
-import { encryptEmail, hmacHex } from "./crypto";
+import { encryptSensitiveValue, hmacHex } from "./crypto";
 import { getDatabase } from "./database";
 import { getOperatorDashboard } from "./operator-dashboard";
 import { executeRetentionCleanup } from "./privacy";
@@ -126,7 +126,7 @@ async function createLeadFixture(label: string, input: { verified?: boolean } = 
   await db.update(sessions).set({ consentSnapshotId: consentId }).where(eq(sessions.id, sessionId));
   await db.insert(leads).values({
     id: leadId,
-    emailNormalizedCiphertext: encryptEmail(email, Buffer.alloc(32, 7)),
+    emailNormalizedCiphertext: encryptSensitiveValue(email, Buffer.alloc(32, 7)),
     emailLookupHash: hmacHex(tokenHmacSecret, "email", email),
     role: "business_owner",
     verifiedAt: input.verified === false ? null : new Date(),
@@ -480,7 +480,10 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     await getDatabase()
       .db.update(leads)
       .set({
-        emailNormalizedCiphertext: encryptEmail("different-owner@example.com", Buffer.alloc(32, 7)),
+        emailNormalizedCiphertext: encryptSensitiveValue(
+          "different-owner@example.com",
+          Buffer.alloc(32, 7),
+        ),
       })
       .where(eq(leads.id, fixture.leadId));
     const beforeRequests = sellerDashboardDeleteRequests;

@@ -7,7 +7,7 @@ import {
 } from "@agentify/scanner-database";
 import { and, asc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { getServerConfig } from "./config";
-import { decryptEmail, hmacHex, normalizeEmail } from "./crypto";
+import { decryptSensitiveValue, hmacHex, normalizeEmail } from "./crypto";
 import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
 import { detachLeadCardSignalsForDeletion } from "./stripe-card-signal";
@@ -152,7 +152,7 @@ export async function runScannerIdentityDeletionOperation(
   )[0];
   if (!lead || lead.encryptedEmail === "deleted") return "pending";
   const config = getServerConfig();
-  const email = normalizeEmail(decryptEmail(lead.encryptedEmail, config.encryptionKey));
+  const email = normalizeEmail(decryptSensitiveValue(lead.encryptedEmail, config.encryptionKey));
   if (hmacHex(config.hmacSecret, "email", email) !== lead.emailLookupHash) {
     throw new Error("lead_email_identity_mismatch");
   }

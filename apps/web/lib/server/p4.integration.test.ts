@@ -40,7 +40,7 @@ import { action as requestScannerRegistrationRoute } from "../../app/routes/api/
 import { loader as readVisitorRoute } from "../../app/routes/api/v2/session";
 import { latestReportOf, visitorOf } from "./auth";
 import { getServerConfig } from "./config";
-import { encryptEmail, hmacHex, sha256 } from "./crypto";
+import { encryptSensitiveValue, hmacHex, sha256 } from "./crypto";
 import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
 import { enqueueScanInTransaction, stopScanQueue } from "./queue";
@@ -1315,7 +1315,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     const config = getServerConfig();
     await db.insert(leads).values({
       id: createUuidV7(),
-      emailNormalizedCiphertext: encryptEmail(email, config.encryptionKey),
+      emailNormalizedCiphertext: encryptSensitiveValue(email, config.encryptionKey),
       emailLookupHash: hmacHex(config.hmacSecret, "email", email),
       role: "developer",
       verifiedAt: new Date(),
@@ -2204,7 +2204,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     const leadId = createUuidV7();
     await db.insert(leads).values({
       id: leadId,
-      emailNormalizedCiphertext: encryptEmail(email, config.encryptionKey),
+      emailNormalizedCiphertext: encryptSensitiveValue(email, config.encryptionKey),
       emailLookupHash: hmacHex(config.hmacSecret, "email", email),
       role: "developer",
       verifiedAt: new Date(),
@@ -2292,7 +2292,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     const leadId = createUuidV7();
     await db.insert(leads).values({
       id: leadId,
-      emailNormalizedCiphertext: encryptEmail(email, config.encryptionKey),
+      emailNormalizedCiphertext: encryptSensitiveValue(email, config.encryptionKey),
       emailLookupHash: hmacHex(config.hmacSecret, "email", email),
       role: "developer",
       verifiedAt: new Date(),
@@ -2373,7 +2373,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     const oldLeadId = createUuidV7();
     await db.insert(leads).values({
       id: oldLeadId,
-      emailNormalizedCiphertext: encryptEmail(oldEmail, config.encryptionKey),
+      emailNormalizedCiphertext: encryptSensitiveValue(oldEmail, config.encryptionKey),
       emailLookupHash: hmacHex(config.hmacSecret, "email", oldEmail),
       role: "developer",
       verifiedAt: new Date(),
