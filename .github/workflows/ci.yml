@@ -187,6 +187,34 @@ jobs:
 
       - run: pnpm build:portal
 
+  # Every screen state the gallery draws, at a phone's, a tablet's and a
+  # desktop's width: nothing on a page reaches past the window, and axe finds
+  # nothing it rates serious or critical. A job of its own, beside the gate,
+  # because it needs Chromium and no database; the headless shell is all a
+  # check that takes no screenshots launches.
+  screens:
+    name: screens
+    needs: secret_scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @agentify/gallery exec playwright install --with-deps --only-shell chromium
+
+      - run: pnpm gallery
+
+      - run: pnpm gallery:check
+
   # The decision log needs only bash and files, and the release's own tests
   # need Docker, which the runner has, and Node for the release's preflight, a
   # script with no dependencies; nothing is installed.
