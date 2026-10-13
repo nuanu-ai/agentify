@@ -193,7 +193,7 @@ describe("an address with a trailing slash", () => {
 });
 
 describe("a request that fails where nothing caught it", () => {
-  it("is answered 500 and leaves one line naming the failure by its kind, never by its message", async () => {
+  it("is answered 500, kept by no cache, and leaves one line naming the failure by its kind, never by its message", async () => {
     // A browser PostHog key with no host is refused while the root's loader
     // reads the configuration, so every page fails to draw.
     vi.stubEnv("POSTHOG_BROWSER_KEY", "phc_configured_without_a_host");
@@ -208,6 +208,7 @@ describe("a request that fails where nothing caught it", () => {
     });
 
     expect(answered.status).toBe(500);
+    expect(answered.headers.get("cache-control")).toBe(NOBODY_KEEPS);
     const logged = lines
       .map((line) => JSON.parse(line) as Record<string, unknown>)
       .filter((line) => line.event === "web_unhandled_request_error");
