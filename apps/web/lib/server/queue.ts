@@ -50,7 +50,7 @@ export function getScanQueue(): Promise<PgBoss> {
   })();
   globalQueue.agentifyWebQueue = starting;
   starting.catch(() => {
-    if (globalQueue.agentifyWebQueue === starting) globalQueue.agentifyWebQueue = undefined;
+    globalQueue.agentifyWebQueue = undefined;
   });
   return starting;
 }
