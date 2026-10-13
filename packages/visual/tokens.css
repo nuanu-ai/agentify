@@ -656,7 +656,8 @@ p {
 }
 
 .site-doors a:hover,
-.site-doors a:focus-visible {
+.site-doors a:focus-visible,
+.site-doors a[aria-current] {
   color: var(--accent);
   text-decoration: none;
 }

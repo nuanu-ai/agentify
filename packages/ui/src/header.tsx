@@ -21,7 +21,9 @@ export type Surface = "scanner" | "dashboard";
  * How a surface links to a page of its own: `to` is the page's path inside
  * the surface, as its router names it.
  */
-type OwnLink = ComponentType<Readonly<{ to: string; className?: string; children: ReactNode }>>;
+type OwnLink = ComponentType<
+  Readonly<{ to: string; className?: string; "aria-current"?: "true"; children: ReactNode }>
+>;
 
 type Owner = Surface | "docs";
 
@@ -44,21 +46,32 @@ const SECTIONS: readonly (Place & Readonly<{ label: string }>)[] = [
 ];
 
 const DOCS: Place = { owner: "docs", path: "/" };
-const DASHBOARD: Place = { owner: "dashboard", path: "/sign-in" };
+
+/**
+ * The dashboard's door: from elsewhere its sign-in, which sends somebody
+ * already signed in on to their dashboard, and inside the dashboard its own
+ * start.
+ */
+const DASHBOARD: Readonly<Record<Surface, Place>> = {
+  scanner: { owner: "dashboard", path: "/sign-in" },
+  dashboard: { owner: "dashboard", path: "/" },
+};
 
 /** What every part of the header needs to draw a link: who draws it, and how it links home. */
 type Drawn = Readonly<{ surface: Surface; link: OwnLink }>;
 
+/** `current` marks the link to the part of the site the page belongs to. */
 function PlaceLink({
   place,
   surface,
   link: Own,
   className,
+  current = false,
   children,
-}: Drawn & Readonly<{ place: Place; className?: string; children: ReactNode }>) {
+}: Drawn & Readonly<{ place: Place; className?: string; current?: boolean; children: ReactNode }>) {
   if (place.owner === surface) {
     return (
-      <Own className={className} to={place.path}>
+      <Own className={className} to={place.path} aria-current={current ? "true" : undefined}>
         {children}
       </Own>
     );
@@ -93,7 +106,11 @@ export function SiteDoors({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: Re
       <PlaceLink place={DOCS} {...drawn}>
         Docs
       </PlaceLink>
-      <PlaceLink place={DASHBOARD} {...drawn}>
+      <PlaceLink
+        place={DASHBOARD[drawn.surface]}
+        current={drawn.surface === "dashboard"}
+        {...drawn}
+      >
         Dashboard
       </PlaceLink>
       {visitor}
