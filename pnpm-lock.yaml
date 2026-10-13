@@ -23,9 +23,6 @@ importers:
       '@types/node':
         specifier: ^26.3.0
         version: 26.3.0
-      axe-core:
-        specifier: 4.12.1
-        version: 4.12.1
       knip:
         specifier: 6.41.0
         version: 6.41.0
@@ -4016,10 +4013,6 @@ packages:
 
   asynckit@0.4.0:
     resolution: {integrity: sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==}
-
-  axe-core@4.12.1:
-    resolution: {integrity: sha512-s7iGf5GaVMxEG0ENN9x+xTr7GFZCb1ZP/1uATUpCEK2X78nDB3RwbtFCo9pGAf9ru+VwoQ464DkaLEeRM08wJA==}
-    engines: {node: '>=4'}
 
   axios-retry@4.5.0:
     resolution: {integrity: sha512-aR99oXhpEDGo0UuAlYcn2iGRds30k366Zfa05XWScR9QaQD4JYiP3/1Qt1u7YlefUOK+cn0CcwoL1oefavQUlQ==}
@@ -9807,8 +9800,6 @@ snapshots:
       retry: 0.13.1
 
   asynckit@0.4.0: {}
-
-  axe-core@4.12.1: {}
 
   axios-retry@4.5.0(axios@1.16.0):
     dependencies:
