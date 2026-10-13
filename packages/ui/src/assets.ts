@@ -37,10 +37,15 @@ export async function precompress(directory: string): Promise<number> {
   return written.length;
 }
 
+/** What the build writes for a browser: scripts and styles, and the faces and pictures they name. */
 const TYPES: Readonly<Record<string, string>> = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".map": "application/json; charset=utf-8",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
 };
 
 /**
@@ -58,9 +63,10 @@ const accepted = (header: string | undefined): readonly string[] => {
 };
 
 /**
- * The built scripts and styles in `directory`, which carry a content hash in
- * their names and so may be kept by any cache for a year. Each is sent
- * compressed as the build wrote it where the browser accepts that encoding.
+ * The built files in `directory`, which carry a content hash in their names
+ * and so may be kept by any cache for a year. A script or a stylesheet is
+ * sent compressed as the build wrote it where the browser accepts that
+ * encoding; a font or an image is sent as it is.
  * Only files listed when the process started are answered, so no path in a
  * request reaches the disk; anything else is answered 404.
  */
