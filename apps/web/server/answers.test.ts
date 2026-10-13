@@ -222,6 +222,7 @@ describe("an address the scanner has no page for", () => {
     ["spelled in another case", "/METHODOLOGY", "GET"],
     ["asked for its options", "/no-such-page", "OPTIONS"],
     ["asked for its options under the API", "/api/v1/nothing-here", "OPTIONS"],
+    ["asked with a method of WebDAV's", "/no-such-page", "PROPFIND"],
   ])("is the site's page that says so, with status 404, when %s", async (_how, path, method) => {
     const answered = await ask(path, { method });
     const html = await answered.text();
