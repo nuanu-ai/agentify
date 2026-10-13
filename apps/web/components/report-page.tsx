@@ -1,6 +1,8 @@
 import { Suspense } from "react";
 
 import type { ReportView } from "../lib/report-view";
+import "./browser-observations.module.css";
+import "./card-signal.module.css";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
 import { lazyPart } from "./lazy-part";
 import { PrivacyChoicesButton } from "./privacy-choices-button";
@@ -15,6 +17,8 @@ import { StatusBadge } from "./status-badge";
 
 // The browser's observations and the card signal are each drawn only where
 // they are switched on, so a report without them does not load their script.
+// The server draws them before their script arrives, so their styles come
+// with the page.
 const BrowserObservations = lazyPart(() =>
   import("./browser-observations").then((module) => module.BrowserObservations),
 );
