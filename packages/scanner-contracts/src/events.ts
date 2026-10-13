@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { PARTNER_CLICK_ID_PATTERN } from "./browser.js";
 
-export { PARTNER_CLICK_ID_ALIASES } from "./browser.js";
-
 export const ANALYTICS_EVENT_NAMES = [
   "landing_view",
   "scan_started",
