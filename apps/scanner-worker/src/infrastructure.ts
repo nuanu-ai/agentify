@@ -84,9 +84,9 @@ const throttledErrorLog = (
 };
 
 /**
- * The worker's pool. A connection that fails while nobody holds it marks the
- * database down for readiness, and is logged by its kind at most once a
- * minute, as every database failure of the worker is.
+ * The worker's pool. A connection that fails, idle or held by a transaction,
+ * marks the database down for readiness, and is logged by its kind at most
+ * once a minute, as every database failure of the worker is.
  */
 export function workerDatabase(
   databaseUrl: string,
@@ -99,6 +99,10 @@ export function workerDatabase(
   });
   const { db, pool } = createDatabase(databaseUrl);
   pool.on("error", logDatabaseError);
+  // pg-pool takes its own listener off a connection while it is held, and an
+  // `error` event nobody hears ends the process with every scan it runs.
+  pool.on("acquire", (client) => client.on("error", logDatabaseError));
+  pool.on("release", (_failed, client) => client.removeListener("error", logDatabaseError));
   return { db, pool, logDatabaseError };
 }
 

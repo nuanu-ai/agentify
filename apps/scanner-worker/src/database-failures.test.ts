@@ -4,6 +4,8 @@
  * readiness reaches it again, and logs one line naming the failure by its
  * kind, never by its words or the connection's settings. An `error` event
  * nobody listens to would instead end the process, with every scan it runs.
+ * What hears a held connection stops hearing it once it is given back, or a
+ * connection checked out over and over would gather listeners without end.
  */
 
 import { createLogger } from "@agentify/observability";
@@ -13,6 +15,15 @@ import type { WorkerHealth } from "./health.js";
 import { workerDatabase } from "./infrastructure.js";
 
 let database: FakePostgres;
+
+const healthy = (): WorkerHealth => ({
+  live: true,
+  ready: true,
+  queueConnected: true,
+  databaseConnected: true,
+  configuredConcurrency: 1,
+  lastHeartbeatAt: null,
+});
 
 beforeAll(async () => {
   database = await fakePostgres();
@@ -25,14 +36,7 @@ afterAll(async () => {
 it("logs a connection the database ends while a transaction holds it once, by its kind alone, and goes on", async () => {
   const logged: string[] = [];
   const unlistened: string[] = [];
-  const health: WorkerHealth = {
-    live: true,
-    ready: true,
-    queueConnected: true,
-    databaseConnected: true,
-    configuredConcurrency: 1,
-    lastHeartbeatAt: null,
-  };
+  const health = healthy();
   const { pool } = workerDatabase(
     database.url,
     health,
@@ -78,4 +82,31 @@ it("logs a connection the database ends while a transaction holds it once, by it
   expect(text).not.toContain(database.database);
   expect(text).not.toMatch(new RegExp(`\\b${database.port}\\b`));
   expect(text).not.toMatch(/terminat|administrator/i);
+});
+
+it("gathers no listeners on a connection checked out and given back over and over", async () => {
+  const warned: string[] = [];
+  const notice = (warning: Error) => {
+    warned.push(warning.name);
+  };
+  process.on("warning", notice);
+  const { pool } = workerDatabase(
+    database.url,
+    healthy(),
+    createLogger({ service: "scanner-worker", environment: "test", sink: () => {} }),
+  );
+  try {
+    for (let round = 0; round < 20; round += 1) {
+      const held = await pool.connect();
+      held.release();
+    }
+    // A warning is emitted on the tick after the listener that raised it.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  } finally {
+    process.removeListener("warning", notice);
+    await pool.end();
+  }
+
+  expect(pool.totalCount).toBe(0);
+  expect(warned).not.toContain("MaxListenersExceededWarning");
 });
