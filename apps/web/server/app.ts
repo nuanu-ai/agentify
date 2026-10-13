@@ -15,7 +15,7 @@
  * and `server.js` starts it.
  */
 
-import type { Server } from "node:http";
+import { METHODS, type Server } from "node:http";
 import { join } from "node:path";
 import * as build from "virtual:react-router/server-build";
 import { precompressedFrom } from "@agentify/ui/assets";
@@ -73,6 +73,22 @@ const routeTree = (built: Pick<ServerBuild, "routes">): RouteObject[] => {
   return childrenOf(undefined);
 };
 
+const carried = (method: string): boolean => {
+  try {
+    new Request("http://scanner.invalid/", { method });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The methods Node lets through that a fetch `Request`, the form React Router
+ * is handed a request in, refuses to carry. No address of the scanner's takes
+ * them, and React Router would fail on them as the process's own error.
+ */
+const UNCARRIED = new Set(METHODS.filter((method) => !carried(method)));
+
 /** A short plain answer of the process's own, which nobody keeps. */
 const plainly = (response: Response, status: number, words: string): void => {
   response.status(status).setHeader("cache-control", UNKEPT_PAGE_CACHE);
@@ -87,6 +103,14 @@ export function scannerApp(parts: ScannerParts): Express {
 
   app.use((_request, response, next) => {
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) response.setHeader(name, value);
+    next();
+  });
+
+  app.use((request, response, next) => {
+    if (UNCARRIED.has(request.method)) {
+      plainly(response, 405, "Method Not Allowed");
+      return;
+    }
     next();
   });
 
