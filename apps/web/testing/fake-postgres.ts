@@ -4,7 +4,8 @@
  * lose every connection at once from the database's side, the way a restart,
  * a failover or a proxy closing idle connections leaves a pool. A statement is
  * answered with no rows, unless it is a simple query (one sent without values)
- * a test gave a row for. Nothing it is sent is checked.
+ * a test gave a row for, or one it is refusing for now, which fails as a
+ * statement the database's user may not run. Nothing it is sent is checked.
  */
 
 import { once } from "node:events";
@@ -21,6 +22,10 @@ export interface FakePostgres {
   readonly database: string;
   /** Closes every connection it holds, as a database going away does. */
   drop(): void;
+  /** The simple queries it refuses from now on, or none. */
+  refusing: RegExp | undefined;
+  /** How many connections it holds open. */
+  connections(): number;
   close(): Promise<void>;
 }
 
@@ -56,6 +61,12 @@ const ANSWERS: Readonly<Record<string, Buffer>> = {
   S: READY,
 };
 
+/** Insufficient privilege, as Postgres refuses a statement its user may not run. */
+const REFUSED = Buffer.concat([
+  message("E", "SERROR\0VERROR\0C42501\0Mpermission denied\0\0"),
+  READY,
+]);
+
 const oneRow = (row: Readonly<Record<string, string>>): Buffer => {
   const columns = Object.entries(row);
   const described = columns.map(([name]) => {
@@ -80,7 +91,11 @@ const oneRow = (row: Readonly<Record<string, string>>): Buffer => {
   ]);
 };
 
-const converse = (socket: Socket, answers: readonly Answer[]): void => {
+const converse = (
+  socket: Socket,
+  answers: readonly Answer[],
+  refusing: () => RegExp | undefined,
+): void => {
   let pending = Buffer.alloc(0);
   let started = false;
   socket.on("error", () => {});
@@ -113,6 +128,10 @@ const converse = (socket: Socket, answers: readonly Answer[]): void => {
         return;
       }
       const text = type === "Q" ? body.subarray(0, -1).toString("utf8") : undefined;
+      if (text !== undefined && refusing()?.test(text)) {
+        socket.write(REFUSED);
+        continue;
+      }
       const row =
         text === undefined ? undefined : answers.find(([matches]) => matches.test(text))?.[1];
       const answer = row === undefined ? ANSWERS[type] : oneRow(row);
@@ -123,10 +142,11 @@ const converse = (socket: Socket, answers: readonly Answer[]): void => {
 
 export async function fakePostgres(answers: readonly Answer[] = []): Promise<FakePostgres> {
   const sockets = new Set<Socket>();
+  let refusing: RegExp | undefined;
   const server = createServer((socket) => {
     sockets.add(socket);
     socket.once("close", () => sockets.delete(socket));
-    converse(socket, answers);
+    converse(socket, answers, () => refusing);
   }).listen(0, "127.0.0.1");
   await once(server, "listening");
   const { port } = server.address() as AddressInfo;
@@ -141,6 +161,13 @@ export async function fakePostgres(answers: readonly Answer[] = []): Promise<Fak
     user,
     database,
     drop,
+    get refusing() {
+      return refusing;
+    },
+    set refusing(statements) {
+      refusing = statements;
+    },
+    connections: () => sockets.size,
     close: async () => {
       drop();
       await new Promise<void>((resolve) => server.close(() => resolve()));
