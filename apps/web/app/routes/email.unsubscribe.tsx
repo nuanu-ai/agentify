@@ -1,14 +1,15 @@
-import type { Metadata } from "next";
+import type { MetaArgs } from "react-router";
 
-import { AccountActions } from "../../../components/account-actions";
-import { EditorialPage } from "../../../components/editorial-page";
+import { AccountActions } from "../../components/account-actions";
+import { EditorialPage } from "../../components/editorial-page";
+import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 
-export const metadata: Metadata = {
-  title: "Email preferences",
-  robots: { index: false, follow: false },
-};
+export const meta = ({ matches }: MetaArgs) => [
+  ...pageMeta(siteConfigOf(matches), { title: "Email preferences" }),
+  { name: "robots", content: "noindex, nofollow" },
+];
 
-export default function UnsubscribePage() {
+export default function EmailPreferencesPage() {
   return (
     <EditorialPage
       eyebrow="Privacy control"

@@ -1,16 +1,18 @@
-import type { Metadata } from "next";
-import { AccountActions } from "../../../components/account-actions";
-import { EditorialPage, Notice, ProseList } from "../../../components/editorial-page";
-import { getPublicAppConfig } from "../../../lib/app-config";
+import type { MetaArgs } from "react-router";
 
-export const metadata: Metadata = {
-  title: "Data request",
-  robots: { index: false, follow: false },
-  referrer: "no-referrer",
-};
+import { AccountActions } from "../../components/account-actions";
+import { EditorialPage, Notice, ProseList } from "../../components/editorial-page";
+import { usePublicConfig } from "../../components/public-config";
+import { pageMeta, siteConfigOf } from "../../lib/page-meta";
+
+export const meta = ({ matches }: MetaArgs) => [
+  ...pageMeta(siteConfigOf(matches), { title: "Data request" }),
+  { name: "robots", content: "noindex, nofollow" },
+  { name: "referrer", content: "no-referrer" },
+];
 
 export default function DataRequestPage() {
-  const config = getPublicAppConfig();
+  const config = usePublicConfig();
   const subject = encodeURIComponent(`${config.displayBrand} data request`);
   return (
     <EditorialPage
