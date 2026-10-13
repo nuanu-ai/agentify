@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 import {
   CARD_SIGNAL_DISCLOSURES,
@@ -6,11 +6,12 @@ import {
   canLoadStripeSdk,
 } from "../lib/card-signal-ui";
 import styles from "./card-signal.module.css";
+import { lazyPart } from "./lazy-part";
 
 // Stripe's own scripts load at the step that shows its card form, once the
 // visitor agreed and the provider's setup is ready, never with the report.
-const StripeCardStep = lazy(() =>
-  import("./card-signal-stripe-form").then((module) => ({ default: module.StripeCardStep })),
+const StripeCardStep = lazyPart(() =>
+  import("./card-signal-stripe-form").then((module) => module.StripeCardStep),
 );
 
 type SetupResponse = Readonly<{

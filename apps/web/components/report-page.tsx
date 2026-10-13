@@ -1,7 +1,8 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 
 import type { ReportView } from "../lib/report-view";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
+import { lazyPart } from "./lazy-part";
 import { PrivacyChoicesButton } from "./privacy-choices-button";
 import { ReportActionPanel } from "./report-action-panel";
 import { ReportBenchmark } from "./report-benchmark";
@@ -13,13 +14,11 @@ import { SiteLink } from "./site-link";
 import { StatusBadge } from "./status-badge";
 
 // The browser's observations and the card signal are each drawn only where
-// they are switched on, so a report without them does not load them.
-const BrowserObservations = lazy(() =>
-  import("./browser-observations").then((module) => ({ default: module.BrowserObservations })),
+// they are switched on, so a report without them does not load their script.
+const BrowserObservations = lazyPart(() =>
+  import("./browser-observations").then((module) => module.BrowserObservations),
 );
-const CardSignal = lazy(() =>
-  import("./card-signal").then((module) => ({ default: module.CardSignal })),
-);
+const CardSignal = lazyPart(() => import("./card-signal").then((module) => module.CardSignal));
 
 /** A full report, for the person it is filed under, drawn from what the server composed. */
 export function ReportPage({ view }: Readonly<{ view: ReportView }>) {

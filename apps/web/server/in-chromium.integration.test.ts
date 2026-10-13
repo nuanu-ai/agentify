@@ -188,6 +188,78 @@ describe("the consent banner", () => {
   });
 });
 
+const SCAN_ID = "0190f4c5-0000-7000-8000-00000000f001";
+const SCAN_TOKEN = "t".repeat(43);
+
+const checksAt = (status: string) =>
+  Array.from({ length: 18 }, (_, index) => ({
+    id: index + 1,
+    label_code: "robots",
+    status: index < 7 ? "pass" : status,
+    robots: null,
+  }));
+
+const RUNNING = {
+  status: "running",
+  progress: { completed: 7, total: 18 },
+  checks: checksAt("running"),
+  updated_at: "2026-10-13T09:00:00.000Z",
+  target_host: "shop.example",
+};
+
+const FINISHED = {
+  ...RUNNING,
+  status: "completed",
+  progress: { completed: 18, total: 18 },
+  checks: checksAt("pass"),
+  teaser: {
+    score: 46,
+    coverage: 1,
+    level: "readable",
+    top_findings: ["vertical_jsonld_missing"],
+    positive: null,
+    hidden_count: 7,
+  },
+};
+
+/**
+ * A browser with nothing kept whose API is answered here: the scan is
+ * accepted, its status is each of `statuses` in turn and the last one from
+ * then on, and the visitor is signed out. What it complained of is collected.
+ */
+const answered = async (...statuses: readonly object[]) => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  const complaints: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && !message.text().startsWith("Failed to load resource")) {
+      complaints.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => complaints.push(error.message));
+  let statusAsks = 0;
+  await page.route("**/api/v1/scans", (route) =>
+    route.fulfill({
+      status: 202,
+      json: {
+        scan_id: SCAN_ID,
+        access_token: SCAN_TOKEN,
+        status: "accepted",
+        status_url: `/api/v1/scans/${SCAN_ID}/status`,
+        estimated_seconds: 30,
+      },
+    }),
+  );
+  await page.route(`**/api/v1/scans/${SCAN_ID}/status`, (route) => {
+    statusAsks += 1;
+    return route.fulfill({ json: statuses[Math.min(statusAsks, statuses.length) - 1] });
+  });
+  await page.route("**/api/v2/session", (route) =>
+    route.fulfill({ json: { status: "signed_out" } }),
+  );
+  return { page, complaints };
+};
+
 describe("a scan in Chromium", () => {
   // The scan's pages read the scanner's settings, which name a database; none
   // is asked, since the API the browser asks is answered here.
@@ -200,80 +272,41 @@ describe("a scan in Chromium", () => {
   });
 
   it("goes from the front page's form to the scan's progress, its result and the ask for the full report, without a complaint and with no token left in the address", async () => {
-    const scanId = "0190f4c5-0000-7000-8000-00000000f001";
-    const token = "t".repeat(43);
-    const checks = (status: string) =>
-      Array.from({ length: 18 }, (_, index) => ({
-        id: index + 1,
-        label_code: "robots",
-        status: index < 7 ? "pass" : status,
-        robots: null,
-      }));
-    const running = {
-      status: "running",
-      progress: { completed: 7, total: 18 },
-      checks: checks("running"),
-      updated_at: "2026-10-13T09:00:00.000Z",
-      target_host: "shop.example",
-    };
-    const finished = {
-      ...running,
-      status: "completed",
-      progress: { completed: 18, total: 18 },
-      checks: checks("pass"),
-      teaser: {
-        score: 46,
-        coverage: 1,
-        level: "readable",
-        top_findings: ["vertical_jsonld_missing"],
-        positive: null,
-        hidden_count: 7,
-      },
-    };
-    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-    const page = await context.newPage();
-    const complaints: string[] = [];
-    page.on("console", (message) => {
-      if (message.type() === "error" && !message.text().startsWith("Failed to load resource")) {
-        complaints.push(message.text());
-      }
-    });
-    page.on("pageerror", (error) => complaints.push(error.message));
-    let statusAsks = 0;
-    await page.route("**/api/v1/scans", (route) =>
-      route.fulfill({
-        status: 202,
-        json: {
-          scan_id: scanId,
-          access_token: token,
-          status: "accepted",
-          status_url: `/api/v1/scans/${scanId}/status`,
-          estimated_seconds: 30,
-        },
-      }),
-    );
-    await page.route(`**/api/v1/scans/${scanId}/status`, (route) => {
-      statusAsks += 1;
-      return route.fulfill({ json: statusAsks === 1 ? running : finished });
-    });
-    await page.route("**/api/v2/session", (route) =>
-      route.fulfill({ json: { status: "signed_out" } }),
-    );
+    const { page, complaints } = await answered(RUNNING, FINISHED);
 
     await page.goto(`${origin}/`);
     await page.getByRole("textbox", { name: "Website URL" }).first().fill("shop.example");
     await page.locator("form button[type=submit]").first().click();
-    await page.waitForURL(`${origin}/scan/${scanId}?segment=owner`);
+    await page.waitForURL(`${origin}/scan/${SCAN_ID}?segment=owner`);
     await page.getByText("7 of 18 checks reported").waitFor();
     await page.getByLabel("Email").waitFor();
 
     expect(await page.locator("h1").first().textContent()).toBe("Readable");
-    expect(page.url()).not.toContain(token);
+    expect(page.url()).not.toContain(SCAN_TOKEN);
     expect(
-      await page.evaluate((key) => sessionStorage.getItem(key), `agentify:scan-token:${scanId}`),
-    ).toBe(token);
+      await page.evaluate((key) => sessionStorage.getItem(key), `agentify:scan-token:${SCAN_ID}`),
+    ).toBe(SCAN_TOKEN);
     expect(complaints).toEqual([]);
-    await context.close();
+    await page.context().close();
+  });
+
+  it("reloads, rather than failing, where the result's script was replaced by a newer deployment, and then draws the result", async () => {
+    const { page } = await answered(FINISHED);
+    let refused = false;
+    await page.route("**/assets/scan-teaser-*.js", (route) => {
+      if (refused) return route.continue();
+      refused = true;
+      return route.fulfill({ status: 404, body: "" });
+    });
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    await page.waitForLoadState("networkidle");
+
+    await page.getByLabel("Email").waitFor();
+
+    expect(refused).toBe(true);
+    expect(await page.locator("h1").first().textContent()).toBe("Readable");
+    expect(await page.getByText("Something went wrong").count()).toBe(0);
+    await page.context().close();
   });
 
   it("asks a stranger at a report to sign in, and its own links need no reload", async () => {

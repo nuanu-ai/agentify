@@ -1,16 +1,9 @@
 import type { ScanStatusResponse, Segment } from "@agentify/scanner-contracts";
-import {
-  type CSSProperties,
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { type CSSProperties, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { scanStatusIn } from "../lib/api-answers";
 import type { ScanFixture } from "../lib/scan-fixtures";
 import { Brand } from "./brand";
+import { lazyPart } from "./lazy-part";
 import { PrivacyChoicesButton } from "./privacy-choices-button";
 import styles from "./scan-experience.module.css";
 import { SiteDoors } from "./site-chrome";
@@ -21,14 +14,10 @@ import { StatusBadge } from "./status-badge";
 // the full report, or why there is none, and the browser's observations
 // beside it, are loaded once the scan has ended; until then the page carries
 // only its progress.
-const ScanTeaser = lazy(() =>
-  import("./scan-teaser").then((module) => ({ default: module.ScanTeaser })),
-);
-const ScanFailed = lazy(() =>
-  import("./scan-failed").then((module) => ({ default: module.ScanFailed })),
-);
-const BrowserObservations = lazy(() =>
-  import("./browser-observations").then((module) => ({ default: module.BrowserObservations })),
+const ScanTeaser = lazyPart(() => import("./scan-teaser").then((module) => module.ScanTeaser));
+const ScanFailed = lazyPart(() => import("./scan-failed").then((module) => module.ScanFailed));
+const BrowserObservations = lazyPart(() =>
+  import("./browser-observations").then((module) => module.BrowserObservations),
 );
 
 const CHECK_LABELS = {
