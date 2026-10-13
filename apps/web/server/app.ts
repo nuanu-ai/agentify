@@ -89,6 +89,15 @@ const carried = (method: string): boolean => {
  */
 const UNCARRIED = new Set(METHODS.filter((method) => !carried(method)));
 
+const decodes = (path: string): boolean => {
+  try {
+    decodeURI(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /** A short plain answer of the process's own, which nobody keeps. */
 const plainly = (response: Response, status: number, words: string): void => {
   response.status(status).setHeader("cache-control", UNKEPT_PAGE_CACHE);
@@ -135,14 +144,12 @@ export function scannerApp(parts: ScannerParts): Express {
   });
 
   // A path that cannot be decoded is no address of the scanner's, and React
-  // Router would write it, as the stranger sent it, to the log.
+  // Router would write it, as the stranger sent it, to the log. Nor is a
+  // target that is no path, such as the `*` of `OPTIONS *`, which React
+  // Router cannot read at all.
   app.use((request, response, next) => {
-    try {
-      decodeURI(request.path);
-      next();
-    } catch {
-      plainly(response, 404, "Not Found");
-    }
+    if (request.originalUrl.startsWith("/") && decodes(request.path)) next();
+    else plainly(response, 404, "Not Found");
   });
 
   // A page's data is asked for at `<page>.data`, and React Router would answer
@@ -161,6 +168,19 @@ export function scannerApp(parts: ScannerParts): Express {
 
   if (parts.assets !== undefined) app.use("/assets", parts.assets);
   if (parts.files !== undefined) app.use(parts.files);
+
+  // React Router refuses OPTIONS with 405 before it looks at the address, as
+  // a page refuses it. An address no route of its own takes answers it the
+  // way it answers any other method, with the page that says there is no such
+  // page.
+  app.use((request, _response, next) => {
+    if (request.method === "OPTIONS") {
+      const { page } = pageOf(new URL(request.originalUrl, "http://scanner.invalid").pathname);
+      if (matchRoutes(routes, page)?.at(-1)?.route.path === "*") request.method = "GET";
+    }
+    next();
+  });
+
   app.use(createRequestHandler({ build, mode: parts.mode }));
 
   app.use((thrown: unknown, request: Request, response: Response, next: NextFunction) => {
