@@ -75,6 +75,25 @@ describe("the front page", () => {
   });
 });
 
+describe("the landings for a kind of business", () => {
+  it.each([
+    ["/store", LANDINGS.store, "Agent-readiness diagnostic for online stores · Agentify"],
+    ["/local", LANDINGS.local, "Website diagnostic for local businesses · Agentify"],
+  ])(
+    "%s offers the scan for its segment, under its own title and address",
+    async (path, landing, title) => {
+      const { html, title: drawn, canonical, meta } = await page(path);
+
+      expect(html).toContain(`data-agentify-landing-segment="${landing.segment}"`);
+      expect(html).toContain(`data-agentify-landing-variant="${landing.variant}"`);
+      expect(html).toContain(landing.hero.cta);
+      expect(drawn).toBe(title);
+      expect(meta("og:title")).toBe(title);
+      expect(canonical).toBe(`https://agentify.ad${path}`);
+    },
+  );
+});
+
 describe("the methodology", () => {
   it("is the trust page about how the scan works, with the doors to the documentation and the dashboard", async () => {
     const { html, links } = await page("/methodology");
@@ -96,7 +115,7 @@ describe("the methodology", () => {
 });
 
 describe("every page", () => {
-  it.each(["/", "/methodology", "/no-such-page"])(
+  it.each(["/", "/store", "/local", "/methodology", "/no-such-page"])(
     "is drawn with the consent banner up until the visitor chooses: %s",
     async (path) => {
       const answered = await ask(path);
