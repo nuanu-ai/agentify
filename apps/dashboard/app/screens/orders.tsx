@@ -92,10 +92,10 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
           <div className="what">
             Order <span className="mono">{callout.id}</span> {callout.state}
           </div>
-          <div className="why">
+          <p className="why">
             {callout.why}
             {callout.rest === null ? null : <Rest rest={callout.rest} />}
-          </div>
+          </p>
         </div>
       ))}
     </>
