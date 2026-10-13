@@ -88,7 +88,7 @@ const throttledErrorLog = (
  * database down for readiness, and is logged by its kind at most once a
  * minute, as every database failure of the worker is.
  */
-function workerDatabase(
+export function workerDatabase(
   databaseUrl: string,
   health: WorkerHealth,
   logger: StructuredLogger,
