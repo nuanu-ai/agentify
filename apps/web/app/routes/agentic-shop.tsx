@@ -69,7 +69,7 @@ export default function AgenticShopPage() {
       <SiteHeader />
       <main className={styles.page} id="main">
         <section className={`container ${styles.hero}`}>
-          <div className={styles.heroCopy}>
+          <div>
             <p className={styles.eyebrow}>
               <span className={styles.dot} /> Meet your next sales channel
             </p>
