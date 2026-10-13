@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 describe("clean-clone environment", () => {
-  it("treats optional empty .env.example values as absent", () => {
+  it("treats an optional value set to empty as absent", () => {
     Object.assign(process.env, {
       DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       APP_BASE_URL: "",

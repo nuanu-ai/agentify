@@ -396,7 +396,7 @@ afterAll(async () => {
 });
 
 describe("P4 dashboard-owned scanner identity", () => {
-  it("derives scheme omission in the route and ignores the legacy header", async () => {
+  it("derives scheme omission in the route and ignores a header claiming it", async () => {
     const submit = async (
       url: string,
       idempotencyKey: string,

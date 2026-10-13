@@ -71,7 +71,7 @@ describe("the sell-to-agents page", () => {
     expect(html).not.toContain("/api/v1/merchant-applications");
   });
 
-  it("uses the current site privacy notice and no longer advertises applications", async () => {
+  it("links the site's privacy notice and invites no application", async () => {
     const { links, meta } = await drawn("/agentic-shop");
 
     expect(links).toContain("/privacy");
