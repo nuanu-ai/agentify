@@ -1013,7 +1013,7 @@ export class OrderRunner {
  * merchant's order and the buyer's status both read it here, so the two sides
  * are always told the same number.
  */
-export function salePriceOf(record: StoredOrder): SalePrice | null {
+function salePriceOf(record: StoredOrder): SalePrice | null {
   const price = record.order.price;
   if (price === null) {
     return null;
