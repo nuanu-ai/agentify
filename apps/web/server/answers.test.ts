@@ -286,6 +286,13 @@ describe("an API route's data asked for through a path with dot segments", () =>
       expect(lines).toEqual([]);
     },
   );
+
+  it("leaves a page's data what it is through the same kind of path", async () => {
+    const answered = await sent("/api/../methodology.data");
+
+    expect(answered.status).toBe(200);
+    expect(answered.headers["cache-control"]).toBe("public, max-age=10");
+  });
 });
 
 describe("a page asked with a method it does not take", () => {
