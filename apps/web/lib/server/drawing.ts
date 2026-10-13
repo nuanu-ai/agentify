@@ -34,10 +34,13 @@ const FONTS: Font[] = [
 let started: Promise<void> | undefined;
 
 // The renderer starts once per process and refuses a second start, which a
-// module evaluated again in development asks for; it is running then.
+// module evaluated again in development asks for; it is running then. A start
+// that failed otherwise is tried again by the next picture.
 const resvgStarted = (): Promise<void> =>
   (started ??= initWasm(bytesOf(resvgWasm)).catch((error: unknown) => {
-    if (!String(error).includes("Already initialized")) throw error;
+    if (String(error).includes("Already initialized")) return;
+    started = undefined;
+    throw error;
   }));
 
 /** `element` drawn as a PNG of this size, in the brand's fonts. */
@@ -47,12 +50,17 @@ export async function drawPng(
 ): Promise<Uint8Array<ArrayBuffer>> {
   await resvgStarted();
   const svg = await satori(element, { ...size, fonts: FONTS });
+  // The renderer's memory is its own, outside the collector's reach, so each
+  // object is freed by hand, whatever happens after it is made.
   const resvg = new Resvg(svg, { fitTo: { mode: "width", value: size.width } });
-  const rendered = resvg.render();
   try {
-    return new Uint8Array(rendered.asPng());
+    const rendered = resvg.render();
+    try {
+      return new Uint8Array(rendered.asPng());
+    } finally {
+      rendered.free();
+    }
   } finally {
-    rendered.free();
     resvg.free();
   }
 }
