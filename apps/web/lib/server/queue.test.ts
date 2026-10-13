@@ -46,3 +46,14 @@ it("starts the queue afresh for the next caller after a start that failed", asyn
 
   expect(await getScanQueue()).toBe(started);
 });
+
+it("leaves no connection to the database open after a start that failed", async () => {
+  database.refusing = MAKING_THE_QUEUE;
+  await expect(getScanQueue()).rejects.toThrow();
+
+  for (let waited = 0; database.connections() > 0 && waited < 2_000; waited += 20) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  expect(database.connections()).toBe(0);
+});
