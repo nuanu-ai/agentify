@@ -435,6 +435,13 @@ const FINISHED = {
   },
 };
 
+const FAILED = {
+  ...RUNNING,
+  status: "failed",
+  progress: { completed: 18, total: 18 },
+  checks: checksAt("unavailable"),
+};
+
 /**
  * A browser with nothing kept whose API is answered here: the scan is
  * accepted, its status is each of `statuses` in turn and the last one from
@@ -594,6 +601,22 @@ describe("a scan in Chromium", () => {
     expect(await page.locator("main section details[open]").count()).toBe(1);
     release();
     await page.getByLabel("Email").waitFor();
+    await page.context().close();
+  });
+
+  it("says why a scan ended without a result in the frame its badge first says so", async () => {
+    const { page } = await answered(FAILED);
+    await page.route("**/assets/scan-failed-*.js", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await route.continue();
+    });
+    await watchCardFrames(page);
+
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    await page.getByText("No reliable diagnostic was produced").waitFor();
+
+    const frames = await cardFrames(page);
+    expect(frames.filter((frame) => frame.badge === "fail" && frame.heading === null)).toEqual([]);
     await page.context().close();
   });
 
