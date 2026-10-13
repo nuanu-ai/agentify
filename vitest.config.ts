@@ -84,7 +84,8 @@ export const scannerSourceAlias = scannerSources.map(([specifier, path]) => ({
 /**
  * React Router rewrites `<app>/.react-router/types` whenever a Vite server
  * starts, and the scanner's tests start one per file, in parallel, so a
- * rewrite can lose a race with another and fail where nothing awaits it.
+ * rewrite can lose a race with another and fail where nothing awaits it. Its
+ * Vite plugin has no setting that leaves the rewrite out or writes elsewhere.
  * Those files are for an editor and no test reads them, so such a failure is
  * not the run's; any other unhandled error still fails it.
  */
