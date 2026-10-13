@@ -52,7 +52,8 @@ export function logServerError(
  * could not be drawn, a route that threw. It names the failure by its type and
  * code alone, because an exception from the database or a provider can carry
  * bound values, tokens and addresses, and a log goes places the database does
- * not. The request's id is the one it arrived with, unchecked, as sent.
+ * not. The request's id is the one it arrived with, which the log keeps only
+ * where it has the shape of one.
  */
 export function logUnhandledRequestError(
   error: unknown,

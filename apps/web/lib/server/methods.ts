@@ -10,9 +10,11 @@ export type Handler = (request: Request, params: Params) => Response | Promise<R
 
 /**
  * An API route's `loader` and `action`, the one function for both, from the
- * methods it answers. The rest are answered as the scanner always has: a
- * `HEAD` as its `GET` without the body, an `OPTIONS` with `204` and the
- * methods in `Allow`, and any other method with an empty `405`.
+ * methods it answers. The rest are answered the same way on every API route:
+ * a `HEAD` as its `GET` without the body, an `OPTIONS` with `204` and the
+ * methods in `Allow`, and a `GET`, `POST`, `PUT`, `PATCH` or `DELETE` it does
+ * not answer with an empty `405`. React Router refuses any other method
+ * itself, before a route is asked.
  *
  *     export const loader = methods({ POST: consent });
  *     export const action = loader;

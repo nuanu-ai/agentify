@@ -1,6 +1,6 @@
 /**
- * The API routes moved onto React Router, asked of the whole process over
- * HTTP: the liveness probe the image's activation and Docker's health check
+ * The scanner's API routes, asked of the whole process over HTTP: the
+ * liveness probe the image's activation and Docker's health check
  * call, the readiness probe, and the consent route, with the methods each
  * takes and the ones it does not. Nothing here reaches a database: the one it
  * is pointed at listens nowhere.

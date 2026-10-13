@@ -1,8 +1,8 @@
 /**
- * Cookies read from a request and written onto a response, in the shape the
- * scanner has always sent them: the value percent-encoded, `Path=/` unless
- * another is named, and an `Expires` beside a non-zero `Max-Age`, so a browser
- * that reads only one of the two keeps the cookie as long.
+ * Cookies read from a request and written onto a response, in one shape: the
+ * value percent-encoded, `Path=/` unless another is named, and an `Expires`
+ * beside a non-zero `Max-Age`, so a browser that reads only one of the two
+ * keeps the cookie as long.
  */
 
 export type CookieOptions = Readonly<{

@@ -1,6 +1,6 @@
 /**
- * The pages moved onto React Router, drawn by the whole process and read as
- * the HTML a browser or a crawler receives: what each page offers, the head it
+ * The scanner's pages, drawn by the whole process and read as the HTML a
+ * browser or a crawler receives: what each page offers, the head it
  * carries, and the consent banner every page draws.
  */
 
