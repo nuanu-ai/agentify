@@ -179,7 +179,7 @@ const deliver = (body: string, headers: Record<string, string>) =>
   });
 
 describe("Stripe's webhook", () => {
-  it("takes an event signed over the bytes sent on to its records, from Stripe, which names no origin", async () => {
+  it("finds Stripe's signature good over the body's bytes as sent, with no origin, and only then reaches for the records", async () => {
     await deliver(EVENT, { "stripe-signature": stripeSignature(EVENT) });
 
     expect(connections).toBe(1);

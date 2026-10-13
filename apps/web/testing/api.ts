@@ -28,7 +28,7 @@ export function stubOfflineScanner(): void {
   vi.stubEnv("POSTHOG_BROWSER_KEY", "");
   vi.stubEnv("POSTHOG_BROWSER_HOST", "");
   // A refusal is logged as a warning, and a failure to reach the database as
-  // an error; neither is what these tests read.
+  // an error; a test that reads the log spies on it again itself.
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
 }
