@@ -13,6 +13,7 @@
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "check:decisions": "./scripts/check-decisions.sh",
+    "deadcode": "knip",
     "gallery": "pnpm --filter @agentify/gallery gallery",
     "db:migrate": "pnpm --filter @agentify/gateway db:migrate && pnpm --filter @agentify/dashboard db:migrate",
     "worktrees": "./scripts/worktrees.sh list",
@@ -64,8 +65,9 @@
     "@stryker-mutator/core": "10.0.0",
     "@stryker-mutator/vitest-runner": "10.0.0",
     "@types/node": "^26.3.0",
+    "axe-core": "4.12.1",
+    "knip": "6.41.0",
     "typescript": "5.9.3",
-    "vitest": "^4.1.11",
-    "axe-core": "4.12.1"
+    "vitest": "^4.1.11"
   }
 }
