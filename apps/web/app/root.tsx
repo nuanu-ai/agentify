@@ -66,7 +66,9 @@ export const shouldRevalidate = () => false;
 export const meta = ({ loaderData, error }: MetaArgs<typeof loader>) =>
   loaderData === undefined
     ? [{ title: siteTitle(DISPLAY_BRAND) }]
-    : pageMeta(loaderData.app, { noindex: isRouteErrorResponse(error) && error.status === 404 });
+    : pageMeta(loaderData.app, {
+        robots: isRouteErrorResponse(error) && error.status === 404 ? "noindex" : undefined,
+      });
 
 export function Layout({ children }: Readonly<{ children: ReactNode }>) {
   const site = useRouteLoaderData<typeof loader>("root");

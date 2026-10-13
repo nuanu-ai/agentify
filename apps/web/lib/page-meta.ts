@@ -15,8 +15,14 @@ export type PageHead = Readonly<{
   description?: string;
   /** A path on the site, given absolute against the configured origin. */
   canonical?: string;
-  /** For a page no crawler should list, such as the one that says there is no such page. */
-  noindex?: boolean;
+  /**
+   * What a crawler is asked to do with the page, where it is not left to the
+   * crawler: a page no crawler should list, such as the one that says there is
+   * no such page, is `noindex`; one that is somebody's own, `noindex, nofollow`.
+   */
+  robots?: "noindex" | "noindex, nofollow" | "index, follow";
+  /** The referrer policy the page asks of the browser, where its address's headers name one too. */
+  referrer?: "no-referrer" | "strict-origin";
   /** The card a link to the page unfurls into, where it is not the page's own head over the site's. */
   card?: PageCard;
 }>;
@@ -75,9 +81,10 @@ export function pageMeta(config: PublicAppConfig, head: PageHead = {}): MetaDesc
   const cardAddress =
     head.card?.addressed === true && canonical !== undefined ? canonical.toString() : undefined;
   return [
-    ...(head.noindex ? [{ name: "robots", content: "noindex" }] : []),
     { title },
     { name: "description", content: description },
+    ...(head.robots === undefined ? [] : [{ name: "robots", content: head.robots }]),
+    ...(head.referrer === undefined ? [] : [{ name: "referrer", content: head.referrer }]),
     ...(canonical === undefined
       ? []
       : [
@@ -111,18 +118,3 @@ export function pageMeta(config: PublicAppConfig, head: PageHead = {}): MetaDesc
     { name: "twitter:image:height", content: String(picture.height) },
   ];
 }
-
-/**
- * The head of a scan or a report: its title, a word to every crawler to
- * neither index nor follow it, and the referrer policy the page asks of the
- * browser where it names one, as its address's headers say too.
- */
-export const privatePageMeta = (
-  config: PublicAppConfig,
-  title: string,
-  referrer?: "no-referrer" | "strict-origin",
-): MetaDescriptor[] => [
-  ...pageMeta(config, { title }),
-  { name: "robots", content: "noindex, nofollow" },
-  ...(referrer === undefined ? [] : [{ name: "referrer", content: referrer }]),
-];

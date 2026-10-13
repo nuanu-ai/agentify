@@ -7,10 +7,8 @@ import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 
 export const loader = () => getPublicEditorialPage("/terms", getPublicAppConfig());
 
-export const meta = ({ matches }: MetaArgs) => [
-  ...pageMeta(siteConfigOf(matches), { title: "Terms", canonical: "/terms" }),
-  { name: "robots", content: "index, follow" },
-];
+export const meta = ({ matches }: MetaArgs) =>
+  pageMeta(siteConfigOf(matches), { title: "Terms", canonical: "/terms", robots: "index, follow" });
 
 export default function TermsPage() {
   return <PublicEditorialPage page={useLoaderData<typeof loader>()} />;

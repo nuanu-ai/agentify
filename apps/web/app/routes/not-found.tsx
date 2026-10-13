@@ -8,7 +8,8 @@ export const loader = () => data(null, { status: 404 });
 
 export const action = loader;
 
-export const meta = ({ matches }: MetaArgs) => pageMeta(siteConfigOf(matches), { noindex: true });
+export const meta = ({ matches }: MetaArgs) =>
+  pageMeta(siteConfigOf(matches), { robots: "noindex" });
 
 export default function NotFound() {
   return <NotFoundPage />;

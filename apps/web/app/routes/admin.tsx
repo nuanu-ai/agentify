@@ -51,10 +51,8 @@ export async function action({ request }: ActionFunctionArgs) {
   throw data(null, { status: 405 });
 }
 
-export const meta = ({ matches, loaderData }: MetaArgs<typeof loader>) => [
-  ...pageMeta(siteConfigOf(matches), { title: loaderData?.title }),
-  { name: "robots", content: "noindex, nofollow" },
-];
+export const meta = ({ matches, loaderData }: MetaArgs<typeof loader>) =>
+  pageMeta(siteConfigOf(matches), { title: loaderData?.title, robots: "noindex, nofollow" });
 
 export default function AdminPage() {
   const { status, html } = useLoaderData<typeof loader>();

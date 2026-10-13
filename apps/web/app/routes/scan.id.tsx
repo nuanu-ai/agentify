@@ -2,7 +2,7 @@ import { isSegment } from "@agentify/scanner-contracts/browser";
 import { type LoaderFunctionArgs, type MetaArgs, useLoaderData } from "react-router";
 
 import { ScanExperience } from "../../components/scan-experience";
-import { privatePageMeta, siteConfigOf } from "../../lib/page-meta";
+import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 import { scanFixture } from "../../lib/scan-fixtures";
 import { getServerConfig } from "../../lib/server/config";
 
@@ -34,7 +34,11 @@ export const loader = ({ url, params }: LoaderFunctionArgs) => {
 };
 
 export const meta = ({ matches }: MetaArgs) =>
-  privatePageMeta(siteConfigOf(matches), "Private scan progress", "no-referrer");
+  pageMeta(siteConfigOf(matches), {
+    title: "Private scan progress",
+    robots: "noindex, nofollow",
+    referrer: "no-referrer",
+  });
 
 export default function ScanRoute() {
   return <ScanExperience {...useLoaderData<typeof loader>()} />;
