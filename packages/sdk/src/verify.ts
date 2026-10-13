@@ -17,7 +17,7 @@ import { checkCard } from "./check-card.js";
 import { describeProblems } from "./schema.js";
 
 /** What the command answers with. */
-export const VERIFY_EXIT = Object.freeze({
+const VERIFY_EXIT = Object.freeze({
   /** Every card it was given is complete as far as the contract can tell. */
   PASSED: 0,
   /** A card has findings. */
@@ -35,7 +35,7 @@ const NOT_CHECKED_HERE = [
 ].join("\n");
 
 /** The code a finding carries when the file held no card to check at all. */
-export const NOT_JSON = "not_json";
+const NOT_JSON = "not_json";
 
 interface CardFile {
   readonly path: string;
