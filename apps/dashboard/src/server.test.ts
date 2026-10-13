@@ -618,6 +618,19 @@ describe("the passwordless dashboard door", () => {
     expect(form).toMatch(/seller dashboard/i);
   });
 
+  it("leaves a stranger the site header's ways back to the rest of the site, and no one's address", async () => {
+    const { browser } = await started({ base: "/dashboard" });
+
+    const page = (await browser.get("/dashboard/sign-in")).html;
+    const bar = /<header class="site-header">([\s\S]*?)<\/header>/.exec(page)?.[1] ?? "";
+
+    for (const href of ["/", "/scanner", "/methodology", "/docs/", "/dashboard/sign-in"]) {
+      expect(bar, href).toContain(`href="${href}"`);
+    }
+    expect(bar).not.toContain("site-who");
+    expect(formTo(bar, "post", "/dashboard/sign-out")).toBeUndefined();
+  });
+
   it("asks only for an address and answers known and unknown people identically", async () => {
     const { browser, rows, mails } = await started();
 

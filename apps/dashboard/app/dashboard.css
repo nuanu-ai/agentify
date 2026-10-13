@@ -554,11 +554,12 @@ td.control {
  * The pages outside the dashboard: sign in, check your mail, open the link,
  * choose a name, come back from a shop, and every error page. One card at the
  * scanner's measures (520px, the panel corner, the shared soft shadow, padding
- * that grows with the window). The lockup sits above the card, and each page has
- * its own `h1` at the hero step; inside the dashboard `.lede h1` is the calmer one.
+ * that grows with the window), in the room the site header leaves, and each
+ * page has its own `h1` at the hero step; inside the dashboard `.lede h1` is
+ * the calmer one.
  */
 .gate {
-  min-height: 100vh;
+  flex: 1;
   display: grid;
   align-content: center;
   justify-items: center;
