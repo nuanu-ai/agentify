@@ -2,8 +2,8 @@
  * What Chromium does with the built scanner where only a browser can tell:
  * every page comes alive in the browser without a complaint, a click on a link
  * shows at once that it was taken and says the page is coming once it takes a
- * moment, a hover fetches a public page's data so the click needs nothing
- * more, the consent banner takes a choice without a reload, the merchant
+ * moment, a hover fetches a public page's data and stylesheets so the click
+ * needs nothing more, the consent banner takes a choice without a reload, the merchant
  * landing's menu opens and closes, and behind the live channel's edge, as
  * `deploy/Caddyfile` routes it, the landing stays the page that says there is
  * none once the browser takes the page over. The headers that promise the
@@ -96,7 +96,9 @@ beforeAll(async () => {
   });
   server = createServer((request, response) => {
     const path = request.url ?? "";
-    if (path.includes(".data")) asked.push(path.split("?")[0] ?? path);
+    if (path.includes(".data") || /\.css(?:$|[?#])/.test(path)) {
+      asked.push(path.split(/[?#]/)[0] ?? path);
+    }
     // The methodology's data arrives late, as over a slow link, so what the
     // page shows before it arrives can be seen.
     if (path.startsWith("/methodology.data")) {
@@ -355,7 +357,7 @@ describe("a click on a link", () => {
     await page.context().close();
   });
 
-  it("to a public page is answered from the fetch a hover made", async () => {
+  it("to a public page is answered from the fetches a hover made, its stylesheets among them", async () => {
     const { page } = await visit("/");
     const before = timesAsked("/methodology.data");
     const link = page.locator("header nav[aria-label=Primary] a", { hasText: "Methodology" });
@@ -363,11 +365,13 @@ describe("a click on a link", () => {
     await link.hover();
     await page.waitForTimeout(SLOW_MS + 500);
     await page.mouse.move(1, 1);
+    const askedBeforeTheClick = asked.length;
     await link.click();
     await page.waitForURL(`${origin}/methodology`);
     await page.locator("h1", { hasText: "How the agent-readiness scan works" }).waitFor();
 
     expect(timesAsked("/methodology.data") - before).toBe(1);
+    expect(asked.slice(askedBeforeTheClick)).toEqual([]);
     await page.context().close();
   });
 });
@@ -469,6 +473,46 @@ const answered = async (...statuses: readonly object[]) => {
   return { page, complaints };
 };
 
+type CardFrame = Readonly<{
+  complete: boolean;
+  result: boolean;
+  reading: boolean;
+  stepsDone: boolean;
+}>;
+
+/**
+ * Has the page note, at every frame it draws, what the scan's card shows: a
+ * badge that says the scan is complete, the result's heading, the words that
+ * say the scan's state is still being read, and a list of the scan's steps
+ * with every one of them done. Only a change is noted.
+ */
+const watchCardFrames = (page: Page) =>
+  page.addInitScript(() => {
+    const frames: CardFrame[] = [];
+    (window as Window & { cardFrames?: CardFrame[] }).cardFrames = frames;
+    const look = () => {
+      const card = document.querySelector("main section");
+      if (card !== null) {
+        const frame = {
+          complete: card.querySelector("header")?.textContent?.includes("complete") === true,
+          result: card.querySelector("h1")?.textContent === "Readable",
+          reading: card.textContent?.includes("Reading the scan state") === true,
+          stepsDone:
+            card.querySelector("ol") !== null &&
+            [...card.querySelectorAll("ol > li")].every(
+              (step) => step.lastElementChild?.textContent === "done",
+            ),
+        };
+        if (JSON.stringify(frames.at(-1)) !== JSON.stringify(frame)) frames.push(frame);
+      }
+      requestAnimationFrame(look);
+    };
+    requestAnimationFrame(look);
+  });
+
+const cardFrames = (page: Page): Promise<CardFrame[]> =>
+  page.evaluate(() => (window as Window & { cardFrames?: CardFrame[] }).cardFrames ?? []);
+
 describe("a scan in Chromium", () => {
   it("goes from the front page's form to the scan's progress, its result and the ask for the full report, without a complaint and with no token left in the address", async () => {
     const { page, complaints } = await answered(RUNNING, FINISHED);
@@ -486,6 +530,41 @@ describe("a scan in Chromium", () => {
       await page.evaluate((key) => sessionStorage.getItem(key), `agentify:scan-token:${SCAN_ID}`),
     ).toBe(SCAN_TOKEN);
     expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+
+  it("fetches the result's script while the scan runs, and draws the result in the frame that first says the scan is complete", async () => {
+    const { page, complaints } = await answered(RUNNING, RUNNING, FINISHED);
+    const teaser = page.waitForRequest(/\/assets\/scan-teaser-[^/]*\.js$/);
+    await watchCardFrames(page);
+
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    await teaser;
+    expect(await page.locator("main section header").textContent()).not.toContain("complete");
+    await page.getByLabel("Email").waitFor();
+
+    const frames = await cardFrames(page);
+    expect(frames.filter((frame) => frame.complete && !frame.result)).toEqual([]);
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+
+  it("shows the finished progress, and never words that doubt the scan is complete, while the result's script is on its way", async () => {
+    const { page } = await answered(FINISHED);
+    await page.route("**/assets/scan-teaser-*.js", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await route.continue();
+    });
+    await watchCardFrames(page);
+
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    await page.getByLabel("Email").waitFor();
+
+    const waiting = (await cardFrames(page)).filter((frame) => frame.complete && !frame.result);
+    expect(waiting.length).toBeGreaterThan(0);
+    for (const frame of waiting) {
+      expect(frame).toEqual({ complete: true, result: false, reading: false, stepsDone: true });
+    }
     await page.context().close();
   });
 
@@ -538,4 +617,56 @@ describe("a scan in Chromium", () => {
     expect(complaints).toEqual([]);
     await page.context().close();
   });
+});
+
+describe("the doors on a phone", () => {
+  it.each([
+    [
+      "a scan",
+      `/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`,
+      "main section",
+      "7 of 18 checks reported",
+    ],
+    [
+      "a report",
+      "/report/0190f4c5-0000-7000-8000-00000000f002",
+      "h1",
+      "Private report access required",
+    ],
+  ])(
+    "keep their row when the signed-in address arrives, so %s does not move",
+    async (_page, path, under, drawn) => {
+      // The narrowest page the site is drawn for.
+      const context = await browser.newContext({ viewport: { width: 320, height: 640 } });
+      const page = await context.newPage();
+      let release = () => {};
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await page.route(`**/api/v1/scans/${SCAN_ID}/status`, (route) =>
+        route.fulfill({ json: RUNNING }),
+      );
+      await page.route("**/api/v2/session", async (route) => {
+        await released;
+        await route.fulfill({
+          json: {
+            status: "signed_in",
+            email: "accounts-payable@an-example-company.com",
+            operator: false,
+          },
+        });
+      });
+
+      // The session's answer is held until the page under the doors is drawn.
+      await page.goto(`${origin}${path}`);
+      await page.getByText(drawn).first().waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      const before = await page.locator(under).first().boundingBox();
+      release();
+      await page.getByRole("button", { name: "Sign out" }).waitFor();
+
+      expect(await page.locator(under).first().boundingBox()).toEqual(before);
+      await context.close();
+    },
+  );
 });

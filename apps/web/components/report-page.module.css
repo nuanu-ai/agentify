@@ -168,6 +168,10 @@
   line-height: 1.6;
 }
 @media (max-width: 650px) {
+  /* As on the scan's page: the doors stay beside the lockup. */
+  .top {
+    column-gap: 12px;
+  }
   .hero {
     grid-template-columns: 1fr;
   }

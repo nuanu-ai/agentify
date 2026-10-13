@@ -624,7 +624,7 @@ describe("the passwordless dashboard door", () => {
     const page = (await browser.get("/dashboard/sign-in")).html;
     const bar = /<header class="site-header">([\s\S]*?)<\/header>/.exec(page)?.[1] ?? "";
 
-    for (const href of ["/", "/scanner", "/methodology", "/docs/", "/dashboard/sign-in"]) {
+    for (const href of ["/", "/scanner", "/methodology", "/docs/", "/dashboard"]) {
       expect(bar, href).toContain(`href="${href}"`);
     }
     expect(bar).not.toContain("site-who");

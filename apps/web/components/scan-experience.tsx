@@ -12,8 +12,8 @@ import { StatusBadge } from "./status-badge";
 
 // How a scan ended, its result with the share, the prompt and the form for
 // the full report, or why there is none, and the browser's observations
-// beside it, are loaded once the scan has ended; until then the page carries
-// only its progress.
+// beside it, are not part of the page's first load: they are fetched while
+// the scan runs, so the result follows its progress at once.
 const ScanTeaser = lazyPart(() => import("./scan-teaser").then((module) => module.ScanTeaser));
 const ScanFailed = lazyPart(() => import("./scan-failed").then((module) => module.ScanFailed));
 const BrowserObservations = lazyPart(() =>
@@ -75,6 +75,7 @@ export function ScanExperience({
   const [requestError, setRequestError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const terminal = data ? ["completed", "partial", "failed"].includes(data.status) : false;
+  const underway = data !== null && !terminal;
 
   useEffect(() => {
     if (terminal || fixtureName) return;
@@ -139,6 +140,13 @@ export function ScanExperience({
     );
   }, [accessState, data?.teaser, fixtureName, scanId]);
 
+  useEffect(() => {
+    if (!underway) return;
+    ScanTeaser.preload();
+    ScanFailed.preload();
+    if (browserObservationsEnabled) BrowserObservations.preload();
+  }, [browserObservationsEnabled, underway]);
+
   const phases = useMemo(() => buildPhases(data, segment), [data, segment]);
   const finished = data !== null && (data.status === "completed" || data.status === "partial");
 
@@ -174,7 +182,7 @@ export function ScanExperience({
           <ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />
         ) : null}
         {data?.status === "failed" ? (
-          <Suspense fallback={<LoadingState />}>
+          <Suspense fallback={null}>
             <ScanFailed
               blocked={data.blocked === true}
               checks={data.checks}
@@ -183,7 +191,10 @@ export function ScanExperience({
           </Suspense>
         ) : null}
         {finished ? (
-          <Suspense fallback={<LoadingState />}>
+          // Until the result's script is here, the progress it finished.
+          <Suspense
+            fallback={<ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />}
+          >
             {data.teaser ? (
               <ScanTeaser
                 data={data}
@@ -246,6 +257,9 @@ function buildPhases(data: ScanStatusResponse | null, segment: Segment): readonl
     }));
   if (data.status === "accepted" || data.status === "queued") {
     return labels.map((label) => ({ label, status: "pending" }));
+  }
+  if (data.status === "completed" || data.status === "partial") {
+    return labels.map((label) => ({ label, status: "done" }));
   }
 
   const terminalChecks = data.checks.filter((check) =>

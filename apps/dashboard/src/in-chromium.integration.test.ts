@@ -5,7 +5,8 @@
  * shown: the headers that promise this are held offline in `server.test.ts`,
  * and a change of React Router's data addresses could break it with every
  * header still in place. A press answered on its own page leaves the merchant
- * where they were on it, which only a page that really scrolls can show.
+ * where they were on it, and the sections stay in reach however far a page is
+ * scrolled, which only a page that really scrolls can show.
  *
  * It needs the build (`pnpm --filter @agentify/dashboard build`) and
  * Playwright's Chromium, and counts what reaches the dashboard rather than what
@@ -252,6 +253,42 @@ describe("a click under the dashboard's prefix", () => {
     await page.waitForTimeout(400);
     expect(await page.locator(".filter .here").textContent()).toBe("Open");
     await page.waitForURL(`${origin}${BASE}/orders?open=true`);
+    await page.context().close();
+  });
+});
+
+describe("the sections on a long page", () => {
+  it("stay in reach on a phone from the menu at the end of the header's row, which shows who is signed in and closes on Escape", async () => {
+    const page = await onTheCards({ width: 390, height: 600 });
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const burger = page.locator(".app-menu > summary");
+    const panel = page.locator(".app-menu-panel");
+
+    const reach = await burger.boundingBox();
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    expect(reach?.y).toBeGreaterThanOrEqual(0);
+    expect((reach?.y ?? 600) + (reach?.height ?? 0)).toBeLessThanOrEqual(600);
+    await burger.click();
+    await panel.waitFor({ state: "visible" });
+    expect(await panel.getByRole("link", { name: /Orders/ }).isVisible()).toBe(true);
+    expect(await panel.getByText(PERSON).isVisible()).toBe(true);
+    expect(await panel.getByRole("button", { name: "Sign out" }).isVisible()).toBe(true);
+
+    await panel.getByRole("link", { name: /Orders/ }).focus();
+    await page.keyboard.press("Escape");
+    await panel.waitFor({ state: "hidden" });
+    expect(await burger.evaluate((element) => element === document.activeElement)).toBe(true);
+    await page.context().close();
+  });
+
+  it("keep the chosen one under the header on a laptop, down to the foot of the page", async () => {
+    const page = await onTheCards({ width: 1280, height: 600 });
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+
+    const header = await page.locator("header.site-header").boundingBox();
+    const chosen = await page.locator("nav.tabs [aria-current=page]").boundingBox();
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    expect(chosen?.y).toBeGreaterThanOrEqual((header?.y ?? 0) + (header?.height ?? 0));
     await page.context().close();
   });
 });

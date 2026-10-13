@@ -2,8 +2,9 @@
 
 /**
  * Which pages a link has the browser fetch while the pointer rests on it: a
- * public page, whose data a browser may keep, and never a scan or a report,
- * which are fetched only for a visitor who asked for them.
+ * public page, whose data a browser may keep, with the stylesheets it is drawn
+ * with, and never a scan or a report, which are fetched only for a visitor who
+ * asked for them.
  */
 
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -33,7 +34,14 @@ const FRAMEWORK = {
       ["root", { id: "root", path: "", hasLoader: true, module: "/assets/root.js" }],
       ...PAGES.map(([id, path]) => [
         id,
-        { id, path, parentId: "root", hasLoader: true, module: `/assets/${id}.js` },
+        {
+          id,
+          path,
+          parentId: "root",
+          hasLoader: true,
+          module: `/assets/${id}.js`,
+          css: [`/assets/${id}.css`],
+        },
       ]),
     ]),
     entry: { imports: [], module: "" },
@@ -78,6 +86,12 @@ const fetchedAhead = () =>
     link.getAttribute("href"),
   );
 
+/** The stylesheets the browser was told to fetch ahead. */
+const stylesAhead = () =>
+  [...document.querySelectorAll<HTMLLinkElement>('link[rel="prefetch"][as="style"]')].map((link) =>
+    link.getAttribute("href"),
+  );
+
 /** Rests the pointer on a link long enough for the router's wait before it fetches. */
 const restOn = async (name: string) => {
   await act(async () => {
@@ -90,12 +104,26 @@ const restOn = async (name: string) => {
 };
 
 describe("a link while the pointer rests on it", () => {
-  it("has the browser fetch a public page's data ahead of the click", async () => {
+  it("has the browser fetch a public page's data and stylesheets ahead of the click", async () => {
     onTheFrontPage();
 
     await restOn("Methodology");
 
     expect(fetchedAhead().some((href) => href?.startsWith("/methodology.data"))).toBe(true);
+    expect(stylesAhead()).toEqual(["/assets/routes/methodology.css"]);
+  });
+
+  it("fetches no stylesheet the window already has", async () => {
+    onTheFrontPage();
+    const drawn = document.createElement("link");
+    drawn.rel = "stylesheet";
+    drawn.href = "/assets/routes/methodology.css";
+    document.head.append(drawn);
+
+    await restOn("Methodology");
+
+    expect(stylesAhead()).toEqual([]);
+    drawn.remove();
   });
 
   it.each(["Your scan", "Your report"])("fetches nothing ahead for %s", async (name) => {

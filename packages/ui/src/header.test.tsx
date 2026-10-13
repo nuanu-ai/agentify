@@ -30,6 +30,8 @@ const headerOn = (surface: Surface) => {
   const header = within(screen.getByRole("banner"));
   return {
     href: (name: string) => header.getByRole("link", { name }).getAttribute("href"),
+    /** Whether the link is marked as the part of the site the page belongs to. */
+    current: (name: string) => header.getByRole("link", { name }).hasAttribute("aria-current"),
     /** Where the router is after a click on the link, or the page it was on. */
     afterClicking: (name: string) => {
       const before = router.state.location.pathname;
@@ -45,17 +47,19 @@ describe("the site header", () => {
     const header = headerOn("scanner");
 
     expect(header.href("Dashboard")).toBe("/dashboard/sign-in");
+    expect(header.current("Dashboard")).toBe(false);
     expect(header.afterClicking("Dashboard")).toBe("not followed in place");
     expect(header.href("Docs")).toBe("/docs/");
     expect(header.afterClicking("Docs")).toBe("not followed in place");
     expect(header.afterClicking("Sell to agents")).toBe("/agentic-shop");
   });
 
-  it("follows the dashboard in place on the dashboard, and loads the scanner's pages whole", () => {
+  it("leads straight into the dashboard from inside it, marked as where the page is, and loads the scanner's pages whole", () => {
     const header = headerOn("dashboard");
 
-    expect(header.href("Dashboard")).toBe("/dashboard/sign-in");
-    expect(header.afterClicking("Dashboard")).toBe("/dashboard/sign-in");
+    expect(header.href("Dashboard")).toBe("/dashboard");
+    expect(header.current("Dashboard")).toBe(true);
+    expect(header.afterClicking("Dashboard")).toBe("/dashboard");
     for (const [name, href] of [
       ["Agentify", "/"],
       ["Sell to agents", "/agentic-shop"],

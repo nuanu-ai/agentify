@@ -21,7 +21,9 @@ export type Surface = "scanner" | "dashboard";
  * How a surface links to a page of its own: `to` is the page's path inside
  * the surface, as its router names it.
  */
-type OwnLink = ComponentType<Readonly<{ to: string; className?: string; children: ReactNode }>>;
+type OwnLink = ComponentType<
+  Readonly<{ to: string; className?: string; "aria-current"?: "true"; children: ReactNode }>
+>;
 
 type Owner = Surface | "docs";
 
@@ -44,21 +46,32 @@ const SECTIONS: readonly (Place & Readonly<{ label: string }>)[] = [
 ];
 
 const DOCS: Place = { owner: "docs", path: "/" };
-const DASHBOARD: Place = { owner: "dashboard", path: "/sign-in" };
+
+/**
+ * The dashboard's door: from elsewhere its sign-in, which sends somebody
+ * already signed in on to their dashboard, and inside the dashboard its own
+ * start.
+ */
+const DASHBOARD: Readonly<Record<Surface, Place>> = {
+  scanner: { owner: "dashboard", path: "/sign-in" },
+  dashboard: { owner: "dashboard", path: "/" },
+};
 
 /** What every part of the header needs to draw a link: who draws it, and how it links home. */
 type Drawn = Readonly<{ surface: Surface; link: OwnLink }>;
 
+/** `current` marks the link to the part of the site the page belongs to. */
 function PlaceLink({
   place,
   surface,
   link: Own,
   className,
+  current = false,
   children,
-}: Drawn & Readonly<{ place: Place; className?: string; children: ReactNode }>) {
+}: Drawn & Readonly<{ place: Place; className?: string; current?: boolean; children: ReactNode }>) {
   if (place.owner === surface) {
     return (
-      <Own className={className} to={place.path}>
+      <Own className={className} to={place.path} aria-current={current ? "true" : undefined}>
         {children}
       </Own>
     );
@@ -84,7 +97,8 @@ export function BrandLockup({ home = "/" }: Readonly<{ home?: string }>) {
  * The doors out of the surface, the documentation and the dashboard, and who
  * is signed in, which the surface draws in `visitor` since each knows it its
  * own way. When the bar runs out of room the section links go, never these:
- * the doors wrap instead, down to the narrowest page.
+ * the doors wrap instead, and on a phone the signed-in address gives way to
+ * keep them on one row.
  */
 export function SiteDoors({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: ReactNode }>) {
   return (
@@ -92,7 +106,11 @@ export function SiteDoors({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: Re
       <PlaceLink place={DOCS} {...drawn}>
         Docs
       </PlaceLink>
-      <PlaceLink place={DASHBOARD} {...drawn}>
+      <PlaceLink
+        place={DASHBOARD[drawn.surface]}
+        current={drawn.surface === "dashboard"}
+        {...drawn}
+      >
         Dashboard
       </PlaceLink>
       {visitor}
@@ -100,8 +118,16 @@ export function SiteDoors({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: Re
   );
 }
 
-/** The bar over every page of the site: the lockup, the public site's sections and the doors. */
-export function SiteHeader({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: ReactNode }>) {
+/**
+ * The bar over every page of the site: the lockup, the public site's sections
+ * and the doors, then `menu`, a surface's own menu, at the end of the row; a
+ * menu that opens a panel places it under the bar, which stays in view.
+ */
+export function SiteHeader({
+  visitor,
+  menu,
+  ...drawn
+}: Drawn & Readonly<{ visitor?: ReactNode; menu?: ReactNode }>) {
   return (
     <header className="site-header">
       <a className="skip" href="#main">
@@ -121,6 +147,7 @@ export function SiteHeader({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: R
             ))}
           </nav>
           <SiteDoors visitor={visitor} {...drawn} />
+          {menu}
         </div>
       </div>
     </header>
@@ -168,10 +195,10 @@ export function SectionNav({
 
 /**
  * Who is signed in, for the site header's doors. The whole address is in the
- * title, since the bar cuts it short where it is narrow. The way out is a
- * form, because signing out changes something and a link can be followed by
- * anything that reads the page; it loads the next page whole, so nothing drawn
- * for the address stays in the tab's memory.
+ * title, since the bar cuts it short where it is narrow and leaves it out on
+ * a phone. The way out is a form, because signing out changes something and a
+ * link can be followed by anything that reads the page; it loads the next page
+ * whole, so nothing drawn for the address stays in the tab's memory.
  */
 export function SignedIn({
   who,

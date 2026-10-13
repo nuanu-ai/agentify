@@ -124,7 +124,9 @@
     padding: 24px 16px 56px;
   }
 
+  /* As on the scan's page: the doors stay beside the lockup. */
   .brandWrap {
+    column-gap: 12px;
     margin-bottom: 20px;
   }
 

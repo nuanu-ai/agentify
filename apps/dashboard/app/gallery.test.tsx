@@ -70,6 +70,20 @@ describe("the dashboard's gallery", () => {
     },
   );
 
+  it("names who is signed in on a page behind the gate, and nobody on one in front of it", () => {
+    const wrong = gallery.states.flatMap((state) => {
+      const path = new URL(state.address, "https://agentify.ad").pathname;
+      const behind =
+        matchRoutes(TABLE, path.slice(config.basename.length))?.some(
+          ({ route }) => route.id === "routes/gate",
+        ) === true;
+      const named = renderToString(state.draw()).includes('class="site-who"');
+      return named === behind ? [] : [`${state.id} ${named ? "names" : "does not name"} anybody`];
+    });
+
+    expect(wrong).toEqual([]);
+  });
+
   it("says of every state which screen it is, when a person sees it and what causes it", () => {
     const silent = gallery.states.flatMap((state) =>
       (["screen", "when", "cause"] as const)

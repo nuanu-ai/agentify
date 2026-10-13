@@ -656,7 +656,8 @@ p {
 }
 
 .site-doors a:hover,
-.site-doors a:focus-visible {
+.site-doors a:focus-visible,
+.site-doors a[aria-current] {
   color: var(--accent);
   text-decoration: none;
 }
@@ -710,10 +711,12 @@ p {
  * wrap onto a second line before the bar grows, so above 900px it keeps to
  * 68px. The steps are measured against the current labels ("Sell to agents" is
  * the widest) and the longest address the doors show: the merchant link goes
- * at 910px where the doors carry a signed-in address, which would otherwise
- * take a third line and then run past the edge, and at 760px where they carry
- * none; at 640px the scanner link goes too, and under 480px only the lockup
- * and the doors fit in the 320px body minimum. A page clips what runs past its
+ * at 910px where the doors say who is visiting, which would otherwise take a
+ * third line and then run past the edge, and at 760px where they say nothing;
+ * at 640px the scanner link goes too, and under 480px only the lockup and the
+ * doors fit in the 320px body minimum. There the signed-in address gives way
+ * and the way out stays, so the doors keep to one row and the page under them
+ * does not move when the address arrives. A page clips what runs past its
  * edge, so a link that did not fit would be cut, not scrolled to.
  */
 @media (max-width: 760px) {
@@ -723,7 +726,7 @@ p {
 }
 
 @media (max-width: 910px) {
-  .site-header:has(.site-who) .site-nav a:first-child {
+  .site-header:has(.site-who, .site-unknown) .site-nav a:first-child {
     display: none;
   }
 }
@@ -765,6 +768,10 @@ p {
   .site-doors {
     padding-left: 0;
     border-left: 0;
+  }
+
+  .site-doors .site-who {
+    display: none;
   }
 }
 

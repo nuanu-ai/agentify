@@ -873,9 +873,11 @@ h2 {
 /*
  * The working area under the site header: the numbered sections in a sidebar
  * beside the workspace, and a bar at the top of the workspace with the
- * screen's title and the selling light. On a laptop the sidebar and the bar
- * stay in view under the site header, which is 68px tall there; the sidebar
- * and the bar sit under it, never over it.
+ * screen's title and the selling light. On a laptop the sections and the bar
+ * stay in view under the site header, which is 68px tall there; they sit
+ * under it, never over it. Only the sidebar's own words stay in view, at
+ * their own height, so the foot of a long page pushes none of them under
+ * the header.
  */
 .app-shell {
   min-height: calc(100vh - 68px);
@@ -884,14 +886,16 @@ h2 {
 }
 
 .app-sidebar {
-  position: sticky;
-  top: 68px;
-  height: calc(100vh - 68px);
-  display: flex;
-  flex-direction: column;
   border-right: var(--hairline) solid var(--line);
   background: var(--surface);
+}
+
+.app-sidebar-inner {
+  position: sticky;
+  top: 68px;
   z-index: 10;
+  display: flex;
+  flex-direction: column;
 }
 
 .app-sidebar-name {
@@ -945,7 +949,7 @@ h2 {
 }
 
 .sidebar-help {
-  margin: auto 14px 12px;
+  margin: 4px 14px 12px;
   padding: 14px;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-card);
@@ -1013,34 +1017,14 @@ h2 {
   box-shadow: 0 18px 48px -40px rgba(26, 25, 23, 0.55);
 }
 
-/* On a phone and a tablet only the site header stays in view, since how tall it
-   is depends on how its doors wrap; the dashboard's bars scroll with the page. */
+/* On a phone and a tablet the sidebar gives way to the menu at the end of the
+   site header's row, and only that row stays in view; the title bar scrolls
+   with the page. */
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
   }
   .app-sidebar {
-    position: relative;
-    top: auto;
-    height: auto;
-    border-right: 0;
-    border-bottom: var(--hairline) solid var(--line);
-  }
-  .app-sidebar .tabs {
-    display: flex;
-    overflow-x: auto;
-    padding: 8px 12px 10px;
-  }
-  .app-sidebar .tabs a,
-  .app-sidebar .tabs span {
-    flex: 0 0 auto;
-    min-height: 36px;
-    padding-inline: 10px;
-  }
-  .app-sidebar .tabs i {
-    display: none;
-  }
-  .sidebar-help {
     display: none;
   }
   .app-workspace .top {
@@ -1224,6 +1208,22 @@ h2 {
   }
 }
 
+/* The site header over the frame starts its lockup on the sidebar's line of
+   words and ends its doors on the content's right edge, as the foot under the
+   frame does, rather than centring them in the window. */
+.app-frame .site-header-inner {
+  --workspace: calc(100% - 252px);
+  --content: min(1180px, calc(var(--workspace) - clamp(44px, 8vw, 104px)));
+  width: auto;
+  margin-inline: 0;
+  padding-inline: 26px calc((var(--workspace) - var(--content)) / 2);
+}
+@media (max-width: 900px) {
+  .app-frame .site-header-inner {
+    padding-inline: 18px;
+  }
+}
+
 /* The foot under the frame lines its words up with the content beside the
    sidebar, as the bar over the page does, rather than with the window. */
 .app-shell + .foot .foot-inner {
@@ -1236,14 +1236,6 @@ h2 {
   .app-shell + .foot .foot-inner {
     width: calc(100% - 36px);
     margin-inline: auto;
-  }
-}
-
-/* On a phone and a tablet the sidebar is a bar of the height it needs, so a short
-   page is not a stretched empty bar. */
-@media (max-width: 900px) {
-  .app-shell {
-    grid-template-rows: auto 1fr;
   }
 }
 
@@ -1274,33 +1266,22 @@ h2 {
   font-size: 0.875rem;
 }
 
-/* The burger menu. Where there is no room for the sidebar, it is one row under
-   the site header (the dashboard's name and the burger), and the sections and
-   the documentation open over the page from it. */
+/* The burger menu. Where there is no room for the sidebar, it ends the site
+   header's row, and the sections, the documentation and who is signed in with
+   the way out open under the header from it, over the page. The header's own
+   address and sign-out give way to it there. */
 .app-menu {
   display: none;
 }
 
 @media (max-width: 900px) {
-  .app-sidebar {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    height: 60px;
-  }
-  .app-sidebar-name {
-    flex: 1 1 auto;
-    padding: 0 18px;
-  }
-  .app-sidebar > .tabs,
-  .app-sidebar > .sidebar-help {
+  .app-frame .site-doors .site-visitor {
     display: none;
   }
-  .app-sidebar .app-menu {
+  .app-menu {
     display: block;
-    margin-right: 12px;
   }
-  .app-sidebar .app-menu > summary {
+  .app-menu > summary {
     width: 44px;
     height: 44px;
     display: flex;
@@ -1315,10 +1296,10 @@ h2 {
     cursor: pointer;
     list-style: none;
   }
-  .app-sidebar .app-menu > summary::-webkit-details-marker {
+  .app-menu > summary::-webkit-details-marker {
     display: none;
   }
-  .app-sidebar .app-menu > summary span {
+  .app-menu > summary span {
     width: 18px;
     height: 2px;
     border-radius: 1px;
@@ -1327,33 +1308,34 @@ h2 {
       transform 0.2s ease,
       opacity 0.2s ease;
   }
-  .app-sidebar .app-menu[open] > summary span:nth-child(1) {
+  .app-menu[open] > summary span:nth-child(1) {
     transform: translateY(6px) rotate(45deg);
   }
-  .app-sidebar .app-menu[open] > summary span:nth-child(2) {
+  .app-menu[open] > summary span:nth-child(2) {
     opacity: 0;
   }
-  .app-sidebar .app-menu[open] > summary span:nth-child(3) {
+  .app-menu[open] > summary span:nth-child(3) {
     transform: translateY(-6px) rotate(-45deg);
   }
-  .app-sidebar .app-menu-panel {
+  /* Placed against the header, which is the nearest box with a position. */
+  .app-menu .app-menu-panel {
     position: absolute;
     top: 100%;
     right: 0;
     left: 0;
-    max-height: calc(100dvh - 60px);
+    max-height: calc(100dvh - 69px);
     overflow-y: auto;
     padding: 10px 14px 16px;
     border-bottom: var(--hairline) solid var(--line);
     background: var(--surface);
     box-shadow: 0 24px 40px -32px rgb(26 25 23 / 45%);
   }
-  .app-sidebar .app-menu-sections {
+  .app-menu .app-menu-sections {
     display: grid;
     gap: 4px;
   }
-  .app-sidebar .app-menu-sections a,
-  .app-sidebar .app-menu-sections span {
+  .app-menu .app-menu-sections a,
+  .app-menu .app-menu-sections span {
     display: flex;
     align-items: center;
     gap: 11px;
@@ -1365,7 +1347,7 @@ h2 {
     font-weight: 550;
     text-decoration: none;
   }
-  .app-sidebar .app-menu-sections i {
+  .app-menu .app-menu-sections i {
     width: 23px;
     height: 23px;
     display: grid;
@@ -1375,21 +1357,44 @@ h2 {
     color: var(--faint);
     font: normal 600 0.625rem var(--font-mono);
   }
-  .app-sidebar .app-menu-sections [aria-current="page"] {
+  .app-menu .app-menu-sections [aria-current="page"] {
     color: var(--accent);
     background: var(--accent-soft);
   }
-  .app-sidebar .app-menu-sections [aria-current="page"] i {
+  .app-menu .app-menu-sections [aria-current="page"] i {
     color: var(--accent);
     border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
     background: var(--surface);
   }
-  .app-sidebar .app-menu-docs {
+  .app-menu .app-menu-docs {
     display: flex;
     align-items: center;
     min-height: 44px;
     margin-top: 6px;
     padding: 0 12px;
+    font-size: 0.875rem;
+    font-weight: 650;
+  }
+  /* Who is signed in, whole, and the way out, under a line of their own. */
+  .app-menu .app-menu-account .site-visitor {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    margin-top: 10px;
+    padding: 14px 12px 0;
+    border-top: var(--hairline) solid var(--line);
+  }
+  .app-menu .app-menu-account .site-who {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--muted);
+    font-size: var(--text-label);
+    text-decoration: none;
+  }
+  .app-menu .app-menu-account .site-sign-out button {
+    min-height: 44px;
     font-size: 0.875rem;
     font-weight: 650;
   }
