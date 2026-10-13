@@ -76,13 +76,36 @@
     }
   };
 
+  /**
+   * A state the page's script reaches can show itself below the first screen,
+   * so its frame opens on the words that show it, scrolled inside the frame
+   * alone; the page's own scroll keeps the reader's place.
+   */
+  const bringIntoView = (iframe, words) => {
+    const inside = iframe.contentDocument;
+    if (inside === null || words === null) return;
+    const walker = inside.createTreeWalker(inside.body, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      if (!walker.currentNode.textContent.includes(words)) continue;
+      const shown = walker.currentNode.parentElement;
+      const top = shown.getBoundingClientRect().top + iframe.contentWindow.scrollY;
+      const height = iframe.contentWindow.innerHeight;
+      if (top > height * 0.8) iframe.contentWindow.scrollTo(0, top - height / 3);
+      return;
+    }
+  };
+
   const open = (frame) => {
     const id = frame.dataset.state;
     const iframe = document.createElement("iframe");
     iframe.title = `The screen in state ${id}`;
     iframe.setAttribute("sandbox", "allow-same-origin");
     iframe.addEventListener("load", () => {
-      if (iframe.contentDocument !== null) hold(iframe.contentDocument);
+      if (iframe.contentDocument === null) return;
+      hold(iframe.contentDocument);
+      void iframe.contentDocument.fonts.ready.then(() =>
+        bringIntoView(iframe, data.states[id].shows),
+      );
     });
     iframe.srcdoc = documentOf(data.states[id]);
     frame.replaceChildren(iframe);

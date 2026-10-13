@@ -155,7 +155,10 @@ export function pageOf({ surfaces, fonts, css, script, mark }: PageParts): strin
     css: Object.fromEntries(surfaces.map((surface) => [surface.id, surface.css])),
     states: Object.fromEntries(
       surfaces.flatMap((surface) =>
-        surface.states.map((state) => [state.id, { surface: surface.id, html: state.html }]),
+        surface.states.map((state) => [
+          state.id,
+          { surface: surface.id, html: state.html, shows: state.shows ?? null },
+        ]),
       ),
     ),
   };

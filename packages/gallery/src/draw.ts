@@ -46,6 +46,8 @@ export interface DrawnState {
   readonly cause: string;
   /** The page's body as the server sends it, with its files embedded. */
   readonly html: string;
+  /** For a state its page's script reaches, the words that show it. */
+  readonly shows?: string;
 }
 
 export interface DrawnSurface {
@@ -269,9 +271,17 @@ export async function drawSurface(source: SurfaceSource): Promise<DrawnSurface> 
       }
     }
     const states: DrawnState[] = [];
-    for (const { id, screen, address, when, cause } of gallery.states) {
-      const html = drawn.get(id) ?? "";
-      states.push({ id, screen, address, when, cause, html: await withImagesInlined(html, find) });
+    for (const { id, screen, address, when, cause, scene } of gallery.states) {
+      const html = await withImagesInlined(drawn.get(id) ?? "", find);
+      states.push({
+        id,
+        screen,
+        address,
+        when,
+        cause,
+        html,
+        ...(scene === undefined ? {} : { shows: scene.shows }),
+      });
     }
     return {
       id: gallery.id,
