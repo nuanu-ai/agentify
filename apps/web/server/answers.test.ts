@@ -70,6 +70,14 @@ describe("a scan and a report", () => {
     },
   );
 
+  it("are not where a slash is written encoded, which the router reads as no step of the path", async () => {
+    const answered = await ask("/scan%2F0190f4c5-0000-7000-8000-000000000000");
+
+    expect(answered.status).toBe(404);
+    expect(answered.headers.get("referrer-policy")).toBeNull();
+    expect(answered.headers.get("x-robots-tag")).toBeNull();
+  });
+
   it("are a place of their own, so the public page about the scanner is not one of them", async () => {
     const answered = await ask("/scanner");
 
