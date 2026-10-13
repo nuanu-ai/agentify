@@ -14,6 +14,7 @@
     "check:fix": "biome check --write .",
     "check:decisions": "./scripts/check-decisions.sh",
     "gallery": "pnpm --filter @agentify/gallery gallery",
+    "gallery:check": "pnpm --filter @agentify/gallery check",
     "db:migrate": "pnpm --filter @agentify/gateway db:migrate && pnpm --filter @agentify/dashboard db:migrate",
     "worktrees": "./scripts/worktrees.sh list",
     "worktrees:clean": "./scripts/worktrees.sh clean",
