@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { scannerSourceAlias } from "../../../vitest.config.js";
 import type { SurfaceSource } from "./draw.js";
 
 const app = (name: string): string =>
@@ -10,5 +11,6 @@ const app = (name: string): string =>
  * and a line here.
  */
 export const SURFACES: readonly SurfaceSource[] = [
+  { root: app("web"), module: "app/gallery.tsx", alias: scannerSourceAlias },
   { root: app("dashboard"), module: "app/gallery.tsx" },
 ];

@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Every screen of every surface in every state, drawn by the surfaces' own components into one static page",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts"
   },
   "scripts": {
     "gallery": "tsx src/main.ts",

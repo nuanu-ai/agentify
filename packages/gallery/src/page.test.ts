@@ -114,12 +114,15 @@ describe("states a comment could not point at", () => {
       refusalsIn([
         surface([
           state("dashboard-keys-none", {
-            html: '<img src="/assets/mark.svg"><img src="data:image/svg+xml;base64,PHN2Zy8+">',
+            html:
+              '<img src="/assets/mark.svg"><img src="data:image/svg+xml;base64,PHN2Zy8+"' +
+              ' srcSet="data:image/webp;base64,UklG 640w, /still-life-1448.webp 1448w">',
           }),
         ]),
       ]),
     ).toEqual([
       "The state dashboard-keys-none asks for /assets/mark.svg, which the page cannot fetch.",
+      "The state dashboard-keys-none asks for /still-life-1448.webp, which the page cannot fetch.",
     ]);
   });
 

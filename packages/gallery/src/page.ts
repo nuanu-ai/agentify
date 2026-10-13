@@ -53,11 +53,12 @@ const screensOf = (surface: DrawnSurface) => {
 /** What a frame would fetch: any source, or a linked file, that is not already in the page. */
 const fetchedBy = (html: string): string[] =>
   [
-    ...html.matchAll(/\s(?:src|srcset)="([^"]*)"/g),
-    ...html.matchAll(/<link\b[^>]*\shref="([^"]*)"/g),
-  ]
-    .map(([, address = ""]) => address)
-    .filter((address) => !address.startsWith("data:"));
+    ...[...html.matchAll(/\ssrc="([^"]*)"/gi)].map(([, address = ""]) => address),
+    ...[...html.matchAll(/<link\b[^>]*\shref="([^"]*)"/gi)].map(([, address = ""]) => address),
+    ...[...html.matchAll(/\ssrcset="([^"]*)"/gi)].flatMap(([, candidates = ""]) =>
+      candidates.split(/,\s+/).map((candidate) => candidate.trim().split(/\s+/)[0] ?? ""),
+    ),
+  ].filter((address) => !address.startsWith("data:"));
 
 /**
  * Refuses what would break in the published page or in a comment about it: a
@@ -154,7 +155,10 @@ export function pageOf({ surfaces, fonts, css, script, mark }: PageParts): strin
     css: Object.fromEntries(surfaces.map((surface) => [surface.id, surface.css])),
     states: Object.fromEntries(
       surfaces.flatMap((surface) =>
-        surface.states.map((state) => [state.id, { surface: surface.id, html: state.html }]),
+        surface.states.map((state) => [
+          state.id,
+          { surface: surface.id, html: state.html, shows: state.shows ?? null },
+        ]),
       ),
     ),
   };
@@ -174,7 +178,7 @@ export function pageOf({ surfaces, fonts, css, script, mark }: PageParts): strin
 <div class="gallery-body">
 <nav class="gallery-nav" id="gallery-nav" aria-label="Screens and their states">${nav(surfaces)}</nav>
 <main class="gallery-main">
-<p class="gallery-lede">Each page of the surfaces below in the states a person can meet it in, drawn by the product's own screens from example data, as the server sends it and before any script on it runs. Each frame is one device's screen at the width chosen above; scroll inside it for the rest of the page. Links and buttons inside the frames go nowhere. To comment on a state, name its label.</p>
+<p class="gallery-lede">Each page of the surfaces below in the states a person can meet it in, drawn by the product's own screens from example data: as the server sends it, or, for a state only the page's script reaches, as the script leaves it. Each frame is one device's screen at the width chosen above; scroll inside it for the rest of the page. Links and buttons inside the frames go nowhere. To comment on a state, name its label.</p>
 ${statesOf(surfaces)}
 </main>
 </div>
