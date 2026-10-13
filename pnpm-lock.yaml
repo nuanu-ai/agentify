@@ -422,6 +422,25 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.3.0)(jsdom@30.1.0(@noble/hashes@2.4.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(tsx@4.23.12)(yaml@2.9.0))
 
+  packages/gallery:
+    dependencies:
+      '@agentify/visual':
+        specifier: workspace:*
+        version: link:../visual
+    devDependencies:
+      '@types/react':
+        specifier: 19.2.17
+        version: 19.2.17
+      tsx:
+        specifier: 4.23.12
+        version: 4.23.12
+      vite:
+        specifier: 7.3.6
+        version: 7.3.6(@types/node@26.3.0)(lightningcss@1.33.0)(tsx@4.23.12)(yaml@2.9.0)
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@26.3.0)(jsdom@30.1.0(@noble/hashes@2.4.0))(vite@7.3.6(@types/node@26.3.0)(lightningcss@1.33.0)(tsx@4.23.12)(yaml@2.9.0))
+
   packages/observability:
     devDependencies:
       '@types/node':
