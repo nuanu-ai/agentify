@@ -44,6 +44,8 @@ export default [
   at("opengraph-image", "routes/opengraph-image.ts"),
   at("agentic-shop/opengraph-image", "routes/agentic-shop.opengraph-image.ts"),
   at("apple-icon", "routes/apple-icon.ts"),
+  at("icon.svg", "routes/icon.svg.ts"),
+  at("manifest.webmanifest", "routes/manifest.webmanifest.ts"),
   at("s/:slug/opengraph-image", "routes/s.slug.opengraph-image.ts"),
   at("api/health", "routes/api/health.ts"),
   at("api/health/live", "routes/api/health.live.ts"),
