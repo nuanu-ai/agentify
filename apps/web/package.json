@@ -46,6 +46,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@agentify/gallery": "workspace:*",
     "@react-router/dev": "8.4.0",
     "@testing-library/dom": "10.4.2",
     "@testing-library/react": "16.3.3",
