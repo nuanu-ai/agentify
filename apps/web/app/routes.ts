@@ -45,6 +45,7 @@ export default [
   at("api/health/live", "routes/api/health.live.ts"),
   at("api/v1/account/data-request", "routes/api/v1/account.data-request.ts"),
   at("api/v1/account/unsubscribe", "routes/api/v1/account.unsubscribe.ts"),
+  at("api/v1/attribution", "routes/api/v1/attribution.ts"),
   at("api/v1/card-signals/setup-intents", "routes/api/v1/card-signals.setup-intents.ts"),
   at("api/v1/card-signals/:signalId", "routes/api/v1/card-signals.signalId.ts"),
   at(
@@ -56,6 +57,7 @@ export default [
     "routes/api/v1/card-signals.signalId.payment-method.ts",
   ),
   at("api/v1/consent", "routes/api/v1/consent.ts"),
+  at("api/v1/events", "routes/api/v1/events.ts"),
   at("api/v1/reports/:scanId", "routes/api/v1/reports.scanId.ts"),
   at(
     "api/v1/reports/:scanId/remediation-prompt",

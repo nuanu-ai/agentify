@@ -1,10 +1,10 @@
 import { clientAnalyticsEventRequestSchema } from "@agentify/scanner-contracts";
 import { emitStoredBusinessEvent, scans, sessions } from "@agentify/scanner-database";
 import { eq } from "drizzle-orm";
-import { type NextRequest, NextResponse } from "next/server";
 
 import { ownedLead, visitorOf } from "../../../../lib/server/auth";
 import { getServerConfig } from "../../../../lib/server/config";
+import { readCookie } from "../../../../lib/server/cookies";
 import { hmacHex } from "../../../../lib/server/crypto";
 import { getDatabase } from "../../../../lib/server/database";
 import {
@@ -13,11 +13,10 @@ import {
   hasSameOrigin,
   visitorUnknownResponse,
 } from "../../../../lib/server/http";
+import { methods } from "../../../../lib/server/methods";
 import { ANONYMOUS_COOKIE, authorizeScan } from "../../../../lib/server/scans";
 
-export const runtime = "nodejs";
-
-export async function POST(request: NextRequest) {
+async function recordEvent(request: Request): Promise<Response> {
   if (!hasSameOrigin(request)) {
     return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
   }
@@ -44,7 +43,7 @@ export async function POST(request: NextRequest) {
     | undefined;
 
   if (body.name === "landing_view") {
-    const anonymousToken = request.cookies.get(ANONYMOUS_COOKIE)?.value;
+    const anonymousToken = readCookie(request, ANONYMOUS_COOKIE);
     if (!anonymousToken || !body.segment || !body.landing_variant) {
       return errorResponse(
         request,
@@ -176,9 +175,8 @@ export async function POST(request: NextRequest) {
   }
   // The visitor allowed no optional measurement, so nothing was recorded and
   // there is nothing for the page to deliver anywhere.
-  if (!stored)
-    return new NextResponse(null, { status: 204, headers: { "Cache-Control": "no-store" } });
-  return NextResponse.json(
+  if (!stored) return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
+  return Response.json(
     {
       status: stored.inserted ? "recorded" : "already_recorded",
       event_id: stored.eventId,
@@ -188,3 +186,6 @@ export async function POST(request: NextRequest) {
     { headers: { "Cache-Control": "no-store" } },
   );
 }
+
+export const loader = methods({ POST: recordEvent });
+export const action = loader;
