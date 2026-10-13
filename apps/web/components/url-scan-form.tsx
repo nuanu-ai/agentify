@@ -1,5 +1,3 @@
-"use client";
-
 import type { Segment } from "@agentify/scanner-contracts";
 import { type FormEvent, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router";

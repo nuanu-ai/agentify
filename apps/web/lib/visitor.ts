@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Who is visiting, asked from the browser, for the header and the report form.
  *

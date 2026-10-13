@@ -1,5 +1,3 @@
-"use client";
-
 import {
   CONSENT_POLICY_VERSION,
   type ConsentCategories,

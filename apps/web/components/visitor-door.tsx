@@ -1,5 +1,3 @@
-"use client";
-
 import { useVisitor } from "../lib/visitor";
 import styles from "./site-chrome.module.css";
 
