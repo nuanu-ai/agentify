@@ -295,6 +295,21 @@ describe("an API route's data asked for through a path with dot segments", () =>
   });
 });
 
+describe("a method no address of the scanner's takes", () => {
+  it.each(["/methodology", "/api/health/live", "/no-such-page"])(
+    "is refused with 405, kept by nobody, and leaves no line in the log: TRACE %s",
+    async (path) => {
+      const lines = errorLines();
+
+      const answered = await sent(path, "TRACE");
+
+      expect(answered.status).toBe(405);
+      expect(answered.headers["cache-control"]).toBe(NOBODY_KEEPS);
+      expect(lines).toEqual([]);
+    },
+  );
+});
+
 describe("a page asked with a method it does not take", () => {
   it.each(["PUT", "DELETE", "OPTIONS"])(
     "is refused with 405 naming the methods it takes: %s",
