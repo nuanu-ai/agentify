@@ -1,21 +1,21 @@
 import { createShareRequestSchema } from "@agentify/scanner-contracts";
-import { type NextRequest, NextResponse } from "next/server";
-
-import { ownedLead, visitorOf } from "../../../../../../lib/server/auth";
-import { getServerConfig } from "../../../../../../lib/server/config";
+import type { Params } from "react-router";
+import { ownedLead, visitorOf } from "../../../../lib/server/auth";
+import { getServerConfig } from "../../../../lib/server/config";
 import {
   bearerToken,
   errorResponse,
   hasSameOrigin,
   visitorUnknownResponse,
-} from "../../../../../../lib/server/http";
-import { createPublicShare } from "../../../../../../lib/server/reporting";
-import { authorizeScan } from "../../../../../../lib/server/scans";
+} from "../../../../lib/server/http";
+import { methods } from "../../../../lib/server/methods";
+import { createPublicShare } from "../../../../lib/server/reporting";
+import { authorizeScan } from "../../../../lib/server/scans";
 
-export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function share(request: Request, params: Params): Promise<Response> {
   if (!hasSameOrigin(request))
     return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
-  const { id } = await params;
+  const id = params.id ?? "";
   const parsed = createShareRequestSchema.safeParse(await request.json().catch(() => ({})));
   if (!parsed.success)
     return errorResponse(request, 400, "invalid_share_request", "The share request is invalid.");
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return errorResponse(request, 409, "share_unavailable", "This scan cannot be shared.");
   if (result.conflict)
     return errorResponse(request, 409, "share_already_published", "A public link already exists.");
-  return NextResponse.json(
+  return Response.json(
     {
       slug: result.slug,
       public_url: `${getServerConfig().appBaseUrl}/s/${result.slug}`,
@@ -44,3 +44,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     { status: 201, headers: { "Cache-Control": "no-store" } },
   );
 }
+
+export const loader = methods({ POST: share });
+export const action = loader;

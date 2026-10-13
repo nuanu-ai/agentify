@@ -20,6 +20,7 @@ import {
 } from "@agentify/scanner-database";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
+import type { Params } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { POST as requestDataAction } from "../../app/api/v1/account/data-request/route";
@@ -30,13 +31,13 @@ import { GET as downloadFullPrompt } from "../../app/api/v1/reports/[scanId]/rem
 import { GET as readFullReport } from "../../app/api/v1/reports/[scanId]/route";
 import { GET as downloadTeaserPrompt } from "../../app/api/v1/scans/[id]/remediation-prompt/download/route";
 import { GET as getTeaserPrompt } from "../../app/api/v1/scans/[id]/remediation-prompt/route";
-import { POST as publishShare } from "../../app/api/v1/scans/[id]/share/route";
 import { GET as previewShare } from "../../app/api/v1/scans/[id]/share-preview/route";
-import { POST as acceptScan } from "../../app/api/v1/scans/route";
 import { GET as getContactAccess } from "../../app/api/v2/scans/[id]/contact-access/route";
 import { POST as requestScannerRegistration } from "../../app/api/v2/scans/[id]/registrations/route";
 import { GET as readVisitor } from "../../app/api/v2/session/route";
 import { action as consent } from "../../app/routes/api/v1/consent";
+import { action as acceptScanRoute } from "../../app/routes/api/v1/scans";
+import { action as publishShareRoute } from "../../app/routes/api/v1/scans.id.share";
 import { latestReportOf, visitorOf } from "./auth";
 import { getServerConfig } from "./config";
 import { encryptEmail, hmacHex, sha256 } from "./crypto";
@@ -55,7 +56,14 @@ import { requestScannerIdentityDeletion } from "./scanner-identity-deletion";
 import { createScannerRegistrationIntent } from "./scanner-registration";
 import { authorizeScan, createOrReplayScan, getScanStatus } from "./scans";
 
-const persistConsent = (request: Request) => consent({ request, params: {} });
+/** A route's answer to one request, asked the way React Router asks it. */
+const answering =
+  (route: typeof consent) =>
+  (request: Request, params: Params = {}) =>
+    route({ request, params });
+const persistConsent = answering(consent);
+const acceptScan = answering(acceptScanRoute);
+const publishShare = answering(publishShareRoute);
 
 const connectionString = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!connectionString?.includes("_migration_test")) {
@@ -1743,7 +1751,7 @@ describe("P4 dashboard-owned scanner identity", () => {
         },
         body: JSON.stringify({ allow_indexing: false }),
       }),
-      { params: Promise.resolve({ id: scanId }) },
+      { id: scanId },
     );
     expect(expiredShare.status).toBe(404);
   });

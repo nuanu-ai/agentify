@@ -1,10 +1,10 @@
+import { canonicalizeTarget } from "@agentify/scanner";
 import {
   createScanRequestSchema,
   scanUrlWasSubmittedWithoutScheme,
 } from "@agentify/scanner-contracts";
-import { type NextRequest, NextResponse } from "next/server";
-
 import { getServerConfig } from "../../../../lib/server/config";
+import { cookieHeader, readCookie } from "../../../../lib/server/cookies";
 import { hmacHex } from "../../../../lib/server/crypto";
 import {
   errorResponse,
@@ -12,6 +12,7 @@ import {
   waitResponse,
   waitSeconds,
 } from "../../../../lib/server/http";
+import { methods } from "../../../../lib/server/methods";
 import { consumeScanRateLimits } from "../../../../lib/server/rate-limit";
 import {
   ANONYMOUS_COOKIE,
@@ -19,8 +20,6 @@ import {
   lookupScanReplay,
 } from "../../../../lib/server/scans";
 import { verifyTurnstileToken } from "../../../../lib/server/turnstile";
-
-export const runtime = "nodejs";
 
 async function verifyTurnstile(token: string | null, remoteIp: string): Promise<boolean> {
   const config = getServerConfig();
@@ -35,7 +34,7 @@ async function verifyTurnstile(token: string | null, remoteIp: string): Promise<
   });
 }
 
-export async function POST(request: NextRequest) {
+async function acceptScan(request: Request): Promise<Response> {
   if (!hasSameOrigin(request))
     return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
   const config = getServerConfig();
@@ -63,7 +62,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success)
     return errorResponse(request, 400, "invalid_url", "Provide a valid public HTTP(S) URL.");
 
-  const anonymousToken = request.cookies.get(ANONYMOUS_COOKIE)?.value;
+  const anonymousToken = readCookie(request, ANONYMOUS_COOKIE);
   const submittedWithoutScheme = scanUrlWasSubmittedWithoutScheme(
     rawBody && typeof rawBody === "object" && "url" in rawBody ? rawBody.url : undefined,
   );
@@ -71,7 +70,6 @@ export async function POST(request: NextRequest) {
   // is never reported as an address the scanner refuses.
   let targetHost: string;
   try {
-    const { canonicalizeTarget } = await import("@agentify/scanner");
     targetHost = canonicalizeTarget(parsed.data.url).hostname;
   } catch {
     return errorResponse(
@@ -115,7 +113,7 @@ export async function POST(request: NextRequest) {
           );
         }
       }
-      return NextResponse.json(
+      return Response.json(
         {
           scan_id: replay.scanId,
           access_token: replay.accessToken,
@@ -182,7 +180,7 @@ export async function POST(request: NextRequest) {
         "idempotency_conflict",
         "This key was already used for another request.",
       );
-    const response = NextResponse.json(
+    const response = Response.json(
       {
         scan_id: result.scanId,
         access_token: result.accessToken,
@@ -193,13 +191,16 @@ export async function POST(request: NextRequest) {
       { status: 202, headers: { "Cache-Control": "no-store" } },
     );
     if (result.anonymousToken) {
-      response.cookies.set(ANONYMOUS_COOKIE, result.anonymousToken, {
-        httpOnly: true,
-        secure: config.production,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 30 * 86_400,
-      });
+      response.headers.append(
+        "Set-Cookie",
+        cookieHeader(ANONYMOUS_COOKIE, result.anonymousToken, {
+          httpOnly: true,
+          secure: config.production,
+          sameSite: "lax",
+          path: "/",
+          maxAge: 30 * 86_400,
+        }),
+      );
     }
     return response;
   } catch {
@@ -213,3 +214,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const loader = methods({ POST: acceptScan });
+export const action = loader;

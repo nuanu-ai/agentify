@@ -44,5 +44,11 @@ export default [
   at("api/health", "routes/api/health.ts"),
   at("api/health/live", "routes/api/health.live.ts"),
   at("api/v1/consent", "routes/api/v1/consent.ts"),
+  at("api/v1/scans", "routes/api/v1/scans.ts"),
+  at("api/v1/scans/:id/browser-observation", "routes/api/v1/scans.id.browser-observation.ts"),
+  at("api/v1/scans/:id/registrations", "routes/api/v1/scans.id.registrations.ts"),
+  at("api/v1/scans/:id/share", "routes/api/v1/scans.id.share.ts"),
+  at("api/v1/scans/:id/status", "routes/api/v1/scans.id.status.ts"),
+  at("api/v1/shares/:slug", "routes/api/v1/shares.slug.ts"),
   at("*", "routes/not-found.tsx"),
 ] satisfies RouteConfig;
