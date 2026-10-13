@@ -220,6 +220,8 @@ describe("an address the scanner has no page for", () => {
     ["posted to", "/no-such-page", "POST"],
     ["under the API", "/api/no-such-route", "GET"],
     ["spelled in another case", "/METHODOLOGY", "GET"],
+    ["asked for its options", "/no-such-page", "OPTIONS"],
+    ["asked for its options under the API", "/api/v1/nothing-here", "OPTIONS"],
   ])("is the site's page that says so, with status 404, when %s", async (_how, path, method) => {
     const answered = await ask(path, { method });
     const html = await answered.text();
@@ -308,6 +310,18 @@ describe("a method no address of the scanner's takes", () => {
       expect(lines).toEqual([]);
     },
   );
+});
+
+describe("the server as a whole, asked for its options with `*`", () => {
+  it("is told there is no such address, and leaves no line in the log", async () => {
+    const lines = errorLines();
+
+    const answered = await sent("*", "OPTIONS");
+
+    expect(answered.status).toBe(404);
+    expect(answered.headers["cache-control"]).toBe(NOBODY_KEEPS);
+    expect(lines).toEqual([]);
+  });
 });
 
 describe("a page asked with a method it does not take", () => {
