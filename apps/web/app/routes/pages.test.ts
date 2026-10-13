@@ -145,16 +145,75 @@ describe("the methodology", () => {
   });
 });
 
-describe("every page", () => {
-  it.each(["/", "/store", "/local", "/methodology", "/no-such-page"])(
-    "is drawn with the consent banner up until the visitor chooses: %s",
-    async (path) => {
-      const answered = await ask(path);
-      const html = await answered.text();
+describe("the trust pages", () => {
+  it.each([
+    [
+      "/scanner",
+      "About agentify-scanner",
+      "Scanner identity · Agentify",
+      "Identity, behavior, safety limits, retention, and opt-out details for agentify-scanner.",
+    ],
+    [
+      "/privacy",
+      "Privacy and data controls",
+      "Privacy · Agentify",
+      "Privacy, retention, consent, processors, and data-control information for Agentify.",
+    ],
+    [
+      "/terms",
+      "Terms of use",
+      "Terms · Agentify",
+      "A public-HTTP diagnostic showing what your website makes readable to AI agents.",
+    ],
+  ])(
+    "%s says what it is, under its own title and address",
+    async (path, h1, title, description) => {
+      const head = await page(path);
 
-      expect(html).toContain('aria-label="Privacy choices"');
-      expect(html).toContain("Allow optional analytics");
-      expect(html).toContain('<html lang="en-US">');
+      expect(head.html).toMatch(new RegExp(`<h1[^>]*>${h1}</h1>`));
+      expect(head.title).toBe(title);
+      expect(head.meta("description")).toBe(description);
+      expect(head.canonical).toBe(`https://agentify.ad${path}`);
     },
   );
+
+  it("name the contacts and the scanner's address this deployment is configured with", async () => {
+    vi.stubEnv("APP_BASE_URL", "https://test.agentify.ad");
+    vi.stubEnv("PRIVACY_EMAIL", "privacy@test.agentify.ad");
+    vi.stubEnv("ABUSE_EMAIL", "abuse@test.agentify.ad");
+
+    const scanner = await page("/scanner");
+    const privacy = await page("/privacy");
+
+    expect(scanner.html).toContain("agentify-scanner/1.0 (+https://test.agentify.ad/scanner)");
+    expect(scanner.links).toContain("mailto:abuse@test.agentify.ad");
+    expect(privacy.links).toContain("mailto:privacy@test.agentify.ad");
+    expect(privacy.links).not.toContain("mailto:privacy@agentify.ad");
+  });
+
+  it("asks every crawler to index the terms and follow them, and no other trust page", async () => {
+    expect((await page("/terms")).meta("robots")).toBe("index, follow");
+    expect((await page("/privacy")).meta("robots")).toBeUndefined();
+    expect((await page("/scanner")).meta("robots")).toBeUndefined();
+  });
+});
+
+describe("every page", () => {
+  it.each([
+    "/",
+    "/store",
+    "/local",
+    "/methodology",
+    "/scanner",
+    "/privacy",
+    "/terms",
+    "/no-such-page",
+  ])("is drawn with the consent banner up until the visitor chooses: %s", async (path) => {
+    const answered = await ask(path);
+    const html = await answered.text();
+
+    expect(html).toContain('aria-label="Privacy choices"');
+    expect(html).toContain("Allow optional analytics");
+    expect(html).toContain('<html lang="en-US">');
+  });
 });

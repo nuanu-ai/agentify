@@ -106,7 +106,7 @@ const visit = async (
 const timesAsked = (path: string): number => asked.filter((one) => one === path).length;
 
 describe("a page in Chromium", () => {
-  it.each(["/", "/store", "/local", "/methodology"])(
+  it.each(["/", "/store", "/local", "/methodology", "/scanner", "/privacy", "/terms"])(
     "comes alive without a complaint: %s",
     async (path) => {
       const { page, complaints } = await visit(path);

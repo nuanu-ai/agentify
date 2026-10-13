@@ -76,7 +76,7 @@ describe("a scan and a report", () => {
 });
 
 describe("a public page", () => {
-  it.each(["/", "/store", "/local", "/methodology"])(
+  it.each(["/", "/store", "/local", "/methodology", "/scanner", "/privacy", "/terms"])(
     "may be kept by a shared cache for an hour, in English, by its Accept: %s",
     async (path) => {
       const answered = await ask(path, { headers: { accept: "text/html" } });
@@ -89,7 +89,7 @@ describe("a public page", () => {
     },
   );
 
-  it.each(["/", "/store", "/local", "/methodology"])(
+  it.each(["/", "/store", "/local", "/methodology", "/scanner", "/privacy", "/terms"])(
     "is Markdown for a client that prefers it, kept the same way: %s",
     async (path) => {
       const answered = await ask(path, { headers: { accept: "text/markdown, text/html;q=0.9" } });
