@@ -319,6 +319,11 @@ describe("the merchant landing", () => {
     // route and data itself, which the edge must withhold as it does the page.
     await page.locator("a.brand").click();
     await page.waitForURL(`${liveOrigin}/`);
+    // The address changes before the router draws the page it leads to, so
+    // the front page's heading is read once it has replaced the missing one.
+    await page.waitForFunction(
+      () => document.querySelector("h1")?.textContent !== "Page not found",
+    );
     const home = await page.locator("h1").first().textContent();
     await page.goBack();
     await page.waitForFunction((left) => document.querySelector("h1")?.textContent !== left, home);
