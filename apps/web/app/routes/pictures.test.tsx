@@ -2,20 +2,25 @@
  * The pictures the scanner draws for the site, asked of the whole process over
  * HTTP and read the way a crawler reads them: the type and size a page's head
  * claims, and the PNG behind the address it names. The drawing itself is asked
- * for the characters the brand's fonts lack.
+ * for the characters the brand's fonts lack. Nothing here reaches a database:
+ * the one it is pointed at listens nowhere, so a share is drawn from its
+ * snapshot directly.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SELL_TO_AGENTS_PICTURE } from "../../content/pictures";
 import { drawPng, MONO_FONT } from "../../lib/server/drawing";
+import { drawShareImage } from "../../lib/server/share-image";
 import { ask } from "../../testing/scanner";
 
 beforeEach(() => {
   vi.stubEnv("APP_BASE_URL", "https://agentify.ad");
+  vi.stubEnv("DATABASE_URL", "postgresql://nobody:unused@127.0.0.1:1/nowhere");
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -119,4 +124,33 @@ describe("a drawing", () => {
   it.each(["→", "↗"])("shows the arrow %s, which the brand's fonts lack", async (arrow) => {
     expect((await draw(arrow)).equals(await draw("漢"))).toBe(false);
   });
+});
+
+describe("a share's card", () => {
+  const snapshot = {
+    host: "www.example.com",
+    score: 72,
+    level: "ahead_of_market",
+    rubric_version: "gtm-v1.0.0",
+    generated_at: "2026-10-01T10:00:00.000Z",
+  } as const;
+
+  it("is a picture of the size a share's page claims, drawn from that share's result", async () => {
+    const drawn = Buffer.from(await drawShareImage(snapshot));
+    const another = Buffer.from(
+      await drawShareImage({ ...snapshot, score: 31, level: "readable" }),
+    );
+
+    expect(pngSize(drawn)).toEqual({ width: 1200, height: 630 });
+    expect(drawn.equals(another)).toBe(false);
+  });
+
+  it.each(["/s/a-share/opengraph-image", "/api/v1/shares/a-share/image"])(
+    "says it failed, not that there is no such share, while the database cannot be reached: %s",
+    async (path) => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+
+      expect((await ask(path)).status).toBe(500);
+    },
+  );
 });

@@ -44,8 +44,10 @@ export default [
   at("opengraph-image", "routes/opengraph-image.ts"),
   at("agentic-shop/opengraph-image", "routes/agentic-shop.opengraph-image.ts"),
   at("apple-icon", "routes/apple-icon.ts"),
+  at("s/:slug/opengraph-image", "routes/s.slug.opengraph-image.ts"),
   at("api/health", "routes/api/health.ts"),
   at("api/health/live", "routes/api/health.live.ts"),
   at("api/v1/consent", "routes/api/v1/consent.ts"),
+  at("api/v1/shares/:slug/image", "routes/api/v1/shares.slug.image.ts"),
   at("*", "routes/not-found.tsx"),
 ] satisfies RouteConfig;

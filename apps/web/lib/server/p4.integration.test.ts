@@ -37,6 +37,8 @@ import { GET as getContactAccess } from "../../app/api/v2/scans/[id]/contact-acc
 import { POST as requestScannerRegistration } from "../../app/api/v2/scans/[id]/registrations/route";
 import { GET as readVisitor } from "../../app/api/v2/session/route";
 import { action as consent } from "../../app/routes/api/v1/consent";
+import { loader as shareImage } from "../../app/routes/api/v1/shares.slug.image";
+import { loader as shareCard } from "../../app/routes/s.slug.opengraph-image";
 import { latestReportOf, visitorOf } from "./auth";
 import { getServerConfig } from "./config";
 import { encryptEmail, hmacHex, sha256 } from "./crypto";
@@ -1703,6 +1705,19 @@ describe("P4 dashboard-owned scanner identity", () => {
       rubric_version: "gtm-v1.0.0",
       generated_at: expect.any(String),
     });
+    const sharePicture = (route: typeof shareCard, path: string) =>
+      route({
+        request: new Request(`http://localhost:3000${path}`),
+        params: { slug: shared.slug },
+      });
+    const card = await sharePicture(shareCard, `/s/${shared.slug}/opengraph-image`);
+    expect(card.status).toBe(200);
+    expect(card.headers.get("content-type")).toBe("image/png");
+    const download = await sharePicture(shareImage, `/api/v1/shares/${shared.slug}/image`);
+    expect(download.status).toBe(200);
+    expect(download.headers.get("content-disposition")).toBe(
+      'attachment; filename="agentify-example.com.png"',
+    );
     expect(
       await revokePublicShare(shared.slug, {
         verifiedLeadId: leadId,
@@ -1710,6 +1725,14 @@ describe("P4 dashboard-owned scanner identity", () => {
       }),
     ).toBe("revoked");
     expect(await getPublicShare(shared.slug)).toBeUndefined();
+    const revokedCard = await sharePicture(shareCard, `/s/${shared.slug}/opengraph-image`);
+    expect(revokedCard.status).toBe(404);
+    expect(await revokedCard.text()).toBe("");
+    const revokedDownload = await sharePicture(shareImage, `/api/v1/shares/${shared.slug}/image`);
+    expect(revokedDownload.status).toBe(404);
+    expect(((await revokedDownload.json()) as { error: { code: string } }).error.code).toBe(
+      "share_not_found",
+    );
     expect(
       await getDatabase().pool.query<{
         name: string;
