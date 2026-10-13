@@ -159,7 +159,6 @@ const routePatterns: readonly [RegExp, string][] = [
   [/^\/api\/v1\/scans\/[^/]+\/status$/, "api_v1_scan_status"],
   [/^\/api\/v1\/scans\/[^/]+\/share-preview$/, "api_v1_scan_share_preview"],
   [/^\/api\/v1\/scans\/[^/]+\/share$/, "api_v1_scan_share"],
-  [/^\/api\/v1\/scans\/[^/]+\/registrations$/, "api_v1_scan_registration_legacy"],
   [/^\/api\/v1\/scans\/[^/]+\/browser-observation$/, "api_v1_browser_observation"],
   [/^\/api\/v1\/scans\/[^/]+\/remediation-prompt(?:\/download)?$/, "api_v1_scan_remediation"],
   [/^\/api\/v1\/reports\/[^/]+$/, "api_v1_report"],
