@@ -35,7 +35,6 @@
     "@stripe/stripe-js": "9.9.0",
     "drizzle-orm": "0.45.2",
     "express": "5.2.1",
-    "next": "16.2.10",
     "pg-boss": "12.28.0",
     "posthog-js": "1.399.2",
     "react": "19.2.7",
