@@ -55,7 +55,7 @@ export class BrowserNetworkPolicyError extends Error {
 
 const normalizeDomain = (value: string): string => value.trim().toLowerCase().replace(/\.$/, "");
 
-export const registrableDomain = (hostname: string): string | null =>
+const registrableDomain = (hostname: string): string | null =>
   getDomain(normalizeDomain(hostname), { allowPrivateDomains: true }) ??
   getDomain(normalizeDomain(hostname), { allowPrivateDomains: false });
 
