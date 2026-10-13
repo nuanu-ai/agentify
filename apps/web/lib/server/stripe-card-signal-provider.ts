@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import Stripe from "stripe";
 import {
@@ -336,8 +336,4 @@ export function getStripeCardSignalProvider(
   return config.STRIPE_ADAPTER === "stripe"
     ? new StripeProvider(config)
     : new LocalStripeCardSignalProvider(config.webhookSecret);
-}
-
-export function newLocalIdempotencyKey() {
-  return randomUUID();
 }

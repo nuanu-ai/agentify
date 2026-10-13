@@ -199,22 +199,6 @@ export async function readRateCount(
   return result.rows[0]?.count ?? 0;
 }
 
-export async function consumeRateLimit(
-  keyHash: string,
-  kind: RateKind,
-  limit: number,
-  now = new Date(),
-): Promise<{ allowed: boolean; count: number }> {
-  const entry = { keyHash, kind, limit };
-  const { db } = getDatabase();
-  return await db.transaction(async (tx) => {
-    const locked = await lockRateEntry(tx, entry, now);
-    if (locked.count >= limit) return { allowed: false, count: locked.count };
-    await recordRateConsumption(tx, locked, now);
-    return { allowed: true, count: locked.count + 1 };
-  });
-}
-
 /**
  * The latest moment any full limit frees, and the limit that set it. A floor
  * on the wait, not a promise: a shared limit (a scan session, an office behind
