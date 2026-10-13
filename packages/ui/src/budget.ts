@@ -7,17 +7,15 @@
  * fetched from where the application serves it, so the header checked is the
  * one a browser gets.
  *
- * A page's first visit counts what it loads before any script runs: React
- * Router's entry, the modules of every route from the root to the page with
- * what they import, and the route table's file where the page asks for it.
- * Under lazy route discovery, React Router's default for a server-drawn
- * build, it does not: the page's HTML carries the part of the table it needs,
- * and the rest is asked for route by route as links appear. What a page can
- * load later, through an `import()` that waits for a consent, a step or a
- * click, is printed beside it and not counted, so a heavy library moved
- * behind one stays in sight.
- * Neither counts the stylesheets, and a route that answers with data or a
- * file rather than a page loads nothing and is left out.
+ * A page's first visit counts the scripts React Router's document names for
+ * it, with what they import: its entry, and the modules of every route from
+ * the root to the page. The route table is among them only where routes are
+ * sent up front; under lazy discovery a page carries its own routes inline
+ * and asks for others as links to them appear. What a page can load later,
+ * through an `import()` that waits for a consent, a step or a click, is
+ * printed beside it and not counted, so a heavy library moved behind one
+ * stays in sight. Neither counts the stylesheets, and a route that answers
+ * with data or a file rather than a page loads nothing and is left out.
  */
 
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -29,10 +27,72 @@ const HASHED = /-[\w-]{8}\.(?:js|css)$/;
 const IMMUTABLE = "public, max-age=31536000, immutable";
 
 /** One chunk as Vite's manifest describes it. */
-interface Chunk {
+export interface Chunk {
   readonly file: string;
   readonly imports?: readonly string[];
   readonly dynamicImports?: readonly string[];
+}
+
+/** Vite's manifest of the client build, `.vite/manifest.json` beside `assets/`. */
+export type ViteManifest = Readonly<Record<string, Chunk>>;
+
+const fileOf = (url: string): string => `assets/${url.slice(url.lastIndexOf("/") + 1)}`;
+
+/**
+ * Every script `files` import, they included, statically or, where `later`
+ * says so, by `import()` as well; each named as Vite's manifest names it,
+ * relative to the client build (`assets/…`).
+ */
+const reached = (manifest: ViteManifest, files: Iterable<string>, later: boolean): Set<string> => {
+  const byFile = new Map(Object.values(manifest).map((chunk) => [chunk.file, chunk]));
+  const seen = new Set<string>();
+  const visit = (file: string): void => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    const chunk = byFile.get(file);
+    for (const key of [
+      ...(chunk?.imports ?? []),
+      ...(later ? (chunk?.dynamicImports ?? []) : []),
+    ]) {
+      const imported = manifest[key];
+      if (imported?.file.endsWith(".js")) visit(imported.file);
+    }
+  };
+  for (const file of files) visit(file);
+  return seen;
+};
+
+/**
+ * The scripts a visit to the route `routeId` loads before anything is clicked,
+ * as React Router's `<Scripts>` names them under the build's own route
+ * discovery, with what they import; each relative to the client build.
+ */
+export function firstVisitScripts(
+  build: Pick<ServerBuild, "assets" | "routes" | "routeDiscovery" | "ssr">,
+  manifest: ViteManifest,
+  routeId: string,
+): ReadonlySet<string> {
+  const lazy = build.routeDiscovery.mode === "lazy" && build.ssr;
+  const urls = [
+    ...(lazy ? [] : [build.assets.url]),
+    build.assets.entry.module,
+    ...build.assets.entry.imports,
+  ];
+  for (let id: string | undefined = routeId; id !== undefined; id = build.routes[id]?.parentId) {
+    const route = build.assets.routes[id];
+    if (route === undefined) continue;
+    urls.push(
+      route.module,
+      ...[
+        route.clientActionModule,
+        route.clientLoaderModule,
+        route.clientMiddlewareModule,
+        route.hydrateFallbackModule,
+      ].filter((module): module is string => module !== undefined),
+      ...(route.imports ?? []),
+    );
+  }
+  return reached(manifest, urls.map(fileOf), false);
 }
 
 export interface Budget {
@@ -61,47 +121,11 @@ export async function brokenBudget(budget: Budget): Promise<readonly string[]> {
   const failures: string[] = [];
   const manifest = JSON.parse(
     await readFile(join(clientDirectory, ".vite", "manifest.json"), "utf8"),
-  ) as Record<string, Chunk>;
-  const byFile = new Map(Object.values(manifest).map((chunk) => [chunk.file, chunk]));
-  const fileOf = (url: string): string => `assets/${url.slice(url.lastIndexOf("/") + 1)}`;
+  ) as ViteManifest;
   const brotliSize = async (file: string): Promise<number> =>
     (await stat(join(clientDirectory, `${file}.br`))).size;
   const sizeOf = async (files: ReadonlySet<string>): Promise<number> =>
     (await Promise.all([...files].map(brotliSize))).reduce((sum, size) => sum + size, 0);
-
-  /** Every chunk `files` import, statically or, where `later` says so, by `import()`. */
-  const reached = (files: Iterable<string>, later: boolean): Set<string> => {
-    const seen = new Set<string>();
-    const visit = (file: string): void => {
-      if (seen.has(file)) return;
-      seen.add(file);
-      const chunk = byFile.get(file);
-      for (const key of [
-        ...(chunk?.imports ?? []),
-        ...(later ? (chunk?.dynamicImports ?? []) : []),
-      ]) {
-        const imported = manifest[key];
-        if (imported?.file.endsWith(".js")) visit(imported.file);
-      }
-    };
-    for (const file of files) visit(file);
-    return seen;
-  };
-
-  const firstVisit = (leafId: string): Set<string> => {
-    const tableInline = build.routeDiscovery.mode === "lazy" && build.ssr;
-    const urls = [
-      ...(tableInline ? [] : [build.assets.url]),
-      build.assets.entry.module,
-      ...build.assets.entry.imports,
-    ];
-    for (let id: string | undefined = leafId; id !== undefined; id = build.routes[id]?.parentId) {
-      const route = build.assets.routes[id];
-      if (route === undefined) continue;
-      urls.push(route.module, ...(route.imports ?? []));
-    }
-    return reached(urls.map(fileOf), false);
-  };
 
   // A page is an address that draws something, as React Router decides it: a
   // route without a component or an error boundary of its own answers with
@@ -115,8 +139,8 @@ export async function brokenBudget(budget: Budget): Promise<readonly string[]> {
   });
   const measured = await Promise.all(
     pages.map(async (id) => {
-      const first = firstVisit(id);
-      const later = new Set([...reached(first, true)].filter((file) => !first.has(file)));
+      const first = firstVisitScripts(build, manifest, id);
+      const later = new Set([...reached(manifest, first, true)].filter((file) => !first.has(file)));
       return { id, first: await sizeOf(first), later: await sizeOf(later) };
     }),
   );
