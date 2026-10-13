@@ -21,7 +21,7 @@ import { precompressedFrom } from "@agentify/ui/assets";
 import { launchChromium } from "@agentify/ui/chromium";
 import express from "express";
 import type { Browser, Page } from "playwright";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ScannerParts } from "./app";
 
 const DIST = fileURLToPath(new URL("../dist", import.meta.url));
@@ -184,6 +184,110 @@ describe("the consent banner", () => {
     );
     expect(stored?.categories?.product_analytics).toBe(measured);
     expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
+    await page.context().close();
+  });
+});
+
+describe("a scan in Chromium", () => {
+  // The scan's pages read the scanner's settings, which name a database; none
+  // is asked, since the API the browser asks is answered here.
+  beforeAll(() => {
+    vi.stubEnv("DATABASE_URL", "postgresql://nobody:unused@127.0.0.1:1/nowhere");
+  });
+
+  afterAll(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("goes from the front page's form to the scan's progress, its result and the ask for the full report, without a complaint and with no token left in the address", async () => {
+    const scanId = "0190f4c5-0000-7000-8000-00000000f001";
+    const token = "t".repeat(43);
+    const checks = (status: string) =>
+      Array.from({ length: 18 }, (_, index) => ({
+        id: index + 1,
+        label_code: "robots",
+        status: index < 7 ? "pass" : status,
+        robots: null,
+      }));
+    const running = {
+      status: "running",
+      progress: { completed: 7, total: 18 },
+      checks: checks("running"),
+      updated_at: "2026-10-13T09:00:00.000Z",
+      target_host: "shop.example",
+    };
+    const finished = {
+      ...running,
+      status: "completed",
+      progress: { completed: 18, total: 18 },
+      checks: checks("pass"),
+      teaser: {
+        score: 46,
+        coverage: 1,
+        level: "readable",
+        top_findings: ["vertical_jsonld_missing"],
+        positive: null,
+        hidden_count: 7,
+      },
+    };
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const page = await context.newPage();
+    const complaints: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error" && !message.text().startsWith("Failed to load resource")) {
+        complaints.push(message.text());
+      }
+    });
+    page.on("pageerror", (error) => complaints.push(error.message));
+    let statusAsks = 0;
+    await page.route("**/api/v1/scans", (route) =>
+      route.fulfill({
+        status: 202,
+        json: {
+          scan_id: scanId,
+          access_token: token,
+          status: "accepted",
+          status_url: `/api/v1/scans/${scanId}/status`,
+          estimated_seconds: 30,
+        },
+      }),
+    );
+    await page.route(`**/api/v1/scans/${scanId}/status`, (route) => {
+      statusAsks += 1;
+      return route.fulfill({ json: statusAsks === 1 ? running : finished });
+    });
+    await page.route("**/api/v2/session", (route) =>
+      route.fulfill({ json: { status: "signed_out" } }),
+    );
+
+    await page.goto(`${origin}/`);
+    await page.getByRole("textbox", { name: "Website URL" }).first().fill("shop.example");
+    await page.locator("form button[type=submit]").first().click();
+    await page.waitForURL(`${origin}/scan/${scanId}?segment=owner`);
+    await page.getByText("7 of 18 checks reported").waitFor();
+    await page.getByLabel("Email").waitFor();
+
+    expect(await page.locator("h1").first().textContent()).toBe("Readable");
+    expect(page.url()).not.toContain(token);
+    expect(
+      await page.evaluate((key) => sessionStorage.getItem(key), `agentify:scan-token:${scanId}`),
+    ).toBe(token);
+    expect(complaints).toEqual([]);
+    await context.close();
+  });
+
+  it("asks a stranger at a report to sign in, and its own links need no reload", async () => {
+    const { page, complaints } = await visit("/report/0190f4c5-0000-7000-8000-00000000f002");
+    await page.evaluate(() => {
+      (window as Window & { stayed?: boolean }).stayed = true;
+    });
+
+    expect(await page.locator("h1").textContent()).toBe("Private report access required");
+    await page.locator("a.brand").click();
+    await page.waitForURL(`${origin}/`);
+    await page.locator("h1").first().waitFor();
+    expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
+    expect(complaints).toEqual([]);
     await page.context().close();
   });
 });
