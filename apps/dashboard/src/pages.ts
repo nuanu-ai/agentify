@@ -111,9 +111,11 @@ export async function pagesFromSource({ live }: { readonly live: boolean }): Pro
     server: {
       middlewareMode: true,
       // Live, Vite answers for source files and pushes updates over a socket
-      // of its own, so both stay on loopback, and only what the pages import
-      // is served: their own directory, the shared components and visual
-      // language, and the dependencies the browser loads.
+      // of its own, and both answer on loopback only: that is the boundary.
+      // The folders allowed below narrow what is served by the path asked
+      // for, not by where a link under it leads, and the workspace's own
+      // packages are linked into `node_modules`, so their sources stay
+      // reachable through it.
       hmr: live ? { host: LOOPBACK } : false,
       fs: {
         allow: [
