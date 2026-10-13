@@ -9,7 +9,10 @@
  * with `pageMeta`, and its component draws from the loader's data, never from
  * the environment or the server's modules, because it is drawn again in the
  * browser. A loader says a page does not exist with
- * `throw data(null, { status: 404 })`.
+ * `throw data(null, { status: 404 })`, and sends the visitor elsewhere with
+ * `throw redirect(to, { status, headers })`, naming the status, since React
+ * Router's own is 302, and any `Cache-Control`, since a redirect is answered
+ * before a page is drawn and carries only what it says.
  *
  * An API route is a module under `routes/api/` named after its path, a
  * parameter written as its name (`/api/v1/scans/:id/status` is
@@ -25,6 +28,10 @@
  * under `/scan` or `/report` is kept by nobody (`lib/server/answer-headers.ts`).
  *
  * Every route is matched with its case, as a request spells it.
+ *
+ * Tests ask the whole process over HTTP, compiled from source on each run
+ * (`testing/scanner.ts`), so `pnpm test` builds nothing first; a component is
+ * drawn on its own under the router with `testing/on-site.tsx`.
  */
 
 import { index, type RouteConfig, route } from "@react-router/dev/routes";

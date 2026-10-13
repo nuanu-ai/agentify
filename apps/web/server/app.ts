@@ -2,8 +2,9 @@
  * The scanner's process: Express in front of React Router, which answers every
  * page and every API route (`app/routes.ts`). What stands in front of it is
  * short. Every answer carries the security headers; an address with a trailing
- * slash is sent to the one without it; the browser's built files are served
- * with a year's cache and the files copied from `public/` as they are.
+ * or a repeated slash is sent to the one without it; the browser's built files
+ * are served with a year's cache and the files copied from `public/` as they
+ * are.
  *
  * `trust proxy` stays off: what the scanner knows of a visitor's address it
  * reads from the `X-Forwarded-For` the edge writes, and Express would put a
