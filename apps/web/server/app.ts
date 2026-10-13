@@ -89,6 +89,8 @@ const carried = (method: string): boolean => {
  */
 const UNCARRIED = new Set(METHODS.filter((method) => !carried(method)));
 
+const ROUTED_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
+
 /** A request's path as React Router reads it, with `/./`, `/../` and `%2e` taken out. */
 const routedPath = (request: Request): string =>
   new URL(request.originalUrl, "http://scanner.invalid").pathname;
@@ -172,12 +174,12 @@ export function scannerApp(parts: ScannerParts): Express {
   if (parts.assets !== undefined) app.use("/assets", parts.assets);
   if (parts.files !== undefined) app.use(parts.files);
 
-  // React Router refuses OPTIONS with 405 before it looks at the address, as
-  // a page refuses it. An address no route of its own takes answers it the
-  // way it answers any other method, with the page that says there is no such
-  // page.
+  // React Router refuses a method other than these with 405 before it looks
+  // at the address, as a page refuses it. An address no route of its own
+  // takes answers such a method as it answers a read, with the page that says
+  // there is no such page.
   app.use((request, _response, next) => {
-    if (request.method === "OPTIONS") {
+    if (!ROUTED_METHODS.has(request.method)) {
       const { page } = pageOf(routedPath(request));
       if (matchRoutes(routes, page)?.at(-1)?.route.path === "*") request.method = "GET";
     }
