@@ -2,8 +2,8 @@
  * What Chromium does with the built scanner where only a browser can tell:
  * every page comes alive in the browser without a complaint, a click on a link
  * shows at once that it was taken and says the page is coming once it takes a
- * moment, a hover fetches a public page's data so the click needs nothing
- * more, the consent banner takes a choice without a reload, the merchant
+ * moment, a hover fetches a public page's data and stylesheets so the click
+ * needs nothing more, the consent banner takes a choice without a reload, the merchant
  * landing's menu opens and closes, and behind the live channel's edge, as
  * `deploy/Caddyfile` routes it, the landing stays the page that says there is
  * none once the browser takes the page over. The headers that promise the
@@ -96,7 +96,9 @@ beforeAll(async () => {
   });
   server = createServer((request, response) => {
     const path = request.url ?? "";
-    if (path.includes(".data")) asked.push(path.split("?")[0] ?? path);
+    if (path.includes(".data") || /\.css(?:$|[?#])/.test(path)) {
+      asked.push(path.split(/[?#]/)[0] ?? path);
+    }
     // The methodology's data arrives late, as over a slow link, so what the
     // page shows before it arrives can be seen.
     if (path.startsWith("/methodology.data")) {
@@ -355,7 +357,7 @@ describe("a click on a link", () => {
     await page.context().close();
   });
 
-  it("to a public page is answered from the fetch a hover made", async () => {
+  it("to a public page is answered from the fetches a hover made, its stylesheets among them", async () => {
     const { page } = await visit("/");
     const before = timesAsked("/methodology.data");
     const link = page.locator("header nav[aria-label=Primary] a", { hasText: "Methodology" });
@@ -363,11 +365,13 @@ describe("a click on a link", () => {
     await link.hover();
     await page.waitForTimeout(SLOW_MS + 500);
     await page.mouse.move(1, 1);
+    const askedBeforeTheClick = asked.length;
     await link.click();
     await page.waitForURL(`${origin}/methodology`);
     await page.locator("h1", { hasText: "How the agent-readiness scan works" }).waitFor();
 
     expect(timesAsked("/methodology.data") - before).toBe(1);
+    expect(asked.slice(askedBeforeTheClick)).toEqual([]);
     await page.context().close();
   });
 });
