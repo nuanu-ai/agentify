@@ -42,6 +42,7 @@ export default [
   index("routes/home.tsx"),
   at("methodology", "routes/methodology.tsx"),
   at("report/latest", "routes/report.latest.tsx"),
+  at("report/:scanId", "routes/report.scanId.tsx"),
   at("s/:slug", "routes/s.slug.tsx"),
   at("scan/pending", "routes/scan.pending.tsx"),
   at("scan/:id", "routes/scan.id.tsx"),

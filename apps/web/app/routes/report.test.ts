@@ -63,3 +63,34 @@ describe("the latest report", () => {
     expect(meta("robots")).toBe("noindex, nofollow");
   });
 });
+
+const SCAN = "0190f4c5-0000-7000-8000-000000000000";
+
+describe("a report", () => {
+  it("asks a stranger to sign in with the address it is filed under, kept by nobody", async () => {
+    const { answered, h1, html } = await page(`/report/${SCAN}`);
+    const section = html.slice(html.indexOf("<section"), html.indexOf("</section>"));
+
+    expect(answered.status).toBe(200);
+    expect(answered.headers.get("cache-control")).toBe("private, no-store");
+    expect(answered.headers.get("referrer-policy")).toBe("strict-origin");
+    expect(h1).toBe("Private report access required");
+    expect(section).toContain('href="/dashboard/sign-in"');
+  });
+
+  it("says it cannot tell who is visiting when the dashboard does not answer, and that nothing is wrong with the report", async () => {
+    const { h1, html, links } = await page(`/report/${SCAN}`, SESSION);
+
+    expect(h1).toBe("We cannot tell who is visiting right now");
+    expect(html).toContain("Nothing is wrong with the report.");
+    expect(links).toContain(`/report/${SCAN}`);
+  });
+
+  it("is titled as a private report, asks no crawler to index or follow it, and leaves only its origin as referrer", async () => {
+    const { title, meta } = await page(`/report/${SCAN}`);
+
+    expect(title).toBe("Private diagnostic report · Agentify");
+    expect(meta("robots")).toBe("noindex, nofollow");
+    expect(meta("referrer")).toBe("strict-origin");
+  });
+});

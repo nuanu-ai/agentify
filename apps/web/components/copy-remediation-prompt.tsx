@@ -1,6 +1,3 @@
-"use client";
-
-import { remediationPromptResponseSchema } from "@agentify/scanner-contracts";
 import { useId, useRef, useState } from "react";
 
 import { type ResumeIntent as GateIntent, rememberResumeIntent } from "../lib/resume-intent";
@@ -104,10 +101,15 @@ export function CopyRemediationPrompt({
   async function resolvePrompt(): Promise<string> {
     if (promptUrl) {
       const token = tokenStorageKey ? sessionStorage.getItem(tokenStorageKey) : undefined;
-      const response = await fetch(promptUrl, {
-        cache: "no-store",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
+      // The prompt is fetched only on a press, and the contract that reads it
+      // is loaded with it rather than with the page.
+      const [response, { remediationPromptResponseSchema }] = await Promise.all([
+        fetch(promptUrl, {
+          cache: "no-store",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        }),
+        import("@agentify/scanner-contracts"),
+      ]);
       const payload: unknown = await response.json().catch(() => null);
       const parsed = remediationPromptResponseSchema.safeParse(payload);
       if (response.ok && parsed.success) {

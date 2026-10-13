@@ -1,6 +1,6 @@
 import { type LoaderFunctionArgs, type MetaArgs, redirect, redirectDocument } from "react-router";
 
-import { LatestReportUnknown } from "../../components/report-page";
+import { LatestReportUnknown } from "../../components/report-locked";
 import { privatePageMeta, siteConfigOf } from "../../lib/page-meta";
 import { latestReportOf, visitorOf } from "../../lib/server/auth";
 
