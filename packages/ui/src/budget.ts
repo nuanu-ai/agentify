@@ -8,10 +8,14 @@
  * one a browser gets.
  *
  * A page's first visit counts what it loads before any script runs: React
- * Router's entry, the route table, and the modules of every route from the
- * root to the page with what they import. What a page can load later, through
- * an `import()` that waits for a consent, a step or a click, is printed beside
- * it and not counted, so a heavy library moved behind one stays in sight.
+ * Router's entry, the modules of every route from the root to the page with
+ * what they import, and the route table's file where the page asks for it.
+ * Under lazy route discovery, React Router's default for a server-drawn
+ * build, it does not: the page's HTML carries the part of the table it needs,
+ * and the rest is asked for route by route as links appear. What a page can
+ * load later, through an `import()` that waits for a consent, a step or a
+ * click, is printed beside it and not counted, so a heavy library moved
+ * behind one stays in sight.
  * Neither counts the stylesheets, and a route that answers with data or a
  * file rather than a page loads nothing and is left out.
  */
@@ -85,7 +89,12 @@ export async function brokenBudget(budget: Budget): Promise<readonly string[]> {
   };
 
   const firstVisit = (leafId: string): Set<string> => {
-    const urls = [build.assets.url, build.assets.entry.module, ...build.assets.entry.imports];
+    const tableInline = build.routeDiscovery.mode === "lazy" && build.ssr;
+    const urls = [
+      ...(tableInline ? [] : [build.assets.url]),
+      build.assets.entry.module,
+      ...build.assets.entry.imports,
+    ];
     for (let id: string | undefined = leafId; id !== undefined; id = build.routes[id]?.parentId) {
       const route = build.assets.routes[id];
       if (route === undefined) continue;
