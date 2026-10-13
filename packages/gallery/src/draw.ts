@@ -6,9 +6,14 @@
  * they are compiled and before they become modules, which is the one point
  * where a CSS module's text and its class names are known together.
  *
+ * A state is drawn as the surface's server sends it, waiting for every part
+ * that loads on its own, or, where it has a scene, in a document under the
+ * surface's client renderer, as the page's script leaves it.
+ *
  * The published page can fetch nothing, so every file the states or their
- * stylesheets point at by address (the brand mark, a font) goes into the page
- * as a data address, looked up where the origin would serve it from.
+ * stylesheets point at by address (the brand mark, a font, a picture) goes
+ * into the page as a data address, looked up where the origin would serve it
+ * from.
  */
 
 import { existsSync } from "node:fs";
@@ -16,7 +21,8 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Plugin } from "vite";
+import type { AliasOptions, Plugin } from "vite";
+import { type BrowserReact, drawnInBrowser } from "./browser.js";
 import type { GalleryState, GallerySurface } from "./index.js";
 
 /** Where a surface lives and the module that registers its states. */
@@ -25,6 +31,11 @@ export interface SurfaceSource {
   readonly root: string;
   /** The module exporting `gallery`, relative to `root`. */
   readonly module: string;
+  /**
+   * Where the surface's own checks point the workspace's packages at their
+   * source, for a surface that otherwise loads them from their build.
+   */
+  readonly alias?: AliasOptions;
 }
 
 export interface DrawnState {
@@ -116,18 +127,75 @@ export async function withFilesInlined(css: string, find: Finder): Promise<strin
 }
 
 /**
- * A page's images, and the preloads React writes for them, made data
- * addresses. Every other address, a link's among them, is left as it is.
+ * A page's images, each width a source set offers among them, and the
+ * preloads React writes for them, made data addresses. Every other address, a
+ * link's among them, is left as it is.
  */
 const withImagesInlined = async (html: string, find: Finder): Promise<string> => {
+  const embeddedAt = async (written: string): Promise<string> => {
+    const file = written.startsWith("/") ? find(written) : null;
+    return (file === null ? null : await dataAddressOf(file)) ?? written;
+  };
   let inlined = html;
   for (const [whole, attribute, written = ""] of html.matchAll(/\b(src|href)="(\/[^"]*)"/g)) {
-    const file = find(written);
-    const embedded = file === null ? null : await dataAddressOf(file);
-    if (embedded !== null) inlined = inlined.replaceAll(whole, `${attribute}="${embedded}"`);
+    const embedded = await embeddedAt(written);
+    if (embedded !== written) inlined = inlined.replaceAll(whole, `${attribute}="${embedded}"`);
+  }
+  for (const [whole, attribute, written = ""] of inlined.matchAll(/\b(srcset)="([^"]*)"/gi)) {
+    const candidates = await Promise.all(
+      written.split(/,\s+/).map(async (candidate) => {
+        const [address = "", ...width] = candidate.trim().split(/\s+/);
+        return [await embeddedAt(address), ...width].join(" ");
+      }),
+    );
+    inlined = inlined.replaceAll(whole, `${attribute}="${candidates.join(", ")}"`);
   }
   return inlined;
 };
+
+/**
+ * Every part that loads on its own is waited for, as a server that answers
+ * with the whole page does; a part that fails is a state that cannot be drawn.
+ */
+const prerendered = async (
+  prerender: Prerender,
+  drawn: ReturnType<GalleryState["draw"]>,
+): Promise<string> => {
+  const failures: unknown[] = [];
+  const { prelude } = await prerender(drawn, { onError: (failure) => void failures.push(failure) });
+  const html = await new Response(prelude).text();
+  if (failures.length > 0) throw failures[0];
+  return html;
+};
+
+type Prerender = (
+  drawn: ReturnType<GalleryState["draw"]>,
+  options: { onError: (failure: unknown) => void },
+) => Promise<{ prelude: ReadableStream<Uint8Array> }>;
+
+/**
+ * The document replaces these with its own realm's, while Vite's compiler,
+ * which compiles a part of a page the first time the page loads it, passes
+ * Node's own buffers to its worker and fails on any other kind. No page needs
+ * the document's.
+ */
+const LANGUAGE_OWN = [
+  "ArrayBuffer",
+  "Uint8Array",
+  "Int8Array",
+  "Uint16Array",
+  "Int16Array",
+  "Uint32Array",
+  "Int32Array",
+  "Uint8ClampedArray",
+  "Float32Array",
+  "Float64Array",
+  "URL",
+  "Request",
+] as const;
+
+/** Where a scene's document stands, so a page that reads its own origin reads the site's. */
+const BROWSER_ORIGIN = "https://agentify.ad/";
 
 export async function drawSurface(source: SurfaceSource): Promise<DrawnSurface> {
   const stylesheets = new Map<string, string>();
@@ -144,14 +212,13 @@ export async function drawSurface(source: SurfaceSource): Promise<DrawnSurface> 
   const surfaceHas = async <Module>(name: string): Promise<Module> =>
     (await import(pathToFileURL(fromSurface.resolve(name)).href)) as Module;
   const vite = await surfaceHas<typeof import("vite")>("vite");
-  const { renderToString } = await surfaceHas<{
-    renderToString: (drawn: ReturnType<GalleryState["draw"]>) => string;
-  }>("react-dom/server");
+  const { prerender } = await surfaceHas<{ prerender: Prerender }>("react-dom/static");
   const server = await vite.createServer({
     root: source.root,
     configFile: join(source.root, "vite.config.ts"),
     appType: "custom",
     logLevel: "silent",
+    ...(source.alias === undefined ? {} : { resolve: { alias: source.alias } }),
     server: { middlewareMode: true, hmr: false, watch: null },
     optimizeDeps: { noDiscovery: true, include: [] },
     plugins: [keepStylesheets],
@@ -161,15 +228,50 @@ export async function drawSurface(source: SurfaceSource): Promise<DrawnSurface> 
       gallery: GallerySurface;
     };
     const find = finderIn(server.config.base, [source.root, server.config.publicDir, SHARED_FILES]);
-    const states: DrawnState[] = [];
-    for (const { draw, ...state } of gallery.states) {
-      let html: string;
+    const drawn = new Map<string, string>();
+    const scenes = gallery.states.flatMap((state) =>
+      state.scene === undefined ? [] : [[state, state.scene] as const],
+    );
+    if (scenes.length > 0) {
+      // The test runner's own document, the one a surface's checks draw the
+      // scenes in. The client renderer is loaded only once it stands, since it
+      // reads the document as it loads.
+      const { builtinEnvironments } = await import("vitest/runtime");
+      const own = Object.fromEntries(
+        LANGUAGE_OWN.map((name) => [name, Reflect.get(globalThis, name)]),
+      );
+      const browser = await builtinEnvironments.jsdom.setup(globalThis, {
+        jsdom: { url: BROWSER_ORIGIN },
+      });
+      Object.assign(globalThis, own);
       try {
-        html = renderToString(draw());
+        const react: BrowserReact = {
+          act: (await surfaceHas<{ act: BrowserReact["act"] }>("react")).act,
+          createRoot: (await surfaceHas<Pick<BrowserReact, "createRoot">>("react-dom/client"))
+            .createRoot,
+        };
+        for (const [state, scene] of scenes) {
+          drawn.set(state.id, await drawnInBrowser(state, scene, react));
+        }
+      } finally {
+        await browser.teardown(globalThis);
+      }
+    }
+    // After the scenes: the server renderer marks every context it provides
+    // as its own for good, and the client renderer warns about each one so
+    // marked; the client renderer clears its own marks.
+    for (const state of gallery.states) {
+      if (state.scene !== undefined) continue;
+      try {
+        drawn.set(state.id, await prerendered(prerender, state.draw()));
       } catch (failure) {
         throw new Error(`The state ${state.id} could not be drawn.`, { cause: failure });
       }
-      states.push({ ...state, html: await withImagesInlined(html, find) });
+    }
+    const states: DrawnState[] = [];
+    for (const { id, screen, address, when, cause } of gallery.states) {
+      const html = drawn.get(id) ?? "";
+      states.push({ id, screen, address, when, cause, html: await withImagesInlined(html, find) });
     }
     return {
       id: gallery.id,

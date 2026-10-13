@@ -23,10 +23,39 @@ export interface GalleryState {
   /** One sentence: what in the system causes it. */
   readonly cause: string;
   /**
-   * The page as the surface's server sends it, through the very screens and
-   * chrome the surface draws, from data its own view functions build.
+   * The page through the very screens and chrome the surface draws, from data
+   * its own view functions build: as its server sends it, or, with a scene,
+   * as the page's script leaves it.
    */
   readonly draw: () => ReactElement;
+  /**
+   * For a state only the page's script reaches (an answer it asked for, a
+   * press): the browser the page runs in. Without one, the state is the page
+   * as the server sends it, every part on it drawn.
+   */
+  readonly scene?: BrowserScene;
+}
+
+/** How the site answers one of the page's requests: its status and its JSON body. */
+export interface SiteAnswer {
+  readonly status: number;
+  readonly body?: unknown;
+}
+
+export interface BrowserScene {
+  /**
+   * The site's answers to what the page asks for, by method and path, such as
+   * `"GET /api/v2/session"`; a request it does not name fails the drawing.
+   */
+  readonly answers?: Readonly<Record<string, SiteAnswer>>;
+  /** What the tab's session storage holds when the page loads. */
+  readonly session?: Readonly<Record<string, string>>;
+  /** What the site's local storage holds when the page loads. */
+  readonly local?: Readonly<Record<string, string>>;
+  /** What the person does, in order, each once the page shows the words it acts on. */
+  readonly steps?: readonly Readonly<{ shows: string; does: (page: Document) => void }>[];
+  /** Words the page shows once it is in the state; it is drawn then. */
+  readonly shows: string;
 }
 
 export interface GallerySurface {
