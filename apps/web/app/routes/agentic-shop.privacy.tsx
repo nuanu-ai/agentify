@@ -5,7 +5,7 @@ import {
 import { type MetaArgs, useLoaderData } from "react-router";
 
 import { usePublicConfig } from "../../components/public-config";
-import { MarketingHeader, SiteFooter } from "../../components/site-chrome";
+import { SiteFooter, SiteHeader } from "../../components/site-chrome";
 import { SiteLink } from "../../components/site-link";
 import { SELL_TO_AGENTS_PICTURE } from "../../content/pictures";
 import { pageMeta, siteConfigOf } from "../../lib/page-meta";
@@ -31,7 +31,7 @@ export default function MerchantPrivacyPage() {
   const notice = useLoaderData<typeof loader>();
   return (
     <div className={styles.page}>
-      <MarketingHeader />
+      <SiteHeader />
       <main className={`container ${styles.privacy}`} id="main">
         <p className={styles.eyebrow}>Historical merchant applications · September 9, 2026</p>
         <h1>

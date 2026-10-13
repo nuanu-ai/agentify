@@ -5,7 +5,7 @@
  * process runs, so each is drawn once, when first asked for.
  */
 
-import { BrandMark } from "../../components/brand-mark";
+import { BrandMark } from "@agentify/ui";
 import { SELL_TO_AGENTS_PICTURE, SITE_PICTURE } from "../../content/pictures";
 import { DISPLAY_BRAND } from "../brand";
 import { drawPng, HUMAN_FONT, MONO_FONT } from "./drawing";

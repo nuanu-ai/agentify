@@ -1,6 +1,6 @@
 import { type MetaArgs, useLoaderData } from "react-router";
 
-import { MarketingHeader, SiteFooter } from "../../components/site-chrome";
+import { SiteFooter, SiteHeader } from "../../components/site-chrome";
 import { AGENTIC_SHOP_RESEARCH } from "../../content/agentic-shop";
 import { SELL_TO_AGENTS_PICTURE } from "../../content/pictures";
 import { pageMeta, siteConfigOf } from "../../lib/page-meta";
@@ -66,7 +66,7 @@ export default function AgenticShopPage() {
   const research = useLoaderData<typeof loader>();
   return (
     <>
-      <MarketingHeader />
+      <SiteHeader />
       <main className={styles.page} id="main">
         <section className={`container ${styles.hero}`}>
           <div className={styles.heroCopy}>

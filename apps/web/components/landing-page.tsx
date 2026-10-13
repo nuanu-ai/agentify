@@ -7,7 +7,7 @@ import { LANDING_SEGMENT_ATTRIBUTE, LANDING_VARIANT_ATTRIBUTE } from "../lib/lan
 import { publicSiteSchema } from "../lib/schema";
 import styles from "./landing-page.module.css";
 import { usePublicConfig } from "./public-config";
-import { MarketingHeader, SiteFooter } from "./site-chrome";
+import { SiteFooter, SiteHeader } from "./site-chrome";
 import { SiteLink } from "./site-link";
 import { StatusBadge } from "./status-badge";
 import { StructuredData } from "./structured-data";
@@ -18,7 +18,7 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
   return (
     <>
       <StructuredData schema={publicSiteSchema(site)} />
-      <MarketingHeader />
+      <SiteHeader />
       <main
         id="main"
         {...{

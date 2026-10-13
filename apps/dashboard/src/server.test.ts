@@ -3292,9 +3292,9 @@ describe("the keys screen", () => {
 });
 
 describe("what every screen says about the address", () => {
-  it("carries the signed-in address and a sign-out in the header bar of every working screen", async () => {
-    // The header carries the signed-in address and a sign-out, as the scanner's
-    // does, so the site reads as one product with one session.
+  it("carries the signed-in address and a sign-out in the site header of every working screen", async () => {
+    // The site header carries the signed-in address and a sign-out, as it does
+    // on the scanner, so the site reads as one product with one session.
     const { browser } = await started();
     await browser.signIn();
 
@@ -3302,7 +3302,7 @@ describe("what every screen says about the address", () => {
       const answered = await browser.get(path);
       // A page showing a person's address is never stored by a shared cache.
       expect(answered.headers.get("cache-control"), path).toBe("private, no-store");
-      const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
+      const bar = /<header class="site-header">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
       expect(readable(bar), path).toContain(PERSON);
       expect(formTo(bar, "post", "/sign-out"), path).toBeDefined();
     }
@@ -3429,7 +3429,7 @@ describe("what every screen says about the address", () => {
 
     for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
       const answered = await browser.get(path);
-      const link = /<div class="account">\s*<a [^>]*href="\/settings"[^>]*>([^<]*)<\/a>/.exec(
+      const link = /<a class="site-who" [^>]*href="\/settings"[^>]*>([^<]*)<\/a>/.exec(
         answered.html,
       );
       expect(link?.[1], path).toBe(PERSON);
@@ -3525,7 +3525,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     // Said once, in the bar, as every screen's title is.
     expect(answered.html.match(/<h1\b/g)).toHaveLength(1);
     expect(answered.html).toMatch(/<a [^>]*href="\/cards"[^>]*>Back to the dashboard<\/a>/);
-    const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
+    const bar = /<header class="site-header">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
     expect(readable(bar)).toContain(PERSON);
     expect(formTo(bar, "post", "/sign-out")).toBeDefined();
   });
