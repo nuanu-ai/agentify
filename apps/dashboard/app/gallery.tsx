@@ -30,6 +30,8 @@ import {
   createRoutesStub,
   UNSAFE_ErrorResponseImpl as ErrorResponseImpl,
   type HydrationState,
+  matchRoutes,
+  type RouteObject,
 } from "react-router";
 import config from "../react-router.config.js";
 import { NOT_FROM_HERE } from "../src/form-post.js";
@@ -86,12 +88,15 @@ const MODULES = import.meta.glob<RouteModule>(
 
 type StubRoute = Parameters<typeof createRoutesStub>[0][number];
 
-/** A route as the build makes it: its id is its file's path without the extension. */
+/** A route's id as the build makes it: its file's path without the extension. */
+const routeIdOf = (entry: RouteConfigEntry): string =>
+  entry.id ?? entry.file.replace(/\.tsx?$/, "");
+
 const stubOf = (entry: RouteConfigEntry): StubRoute => {
   const module = MODULES[`./${entry.file}`];
   if (module === undefined) throw new Error(`routes.ts names ${entry.file}, which is not here`);
   const route = {
-    id: entry.id ?? entry.file.replace(/\.tsx?$/, ""),
+    id: routeIdOf(entry),
     path: entry.path,
     Component: module.default,
     ErrorBoundary: module.ErrorBoundary,
@@ -117,6 +122,14 @@ const TREE: StubRoute[] = [
   },
 ];
 
+/** The same tree as an address is matched against it. */
+const matchedOf = (entry: RouteConfigEntry): RouteObject =>
+  entry.index === true
+    ? { id: routeIdOf(entry), index: true }
+    : { id: routeIdOf(entry), path: entry.path, children: entry.children?.map(matchedOf) };
+
+const TABLE: RouteObject[] = [{ id: "root", path: "/", children: routes.map(matchedOf) }];
+
 const BASE = config.basename;
 const WHO = "owner@example.com";
 
@@ -136,6 +149,17 @@ interface Drawn {
 
 type Told = Omit<GalleryState, "address" | "draw">;
 
+/**
+ * The address the gate's loader names, for a page behind the gate; a page in
+ * front of it is drawn for nobody, as the server draws it.
+ */
+const gateAt = (path: string): HydrationState["loaderData"] =>
+  matchRoutes(TABLE, new URL(path, ORIGIN.live).pathname)?.some(
+    ({ route }) => route.id === "routes/gate",
+  )
+    ? { "routes/gate": { who: WHO } }
+    : {};
+
 /** A state at its address, drawn by the route tree as the server answers that address. */
 const at = (told: Told, { path, mode, loaded, pressed, failed }: Drawn): GalleryState => ({
   ...told,
@@ -146,7 +170,7 @@ const at = (told: Told, { path, mode, loaded, pressed, failed }: Drawn): Gallery
       <Stub
         initialEntries={[path]}
         hydrationData={{
-          loaderData: { root: chromeIn(mode), "routes/gate": { who: WHO }, ...loaded },
+          loaderData: { root: chromeIn(mode), ...gateAt(path), ...loaded },
           ...(pressed === undefined ? {} : { actionData: pressed }),
           ...(failed === undefined ? {} : { errors: failed }),
         }}
