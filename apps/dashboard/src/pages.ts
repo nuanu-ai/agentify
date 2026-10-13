@@ -16,6 +16,8 @@
 
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { precompressedFrom } from "@agentify/ui/assets";
@@ -99,15 +101,20 @@ export async function builtPages(): Promise<Pages> {
 /**
  * The pages compiled from source by Vite in middleware mode. `live` serves the
  * browser's modules and reloads them on an edit, for a developer; without it
- * nothing is watched or served to a browser, which is what a test wants.
+ * nothing is watched or served to a browser, which is what a test wants, and
+ * Vite keeps its prebundled dependencies in a temporary folder of this
+ * server's own, removed on close, since servers that start in parallel and
+ * share one race to rename into it.
  */
 export async function pagesFromSource({ live }: { readonly live: boolean }): Promise<Pages> {
   const { createServer } = await import("vite");
+  const cacheDir = live ? undefined : await mkdtemp(join(tmpdir(), "dashboard-vite-"));
   const vite = await createServer({
     root: APP_ROOT,
     configFile: join(APP_ROOT, "vite.config.ts"),
     appType: "custom",
     logLevel: live ? "info" : "silent",
+    ...(cacheDir === undefined ? {} : { cacheDir }),
     server: {
       middlewareMode: true,
       // Live, Vite answers for source files and pushes updates over a socket
@@ -149,7 +156,10 @@ export async function pagesFromSource({ live }: { readonly live: boolean }): Pro
       : null,
     mode: live ? "development" : "production",
     ...(live ? { host: LOOPBACK } : {}),
-    close: () => vite.close(),
+    close: async () => {
+      await vite.close();
+      if (cacheDir !== undefined) await rm(cacheDir, { recursive: true, force: true });
+    },
   };
 }
 
