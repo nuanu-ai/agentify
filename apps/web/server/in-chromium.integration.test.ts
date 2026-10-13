@@ -12,15 +12,18 @@
  * saved choice, so what is seen is the banner's.
  */
 
+import { readFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { CONSENT_STORAGE_KEY } from "@agentify/analytics/browser";
 import { precompressedFrom } from "@agentify/ui/assets";
+import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
 import { launchChromium } from "@agentify/ui/chromium";
 import express from "express";
 import type { Browser, Page } from "playwright";
+import type { ServerBuild } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ScannerParts } from "./app";
 
@@ -30,13 +33,20 @@ const SLOW_MS = 1_500;
 let browser: Browser;
 let server: Server;
 let origin = "";
+let build: ServerBuild;
+let viteManifest: ViteManifest;
 const asked: string[] = [];
 
 beforeAll(async () => {
   const built = (await import(pathToFileURL(join(DIST, "server", "index.js")).href)) as {
+    build: ServerBuild;
     scannerApp: (parts: ScannerParts) => express.Express;
   };
+  build = built.build;
   const client = join(DIST, "client");
+  viteManifest = JSON.parse(
+    await readFile(join(client, ".vite", "manifest.json"), "utf8"),
+  ) as ViteManifest;
   const app = built.scannerApp({
     assets: await precompressedFrom(join(client, "assets")),
     files: express.static(client, { index: false, redirect: false }),
@@ -122,6 +132,33 @@ describe("a page in Chromium", () => {
     expect(complaints).toEqual([]);
     await page.context().close();
   });
+});
+
+describe("a page's first visit in Chromium", () => {
+  it.each([
+    ["/", "routes/home"],
+    ["/methodology", "routes/methodology"],
+    ["/no-such-page", "routes/not-found"],
+  ])(
+    "loads the scripts the speed budget counts for it, no more and no fewer: %s",
+    async (path, routeId) => {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      const scripts = new Set<string>();
+      page.on("request", (request) => {
+        const { pathname } = new URL(request.url());
+        if (pathname.startsWith("/assets/") && pathname.endsWith(".js"))
+          scripts.add(pathname.slice(1));
+      });
+      await page.goto(`${origin}${path}`);
+      await page.waitForLoadState("networkidle");
+
+      expect([...scripts].sort()).toEqual(
+        [...firstVisitScripts(build, viteManifest, routeId)].sort(),
+      );
+      await context.close();
+    },
+  );
 });
 
 describe("a click on a link", () => {
