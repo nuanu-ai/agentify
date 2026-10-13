@@ -42,13 +42,6 @@ export function MerchantScreen({ chrome, view }: Readonly<{ chrome: Chrome; view
         <PostForm action="/merchant">
           {(pending) => <Button pending={pending}>Open my seller dashboard</Button>}
         </PostForm>
-        <PostForm document action="/sign-out">
-          {(pending) => (
-            <Button variant="secondary" pending={pending}>
-              Sign out
-            </Button>
-          )}
-        </PostForm>
       </div>
     </GatePage>
   );
