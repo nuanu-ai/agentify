@@ -41,6 +41,9 @@ const at = (path: string, file: string) => route(path, file, { caseSensitive: tr
 export default [
   index("routes/home.tsx"),
   at("methodology", "routes/methodology.tsx"),
+  at("opengraph-image", "routes/opengraph-image.ts"),
+  at("agentic-shop/opengraph-image", "routes/agentic-shop.opengraph-image.ts"),
+  at("apple-icon", "routes/apple-icon.ts"),
   at("api/health", "routes/api/health.ts"),
   at("api/health/live", "routes/api/health.live.ts"),
   at("api/v1/consent", "routes/api/v1/consent.ts"),

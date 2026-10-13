@@ -3,9 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { MarketingHeader } from "../../components/site-chrome";
+import { SELL_TO_AGENTS_PICTURE } from "../../content/pictures";
 import { buildLlmsText } from "../../lib/llms";
 import { onSite } from "../../testing/on-site";
-import { alt as socialImageAlt, tag as socialImageTag } from "./opengraph-image";
 import AgenticShopPage, { generateMetadata } from "./page";
 import MerchantPrivacyPage, { metadata as privacyMetadata } from "./privacy/page";
 
@@ -32,8 +32,8 @@ describe("the sell-to-agents page", () => {
       html,
       renderToStaticMarkup(onSite(<MerchantPrivacyPage />)),
       renderToStaticMarkup(onSite(<MarketingHeader />)),
-      socialImageAlt,
-      socialImageTag,
+      SELL_TO_AGENTS_PICTURE.alt,
+      SELL_TO_AGENTS_PICTURE.tag,
       buildLlmsText(),
       JSON.stringify(generateMetadata()),
       JSON.stringify(privacyMetadata),

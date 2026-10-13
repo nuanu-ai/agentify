@@ -93,6 +93,10 @@ const isTypegenRace = (error: unknown): boolean =>
 
 export default defineConfig({
   resolve: { alias: scannerSourceAlias },
+  // The scanner draws its pictures with WebAssembly it imports with
+  // `?inline`, which Vite inlines only as an asset; a test importing that
+  // code directly compiles it here.
+  assetsInclude: ["**/*.wasm"],
   test: {
     onUnhandledError: (error) => !isTypegenRace(error),
     // Two projects rather than two configs: a file the configuration does not

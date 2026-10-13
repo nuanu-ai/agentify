@@ -10,6 +10,10 @@ import { defineConfig } from "vite";
  */
 export default defineConfig(({ command }) => ({
   plugins: [reactRouter()],
+  // The renderer the server draws pictures with is WebAssembly, imported with
+  // `?inline` so the build carries it as data; Vite inlines only what it
+  // counts as an asset.
+  assetsInclude: ["**/*.wasm"],
   build: {
     assetsInlineLimit: 0,
     // Kept for the speed budget, which reads from it which chunk a page can
