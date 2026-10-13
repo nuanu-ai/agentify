@@ -226,6 +226,7 @@ describe("the merchant landing", () => {
     expect(await burger.getAttribute("aria-label")).toBe("Open menu");
 
     await opened();
+    await menu.getByRole("link", { name: "Documentation" }).focus();
     await page.keyboard.press("Escape");
     await menu.waitFor({ state: "hidden" });
     expect(await burger.evaluate((element) => element === document.activeElement)).toBe(true);
