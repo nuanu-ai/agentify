@@ -80,7 +80,7 @@ export const createScanResponseSchema = z
 export type CreateScanResponse = z.infer<typeof createScanResponseSchema>;
 
 // null where a check carries one when robots.txt did not stand in its way.
-export const robotsReasonSchema = z.enum(ROBOTS_REASONS);
+const robotsReasonSchema = z.enum(ROBOTS_REASONS);
 export type RobotsReason = z.infer<typeof robotsReasonSchema>;
 
 const scanProgressCheckSchema = z
@@ -118,7 +118,7 @@ export const scanStatusResponseSchema = z
   .strict();
 export type ScanStatusResponse = z.infer<typeof scanStatusResponseSchema>;
 
-export const phoneE164Schema = z
+const phoneE164Schema = z
   .string()
   .trim()
   .min(8)

@@ -12,7 +12,7 @@ export type CheckStatus = z.infer<typeof checkStatusSchema>;
 export const diagnosticLevelSchema = z.enum(DIAGNOSTIC_LEVELS);
 export type DiagnosticLevel = z.infer<typeof diagnosticLevelSchema>;
 
-export const consentCategorySchema = z.enum([
+const consentCategorySchema = z.enum([
   "essential_processing",
   "product_analytics",
   "ads_measurement",

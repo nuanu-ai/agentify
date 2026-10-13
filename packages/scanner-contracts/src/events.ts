@@ -12,10 +12,10 @@ export const ANALYTICS_EVENT_NAMES = [
   "result_shared",
 ] as const;
 
-export const analyticsEventNameSchema = z.enum(ANALYTICS_EVENT_NAMES);
+const analyticsEventNameSchema = z.enum(ANALYTICS_EVENT_NAMES);
 export type AnalyticsEventName = z.infer<typeof analyticsEventNameSchema>;
 
-export const deliveryDestinationSchema = z.enum(["posthog", "meta", "partner_tracker"]);
+const deliveryDestinationSchema = z.enum(["posthog", "meta", "partner_tracker"]);
 export type DeliveryDestination = z.infer<typeof deliveryDestinationSchema>;
 
 export const partnerClickIdSchema = z.string().regex(PARTNER_CLICK_ID_PATTERN);

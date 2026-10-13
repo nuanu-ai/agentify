@@ -1,6 +1,6 @@
 import { isIP } from "node:net";
 
-export type IpBlockReason =
+type IpBlockReason =
   | "invalid_ip"
   | "unspecified"
   | "loopback"

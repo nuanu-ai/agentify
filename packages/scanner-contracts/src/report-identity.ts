@@ -58,7 +58,7 @@ export const sessionCookiePairs = (header: string): string =>
     .join("; ");
 
 /** The longest cookie header the scanner passes on: session pairs, bounded. */
-export const SESSION_COOKIE_HEADER_MAX = 8_192;
+const SESSION_COOKIE_HEADER_MAX = 8_192;
 
 export const sendReportLinkRequestSchema = z
   .object({
