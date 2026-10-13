@@ -420,6 +420,10 @@ describe("P4 dashboard-owned scanner identity", () => {
         }),
       );
       expect(response.status).toBe(202);
+      // The visitor is followed for thirty days by a cookie the page's script cannot read.
+      expect(response.headers.get("set-cookie")).toMatch(
+        /^agentify_anonymous=[^;]+; Path=\/; Expires=[^;]+; Max-Age=2592000; HttpOnly; SameSite=lax$/,
+      );
       return (await response.json()) as { scan_id: string };
     };
 
@@ -758,9 +762,14 @@ describe("P4 dashboard-owned scanner identity", () => {
         }),
       });
     expect((await persistConsent(consentRequest(true))).status).toBe(201);
+    // The partner's click is kept for thirty days, out of reach of the page's script.
     expect(
       (await persistAttribution(partnerAttributionRequest())).headers.get("set-cookie"),
-    ).toContain(`clickid=${partnerClickId}`);
+    ).toMatch(
+      new RegExp(
+        `^clickid=${partnerClickId}; Path=/; Expires=[^;]+; Max-Age=2592000; HttpOnly; SameSite=lax$`,
+      ),
+    );
     const revoked = await persistConsent(consentRequest(false));
     expect(revoked.headers.get("set-cookie")).toMatch(/clickid=;.*Max-Age=0/i);
     const piiAttribution = await persistAttribution(
