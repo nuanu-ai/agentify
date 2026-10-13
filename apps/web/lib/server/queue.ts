@@ -14,8 +14,14 @@ const globalQueue = globalThis as typeof globalThis & {
   agentifyWebQueue?: Promise<PgBoss>;
 };
 
+/**
+ * The process's scan queue, started on first use. The callers that ask while
+ * a start runs share it; a start that failed is forgotten, so the next caller
+ * tries again rather than being refused until the process restarts.
+ */
 export function getScanQueue(): Promise<PgBoss> {
-  globalQueue.agentifyWebQueue ??= (async () => {
+  if (globalQueue.agentifyWebQueue !== undefined) return globalQueue.agentifyWebQueue;
+  const starting = (async () => {
     // The one `pgboss` schema the gateway's queue uses too
     // (apps/scanner-worker/src/queue-schema.test.ts).
     const boss = new PgBoss({
@@ -36,7 +42,11 @@ export function getScanQueue(): Promise<PgBoss> {
     });
     return boss;
   })();
-  return globalQueue.agentifyWebQueue;
+  globalQueue.agentifyWebQueue = starting;
+  starting.catch(() => {
+    if (globalQueue.agentifyWebQueue === starting) globalQueue.agentifyWebQueue = undefined;
+  });
+  return starting;
 }
 
 export async function stopScanQueue(): Promise<void> {
