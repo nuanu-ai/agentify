@@ -89,6 +89,10 @@ const carried = (method: string): boolean => {
  */
 const UNCARRIED = new Set(METHODS.filter((method) => !carried(method)));
 
+/** A request's path as React Router reads it, with `/./`, `/../` and `%2e` taken out. */
+const routedPath = (request: Request): string =>
+  new URL(request.originalUrl, "http://scanner.invalid").pathname;
+
 const decodes = (path: string): boolean => {
   try {
     decodeURI(path);
@@ -154,10 +158,9 @@ export function scannerApp(parts: ScannerParts): Express {
 
   // A page's data is asked for at `<page>.data`, and React Router would answer
   // the same address for a route that draws no page by running it, an API
-  // route's action included, so no page's data is there to give. The path is
-  // read as React Router reads it, with `/./`, `/../` and `%2e` taken out.
+  // route's action included, so no page's data is there to give.
   app.use((request, response, next) => {
-    const { page, data } = pageOf(new URL(request.originalUrl, "http://scanner.invalid").pathname);
+    const { page, data } = pageOf(routedPath(request));
     const leaf = data ? matchRoutes(routes, page)?.at(-1)?.route : undefined;
     if ((leaf?.handle as { draws: boolean } | undefined)?.draws === false) {
       plainly(response, 404, "Not Found");
@@ -175,7 +178,7 @@ export function scannerApp(parts: ScannerParts): Express {
   // page.
   app.use((request, _response, next) => {
     if (request.method === "OPTIONS") {
-      const { page } = pageOf(new URL(request.originalUrl, "http://scanner.invalid").pathname);
+      const { page } = pageOf(routedPath(request));
       if (matchRoutes(routes, page)?.at(-1)?.route.path === "*") request.method = "GET";
     }
     next();
