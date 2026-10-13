@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { ROBOTS_REASONS } from "./browser.js";
 import { checkIdSchema } from "./checks.js";
 import {
   checkStatusSchema,
@@ -80,10 +81,8 @@ export const createScanResponseSchema = z
   .strict();
 export type CreateScanResponse = z.infer<typeof createScanResponseSchema>;
 
-// Why robots.txt kept a check from being assessed: its rules disallow what
-// the check reads, or it could not be read or decided for it. null when
-// robots.txt did not stand in the check's way.
-export const robotsReasonSchema = z.enum(["disallowed", "unassessed"]);
+// null where a check carries one when robots.txt did not stand in its way.
+export const robotsReasonSchema = z.enum(ROBOTS_REASONS);
 export type RobotsReason = z.infer<typeof robotsReasonSchema>;
 
 const scanProgressCheckSchema = z

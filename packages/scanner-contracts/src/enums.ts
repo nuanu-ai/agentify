@@ -1,37 +1,16 @@
 import { z } from "zod";
-import { SEGMENTS } from "./browser.js";
+import { CHECK_STATUSES, DIAGNOSTIC_LEVELS, SCAN_STATUSES, SEGMENTS } from "./browser.js";
 
 export const segmentSchema = z.enum(SEGMENTS);
 export type Segment = z.infer<typeof segmentSchema>;
 
-export const scanStatusSchema = z.enum([
-  "accepted",
-  "queued",
-  "running",
-  "completed",
-  "partial",
-  "failed",
-]);
+export const scanStatusSchema = z.enum(SCAN_STATUSES);
 export type ScanStatus = z.infer<typeof scanStatusSchema>;
 
-export const checkStatusSchema = z.enum([
-  "pending",
-  "running",
-  "pass",
-  "partial",
-  "fail",
-  "unavailable",
-  "not_applicable",
-]);
+export const checkStatusSchema = z.enum(CHECK_STATUSES);
 export type CheckStatus = z.infer<typeof checkStatusSchema>;
 
-export const diagnosticLevelSchema = z.enum([
-  "invisible",
-  "readable",
-  "callable_ready",
-  "ahead_of_market",
-  "incomplete",
-]);
+export const diagnosticLevelSchema = z.enum(DIAGNOSTIC_LEVELS);
 export type DiagnosticLevel = z.infer<typeof diagnosticLevelSchema>;
 
 export const consentCategorySchema = z.enum([
