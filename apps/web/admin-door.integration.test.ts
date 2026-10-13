@@ -84,7 +84,7 @@ function standInSellerDashboard(): Server {
 }
 
 type Answer = Readonly<{ status: number; headers: readonly string[][]; body: string }>;
-type Asking = Readonly<{ method?: "GET" | "HEAD"; cookie?: string; data?: boolean }>;
+type Asking = Readonly<{ method?: "GET" | "HEAD" | "POST"; cookie?: string; data?: boolean }>;
 
 /**
  * One request and its whole answer, header names as they came on the wire.
@@ -130,9 +130,25 @@ const textOf = (tag: "title" | "h1", html: string): string | null =>
 const DOORS = ["/admin", "/admin/users"] as const;
 
 /**
+ * Every built script the answer names, and those the router's manifest names
+ * for the same address when the browser asks it which modules draw there.
+ */
+async function scriptsHandedOver(answer: Answer, door: string, visitor: Asking) {
+  const scriptsIn = (text: string) =>
+    [...text.matchAll(/"(\/assets\/[^"]+\.js)"/g)].map((match) => match[1] ?? "");
+  const version = answer.body.match(/"version":\s*"([^"]+)"/)?.[1] ?? "";
+  const manifest = await ask(
+    `/__manifest?paths=${encodeURIComponent(door)}&version=${encodeURIComponent(version)}`,
+    visitor,
+  );
+  return new Set([...scriptsIn(answer.body), ...scriptsIn(manifest.body)]);
+}
+
+/**
  * Asserts that `/admin` and what is under it are the site's 404 page for this
- * visitor, asked as a page, as a HEAD and as a client navigation, whose data
- * must be refused the same way and carry none of the operator's dashboard.
+ * visitor, asked as a page, as a HEAD, as a client navigation and as a post,
+ * whose data must be refused the same way and carry none of the operator's
+ * dashboard, nor any script the browser is handed with it.
  */
 async function expectMissingPages(visitor: Asking, who: string): Promise<void> {
   for (const door of DOORS) {
@@ -157,7 +173,15 @@ async function expectMissingPages(visitor: Asking, who: string): Promise<void> {
 
     const navigated = await ask(door, { ...visitor, data: true });
     expect(navigated.status, `${label} navigation`).toBe(404);
-    for (const answer of [answered, navigated]) {
+    const posted = await ask(door, { ...visitor, method: "POST" });
+    expect(posted.status, `${label} POST`).toBe(404);
+    const postedData = await ask(door, { ...visitor, method: "POST", data: true });
+    expect(postedData.status, `${label} POST navigation`).toBe(404);
+    const scripts = await scriptsHandedOver(answered, door, visitor);
+    expect(scripts.size, label).toBeGreaterThan(0);
+    const handed = [answered, navigated, posted, postedData];
+    for (const script of scripts) handed.push(await ask(script, visitor));
+    for (const answer of handed) {
       expect(answer.body, label).not.toContain(HEADING);
       expect(answer.body, label).not.toContain("Operator dashboard");
     }
