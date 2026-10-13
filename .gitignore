@@ -22,6 +22,8 @@ docs/superpowers/
 # Build and dependencies
 node_modules/
 dist/
+# The route types React Router's Vite plugin writes beside an application.
+.react-router/
 coverage/
 *.tsbuildinfo
 **/.next/

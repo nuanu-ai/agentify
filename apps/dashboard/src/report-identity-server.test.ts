@@ -13,6 +13,7 @@ import {
   REPORT_IDENTITY_PATH,
   startReportIdentityServer,
 } from "./report-identity-server.js";
+import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const SECRET = "a-dedicated-private-secret-at-least-32-characters";
 const EMAIL = "owner@example.com";
@@ -24,7 +25,7 @@ const servers: Server[] = [];
 function config() {
   return loadConfig({
     DATABASE_URL: "postgres://unused.example/unused",
-    AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
+    AUTH_SECRET: TEST_AUTH_SECRET,
     REPORT_IDENTITY_SECRET: SECRET,
     PAYMENT_NETWORK: "eip155:84532",
     FACILITATOR_URL: "sandbox:scripted",

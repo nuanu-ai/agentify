@@ -7,10 +7,11 @@
 
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
+import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const REQUIRED = {
   DATABASE_URL: "postgres://agentify:agentify@postgres:5432/agentify",
-  AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
+  AUTH_SECRET: TEST_AUTH_SECRET,
   PAYMENT_NETWORK: "eip155:84532",
   FACILITATOR_URL: "sandbox:scripted",
 };

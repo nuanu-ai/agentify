@@ -8,6 +8,10 @@
       "types": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./browser": {
+      "types": "./src/browser.ts",
+      "default": "./dist/browser.js"
+    },
     "./report-identity": {
       "types": "./src/report-identity.ts",
       "default": "./src/report-identity.ts"

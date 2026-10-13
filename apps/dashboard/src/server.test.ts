@@ -11,6 +11,7 @@
 
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
 import type { Gateway } from "@agentify/gateway";
 import {
   buyOverHttp,
@@ -29,6 +30,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type DashboardConfig, loadConfig } from "./config.js";
+import { DRAWN_FOR } from "./drawn-for.js";
 import {
   type Acting,
   type Answer,
@@ -36,7 +38,6 @@ import {
   gatewayFor,
   type Registrar,
 } from "./gateway.js";
-import { DRAWN_FOR } from "./html.js";
 import {
   type Identity,
   identityFor,
@@ -44,9 +45,12 @@ import {
   LINK_RATE_WINDOW_MS,
 } from "./identity.js";
 import type { Handover, Message, Postman } from "./mail.js";
+import type { Pages } from "./pages.js";
 import { buildApp } from "./server.js";
-import { readable, shownMarkIn, waitingButton } from "./testing/html.js";
+import { formsIn, formTo, readable, shownMarkIn, waitingButton } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
+import { testPages } from "./testing/pages.js";
+import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
 /**
@@ -60,6 +64,8 @@ const PAY_TO = "0x0000000000000000000000000000000000000001";
 
 /** On the plain-http local origin. */
 const COOKIE = "agentify.session_token";
+/** Given anew by every press, so page data kept before it no longer matches. */
+const PRESSED = "agentify.dashboard_pressed";
 /**
  * The browser refuses a `__Host-` cookie unless it is Secure, for the whole
  * origin and with no Domain, so another host under the same registrable domain
@@ -180,6 +186,7 @@ interface Browser {
 
 interface Running {
   readonly harnessed: Harness;
+  readonly pages: Pages;
   readonly gateway: Served;
   readonly browser: Browser;
   /**
@@ -269,6 +276,7 @@ const started = async (options: Starting = {}): Promise<Running> => {
 
   open = {
     harnessed,
+    pages: await testPages(),
     gateway,
     browser,
     url,
@@ -310,7 +318,7 @@ async function visiting(
   // in memory here), but it is still required.
   const config = loadConfig({
     DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
-    AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
+    AUTH_SECRET: TEST_AUTH_SECRET,
     PAYMENT_NETWORK: "eip155:84532",
     FACILITATOR_URL: "sandbox:scripted",
     ...(basePath === "" ? {} : { BASE_PATH: basePath }),
@@ -325,6 +333,7 @@ async function visiting(
     merchant,
   );
   const app = buildApp(config, {
+    pages: await testPages(),
     gateway: application,
     identity: options.identity === undefined ? identity : options.identity(identity),
     ...(options.registrar === undefined ? {} : { registrar: options.registrar }),
@@ -484,7 +493,7 @@ const overASocket = (
   url: string,
   path: string,
   cookie: string,
-): Promise<{ status: number; body: string }> =>
+): Promise<{ status: number; head: string; body: string }> =>
   new Promise((resolve, reject) => {
     const { hostname, port } = new URL(url);
     const socket = connect(Number(port), hostname, () => {
@@ -501,10 +510,21 @@ const overASocket = (
     socket.on("close", () => {
       resolve({
         status: Number(said.split(" ")[1] ?? 0),
+        head: said.split("\r\n\r\n")[0] ?? "",
         body: readable(said.split("\r\n\r\n").slice(1).join("\r\n\r\n")),
       });
     });
   });
+
+/**
+ * Where the cards page's switches post: the page itself, naming the switch.
+ * Written out because many tests press a switch without drawing the page; the
+ * tests about what the page draws read its forms off it.
+ */
+const STOP_SELLING = "/cards?selling=pause";
+const START_SELLING = "/cards?selling=resume";
+const switchOf = (itemId: string, way: "pause" | "resume"): string =>
+  `/cards?${new URLSearchParams({ [way]: itemId })}`;
 
 const publish = async (gateway: Served, card: Card): Promise<string> => {
   const answered = await gateway.call("POST", "/v0/catalog/publish", {
@@ -620,9 +640,8 @@ describe("the passwordless dashboard door", () => {
     expect(unknown.headers.getSetCookie()).toStrictEqual([]);
     expect(rows.dashboard_sessions).toStrictEqual([]);
     expect(mails).toHaveLength(2);
-    expect(known.html).toContain('method="post" action="/sign-in"');
-    expect(known.html).toContain('method="get" action="/sign-in"');
-    expect(known.html).toContain(`name="email" type="hidden" value="${PERSON}"`);
+    expect(formTo(known.html, "post", "/sign-in")?.fields.get("email")).toBe(PERSON);
+    expect(formTo(known.html, "get", "/sign-in")).toBeDefined();
     // The resend carries the minute and is served pressable: the script greys
     // it out, and a browser running none keeps the button and is refused in
     // words.
@@ -659,7 +678,7 @@ describe("the passwordless dashboard door", () => {
     for (let sent = 0; sent < 3; sent += 1) {
       const answer = await browser.post("/sign-in", { email: PERSON });
       expect(answer.status).toBe(202);
-      expect(answer.html).toContain(`name="email" type="hidden" value="${PERSON}"`);
+      expect(formTo(answer.html, "post", "/sign-in")?.fields.get("email")).toBe(PERSON);
       rewindLinkSends(rows);
     }
 
@@ -671,8 +690,8 @@ describe("the passwordless dashboard door", () => {
     expect(readable(limited.html)).not.toContain("is on its way");
     // The resend stays, with the server's wait on it and nothing disabling it:
     // a button served disabled can never be pressed by a scriptless browser.
-    expect(limited.html).toContain('method="post" action="/sign-in"');
-    expect(limited.html).toContain('method="get" action="/sign-in"');
+    expect(formTo(limited.html, "post", "/sign-in")).toBeDefined();
+    expect(formTo(limited.html, "get", "/sign-in")).toBeDefined();
     const resend = waitingButton(limited.html);
     expect(resend.attributes.get("data-link-wait")).toBe(limited.headers.get("retry-after"));
     expect(resend.attributes.has("disabled")).toBe(false);
@@ -701,8 +720,8 @@ describe("the passwordless dashboard door", () => {
     const resend = waitingButton(again.html);
     expect(resend.attributes.get("data-link-wait")).toBe(again.headers.get("retry-after"));
     expect(resend.attributes.has("disabled")).toBe(false);
-    expect(again.html).toContain('method="post" action="/sign-in"');
-    expect(again.html).toContain('method="get" action="/sign-in"');
+    expect(formTo(again.html, "post", "/sign-in")).toBeDefined();
+    expect(formTo(again.html, "get", "/sign-in")).toBeDefined();
     expect(mails).toHaveLength(1);
   });
 
@@ -809,7 +828,7 @@ describe("the passwordless dashboard door", () => {
     expect(screen.status).toBe(200);
     expect(screen.headers.get("cache-control")).toBe("private, no-store");
     expect(readable(screen.html)).toContain(FRESH.email);
-    expect(screen.html).toContain('method="post" action="/merchant"');
+    expect(formTo(screen.html, "post", "/merchant")).toBeDefined();
     expect(registered).toStrictEqual([]);
   });
 
@@ -859,6 +878,31 @@ describe("the passwordless dashboard door", () => {
     expect(retry.to).toBe("/choose-name");
     expect(running.mails).toHaveLength(1);
     expect((await running.identity.byEmail(FRESH.email))?.merchant?.id).toBe("mer_after_retry");
+  });
+
+  it("ends the session of a person whose account is gone, even on the day the session is renewed", async () => {
+    // The gate renews a session once a day by setting its cookie again; a
+    // page that clears the cookie must have the last word, or the renewal
+    // would put back what the page took away.
+    const running = await started({
+      identity: (real) => ({
+        ...real,
+        attachMerchant: async () => ({ status: "person-missing" as const }),
+      }),
+    });
+    await running.browser.signIn(FRESH.email);
+    await running.browser.get("/merchant");
+    const aDayAndAnHourAgo = Date.now() - 25 * 60 * 60 * 1_000;
+    for (const session of sessionRows()) {
+      session.expiresAt = new Date(aDayAndAnHourAgo + THIRTY_DAYS_SECONDS * 1_000);
+    }
+
+    const pressed = await running.browser.post("/merchant");
+
+    expect(pressed.to).toBe("/sign-in");
+    const session = pressed.headers.getSetCookie().filter((line) => line.startsWith(`${COOKIE}=`));
+    expect(session.length).toBeGreaterThan(1);
+    expect(session.at(-1)).toMatch(new RegExp(`^${COOKIE}=;`));
   });
 
   it("stores only the closed settings destination and returns an existing merchant there", async () => {
@@ -987,6 +1031,136 @@ describe("the passwordless dashboard door", () => {
   });
 });
 
+describe("what the React pages take from a stranger", () => {
+  it("reads a body that is not a form as a form with nothing in it", async () => {
+    // A program can post anything; the pages answer it as the empty form it
+    // amounts to, never as a fault of the dashboard's.
+    const { browser } = await started();
+
+    const asked = await browser.postRaw("/sign-in", "text/plain", "email=owner@example.com");
+    const opened = await browser.postRaw("/sign-in/open", "application/json", '{"token":"x"}');
+
+    expect(asked.status).toBe(400);
+    expect(readable(asked.html)).toContain("Enter an address of the shape someone@example.com.");
+    expect(opened.status).toBe(401);
+    expect(readable(opened.html)).toContain("That link no longer works");
+  });
+
+  it("takes a page's action only as a form post, so no other method gets past the origin check", async () => {
+    // The origin check reads posts, so a sign-out sent by another site as
+    // DELETE must not reach the action that ends the session.
+    const running = await started();
+    await running.browser.signIn();
+    const signedIn = running.rows.dashboard_sessions?.length ?? 0;
+
+    const answered = await fetch(`${running.url}/sign-out`, {
+      method: "DELETE",
+      body: "x",
+      redirect: "manual",
+      headers: {
+        cookie: `${COOKIE}=${running.browser.sessionToken() ?? ""}`,
+        origin: "https://evil.example",
+      },
+    });
+
+    expect(answered.headers.getSetCookie()).toStrictEqual([]);
+    expect(running.rows.dashboard_sessions).toHaveLength(signedIn);
+    expect(signedIn).toBeGreaterThan(0);
+  });
+
+  it("writes nothing a stranger sent into the log, from an address or the route table's question", async () => {
+    // A path that cannot be decoded is one React Router would write to the log
+    // as it came, and a newline in it forges a line in the record of who did
+    // what. The build's version, which the route table asks for, is public.
+    const { browser, pages, url } = await started();
+    const build = typeof pages.build === "function" ? await pages.build() : pages.build;
+    const version = build.assets.version;
+    const written: string[] = [];
+    for (const level of ["log", "warn", "error"] as const) {
+      vi.spyOn(console, level).mockImplementation((...said: unknown[]) => {
+        written.push(said.map(String).join(" "));
+      });
+    }
+
+    const page = await browser.get("/cards%E0%A4%A");
+    const forged = encodeURIComponent("/%E0\n[dashboard] forged");
+    // A second question mark is part of the query to React Router, which reads
+    // the question from everything after the first.
+    const tables = [
+      await browser.get(`/__manifest?version=${version}&paths=${forged}`),
+      await browser.get(`/__manifest?version=${version}&x=?&paths=${forged}`),
+      // Dot segments, which a browser takes out before sending and React
+      // Router takes out on arrival, so they are written on the wire by hand.
+      await overASocket(url, `/x/../__manifest?version=${version}&paths=${forged}`, ""),
+      await overASocket(url, `/x/%2e%2e/__manifest?version=${version}&paths=${forged}`, ""),
+    ];
+    vi.restoreAllMocks();
+
+    expect(page.status).toBeLessThan(500);
+    expect(tables.map((table) => table.status)).toStrictEqual([400, 400, 400, 400]);
+    expect(written.filter((line) => /%E0|forged/.test(line))).toStrictEqual([]);
+  });
+
+  it("refuses a form longer than any page sends, or one that does not say its length, unread", async () => {
+    // React Router reads a form whole, so a body is bounded before it is read;
+    // the refusal is the dashboard's page, saying what was wrong with it.
+    const running = await started();
+    await running.browser.signIn();
+
+    const long = await running.browser.post("/keys", { label: "x".repeat(17_000) });
+    const unsaid = await fetch(`${running.url}/keys`, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        cookie: `${COOKIE}=${running.browser.sessionToken() ?? ""}`,
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      // A stream has no length to declare, so it is sent in chunks.
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("label=nightly"));
+          controller.close();
+        },
+      }),
+      duplex: "half",
+    } as RequestInit);
+
+    for (const [name, status, html] of [
+      ["longer", long.status, long.html],
+      ["unsaid", unsaid.status, await unsaid.text()],
+    ] as const) {
+      expect(status, name).toBe(413);
+      expect(readable(html), name).toContain("That was larger than any form on this page sends.");
+    }
+    const keys = await running.browser.get("/keys");
+    expect(readable(keys.html)).not.toContain("nightly");
+  });
+
+  it("decides what a browser may keep by the page React Router answers, however its address is written", async () => {
+    // A path with dot segments in it is answered as the path they lead to,
+    // and so is what may be kept of it: the key list never.
+    const { browser, url } = await started();
+    await browser.signIn();
+    const cookie = `${COOKIE}=${browser.sessionToken() ?? ""}`;
+
+    for (const path of ["/x/../keys.data", "/x/%2e%2e/keys.data", "/x/./../keys.data"]) {
+      const answered = await overASocket(url, path, cookie);
+      expect(answered.status, path).toBe(200);
+      expect(/^cache-control: (.*)$/im.exec(answered.head)?.[1], path).toBe("private, no-store");
+    }
+  });
+
+  it("never lets a browser keep the data of the page a mailed link lands on", async () => {
+    // That page holds a one-time token and runs no script, so nothing of the
+    // pages' own asks for its data; asked by hand, it is kept nowhere.
+    const { browser } = await started();
+
+    const data = await browser.get(`/sign-in/open.data?token=${"D".repeat(32)}`);
+
+    expect(data.headers.get("cache-control")).toBe("private, no-store");
+  });
+});
+
 describe("one session for the whole site", () => {
   it("sets one cookie for the whole origin over https: prefixed, Secure, HttpOnly and Lax", async () => {
     // A report and the dashboard are two applications on one origin sharing one
@@ -1097,9 +1271,30 @@ describe("one session for the whole site", () => {
 
 /**
  * Read rather than listed, so a rule held for every route holds for a route
- * added later.
+ * added later: the routes beside the pages off the Express router, and the
+ * pages off React Router's build, by the methods each answers.
  */
-const routesOf = (running: Running): { method: string; path: string }[] => {
+const routesOf = async (running: Running): Promise<{ method: string; path: string }[]> => {
+  const build =
+    typeof running.pages.build === "function" ? await running.pages.build() : running.pages.build;
+  const pathOf = (id: string | undefined): string => {
+    const route = id === undefined ? undefined : build.routes[id];
+    return route === undefined
+      ? ""
+      : [pathOf(route.parentId), route.path ?? ""].filter((part) => part !== "").join("/");
+  };
+  const drawn = Object.values(build.routes).flatMap((route) => {
+    if (route === undefined || (route.path ?? "") === "") return [];
+    const module = route.module as { default?: unknown; loader?: unknown; action?: unknown };
+    const path = `/${pathOf(route.id)}`.replaceAll(/:[a-z_]+/g, "x");
+    return [
+      ...(module.loader !== undefined ||
+      (module.default !== undefined && module.action === undefined)
+        ? [{ method: "get", path }]
+        : []),
+      ...(module.action !== undefined ? [{ method: "post", path }] : []),
+    ];
+  });
   const listed = buildApp(
     loadConfig({
       DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
@@ -1107,18 +1302,23 @@ const routesOf = (running: Running): { method: string; path: string }[] => {
       PAYMENT_NETWORK: "eip155:84532",
       FACILITATOR_URL: "sandbox:scripted",
     }),
-    { gateway: running.harnessed.gateway, identity: running.identity, wooShops: memoryWooShops() },
+    {
+      pages: running.pages,
+      gateway: running.harnessed.gateway,
+      identity: running.identity,
+      wooShops: memoryWooShops(),
+    },
   );
-  return (
-    listed.router.stack as { route?: { path: string; methods: Record<string, boolean> } }[]
-  ).flatMap(({ route }) =>
-    route === undefined
-      ? []
-      : Object.keys(route.methods).map((method) => ({
-          method,
-          path: route.path.replaceAll(/:[a-z_]+/g, "x"),
-        })),
-  );
+  return (listed.router.stack as { route?: { path: string; methods: Record<string, boolean> } }[])
+    .flatMap(({ route }) =>
+      route === undefined
+        ? []
+        : Object.keys(route.methods).map((method) => ({
+            method,
+            path: route.path.replaceAll(/:[a-z_]+/g, "x"),
+          })),
+    )
+    .concat(drawn);
 };
 
 describe("the operator flag", () => {
@@ -1130,7 +1330,7 @@ describe("the operator flag", () => {
     // flag from a request, not that every line behind those refusals ran.
     const running = await started({ wooShops: memoryWooShops() });
     await running.browser.signIn();
-    const routes = routesOf(running);
+    const routes = await routesOf(running);
     expect(routes.filter(({ method }) => method === "post").length).toBeGreaterThan(10);
 
     // Signing out ends the session the rest are sent with, so it goes last.
@@ -1153,7 +1353,7 @@ describe("the operator flag", () => {
 });
 
 describe("the gate", () => {
-  it("lets a visitor with no session reach only the sign-in pages, the stylesheet, the health probe and the shop's callback and return", async () => {
+  it("lets a visitor with no session reach only the sign-in pages, the health probe and the shop's callback and return", async () => {
     // Every route on this list answers a stranger without the sign-in redirect,
     // and any other route, an unknown one included, is behind the gate.
     const running = await started({ base: "/dashboard", wooShops: memoryWooShops() });
@@ -1173,7 +1373,10 @@ describe("the gate", () => {
         () => stranger.get(`/dashboard/sign-in/open?token=${"C".repeat(32)}`),
       ],
       ["pressing it", () => stranger.post("/dashboard/sign-in/open", { token: "C".repeat(32) })],
-      ["the stylesheet", () => stranger.get("/dashboard/agentify.css")],
+      [
+        "the route table the pages' script asks for",
+        () => stranger.get("/dashboard/__manifest?paths=%2Fdashboard%2Fcards&version=any"),
+      ],
       ["the health probe", () => stranger.get("/dashboard/healthz")],
       [
         "the shop's callback",
@@ -1197,6 +1400,32 @@ describe("the gate", () => {
     }
     for (const path of ["/dashboard/merchant", "/dashboard/report-handoff", "/dashboard/keys"]) {
       expect(gate(await stranger.post(path)), path).toBe(true);
+    }
+  });
+});
+
+describe("the address a press posts to, opened as a page", () => {
+  it("leads to the page the press's form lives on, never to one that is not there", async () => {
+    // Opened again from history or the address bar, the address would
+    // otherwise be a dead end, and a page drawn there without a press would
+    // say nothing happened.
+    const { browser } = await started({ wooShops: memoryWooShops() });
+    await browser.signIn();
+
+    for (const [path, page] of [
+      ["/settings/site", "/settings"],
+      ["/settings/sign-out-others", "/settings"],
+      ["/settings/payout-wallet", "/settings"],
+      ["/settings/payout-wallet/cancel", "/settings"],
+      ["/keys/some-key/disable", "/keys"],
+      ["/woocommerce/connect", "/woocommerce"],
+      ["/woocommerce/import", "/woocommerce"],
+      ["/woocommerce/switch", "/woocommerce"],
+      ["/woocommerce/disconnect", "/woocommerce"],
+      ["/sign-out", "/"],
+    ] as const) {
+      const read = await browser.get(path);
+      expect({ status: read.status, to: read.to }, path).toStrictEqual({ status: 303, to: page });
     }
   });
 });
@@ -1400,6 +1629,30 @@ describe("the settings screen", () => {
     expect(after.html).toContain('value="https://brightdataplans.example"');
   });
 
+  it("marks every refused box on the settings as refused, with the refusal read out with it", async () => {
+    // The same state as a refused name where the account began: the box
+    // outlined, named invalid, and described by the sentence that refused it.
+    const running = await started();
+    await running.browser.signIn();
+
+    for (const [path, box, value] of [
+      ["/settings", "seller_name", "<b>Shop</b>"],
+      ["/settings/site", "seller_site", "https://brightdataplans.example/contact"],
+      ["/settings/payout-wallet", "payout_wallet", "0x123"],
+    ] as const) {
+      const answered = await running.browser.post(path, { [box]: value });
+
+      expect(answered.status, path).toBe(400);
+      const input = new RegExp(`<input[^>]*id="${box}"[^>]*>`).exec(answered.html)?.[0] ?? "";
+      expect(input, path).toContain('aria-invalid="true"');
+      const line = /aria-describedby="([^"]+)"/.exec(input)?.[1] ?? "(none)";
+      const said = new RegExp(`id="${line}"[^>]*>([^<]*)<`).exec(answered.html)?.[1] ?? "";
+      expect(said, path).toMatch(/not saved|refused|printable|address|Use/i);
+      // A browser opening the refused page puts the cursor in the box.
+      expect(input, path).toContain("autofocus");
+    }
+  });
+
   it("refuses a site with anything after the host, says the form it takes, and keeps the one there was", async () => {
     const running = await started();
     await running.browser.signIn();
@@ -1493,6 +1746,54 @@ describe("the settings screen", () => {
 
     expect(answered.status).toBe(303);
     expect(answered.to).toBe("/settings");
+  });
+
+  it("leads the wallet form's address to the settings at once, even while the gateway does not answer", async () => {
+    // Nothing on the way to the page asks the gateway, so a gateway that has
+    // stopped answering does not hold up the way there.
+    const running = await started();
+    await running.browser.signIn();
+    running.silenceGateway();
+
+    const answered = await Promise.race([
+      running.browser.get("/settings/payout-wallet"),
+      new Promise<"still waiting">((resolve) => setTimeout(() => resolve("still waiting"), 5_000)),
+    ]);
+
+    expect(answered).not.toBe("still waiting");
+    expect((answered as Visit).status).toBe(303);
+    expect((answered as Visit).to).toBe("/settings");
+  });
+
+  it("serves the settings' data at a press's address, which the page drawn there asks for when the browser comes back to it", async () => {
+    // A page answered to a press is a page of the application; going back to
+    // it from another screen asks for its data at its own address.
+    const { browser } = await started();
+    await browser.signIn();
+
+    for (const path of [
+      "/settings/site",
+      "/settings/sign-out-others",
+      "/settings/payout-wallet/cancel",
+    ]) {
+      const data = await browser.get(`${path}.data`);
+      expect(data.status, path).toBe(200);
+      expect(data.html, path).toContain(PERSON);
+      expect(readable(data.html), path).not.toContain("There is no such page");
+    }
+  });
+
+  it("never lets a browser keep the settings' data, so the wallet shown is the one the gateway holds now", async () => {
+    // A press there loads a whole page at its own address, which drops nothing
+    // a browser kept for the settings; kept, a waiting change could be missing
+    // from the screen whose showing it is what makes it take effect.
+    const { browser } = await started();
+    await browser.signIn();
+
+    for (const path of ["/settings", "/settings/sign-out-others", "/settings/payout-wallet"]) {
+      const data = await browser.get(`${path}.data`);
+      expect(data.headers.get("cache-control"), path).toBe("private, no-store");
+    }
   });
 
   it("answers an emptied box with the control that does what they meant", async () => {
@@ -1846,7 +2147,7 @@ describe("the cards screen", () => {
     const esim = await publish(gateway, esimCard);
     await browser.signIn();
 
-    const paused = await browser.post(`/cards/${encodeURIComponent(room)}/pause`);
+    const paused = await browser.post(switchOf(room, "pause"));
     const text = readable((await browser.get("/cards")).html);
 
     expect(paused.to).toBe("/cards");
@@ -1865,9 +2166,9 @@ describe("the cards screen", () => {
     const { browser, gateway } = await started();
     const itemId = await publish(gateway, roomCard);
     await browser.signIn();
-    await browser.post(`/cards/${encodeURIComponent(itemId)}/pause`);
+    await browser.post(switchOf(itemId, "pause"));
 
-    await browser.post(`/cards/${encodeURIComponent(itemId)}/resume`);
+    await browser.post(switchOf(itemId, "resume"));
 
     expect(await purchasable(gateway, itemId)).toBe(true);
     expect(readable((await browser.get("/cards")).html)).toContain("Pause");
@@ -1878,14 +2179,14 @@ describe("the cards screen", () => {
     const itemId = await publish(gateway, roomCard);
     await browser.signIn();
 
-    await browser.post("/selling/pause");
+    await browser.post(STOP_SELLING);
     const stopped = readable((await browser.get("/cards")).html);
 
     expect(stopped).toContain("All selling is stopped");
     expect(stopped).toContain("Resume all sales");
     expect(await purchasable(gateway, itemId)).toBe(false);
 
-    await browser.post("/selling/resume");
+    await browser.post(START_SELLING);
 
     expect(await purchasable(gateway, itemId)).toBe(true);
     expect(readable((await browser.get("/cards")).html)).toContain("Pause all sales");
@@ -1900,7 +2201,7 @@ describe("the cards screen", () => {
     await browser.signIn();
 
     expect(readable((await browser.get("/cards")).html)).not.toMatch(/fulfil/i);
-    await browser.post("/selling/pause");
+    await browser.post(STOP_SELLING);
     expect(readable((await browser.get("/cards")).html)).not.toMatch(/fulfil/i);
   });
 
@@ -1911,7 +2212,7 @@ describe("the cards screen", () => {
     await publish(gateway, roomCard);
     await browser.signIn();
 
-    await browser.post("/selling/pause");
+    await browser.post(STOP_SELLING);
     const html = (await browser.get("/cards")).html;
 
     expect(readable(html)).toContain("All selling is stopped");
@@ -1924,7 +2225,7 @@ describe("the cards screen", () => {
     const { browser, gateway } = await started();
     const itemId = await publish(gateway, roomCard);
     await browser.signIn();
-    await browser.post(`/cards/${encodeURIComponent(itemId)}/pause`);
+    await browser.post(switchOf(itemId, "pause"));
 
     await publish(gateway, { ...roomCard, price: { amount: "90.00", currency: "USD" } });
     const text = readable((await browser.get("/cards")).html);
@@ -1932,6 +2233,68 @@ describe("the cards screen", () => {
     expect(text).toContain("90.00 USD");
     expect(text).toContain("paused");
     expect(await purchasable(gateway, itemId)).toBe(false);
+  });
+
+  it("answers a switch pressed by the page's script inside the application, which reads the cards again", async () => {
+    // A whole page load after every press would cost the merchant the page
+    // they were reading; inside the application the switch's own answer leads
+    // back to the cards, and the cards are read again with the press in them.
+    const { browser, gateway } = await started();
+    const itemId = await publish(gateway, roomCard);
+    await browser.signIn();
+    const drawn = formsIn((await browser.get("/cards")).html).find(
+      ({ method, action }) => method === "post" && action.includes(encodeURIComponent(itemId)),
+    );
+    if (drawn === undefined) throw new Error("the cards draw no switch for the card");
+    // The address the script posts a form to: the form's own, as data.
+    const [path = "", query = ""] = drawn.action.split("?");
+
+    const pressed = await browser.post(`${path}.data?${query}`, Object.fromEntries(drawn.fields));
+
+    expect(pressed.status).toBe(202);
+    expect(pressed.html).toContain('"redirect","/cards"');
+    expect(pressed.headers.get("x-remix-reload-document")).toBeNull();
+    expect(await purchasable(gateway, itemId)).toBe(false);
+    expect(readable((await browser.get("/cards")).html)).toContain("Resume");
+  });
+
+  it("loads a page whole when a press is answered on another page, which may not be one the script draws", async () => {
+    // Only a press answered back on its own page stays inside the
+    // application; the seller name is answered on the cards.
+    const running = await started();
+    await unname(running);
+    await running.browser.signIn();
+    await running.browser.get("/choose-name");
+
+    const chosen = await running.browser.post("/choose-name.data", { seller_name: "Freeland" });
+
+    expect(chosen.status).toBe(202);
+    expect(chosen.headers.get("x-remix-reload-document")).toBe("true");
+    expect(await listedAs(running)).toBe("Freeland");
+  });
+
+  it("refuses a press that names no one switch, and switches nothing", async () => {
+    // A press is the switch its form names. One naming two switches, naming
+    // its switch twice, or naming a way no switch has, is refused whole
+    // rather than read as whichever part came first.
+    const { browser, gateway } = await started();
+    const itemId = await publish(gateway, roomCard);
+    await browser.signIn();
+
+    for (const query of [
+      `?selling=pause&pause=${itemId}`,
+      `?pause=${itemId}&pause=${itemId}`,
+      "?selling=pause&selling=pause",
+      "?selling=stop",
+      "?pause=",
+      "",
+    ]) {
+      const answered = await browser.post(`/cards${query}`);
+      expect(answered.status, query).toBe(404);
+      expect(readable(answered.html), query).toMatch(/no such switch/i);
+    }
+    expect(await purchasable(gateway, itemId)).toBe(true);
+    expect(readable((await browser.get("/cards")).html)).toContain("Pause all sales");
   });
 });
 
@@ -2110,8 +2473,8 @@ describe("a merchant who has left", () => {
     expect(text).toContain("left");
     // No selling control at all: "stop all selling" for a merchant who has left
     // is the same confusion under the other label.
-    expect(page).not.toContain("/selling/resume");
-    expect(page).not.toContain("/selling/pause");
+    expect(formTo(page, "post", START_SELLING)).toBeUndefined();
+    expect(formTo(page, "post", STOP_SELLING)).toBeUndefined();
     expect(text).not.toContain("Resume all sales");
     expect(text).not.toContain("Pause all sales");
     // A departure does not let accepted orders play out; a pause does.
@@ -2127,7 +2490,7 @@ describe("a merchant who has left", () => {
     await browser.signIn();
     await harnessed.store.setSelling(harnessed.merchant.id, "departed");
 
-    const refused = await browser.post("/selling/resume");
+    const refused = await browser.post(START_SELLING);
 
     expect(refused.status).toBe(409);
     const text = readable(refused.html);
@@ -2636,17 +2999,94 @@ describe("the keys screen", () => {
 
     expect(keys.issued).toStrictEqual(["the second worker"]);
     expect(issued.status).toBe(200);
-    expect(issued.html).toContain(SECRET);
+    // Read where a person reads it: the page's data carries it too, drawn or
+    // not.
+    expect(readable(issued.html)).toContain(SECRET);
+    // Kept by no cache, so nothing can hand the page back later.
+    expect(issued.headers.get("cache-control")).toBe("private, no-store");
     expect(readable(issued.html)).toMatch(/only time|once/i);
     expect(readable(issued.html)).toContain("Copy key");
 
-    const reloaded = await browser.get("/keys/new");
-    expect(reloaded.status).toBe(303);
-    expect(reloaded.to).toBe("/keys");
     expect(keys.issued).toStrictEqual(["the second worker"]);
     // Gone from every later page: the list is drawn from documents that carry
     // no secret.
     expect((await browser.get("/keys")).html).not.toContain(SECRET);
+  });
+
+  it("hands the secret only to the press that issued it, in an answer no cache keeps", async () => {
+    // Where script runs, React Router sends the press as a data request and
+    // draws the page from its answer. Whatever a reload, a prefetch, Back or
+    // the page itself asks the server for afterwards is answered without it;
+    // what the browser does with the press's answer is held where the page
+    // runs, in the route's own tests.
+    const keys = withKeys();
+    const { browser } = await started({ client: keys.client });
+    await browser.signIn();
+    await browser.get("/keys");
+
+    const pressed = await browser.post("/keys.data", { label: "the second worker" });
+
+    expect(keys.issued).toStrictEqual(["the second worker"]);
+    expect(pressed.html).toContain(SECRET);
+    expect(pressed.headers.get("cache-control")).toBe("private, no-store");
+    for (const asked of [
+      "/keys.data",
+      `/keys.data?_routes=${encodeURIComponent("routes/gate,routes/keys")}`,
+      "/keys",
+    ]) {
+      expect((await browser.get(asked)).html, asked).not.toContain(SECRET);
+    }
+    expect(keys.issued).toStrictEqual(["the second worker"]);
+  });
+
+  it("never lets a browser keep the list's data, so a key revoked a moment ago never reads as working", async () => {
+    // The list is the screen a merchant opens when a key has leaked. A browser
+    // keeps a page's data under the address it asked with, and a press posts
+    // to another one, so data kept from before a revoke would show the key
+    // still working, with its Revoke button.
+    const { browser } = await started({ client: withKeys().client });
+    await browser.signIn();
+
+    for (const asked of [
+      "/keys.data",
+      `/keys.data?_routes=${encodeURIComponent("routes/keys")}`,
+      `/keys.data?_routes=${encodeURIComponent("routes/gate,routes/keys")}`,
+    ]) {
+      const data = await browser.get(asked);
+      expect(data.status, asked).toBe(200);
+      expect(data.html, asked).toContain(NIGHTLY.id);
+      expect(data.headers.get("cache-control"), asked).toBe("private, no-store");
+    }
+  });
+
+  it("shows the secret of the key it issued even when the list cannot be read right after", async () => {
+    // A key issued and never seen is one the merchant cannot use and must find
+    // and revoke, so nothing read after the issue may stand between the press
+    // and the one page that shows the secret.
+    const keys = withKeys();
+    let issuing = false;
+    const { browser } = await started({
+      client: (real) => {
+        const decorated = keys.client(real);
+        return {
+          ...decorated,
+          keys: async () =>
+            issuing
+              ? { ok: false, status: 0, why: "the gateway did not answer in time" }
+              : await decorated.keys(),
+        };
+      },
+    });
+    await browser.signIn();
+    await browser.get("/keys");
+    issuing = true;
+
+    const issued = await browser.post("/keys", { label: "the second worker" });
+
+    expect(keys.issued).toStrictEqual(["the second worker"]);
+    expect(issued.status).toBe(200);
+    expect(readable(issued.html)).toContain(SECRET);
+    expect(readable(issued.html)).not.toContain("Something went wrong");
   });
 
   it("revokes a key only on a second, deliberate press", async () => {
@@ -2802,6 +3242,53 @@ describe("the keys screen", () => {
     // It does not count absent rows as though some worked.
     expect(text).not.toMatch(/\b0 of the 0\b/);
   });
+
+  it("does nothing for a press sent as React Router's data request from a page drawn for somebody else", async () => {
+    // Where script runs the presses go out as data requests, and the gate holds
+    // for those as it does for a form the browser posts itself.
+    const keys = withKeys();
+    const running = await started({ client: keys.client });
+    await running.identity.make(OTHER, running.theMerchant);
+    await running.browser.signIn();
+    const leftOpen = hiddenIn((await running.browser.get("/keys")).html, "/keys");
+    await running.browser.post("/sign-out");
+    await running.browser.signIn(OTHER);
+
+    for (const [path, form] of [
+      ["/keys.data", { ...leftOpen, label: "the second worker" }],
+      [`/keys/${NIGHTLY.id}/disable.data`, leftOpen],
+      ["/keys.data", { [DRAWN_FOR]: "", label: "the second worker" }],
+    ] as const) {
+      const pressed = await running.browser.post(path, form);
+      expect(pressed.status, path).toBe(409);
+      expect(pressed.html, path).not.toContain(SECRET);
+    }
+    expect(keys.issued).toStrictEqual([]);
+    expect(keys.disabled).toStrictEqual([]);
+  });
+
+  it("issues, revokes and leads back to the list under the dashboard's mount point", async () => {
+    // Deployed under /dashboard, so a form or a redirect written without it
+    // reaches an address nothing answers.
+    const keys = withKeys();
+    const { browser } = await started({ base: "/dashboard", client: keys.client });
+    await browser.signIn();
+
+    const list = await browser.get("/dashboard/keys");
+    expect(postingFormsIn(list.html).map(({ action }) => action)).toEqual(
+      expect.arrayContaining([
+        "/dashboard/keys",
+        `/dashboard/keys/${NIGHTLY.id}/disable`,
+        "/dashboard/sign-out",
+      ]),
+    );
+    const issued = await browser.post("/dashboard/keys", { label: "the second worker" });
+    expect(readable(issued.html)).toContain(SECRET);
+    expect(issued.html).toContain('href="/dashboard/keys"');
+    const revoked = await browser.post(`/dashboard/keys/${NIGHTLY.id}/disable`);
+    expect(revoked.to).toBe("/dashboard/keys");
+    expect(keys.disabled).toStrictEqual([NIGHTLY.id]);
+  });
 });
 
 describe("what every screen says about the address", () => {
@@ -2817,9 +3304,124 @@ describe("what every screen says about the address", () => {
       expect(answered.headers.get("cache-control"), path).toBe("private, no-store");
       const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
       expect(readable(bar), path).toContain(PERSON);
-      expect(bar, path).toContain('method="post" action="/sign-out"');
+      expect(formTo(bar, "post", "/sign-out"), path).toBeDefined();
     }
   });
+
+  it("lets only this browser keep a page's data, for the ten seconds a prefetch needs, and per session", async () => {
+    // A page's data is fetched while the pointer rests on its link, and a
+    // browser hands that answer to the click only while it is fresh; it names
+    // the signed-in address, so no shared cache may keep it, and a session
+    // signed in afterwards must not be handed it.
+    const { browser } = await started();
+    await browser.signIn();
+
+    for (const path of ["/cards", "/orders", "/receipts", "/integrations"]) {
+      const data = await browser.get(`${path}.data`);
+      expect(data.status, path).toBe(200);
+      expect(data.html, path).toContain(PERSON);
+      expect(data.headers.get("cache-control"), path).toBe("private, max-age=10");
+      expect(data.headers.get("vary"), path).toMatch(/cookie/i);
+    }
+  });
+
+  it("leaves nothing a browser kept of any page to be read after a press, wherever the press was posted", async () => {
+    // The data is kept per cookie, and the page's script reads its page again
+    // after a press at the very address a prefetch or the press before filled;
+    // kept data handed to that read would show the merchant the state before
+    // what they just did. Every press therefore gives the browser a new value,
+    // and the answer it leaves behind no longer matches.
+    const { browser, gateway } = await started();
+    const itemId = await publish(gateway, roomCard);
+    await browser.signIn();
+    const kept = await browser.get("/cards.data");
+    expect(kept.headers.get("vary")).toMatch(/cookie/i);
+
+    const presses: [string, () => Promise<Visit>][] = [
+      ["a switch sent by the page's script", () => browser.post(`/cards.data?pause=${itemId}`)],
+      ["a switch sent as a plain form", () => browser.post(switchOf(itemId, "resume"))],
+      ["a press on another page", () => browser.post("/keys", { label: "ci" })],
+    ];
+    const given: string[] = [];
+    for (const [name, press] of presses) {
+      const answered = await press();
+      expect(answered.status, name).toBeLessThan(400);
+      const line = answered.headers.getSetCookie().find((one) => one.startsWith(`${PRESSED}=`));
+      expect(line, name).toBeDefined();
+      // Sent back with every read of the dashboard's data for the rest of the
+      // browser's session, on the plain-http origin too.
+      const attributes = attributesOf(line ?? "");
+      expect(attributes.get("path"), name).toBe("/");
+      expect(attributes.has("max-age") || attributes.has("expires"), name).toBe(false);
+      expect(attributes.has("secure"), name).toBe(false);
+      given.push(line?.split(";")[0] ?? "");
+    }
+
+    expect(new Set(given).size).toBe(presses.length);
+  });
+
+  it("gives the press's cookie to every page of a dashboard under a prefix", async () => {
+    const running = await started({ base: "/dashboard" });
+    await running.browser.signIn();
+
+    const answered = await running.browser.post("/dashboard/cards?selling=pause");
+
+    expect(answered.status).toBe(303);
+    const line = answered.headers.getSetCookie().find((one) => one.startsWith(`${PRESSED}=`));
+    expect(attributesOf(line ?? "").get("path")).toBe("/dashboard");
+  });
+
+  it("marks the press's cookie Secure wherever the session's is", async () => {
+    // Behind https the session cookie is Secure, and the press's goes the same
+    // way rather than being the one cookie of the dashboard's sent in clear.
+    const running = await started({ base: "/dashboard", dashboard: { COOKIE_SECURE: "true" } });
+    await running.browser.signIn();
+
+    const answered = await running.browser.post("/dashboard/cards?selling=pause");
+
+    const line = answered.headers.getSetCookie().find((one) => one.startsWith(`${PRESSED}=`));
+    expect(line).toBeDefined();
+    expect(attributesOf(line ?? "").has("secure")).toBe(true);
+  });
+
+  it("answers a signed-out browser's request for a page's data with the sign-in, not the data", async () => {
+    const { browser } = await started();
+    await browser.signIn();
+    await browser.post("/sign-out");
+
+    const data = await browser.get("/orders.data");
+
+    expect(data.html).not.toContain(PERSON);
+    expect(data.html).toContain("/sign-in");
+  });
+
+  it.each([
+    ["sandbox", {}],
+    ["test", { FACILITATOR_URL: "https://x402.org/facilitator" }],
+  ] as const)(
+    "says on every screen in the frame that it is the %s stack, and so whether money is real",
+    async (mode, dashboard) => {
+      // The band is the page's own statement that nothing settles here; a screen
+      // drawn without it would read as the live dashboard.
+      const running = await started({ dashboard, wooShops: memoryWooShops() });
+      await running.browser.signIn();
+
+      for (const path of [
+        "/cards",
+        "/orders",
+        "/receipts",
+        "/integrations",
+        "/keys",
+        "/settings",
+        "/woocommerce",
+        "/nowhere",
+      ]) {
+        const answered = await running.browser.get(path);
+        expect(answered.html, path).toContain(`${SURFACE_MARKER_ATTRIBUTE}="${mode}"`);
+        expect(readable(answered.html), path).toContain(SURFACE_WORDS[mode]);
+      }
+    },
+  );
 
   it("links the signed-in address to settings without a confirmation control", async () => {
     const { browser } = await started();
@@ -2827,7 +3429,9 @@ describe("what every screen says about the address", () => {
 
     for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
       const answered = await browser.get(path);
-      const link = /<a class="who" href="\/settings"[^>]*>([^<]*)<\/a>/.exec(answered.html);
+      const link = /<div class="account">\s*<a [^>]*href="\/settings"[^>]*>([^<]*)<\/a>/.exec(
+        answered.html,
+      );
       expect(link?.[1], path).toBe(PERSON);
       expect(answered.html, path).not.toContain('action="/confirm"');
     }
@@ -2896,7 +3500,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
       // Pressed on a page drawn before the gateway went wrong; every page drawn
       // now is the error page, with nothing to press.
-      const answered = await browser.post("/selling/pause", { [DRAWN_FOR]: PERSON });
+      const answered = await browser.post(STOP_SELLING, { [DRAWN_FOR]: PERSON });
 
       expect(answered.status).toBe(500);
       const text = readable(answered.html);
@@ -2918,10 +3522,12 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
     expect(answered.status).toBe(404);
     expect(readable(answered.html)).toContain("There is no such page");
+    // Said once, in the bar, as every screen's title is.
+    expect(answered.html.match(/<h1\b/g)).toHaveLength(1);
     expect(answered.html).toMatch(/<a [^>]*href="\/cards"[^>]*>Back to the dashboard<\/a>/);
     const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
     expect(readable(bar)).toContain(PERSON);
-    expect(bar).toContain('method="post" action="/sign-out"');
+    expect(formTo(bar, "post", "/sign-out")).toBeDefined();
   });
 
   it("treats a cookie it cannot read as nobody being signed in", async () => {
@@ -3072,7 +3678,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     const itemId = await publish(gateway, roomCard);
     await browser.signIn();
 
-    const forged = await browser.from("https://evil.example.com").post("/selling/pause");
+    const forged = await browser.from("https://evil.example.com").post(STOP_SELLING);
 
     expect(forged.status).toBe(403);
     expect(await purchasable(gateway, itemId)).toBe(true);
@@ -3205,6 +3811,23 @@ describe("the page that says a call to the gateway failed", () => {
     expect(failed.status).toBe(504);
     expect(again).toMatch(/\/receipts$/);
   });
+
+  it("offers the page again, not its data, when the page was opened inside the application", async () => {
+    // A click inside the application asks for the page's data alone; the way
+    // back the failed page offers is still the page, with what it was asked
+    // with, never the address of its data.
+    const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
+    await browser.signIn();
+    silenceGateway();
+
+    const failed = await browser.get(
+      "/orders.data?open=true&_routes=routes%2Fgate%2Croutes%2Forders",
+    );
+
+    expect(failed.html).toContain('"/orders?open=true"');
+    expect(failed.html).not.toContain(".data");
+    expect(failed.html).not.toContain("_routes");
+  });
 });
 
 describe("a session that is ended while somebody is looking at a page", () => {
@@ -3218,7 +3841,7 @@ describe("a session that is ended while somebody is looking at a page", () => {
 
     await identity.endEverySessionFor(PERSON);
 
-    const refused = await browser.post("/selling/pause");
+    const refused = await browser.post(STOP_SELLING);
     expect(refused.status).toBe(303);
     expect(refused.to).toBe(SESSION_ENDED_UNSAVED);
     const recovery = await browser.get(refused.to ?? "");
@@ -3240,14 +3863,14 @@ describe("a session that is ended while somebody is looking at a page", () => {
     expect((await browser.get("/cards")).status).toBe(200);
 
     await browser.post("/sign-out");
-    const refused = await browser.post("/selling/pause");
+    const refused = await browser.post(STOP_SELLING);
 
     expect(refused.status).toBe(303);
     expect(refused.to).toBe(UNSAVED);
     const recovery = (await browser.get(refused.to ?? "")).html;
     // Something the person did was not kept, so it is a refusal, in the line
     // the form keeps for one.
-    const refusal = readable(/<p class="problem">[\s\S]*?<\/p>/.exec(recovery)?.[0] ?? "");
+    const refusal = readable(/<p class="field-error"[^>]*>[\s\S]*?<\/p>/.exec(recovery)?.[0] ?? "");
     expect(refusal).toContain("not saved");
     // The gate cannot tell a sign-out from an expired session, so it names
     // neither.
@@ -3340,11 +3963,11 @@ describe("a page left open while another address signs in", () => {
     const itemId = await publish(running.gateway, roomCard);
     await running.identity.make(OTHER, running.theMerchant);
     await running.browser.signIn();
-    const leftOpen = hiddenIn((await running.browser.get("/cards")).html, "/selling/pause");
+    const leftOpen = hiddenIn((await running.browser.get("/cards")).html, STOP_SELLING);
 
     await running.browser.post("/sign-out");
     await running.browser.signIn(OTHER);
-    const refused = await running.browser.post("/selling/pause", leftOpen);
+    const refused = await running.browser.post(STOP_SELLING, leftOpen);
 
     expect(refused.status).toBe(409);
     const said = readable(refused.html);
@@ -3356,8 +3979,8 @@ describe("a page left open while another address signs in", () => {
     expect(refused.html).toContain('href="/cards"');
     expect(await purchasable(running.gateway, itemId)).toBe(true);
 
-    const drawnNow = hiddenIn((await running.browser.get("/cards")).html, "/selling/pause");
-    expect((await running.browser.post("/selling/pause", drawnNow)).status).toBe(303);
+    const drawnNow = hiddenIn((await running.browser.get("/cards")).html, STOP_SELLING);
+    expect((await running.browser.post(STOP_SELLING, drawnNow)).status).toBe(303);
     expect(await purchasable(running.gateway, itemId)).toBe(false);
   });
 
@@ -3368,26 +3991,27 @@ describe("a page left open while another address signs in", () => {
     await publish(running.gateway, roomCard);
     await running.identity.make(OTHER, running.theMerchant);
     await running.browser.signIn();
-    const leftOpen = hiddenIn((await running.browser.get("/cards")).html, "/selling/pause");
+    const leftOpen = hiddenIn((await running.browser.get("/cards")).html, STOP_SELLING);
     await running.browser.post("/sign-out");
     await running.browser.signIn(OTHER);
 
     // These answer without a session, and the sign-out signs this browser out
     // whichever page it was pressed on.
     const above = new Set(["/sign-in", "/sign-in/open", "/sign-out", "/woocommerce/callback"]);
-    const behind = routesOf(running).filter(
+    const behind = (await routesOf(running)).filter(
       ({ method, path }) => method === "post" && !above.has(path),
     );
     expect(behind.length).toBeGreaterThan(10);
     const silently = async (path: string): Promise<Visit> =>
       await running.browser.postRaw(path, "application/x-www-form-urlencoded", "");
-    const refusal = await silently("/selling/pause");
+    const refusal = await silently(STOP_SELLING);
     expect(refusal.status).toBe(409);
     for (const { path } of behind) {
       for (const answer of [await running.browser.post(path, leftOpen), await silently(path)]) {
-        expect({ status: answer.status, html: answer.html }, path).toStrictEqual({
+        // The same words whichever way the screen is drawn.
+        expect({ status: answer.status, said: readable(answer.html) }, path).toStrictEqual({
           status: 409,
-          html: refusal.html,
+          said: readable(refusal.html),
         });
       }
     }
@@ -3412,7 +4036,7 @@ describe("a page left open while another address signs in", () => {
 
     const actions = new Set([...drawn, ...offered].map(({ action }) => action));
     for (const action of [
-      "/selling/pause",
+      STOP_SELLING,
       "/keys",
       "/settings",
       "/settings/payout-wallet",
@@ -3431,7 +4055,7 @@ describe("a page left open while another address signs in", () => {
         "application/x-www-form-urlencoded",
         new URLSearchParams(fields).toString(),
       );
-    const refusal = await asDrawn(running.browser, "/selling/pause", {});
+    const refusal = await asDrawn(running.browser, STOP_SELLING, {});
     expect(refusal.status).toBe(409);
     for (const { action, fields } of drawn.filter(({ action }) => action !== "/sign-out")) {
       const answer = await asDrawn(running.browser, action, fields);
@@ -3441,7 +4065,7 @@ describe("a page left open while another address signs in", () => {
     // answer into the sign-in.
     expect((await running.browser.get("/cards")).status).toBe(200);
 
-    const freshRefusal = await asDrawn(fresh, "/selling/pause", {});
+    const freshRefusal = await asDrawn(fresh, STOP_SELLING, {});
     // Somebody with no merchant is offered only the way to where they start.
     expect(freshRefusal.html).toContain(`href="${LATEST_REPORT}"`);
     expect(freshRefusal.html).not.toContain('href="/cards"');
@@ -3515,6 +4139,117 @@ describe("a press that fails in a way nobody planned for", () => {
     expect(written).not.toContain("raw-key");
     expect(written).not.toContain("raw-session");
   });
+
+  it("answers on the dashboard's own page, which says to look before pressing again and leads on", async () => {
+    // A press can fail after its work was done, so the page cannot say
+    // whether it went through; a bare line would leave the person with no
+    // way on and nothing to tell them what to check.
+    const { browser } = await started({
+      registrar: {
+        register: async () => {
+          throw new Error("the answer was not a document this contract knows");
+        },
+      },
+    });
+    await browser.signIn(FRESH.email);
+
+    const answered = await said(async () => {
+      const failed = await browser.makeMerchant();
+      expect(failed.status).toBe(500);
+      expect(readable(failed.html)).toContain(
+        "Check the page you were on before deciding whether it went through.",
+      );
+      expect(failed.html).toMatch(/<a [^>]*href="\/cards"[^>]*>Back to Cards<\/a>/);
+    });
+
+    expect(answered).toMatch(/request failed/i);
+  });
+
+  it("answers every press inside the dashboard that fails on the dashboard's page saying so", async () => {
+    // Whichever press it was, the merchant learns that something broke and to
+    // look before pressing again, on a page with a way on; a bare line of text
+    // gives them neither.
+    const broken = (): never => {
+      throw new Error("the answer was not a document this contract knows");
+    };
+    // Broken once the person is in, since signing in reads the merchant too.
+    let breaking = false;
+    const { browser } = await started({
+      client: (real) =>
+        new Proxy(real, {
+          get: (target, name, receiver) =>
+            breaking && typeof Reflect.get(target, name, receiver) === "function"
+              ? broken
+              : Reflect.get(target, name, receiver),
+        }),
+      identity: (real) => ({
+        ...real,
+        signOut: async (cookie) => (breaking ? broken() : await real.signOut(cookie)),
+        endOtherSessionsOfPerson: broken,
+      }),
+    });
+    await browser.signIn();
+    breaking = true;
+
+    await said(async () => {
+      for (const [path, form] of [
+        [STOP_SELLING, {}],
+        ["/keys", { label: "the second worker" }],
+        ["/keys/some-key/disable", {}],
+        ["/settings", { seller_name: "Bright Data Plans" }],
+        ["/settings/site", { seller_site: "https://example.com" }],
+        ["/settings/sign-out-others", {}],
+        [
+          "/settings/payout-wallet",
+          { payout_wallet: "0x1111111111111111111111111111111111111111" },
+        ],
+        [
+          "/settings/payout-wallet/cancel",
+          { payout_wallet: "0x1111111111111111111111111111111111111111" },
+        ],
+        ["/sign-out", {}],
+      ] as const) {
+        const pressed = await browser.post(path, form);
+
+        expect({ status: pressed.status, to: pressed.to }, path).toStrictEqual({
+          status: 500,
+          to: null,
+        });
+        expect(readable(pressed.html), path).toContain(
+          "Something in the dashboard is broken. Check the page you were on before deciding whether it went through.",
+        );
+      }
+    });
+  });
+
+  it("answers a sign-in press that fails with the dashboard's page saying so, and logs nothing it carried", async () => {
+    // Nothing is drawn after a press that throws but what the press answers,
+    // so the page around the answer has to come with it.
+    const marker = "token=raw-token session=raw-session";
+    const broken = async (): Promise<never> => {
+      throw new Error(marker);
+    };
+    const { browser } = await started({
+      identity: (real) => ({ ...real, requestLink: broken, openLink: broken }),
+    });
+
+    const written = await said(async () => {
+      for (const [path, form] of [
+        ["/sign-in", { email: PERSON }],
+        ["/sign-in/open", { token: "C".repeat(32) }],
+      ] as const) {
+        const pressed = await browser.post(path, form);
+
+        expect(pressed.status, path).toBe(500);
+        expect(readable(pressed.html), path).toContain(
+          "Something in the dashboard is broken. Check the page you were on before deciding whether it went through.",
+        );
+      }
+    });
+
+    expect(written).toMatch(/request failed/i);
+    expect(written).not.toContain(marker);
+  });
 });
 
 describe("naming a new key", () => {
@@ -3529,6 +4264,55 @@ describe("naming a new key", () => {
     expect((listed.body as MerchantKeyList).keys.some((key) => key.label.startsWith("kkk"))).toBe(
       false,
     );
+  });
+});
+
+describe("a key issued from the dashboard, against the real gateway", () => {
+  const LIVE = {
+    PAYMENT_NETWORK: "eip155:8453",
+    FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+  };
+  const issuedOn = async (live: boolean): Promise<{ running: Running; issued: Visit }> => {
+    const running = await started(
+      live
+        ? {
+            gateway: { ...LIVE, CDP_API_KEY_ID: "key-id", CDP_API_KEY_SECRET: "key-secret" },
+            dashboard: LIVE,
+          }
+        : {},
+    );
+    await running.browser.signIn();
+    await running.browser.get("/keys");
+    return { running, issued: await running.browser.post("/keys", { label: "the stock worker" }) };
+  };
+
+  it("carries the prefix of the site it works on, which its holder can read", async () => {
+    // A key from the other site is refused with a sentence naming the site it
+    // works on, so the prefix the merchant copies is the site's own.
+    const { issued: onTest } = await issuedOn(false);
+    expect(onTest.status).toBe(200);
+    expect(readable(onTest.html)).toMatch(/\bcsk_test_\S+/);
+    expect(onTest.html).not.toContain("csk_live_");
+    await open?.browser.close();
+
+    const { issued: onLive } = await issuedOn(true);
+    expect(onLive.status).toBe(200);
+    expect(readable(onLive.html)).toMatch(/\bcsk_live_\S+/);
+    expect(onLive.html).not.toContain("csk_test_");
+  });
+
+  it("is announced on live to the merchant's accounts, naming the address the session is signed in as", async () => {
+    const { running, issued } = await issuedOn(true);
+
+    expect(issued.status).toBe(200);
+    expect(running.harnessed.announcer.announced).toMatchObject([
+      {
+        kind: "key_issued",
+        merchant_id: running.theMerchant,
+        key: { label: "the stock worker" },
+        asked_with: { kind: "signed_in", email: PERSON },
+      },
+    ]);
   });
 });
 
@@ -4026,17 +4810,18 @@ describe("the screen a signed-out person was going to", () => {
 
   it("is the section an address below it belongs to: a screen inside it, or a form sent from it", async () => {
     // The form most likely lost is the payout wallet change, posted to an
-    // address under the settings; the new-key form is a screen of the keys.
+    // address under the settings; a key's revoke is an address of the keys,
+    // read or pressed.
     const running = await started();
 
     const wallet = await running.browser.post("/settings/payout-wallet", {
       payout_wallet: "0x1111111111111111111111111111111111111111",
     });
-    const newKey = await running.browser.get("/keys/new");
+    const read = await running.browser.get("/keys/some-key/disable");
     const disable = await running.browser.post("/keys/some-key/disable");
 
     expect(wallet.to).toBe("/sign-in?reason=unsaved&destination=settings");
-    expect(newKey.to).toBe("/sign-in?destination=keys");
+    expect(read.to).toBe("/sign-in?destination=keys");
     expect(disable.to).toBe("/sign-in?reason=unsaved&destination=keys");
   });
 

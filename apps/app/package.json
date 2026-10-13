@@ -6,7 +6,8 @@
   "description": "Agentify application — the gateway and the dashboard in one process",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "start": "tsx src/main.ts"
+    "start": "tsx src/main.ts",
+    "dev": "tsx src/main.ts --dashboard-from-source"
   },
   "dependencies": {
     "@agentify/dashboard": "workspace:*",

@@ -5,11 +5,12 @@
   "type": "module",
   "description": "Agentify seller dashboard — cards, orders and receipts, server-rendered",
   "exports": {
-    ".": "./src/index.ts",
     "./config": "./src/config.ts",
     "./start": "./src/start.ts"
   },
   "scripts": {
+    "build": "react-router build && tsx src/precompress.ts",
+    "budget": "tsx src/budget.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "account": "tsx src/account.ts",
     "approve": "tsx src/approve.ts",
@@ -22,20 +23,33 @@
     "@agentify/core": "workspace:*",
     "@agentify/gateway": "workspace:*",
     "@agentify/scanner-contracts": "workspace:*",
+    "@agentify/ui": "workspace:*",
+    "@agentify/visual": "workspace:*",
     "@nuanu-ai/agentify-contracts": "workspace:*",
+    "@react-router/express": "8.4.0",
+    "@react-router/node": "8.4.0",
     "better-auth": "1.7.2",
     "drizzle-orm": "0.45.2",
     "entities": "8.1.0",
     "express": "5.2.1",
     "pg": "8.23.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-router": "8.4.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@react-router/dev": "8.4.0",
+    "@testing-library/react": "16.3.3",
     "@types/express": "^5.0.6",
     "@types/pg": "^8.23.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
     "drizzle-kit": "0.31.10",
     "jsdom": "30.1.0",
+    "playwright": "1.61.1",
     "tsx": "^4.23.12",
+    "vite": "7.3.6",
     "vitest": "^4.1.11"
   }
 }

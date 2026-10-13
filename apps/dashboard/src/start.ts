@@ -17,11 +17,14 @@ import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
 import { identityFor } from "./identity.js";
 import { isSandboxMail, postmanFor } from "./mail.js";
+import type { Pages } from "./pages.js";
 import { startReportIdentityServer } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
 import { type Teller, tellerFor } from "./teller.js";
 import { postgresWooShops, wooOfferedOn } from "./woo-shops.js";
 import { startWooWorker } from "./woo-worker.js";
+
+export { builtPages, type Pages, pagesFromSource } from "./pages.js";
 
 /**
  * Fixed rather than read from `PORT`, because the gateway shares this process's
@@ -58,13 +61,13 @@ export interface Dashboard {
 const closed = (listener: Server | null): Promise<void> =>
   listener === null ? Promise.resolve() : closedWithin(listener, CLOSING_GRACE_MS);
 
-export function dashboardFor(config: DashboardConfig): Dashboard {
+export function dashboardFor(config: DashboardConfig, pages: Pages): Dashboard {
   const pool = connect(config.databaseUrl);
   const identity = identityFor(config, { pool });
   const wooShops = postgresWooShops(pool);
   return {
     tell: tellerFor(config, identity, postmanFor(config)),
-    start: (application) => started(config, application, identity, wooShops),
+    start: (application) => started(config, application, identity, wooShops, pages),
   };
 }
 
@@ -73,22 +76,25 @@ function started(
   application: Gateway,
   identity: ReturnType<typeof identityFor>,
   wooShops: ReturnType<typeof postgresWooShops>,
+  pages: Pages,
 ): RunningDashboard {
   const reportIdentityServer = startReportIdentityServer(config.reportIdentitySecret, identity);
 
-  const server = buildApp(config, { gateway: application, identity, wooShops }).listen(
-    DASHBOARD_PORT,
-    () => {
-      console.log(`[dashboard] listening on ${DASHBOARD_PORT}`);
-      // Says which delivery mode is in force without logging recipients or
-      // links from a real provider.
-      console.log(
-        isSandboxMail(config.mailUrl)
-          ? "[dashboard] no mail provider is configured: every message is written to this log instead"
-          : `[dashboard] messages are sent through ${config.mailUrl}, from ${config.mailFrom}`,
-      );
-    },
-  );
+  const app = buildApp(config, { gateway: application, identity, wooShops, pages });
+  const listening = () => {
+    console.log(`[dashboard] listening on ${DASHBOARD_PORT}`);
+    // Says which delivery mode is in force without logging recipients or
+    // links from a real provider.
+    console.log(
+      isSandboxMail(config.mailUrl)
+        ? "[dashboard] no mail provider is configured: every message is written to this log instead"
+        : `[dashboard] messages are sent through ${config.mailUrl}, from ${config.mailFrom}`,
+    );
+  };
+  const server =
+    pages.host === undefined
+      ? app.listen(DASHBOARD_PORT, listening)
+      : app.listen(DASHBOARD_PORT, pages.host, listening);
 
   const worker = !wooOfferedOn(config.surfaceMode)
     ? { stop: async () => {} }
@@ -104,6 +110,8 @@ function started(
       await Promise.all([server, reportIdentityServer].map(closed));
     },
     stopWorker: () => worker.stop(),
-    close: () => identity.close(),
+    close: async () => {
+      await Promise.all([identity.close(), pages.close()]);
+    },
   };
 }

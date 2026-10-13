@@ -25,6 +25,7 @@ const source = (path: string): string => fileURLToPath(new URL(path, import.meta
  */
 const scannerSources = [
   ["@agentify/scanner-contracts", "./packages/scanner-contracts/src/index.ts"],
+  ["@agentify/scanner-contracts/browser", "./packages/scanner-contracts/src/browser.ts"],
   [
     "@agentify/scanner-contracts/report-identity",
     "./packages/scanner-contracts/src/report-identity.ts",

@@ -74,29 +74,61 @@ their sessions (ADR-0026 §2) and the WooCommerce connector's bookkeeping
 inside the process: the gateway has the dashboard tell a merchant of a change
 to their payout wallet or keys (ADR-0019).
 
-The pages are server-rendered HTML, with no client-side framework and no
-client build, and they are tested over HTTP against the real gateway.
-Interactivity is form posts. Two pages carry an inline script, and both work
-without it. On the sign-in page the script takes the resend button away while
-its wait runs and gives it back (`apps/dashboard/src/sign-in.ts`); without it
-the button stays pressable and the door refuses an early press in words. The
-page that shows a new key's secret, once, replaces its history entry so that a
-reload returns to the list instead of issuing another key, and copies the
-secret to the clipboard at a press (`apps/dashboard/src/keys.ts`); without it
-the secret is selected by hand, and the page warns against resending the form.
-A screen that needs more argues for a framework on its own merits. The front
-page is the scanner's, everywhere; the scanner is a Next.js application and not
-the dashboard, so none of this binds it.
+The pages are React Router in its framework mode, on its eighth major version,
+compiled by Vite: the one stack for every surface a person uses
+(`docs/research/43-one-frontend-stack.md`). They are drawn in this process, on
+the dashboard's listener, from the gateway's application in the same process,
+behind one gate decided in one place (`apps/dashboard/src/gate.ts`), and they
+are tested over HTTP against the real gateway. Every path under the dashboard
+is one of its routes (`apps/dashboard/app/routes.ts`), the last of them the page
+that says there is no such page, so a visitor with no session is sent to the
+sign-in from an address that does not exist as from one that does, and where
+the WooCommerce connector is not offered its pages are such addresses. A request
+no page takes, such as a post to a page that does not act, gets a plain 404 from
+the listener. Beside
+the pages the listener answers only the health probe and the WooCommerce shop's
+callback, which the shop's own server posts to. A post from another
+site, or one longer than any form the pages send, is refused before any page
+reads it, and the page that says so is drawn like the others.
+
+Every form is an HTML form that works without script. With script, a page's
+forms show the press at once and its section links open without a page load,
+fetched while the pointer rests on them. The browser may keep a page's data for
+ten seconds, and that is what lets the click after the pointer rested on a link
+be answered from the fetch it made; in Chromium the click asks the server again
+once the ten seconds are up, prefetched or not. The keys and the settings keep
+nothing, because a key revoked a moment ago and a wallet change that waits must
+read as the gateway holds them now. A press posted to a page's own address
+would not drop what the browser kept of it, because the data's address carries
+the routes it asks for and the post's does not. So every press gives the
+browser a new value of a session-only cookie, `agentify.dashboard_pressed`,
+which names and opens nothing, and the kept data varies by cookie: nothing kept
+before a press is shown after it, on the page pressed or any other. A press's
+own address, opened again from history or the address bar, leads to the page
+its form lives on. The page a mailed link lands on runs no script at all,
+because it holds a one-time token.
+
+The page that shows a new key's secret, once, is the answer to the press that
+issues the key and to nothing else, and no cache keeps it. With script, React
+Router keeps it in the page's memory and never in history, and the page takes
+it off the screen as it is left, so a reload, a return to it through Back and
+Forward, or a later visit draws the list, and the secret is copied at a press
+(`apps/dashboard/app/routes/keys.tsx`); without script the secret is selected by
+hand, and the page warns against resending the form. The front page is the
+scanner's, everywhere, and the scanner is still a Next.js application, which
+moves after the dashboard.
 
 The whole chain, Postgres included, comes up locally from `docker compose up`
 behind the same route table the channels use (ADR-0005), so a person clicks
 through the chain end to end on a laptop, and the local stack rehearses the
-deployment. Rich interaction is awkward on server-rendered pages.
+deployment. `pnpm --filter @agentify/app dev` runs the process with the pages
+compiled from source by Vite instead of the image's build.
 
-Rejected for the dashboard: a single-page application, which buys a build
-pipeline and a dependency tree before any screen needs them; and a dashboard
-querying the gateway's tables, a second reader of the money path's data that
-would hide the gaps in the contract's documents it exists to expose.
+Rejected for the dashboard: a single-page application with a server of its
+own, which would put a network hop and a credential back between the pages and
+the gateway; and a dashboard querying the gateway's tables, a second reader of
+the money path's data that would hide the gaps in the contract's documents it
+exists to expose.
 
 ### Nothing between the two needs a credential
 
@@ -132,9 +164,9 @@ separates them is the package boundary and review, which is what already
 separated them in the database (ADR-0003).
 
 The trigger to split again is a measured incident in which the dashboard took
-sales down, or a dashboard that needs a runtime the gateway cannot share, such
-as a client framework a screen has argued for ("How the dashboard is built"
-above).
+sales down, or a dashboard that needs a runtime the gateway cannot share. The
+React pages do not meet the second: they render in this process on the same
+Node, and the image gains a build step and no second runtime.
 
 ### Alternatives rejected
 

@@ -12,6 +12,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import { identityFor, LINK_MIN_INTERVAL_MS, LINK_RATE_WINDOW_MS } from "./identity.js";
 import type { Message } from "./mail.js";
+import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const wanted = (() => {
   const url = new URL(testDatabaseUrl());
@@ -92,7 +93,7 @@ if (databaseUrl === null) {
   function config() {
     return loadConfig({
       DATABASE_URL: identityDatabaseUrl,
-      AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
+      AUTH_SECRET: TEST_AUTH_SECRET,
       PAYMENT_NETWORK: "eip155:84532",
       FACILITATOR_URL: "sandbox:scripted",
     });

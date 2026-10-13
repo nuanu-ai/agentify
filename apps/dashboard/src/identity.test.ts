@@ -5,10 +5,11 @@ import type { DashboardIdentity } from "./dashboard-entry.js";
 import { identityFor, LINK_MIN_INTERVAL_MS, LINK_RATE_WINDOW_MS } from "./identity.js";
 import type { Message } from "./mail.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
+import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const config = loadConfig({
   DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
-  AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
+  AUTH_SECRET: TEST_AUTH_SECRET,
   PAYMENT_NETWORK: "eip155:84532",
   FACILITATOR_URL: "sandbox:scripted",
 });

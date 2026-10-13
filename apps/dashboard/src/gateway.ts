@@ -166,9 +166,9 @@ export interface Acting {
  * person's patience. The work behind a call that runs out is not cancelled (a
  * late database still writes), so the page says it may have been done. A
  * caller may pass its own: a payout wallet change passes a longer one
- * (`WALLET_CHANGE_MS` in `server.ts`), because on live the gateway answers only
- * after every announcement is handed to the mail provider, and tests pass a
- * shorter one so as not to wait ten seconds.
+ * (`WALLET_CHANGE_MS` in `payout-wallet.ts`), because on live the gateway
+ * answers only after every announcement is handed to the mail provider, and
+ * tests pass a shorter one so as not to wait ten seconds.
  */
 const ANSWER_WITHIN_MS = 10_000;
 

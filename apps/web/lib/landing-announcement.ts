@@ -1,4 +1,4 @@
-import { type Segment, segmentSchema } from "@agentify/scanner-contracts";
+import { isSegment, type Segment } from "@agentify/scanner-contracts/browser";
 
 /**
  * A landing page renders its segment and variant as attributes on itself, and
@@ -25,8 +25,8 @@ export function readLandingAnnouncement(
 ): LandingAnnouncement | null {
   const element = root.querySelector(`[${LANDING_SEGMENT_ATTRIBUTE}]`);
   if (!element) return null;
-  const segment = segmentSchema.safeParse(element.getAttribute(LANDING_SEGMENT_ATTRIBUTE));
+  const segment = element.getAttribute(LANDING_SEGMENT_ATTRIBUTE);
   const variant = element.getAttribute(LANDING_VARIANT_ATTRIBUTE);
-  if (!segment.success || !variant) return null;
-  return { segment: segment.data, variant };
+  if (!isSegment(segment) || !variant) return null;
+  return { segment, variant };
 }

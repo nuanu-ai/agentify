@@ -8,13 +8,18 @@
  * in the dashboard therefore stops sales as well; orders survive in Postgres
  * and resume after the restart.
  *
- * Both configurations are read and refused before anything starts: a gateway
- * that started and then went down over the dashboard's settings would have
- * taken work off the queue for nothing, once per restart.
+ * Both configurations are read and refused before anything starts, and so are
+ * the dashboard's pages: a gateway that started and then went down over the
+ * dashboard's settings would have taken work off the queue for nothing, once
+ * per restart.
+ *
+ * `--dashboard-from-source` compiles the dashboard's pages from their source on
+ * each request and reloads them on an edit, for a developer; without it the
+ * process serves the build the image compiled.
  */
 
 import { loadConfig as dashboardConfigOf } from "@agentify/dashboard/config";
-import { dashboardFor } from "@agentify/dashboard/start";
+import { builtPages, dashboardFor, pagesFromSource } from "@agentify/dashboard/start";
 import { loadConfig as gatewayConfigOf } from "@agentify/gateway/config";
 import { startGateway } from "@agentify/gateway/start";
 
@@ -22,10 +27,13 @@ const startedOrStopped = async () => {
   try {
     const gatewayConfig = gatewayConfigOf(process.env);
     const dashboardConfig = dashboardConfigOf(process.env);
+    const pages = process.argv.includes("--dashboard-from-source")
+      ? await pagesFromSource({ live: true })
+      : await builtPages();
     // The dashboard is made first because the gateway announces changes
     // through it, but the gateway starts first because the dashboard's pages
     // and its WooCommerce worker call the gateway from the moment they are up.
-    const made = dashboardFor(dashboardConfig);
+    const made = dashboardFor(dashboardConfig, pages);
     const gateway = await startGateway(gatewayConfig, { announce: made.tell });
     const dashboard = made.start(gateway.application);
     return { gateway, dashboard };
