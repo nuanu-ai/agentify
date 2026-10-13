@@ -63,9 +63,6 @@ importers:
       tldts:
         specifier: 7.4.8
         version: 7.4.8
-      zod:
-        specifier: 4.4.3
-        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: 24.13.3
@@ -422,9 +419,6 @@ importers:
       '@agentify/scanner-contracts':
         specifier: workspace:*
         version: link:../scanner-contracts
-      zod:
-        specifier: 4.4.3
-        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: 26.1.1

@@ -19,8 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agentify/scanner-contracts": "workspace:*",
-    "zod": "4.4.3"
+    "@agentify/scanner-contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "26.1.1",
