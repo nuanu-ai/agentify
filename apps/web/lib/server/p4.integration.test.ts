@@ -19,11 +19,9 @@ import {
   waitlistEntries,
 } from "@agentify/scanner-database";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { NextRequest } from "next/server";
 import type { Params } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { GET as previewShare } from "../../app/api/v1/scans/[id]/share-preview/route";
 import { action as requestDataActionRoute } from "../../app/routes/api/v1/account.data-request";
 import { action as unsubscribeActionRoute } from "../../app/routes/api/v1/account.unsubscribe";
 import { action as persistAttributionRoute } from "../../app/routes/api/v1/attribution";
@@ -35,9 +33,12 @@ import { action as acceptScanRoute } from "../../app/routes/api/v1/scans";
 import { loader as getTeaserPromptRoute } from "../../app/routes/api/v1/scans.id.remediation-prompt";
 import { loader as downloadTeaserPromptRoute } from "../../app/routes/api/v1/scans.id.remediation-prompt.download";
 import { action as publishShareRoute } from "../../app/routes/api/v1/scans.id.share";
+import { loader as previewShareRoute } from "../../app/routes/api/v1/scans.id.share-preview";
+import { loader as shareImageRoute } from "../../app/routes/api/v1/shares.slug.image";
 import { loader as getContactAccessRoute } from "../../app/routes/api/v2/scans.id.contact-access";
 import { action as requestScannerRegistrationRoute } from "../../app/routes/api/v2/scans.id.registrations";
 import { loader as readVisitorRoute } from "../../app/routes/api/v2/session";
+import { loader as shareCardRoute } from "../../app/routes/s.slug.opengraph-image";
 import { latestReportOf, visitorOf } from "./auth";
 import { getServerConfig } from "./config";
 import { encryptEmail, hmacHex, sha256 } from "./crypto";
@@ -72,6 +73,9 @@ const acceptScan = answering(acceptScanRoute);
 const getTeaserPrompt = answering(getTeaserPromptRoute);
 const downloadTeaserPrompt = answering(downloadTeaserPromptRoute);
 const publishShare = answering(publishShareRoute);
+const previewShare = answering(previewShareRoute);
+const shareCard = answering(shareCardRoute);
+const shareImage = answering(shareImageRoute);
 const getContactAccess = answering(getContactAccessRoute);
 const requestScannerRegistration = answering(requestScannerRegistrationRoute);
 const readVisitor = answering(readVisitorRoute);
@@ -1734,15 +1738,15 @@ describe("P4 dashboard-owned scanner identity", () => {
     });
     expect(await getDatabase().db.select().from(scanShares)).toHaveLength(0);
     const unauthorizedPreview = await previewShare(
-      new NextRequest(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`),
-      { params: Promise.resolve({ id: scanId }) },
+      new Request(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`),
+      { id: scanId },
     );
     expect(unauthorizedPreview.status).toBe(404);
     const previewResponse = await previewShare(
-      new NextRequest(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
+      new Request(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
         headers: { authorization: `Bearer ${scanAccessToken}` },
       }),
-      { params: Promise.resolve({ id: scanId }) },
+      { id: scanId },
     );
     expect(previewResponse.status).toBe(200);
     expect(await previewResponse.json()).toEqual({
@@ -1779,10 +1783,10 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(shared && !shared.conflict).toBe(true);
     if (!shared || shared.conflict) throw new Error("share_failed");
     const publishedPreview = await previewShare(
-      new NextRequest(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
+      new Request(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
         headers: { authorization: `Bearer ${scanAccessToken}` },
       }),
-      { params: Promise.resolve({ id: scanId }) },
+      { id: scanId },
     );
     expect(await publishedPreview.json()).toMatchObject({
       existing_share: {
@@ -1798,6 +1802,16 @@ describe("P4 dashboard-owned scanner identity", () => {
       rubric_version: "gtm-v1.0.0",
       generated_at: expect.any(String),
     });
+    const sharePicture = (route: typeof shareCard, path: string) =>
+      route(new Request(`http://localhost:3000${path}`), { slug: shared.slug });
+    const card = await sharePicture(shareCard, `/s/${shared.slug}/opengraph-image`);
+    expect(card.status).toBe(200);
+    expect(card.headers.get("content-type")).toBe("image/png");
+    const download = await sharePicture(shareImage, `/api/v1/shares/${shared.slug}/image`);
+    expect(download.status).toBe(200);
+    expect(download.headers.get("content-disposition")).toBe(
+      'attachment; filename="agentify-example.com.png"',
+    );
     expect(
       await revokePublicShare(shared.slug, {
         verifiedLeadId: leadId,
@@ -1805,6 +1819,14 @@ describe("P4 dashboard-owned scanner identity", () => {
       }),
     ).toBe("revoked");
     expect(await getPublicShare(shared.slug)).toBeUndefined();
+    const revokedCard = await sharePicture(shareCard, `/s/${shared.slug}/opengraph-image`);
+    expect(revokedCard.status).toBe(404);
+    expect(await revokedCard.text()).toBe("");
+    const revokedDownload = await sharePicture(shareImage, `/api/v1/shares/${shared.slug}/image`);
+    expect(revokedDownload.status).toBe(404);
+    expect(((await revokedDownload.json()) as { error: { code: string } }).error.code).toBe(
+      "share_not_found",
+    );
     expect(
       await getDatabase().pool.query<{
         name: string;

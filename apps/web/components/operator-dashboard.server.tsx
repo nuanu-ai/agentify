@@ -1,40 +1,9 @@
-/**
- * The operator's dashboard: read-only numbers about the scanner, for a session
- * whose account carries the operator flag.
- *
- * Nothing stands in front of /admin: the proxy's matcher does not include it
- * and Caddy adds nothing, so this page, and any page added beside it, must
- * refuse by itself. Anybody the seller dashboard does not confirm as an
- * operator gets the site's 404, including everybody while the seller dashboard
- * cannot answer. Metadata
- * refuses too: it is resolved on its own, and a title shown to a visitor who is
- * then refused would tell them what this page is.
- */
+import type {
+  OperatorDailyFunnel,
+  OperatorDashboard as OperatorDashboardData,
+} from "../lib/server/operator-dashboard";
 
-import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { notFound } from "next/navigation";
-import { cache } from "react";
-
-import { Brand } from "../../components/brand";
-import { isOperator } from "../../lib/server/operator";
-import {
-  getOperatorDashboard,
-  type OperatorDailyFunnel,
-} from "../../lib/server/operator-dashboard";
-
-import styles from "./admin.module.css";
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-/** Whether this request's session is an operator's, asked once per request. */
-const operatorVisiting = cache(async () => await isOperator((await headers()).get("cookie")));
-
-export async function generateMetadata(): Promise<Metadata> {
-  if (!(await operatorVisiting())) notFound();
-  return { title: "Operator dashboard", robots: { index: false, follow: false } };
-}
+import styles from "./operator-dashboard.module.css";
 
 const number = new Intl.NumberFormat("en-US");
 const percent = new Intl.NumberFormat("en-US", {
@@ -104,21 +73,22 @@ const statusClass = (status: string | null) => {
   return styles.neutral;
 };
 
-export default async function AdminPage() {
-  if (!(await operatorVisiting())) notFound();
-  const data = await getOperatorDashboard();
+/** What the page's header says beside the brand: that the view is live, and as of when. */
+export function OperatorDashboardStatus({ data }: Readonly<{ data: OperatorDashboardData }>) {
+  return (
+    <>
+      <span className={styles.liveDot} aria-hidden="true" />
+      Live operator view · refreshed {dateTime.format(new Date(data.generatedAt))} UTC
+    </>
+  );
+}
+
+/** Everything on the page under its header, from the numbers the loader read. */
+export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardData }>) {
   const { overview, selfScan } = data;
 
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <Brand />
-        <div>
-          <span className={styles.liveDot} aria-hidden="true" />
-          Live operator view · refreshed {dateTime.format(new Date(data.generatedAt))} UTC
-        </div>
-      </header>
-
+    <>
       <section className={styles.hero}>
         <p className="eyebrow">Private · read-only</p>
         <h1>Agentify operating dashboard</h1>
@@ -326,6 +296,6 @@ export default async function AdminPage() {
           </table>
         </div>
       </section>
-    </main>
+    </>
   );
 }

@@ -165,6 +165,8 @@ describe("a page in Chromium", () => {
     "/terms",
     "/agentic-shop",
     "/agentic-shop/privacy",
+    "/data-request",
+    "/email/unsubscribe",
   ])("comes alive without a complaint: %s", async (path) => {
     const { page, complaints } = await visit(path);
     await page.evaluate(() => {

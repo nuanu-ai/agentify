@@ -1,10 +1,9 @@
 import type { PublicShareSnapshot } from "@agentify/scanner-contracts";
-import { ImageResponse } from "next/og";
 
 import { BrandMark } from "../../components/brand-mark";
 import { getPublicAppConfig } from "../app-config";
 import { type ShareTone, shareCopy } from "../share-copy";
-import { BRAND_IMAGE_FONTS, BRAND_IMAGE_HUMAN_FONT, BRAND_IMAGE_MONO_FONT } from "./brand-image";
+import { drawPng, HUMAN_FONT, MONO_FONT } from "./drawing";
 
 const TONE: Record<ShareTone, { color: string; soft: string }> = {
   critical: { color: "#B4462F", soft: "#F7E9E4" },
@@ -13,6 +12,8 @@ const TONE: Record<ShareTone, { color: string; soft: string }> = {
   positive: { color: "#2E7D53", soft: "#E7F1EA" },
 };
 
+const SHARE_IMAGE_SIZE = { width: 1200, height: 630 } as const;
+
 const ZONES = [
   { key: "invisible", name: "Invisible", range: "0–24" },
   { key: "readable", name: "Readable", range: "25–49" },
@@ -20,7 +21,8 @@ const ZONES = [
   { key: "ahead_of_market", name: "Ahead", range: "70–100" },
 ];
 
-export function renderShareImage(snapshot: PublicShareSnapshot) {
+/** The card a published share unfurls into, and the picture a visitor downloads of it. */
+export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Array<ArrayBuffer>> {
   const { displayBrand } = getPublicAppConfig();
   const copy = shareCopy(snapshot);
   const tone = TONE[copy.tone];
@@ -30,7 +32,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
   const dash = circumference * pct;
   const date = new Date(snapshot.generated_at).toISOString().slice(0, 10);
 
-  return new ImageResponse(
+  return drawPng(
     <div
       style={{
         width: "100%",
@@ -38,7 +40,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
         display: "flex",
         padding: 40,
         background: "#EFEBE2",
-        fontFamily: BRAND_IMAGE_HUMAN_FONT,
+        fontFamily: HUMAN_FONT,
       }}
     >
       <div
@@ -77,7 +79,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
             <span
               style={{
                 color: "#8A8781",
-                fontFamily: BRAND_IMAGE_MONO_FONT,
+                fontFamily: MONO_FONT,
                 fontSize: 20,
                 letterSpacing: 2,
               }}
@@ -88,7 +90,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
           <span
             style={{
               color: "#8A8781",
-              fontFamily: BRAND_IMAGE_MONO_FONT,
+              fontFamily: MONO_FONT,
               fontSize: 20,
             }}
           >
@@ -121,7 +123,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
                   background: tone.soft,
                   border: `1px solid ${tone.color}`,
                   color: tone.color,
-                  fontFamily: BRAND_IMAGE_MONO_FONT,
+                  fontFamily: MONO_FONT,
                   fontSize: 22,
                   fontWeight: 500,
                   letterSpacing: 2,
@@ -206,7 +208,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
                     flexDirection: "column",
                     gap: 2,
                     color: active ? tone.color : "#8A8781",
-                    fontFamily: BRAND_IMAGE_MONO_FONT,
+                    fontFamily: MONO_FONT,
                     fontWeight: active ? 600 : 400,
                   }}
                 >
@@ -222,7 +224,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
               justifyContent: "space-between",
               alignItems: "center",
               marginTop: 8,
-              fontFamily: BRAND_IMAGE_MONO_FONT,
+              fontFamily: MONO_FONT,
               fontSize: 19,
             }}
           >
@@ -232,10 +234,6 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
         </div>
       </div>
     </div>,
-    {
-      width: 1200,
-      height: 630,
-      fonts: BRAND_IMAGE_FONTS.length ? [...BRAND_IMAGE_FONTS] : undefined,
-    },
+    SHARE_IMAGE_SIZE,
   );
 }

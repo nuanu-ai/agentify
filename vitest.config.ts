@@ -81,9 +81,24 @@ export const scannerSourceAlias = scannerSources.map(([specifier, path]) => ({
   replacement: source(path),
 }));
 
+/**
+ * React Router rewrites `<app>/.react-router/types` whenever a Vite server
+ * starts, and the scanner's tests start one per file, in parallel, so a
+ * rewrite can lose a race with another and fail where nothing awaits it.
+ * Those files are for an editor and no test reads them, so such a failure is
+ * not the run's; any other unhandled error still fails it.
+ */
+const isTypegenRace = (error: unknown): boolean =>
+  /[\\/]\.react-router[\\/]types([\\/]|$)/.test(String((error as { path?: unknown }).path ?? ""));
+
 export default defineConfig({
   resolve: { alias: scannerSourceAlias },
+  // The scanner draws its pictures with WebAssembly it imports with
+  // `?inline`, which Vite inlines only as an asset; a test importing that
+  // code directly compiles it here.
+  assetsInclude: ["**/*.wasm"],
   test: {
+    onUnhandledError: (error) => !isTypegenRace(error),
     // Two projects rather than two configs: a file the configuration does not
     // collect cannot be run by naming it, so the integration commands name
     // the second project.
