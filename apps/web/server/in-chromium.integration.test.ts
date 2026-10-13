@@ -474,17 +474,17 @@ const answered = async (...statuses: readonly object[]) => {
 };
 
 type CardFrame = Readonly<{
-  complete: boolean;
-  result: boolean;
+  badge: string;
+  heading: string | null;
   reading: boolean;
   stepsDone: boolean;
 }>;
 
 /**
- * Has the page note, at every frame it draws, what the scan's card shows: a
- * badge that says the scan is complete, the result's heading, the words that
- * say the scan's state is still being read, and a list of the scan's steps
- * with every one of them done. Only a change is noted.
+ * Has the page note, at every frame it draws, what the scan's card shows: the
+ * badge's word, the heading under it, the words that say the scan's state is
+ * still being read, and a list of the scan's steps with every one of them
+ * done. Only a change is noted.
  */
 const watchCardFrames = (page: Page) =>
   page.addInitScript(() => {
@@ -494,8 +494,8 @@ const watchCardFrames = (page: Page) =>
       const card = document.querySelector("main section");
       if (card !== null) {
         const frame = {
-          complete: card.querySelector("header")?.textContent?.includes("complete") === true,
-          result: card.querySelector("h1")?.textContent === "Readable",
+          badge: card.querySelector("header [class*=badge]")?.textContent?.trim() ?? "",
+          heading: card.querySelector("h1")?.textContent ?? null,
           reading: card.textContent?.includes("Reading the scan state") === true,
           stepsDone:
             card.querySelector("ol") !== null &&
@@ -544,7 +544,9 @@ describe("a scan in Chromium", () => {
     await page.getByLabel("Email").waitFor();
 
     const frames = await cardFrames(page);
-    expect(frames.filter((frame) => frame.complete && !frame.result)).toEqual([]);
+    expect(
+      frames.filter((frame) => frame.badge === "complete" && frame.heading !== "Readable"),
+    ).toEqual([]);
     expect(complaints).toEqual([]);
     await page.context().close();
   });
@@ -560,11 +562,38 @@ describe("a scan in Chromium", () => {
     await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
     await page.getByLabel("Email").waitFor();
 
-    const waiting = (await cardFrames(page)).filter((frame) => frame.complete && !frame.result);
+    const waiting = (await cardFrames(page)).filter(
+      (frame) => frame.badge === "complete" && frame.heading !== "Readable",
+    );
     expect(waiting.length).toBeGreaterThan(0);
     for (const frame of waiting) {
-      expect(frame).toEqual({ complete: true, result: false, reading: false, stepsDone: true });
+      expect(frame).toEqual({ badge: "complete", heading: null, reading: false, stepsDone: true });
     }
+    await page.context().close();
+  });
+
+  it("keeps the progress it showed, its open details too, when the scan completes before the result's script is here", async () => {
+    const { page } = await answered(RUNNING, FINISHED);
+    let release = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/assets/scan-teaser-*.js", async (route) => {
+      await released;
+      await route.continue();
+    });
+
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    await page.getByText("7 of 18 checks reported").waitFor();
+    await page.getByText("Live check details").click();
+    // A mark only the list drawn while the scan ran carries.
+    await page.locator("main section ol").evaluate((list) => list.setAttribute("data-seen", ""));
+    await page.locator("main section header", { hasText: "complete" }).waitFor();
+
+    expect(await page.locator("main section ol[data-seen]").count()).toBe(1);
+    expect(await page.locator("main section details[open]").count()).toBe(1);
+    release();
+    await page.getByLabel("Email").waitFor();
     await page.context().close();
   });
 
