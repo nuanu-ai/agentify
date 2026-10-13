@@ -2,22 +2,33 @@ import {
   MERCHANT_APPLICATION_POLICY,
   MERCHANT_APPLICATION_RETENTION_DAYS,
 } from "@agentify/scanner-contracts";
-import type { Metadata } from "next";
-import Link from "next/link";
-import { MarketingHeader, SiteFooter } from "../../../components/site-chrome";
-import { getPublicAppConfig } from "../../../lib/app-config";
-import styles from "../shop.module.css";
+import { type MetaArgs, useLoaderData } from "react-router";
 
-export const dynamic = "force-dynamic";
-export const metadata: Metadata = {
-  title: "Historical application privacy",
-  description:
-    "How Agentify retains and removes information submitted through the retired merchant application form.",
-  alternates: { canonical: "/agentic-shop/privacy" },
-};
+import { usePublicConfig } from "../../components/public-config";
+import { MarketingHeader, SiteFooter } from "../../components/site-chrome";
+import { SiteLink } from "../../components/site-link";
+import { AGENTIC_SHOP_CARD_IMAGE } from "../../content/agentic-shop";
+import { pageMeta, siteConfigOf } from "../../lib/page-meta";
+import styles from "./agentic-shop.module.css";
+
+/** The notice the retired merchant application form was sent under. */
+export const loader = () => ({
+  retentionDays: MERCHANT_APPLICATION_RETENTION_DAYS,
+  version: MERCHANT_APPLICATION_POLICY,
+});
+
+export const meta = ({ matches }: MetaArgs) =>
+  pageMeta(siteConfigOf(matches), {
+    title: "Historical application privacy",
+    description:
+      "How Agentify retains and removes information submitted through the retired merchant application form.",
+    canonical: "/agentic-shop/privacy",
+    card: { image: AGENTIC_SHOP_CARD_IMAGE },
+  });
 
 export default function MerchantPrivacyPage() {
-  const config = getPublicAppConfig();
+  const config = usePublicConfig();
+  const notice = useLoaderData<typeof loader>();
   return (
     <div className={styles.page}>
       <MarketingHeader />
@@ -55,11 +66,10 @@ export default function MerchantPrivacyPage() {
         </p>
         <h2>Retention and removal</h2>
         <p>
-          Applications expire after {MERCHANT_APPLICATION_RETENTION_DAYS} days and are removed by
-          the daily retention job. Limited backup copies may remain until the backup retention
-          period expires. Any longer-term merchant record requires a separate onboarding process and
-          notice. Hashed request identifiers are used briefly to limit abuse and avoid duplicate
-          submissions.
+          Applications expire after {notice.retentionDays} days and are removed by the daily
+          retention job. Limited backup copies may remain until the backup retention period expires.
+          Any longer-term merchant record requires a separate onboarding process and notice. Hashed
+          request identifiers are used briefly to limit abuse and avoid duplicate submissions.
         </p>
         <h2>Your choices</h2>
         <p>
@@ -75,14 +85,14 @@ export default function MerchantPrivacyPage() {
           Privacy contact: <a href={`mailto:${config.privacyEmail}`}>{config.privacyEmail}</a>.
         </p>
         <p>
-          The separate <Link href="/privacy">Agentify privacy policy</Link> explains general site
-          cookies and diagnostic services. The application consent above does not authorise
+          The separate <SiteLink to="/privacy">Agentify privacy policy</SiteLink> explains general
+          site cookies and diagnostic services. The application consent above does not authorise
           diagnostic dataset reuse.
         </p>
-        <p className={styles.privacyFootnote}>Notice version: {MERCHANT_APPLICATION_POLICY}</p>
-        <Link href="/agentic-shop" className={styles.textLink}>
+        <p className={styles.privacyFootnote}>Notice version: {notice.version}</p>
+        <SiteLink className={styles.textLink} to="/agentic-shop">
           ← Back to selling to agents
-        </Link>
+        </SiteLink>
       </main>
       <SiteFooter />
     </div>

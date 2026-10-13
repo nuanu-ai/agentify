@@ -1,27 +1,34 @@
-import type { Metadata } from "next";
-import Image from "next/image";
+import { type MetaArgs, useLoaderData } from "react-router";
+
 import { MarketingHeader, SiteFooter } from "../../components/site-chrome";
-import { AGENTIC_SHOP_RESEARCH } from "../../content/agentic-shop";
-import { getPublicAppConfig } from "../../lib/app-config";
-import styles from "./shop.module.css";
+import { AGENTIC_SHOP_CARD_IMAGE, AGENTIC_SHOP_RESEARCH } from "../../content/agentic-shop";
+import { pageMeta, siteConfigOf } from "../../lib/page-meta";
+import styles from "./agentic-shop.module.css";
 
-const adobeSource = AGENTIC_SHOP_RESEARCH.sourceUrl;
+export const loader = () => AGENTIC_SHOP_RESEARCH;
 
-export function generateMetadata(): Metadata {
-  const url = new URL("/agentic-shop", getPublicAppConfig().baseUrl).toString();
-  return {
+export const meta = ({ matches }: MetaArgs) =>
+  pageMeta(siteConfigOf(matches), {
     title: "Sell to agents",
     description:
       "Open your Agentify dashboard with an email link, integrate through the SDK and test agent-ready offers. Live publication requires operator approval.",
-    alternates: { canonical: url },
-    openGraph: {
+    canonical: "/agentic-shop",
+    card: {
       title: "Your next customer sends an agent. Be ready.",
       description: "Your products and services, ready for a new way to buy.",
-      url,
-      type: "website",
+      image: AGENTIC_SHOP_CARD_IMAGE,
+      addressed: true,
     },
-  };
-}
+  });
+
+/** The still life at the widths a phone, a laptop and a sharp screen ask for. */
+const HERO = {
+  src: "/agentic-shop/merchant-still-life-1448.webp",
+  srcSet: [640, 1080, 1448]
+    .map((width) => `/agentic-shop/merchant-still-life-${width}.webp ${width}w`)
+    .join(", "),
+  sizes: "(max-width: 800px) calc(100vw - 40px), 50vw",
+};
 
 function Arrow({ diagonal = false }: { diagonal?: boolean }) {
   return <span aria-hidden="true">{diagonal ? "↗" : "→"}</span>;
@@ -55,6 +62,7 @@ const categories = [
 ];
 
 export default function AgenticShopPage() {
+  const research = useLoaderData<typeof loader>();
   return (
     <>
       <MarketingHeader />
@@ -89,14 +97,15 @@ export default function AgenticShopPage() {
             </p>
           </div>
           <div className={styles.heroVisual}>
-            <Image
-              src="/agentic-shop/merchant-still-life.png"
+            <img
               alt="A teal shopping bag, espresso, hotel key card, ticket and folded towel on sunlit stone."
-              width={1448}
-              height={1086}
-              sizes="(max-width: 800px) calc(100vw - 40px), 50vw"
-              priority
               className={styles.heroImage}
+              decoding="async"
+              height={1086}
+              sizes={HERO.sizes}
+              src={HERO.src}
+              srcSet={HERO.srcSet}
+              width={1448}
             />
           </div>
         </section>
@@ -139,7 +148,7 @@ export default function AgenticShopPage() {
                 </div>
                 <div className={styles.growth}>
                   <strong>
-                    +{AGENTIC_SHOP_RESEARCH.traffic.growthPercent}
+                    +{research.traffic.growthPercent}
                     <span>%</span>
                   </strong>
                   <p>
@@ -164,7 +173,7 @@ export default function AgenticShopPage() {
                     <b>Q1 2025</b>
                   </div>
                   <div className={styles.barColumn}>
-                    <span>{AGENTIC_SHOP_RESEARCH.traffic.comparisonIndex}</span>
+                    <span>{research.traffic.comparisonIndex}</span>
                     <div className={styles.barNew} />
                     <b>Q1 2026</b>
                   </div>
@@ -172,7 +181,7 @@ export default function AgenticShopPage() {
                 </figure>
                 <p className={styles.source}>
                   Source:{" "}
-                  <a href={adobeSource} target="_blank" rel="noopener noreferrer">
+                  <a href={research.sourceUrl} target="_blank" rel="noopener noreferrer">
                     Adobe Digital Insights, April 16, 2026 <Arrow diagonal />
                   </a>
                   . Measures AI-referred visits to U.S. retail sites, not autonomous purchases or
@@ -182,7 +191,7 @@ export default function AgenticShopPage() {
             </div>
             <div className={styles.marketBottom}>
               <strong>
-                +{AGENTIC_SHOP_RESEARCH.conversion.relativeLiftPercent}
+                +{research.conversion.relativeLiftPercent}
                 <span>%</span>
               </strong>
               <p>
@@ -192,7 +201,7 @@ export default function AgenticShopPage() {
                   not checkout inside an AI chat. This does not establish demand for x402 orders.
                 </span>
               </p>
-              <a href={adobeSource} target="_blank" rel="noopener noreferrer">
+              <a href={research.sourceUrl} target="_blank" rel="noopener noreferrer">
                 Read the research <Arrow diagonal />
               </a>
             </div>

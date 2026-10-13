@@ -3,8 +3,11 @@
  * every page comes alive in the browser without a complaint, a click on a link
  * shows at once that it was taken and says the page is coming once it takes a
  * moment, a hover fetches a public page's data so the click needs nothing
- * more, and the consent banner takes a choice without a reload. The headers
- * that promise the caching are held offline in `answers.test.ts`.
+ * more, the consent banner takes a choice without a reload, the merchant
+ * landing's menu opens and closes, and behind the live channel's edge, as
+ * `deploy/Caddyfile` routes it, the landing stays the page that says there is
+ * none once the browser takes the page over. The headers that promise the
+ * caching are held offline in `answers.test.ts`.
  *
  * It needs the build (`pnpm --filter @agentify/web build`) and Playwright's
  * Chromium. The consent route's own answer, which needs a database, is held by
@@ -12,6 +15,7 @@
  * saved choice, so what is seen is the banner's.
  */
 
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -33,9 +37,36 @@ const SLOW_MS = 1_500;
 let browser: Browser;
 let server: Server;
 let origin = "";
+let liveEdge: Server;
+let liveOrigin = "";
 let build: ServerBuild;
 let viteManifest: ViteManifest;
 const asked: string[] = [];
+
+/**
+ * What the live channel's edge does with an address of the merchant landing,
+ * read from the edge's own route table: the addresses it withholds and the one
+ * it hands the scanner instead.
+ */
+const withheldOnLive = (): Readonly<{ matches: (path: string) => boolean; to: string }> => {
+  const caddyfile = readFileSync(
+    fileURLToPath(new URL("../../../deploy/Caddyfile", import.meta.url)),
+    "utf8",
+  );
+  const paths = caddyfile
+    .match(/@sell_withheld \{\s*path ([^\n]+)/)?.[1]
+    ?.trim()
+    .split(/\s+/);
+  const to = caddyfile.match(/rewrite @sell_withheld (\S+)/)?.[1];
+  if (paths === undefined || to === undefined) {
+    throw new Error("deploy/Caddyfile withholds no address of the merchant landing");
+  }
+  return {
+    matches: (path) =>
+      paths.some((one) => (one.endsWith("/*") ? path.startsWith(one.slice(0, -1)) : path === one)),
+    to,
+  };
+};
 
 beforeAll(async () => {
   const built = (await import(pathToFileURL(join(DIST, "server", "index.js")).href)) as {
@@ -65,11 +96,19 @@ beforeAll(async () => {
   }).listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const withheld = withheldOnLive();
+  liveEdge = createServer((request, response) => {
+    if (withheld.matches((request.url ?? "").split("?")[0] ?? "")) request.url = withheld.to;
+    app(request, response);
+  }).listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => liveEdge.once("listening", resolve));
+  liveOrigin = `http://127.0.0.1:${(liveEdge.address() as AddressInfo).port}`;
   browser = await launchChromium();
 });
 
 afterAll(async () => {
   await browser?.close();
+  await new Promise<void>((resolve) => liveEdge?.close(() => resolve()));
   await new Promise<void>((resolve) => server?.close(() => resolve()));
 });
 
@@ -116,7 +155,17 @@ const visit = async (
 const timesAsked = (path: string): number => asked.filter((one) => one === path).length;
 
 describe("a page in Chromium", () => {
-  it.each(["/", "/methodology"])("comes alive without a complaint: %s", async (path) => {
+  it.each([
+    "/",
+    "/store",
+    "/local",
+    "/methodology",
+    "/scanner",
+    "/privacy",
+    "/terms",
+    "/agentic-shop",
+    "/agentic-shop/privacy",
+  ])("comes alive without a complaint: %s", async (path) => {
     const { page, complaints } = await visit(path);
     await page.evaluate(() => {
       (window as Window & { stayed?: boolean }).stayed = true;
@@ -138,6 +187,8 @@ describe("a page's first visit in Chromium", () => {
   it.each([
     ["/", "routes/home"],
     ["/methodology", "routes/methodology"],
+    ["/agentic-shop", "routes/agentic-shop"],
+    ["/sell", "routes/sell"],
     ["/no-such-page", "routes/not-found"],
   ])(
     "loads the scripts the speed budget counts for it, no more and no fewer: %s",
@@ -159,6 +210,106 @@ describe("a page's first visit in Chromium", () => {
       await context.close();
     },
   );
+});
+
+describe("the sell-to-agents page", () => {
+  it("shows its still life", async () => {
+    const { page } = await visit("/agentic-shop");
+    const image = page.locator("main img").first();
+    await page.waitForFunction(
+      (element) => element instanceof HTMLImageElement && element.complete,
+      await image.elementHandle(),
+    );
+
+    const shown = await image.evaluate((element: HTMLImageElement) => ({
+      width: element.naturalWidth,
+      from: new URL(element.currentSrc).pathname,
+    }));
+    expect(shown.width).toBeGreaterThan(0);
+    expect(shown.from).toMatch(/^\/agentic-shop\/merchant-still-life-\d+\.webp$/);
+    await page.context().close();
+  });
+});
+
+describe("the merchant landing", () => {
+  it("comes alive without a complaint and goes home without a reload", async () => {
+    const { page, complaints } = await visit("/sell");
+    await page.evaluate(() => {
+      (window as Window & { stayed?: boolean }).stayed = true;
+    });
+
+    await page.locator("header a.wordmark").click();
+    await page.waitForURL(`${origin}/`);
+    await page.locator("h1").first().waitFor();
+    expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+
+  it("folds its sections into a menu the burger opens, and closes it on a chosen link, on Escape and on growing to the desktop width", async () => {
+    const { page, complaints } = await visit("/sell");
+    await page.setViewportSize({ width: 390, height: 800 });
+    const burger = page.locator(".masthead__burger");
+    const menu = page.locator("#site-menu");
+    const opened = async () => {
+      await burger.click();
+      await menu.waitFor({ state: "visible" });
+      expect(await burger.getAttribute("aria-expanded")).toBe("true");
+      expect(await burger.getAttribute("aria-label")).toBe("Close menu");
+    };
+
+    expect(await menu.isVisible()).toBe(false);
+    await opened();
+    await menu.getByRole("link", { name: "Payments" }).click();
+    await menu.waitFor({ state: "hidden" });
+    expect(await burger.getAttribute("aria-label")).toBe("Open menu");
+
+    await opened();
+    await menu.getByRole("link", { name: "Documentation" }).focus();
+    await page.keyboard.press("Escape");
+    await menu.waitFor({ state: "hidden" });
+    expect(await burger.evaluate((element) => element === document.activeElement)).toBe(true);
+
+    await opened();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await menu.waitFor({ state: "hidden" });
+    expect(await burger.getAttribute("aria-expanded")).toBe("false");
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+
+  it("is, behind the live channel's edge, the page that says there is none, and stays it once the browser takes over, back and forth", async () => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const page = await context.newPage();
+    const complaints: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error" && !message.text().startsWith("Failed to load resource")) {
+        complaints.push(message.text());
+      }
+    });
+    page.on("pageerror", (error) => complaints.push(error.message));
+    const withheld = async () => {
+      await page.waitForLoadState("networkidle");
+      expect(new URL(page.url()).pathname).toBe("/sell");
+      expect(await page.locator("h1").first().textContent()).toBe("Page not found");
+      expect(await page.locator(".sell").count()).toBe(0);
+    };
+
+    const answered = await page.goto(`${liveOrigin}/sell`);
+    expect(answered?.status()).toBe(404);
+    await withheld();
+
+    // Going back is the router's own navigation: it asks for the landing's
+    // route and data itself, which the edge must withhold as it does the page.
+    await page.locator("a.brand").click();
+    await page.waitForURL(`${liveOrigin}/`);
+    const home = await page.locator("h1").first().textContent();
+    await page.goBack();
+    await page.waitForFunction((left) => document.querySelector("h1")?.textContent !== left, home);
+    await withheld();
+    expect(complaints).toEqual([]);
+    await context.close();
+  });
 });
 
 describe("a click on a link", () => {

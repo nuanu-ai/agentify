@@ -18,3 +18,12 @@ export const AGENTIC_SHOP_RESEARCH = {
     comparison: "AI-referred visits vs non-AI visits",
   },
 } as const;
+
+/**
+ * The card a link to the sell-to-agents pages unfurls into, drawn at this
+ * address; the alternative text says what the image says.
+ */
+export const AGENTIC_SHOP_CARD_IMAGE = {
+  path: "/agentic-shop/opengraph-image",
+  alt: "Agentify — Sell to agents: your next customer sends an agent",
+} as const;
