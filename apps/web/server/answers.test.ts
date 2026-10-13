@@ -132,10 +132,14 @@ describe("a public page", () => {
     expect(answered.headers.get("cache-control")).toBe(NOBODY_KEEPS);
   });
 
-  it.each(["/_.data", "/methodology.data"])(
-    "has data a browser may keep for a moment, so a hover's fetch serves the click: %s",
-    async (path) => {
-      const answered = await ask(path);
+  it.each([
+    ["/_.data", {}],
+    ["/methodology.data", {}],
+    ["/methodology.data", { purpose: "prefetch" }],
+  ])(
+    "has data a browser may keep for a moment, so a hover's fetch serves the click: %s %o",
+    async (path, headers) => {
+      const answered = await ask(path, { headers });
 
       expect(answered.status).toBe(200);
       expect(answered.headers.get("cache-control")).toBe("public, max-age=10");
@@ -172,12 +176,50 @@ describe("an address the scanner has no page for", () => {
     expect((await ask("/no-such-page", { method: "HEAD" })).status).toBe(404);
   });
 
-  it("is a plain 404 where the address cannot be decoded", async () => {
+  it("is a plain 404, kept by nobody, where the address cannot be decoded", async () => {
     const answered = await ask("/%E0%A4%A");
 
     expect(answered.status).toBe(404);
     expect(answered.headers.get("content-type")).toMatch(/^text\/plain/);
+    expect(answered.headers.get("cache-control")).toBe(NOBODY_KEEPS);
+    expect(answered.headers.get("etag")).toBeNull();
   });
+
+  it.each([
+    ["read", "/api/health/live.data", "GET"],
+    ["posted to", "/api/v1/consent.data", "POST"],
+  ])(
+    "is a 404, and leaves no line in the log, where it asks for an API route's data as a page's: %s",
+    async (_how, path, method) => {
+      const lines: string[] = [];
+      vi.spyOn(console, "error").mockImplementation((line: unknown) => {
+        lines.push(String(line));
+      });
+
+      const answered = await ask(path, {
+        method,
+        headers: { origin: "http://localhost:3000", "content-type": "text/plain" },
+        ...(method === "POST" ? { body: "x" } : {}),
+      });
+
+      expect(answered.status).toBe(404);
+      expect(answered.headers.get("cache-control")).toBe(NOBODY_KEEPS);
+      expect(lines).toEqual([]);
+    },
+  );
+});
+
+describe("a page asked with a method it does not take", () => {
+  it.each(["PUT", "DELETE", "OPTIONS"])(
+    "is refused with 405 naming the methods it takes: %s",
+    async (method) => {
+      const answered = await ask("/methodology", { method });
+
+      expect(answered.status).toBe(405);
+      expect(answered.headers.get("allow")).toBe("GET, HEAD");
+      expect(answered.headers.get("cache-control")).toBe(NOBODY_KEEPS);
+    },
+  );
 });
 
 describe("an address with a trailing slash", () => {
