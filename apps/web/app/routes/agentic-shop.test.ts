@@ -6,6 +6,7 @@
 
 import { existsSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SELL_TO_AGENTS_PICTURE } from "../../content/pictures";
 import { buildLlmsText } from "../../lib/llms";
 import { ask } from "../../testing/scanner";
 
@@ -27,6 +28,8 @@ const drawn = async (path: string) => {
     html,
     links: [...html.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)].map((match) => match[1] ?? ""),
     title: head.match(/<title>([^<]*)<\/title>/)?.[1],
+    /** Every value the head gives a reader or a link preview, which tags hide from the text. */
+    headWords: [...head.matchAll(/ content="([^"]*)"/g)].map((match) => match[1]).join("\n"),
     meta: (key: string) =>
       head.match(new RegExp(`<meta (?:name|property)="${key}" content="([^"]*)"`))?.[1],
     canonical: head.match(/<link rel="canonical" href="([^"]*)"/)?.[1],
@@ -34,7 +37,7 @@ const drawn = async (path: string) => {
 };
 
 describe("the sell-to-agents page", () => {
-  it("carries one brand: the page, the privacy notice, their heads, the header and llms.txt name no second one", async () => {
+  it("carries one brand: the page, the privacy notice, their heads, the header, the card and llms.txt name no second one", async () => {
     // Words are compared the way a reader meets them: tags stripped, spacing
     // collapsed, case ignored, so neither a capitalised nor a split rendering
     // of the second name slips through.
@@ -44,9 +47,15 @@ describe("the sell-to-agents page", () => {
         .replace(/&nbsp;|\s+/g, " ")
         .toLowerCase();
 
+    const page = await drawn("/agentic-shop");
+    const notice = await drawn("/agentic-shop/privacy");
     for (const surface of [
-      (await drawn("/agentic-shop")).html,
-      (await drawn("/agentic-shop/privacy")).html,
+      page.html,
+      page.headWords,
+      notice.html,
+      notice.headWords,
+      SELL_TO_AGENTS_PICTURE.alt,
+      SELL_TO_AGENTS_PICTURE.tag,
       buildLlmsText(),
     ])
       expect(asRead(surface)).not.toContain("agentic shop");
@@ -93,6 +102,7 @@ describe("the sell-to-agents page", () => {
     expect(page.meta("og:type")).toBe("website");
     expect(page.meta("og:image")).toBe("https://agentify.ad/agentic-shop/opengraph-image");
     expect(page.meta("twitter:image")).toBe("https://agentify.ad/agentic-shop/opengraph-image");
+    expect(page.meta("og:image:alt")).toBe(SELL_TO_AGENTS_PICTURE.alt);
   });
 
   it("shows its still life at a width the screen asks for, and fetches it with the page", async () => {

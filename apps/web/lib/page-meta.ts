@@ -1,5 +1,6 @@
 import type { MetaDescriptor } from "react-router";
 
+import { type Picture, SITE_PICTURE } from "../content/pictures";
 import type { PublicAppConfig } from "./app-config";
 
 /** What a page says of itself in its head; every part may be left to the site's default. */
@@ -28,21 +29,12 @@ export type PageHead = Readonly<{
 export type PageCard = Readonly<{
   title?: string;
   description?: string;
-  image?: Readonly<{ path: string; alt: string }>;
+  image?: Picture;
   addressed?: boolean;
 }>;
 
 const DEFAULT_DESCRIPTION =
   "A public-HTTP diagnostic showing what your website makes readable to AI agents.";
-
-/** The card a link to any page unfurls into, served at `/opengraph-image`. */
-const SHARE_IMAGE = {
-  path: "/opengraph-image",
-  type: "image/png",
-  width: "1200",
-  height: "630",
-  alt: "Agentify website agent-readiness diagnostic",
-};
 
 /**
  * Where the root route's loader put the site's settings, for a route's `meta`:
@@ -72,11 +64,11 @@ export function pageMeta(config: PublicAppConfig, head: PageHead = {}): MetaDesc
         ? head.title
         : `${head.title} · ${config.displayBrand}`;
   const description = head.description ?? DEFAULT_DESCRIPTION;
+  const picture = head.card?.image ?? SITE_PICTURE;
   const card = {
     title: head.card?.title ?? title,
     description: head.card?.description ?? description,
-    image: new URL(head.card?.image?.path ?? SHARE_IMAGE.path, config.baseUrl).toString(),
-    alt: head.card?.image?.alt ?? SHARE_IMAGE.alt,
+    image: new URL(picture.path, config.baseUrl).toString(),
   };
   const canonical =
     head.canonical === undefined ? undefined : new URL(head.canonical, config.baseUrl);
@@ -105,18 +97,18 @@ export function pageMeta(config: PublicAppConfig, head: PageHead = {}): MetaDesc
           { property: "og:type", content: "website" },
         ]),
     { property: "og:image", content: card.image },
-    { property: "og:image:type", content: SHARE_IMAGE.type },
-    { property: "og:image:width", content: SHARE_IMAGE.width },
-    { property: "og:image:height", content: SHARE_IMAGE.height },
-    { property: "og:image:alt", content: card.alt },
+    { property: "og:image:type", content: picture.type },
+    { property: "og:image:width", content: String(picture.width) },
+    { property: "og:image:height", content: String(picture.height) },
+    { property: "og:image:alt", content: picture.alt },
     { name: "twitter:card", content: "summary_large_image" },
     { name: "twitter:title", content: card.title },
     { name: "twitter:description", content: card.description },
     { name: "twitter:image", content: card.image },
-    { name: "twitter:image:alt", content: card.alt },
-    { name: "twitter:image:type", content: SHARE_IMAGE.type },
-    { name: "twitter:image:width", content: SHARE_IMAGE.width },
-    { name: "twitter:image:height", content: SHARE_IMAGE.height },
+    { name: "twitter:image:alt", content: picture.alt },
+    { name: "twitter:image:type", content: picture.type },
+    { name: "twitter:image:width", content: String(picture.width) },
+    { name: "twitter:image:height", content: String(picture.height) },
   ];
 }
 
