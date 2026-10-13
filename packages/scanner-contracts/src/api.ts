@@ -24,8 +24,6 @@ export const apiErrorSchema = z
 export const apiErrorEnvelopeSchema = z.object({ error: apiErrorSchema }).strict();
 export type ApiErrorEnvelope = z.infer<typeof apiErrorEnvelopeSchema>;
 
-export const CREATE_SCAN_REQUEST_CONTRACT_VERSION = "create-scan-request-v1.1.0" as const;
-
 const EXPLICIT_URL_SCHEME = /^[a-z][a-z\d+.-]*:/i;
 
 export function scanUrlWasSubmittedWithoutScheme(value: unknown): boolean {
@@ -120,8 +118,6 @@ export const scanStatusResponseSchema = z
   .strict();
 export type ScanStatusResponse = z.infer<typeof scanStatusResponseSchema>;
 
-export const REGISTRATION_REQUEST_CONTRACT_VERSION = "registration-request-v2.0.0" as const;
-
 export const phoneE164Schema = z
   .string()
   .trim()
@@ -162,7 +158,6 @@ export const registrationResponseSchema = z.discriminatedUnion("status", [
     })
     .strict(),
 ]);
-export type RegistrationResponse = z.infer<typeof registrationResponseSchema>;
 
 export const contactAccessResponseSchema = z.object({ status: z.literal("verified") }).strict();
 
@@ -271,4 +266,3 @@ export const clientAnalyticsEventRequestSchema = z
     properties: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
   })
   .strict();
-export type ClientAnalyticsEventRequest = z.infer<typeof clientAnalyticsEventRequestSchema>;

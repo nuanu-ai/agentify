@@ -132,8 +132,6 @@ export const reportIdentityRequestSchema = z.union([
 
 export type SendReportLinkRequest = z.infer<typeof sendReportLinkRequestSchema>;
 export type SendReportLinkResponse = z.infer<typeof sendReportLinkResponseSchema>;
-export type ReadSessionRequest = z.infer<typeof readSessionRequestSchema>;
 export type ReadSessionResponse = z.infer<typeof readSessionResponseSchema>;
 export type DeleteUnattachedPersonRequest = z.infer<typeof deleteUnattachedPersonRequestSchema>;
 export type DeleteUnattachedPersonResponse = z.infer<typeof deleteUnattachedPersonResponseSchema>;
-export type ReportIdentityRequest = z.infer<typeof reportIdentityRequestSchema>;

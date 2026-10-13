@@ -5,7 +5,6 @@ export const segmentSchema = z.enum(SEGMENTS);
 export type Segment = z.infer<typeof segmentSchema>;
 
 export const scanStatusSchema = z.enum(SCAN_STATUSES);
-export type ScanStatus = z.infer<typeof scanStatusSchema>;
 
 export const checkStatusSchema = z.enum(CHECK_STATUSES);
 export type CheckStatus = z.infer<typeof checkStatusSchema>;
