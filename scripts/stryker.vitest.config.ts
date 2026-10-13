@@ -12,8 +12,9 @@
  * compiles, and adds an alias for every workspace package, built from its
  * `exports` map, pointing into the sandbox. The settings are imported by name:
  * merging the default export would bring the workspace's own alias, which
- * points at the real checkout, and vite takes the first match. A package is a directory under `packages/` or `apps/` that
- * holds a `package.json`, as in `scripts/mutate.mjs`.
+ * points at the real checkout, and vite takes the first match. A package is a
+ * directory under `packages/` or `apps/` that holds a `package.json`, as in
+ * `scripts/mutate.mjs`.
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
