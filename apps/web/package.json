@@ -6,6 +6,7 @@
   "scripts": {
     "prebuild": "pnpm --filter @agentify/scanner-contracts --filter @agentify/analytics --filter @agentify/scanner-database --filter @agentify/observability --filter @agentify/scanner --filter @agentify/remediation build",
     "build": "react-router build && tsx server/precompress.ts",
+    "budget": "tsx server/budget.ts",
     "clean": "rm -rf dist .react-router",
     "predev": "pnpm --filter @agentify/scanner-contracts --filter @agentify/analytics --filter @agentify/scanner-database --filter @agentify/observability --filter @agentify/scanner --filter @agentify/remediation build",
     "dev": "tsx server/dev.ts",
