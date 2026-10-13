@@ -100,8 +100,16 @@ export function SiteDoors({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: Re
   );
 }
 
-/** The bar over every page of the site: the lockup, the public site's sections and the doors. */
-export function SiteHeader({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: ReactNode }>) {
+/**
+ * The bar over every page of the site: the lockup, the public site's sections
+ * and the doors, then `menu`, a surface's own menu, at the end of the row; a
+ * menu that opens a panel places it under the bar, which stays in view.
+ */
+export function SiteHeader({
+  visitor,
+  menu,
+  ...drawn
+}: Drawn & Readonly<{ visitor?: ReactNode; menu?: ReactNode }>) {
   return (
     <header className="site-header">
       <a className="skip" href="#main">
@@ -121,6 +129,7 @@ export function SiteHeader({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: R
             ))}
           </nav>
           <SiteDoors visitor={visitor} {...drawn} />
+          {menu}
         </div>
       </div>
     </header>

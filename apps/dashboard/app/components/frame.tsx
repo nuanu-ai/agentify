@@ -2,11 +2,13 @@
  * The frame every screen about a merchant's selling is drawn in: the site
  * header with who is signed in and the way out, and under it the dashboard's
  * working area, its numbered sections in a sidebar beside a bar with the
- * screen's title and the merchant's selling state.
+ * screen's title and the merchant's selling state. Where there is no room for
+ * the sidebar, a menu at the end of the header's row holds the sections, the
+ * documentation and who is signed in with the way out.
  */
 
 import { Footer, OnItsWay, type Section, SectionNav, SignedIn, SiteHeader } from "@agentify/ui";
-import type { ReactNode } from "react";
+import { type KeyboardEvent, type ReactNode, useRef } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { DashboardDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
@@ -55,6 +57,40 @@ function Unnamed({ base }: Readonly<{ base: string }>) {
   );
 }
 
+/**
+ * A details element, so it opens and closes with no script; Escape closes it
+ * too and hands the focus back to the button that opened it, which a details
+ * element does not do on its own.
+ */
+function Menu({
+  sections,
+  account,
+}: Readonly<{ sections: readonly Section[]; account: ReactNode }>) {
+  const menu = useRef<HTMLDetailsElement>(null);
+  const closeOnEscape = (event: KeyboardEvent<HTMLDetailsElement>) => {
+    const details = menu.current;
+    if (event.key !== "Escape" || details === null || !details.open) return;
+    details.open = false;
+    details.querySelector("summary")?.focus();
+  };
+  return (
+    <details className="app-menu" ref={menu} onKeyDown={closeOnEscape}>
+      <summary aria-label="Menu">
+        <span />
+        <span />
+        <span />
+      </summary>
+      <div className="app-menu-panel">
+        <SectionNav className="app-menu-sections" label="Dashboard sections" sections={sections} />
+        <a className="app-menu-docs" href="/docs/">
+          Open the docs →
+        </a>
+        <div className="app-menu-account">{account}</div>
+      </div>
+    </details>
+  );
+}
+
 /** `heading` is the bar's words where they are not the window's title. */
 export function Frame({
   tab,
@@ -93,16 +129,18 @@ export function Frame({
     current: key === marked,
     to: `/${key}`,
   }));
+  const signedIn = (
+    <SignedIn who={gate.who} account={`${chrome.base}/settings`} signOut="/sign-out" />
+  );
   return (
-    <div className="page">
+    <div className="page app-frame">
       <title>{`${title} — Agentify`}</title>
       <OnItsWay />
       <SiteHeader
         surface="dashboard"
         link={Link}
-        visitor={
-          <SignedIn who={gate.who} account={`${chrome.base}/settings`} signOut="/sign-out" />
-        }
+        visitor={signedIn}
+        menu={<Menu sections={sections} account={signedIn} />}
       />
       <div className="app-shell">
         <aside className="app-sidebar">
@@ -112,26 +150,6 @@ export function Frame({
             <span>Need help?</span>
             <a href="/docs/">Open the docs →</a>
           </div>
-          {/* A details element, so it opens and closes with no script. Who is
-              signed in and the way out stay in the site header at every
-              width, so the menu does not repeat them. */}
-          <details className="app-menu">
-            <summary aria-label="Menu">
-              <span />
-              <span />
-              <span />
-            </summary>
-            <div className="app-menu-panel">
-              <SectionNav
-                className="app-menu-sections"
-                label="Dashboard sections"
-                sections={sections}
-              />
-              <a className="app-menu-docs" href="/docs/">
-                Open the docs →
-              </a>
-            </div>
-          </details>
         </aside>
         <div className="app-workspace">
           {/* The stack's band heads the workspace rather than the window: a
