@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { brotliCompressSync, brotliDecompressSync, gunzipSync, gzipSync } from "node:zlib";
 import express from "express";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { precompressedFrom } from "./pages.js";
+import { precompressedFrom } from "./assets.js";
 
 const SCRIPT = "console.log('the page came alive');\n".repeat(40);
 
@@ -26,7 +26,7 @@ beforeAll(async () => {
   // Under a directory whose name starts with a dot, as a checkout under a
   // tool's hidden directory is: a file server that refuses dotfiles by default
   // reads the whole path and refuses every file there.
-  directory = await mkdtemp(join(await mkdtemp(join(tmpdir(), ".dashboard-")), "assets-"));
+  directory = await mkdtemp(join(await mkdtemp(join(tmpdir(), ".surface-")), "assets-"));
   await writeFile(join(directory, "entry-AbC123.js"), SCRIPT);
   await writeFile(join(directory, "entry-AbC123.js.br"), brotliCompressSync(SCRIPT));
   await writeFile(join(directory, "entry-AbC123.js.gz"), gzipSync(SCRIPT));
@@ -34,13 +34,13 @@ beforeAll(async () => {
   await writeFile(join(directory, "styles-XyZ789.css"), "body{margin:0}");
   await writeFile(join(directory, "notes.txt"), "not something the build writes");
   const app = express();
-  app.use("/dashboard/assets", await precompressedFrom(directory));
+  app.use("/assets", await precompressedFrom(directory));
   app.use((_request, response) => {
     response.status(418).send("fell through");
   });
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
-  url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/dashboard/assets`;
+  url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/assets`;
   close = () => new Promise((resolve) => server.close(() => resolve()));
 });
 
@@ -117,7 +117,7 @@ describe("the browser's scripts and styles", () => {
     for (const name of [
       "missing-000.js",
       "notes.txt",
-      "..%2Fpages.ts",
+      "..%2Fassets.ts",
       "..%2F..%2Fpackage.json",
       // Not a percent-encoding at all, which a stranger can send.
       "entry-AbC123.js%E0%A4%A",
