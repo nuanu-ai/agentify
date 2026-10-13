@@ -174,18 +174,30 @@ describe("a report's page", () => {
     expect(given).toContain("Card saved");
   });
 
-  it("hands the browser no setup secret but the one of a card still waiting on the provider", async () => {
+  it("hands the browser a saved card's id, state and pending setup secret, and nothing else of it", async () => {
+    // The pending setup's secret restores the provider's form after a reload;
+    // nothing else the stored signal holds is the browser's business.
     world.card = {
       signalId: "0190f4c5-0000-7000-8000-00000000e001",
       status: "setup_pending",
       clientSecret: "the-setup-secret-the-provider-gave",
       adapter: "local",
+      leadId: "0190f4c5-0000-7000-8000-00000000d001",
+      setupIntentId: "the-provider-s-own-setup-id",
     };
-    const pending = JSON.stringify(await load());
-    world.card = { ...world.card, status: "attached", clientSecret: null };
-    const saved = JSON.stringify(await load());
 
-    expect(pending).toContain("the-setup-secret-the-provider-gave");
-    expect(saved).not.toContain("the-setup-secret-the-provider-gave");
+    const handed = await load();
+
+    expect(handed.kind === "report" ? handed.view.cardSignal : null).toEqual({
+      adapter: "local",
+      publishableKey: null,
+      initialSignal: {
+        signalId: "0190f4c5-0000-7000-8000-00000000e001",
+        status: "setup_pending",
+        clientSecret: "the-setup-secret-the-provider-gave",
+      },
+    });
+    expect(JSON.stringify(handed)).not.toContain("the-provider-s-own-setup-id");
+    expect(JSON.stringify(handed)).not.toContain("00000000d001");
   });
 });
