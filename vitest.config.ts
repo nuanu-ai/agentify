@@ -76,6 +76,14 @@ const integrationTests: TestOptions = {
   include: ["apps/*/**/*.integration.test.ts", "packages/*/**/*.integration.test.ts"],
 };
 
+/**
+ * The scanner draws its pictures with WebAssembly it imports with `?inline`,
+ * which Vite inlines only as an asset. A test importing that code directly
+ * compiles it under this config, and under the mutation runner's, which takes
+ * this by name.
+ */
+export const scannerAssets = ["**/*.wasm"];
+
 export const scannerSourceAlias = scannerSources.map(([specifier, path]) => ({
   find: new RegExp(`^${specifier.replaceAll("/", "\\/")}$`),
   replacement: source(path),
@@ -94,10 +102,7 @@ const isTypegenRace = (error: unknown): boolean =>
 
 export default defineConfig({
   resolve: { alias: scannerSourceAlias },
-  // The scanner draws its pictures with WebAssembly it imports with
-  // `?inline`, which Vite inlines only as an asset; a test importing that
-  // code directly compiles it here.
-  assetsInclude: ["**/*.wasm"],
+  assetsInclude: scannerAssets,
   test: {
     onUnhandledError: (error) => !isTypegenRace(error),
     // Two projects rather than two configs: a file the configuration does not
