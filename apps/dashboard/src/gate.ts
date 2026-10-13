@@ -18,7 +18,7 @@ import {
  * screen for a person with reports, and never the merchant itself, which only
  * the explicit press makes.
  */
-export const LATEST_REPORT = "/report/latest";
+const LATEST_REPORT = "/report/latest";
 
 /** A merchant's owner starts on the dashboard, anybody else on the scanner. */
 export const startOf = (base: string, person: Person): string =>
@@ -39,7 +39,7 @@ export const clearingLines = (identity: DashboardIdentity, secure: boolean): rea
       `${name}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly;${secure ? " Secure;" : ""} SameSite=Lax`,
   );
 
-export interface GateQuestion {
+interface GateQuestion {
   readonly cookie: string | undefined;
   readonly method: string;
   /** The path asked for, the dashboard's own prefix included. */
@@ -48,7 +48,7 @@ export interface GateQuestion {
   readonly drawnFor: unknown;
 }
 
-export type GateAnswer =
+type GateAnswer =
   /** Sent to the sign-in, which says why where it can, with the cookies cleared. */
   | Readonly<{ kind: "signed-out"; location: string; setCookies: readonly string[] }>
   /** A form drawn for an address that is not the one signed in now, or for none. */

@@ -52,21 +52,7 @@ import {
   verifications,
 } from "./schema.js";
 
-export type {
-  AccountMerchant,
-  AttachMerchantResult,
-  DashboardDestination,
-  DashboardIdentity,
-  DashboardLinkResult,
-  LinkDestination,
-  LinkRequestResult,
-  LiveSession,
-  MerchantPerson,
-  Person,
-  UnattachedPerson,
-} from "./dashboard-entry.js";
-
-export interface AccountSummary {
+interface AccountSummary {
   readonly email: string;
   readonly createdAt: Date;
   readonly sessions: number;
@@ -113,12 +99,12 @@ export const SESSION_DAYS = 30;
  * cookie handed back on that visit carries the new end.
  */
 const SESSION_RENEWAL_SECONDS = 24 * 60 * 60;
-export const LINK_TTL_SECONDS = 60 * 60;
+const LINK_TTL_SECONDS = 60 * 60;
 export const LINK_RATE_WINDOW_MS = 60 * 60 * 1000;
-export const LINK_RATE_LIMIT = 3;
+const LINK_RATE_LIMIT = 3;
 export const LINK_MIN_INTERVAL_MS = 60 * 1000;
-export const LINK_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-export const LINK_PROOF_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const LINK_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const LINK_PROOF_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const LINK_CLEANUP_BATCH = 100;
 const REPORT_DIGEST_KEY_ID = "digest-v1";
 const RAW_TOKEN = /^[A-Za-z0-9]{32}$/;

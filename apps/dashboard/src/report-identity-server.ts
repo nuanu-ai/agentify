@@ -22,7 +22,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import type { Identity } from "./identity.js";
 
 export const REPORT_IDENTITY_PATH = "/internal/report-identity";
-export const REPORT_IDENTITY_PORT = 3002;
+const REPORT_IDENTITY_PORT = 3002;
 
 /**
  * A cookie header of the longest length the contract carries, with room for the

@@ -83,7 +83,7 @@ const waitInWords = (seconds: number): string =>
  * counted against a deadline, because a background tab's timers are throttled
  * and a tab that slept through the wait must get the button back at once.
  */
-export function WaitingButton({
+function WaitingButton({
   seconds,
   pending,
   label,

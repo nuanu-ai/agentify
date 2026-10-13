@@ -4,7 +4,7 @@
  * internal route is on `Identity` in `identity.ts` and does not widen this.
  */
 
-export interface AccountMerchant {
+interface AccountMerchant {
   readonly id: string;
 }
 
@@ -94,7 +94,7 @@ export type LiveSession = Readonly<{
  * `renew: false` reads a session without moving its end, for an answer that
  * cannot pass a renewed cookie on to the browser.
  */
-export type SessionReading = Readonly<{ renew?: boolean }>;
+type SessionReading = Readonly<{ renew?: boolean }>;
 
 export interface DashboardIdentity {
   readonly cookieNames: readonly string[];

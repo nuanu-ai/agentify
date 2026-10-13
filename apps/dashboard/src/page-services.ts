@@ -79,7 +79,7 @@ export type Outcome<View> =
  * adds the way back: its own address where a page failed, so the merchant
  * keeps their place, and the first screen where a form did.
  */
-export interface Problem {
+interface Problem {
   readonly status: number;
   readonly said: string;
 }
