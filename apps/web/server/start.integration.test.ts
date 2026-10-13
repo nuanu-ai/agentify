@@ -255,7 +255,8 @@ describe("the built scanner, when a failure reaches it that no request waits on"
       const started = await startIn(directory, {}, ["--import", "./fails-when-asked.mjs"]);
       try {
         const before = started.output().length;
-        const exited = once(started.scanner, "exit") as Promise<[number | null]>;
+        // `close` rather than `exit`: only then has everything it wrote been read.
+        const exited = once(started.scanner, "close") as Promise<[number | null]>;
 
         started.scanner.kill("SIGUSR2");
         const [code] = await exited;
