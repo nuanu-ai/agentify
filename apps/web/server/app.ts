@@ -15,7 +15,7 @@
  * and `server.js` starts it.
  */
 
-import type { Server } from "node:http";
+import { METHODS, type Server } from "node:http";
 import { join } from "node:path";
 import * as build from "virtual:react-router/server-build";
 import { precompressedFrom } from "@agentify/ui/assets";
@@ -29,7 +29,7 @@ import express, {
 } from "express";
 import { matchRoutes, type RouteObject, type ServerBuild } from "react-router";
 import { pageOf, SECURITY_HEADERS, UNKEPT_PAGE_CACHE } from "../lib/server/answer-headers";
-import { logUnhandledRequestError } from "../lib/server/http";
+import { logBackgroundFailure, logUnhandledRequestError } from "../lib/server/http";
 import { retryPendingScannerIdentityDeletions } from "../lib/server/scanner-identity-deletion";
 import { startDeletionRetries } from "./deletion-retries";
 
@@ -73,6 +73,37 @@ const routeTree = (built: Pick<ServerBuild, "routes">): RouteObject[] => {
   return childrenOf(undefined);
 };
 
+const carried = (method: string): boolean => {
+  try {
+    new Request("http://scanner.invalid/", { method });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The methods Node lets through that a fetch `Request`, the form React Router
+ * is handed a request in, refuses to carry. No address of the scanner's takes
+ * them, and React Router would fail on them as the process's own error.
+ */
+const UNCARRIED = new Set(METHODS.filter((method) => !carried(method)));
+
+const ROUTED_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
+
+/** A request's path as React Router reads it, with `/./`, `/../` and `%2e` taken out. */
+const routedPath = (request: Request): string =>
+  new URL(request.originalUrl, "http://scanner.invalid").pathname;
+
+const decodes = (path: string): boolean => {
+  try {
+    decodeURI(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /** A short plain answer of the process's own, which nobody keeps. */
 const plainly = (response: Response, status: number, words: string): void => {
   response.status(status).setHeader("cache-control", UNKEPT_PAGE_CACHE);
@@ -87,6 +118,14 @@ export function scannerApp(parts: ScannerParts): Express {
 
   app.use((_request, response, next) => {
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) response.setHeader(name, value);
+    next();
+  });
+
+  app.use((request, response, next) => {
+    if (UNCARRIED.has(request.method)) {
+      plainly(response, 405, "Method Not Allowed");
+      return;
+    }
     next();
   });
 
@@ -111,21 +150,19 @@ export function scannerApp(parts: ScannerParts): Express {
   });
 
   // A path that cannot be decoded is no address of the scanner's, and React
-  // Router would write it, as the stranger sent it, to the log.
+  // Router would write it, as the stranger sent it, to the log. Nor is a
+  // target that is no path, such as the `*` of `OPTIONS *`, which React
+  // Router cannot read at all.
   app.use((request, response, next) => {
-    try {
-      decodeURI(request.path);
-      next();
-    } catch {
-      plainly(response, 404, "Not Found");
-    }
+    if (request.originalUrl.startsWith("/") && decodes(request.path)) next();
+    else plainly(response, 404, "Not Found");
   });
 
   // A page's data is asked for at `<page>.data`, and React Router would answer
   // the same address for a route that draws no page by running it, an API
   // route's action included, so no page's data is there to give.
   app.use((request, response, next) => {
-    const { page, data } = pageOf(request.path);
+    const { page, data } = pageOf(routedPath(request));
     const leaf = data ? matchRoutes(routes, page)?.at(-1)?.route : undefined;
     if ((leaf?.handle as { draws: boolean } | undefined)?.draws === false) {
       plainly(response, 404, "Not Found");
@@ -136,6 +173,19 @@ export function scannerApp(parts: ScannerParts): Express {
 
   if (parts.assets !== undefined) app.use("/assets", parts.assets);
   if (parts.files !== undefined) app.use(parts.files);
+
+  // React Router refuses a method other than these with 405 before it looks
+  // at the address, as a page refuses it. An address no route of its own
+  // takes answers such a method as it answers a read, with the page that says
+  // there is no such page.
+  app.use((request, _response, next) => {
+    if (!ROUTED_METHODS.has(request.method)) {
+      const { page } = pageOf(routedPath(request));
+      if (matchRoutes(routes, page)?.at(-1)?.route.path === "*") request.method = "GET";
+    }
+    next();
+  });
+
   app.use(createRequestHandler({ build, mode: parts.mode }));
 
   app.use((thrown: unknown, request: Request, response: Response, next: NextFunction) => {
@@ -161,13 +211,23 @@ const CLOSING_GRACE_MS = 5_000;
  * (3000) of `HOSTNAME` (every interface), with the background retry of
  * identity deletions where the dashboard's private route is configured. On
  * SIGTERM or SIGINT it stops taking requests, lets those in flight finish
- * within the grace, and exits.
+ * within the grace, and exits. An exception or a rejection nothing caught
+ * leaves the process in a state nobody knows, so it is logged by its kind
+ * alone and the process exits with 1, for its supervisor to start afresh.
  *
  * The folder is named by the caller, because this code is wherever the build
  * put it: in `dist/server/index.js`, or in a chunk beside it once an
  * `import()` splits the build.
  */
 export async function serve({ client }: Readonly<{ client: string }>): Promise<Server> {
+  process.once("uncaughtException", (thrown) => {
+    logBackgroundFailure("web_uncaught_exception", thrown);
+    process.exit(1);
+  });
+  process.once("unhandledRejection", (thrown) => {
+    logBackgroundFailure("web_unhandled_rejection", thrown);
+    process.exit(1);
+  });
   const app = scannerApp({
     assets: await precompressedFrom(join(client, "assets")),
     files: express.static(client, { index: false, redirect: false }),
