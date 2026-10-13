@@ -31,12 +31,12 @@ import { GET as readFullReport } from "../../app/api/v1/reports/[scanId]/route";
 import { GET as downloadTeaserPrompt } from "../../app/api/v1/scans/[id]/remediation-prompt/download/route";
 import { GET as getTeaserPrompt } from "../../app/api/v1/scans/[id]/remediation-prompt/route";
 import { POST as publishShare } from "../../app/api/v1/scans/[id]/share/route";
-import { GET as previewShare } from "../../app/api/v1/scans/[id]/share-preview/route";
 import { POST as acceptScan } from "../../app/api/v1/scans/route";
 import { GET as getContactAccess } from "../../app/api/v2/scans/[id]/contact-access/route";
 import { POST as requestScannerRegistration } from "../../app/api/v2/scans/[id]/registrations/route";
 import { GET as readVisitor } from "../../app/api/v2/session/route";
 import { action as consent } from "../../app/routes/api/v1/consent";
+import { loader as previewShareRoute } from "../../app/routes/api/v1/scans.id.share-preview";
 import { loader as shareImage } from "../../app/routes/api/v1/shares.slug.image";
 import { loader as shareCard } from "../../app/routes/s.slug.opengraph-image";
 import { latestReportOf, visitorOf } from "./auth";
@@ -58,6 +58,8 @@ import { createScannerRegistrationIntent } from "./scanner-registration";
 import { authorizeScan, createOrReplayScan, getScanStatus } from "./scans";
 
 const persistConsent = (request: Request) => consent({ request, params: {} });
+const previewShare = (request: Request, id: string) =>
+  previewShareRoute({ request, params: { id } });
 
 const connectionString = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!connectionString?.includes("_migration_test")) {
@@ -1641,15 +1643,15 @@ describe("P4 dashboard-owned scanner identity", () => {
     });
     expect(await getDatabase().db.select().from(scanShares)).toHaveLength(0);
     const unauthorizedPreview = await previewShare(
-      new NextRequest(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`),
-      { params: Promise.resolve({ id: scanId }) },
+      new Request(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`),
+      scanId,
     );
     expect(unauthorizedPreview.status).toBe(404);
     const previewResponse = await previewShare(
-      new NextRequest(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
+      new Request(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
         headers: { authorization: `Bearer ${scanAccessToken}` },
       }),
-      { params: Promise.resolve({ id: scanId }) },
+      scanId,
     );
     expect(previewResponse.status).toBe(200);
     expect(await previewResponse.json()).toEqual({
@@ -1686,10 +1688,10 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(shared && !shared.conflict).toBe(true);
     if (!shared || shared.conflict) throw new Error("share_failed");
     const publishedPreview = await previewShare(
-      new NextRequest(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
+      new Request(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
         headers: { authorization: `Bearer ${scanAccessToken}` },
       }),
-      { params: Promise.resolve({ id: scanId }) },
+      scanId,
     );
     expect(await publishedPreview.json()).toMatchObject({
       existing_share: {
