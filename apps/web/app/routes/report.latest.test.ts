@@ -23,6 +23,7 @@ vi.mock("../../lib/server/auth", () => ({
   latestReportOf: async (leadId: string) => world.reports.get(leadId),
 }));
 
+import { visitTo } from "../../testing/loader-args";
 import { loader } from "./report.latest";
 
 const person = (leadId: string | null) => ({
@@ -36,13 +37,9 @@ const person = (leadId: string | null) => ({
 /** Where the loader sent this visitor, or a failure naming what it did instead. */
 async function sentTo(): Promise<string | null> {
   try {
-    await loader({
-      request: new Request("http://127.0.0.1/report/latest", {
-        headers: { cookie: "agentify.session_token=present" },
-      }),
-      params: {},
-      context: {},
-    } as Parameters<typeof loader>[0]);
+    await loader(
+      visitTo("http://127.0.0.1/report/latest", {}, { cookie: "agentify.session_token=present" }),
+    );
   } catch (thrown) {
     if (thrown instanceof Response && thrown.status === 307) return thrown.headers.get("location");
     throw thrown;
