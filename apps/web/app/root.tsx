@@ -68,8 +68,27 @@ export const meta = ({ loaderData, error }: MetaArgs<typeof loader>) =>
     ? [{ title: siteTitle(DISPLAY_BRAND) }]
     : pageMeta(loaderData.app, { noindex: isRouteErrorResponse(error) && error.status === 404 });
 
-export function Layout({ children }: Readonly<{ children: ReactNode }>) {
+/**
+ * What every page's body carries around the page: the site's settings for the
+ * components under it, the bar that says the next page is on its way, the
+ * consented analytics and the consent banner. Where the root's own loader did
+ * not run, there are no settings and the page is drawn alone.
+ */
+export function SiteBody({ children }: Readonly<{ children: ReactNode }>) {
   const site = useRouteLoaderData<typeof loader>("root");
+  return site === undefined ? (
+    children
+  ) : (
+    <PublicConfigProvider config={site.app}>
+      <OnItsWay />
+      {children}
+      <AnalyticsRuntime config={site.analytics} />
+      <ConsentBanner />
+    </PublicConfigProvider>
+  );
+}
+
+export function Layout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en-US">
       <head>
@@ -79,16 +98,7 @@ export function Layout({ children }: Readonly<{ children: ReactNode }>) {
         <Links />
       </head>
       <body>
-        {site === undefined ? (
-          children
-        ) : (
-          <PublicConfigProvider config={site.app}>
-            <OnItsWay />
-            {children}
-            <AnalyticsRuntime config={site.analytics} />
-            <ConsentBanner />
-          </PublicConfigProvider>
-        )}
+        <SiteBody>{children}</SiteBody>
         <ScrollRestoration />
         <Scripts />
       </body>
