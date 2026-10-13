@@ -3,33 +3,15 @@
 import {
   type ConsentSnapshot,
   consentAllowsMeasurement,
-  POSTHOG_BROWSER_OPTIONS,
   readCurrentConsent,
 } from "@agentify/analytics/browser";
-import type { AnalyticsEventName, Segment } from "@agentify/scanner-contracts";
-import type { PostHog } from "posthog-js";
+import type { Segment } from "@agentify/scanner-contracts";
 import { useCallback, useEffect, useRef } from "react";
 import { useLocation } from "react-router";
 
-import {
-  createClientOwnedEventId,
-  dispatchConsentedBrowserEvent,
-  recordThenDeliverWithConsent,
-} from "../lib/analytics-client";
+import type { PendingEvent } from "../lib/analytics-delivery";
 import { captureLandingAttribution } from "../lib/attribution-client";
 import { readLandingAnnouncement } from "../lib/landing-announcement";
-
-type ClientEventName = Extract<
-  AnalyticsEventName,
-  "landing_view" | "results_viewed" | "registration_started"
->;
-type PendingEvent = {
-  name: ClientEventName;
-  onceKey: string;
-  scanId?: string;
-  segment?: Segment;
-  landingVariant?: string;
-};
 
 export type BrowserAnalyticsConfig = Readonly<{
   runtimeEnvironment: "local" | "test" | "preview" | "production";
@@ -43,11 +25,6 @@ export type BrowserAnalyticsConfig = Readonly<{
     destinationEnvironment: "local" | "test" | "preview" | "production";
   }>;
 }>;
-const META_CLIENT_EVENT = {
-  landing_view: "PageView",
-  results_viewed: "ViewContent",
-  registration_started: "RegistrationStart",
-} as const;
 
 export function AnalyticsRuntime({ config }: Readonly<{ config: BrowserAnalyticsConfig }>) {
   const { pathname } = useLocation();
@@ -57,61 +34,17 @@ export function AnalyticsRuntime({ config }: Readonly<{ config: BrowserAnalytics
     async (event: PendingEvent) => {
       const snapshot = consent.current;
       // Nothing is recorded of a visit its visitor has not allowed measuring,
-      // so the routes are not asked; a choice made later tracks the landing
-      // then.
+      // so the routes are not asked and the code that would ask them is not
+      // even fetched; a choice made later tracks the landing then.
       if (!snapshot || !consentAllowsMeasurement(snapshot.categories)) return;
-      const eventIdKey = `agentify.analytics.event-id.${event.onceKey}`;
-      const candidateEventId =
-        window.sessionStorage.getItem(eventIdKey) ?? createClientOwnedEventId(event.name);
-      window.sessionStorage.setItem(eventIdKey, candidateEventId);
-      const scanToken = event.scanId
-        ? window.sessionStorage.getItem(`agentify:scan-token:${event.scanId}`)
-        : null;
+      let delivery: typeof import("../lib/analytics-delivery");
       try {
-        await recordThenDeliverWithConsent({
-          consent: snapshot,
-          recordBusinessEvent: async () => {
-            const response = await fetch("/api/v1/events", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                ...(scanToken ? { Authorization: `Bearer ${scanToken}` } : {}),
-              },
-              body: JSON.stringify({
-                event_id: candidateEventId,
-                name: event.name,
-                ...(event.scanId ? { scan_id: event.scanId } : {}),
-                ...(event.segment ? { segment: event.segment } : {}),
-                ...(event.landingVariant ? { landing_variant: event.landingVariant } : {}),
-                properties: {},
-              }),
-            });
-            if (!response.ok) throw new Error("analytics_record_failed");
-            const result = (await response.json()) as {
-              event_id: string;
-              segment: Segment;
-              landing_variant: string;
-            };
-            window.sessionStorage.setItem(eventIdKey, result.event_id);
-            return result;
-          },
-          deliverToBrowserDestinations: async (result, allowedConsent) => {
-            await dispatchConsentedBrowserEvent({
-              eventId: result.event_id,
-              onceKey: `${event.onceKey}:${result.event_id}`,
-              consent: allowedConsent,
-              storage: window.localStorage,
-              sendPosthog: async (eventId) =>
-                sendPosthog(config, event.name, eventId, result.segment, result.landing_variant),
-              sendMetaPixel: async (eventId) =>
-                sendMetaPixel(config, event.name, eventId, result.segment, result.landing_variant),
-            });
-          },
-        });
+        delivery = await import("../lib/analytics-delivery");
       } catch {
-        // A later route trigger/refresh can retry the server event. Browser
-        // destination once-keys are stored only after their own successful send.
+        // Not fetched, so not recorded: the next page's trigger tries again.
+        return;
       }
+      await delivery.deliver(config, event, snapshot);
     },
     [config],
   );
@@ -188,77 +121,3 @@ const landingView = (segment: Segment, landingVariant: string): PendingEvent => 
   segment,
   landingVariant,
 });
-
-let posthogPromise: Promise<PostHog> | undefined;
-
-async function sendPosthog(
-  config: BrowserAnalyticsConfig,
-  name: ClientEventName,
-  eventId: string,
-  segment: Segment,
-  landingVariant: string,
-) {
-  const { key, host, destinationEnvironment } = config.posthog;
-  if (!key || !host || destinationEnvironment !== config.runtimeEnvironment) return;
-  posthogPromise ??= import("posthog-js").then(({ default: posthog }) => {
-    posthog.init(key, { api_host: host, ...POSTHOG_BROWSER_OPTIONS });
-    return posthog;
-  });
-  const posthog = await posthogPromise;
-  posthog.capture(name, {
-    $insert_id: eventId,
-    $process_person_profile: false,
-    segment,
-    landing_variant: landingVariant,
-  });
-}
-
-type MetaWindow = Window & {
-  fbq?: ((...args: unknown[]) => void) & {
-    callMethod?: (...args: unknown[]) => void;
-    queue?: unknown[][];
-    loaded?: boolean;
-    version?: string;
-  };
-  _fbq?: (...args: unknown[]) => void;
-};
-
-function ensureMetaPixel(config: BrowserAnalyticsConfig): MetaWindow["fbq"] | undefined {
-  const { pixelId, destinationEnvironment } = config.meta;
-  if (!pixelId || destinationEnvironment !== config.runtimeEnvironment) return undefined;
-  const target = window as MetaWindow;
-  if (!target.fbq) {
-    const fbq = ((...args: unknown[]) => {
-      if (fbq.callMethod) fbq.callMethod(...args);
-      else fbq.queue?.push(args);
-    }) as NonNullable<MetaWindow["fbq"]>;
-    fbq.queue = [];
-    fbq.loaded = true;
-    fbq.version = "2.0";
-    target.fbq = fbq;
-    target._fbq = fbq;
-    const script = document.createElement("script");
-    script.async = true;
-    script.src = "https://connect.facebook.net/en_US/fbevents.js";
-    document.head.appendChild(script);
-    fbq("init", pixelId);
-  }
-  return target.fbq;
-}
-
-async function sendMetaPixel(
-  config: BrowserAnalyticsConfig,
-  name: ClientEventName,
-  eventId: string,
-  segment: Segment,
-  landingVariant: string,
-) {
-  const fbq = ensureMetaPixel(config);
-  if (!fbq) return;
-  fbq(
-    name === "landing_view" || name === "results_viewed" ? "track" : "trackCustom",
-    META_CLIENT_EVENT[name],
-    { segment, landing_variant: landingVariant },
-    { eventID: eventId },
-  );
-}
