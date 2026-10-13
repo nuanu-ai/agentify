@@ -188,7 +188,7 @@ export function PublicShareActions({
     <div className={styles.bar}>
       <div className={styles.actions}>
         <button
-          className={`button button-primary ${styles.primaryAction}`}
+          className="button button-primary"
           disabled={busy || !exactPreview}
           onClick={() => void publishAndCopy()}
           type="button"

@@ -21,9 +21,7 @@ export type Surface = "scanner" | "dashboard";
  * How a surface links to a page of its own: `to` is the page's path inside
  * the surface, as its router names it.
  */
-export type OwnLink = ComponentType<
-  Readonly<{ to: string; className?: string; children: ReactNode }>
->;
+type OwnLink = ComponentType<Readonly<{ to: string; className?: string; children: ReactNode }>>;
 
 type Owner = Surface | "docs";
 

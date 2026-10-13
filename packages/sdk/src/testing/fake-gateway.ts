@@ -23,7 +23,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 
 /** One request that reached the gateway, after it was matched and read. */
-export interface GatewayCall {
+interface GatewayCall {
   readonly route: RouteName;
   readonly method: string;
   readonly params: Readonly<Record<string, string>>;
@@ -45,10 +45,7 @@ export interface GatewayAnswer {
 }
 
 /** How a test answers one route, given the call and how many came before it. */
-export type Responder = (
-  call: GatewayCall,
-  index: number,
-) => GatewayAnswer | Promise<GatewayAnswer>;
+type Responder = (call: GatewayCall, index: number) => GatewayAnswer | Promise<GatewayAnswer>;
 
 export interface FakeGatewayOptions {
   /** The key the gateway accepts on the routes that are behind the merchant's door. */

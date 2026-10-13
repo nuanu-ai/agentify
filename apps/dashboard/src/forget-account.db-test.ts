@@ -15,9 +15,10 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
+import type { Person } from "./dashboard-entry.js";
 import { migrateAccounts } from "./database.js";
 import { runForget } from "./forget-account.js";
-import { identityFor, type Person } from "./identity.js";
+import { identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { postgresWooShops } from "./woo-shops.js";
 

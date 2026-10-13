@@ -75,5 +75,3 @@ export const validateRedirect = (from: URL, location: string): URL => {
     throw new UrlPolicyError("redirect_downgrade_blocked");
   return candidate;
 };
-
-export const sameOrigin = (left: URL, right: URL): boolean => left.origin === right.origin;

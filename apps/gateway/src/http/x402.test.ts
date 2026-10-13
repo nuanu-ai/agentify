@@ -10,7 +10,6 @@ import {
 } from "@x402/extensions/bazaar";
 import { describe, expect, it } from "vitest";
 import { SANDBOX_FACILITATOR } from "../config.js";
-import { bearerIn } from "./auth.js";
 import { atomicUnits, PaymentEdge, paymentFingerprint } from "./x402.js";
 
 describe("a price in the token's own units", () => {
@@ -160,20 +159,6 @@ describe("what an agent is asked to pay", () => {
     expect(() =>
       edge(null).requirementsFor({ amount: "80.00", currency: "EUR" }, "ord_1", SELLERS_WALLET),
     ).toThrowError(/will not invent a rate/);
-  });
-});
-
-describe("the merchant's key", () => {
-  // Keys are looked up by digest, so no secret is compared against another;
-  // how keys are refused is tested in `tenancy.test.ts`.
-  it("reads a bearer token however the scheme is spelled, and nothing else", () => {
-    expect(bearerIn("Bearer abc")).toBe("abc");
-    expect(bearerIn("bearer abc")).toBe("abc");
-    expect(bearerIn("  Bearer\tabc  ")).toBe("abc");
-    expect(bearerIn("abc")).toBeNull();
-    expect(bearerIn("Basic abc")).toBeNull();
-    expect(bearerIn("Bearer")).toBeNull();
-    expect(bearerIn(undefined)).toBeNull();
   });
 });
 

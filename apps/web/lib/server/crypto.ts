@@ -36,9 +36,6 @@ export function decryptSensitiveValue(value: string, key: Buffer): string {
   ]).toString("utf8");
 }
 
-export const encryptEmail = encryptSensitiveValue;
-export const decryptEmail = decryptSensitiveValue;
-
 export function normalizeEmail(email: string): string {
   return email.trim().normalize("NFKC").toLowerCase();
 }

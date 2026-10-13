@@ -12,8 +12,7 @@
     "dev": "tsx server/dev.ts",
     "start": "node server.js",
     "typecheck": "tsc --noEmit",
-    "privacy:cleanup": "tsx scripts/privacy-cleanup.ts",
-    "e2e:seed": "tsx scripts/seed-local-browser-evidence.ts"
+    "privacy:cleanup": "tsx scripts/privacy-cleanup.ts"
   },
   "dependencies": {
     "@agentify/analytics": "workspace:*",

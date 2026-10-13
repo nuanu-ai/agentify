@@ -22,10 +22,10 @@ export const BROWSER_OBSERVATION_IDS = [
   "browser_runtime_cost",
 ] as const;
 
-export const browserObservationIdSchema = z.enum(BROWSER_OBSERVATION_IDS);
+const browserObservationIdSchema = z.enum(BROWSER_OBSERVATION_IDS);
 export type BrowserObservationId = z.infer<typeof browserObservationIdSchema>;
 
-export const browserObservationLifecycleStatusSchema = z.enum([
+const browserObservationLifecycleStatusSchema = z.enum([
   "queued",
   "starting",
   "running",
@@ -54,7 +54,7 @@ const containsControlCharacters = (value: string): boolean =>
     const code = character.charCodeAt(0);
     return code <= 31 || code === 127;
   });
-export const browserObservationEvidenceSchema = z
+const browserObservationEvidenceSchema = z
   .record(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/), safeEvidenceValueSchema)
   .superRefine((value, context) => {
     if (JSON.stringify(value).length > 8_192) {

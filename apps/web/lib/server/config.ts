@@ -38,8 +38,6 @@ const schema = z.object({
     .transform((value) => value === "true"),
 });
 
-export type ServerConfig = ReturnType<typeof getServerConfig>;
-
 export function getServerConfig() {
   const parsed = schema.parse(process.env);
   const production = process.env.NODE_ENV === "production";

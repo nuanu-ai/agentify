@@ -20,7 +20,7 @@ import {
   SafeFetcher,
 } from "./safe-fetch.js";
 
-export type ScanMetric =
+type ScanMetric =
   | { name: "scan_duration_ms"; value: number }
   | { name: "scan_requests"; value: number }
   | { name: "scan_coverage"; value: number }

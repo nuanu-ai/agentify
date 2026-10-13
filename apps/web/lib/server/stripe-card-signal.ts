@@ -22,7 +22,7 @@ import {
   type StripeCardSignalProvider,
 } from "./stripe-card-signal-provider";
 
-export type CardSignalState = "not_started" | "setup_pending" | "attached" | "detached" | "failed";
+type CardSignalState = "not_started" | "setup_pending" | "attached" | "detached" | "failed";
 
 export type SetupCardSignalResult =
   | Readonly<{ status: "disabled" }>

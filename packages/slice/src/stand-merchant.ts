@@ -40,14 +40,14 @@ export type OrderMood =
   | "answer_wrong_shape"
   | "ask_me";
 
-export type DecidedMood = Exclude<OrderMood, "ask_me">;
+type DecidedMood = Exclude<OrderMood, "ask_me">;
 
 export type QuoteMood = "price" | "unavailable" | "say_nothing";
 
 /** What a person can answer with while the handler holds an order open. */
 export type HeldAnswer = "deliver" | "accept" | "refuse" | "say_nothing";
 
-export interface Moods {
+interface Moods {
   order: OrderMood;
   quote: QuoteMood;
   deliverAfterMs: number;

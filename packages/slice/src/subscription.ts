@@ -80,7 +80,7 @@ export const NOTHING_HAS_GONE_WRONG: WhatIsKnown = Object.freeze({
  * around it. So these are the transitions and nothing else: entering doubt,
  * leaving it, and the end of the subscription — each said once.
  */
-export type Announcement =
+type Announcement =
   | { readonly said: "not_getting_through"; readonly why: string }
   | { readonly said: "over"; readonly why: string }
   | { readonly said: "answering_again" };

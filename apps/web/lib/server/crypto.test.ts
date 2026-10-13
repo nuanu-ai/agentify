@@ -1,15 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import { decryptEmail, deriveCapability, encryptEmail, normalizeEmail, sha256 } from "./crypto";
+import {
+  decryptSensitiveValue,
+  deriveCapability,
+  encryptSensitiveValue,
+  normalizeEmail,
+  sha256,
+} from "./crypto";
 
 describe("private capability and email crypto", () => {
   it("encrypts email with randomized authenticated ciphertext", () => {
     const key = Buffer.alloc(32, 7);
-    const first = encryptEmail("owner@example.com", key);
-    const second = encryptEmail("owner@example.com", key);
+    const first = encryptSensitiveValue("owner@example.com", key);
+    const second = encryptSensitiveValue("owner@example.com", key);
     expect(first).not.toBe(second);
     expect(first).not.toContain("owner@example.com");
-    expect(decryptEmail(first, key)).toBe("owner@example.com");
+    expect(decryptSensitiveValue(first, key)).toBe("owner@example.com");
   });
 
   it("normalizes lookup input and derives a 256-bit opaque capability", () => {

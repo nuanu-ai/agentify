@@ -9,7 +9,7 @@ afterEach(() => {
 });
 
 describe("browser-visible runtime configuration", () => {
-  it("reads legal and contact claims from ordinary runtime variables", () => {
+  it("reads the legal and contact claims from the environment the process runs with", () => {
     Object.assign(process.env, {
       APP_BASE_URL: "https://test.agentify.ad",
       PRIVACY_EMAIL: "privacy-test@example.com",
@@ -61,7 +61,7 @@ describe("browser-visible runtime configuration", () => {
     expect(() => loader()).toThrow("browser_posthog_requires_key_and_host");
   });
 
-  it("passes the Stripe publishable key through the authenticated report server boundary", () => {
+  it("reads the Stripe publishable key from the environment the process runs with", () => {
     Object.assign(process.env, {
       CARD_SIGNAL_ENABLED: "false",
       STRIPE_ADAPTER: "local",

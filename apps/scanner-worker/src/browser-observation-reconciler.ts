@@ -2,7 +2,7 @@ import type { BrowserObservationJobV1 } from "@agentify/scanner-contracts";
 
 import type { BrowserObservationRepository } from "./browser-observation-job.js";
 
-export async function reconcileBrowserObservationJobs(input: {
+async function reconcileBrowserObservationJobs(input: {
   repository: BrowserObservationRepository;
   enqueue: (job: BrowserObservationJobV1) => Promise<void>;
   now?: Date;

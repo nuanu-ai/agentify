@@ -21,7 +21,7 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
       <Masthead content={content} />
       <main>
         <section className="hero">
-          <div className="hero__copy">
+          <div>
             <p className="eyebrow">{hero.eyebrow}</p>
             <h1 className="hero__title">{hero.title}</h1>
             <p className="hero__lede">{hero.lede}</p>
@@ -68,7 +68,7 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
               </div>
               <div className="scene-card scene-card--store">
                 <div className="scene-card__head">
-                  <span className="scene-icon scene-icon--store">
+                  <span className="scene-icon">
                     <Icon paths={["M3 10h18M5 10v9h14v-9M4 4h16l1 6H3l1-6Zm5 15v-5h6v5"]} />
                   </span>
                   <div>
@@ -114,7 +114,7 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
           </div>
         </section>
 
-        <section className="section journey" id="how">
+        <section className="section" id="how">
           <div className="section-head">
             <p className="eyebrow">{journey.eyebrow}</p>
             <h2>{journey.title}</h2>
@@ -169,8 +169,8 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
           </div>
         </section>
 
-        <section className="section connect" id="connect">
-          <div className="section-head section-head--wide">
+        <section className="section" id="connect">
+          <div className="section-head">
             <p className="eyebrow">{connect.eyebrow}</p>
             <h2>{connect.title}</h2>
           </div>
@@ -241,7 +241,7 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
             {pricing.options.map((tariff) => (
               <section
                 aria-labelledby={`pricing-${tariff.id}-title`}
-                className={`section tariff tariff--${tariff.id}`}
+                className="section"
                 id={`pricing-${tariff.id}`}
                 key={tariff.id}
               >

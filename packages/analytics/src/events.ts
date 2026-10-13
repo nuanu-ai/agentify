@@ -4,7 +4,7 @@ import {
   type Segment,
 } from "@agentify/scanner-contracts";
 
-export type AnalyticsScalar = string | number | boolean;
+type AnalyticsScalar = string | number | boolean;
 export type AnalyticsProperties = Record<string, AnalyticsScalar>;
 
 const PROPERTY_ALLOWLIST: Record<AnalyticsEventName, ReadonlySet<string>> = {

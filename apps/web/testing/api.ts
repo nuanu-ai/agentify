@@ -14,7 +14,7 @@ import { ask } from "./scanner";
 export const ORIGIN = "https://test.agentify.ad";
 
 /** A database address where nothing listens, so every query fails at once. */
-export const NO_DATABASE = "postgresql://nobody:unused@127.0.0.1:1/nowhere";
+const NO_DATABASE = "postgresql://nobody:unused@127.0.0.1:1/nowhere";
 
 /** Settings of a scanner with no database, no dashboard and no optional feature on. */
 export function stubOfflineScanner(): void {

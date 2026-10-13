@@ -1,9 +1,8 @@
 /**
  * The scan routes, asked of the whole process over HTTP: accepting a scan,
- * its status and its browser observation, the registration contract that was
- * replaced, and publishing and revoking a scan's public link. What each one
- * decides before it reads a record is answered here; the rest is the
- * integration suite's, which has a database.
+ * its status and its browser observation, and publishing and revoking a
+ * scan's public link. What each one decides before it reads a record is
+ * answered here; the rest is the integration suite's, which has a database.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -180,16 +179,6 @@ describe("a scan's status and its browser observation", () => {
 
     expect(posted.status).toBe(405);
     expect(await allowedAt(`/api/v1/scans/${SCAN}/${what}`)).toBe("GET, HEAD, OPTIONS");
-  });
-});
-
-describe("the first registration contract", () => {
-  it("is replaced, and says which contract to use instead", async () => {
-    const answered = await fromSite(`/api/v1/scans/${SCAN}/registrations`, "POST", {});
-
-    expect(answered.status).toBe(426);
-    expect((await refusalOf(answered)).code).toBe("registration_contract_upgraded");
-    expect(await allowedAt(`/api/v1/scans/${SCAN}/registrations`)).toBe("OPTIONS, POST");
   });
 });
 

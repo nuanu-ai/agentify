@@ -19,7 +19,7 @@ import { accounts, wooGrants, wooOrders, wooQuotes, wooShops } from "./schema.js
  */
 export const wooOfferedOn = (surface: SurfaceMode): boolean => surface !== "live";
 
-export interface WooGrant {
+interface WooGrant {
   /** Unguessable and one-time; it travels as `user_id`. */
   readonly token: string;
   readonly accountId: string;
@@ -66,7 +66,7 @@ export interface WooPermission extends Readonly<Record<string, unknown>> {
   readonly orderNumber: string;
 }
 
-export interface ParcelToFollow {
+interface ParcelToFollow {
   readonly orderId: string;
   readonly wooOrderId: string;
   /** The shop the order id belongs to. */
@@ -74,7 +74,7 @@ export interface ParcelToFollow {
   readonly placedAt: Date;
 }
 
-export interface WooRecoveryOrder {
+interface WooRecoveryOrder {
   readonly orderId: string;
   readonly accountId: string;
   readonly phase: "precreate_refused" | "create_unknown" | "placed";
@@ -94,7 +94,7 @@ export interface WooRecoveryOrder {
  * an earlier attempt called the shop and never came back, so nobody here can
  * know whether the shop holds an order for this sale.
  */
-export type OrderClaim =
+type OrderClaim =
   | { readonly kind: "ours" }
   | { readonly kind: "precreate_refused" }
   | {

@@ -30,7 +30,7 @@ export { builtPages, type Pages, pagesFromSource } from "./pages.js";
  * Fixed rather than read from `PORT`, because the gateway shares this process's
  * environment and a `PORT` there could mean only one of them.
  */
-export const DASHBOARD_PORT = 3001;
+const DASHBOARD_PORT = 3001;
 
 /**
  * The gateway is let go only after this, so it stays short of the ten seconds a
@@ -39,7 +39,7 @@ export const DASHBOARD_PORT = 3001;
  */
 const CLOSING_GRACE_MS = 5_000;
 
-export interface RunningDashboard {
+interface RunningDashboard {
   /**
    * Settles once in-flight requests have ended or been cut at the end of the
    * grace.

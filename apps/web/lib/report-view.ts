@@ -24,7 +24,7 @@ import { isActionableBrowserFinding } from "./browser-observation-ui";
 import type { CardSignalState } from "./card-signal-ui";
 import { buildBrowserFixPrompt, buildCanonicalFixPrompt, buildFixPrompts } from "./fix-prompts";
 
-export type ReportCheckView = Readonly<{
+type ReportCheckView = Readonly<{
   id: number;
   label: string;
   status: CheckStatus;
@@ -89,7 +89,7 @@ const SCOPE_NOTES: Readonly<Record<number, string>> = {
   17: "An A2A card is informational unless a real A2A agent is intentionally operated.",
 };
 
-export function formatCode(value: string): string {
+function formatCode(value: string): string {
   if (value === "callable_ready") return "Callable-ready";
   return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }

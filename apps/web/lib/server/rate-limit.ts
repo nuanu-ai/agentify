@@ -29,7 +29,7 @@ type LockedRateEntry = Readonly<{
 }>;
 
 /** One rolling event spent, which a caller that did not use it can refund. */
-export type SpentRateEvent = Readonly<{ kind: RateKind; eventId: string }>;
+type SpentRateEvent = Readonly<{ kind: RateKind; eventId: string }>;
 
 export type RateLimitOutcome =
   | Readonly<{ allowed: true; spent: readonly SpentRateEvent[] }>
@@ -42,7 +42,7 @@ function usesRollingWindow(kind: RateKind): boolean {
   return kind.endsWith("_hour");
 }
 
-export function rateWindowStart(kind: RateKind, now = new Date()): Date {
+function rateWindowStart(kind: RateKind, now = new Date()): Date {
   const value = new Date(now);
   if (kind.endsWith("_day")) value.setUTCHours(0, 0, 0, 0);
   else value.setUTCMinutes(0, 0, 0);
@@ -197,22 +197,6 @@ export async function readRateCount(
     sql`select count from rate_windows where key_hash = ${keyHash} and window_start = ${windowStart} and kind = ${kind}`,
   );
   return result.rows[0]?.count ?? 0;
-}
-
-export async function consumeRateLimit(
-  keyHash: string,
-  kind: RateKind,
-  limit: number,
-  now = new Date(),
-): Promise<{ allowed: boolean; count: number }> {
-  const entry = { keyHash, kind, limit };
-  const { db } = getDatabase();
-  return await db.transaction(async (tx) => {
-    const locked = await lockRateEntry(tx, entry, now);
-    if (locked.count >= limit) return { allowed: false, count: locked.count };
-    await recordRateConsumption(tx, locked, now);
-    return { allowed: true, count: locked.count + 1 };
-  });
 }
 
 /**

@@ -5,13 +5,13 @@ import styles from "./copy-remediation-prompt.module.css";
 
 type CopyState = "idle" | "loading" | "copied" | "fallback" | "error" | "gated";
 
-export function gateStatusMessage(intent: GateIntent) {
+function gateStatusMessage(intent: GateIntent) {
   return intent === "download-md"
     ? "Confirm your email in the highlighted form below — the download starts right after verification."
     : "Confirm your email in the highlighted form below — the prompt will be ready on your report.";
 }
 
-export function revealRegistrationGate(targetId: string) {
+function revealRegistrationGate(targetId: string) {
   const target = document.getElementById(targetId);
   if (!target) return false;
   target.scrollIntoView({ behavior: "smooth", block: "center" });

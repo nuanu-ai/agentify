@@ -94,7 +94,6 @@ export default [
   ),
   at("api/v1/scans", "routes/api/v1/scans.ts"),
   at("api/v1/scans/:id/browser-observation", "routes/api/v1/scans.id.browser-observation.ts"),
-  at("api/v1/scans/:id/registrations", "routes/api/v1/scans.id.registrations.ts"),
   at("api/v1/scans/:id/remediation-prompt", "routes/api/v1/scans.id.remediation-prompt.ts"),
   at(
     "api/v1/scans/:id/remediation-prompt/download",

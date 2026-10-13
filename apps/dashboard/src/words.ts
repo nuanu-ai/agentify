@@ -69,10 +69,7 @@ export const SELLING_WORDS: Readonly<Record<SellingState, Word>> = Object.freeze
  * merchant's to deliver, but this API cannot tell it from one created a second
  * ago, so demanding attention for it would be a claim beyond the evidence.
  */
-export const NEEDS_ATTENTION: readonly OrderStatus[] = Object.freeze([
-  "refund_due",
-  "delivered_unpaid",
-]);
+const NEEDS_ATTENTION: readonly OrderStatus[] = Object.freeze(["refund_due", "delivered_unpaid"]);
 
 export const needsAttention = (status: OrderStatus): boolean => NEEDS_ATTENTION.includes(status);
 

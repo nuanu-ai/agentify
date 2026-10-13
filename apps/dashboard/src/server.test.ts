@@ -2638,10 +2638,9 @@ describe("the orders screen", () => {
   });
 
   it("says why a refund is owed as it happened, and not always that a window ran out", async () => {
-    // A refund falls due when the merchant refuses an order already paid for,
-    // and the callout used to say the delivery window had run out whatever the
-    // cause: a merchant reconciling it looked
-    // for a deadline that never passed.
+    // A refund falls due when the merchant refuses an order already paid for;
+    // a callout that blamed a passed delivery window whatever the cause would
+    // send a merchant reconciling it looking for a deadline that never passed.
     const { browser, gateway, harnessed } = await started();
     const itemId = await publish(gateway, esimCard);
     await buyOverHttp(harnessed, gateway, itemId, {
@@ -3698,9 +3697,9 @@ describe("when something goes wrong that the merchant has to get out of", () => 
   });
 
   it("lets a merchant in whatever the terminator in front of it says about the scheme", async () => {
-    // Taking the expected scheme from `X-Forwarded-Proto` let whatever is in
-    // front decide whether a merchant could sign in: when that header disagreed
-    // with the browser, every form post, sign-in included, was refused. The
+    // A scheme taken from `X-Forwarded-Proto` would let whatever is in front
+    // decide whether a merchant can sign in: where that header disagrees with
+    // the browser, every form post, sign-in included, would be refused. The
     // sign-in is driven here because it must work before any other post can;
     // each case is a shape the header can arrive in, and none may keep a
     // merchant out.

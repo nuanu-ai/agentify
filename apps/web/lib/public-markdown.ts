@@ -9,10 +9,8 @@ import {
   type PublicEditorialPath,
   type RichText,
 } from "../content/public-editorial";
-import { PUBLIC_PAGE_PATHS, type PublicPagePath } from "../content/public-page-metadata";
+import type { PublicPagePath } from "../content/public-page-metadata";
 import { getPublicAppConfig } from "./app-config";
-
-export const PUBLIC_MARKDOWN_PATHS = PUBLIC_PAGE_PATHS;
 
 function absoluteHref(href: string, baseUrl: string): string {
   return href.startsWith("/") ? new URL(href, baseUrl).toString() : href;

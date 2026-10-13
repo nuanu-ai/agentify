@@ -19,7 +19,7 @@ const REPORT_IDENTITY_TIMEOUT_MS = 15_000;
  */
 const SESSION_QUESTION_TIMEOUT_MS = 3_000;
 
-export class DashboardIdentityUnavailableError extends Error {
+class DashboardIdentityUnavailableError extends Error {
   constructor() {
     super("dashboard_identity_unavailable");
     this.name = "DashboardIdentityUnavailableError";

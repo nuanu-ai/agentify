@@ -163,10 +163,6 @@
 }
 
 @media (max-width: 480px) {
-  .header nav a:first-child {
-    display: none;
-  }
-
   .article > h1 {
     font-size: 2.25rem;
   }

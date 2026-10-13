@@ -84,7 +84,7 @@ describe("landing scan handoff", () => {
     expect(document.querySelector('[aria-live="polite"]')?.textContent).not.toBe("");
   });
 
-  it("stores a schema-valid request before moving to the private pending route", async () => {
+  it("keeps the request where the pending page reads it, before moving to the private pending route", async () => {
     const user = userEvent.setup();
     const visit = landing();
 

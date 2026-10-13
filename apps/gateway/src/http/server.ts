@@ -16,6 +16,7 @@ import {
   type ErrorCode,
   type ErrorEnvelope,
   MERCHANT_KEY_HEADER,
+  merchantKeyFrom,
   mountableRoutes,
   type RouteDefinition,
   type RouteName,
@@ -25,7 +26,6 @@ import type { ZodType } from "zod";
 import type { Gateway } from "../app/gateway.js";
 import { checksBeforeSending } from "../app/written.js";
 import { failureNamed } from "../failure-named.js";
-import { bearerIn } from "./auth.js";
 import { GATEWAY_FAILED } from "./merchant-answers.js";
 import { handlersFor } from "./routes.js";
 
@@ -365,9 +365,12 @@ interface Caller {
  * takes no key, or a refusal. The switch is exhaustive so a new auth mode
  * cannot silently default to open.
  *
- * A key never issued and a disabled key come back the same way, or the door
- * would confirm which guesses were once real keys. Do not cache the lookup
- * without deciding how long a revoked key may go on working.
+ * A presented key is hashed and looked up by its digest, so nothing secret is
+ * compared; never compare a key against a secret with `===`, whose time would
+ * leak how much of it was right. A key never issued and a disabled key come
+ * back the same way, or the door would confirm which guesses were once real
+ * keys. Do not cache the lookup without deciding how long a revoked key may go
+ * on working.
  */
 async function callerBehind(
   auth: AuthMode,
@@ -376,7 +379,7 @@ async function callerBehind(
 ): Promise<Caller | null | typeof REFUSED | typeof OTHER_ENVIRONMENT_PREFIX> {
   switch (auth) {
     case "merchant_key": {
-      const presented = bearerIn(request.header(MERCHANT_KEY_HEADER) ?? undefined);
+      const presented = merchantKeyFrom(request.header(MERCHANT_KEY_HEADER) ?? undefined);
       if (presented === null) {
         return REFUSED;
       }

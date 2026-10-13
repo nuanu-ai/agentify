@@ -131,9 +131,7 @@ control the dashboard offers for it. ADR-0026 draws that boundary and says what
 the scanner keeps of its own.
 
 The scanner's tables live in the same database as the gateway's and the
-dashboard's, `agentify`. A machine whose volume still holds them in a second
-database, `agentify_scanner`, from before they moved, would come up with empty
-scanner tables beside it, so it needs `docker compose down -v` once.
+dashboard's, `agentify`.
 
 Editing the scanner is faster outside a container, and `pnpm scanner:dev` runs
 its two processes on the host against the same database the stack uses — the
@@ -270,11 +268,12 @@ so none of them mistakes another's entries for its own.
 ```sh
 pnpm check          # formatting and lint
 pnpm typecheck
+pnpm deadcode       # files, exports and dependencies nothing uses
 pnpm test           # offline, free, no network
 pnpm check:decisions
 ```
 
-That is the gate before a push. CI runs the same four on every push and pull
+That is the gate before a push. CI runs the same five on every push and pull
 request, and beyond them the database suite, the build of every package and of
 the portal, and the scanner's integration tests; the workflow is
 `.github/workflows/ci.yml`. A green run publishes nothing and deploys nothing.

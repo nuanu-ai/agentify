@@ -59,7 +59,7 @@ export interface ExchangeView {
   readonly closed: boolean;
 }
 
-export interface PageMoods {
+interface PageMoods {
   readonly order: OrderMood;
   readonly quote: QuoteMood;
   readonly deliverAfterMs: number;
@@ -68,7 +68,7 @@ export interface PageMoods {
 }
 
 /** What the seats you are not sitting in will do next. */
-export interface Standing {
+interface Standing {
   readonly order: OrderMood;
   readonly quote: QuoteMood;
   readonly held: number;

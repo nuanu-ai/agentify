@@ -58,7 +58,7 @@ export const sessionCookiePairs = (header: string): string =>
     .join("; ");
 
 /** The longest cookie header the scanner passes on: session pairs, bounded. */
-export const SESSION_COOKIE_HEADER_MAX = 8_192;
+const SESSION_COOKIE_HEADER_MAX = 8_192;
 
 export const sendReportLinkRequestSchema = z
   .object({
@@ -132,8 +132,6 @@ export const reportIdentityRequestSchema = z.union([
 
 export type SendReportLinkRequest = z.infer<typeof sendReportLinkRequestSchema>;
 export type SendReportLinkResponse = z.infer<typeof sendReportLinkResponseSchema>;
-export type ReadSessionRequest = z.infer<typeof readSessionRequestSchema>;
 export type ReadSessionResponse = z.infer<typeof readSessionResponseSchema>;
 export type DeleteUnattachedPersonRequest = z.infer<typeof deleteUnattachedPersonRequestSchema>;
 export type DeleteUnattachedPersonResponse = z.infer<typeof deleteUnattachedPersonResponseSchema>;
-export type ReportIdentityRequest = z.infer<typeof reportIdentityRequestSchema>;

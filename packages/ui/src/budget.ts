@@ -27,7 +27,7 @@ const HASHED = /-[\w-]{8}\.(?:js|css)$/;
 const IMMUTABLE = "public, max-age=31536000, immutable";
 
 /** One chunk as Vite's manifest describes it. */
-export interface Chunk {
+interface Chunk {
   readonly file: string;
   readonly imports?: readonly string[];
   readonly dynamicImports?: readonly string[];
