@@ -5,8 +5,8 @@
  * the queue afresh rather than failing until the process restarts.
  */
 
+import { type FakePostgres, fakePostgres } from "@agentify/scanner-database/fake-postgres";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
-import { type FakePostgres, fakePostgres } from "../../testing/fake-postgres";
 import { getScanQueue, stopScanQueue } from "./queue";
 
 let database: FakePostgres;

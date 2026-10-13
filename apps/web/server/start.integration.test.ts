@@ -26,8 +26,8 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { fakePostgres } from "@agentify/scanner-database/fake-postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { fakePostgres } from "../testing/fake-postgres";
 
 const APP = fileURLToPath(new URL("..", import.meta.url));
 if (!existsSync(join(APP, "dist", "server", "index.js"))) {

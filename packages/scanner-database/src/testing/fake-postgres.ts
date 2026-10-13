@@ -1,4 +1,7 @@
 /**
+ * For tests only, which import it as `@agentify/scanner-database/fake-postgres`;
+ * the package's build leaves it out.
+ *
  * A stand-in for Postgres on a loopback port: enough of the protocol for `pg`
  * to connect without a password and have each statement answered, and then to
  * lose every connection at once from the database's side, the way a restart,

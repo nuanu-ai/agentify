@@ -5,9 +5,9 @@
  * process as an exception nothing caught, which would end it.
  */
 
+import { type FakePostgres, fakePostgres } from "@agentify/scanner-database/fake-postgres";
 import { sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
-import { type FakePostgres, fakePostgres } from "../../testing/fake-postgres";
 import { getDatabase } from "./database";
 import { getScanQueue, stopScanQueue } from "./queue";
 
