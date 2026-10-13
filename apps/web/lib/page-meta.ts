@@ -92,3 +92,18 @@ export function pageMeta(config: PublicAppConfig, head: PageHead = {}): MetaDesc
     { name: "twitter:image:height", content: SHARE_IMAGE.height },
   ];
 }
+
+/**
+ * The head of a scan or a report: its title, a word to every crawler to
+ * neither index nor follow it, and the referrer policy the page asks of the
+ * browser where it names one, as its address's headers say too.
+ */
+export const privatePageMeta = (
+  config: PublicAppConfig,
+  title: string,
+  referrer?: "no-referrer" | "strict-origin",
+): MetaDescriptor[] => [
+  ...pageMeta(config, { title }),
+  { name: "robots", content: "noindex, nofollow" },
+  ...(referrer === undefined ? [] : [{ name: "referrer", content: referrer }]),
+];

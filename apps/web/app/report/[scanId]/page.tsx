@@ -15,6 +15,7 @@ import { PrivacyChoicesButton } from "../../../components/privacy-choices-button
 import { ReportActionPanel } from "../../../components/report-action-panel";
 import { ReportBenchmark } from "../../../components/report-benchmark";
 import { ReportDashboardControl } from "../../../components/report-dashboard-control";
+import styles from "../../../components/report-page.module.css";
 import { RobotsNotice } from "../../../components/robots-notice";
 import { SiteDoors } from "../../../components/site-chrome";
 import { StatusBadge } from "../../../components/status-badge";
@@ -24,7 +25,6 @@ import { getServerConfig } from "../../../lib/server/config";
 import { loadReportPage } from "../../../lib/server/reporting";
 import { getOwnedCardSignalForReport } from "../../../lib/server/stripe-card-signal";
 import { getCardSignalPublicConfig } from "../../../lib/server/stripe-card-signal-config";
-import styles from "./report.module.css";
 
 export const metadata: Metadata = {
   title: "Private diagnostic report",

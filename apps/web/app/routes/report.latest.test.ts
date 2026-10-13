@@ -4,12 +4,13 @@
  * the dashboard's start, which offers the control that makes a merchant;
  * anywhere else would leave a person who has just signed in with nowhere to go.
  *
- * The visitor and their reports are stubbed; the redirect is read back off the
- * error Next throws, the way Next reads it.
+ * Who is visiting and which reports they own are read from the dashboard and
+ * the database, which a test does not have, so they are stubbed here and the
+ * loader is asked directly; where it sent the visitor is read off the redirect
+ * it threw. What needs neither, a stranger and a dashboard that does not
+ * answer, is asked of the whole process in `report.test.ts`.
  */
 
-import { getURLFromRedirectError } from "next/dist/client/components/redirect";
-import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const world = vi.hoisted(() => ({
@@ -17,16 +18,12 @@ const world = vi.hoisted(() => ({
   reports: new Map<string, string>(),
 }));
 
-vi.mock("next/headers", () => ({
-  headers: async () => new Headers({ cookie: "a-session=present" }),
-}));
-
-vi.mock("../../../lib/server/auth", () => ({
+vi.mock("../../lib/server/auth", () => ({
   visitorOf: async () => world.visitor,
   latestReportOf: async (leadId: string) => world.reports.get(leadId),
 }));
 
-import LatestReportPage from "./page";
+import { loader } from "./report.latest";
 
 const person = (leadId: string | null) => ({
   kind: "person",
@@ -36,12 +33,18 @@ const person = (leadId: string | null) => ({
   setCookies: [],
 });
 
-/** Where the page sent this visitor, or a failure naming what it did instead. */
-async function sentTo(): Promise<string> {
+/** Where the loader sent this visitor, or a failure naming what it did instead. */
+async function sentTo(): Promise<string | null> {
   try {
-    await LatestReportPage();
+    await loader({
+      request: new Request("http://127.0.0.1/report/latest", {
+        headers: { cookie: "agentify.session_token=present" },
+      }),
+      params: {},
+      context: {},
+    } as Parameters<typeof loader>[0]);
   } catch (thrown) {
-    if (isRedirectError(thrown)) return getURLFromRedirectError(thrown);
+    if (thrown instanceof Response && thrown.status === 307) return thrown.headers.get("location");
     throw thrown;
   }
   throw new Error("the page drew itself instead of sending the visitor anywhere");
