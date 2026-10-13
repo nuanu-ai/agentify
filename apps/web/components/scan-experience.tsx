@@ -3,7 +3,7 @@ import { type CSSProperties, Suspense, useCallback, useEffect, useMemo, useState
 import { scanStatusIn } from "../lib/api-answers";
 import type { ScanFixture } from "../lib/scan-fixtures";
 import { Brand } from "./brand";
-import { lazyPart } from "./lazy-part";
+import { lazyPart, useHere } from "./lazy-part";
 import { PrivacyChoicesButton } from "./privacy-choices-button";
 import styles from "./scan-experience.module.css";
 import { SiteDoors } from "./site-chrome";
@@ -76,6 +76,7 @@ export function ScanExperience({
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const terminal = data ? ["completed", "partial", "failed"].includes(data.status) : false;
   const underway = data !== null && !terminal;
+  const [watchedItRun, setWatchedItRun] = useState(false);
 
   useEffect(() => {
     if (terminal || fixtureName) return;
@@ -142,6 +143,7 @@ export function ScanExperience({
 
   useEffect(() => {
     if (!underway) return;
+    setWatchedItRun(true);
     ScanTeaser.preload();
     ScanFailed.preload();
     if (browserObservationsEnabled) BrowserObservations.preload();
@@ -149,6 +151,11 @@ export function ScanExperience({
 
   const phases = useMemo(() => buildPhases(data, segment), [data, segment]);
   const finished = data !== null && (data.status === "completed" || data.status === "partial");
+  // A scan watched running keeps the list it ran with until its result can be
+  // drawn, what was open in it included; one opened after it ended shows the
+  // finished list while the result's script is on its way.
+  const resultHere = useHere(data?.teaser ? ScanTeaser : ScanFailed, finished && watchedItRun);
+  const holding = finished && watchedItRun && !resultHere;
 
   return (
     <main className={styles.page}>
@@ -178,7 +185,7 @@ export function ScanExperience({
           <AccessError invalid={accessState === "invalid"} />
         ) : null}
         {accessState === "ready" && !data ? <LoadingState /> : null}
-        {data && !terminal ? (
+        {data && (!terminal || holding) ? (
           <ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />
         ) : null}
         {data?.status === "failed" ? (
@@ -190,8 +197,7 @@ export function ScanExperience({
             />
           </Suspense>
         ) : null}
-        {finished ? (
-          // Until the result's script is here, the progress it finished.
+        {finished && !holding ? (
           <Suspense
             fallback={<ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />}
           >

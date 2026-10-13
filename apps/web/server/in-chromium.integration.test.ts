@@ -597,24 +597,30 @@ describe("a scan in Chromium", () => {
     await page.context().close();
   });
 
-  it("reloads, rather than failing, where the result's script was replaced by a newer deployment, and then draws the result", async () => {
-    const { page } = await answered(FINISHED);
-    let refused = false;
-    await page.route("**/assets/scan-teaser-*.js", (route) => {
-      if (refused) return route.continue();
-      refused = true;
-      return route.fulfill({ status: 404, body: "" });
-    });
-    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
-    await page.waitForLoadState("networkidle");
+  it.each([
+    ["opened after it ended", [FINISHED]],
+    ["watched running", [RUNNING, FINISHED]],
+  ])(
+    "draws the result of a scan %s, rather than failing, where the result's script was replaced by a newer deployment",
+    async (_scan, statuses) => {
+      const { page } = await answered(...statuses);
+      let refused = false;
+      await page.route("**/assets/scan-teaser-*.js", (route) => {
+        if (refused) return route.continue();
+        refused = true;
+        return route.fulfill({ status: 404, body: "" });
+      });
+      await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+      await page.waitForLoadState("networkidle");
 
-    await page.getByLabel("Email").waitFor();
+      await page.getByLabel("Email").waitFor();
 
-    expect(refused).toBe(true);
-    expect(await page.locator("h1").first().textContent()).toBe("Readable");
-    expect(await page.getByText("Something went wrong").count()).toBe(0);
-    await page.context().close();
-  });
+      expect(refused).toBe(true);
+      expect(await page.locator("h1").first().textContent()).toBe("Readable");
+      expect(await page.getByText("Something went wrong").count()).toBe(0);
+      await page.context().close();
+    },
+  );
 
   it("reloads only once where the result's script cannot be fetched at all, and then says something failed", async () => {
     const { page } = await answered(FINISHED);
