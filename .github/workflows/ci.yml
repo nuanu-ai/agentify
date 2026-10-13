@@ -112,6 +112,10 @@ jobs:
       # budget, and every file the browser gets is hashed and kept for a year.
       - run: pnpm --filter @agentify/dashboard budget
       - run: pnpm --filter @agentify/web budget
+      # Starts the scanner's build as its image does, with nothing installed
+      # beside it, as built and as an import() in server code splits it: the
+      # process comes up, answers its probe and a page, and stops when told.
+      - run: pnpm scanner:test:start
       # Runs the site just built, on loopback, so it comes after the build. The
       # built server reads APP_BASE_URL when it answers, not when it was built,
       # for the absolute URLs in its robots and sitemap.
