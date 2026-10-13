@@ -8,6 +8,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { fromDrizzle, PgBoss } from "pg-boss";
 
 import { getServerConfig } from "./config";
+import { logBackgroundFailure } from "./http";
 
 const globalQueue = globalThis as typeof globalThis & {
   agentifyWebQueue?: Promise<PgBoss>;
@@ -24,6 +25,9 @@ export function getScanQueue(): Promise<PgBoss> {
       supervise: false,
       schedule: false,
     });
+    // A dropped connection and a failure of the queue's own upkeep arrive as
+    // `error` events, which with no listener end the process.
+    boss.on("error", (failed) => logBackgroundFailure("web_queue_failed", failed));
     await boss.start();
     await boss.createQueue("scan-v1", {
       retryLimit: 1,
