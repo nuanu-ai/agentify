@@ -28,7 +28,8 @@ import express, {
   type RequestHandler,
   type Response,
 } from "express";
-import { SECURITY_HEADERS } from "../lib/server/answer-headers";
+import { matchRoutes, type RouteObject, type ServerBuild } from "react-router";
+import { pageOf, SECURITY_HEADERS, UNKEPT_PAGE_CACHE } from "../lib/server/answer-headers";
 import { logUnhandledRequestError } from "../lib/server/http";
 import { retryPendingScannerIdentityDeletions } from "../lib/server/scanner-identity-deletion";
 import { startDeletionRetries } from "./deletion-retries";
@@ -47,9 +48,43 @@ export interface ScannerParts {
   readonly mode: "production" | "development";
 }
 
+/**
+ * The build's routes as a tree that says of each whether it draws a page, for
+ * asking about an address before React Router does. A route draws nothing,
+ * and answers with data or a file, where it has neither a component nor an
+ * error boundary of its own, as React Router decides.
+ */
+const routeTree = (built: Pick<ServerBuild, "routes">): RouteObject[] => {
+  const childrenOf = (parentId: string | undefined): RouteObject[] =>
+    Object.values(built.routes).flatMap((route): RouteObject[] => {
+      if (route === undefined || route.parentId !== parentId) return [];
+      const module = route.module as { default?: unknown; ErrorBoundary?: unknown };
+      const shared = {
+        id: route.id,
+        caseSensitive: route.caseSensitive === true,
+        handle: { draws: module.default !== undefined || module.ErrorBoundary !== undefined },
+        ...(route.path === undefined ? {} : { path: route.path }),
+      };
+      return [
+        route.index === true
+          ? { ...shared, index: true }
+          : { ...shared, children: childrenOf(route.id) },
+      ];
+    });
+  return childrenOf(undefined);
+};
+
+/** A short plain answer of the process's own, which nobody keeps. */
+const plainly = (response: Response, status: number, words: string): void => {
+  response.status(status).setHeader("cache-control", UNKEPT_PAGE_CACHE);
+  response.type("text/plain").send(words);
+};
+
 export function scannerApp(parts: ScannerParts): Express {
   const app = express();
   app.disable("x-powered-by");
+  app.set("etag", false);
+  const routes = routeTree(build);
 
   app.use((_request, response, next) => {
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) response.setHeader(name, value);
@@ -83,8 +118,21 @@ export function scannerApp(parts: ScannerParts): Express {
       decodeURI(request.path);
       next();
     } catch {
-      response.status(404).type("text/plain").send("Not Found");
+      plainly(response, 404, "Not Found");
     }
+  });
+
+  // A page's data is asked for at `<page>.data`, and React Router would answer
+  // the same address for a route that draws no page by running it, an API
+  // route's action included, so no page's data is there to give.
+  app.use((request, response, next) => {
+    const { page, data } = pageOf(request.path);
+    const leaf = data ? matchRoutes(routes, page)?.at(-1)?.route : undefined;
+    if ((leaf?.handle as { draws: boolean } | undefined)?.draws === false) {
+      plainly(response, 404, "Not Found");
+      return;
+    }
+    next();
   });
 
   if (parts.assets !== undefined) app.use("/assets", parts.assets);
@@ -101,7 +149,7 @@ export function scannerApp(parts: ScannerParts): Express {
       path: request.path,
       requestId: request.get("x-request-id") ?? null,
     });
-    response.status(500).type("text/plain").send("Internal Server Error");
+    plainly(response, 500, "Internal Server Error");
   });
   return app;
 }

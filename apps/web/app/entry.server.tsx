@@ -21,6 +21,9 @@ export default function handleRequest(
   context: EntryContext,
 ): Promise<Response> {
   if (!headers.has("cache-control")) headers.set("cache-control", UNKEPT_PAGE_CACHE);
+  // No page acts, so a 405 is a page refusing all but reads; a page given an
+  // action takes posts as well, and this must then name them.
+  if (status === 405) headers.set("allow", "GET, HEAD");
   if (request.method === "HEAD") {
     headers.set("content-type", "text/html; charset=utf-8");
     return Promise.resolve(new Response(null, { status, headers }));

@@ -6,8 +6,8 @@
  * public pages may be kept by a shared cache for an hour and are offered as
  * Markdown to a client that prefers it; their data may be kept by the browser
  * for a moment, so the click after a hover is answered by the hover's fetch.
- * A prefetch of a public page is answered as a page, never as Markdown and
- * never as a public answer.
+ * A prefetch of a public page itself is answered as a page, never as Markdown
+ * and never as a public answer.
  */
 
 import { PUBLIC_PAGE_PATHS, type PublicPagePath } from "../../content/public-page-metadata";
@@ -94,9 +94,9 @@ export function withPlaceHeaders(request: Request, response: Response): Response
   for (const [place, headers] of PRIVATE_PLACES) {
     if (page === place || page.startsWith(`${place}/`)) Object.assign(set, headers);
   }
-  const kept = response.ok && reads(request) && isPublicPage(page) && !isPrefetch(request.headers);
+  const kept = response.ok && reads(request) && isPublicPage(page);
   if (kept && data) set["Cache-Control"] = PUBLIC_DATA_CACHE;
-  if (kept && !data) {
+  if (kept && !data && !isPrefetch(request.headers)) {
     Object.assign(set, PUBLIC_PAGE);
     set.Vary = appendVary(response.headers.get("vary"), "Accept");
   }
