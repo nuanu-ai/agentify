@@ -12,11 +12,15 @@
  * the browser says about its cache.
  */
 
+import { readFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
+import { fileURLToPath } from "node:url";
 import { type Harness, harness } from "@agentify/gateway/testing";
+import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
 import { launchChromium } from "@agentify/ui/chromium";
 import express from "express";
 import type { Browser, Page } from "playwright";
+import type { ServerBuild } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import { identityFor } from "./identity.js";
@@ -34,6 +38,8 @@ let browser: Browser;
 let close: () => Promise<void>;
 let origin: string;
 let cookies: { name: string; value: string }[];
+let build: ServerBuild;
+let viteManifest: ViteManifest;
 const asked: string[] = [];
 
 beforeAll(async () => {
@@ -77,6 +83,13 @@ beforeAll(async () => {
   });
 
   const pages = await builtPages();
+  build = pages.build as ServerBuild;
+  viteManifest = JSON.parse(
+    await readFile(
+      fileURLToPath(new URL("../dist/client/.vite/manifest.json", import.meta.url)),
+      "utf8",
+    ),
+  ) as ViteManifest;
   const dashboard = buildApp(config, { pages, gateway: harnessed.gateway, identity });
   const counted = express();
   counted.use((request, _response, next) => {
@@ -162,6 +175,34 @@ describe("the page data Chromium keeps", () => {
     expect(timesAsked("/orders") - before).toBe(2);
     await page.context().close();
   });
+});
+
+describe("a page's first visit in Chromium", () => {
+  it.each([
+    ["/sign-in", "routes/sign-in", false],
+    ["/cards", "routes/cards", true],
+  ])(
+    "loads the scripts the speed budget counts for it, no more and no fewer: %s",
+    async (path, routeId, signedIn) => {
+      const context = await browser.newContext();
+      if (signedIn) await context.addCookies(cookies.map((one) => ({ ...one, url: origin })));
+      const page = await context.newPage();
+      const scripts = new Set<string>();
+      page.on("request", (request) => {
+        const { pathname } = new URL(request.url());
+        if (pathname.startsWith(`${BASE}/assets/`) && pathname.endsWith(".js")) {
+          scripts.add(pathname.slice(`${BASE}/`.length));
+        }
+      });
+      await page.goto(`${origin}${BASE}${path}`);
+      await page.waitForLoadState("networkidle");
+
+      expect([...scripts].sort()).toEqual(
+        [...firstVisitScripts(build, viteManifest, routeId)].sort(),
+      );
+      await context.close();
+    },
+  );
 });
 
 describe("a press answered on its own page", () => {
