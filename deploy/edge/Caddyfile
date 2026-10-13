@@ -36,7 +36,7 @@
 		~^/api/v1/webhooks/stripe$ api_v1_stripe_webhook
 		~^/api/v2/session$ api_v2_session
 		~^/api/v2/scans/[^/]+/.*$ api_v2_scan_action
-		~^/_next/ asset_next
+		~^/assets/ asset
 		~^/(dashboard|cabinet|v0|x402)(?:/.*)?$ commerce
 		default other
 	}

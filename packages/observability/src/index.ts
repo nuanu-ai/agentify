@@ -173,7 +173,7 @@ const routePatterns: readonly [RegExp, string][] = [
   [/^\/api\/v1\/webhooks\/stripe$/, "api_v1_stripe_webhook"],
   [/^\/api\/v2\/session$/, "api_v2_session"],
   [/^\/api\/v2\/scans\/[^/]+\/(registrations|contact-access)$/, "api_v2_scan_contact"],
-  [/^\/_next\//, "asset_next"],
+  [/^\/assets\//, "asset"],
 ];
 
 export const classifyHttpRoute = (pathname: string): string =>

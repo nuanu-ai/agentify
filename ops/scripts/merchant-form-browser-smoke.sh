@@ -35,7 +35,7 @@ trap '"$PWCLI" --session "$session" close >/dev/null 2>&1 || true' EXIT
     await form.getByRole("textbox", { name: "Business country", exact: true }).fill("Indonesia");
     await form.getByRole("checkbox").check();
   };
-  const scriptPattern = "**/_next/static/**/*.js";
+  const scriptPattern = "**/assets/*.js";
   await page.route(scriptPattern, route => route.abort());
   await page.goto(origin + "/agentic-shop", { waitUntil: "domcontentloaded" });
   const coldForm = page.getByRole("form", { name: "Merchant application" });
