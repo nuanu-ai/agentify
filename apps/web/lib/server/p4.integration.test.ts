@@ -23,14 +23,14 @@ import { NextRequest } from "next/server";
 import type { Params } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { POST as requestDataAction } from "../../app/api/v1/account/data-request/route";
-import { POST as unsubscribeAction } from "../../app/api/v1/account/unsubscribe/route";
 import { POST as persistAttribution } from "../../app/api/v1/attribution/route";
 import { POST as persistClientEvent } from "../../app/api/v1/events/route";
 import { GET as previewShare } from "../../app/api/v1/scans/[id]/share-preview/route";
 import { GET as getContactAccess } from "../../app/api/v2/scans/[id]/contact-access/route";
 import { POST as requestScannerRegistration } from "../../app/api/v2/scans/[id]/registrations/route";
 import { GET as readVisitor } from "../../app/api/v2/session/route";
+import { action as requestDataActionRoute } from "../../app/routes/api/v1/account.data-request";
+import { action as unsubscribeActionRoute } from "../../app/routes/api/v1/account.unsubscribe";
 import { action as consent } from "../../app/routes/api/v1/consent";
 import { loader as readFullReportRoute } from "../../app/routes/api/v1/reports.scanId";
 import { loader as downloadFullPromptRoute } from "../../app/routes/api/v1/reports.scanId.remediation-prompt.download";
@@ -62,6 +62,8 @@ const answering =
   (request: Request, params: Params = {}) =>
     route({ request, params });
 const persistConsent = answering(consent);
+const requestDataAction = answering(requestDataActionRoute);
+const unsubscribeAction = answering(unsubscribeActionRoute);
 const readFullReport = answering(readFullReportRoute);
 const downloadFullPrompt = answering(downloadFullPromptRoute);
 const downloadTeaserPrompt = answering(downloadTeaserPromptRoute);

@@ -43,6 +43,8 @@ export default [
   at("methodology", "routes/methodology.tsx"),
   at("api/health", "routes/api/health.ts"),
   at("api/health/live", "routes/api/health.live.ts"),
+  at("api/v1/account/data-request", "routes/api/v1/account.data-request.ts"),
+  at("api/v1/account/unsubscribe", "routes/api/v1/account.unsubscribe.ts"),
   at("api/v1/card-signals/setup-intents", "routes/api/v1/card-signals.setup-intents.ts"),
   at("api/v1/card-signals/:signalId", "routes/api/v1/card-signals.signalId.ts"),
   at(

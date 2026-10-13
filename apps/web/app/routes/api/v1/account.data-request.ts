@@ -1,11 +1,10 @@
 import { accountDataRequestSchema } from "@agentify/scanner-contracts";
-import { type NextRequest, NextResponse } from "next/server";
+import { visitorOf } from "../../../../lib/server/auth";
+import { errorResponse, hasSameOrigin, pageNotMatched } from "../../../../lib/server/http";
+import { methods } from "../../../../lib/server/methods";
+import { updateAccountState } from "../../../../lib/server/reporting";
 
-import { visitorOf } from "../../../../../lib/server/auth";
-import { errorResponse, hasSameOrigin, pageNotMatched } from "../../../../../lib/server/http";
-import { updateAccountState } from "../../../../../lib/server/reporting";
-
-export async function POST(request: NextRequest) {
+async function requestData(request: Request): Promise<Response> {
   if (!hasSameOrigin(request))
     return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
   const visitor = await visitorOf(request.headers.get("cookie"));
@@ -51,8 +50,11 @@ export async function POST(request: NextRequest) {
       60,
     );
   }
-  return NextResponse.json({
+  return Response.json({
     status,
     type: parsed.data.type,
   });
 }
+
+export const loader = methods({ POST: requestData });
+export const action = loader;
