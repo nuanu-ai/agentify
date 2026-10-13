@@ -21,12 +21,13 @@ afterEach(() => {
 });
 
 describe("the header's doors", () => {
-  it("carries the signed-in address and a sign-out that posts to the dashboard", async () => {
+  it("carries the signed-in address, leading to the account's settings, and a sign-out that posts to the dashboard", async () => {
     visitorIs(200, { status: "signed_in", email: "owner@example.com", operator: false });
 
     const { container } = render(<SiteDoors />);
 
-    expect(await screen.findByText("owner@example.com")).toBeTruthy();
+    const address = await screen.findByText("owner@example.com");
+    expect(address.closest("a")?.getAttribute("href")).toBe("/dashboard/settings");
     const form = container.querySelector('form[action="/dashboard/sign-out"]');
     expect(form?.getAttribute("method")).toBe("post");
     expect(form?.querySelector("button")?.textContent).toMatch(/sign out/i);

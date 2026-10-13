@@ -6,6 +6,7 @@ import { useVisitor } from "../lib/visitor";
  *
  * Drawn in the browser so the page it sits on stays the same for everybody and
  * may be cached as one; a browser that runs no script sees no address. The
+ * address leads to the dashboard's settings, where the account is, and the
  * sign-out is the dashboard's own same-origin form, which ends the session
  * everywhere on the site. Not knowing who is visiting is said in words short
  * enough for the doors' row on a phone.
@@ -21,9 +22,9 @@ export function VisitorDoor() {
       ) : visitor.status === "signed_in" ? (
         <>
           {visitor.operator ? <a href="/admin">Admin</a> : null}
-          <span className="site-who" title={visitor.email}>
+          <a className="site-who" href="/dashboard/settings" title={visitor.email}>
             {visitor.email}
-          </span>
+          </a>
           <form action="/dashboard/sign-out" className="site-sign-out" method="post">
             <button type="submit">Sign out</button>
           </form>
