@@ -45,9 +45,7 @@ On each host a channel is one Compose project, `agentify`, so a container is
 
 The database mounts its init scripts from `postgres-init/` rather than from a
 checkout, so a release whose scripts and PostgreSQL image are unchanged leaves
-the database's container as it is: same container, no restart. The first
-release that mounts them from there recreates the container once, as TEST's
-did on 2026-09-23.
+the database's container as it is: same container, no restart.
 
 Everything under `/var/lib/agentify` holds nothing secret — revision names,
 checkouts of this public repository — so it is readable by anyone on the host,
@@ -112,150 +110,6 @@ push to `main`, `main`'s CI run for the commit has to have succeeded, and the
 commit has to move forward from the one the host runs. TEST takes a tag, a
 branch or a full commit SHA, as long as exactly one image build of it
 succeeded.
-
-## The release that runs the gateway and the dashboard as one process
-
-From this release the gateway and the dashboard run in one process, the
-Compose service `app`, in the container `agentify-app-1`
-(`docs/research/35-one-process.md`). Until it they were the services `gateway`
-and `dashboard`, in `agentify-gateway-1` and `agentify-dashboard-1`. Nothing in
-the release carries the old names over, so two things are done by hand on each
-host: one just before releasing it there, one after. Nothing in the host's file
-changes. Sales, the dashboard and the WooCommerce connection's fulfilment are
-down from the first step until the release has started `app`, a window that
-includes pulling the images; an order paid in it waits, or ends when its time
-runs out.
-
-First, the cards on sale are written down, because the release's own check of
-them reads the catalog only after the gateway is already stopped, and so
-compares nothing at this release. On the machine the release is run from:
-
-```sh
-curl -sS https://test.agentify.ad/x402/catalog | python3 -c 'import json, sys; print("\n".join(sorted(item["id"] for item in json.load(sys.stdin)["items"])))' > cards-before-test
-```
-
-Then the two old containers stop, the dashboard before the gateway, the order
-Compose stopped them in, so the dashboard's WooCommerce worker does not lose
-the gateway in the middle of an order; each with the minute the release gives
-every service to finish what it is doing, so a purchase or an order being
-placed in a shop is not cut off halfway. The release stops the services it
-knows by their new name; left running, the old two would go on beside the new
-application, taking work off the same queue, through the dump and the
-migrations as well, and nothing would say so. The last line prints `exited`
-twice:
-
-```sh
-ssh agentify-test "sudo docker stop -t 60 agentify-dashboard-1"
-ssh agentify-test "sudo docker stop -t 60 agentify-gateway-1"
-ssh agentify-test "sudo docker inspect -f '{{.Name}} {{.State.Status}}' agentify-gateway-1 agentify-dashboard-1"
-```
-
-Then release ("Releasing to test"). On PRODUCTION the same commands run over
-`ssh agentify`, with `https://agentify.ad` and a file of its own, just before
-`agentify-release`. Once the release is verified, the same catalog read
-compared with the file prints nothing when every card on sale before is on
-sale still:
-
-```sh
-curl -sS https://test.agentify.ad/x402/catalog | python3 -c 'import json, sys; print("\n".join(sorted(item["id"] for item in json.load(sys.stdin)["items"])))' | diff cards-before-test - | grep '^<'
-```
-
-Second, once the release is verified, the old containers go. Until then they
-are the way back. If the release is refused, or fails before it begins
-migrating, `sudo docker start agentify-gateway-1 agentify-dashboard-1` brings
-the old release back as it was, against tables the release has not touched.
-If it fails once it has begun migrating, the way back is the release's restore
-point ("Restoring"), and the previous revision released again. The last line
-prints nothing:
-
-```sh
-ssh agentify-test "sudo docker rm agentify-gateway-1 agentify-dashboard-1"
-ssh agentify-test "sudo docker ps -a --filter name=^agentify-gateway-1$ --filter name=^agentify-dashboard-1$ --format '{{.Names}}'"
-```
-
-Until a host is released, `pnpm approve` and `pnpm forget` from a checkout
-that carries this cannot reach it: they name `agentify-app-1`, which is not
-there yet, and refuse with nothing done. Run them from a checkout before this
-release in the meantime.
-
-Afterwards the same thing can happen the other way on TEST, which takes any
-branch: a revision without this change stops `gateway` and `dashboard`, which
-are not there, and starts them beside the `app` it does not know, which goes
-on running, two gateways on one queue. So rebase a branch onto `main` before
-putting it on TEST once this is there. To put an older revision on TEST all
-the same, stop `agentify-app-1` first, the way the two were stopped above,
-and remove it once that release is verified.
-
-## The release that takes the gateway's route into the dashboard away
-
-From this release the gateway has the dashboard tell a merchant of a change by
-a call inside the application (`docs/research/35-one-process.md`), and the
-dashboard opens no listener on 3003. Nothing has to be done on either host
-before it. Afterwards `GATEWAY_DASHBOARD_SECRET` in the host's file is read by
-nothing. Take its line out once going back to an earlier revision is no longer
-wanted, since an earlier revision's preflight refuses a file without it. The
-last line prints `0`, and the file keeps its owner and mode, `root 600`:
-
-```sh
-ssh agentify-test "sudo sed -i '/^GATEWAY_DASHBOARD_SECRET=/d' /etc/agentify/test.env"
-ssh agentify-test "sudo stat -c '%U %a' /etc/agentify/test.env"
-ssh agentify-test sudo grep -c '^GATEWAY_DASHBOARD_SECRET=' /etc/agentify/test.env
-```
-
-On PRODUCTION the same commands run over `ssh agentify`, with
-`production.env` in place of `test.env`.
-
-## The release that has the dashboard call the gateway in its own process
-
-From this release the dashboard calls the gateway's application inside the
-process it shares with it (`docs/research/35-one-process.md`), makes a merchant
-with no invitation, and reads no key off an account's row. Nothing has to be
-done on either host before it. On PRODUCTION, release it together with the one
-that deletes the keys made for a dashboard (step 4 in
-`docs/research/35-one-process.md`), not before: from this release on, the key
-on each account row is neither renewed nor forgotten, so a copy of the database
-taken in between, a backup included, holds keys that open the API. Afterwards
-`AGENTIFY_INVITATION` in the host's file is read by nothing. Take its line out
-once going back to an earlier revision is no longer wanted, since an earlier
-revision's preflight refuses a file without it. The last line prints `0`, and
-the file keeps its owner and mode, `root 600`:
-
-```sh
-ssh agentify-test "sudo sed -i '/^AGENTIFY_INVITATION=/d' /etc/agentify/test.env"
-ssh agentify-test "sudo stat -c '%U %a' /etc/agentify/test.env"
-ssh agentify-test sudo grep -c '^AGENTIFY_INVITATION=' /etc/agentify/test.env
-```
-
-On PRODUCTION the same commands run over `ssh agentify`, with
-`production.env` in place of `test.env`.
-
-## The release that deletes the keys made for a dashboard
-
-From this release no key is made for a dashboard and none is kept
-(`docs/research/35-one-process.md`). Its two migrations are one way. The
-gateway's deletes every key made for a dashboard, the one written at
-registration and any a renewal left behind, and then the column that told the
-two kinds of key apart. The dashboard's drops the key each account row held
-beside its merchant; every account keeps the merchant it names. A merchant's
-own keys, the ones their code calls with, are not touched.
-
-Nothing has to be done on either host before it. The release takes its
-restore point before it migrates, as every release does, and that restore
-point is the way back: an earlier revision expects the columns these
-migrations drop, so going back means restoring the databases to it, not
-releasing the earlier revision onto the migrated ones. A key read off an
-account row in a copy of the database taken before this release, a backup
-included, opens nothing once the release has run, because its row in the
-gateway is gone. Restoring that restore point brings those rows back, and
-with them every such key, until this release runs again.
-
-The same holds for TEST, which takes any branch: a revision without this
-change finds both migrations applied, starts, and fails on every call that
-reads a key and on every account it reads. So rebase a branch onto `main`
-before putting it on TEST once this is there.
-
-On PRODUCTION this release goes out together with the previous one, which
-leaves those keys on the rows unrenewed. On TEST it can go alone.
 
 ## Releasing to production
 
@@ -368,6 +222,15 @@ person's run never skips one:
 ```sh
 ssh -t agentify-test sudo agentify-release my-branch
 ```
+
+Rebase a branch onto `main` before putting it on TEST. Migrations go one way,
+and TEST's database carries those of every revision it has run, so a revision
+without some of them starts against tables it does not expect and fails on
+whatever reads what they changed or dropped; nothing refuses it first, since
+TEST takes any branch. To run an older revision there all the same, the
+database goes back first, to a restore point taken before the migrations the
+revision lacks ("Restoring"); releasing it onto the migrated database is not
+the way back.
 
 ## When a release fails
 
