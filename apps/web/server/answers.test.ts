@@ -5,7 +5,7 @@
  * it does not have, and the line a failure leaves in the log.
  */
 
-import { request } from "node:http";
+import { type IncomingHttpHeaders, request } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ask, testScanner } from "../testing/scanner";
 
@@ -21,6 +21,41 @@ const SECURITY_HEADERS = {
 };
 
 const NOBODY_KEEPS = "private, no-cache, no-store, max-age=0, must-revalidate";
+
+/**
+ * One request with its path and method exactly as written, which `fetch`
+ * would tidy first (`/./` and `%2e` taken out, repeated slashes kept) or
+ * refuse to send (TRACE).
+ */
+const sent = async (
+  path: string,
+  method = "GET",
+): Promise<Readonly<{ status: number; headers: IncomingHttpHeaders; body: string }>> => {
+  const { origin } = await testScanner();
+  return new Promise((resolve, reject) => {
+    request(`${origin}/`, { path, method, agent: false }, (answered) => {
+      let body = "";
+      answered.setEncoding("utf8");
+      answered.on("data", (chunk: string) => {
+        body += chunk;
+      });
+      answered.on("end", () =>
+        resolve({ status: answered.statusCode ?? 0, headers: answered.headers, body }),
+      );
+    })
+      .on("error", reject)
+      .end();
+  });
+};
+
+/** The lines the process logs as errors from here on, for a test to read. */
+const errorLines = (): string[] => {
+  const lines: string[] = [];
+  vi.spyOn(console, "error").mockImplementation((line: unknown) => {
+    lines.push(String(line));
+  });
+  return lines;
+};
 
 /** The text of the first element of this kind on a page, or null. */
 const textOf = (tag: "title" | "h1", html: string): string | null =>
@@ -233,6 +268,26 @@ describe("an address the scanner has no page for", () => {
   );
 });
 
+describe("an API route's data asked for through a path with dot segments", () => {
+  it.each([
+    ["/api/./health.data", "GET"],
+    ["/api/health/%2e/live.data", "GET"],
+    ["/api/v1/%2E/consent.data", "POST"],
+    ["/api/v1/nothing/../consent.data", "POST"],
+  ])(
+    "is a 404 that leaves no line in the log, as the same path without them is: %s %s",
+    async (path, method) => {
+      const lines = errorLines();
+
+      const answered = await sent(path, method);
+
+      expect(answered.status).toBe(404);
+      expect(answered.headers["cache-control"]).toBe(NOBODY_KEEPS);
+      expect(lines).toEqual([]);
+    },
+  );
+});
+
 describe("a page asked with a method it does not take", () => {
   it.each(["PUT", "DELETE", "OPTIONS"])(
     "is refused with 405 naming the methods it takes: %s",
@@ -259,22 +314,6 @@ describe("an address with a trailing slash", () => {
   });
 });
 
-/** Where the scanner sends a path as written, slashes and all, which `fetch` would tidy first. */
-const sentFrom = async (path: string): Promise<{ status: number; location?: string }> => {
-  const { origin } = await testScanner();
-  return new Promise((resolve, reject) => {
-    request(`${origin}/`, { path, agent: false }, (answered) => {
-      answered.resume();
-      resolve({
-        status: answered.statusCode ?? 0,
-        ...(answered.headers.location === undefined ? {} : { location: answered.headers.location }),
-      });
-    })
-      .on("error", reject)
-      .end();
-  });
-};
-
 describe("an address written with repeated slashes", () => {
   it.each([
     ["//elsewhere.example/", "/elsewhere.example/"],
@@ -284,10 +323,10 @@ describe("an address written with repeated slashes", () => {
   ])(
     "is sent to the same address on this site with one slash at each step: %s",
     async (path, to) => {
-      const answered = await sentFrom(path);
+      const answered = await sent(path);
 
       expect(answered.status).toBe(308);
-      expect(answered.location).toBe(to);
+      expect(answered.headers.location).toBe(to);
     },
   );
 });
