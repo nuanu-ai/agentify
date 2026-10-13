@@ -1800,6 +1800,7 @@ const PROBLEMS: GalleryState[] = [
 export const gallery: GallerySurface = {
   id: "dashboard",
   name: "Seller dashboard",
+  lang: "en",
   states: [
     ...SIGNING_IN,
     ...SETTING_UP,

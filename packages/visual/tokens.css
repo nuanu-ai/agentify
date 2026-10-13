@@ -25,13 +25,14 @@
   --raised: #eeebe4;
   --surface-sunken: #f4f1ea;
 
-  /* Ink, strongest to faintest. --na is for a disabled control or an empty
-     cell. */
+  /* Ink, strongest to faintest. Every ink down to --faint carries small text
+     on the page (4.5:1 on --bg and on --surface); --na is for a disabled
+     control or an empty cell. */
   --fg: #1a1917;
   --fg-strong: #2a2824;
   --fg-2: #4b4842;
   --muted: #6b6862;
-  --faint: #8a8781;
+  --faint: #726f69;
   --na: #b4afa6;
 
   /* --line (1.31:1 on the page) is for rules between cells; it is too faint
@@ -48,12 +49,13 @@
 
   --on-accent: #ffffff;
 
-  /* Verdict colours, named for what they mean rather than their hue.
-     --partial is darker than the design's #b6801f, which fails WCAG AA for
-     small text on paper. The notice pair has had no design review. */
-  --pass: #2e7d53;
+  /* Verdict colours, named for what they mean rather than their hue. --pass
+     and --partial carry small text at 4.5:1 on the page, on a card and on the
+     soft fills, which the design's #b6801f did not. The notice pair has had no
+     design review. */
+  --pass: #2c774f;
   --pass-soft: #e7f1ea;
-  --partial: #9a6811;
+  --partial: #926310;
   --notice-bg: #f8f0df;
   --notice-ink: #76500e;
   --fail: #b4462f;
@@ -139,6 +141,16 @@ body {
 :where(a:hover) {
   color: var(--accent-hover);
   text-decoration: underline;
+}
+
+/* A link inside running text is told from the words around it by an
+   underline as well as its colour, which alone is too close to the text's.
+   Navigation, a header, a footer and a link drawn as a button are not running
+   text and keep their own look; neither is a table cell, which is not among
+   the blocks named here. */
+:where(p, li, dd, blockquote, figcaption) :where(a:not(.button, nav a, header a, footer a)) {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 
 /* Translucent so the ring shows on both paper and a filled control without

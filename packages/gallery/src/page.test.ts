@@ -27,6 +27,7 @@ const state = (id: string, more: Partial<DrawnState> = {}): DrawnState => ({
 const surface = (states: readonly DrawnState[], css = ""): DrawnSurface => ({
   id: "dashboard",
   name: "Seller dashboard",
+  lang: "en",
   css,
   states,
 });
@@ -116,12 +117,15 @@ describe("states a comment could not point at", () => {
           state("dashboard-keys-none", {
             html:
               '<img src="/assets/mark.svg"><img src="data:image/svg+xml;base64,PHN2Zy8+"' +
-              ' srcSet="data:image/webp;base64,UklG 640w, /still-life-1448.webp 1448w">',
+              ' srcSet="data:image/webp;base64,UklG 640w, /still-life-1448.webp 1448w">' +
+              '<link rel="canonical" href="https://agentify.ad/store">' +
+              '<link rel="icon" href="/icon.svg">',
           }),
         ]),
       ]),
     ).toEqual([
       "The state dashboard-keys-none asks for /assets/mark.svg, which the page cannot fetch.",
+      "The state dashboard-keys-none asks for /icon.svg, which the page cannot fetch.",
       "The state dashboard-keys-none asks for /still-life-1448.webp, which the page cannot fetch.",
     ]);
   });

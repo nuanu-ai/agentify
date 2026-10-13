@@ -107,7 +107,12 @@ export async function drawnInBrowser(
       await react.act(async () => step.does(document));
     }
     await shown(scene.shows);
-    return container.innerHTML;
+    // React moves a page's title into the document's head, where a server
+    // that sends the whole page has it.
+    const title = document.title;
+    return title === "" || container.querySelector("title") !== null
+      ? container.innerHTML
+      : `<title>${title.replaceAll("&", "&amp;").replaceAll("<", "&lt;")}</title>${container.innerHTML}`;
   } finally {
     await react.act(async () => root.unmount());
     globalThis.fetch = fetched;

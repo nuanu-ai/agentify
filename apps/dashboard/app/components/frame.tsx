@@ -47,10 +47,10 @@ function Unnamed({ base }: Readonly<{ base: string }>) {
       <div className="what">
         You cannot publish products until you choose the seller name buyers will see.
       </div>
-      <div className="why">
+      <p className="why">
         A card without a seller name is refused.{" "}
         <a href={`${base}/settings`}>Choose a seller name in Settings</a>.
-      </div>
+      </p>
     </div>
   );
 }

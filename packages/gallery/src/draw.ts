@@ -53,6 +53,7 @@ export interface DrawnState {
 export interface DrawnSurface {
   readonly id: string;
   readonly name: string;
+  readonly lang: string;
   /** Every stylesheet the states reached, compiled, in the order Vite met them. */
   readonly css: string;
   readonly states: readonly DrawnState[];
@@ -286,6 +287,7 @@ export async function drawSurface(source: SurfaceSource): Promise<DrawnSurface> 
     return {
       id: gallery.id,
       name: gallery.name,
+      lang: gallery.lang,
       css: await withFilesInlined([...stylesheets.values()].join("\n"), find),
       states,
     };
