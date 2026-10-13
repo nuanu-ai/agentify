@@ -99,6 +99,7 @@ describe("the owner landing's old address", () => {
     ["read", "/owner", "GET"],
     ["read with a query", "/owner?utm_source=a-link", "GET"],
     ["asked for its headers", "/owner", "HEAD"],
+    ["posted to", "/owner", "POST"],
   ])("sends a visitor permanently to the front page when %s", async (_how, path, method) => {
     const answered = await ask(path, { method });
 
