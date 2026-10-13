@@ -72,9 +72,10 @@
 	}
 }
 
-# The mark and the font files the dashboard's HTML asks for (the scanner
-# bundles its own). Named one by one: a broad /assets or /styles route would
-# take those namespaces away from the scanner.
+# The marks and the font files the dashboard's pages and the documentation
+# portal ask for by address (the scanner bundles its own). Named one by one: a
+# broad /assets or /styles route would take those namespaces away from the
+# scanner.
 (shared_assets) {
 	@shared_assets path /assets/agentify-mark.svg /assets/agentify-mark-heavy.svg /styles/fonts.css /styles/fonts/*.woff2
 	handle @shared_assets {
