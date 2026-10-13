@@ -1,5 +1,3 @@
-"use client";
-
 import { registrationResponseSchema } from "@agentify/scanner-contracts";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 

@@ -1,13 +1,9 @@
-"use client";
-
-import {
-  type BrowserObservationFinding,
-  type BrowserObservationStatusResponse,
-  browserObservationStatusResponseSchema,
+import type {
+  BrowserObservationFinding,
+  BrowserObservationStatusResponse,
 } from "@agentify/scanner-contracts";
 import { useEffect, useId, useState } from "react";
 
-import { DISPLAY_BRAND } from "../lib/brand";
 import {
   browserObservationImpact,
   browserObservationLabel,
@@ -17,23 +13,25 @@ import {
   isExperimentalBrowserObservation,
   safeEvidenceEntries,
 } from "../lib/browser-observation-ui";
-import { buildBrowserFixPrompt } from "../lib/fix-prompts";
 import styles from "./browser-observations.module.css";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
 import { StatusBadge } from "./status-badge";
 
 type ViewState = "hidden" | "ready" | "error";
 
+/**
+ * What a real browser observed on the site, beside the report and outside its
+ * score. The scan page asks for it while the observation runs; the report is
+ * handed it whole, with the prompt that fixes each actionable finding.
+ */
 export function BrowserObservations({
-  host,
+  fixPrompts = {},
   initialData,
-  remediationPromptEnabled = false,
   scanId,
   surface,
 }: Readonly<{
-  host?: string;
+  fixPrompts?: Readonly<Record<string, string>>;
   initialData?: BrowserObservationStatusResponse | null;
-  remediationPromptEnabled?: boolean;
   scanId: string;
   surface: "scan" | "report";
 }>) {
@@ -82,7 +80,10 @@ export function BrowserObservations({
           setViewState("error");
           return;
         }
-        const payload: unknown = await response.json();
+        const [payload, { browserObservationStatusResponseSchema }] = await Promise.all([
+          response.json() as Promise<unknown>,
+          import("@agentify/scanner-contracts"),
+        ]);
         const parsed = browserObservationStatusResponseSchema.safeParse(payload);
         if (!parsed.success) {
           setViewState("error");
@@ -156,9 +157,8 @@ export function BrowserObservations({
           {visibleFindings.map((finding) => (
             <BrowserFinding
               finding={finding}
-              host={host}
+              fixPrompt={fixPrompts[finding.id]}
               key={finding.id}
-              remediationPromptEnabled={remediationPromptEnabled}
               surface={surface}
             />
           ))}
@@ -195,13 +195,11 @@ function PanelHeader({
 
 function BrowserFinding({
   finding,
-  host,
-  remediationPromptEnabled,
+  fixPrompt,
   surface,
 }: Readonly<{
   finding: BrowserObservationFinding;
-  host?: string;
-  remediationPromptEnabled: boolean;
+  fixPrompt?: string;
   surface: "scan" | "report";
 }>) {
   const evidence = safeEvidenceEntries(finding.evidence);
@@ -229,12 +227,8 @@ function BrowserFinding({
           ))}
         </dl>
       ) : null}
-      {surface === "report" && actionable && host && remediationPromptEnabled ? (
-        <CopyRemediationPrompt
-          label="Copy this fix"
-          prompt={buildBrowserFixPrompt(host, finding, DISPLAY_BRAND)}
-          secondary
-        />
+      {surface === "report" && actionable && fixPrompt !== undefined ? (
+        <CopyRemediationPrompt label="Copy this fix" prompt={fixPrompt} secondary />
       ) : null}
     </div>
   );

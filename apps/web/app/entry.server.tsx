@@ -1,7 +1,7 @@
 /**
- * Every page is answered whole: nothing on these pages waits behind a
- * suspense boundary, and a whole answer is the one whose status is final and
- * whose words a browser without script reads.
+ * Every page is answered whole: it is sent once everything on it is drawn,
+ * the parts whose script loads on its own included, and a whole answer is the
+ * one whose status is final and whose words a browser without script reads.
  */
 
 import { PassThrough } from "node:stream";

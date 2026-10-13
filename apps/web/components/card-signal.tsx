@@ -1,13 +1,18 @@
-"use client";
+import { Suspense, useEffect, useRef, useState } from "react";
 
-import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import { loadStripe } from "@stripe/stripe-js/pure";
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
-
-import { CARD_SIGNAL_DISCLOSURES, canLoadStripeSdk } from "../lib/card-signal-ui";
+import {
+  CARD_SIGNAL_DISCLOSURES,
+  type CardSignalState as CardSignalStatus,
+  canLoadStripeSdk,
+} from "../lib/card-signal-ui";
 import styles from "./card-signal.module.css";
+import { lazyPart } from "./lazy-part";
 
-type CardSignalStatus = "not_started" | "setup_pending" | "attached" | "detached" | "failed";
+// Stripe's own scripts load at the step that shows its card form, once the
+// visitor agreed and the provider's setup is ready, never with the report.
+const StripeCardStep = lazyPart(() =>
+  import("./card-signal-stripe-form").then((module) => module.StripeCardStep),
+);
 
 type SetupResponse = Readonly<{
   signal_id: string;
@@ -51,18 +56,11 @@ export function CardSignal({
   );
   const [confirmingDetach, setConfirmingDetach] = useState(false);
   const idempotencyKey = useRef(crypto.randomUUID());
-  const stripePromise = useMemo(
-    () =>
-      canLoadStripeSdk({
-        consented,
-        clientSecret,
-        adapter,
-        publishableKey,
-      }) && publishableKey
-        ? loadStripe(publishableKey)
-        : null,
-    [adapter, clientSecret, consented, publishableKey],
-  );
+  const stripeStep =
+    canLoadStripeSdk({ consented, clientSecret, adapter, publishableKey }) &&
+    publishableKey !== null &&
+    clientSecret !== undefined &&
+    status === "setup_pending";
 
   useEffect(() => {
     if (status !== "setup_pending" || !signalId) return;
@@ -247,21 +245,10 @@ export function CardSignal({
         </div>
       ) : null}
 
-      {clientSecret && adapter === "stripe" && stripePromise && status === "setup_pending" ? (
-        <Elements
-          options={{
-            clientSecret,
-            appearance: {
-              theme: "stripe",
-              // Stripe Elements renders in an iframe and cannot read our CSS
-              // custom properties, so these mirror --accent / --radius-control
-              // by value. Keep in sync with @agentify/visual/tokens.css.
-              variables: { colorPrimary: "#0f736e", borderRadius: "12px" },
-            },
-          }}
-          stripe={stripePromise}
-        >
-          <StripeCardForm
+      {stripeStep ? (
+        <Suspense fallback={null}>
+          <StripeCardStep
+            clientSecret={clientSecret}
             onFailure={(failure) => {
               setStatus("failed");
               setMessage(failure);
@@ -270,8 +257,9 @@ export function CardSignal({
               setStatus("setup_pending");
               setMessage("Card submitted. Waiting for signed provider confirmation…");
             }}
+            publishableKey={publishableKey}
           />
-        </Elements>
+        </Suspense>
       ) : null}
 
       {clientSecret && adapter === "local" && status === "setup_pending" ? (
@@ -328,49 +316,5 @@ export function CardSignal({
         {message}
       </p>
     </section>
-  );
-}
-
-function StripeCardForm({
-  onFailure,
-  onPending,
-}: Readonly<{
-  onFailure: (message: string) => void;
-  onPending: () => void;
-}>) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [submitting, setSubmitting] = useState(false);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!stripe || !elements) return;
-    setSubmitting(true);
-    const result = await stripe.confirmSetup({
-      elements,
-      confirmParams: {
-        return_url: `${window.location.href.split("#")[0]}#card-signal`,
-      },
-      redirect: "if_required",
-    });
-    setSubmitting(false);
-    if (result.error) {
-      onFailure(result.error.message ?? "Card confirmation failed. Your report is unaffected.");
-      return;
-    }
-    onPending();
-  }
-
-  return (
-    <form className={styles.stripeForm} onSubmit={(event) => void submit(event)}>
-      <PaymentElement />
-      <button
-        className="button button-secondary"
-        disabled={!stripe || !elements || submitting}
-        type="submit"
-      >
-        {submitting ? "Submitting…" : "Save card as a $0 signal"}
-      </button>
-    </form>
   );
 }

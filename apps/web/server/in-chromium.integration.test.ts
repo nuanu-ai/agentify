@@ -28,7 +28,7 @@ import { launchChromium } from "@agentify/ui/chromium";
 import express from "express";
 import type { Browser, Page } from "playwright";
 import type { ServerBuild } from "react-router";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ScannerParts } from "./app";
 
 const DIST = fileURLToPath(new URL("../dist", import.meta.url));
@@ -67,6 +67,17 @@ const withheldOnLive = (): Readonly<{ matches: (path: string) => boolean; to: st
     to,
   };
 };
+
+// The scan's and the report's pages read the scanner's settings, which name a
+// database; none is asked, since every API a browser asks here is answered by
+// the browser's own stub or needs no database.
+beforeAll(() => {
+  vi.stubEnv("DATABASE_URL", "postgresql://nobody:unused@127.0.0.1:1/nowhere");
+});
+
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 
 beforeAll(async () => {
   const built = (await import(pathToFileURL(join(DIST, "server", "index.js")).href)) as {
@@ -192,6 +203,9 @@ describe("a page's first visit in Chromium", () => {
     ["/agentic-shop", "routes/agentic-shop"],
     ["/sell", "routes/sell"],
     ["/no-such-page", "routes/not-found"],
+    ["/scan/0190f4c5-0000-7000-8000-00000000f003", "routes/scan.id"],
+    ["/scan/pending", "routes/scan.pending"],
+    ["/report/0190f4c5-0000-7000-8000-00000000f004", "routes/report.scanId"],
   ])(
     "loads the scripts the speed budget counts for it, no more and no fewer: %s",
     async (path, routeId) => {
@@ -374,6 +388,149 @@ describe("the consent banner", () => {
     );
     expect(stored?.categories?.product_analytics).toBe(measured);
     expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
+    await page.context().close();
+  });
+});
+
+const SCAN_ID = "0190f4c5-0000-7000-8000-00000000f001";
+const SCAN_TOKEN = "t".repeat(43);
+
+const checksAt = (status: string) =>
+  Array.from({ length: 18 }, (_, index) => ({
+    id: index + 1,
+    label_code: "robots",
+    status: index < 7 ? "pass" : status,
+    robots: null,
+  }));
+
+const RUNNING = {
+  status: "running",
+  progress: { completed: 7, total: 18 },
+  checks: checksAt("running"),
+  updated_at: "2026-10-13T09:00:00.000Z",
+  target_host: "shop.example",
+};
+
+const FINISHED = {
+  ...RUNNING,
+  status: "completed",
+  progress: { completed: 18, total: 18 },
+  checks: checksAt("pass"),
+  teaser: {
+    score: 46,
+    coverage: 1,
+    level: "readable",
+    top_findings: ["vertical_jsonld_missing"],
+    positive: null,
+    hidden_count: 7,
+  },
+};
+
+/**
+ * A browser with nothing kept whose API is answered here: the scan is
+ * accepted, its status is each of `statuses` in turn and the last one from
+ * then on, and the visitor is signed out. What it complained of is collected.
+ */
+const answered = async (...statuses: readonly object[]) => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  const complaints: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && !message.text().startsWith("Failed to load resource")) {
+      complaints.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => complaints.push(error.message));
+  let statusAsks = 0;
+  await page.route("**/api/v1/scans", (route) =>
+    route.fulfill({
+      status: 202,
+      json: {
+        scan_id: SCAN_ID,
+        access_token: SCAN_TOKEN,
+        status: "accepted",
+        status_url: `/api/v1/scans/${SCAN_ID}/status`,
+        estimated_seconds: 30,
+      },
+    }),
+  );
+  await page.route(`**/api/v1/scans/${SCAN_ID}/status`, (route) => {
+    statusAsks += 1;
+    return route.fulfill({ json: statuses[Math.min(statusAsks, statuses.length) - 1] });
+  });
+  await page.route("**/api/v2/session", (route) =>
+    route.fulfill({ json: { status: "signed_out" } }),
+  );
+  return { page, complaints };
+};
+
+describe("a scan in Chromium", () => {
+  it("goes from the front page's form to the scan's progress, its result and the ask for the full report, without a complaint and with no token left in the address", async () => {
+    const { page, complaints } = await answered(RUNNING, FINISHED);
+
+    await page.goto(`${origin}/`);
+    await page.getByRole("textbox", { name: "Website URL" }).first().fill("shop.example");
+    await page.locator("form button[type=submit]").first().click();
+    await page.waitForURL(`${origin}/scan/${SCAN_ID}?segment=owner`);
+    await page.getByText("7 of 18 checks reported").waitFor();
+    await page.getByLabel("Email").waitFor();
+
+    expect(await page.locator("h1").first().textContent()).toBe("Readable");
+    expect(page.url()).not.toContain(SCAN_TOKEN);
+    expect(
+      await page.evaluate((key) => sessionStorage.getItem(key), `agentify:scan-token:${SCAN_ID}`),
+    ).toBe(SCAN_TOKEN);
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+
+  it("reloads, rather than failing, where the result's script was replaced by a newer deployment, and then draws the result", async () => {
+    const { page } = await answered(FINISHED);
+    let refused = false;
+    await page.route("**/assets/scan-teaser-*.js", (route) => {
+      if (refused) return route.continue();
+      refused = true;
+      return route.fulfill({ status: 404, body: "" });
+    });
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    await page.waitForLoadState("networkidle");
+
+    await page.getByLabel("Email").waitFor();
+
+    expect(refused).toBe(true);
+    expect(await page.locator("h1").first().textContent()).toBe("Readable");
+    expect(await page.getByText("Something went wrong").count()).toBe(0);
+    await page.context().close();
+  });
+
+  it("reloads only once where the result's script cannot be fetched at all, and then says something failed", async () => {
+    const { page } = await answered(FINISHED);
+    await page.route("**/assets/scan-teaser-*.js", (route) => route.fulfill({ status: 404 }));
+    let documents = 0;
+    page.on("request", (request) => {
+      if (request.resourceType() === "document") documents += 1;
+    });
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+
+    await page.getByText("Something went wrong").waitFor();
+    await page.waitForTimeout(2_000);
+
+    expect(documents).toBe(2);
+    await page.context().close();
+  });
+
+  it("asks a stranger at a report to sign in, and its own links need no reload", async () => {
+    const { page, complaints } = await visit("/report/0190f4c5-0000-7000-8000-00000000f002");
+    await page.evaluate(() => {
+      (window as Window & { stayed?: boolean }).stayed = true;
+    });
+
+    expect(await page.locator("h1").textContent()).toBe("Private report access required");
+    await page.locator("a.brand").click();
+    await page.waitForURL(`${origin}/`);
+    await page.locator("h1").first().waitFor();
+    expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
+    expect(complaints).toEqual([]);
     await page.context().close();
   });
 });
