@@ -3,9 +3,7 @@ import { data, type LoaderFunctionArgs, type MetaArgs, useLoaderData } from "rea
 import { PublicSharePage } from "../../components/public-share-page";
 import { siteConfigOf } from "../../lib/page-meta";
 import { getPublicShare } from "../../lib/server/reporting";
-import { shareCopy } from "../../lib/share-copy";
-
-const SCAN_DATE = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
+import { shareView } from "../../lib/share-copy";
 
 /**
  * A published result, or the page that says there is no such page for a link
@@ -15,19 +13,7 @@ const SCAN_DATE = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZo
 export const loader = async ({ params }: LoaderFunctionArgs) => {
   const share = await getPublicShare(params.slug ?? "");
   if (share === undefined) throw data(null, { status: 404 });
-  const { snapshot } = share;
-  const copy = shareCopy(snapshot);
-  return {
-    headline: copy.headline,
-    subline: copy.subline,
-    allowIndexing: share.allowIndexing,
-    preview: {
-      hostLabel: snapshot.host,
-      level: snapshot.level,
-      score: snapshot.score,
-      scannedLabel: `Scanned ${SCAN_DATE.format(new Date(snapshot.generated_at))}`,
-    },
-  };
+  return shareView(share.snapshot, share.allowIndexing);
 };
 
 /**

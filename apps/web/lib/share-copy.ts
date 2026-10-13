@@ -60,3 +60,21 @@ export function shareCopy(snapshot: PublicShareSnapshot): ShareCopy {
       };
   }
 }
+
+const SCAN_DATE = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" });
+
+/** What a published result's page says, from its public snapshot alone. */
+export function shareView(snapshot: PublicShareSnapshot, allowIndexing: boolean) {
+  const copy = shareCopy(snapshot);
+  return {
+    headline: copy.headline,
+    subline: copy.subline,
+    allowIndexing,
+    preview: {
+      hostLabel: snapshot.host,
+      level: snapshot.level,
+      score: snapshot.score,
+      scannedLabel: `Scanned ${SCAN_DATE.format(new Date(snapshot.generated_at))}`,
+    },
+  };
+}
