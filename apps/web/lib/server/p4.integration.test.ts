@@ -38,7 +38,6 @@ import { loader as shareImageRoute } from "../../app/routes/api/v1/shares.slug.i
 import { loader as getContactAccessRoute } from "../../app/routes/api/v2/scans.id.contact-access";
 import { action as requestScannerRegistrationRoute } from "../../app/routes/api/v2/scans.id.registrations";
 import { loader as readVisitorRoute } from "../../app/routes/api/v2/session";
-import { loader as shareCardRoute } from "../../app/routes/s.slug.opengraph-image";
 import { latestReportOf, visitorOf } from "./auth";
 import { getServerConfig } from "./config";
 import { encryptEmail, hmacHex, sha256 } from "./crypto";
@@ -74,7 +73,6 @@ const getTeaserPrompt = answering(getTeaserPromptRoute);
 const downloadTeaserPrompt = answering(downloadTeaserPromptRoute);
 const publishShare = answering(publishShareRoute);
 const previewShare = answering(previewShareRoute);
-const shareCard = answering(shareCardRoute);
 const shareImage = answering(shareImageRoute);
 const getContactAccess = answering(getContactAccessRoute);
 const requestScannerRegistration = answering(requestScannerRegistrationRoute);
@@ -1802,13 +1800,13 @@ describe("P4 dashboard-owned scanner identity", () => {
       rubric_version: "gtm-v1.0.0",
       generated_at: expect.any(String),
     });
-    const sharePicture = (route: typeof shareCard, path: string) =>
-      route(new Request(`http://localhost:3000${path}`), { slug: shared.slug });
-    const card = await sharePicture(shareCard, `/s/${shared.slug}/opengraph-image`);
-    expect(card.status).toBe(200);
-    expect(card.headers.get("content-type")).toBe("image/png");
-    const download = await sharePicture(shareImage, `/api/v1/shares/${shared.slug}/image`);
+    const sharePicture = () =>
+      shareImage(new Request(`http://localhost:3000/api/v1/shares/${shared.slug}/image`), {
+        slug: shared.slug,
+      });
+    const download = await sharePicture();
     expect(download.status).toBe(200);
+    expect(download.headers.get("content-type")).toBe("image/png");
     expect(download.headers.get("content-disposition")).toBe(
       'attachment; filename="agentify-example.com.png"',
     );
@@ -1819,10 +1817,7 @@ describe("P4 dashboard-owned scanner identity", () => {
       }),
     ).toBe("revoked");
     expect(await getPublicShare(shared.slug)).toBeUndefined();
-    const revokedCard = await sharePicture(shareCard, `/s/${shared.slug}/opengraph-image`);
-    expect(revokedCard.status).toBe(404);
-    expect(await revokedCard.text()).toBe("");
-    const revokedDownload = await sharePicture(shareImage, `/api/v1/shares/${shared.slug}/image`);
+    const revokedDownload = await sharePicture();
     expect(revokedDownload.status).toBe(404);
     expect(((await revokedDownload.json()) as { error: { code: string } }).error.code).toBe(
       "share_not_found",

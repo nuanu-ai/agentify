@@ -61,7 +61,6 @@ export default [
   at("robots.txt", "routes/robots.txt.ts"),
   at("llms.txt", "routes/llms.txt.ts"),
   at("sitemap.xml", "routes/sitemap.xml.ts"),
-  at("s/:slug/opengraph-image", "routes/s.slug.opengraph-image.ts"),
   at("report/latest", "routes/report.latest.tsx"),
   at("report/:scanId", "routes/report.scanId.tsx"),
   at("s/:slug", "routes/s.slug.tsx"),
