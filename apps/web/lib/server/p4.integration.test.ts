@@ -27,16 +27,16 @@ import { POST as requestDataAction } from "../../app/api/v1/account/data-request
 import { POST as unsubscribeAction } from "../../app/api/v1/account/unsubscribe/route";
 import { POST as persistAttribution } from "../../app/api/v1/attribution/route";
 import { POST as persistClientEvent } from "../../app/api/v1/events/route";
-import { GET as downloadFullPrompt } from "../../app/api/v1/reports/[scanId]/remediation-prompt/download/route";
-import { GET as readFullReport } from "../../app/api/v1/reports/[scanId]/route";
-import { GET as downloadTeaserPrompt } from "../../app/api/v1/scans/[id]/remediation-prompt/download/route";
-import { GET as getTeaserPrompt } from "../../app/api/v1/scans/[id]/remediation-prompt/route";
 import { GET as previewShare } from "../../app/api/v1/scans/[id]/share-preview/route";
 import { GET as getContactAccess } from "../../app/api/v2/scans/[id]/contact-access/route";
 import { POST as requestScannerRegistration } from "../../app/api/v2/scans/[id]/registrations/route";
 import { GET as readVisitor } from "../../app/api/v2/session/route";
 import { action as consent } from "../../app/routes/api/v1/consent";
+import { loader as readFullReportRoute } from "../../app/routes/api/v1/reports.scanId";
+import { loader as downloadFullPromptRoute } from "../../app/routes/api/v1/reports.scanId.remediation-prompt.download";
 import { action as acceptScanRoute } from "../../app/routes/api/v1/scans";
+import { loader as getTeaserPromptRoute } from "../../app/routes/api/v1/scans.id.remediation-prompt";
+import { loader as downloadTeaserPromptRoute } from "../../app/routes/api/v1/scans.id.remediation-prompt.download";
 import { action as publishShareRoute } from "../../app/routes/api/v1/scans.id.share";
 import { latestReportOf, visitorOf } from "./auth";
 import { getServerConfig } from "./config";
@@ -62,6 +62,10 @@ const answering =
   (request: Request, params: Params = {}) =>
     route({ request, params });
 const persistConsent = answering(consent);
+const readFullReport = answering(readFullReportRoute);
+const downloadFullPrompt = answering(downloadFullPromptRoute);
+const downloadTeaserPrompt = answering(downloadTeaserPromptRoute);
+const getTeaserPrompt = answering(getTeaserPromptRoute);
 const acceptScan = answering(acceptScanRoute);
 const publishShare = answering(publishShareRoute);
 
@@ -1061,14 +1065,14 @@ describe("P4 dashboard-owned scanner identity", () => {
           new NextRequest(`http://localhost:3000/api/v1/reports/${scan.id}`, {
             headers: { cookie },
           }),
-          { params: Promise.resolve({ scanId: scan.id }) },
+          { scanId: scan.id },
         ),
         await downloadFullPrompt(
           new NextRequest(
             `http://localhost:3000/api/v1/reports/${scan.id}/remediation-prompt/download`,
             { headers: { cookie } },
           ),
-          { params: Promise.resolve({ scanId: scan.id }) },
+          { scanId: scan.id },
         ),
         await getContactAccess(
           new NextRequest(`http://localhost:3000/api/v2/scans/${scan.id}/contact-access`, {
@@ -1486,7 +1490,7 @@ describe("P4 dashboard-owned scanner identity", () => {
             `http://localhost:3000/api/v1/scans/${scan.id}/remediation-prompt?scope=teaser`,
             { headers: { authorization: `Bearer ${accessToken}` } },
           ),
-          { params: Promise.resolve({ id: scan.id }) },
+          { id: scan.id },
         )
       ).status,
     ).toBe(401);
@@ -1501,7 +1505,7 @@ describe("P4 dashboard-owned scanner identity", () => {
               `http://localhost:3000/api/v1/scans/${scan.id}/remediation-prompt?scope=teaser`,
               { headers: { cookie } },
             ),
-            { params: Promise.resolve({ id: scan.id }) },
+            { id: scan.id },
           )
         ).status,
         cookie,
@@ -1511,10 +1515,13 @@ describe("P4 dashboard-owned scanner identity", () => {
       new NextRequest(`http://localhost:3000/api/v1/scans/${scan.id}/remediation-prompt/download`, {
         headers: { cookie: authorizedCookie },
       }),
-      { params: Promise.resolve({ id: scan.id }) },
+      { id: scan.id },
     );
     expect(verifiedDownload.status).toBe(200);
     expect(verifiedDownload.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
+    expect(verifiedDownload.headers.get("content-disposition")).toBe(
+      'attachment; filename="agentify-visible-findings-prompt.md"',
+    );
     const lead = onlyRow(
       await db.select().from(leads).where(eq(leads.emailLookupHash, emailLookupHash)),
     );
@@ -1618,7 +1625,7 @@ describe("P4 dashboard-owned scanner identity", () => {
         `http://localhost:3000/api/v1/reports/${scanId}/remediation-prompt/download`,
         { headers: { cookie: owner } },
       ),
-      { params: Promise.resolve({ scanId }) },
+      { scanId },
     );
     expect(fullDownload.status).toBe(200);
     expect(fullDownload.headers.get("content-type")).toBe("text/markdown; charset=utf-8");

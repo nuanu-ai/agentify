@@ -1,8 +1,6 @@
-import { NextResponse } from "next/server";
-
-export function markdownDownloadResponse(content: string, filename: string) {
+export function markdownDownloadResponse(content: string, filename: string): Response {
   const safeFilename = filename.replace(/[^a-z0-9._-]+/gi, "-");
-  return new NextResponse(content, {
+  return new Response(content, {
     status: 200,
     headers: {
       "Cache-Control": "private, no-store",
