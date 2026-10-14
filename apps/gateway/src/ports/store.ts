@@ -418,6 +418,13 @@ export interface MerchantScope {
 }
 
 export interface Store {
+  /**
+   * The network whose split of a wallet this store reads as the one the
+   * wallet is paid through: the deployment's, so a row of another network is
+   * never read as a wallet's split.
+   */
+  readonly network: string;
+
   // --- merchants and their keys ---------------------------------------------
 
   /**

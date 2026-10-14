@@ -105,7 +105,6 @@ export class MemoryStore implements Store {
   /** The tail of the queue of decisions waiting on each order. */
   readonly #locks = new Map<string, Promise<unknown>>();
   readonly #running = new Set<string>();
-  /** The network whose split of a wallet this store reads as the one it is paid through. */
   readonly #network: string;
   readonly #ids: Ids;
   readonly #now: Clock;
@@ -121,6 +120,10 @@ export class MemoryStore implements Store {
     this.#ids = ids;
     this.#now = now;
     this.#envelopes = envelopes;
+  }
+
+  get network(): string {
+    return this.#network;
   }
 
   // --- merchants and their keys ---------------------------------------------

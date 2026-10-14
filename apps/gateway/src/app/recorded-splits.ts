@@ -46,7 +46,8 @@ const todaysSplitOf = (
 
 /**
  * Throws `RefusedToStart` where the registry is not what this network's
- * payout split in the code makes: where it holds a split of another network,
+ * payout split in the code makes: where the store reads splits on another
+ * network than the split is made on, where it holds a split of another network,
  * or a split of a wallet in force or waiting is not, in every parameter, the
  * split the code makes today for that merchant and wallet, whether a
  * commission wallet, the rate or the factory changed, or the way a salt and an
@@ -59,6 +60,11 @@ const todaysSplitOf = (
  */
 export async function refuseUnlessTheSplitsAgree(runtime: Runtime): Promise<void> {
   const network = runtime.config.payoutSplit;
+  if (runtime.store.network !== network.network) {
+    throw new RefusedToStart(
+      `this gateway's store reads payout splits on ${runtime.store.network} and its payout split is made on ${network.network}, so every wallet would read as having no split and nothing would sell, and the gateway does not start`,
+    );
+  }
   const elsewhere = (await runtime.store.networksWithPayoutSplits()).filter(
     (recorded) => recorded !== network.network,
   );

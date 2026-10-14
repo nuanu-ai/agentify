@@ -107,7 +107,6 @@ export type Database = NodePgDatabase & { readonly $client: Pool };
 
 export class PostgresStore implements Store {
   readonly #db: Database;
-  /** The network whose split of a wallet this store reads as the one it is paid through. */
   readonly #network: string;
   readonly #ids: Ids;
   readonly #envelopes: Envelopes;
@@ -132,6 +131,10 @@ export class PostgresStore implements Store {
     this.#network = network;
     this.#ids = ids;
     this.#envelopes = envelopes;
+  }
+
+  get network(): string {
+    return this.#network;
   }
 
   // --- merchants and their keys ---------------------------------------------
