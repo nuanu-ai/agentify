@@ -227,8 +227,8 @@ export function ScanExperience({
         </div>
       ) : null}
       <nav aria-label="Scan help" className={styles.helpLinks}>
-        <SiteLink to="/scanner">Scanner identity</SiteLink>
-        <SiteLink to="/methodology">Methodology</SiteLink>
+        <a href="/docs/scanner">Scanner identity</a>
+        <a href="/docs/scanner/methodology">Methodology</a>
         <SiteLink to="/privacy">Privacy</SiteLink>
         <PrivacyChoicesButton className={styles.helpAction} />
       </nav>

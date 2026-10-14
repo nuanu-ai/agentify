@@ -74,7 +74,7 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
           <div className={styles.reportCard}>
             <div className={styles.reportIntro}>
               <h3>{LANDING_SHARED_CONTENT.reportHeading}</h3>
-              <SiteLink to="/methodology">{LANDING_SHARED_CONTENT.reportMethodologyLink}</SiteLink>
+              <a href="/docs/scanner/methodology">{LANDING_SHARED_CONTENT.reportMethodologyLink}</a>
             </div>
             <div className={styles.exampleChecks}>
               {LANDING_EXAMPLE_CHECKS.map((check) => (

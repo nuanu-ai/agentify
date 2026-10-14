@@ -3,8 +3,15 @@ import { once } from "node:events";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const canonicalOrigin = "https://agentify.ad";
-const publicPaths = ["/", "/store", "/local", "/methodology", "/scanner", "/privacy", "/terms"];
-const sitemapPaths = [...publicPaths, "/agentic-shop"];
+const publicPaths = ["/", "/store", "/local", "/privacy", "/terms"];
+// The scanner's own pages in the documentation, which the scanner names but
+// does not serve.
+const sitemapPaths = [
+  ...publicPaths,
+  "/agentic-shop",
+  "/docs/scanner/methodology",
+  "/docs/scanner",
+];
 const requiredPasses = [1, 2, 3, 4, 5, 6, 7, 8, 12, 13, 14];
 
 const baseUrl =

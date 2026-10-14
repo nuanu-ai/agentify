@@ -65,12 +65,12 @@ const textOf = (tag: "title" | "h1", html: string): string | null =>
 describe("every answer", () => {
   it.each([
     ["a public page", "/", "GET"],
-    ["a page's data", "/methodology.data", "GET"],
+    ["a page's data", "/privacy.data", "GET"],
     ["an API route", "/api/health/live", "GET"],
     ["a method an API route does not take", "/api/health/live", "POST"],
     ["an address the scanner has no page for", "/no-such-page", "GET"],
     ["a scan", "/scan/0190f4c5-0000-7000-8000-000000000000", "GET"],
-    ["an address with a trailing slash", "/methodology/", "GET"],
+    ["an address with a trailing slash", "/privacy/", "GET"],
     ["an address that cannot be decoded", "/%E0%A4%A", "GET"],
   ])(
     "carries the security headers and does not name its server: %s",
@@ -122,7 +122,7 @@ describe("a scan and a report", () => {
 });
 
 describe("a public page", () => {
-  it.each(["/", "/store", "/local", "/methodology", "/scanner", "/privacy", "/terms"])(
+  it.each(["/", "/store", "/local", "/privacy", "/terms"])(
     "may be kept by a shared cache for an hour, in English, by its Accept: %s",
     async (path) => {
       const answered = await ask(path, { headers: { accept: "text/html" } });
@@ -135,7 +135,7 @@ describe("a public page", () => {
     },
   );
 
-  it.each(["/", "/store", "/local", "/methodology", "/scanner", "/privacy", "/terms"])(
+  it.each(["/", "/store", "/local", "/privacy", "/terms"])(
     "is Markdown for a client that prefers it, kept the same way: %s",
     async (path) => {
       const answered = await ask(path, { headers: { accept: "text/markdown, text/html;q=0.9" } });
@@ -152,9 +152,9 @@ describe("a public page", () => {
   );
 
   it("is kept and offered as Markdown the same way where its address is percent-encoded", async () => {
-    const page = await ask("/m%65thodology", { headers: { accept: "text/html" } });
-    const markdown = await ask("/m%65thodology", { headers: { accept: "text/markdown" } });
-    const data = await ask("/m%65thodology.data");
+    const page = await ask("/priv%61cy", { headers: { accept: "text/html" } });
+    const markdown = await ask("/priv%61cy", { headers: { accept: "text/markdown" } });
+    const data = await ask("/priv%61cy.data");
 
     expect(page.status).toBe(200);
     expect(page.headers.get("cache-control")).toBe("public, max-age=0, s-maxage=3600");
@@ -165,7 +165,7 @@ describe("a public page", () => {
   });
 
   it("answers a HEAD for its Markdown with the Markdown's headers and no body", async () => {
-    const answered = await ask("/methodology", {
+    const answered = await ask("/privacy", {
       method: "HEAD",
       headers: { accept: "text/markdown" },
     });
@@ -193,8 +193,8 @@ describe("a public page", () => {
 
   it.each([
     ["/_.data", {}],
-    ["/methodology.data", {}],
-    ["/methodology.data", { purpose: "prefetch" }],
+    ["/privacy.data", {}],
+    ["/privacy.data", { purpose: "prefetch" }],
   ])(
     "has data a browser may keep for a moment, so a hover's fetch serves the click: %s %o",
     async (path, headers) => {
@@ -291,7 +291,7 @@ describe("an API route's data asked for through a path with dot segments", () =>
   );
 
   it("leaves a page's data what it is through the same kind of path", async () => {
-    const answered = await sent("/api/../methodology.data");
+    const answered = await sent("/api/../privacy.data");
 
     expect(answered.status).toBe(200);
     expect(answered.headers["cache-control"]).toBe("public, max-age=10");
@@ -299,7 +299,7 @@ describe("an API route's data asked for through a path with dot segments", () =>
 });
 
 describe("a method no address of the scanner's takes", () => {
-  it.each(["/methodology", "/api/health/live", "/no-such-page"])(
+  it.each(["/privacy", "/api/health/live", "/no-such-page"])(
     "is refused with 405, kept by nobody, and leaves no line in the log: TRACE %s",
     async (path) => {
       const lines = errorLines();
@@ -329,7 +329,7 @@ describe("a page asked with a method it does not take", () => {
   it.each(["PUT", "DELETE", "OPTIONS"])(
     "is refused with 405 naming the methods it takes: %s",
     async (method) => {
-      const answered = await ask("/methodology", { method });
+      const answered = await ask("/privacy", { method });
 
       expect(answered.status).toBe(405);
       expect(answered.headers.get("allow")).toBe("GET, HEAD");
@@ -340,10 +340,10 @@ describe("a page asked with a method it does not take", () => {
 
 describe("an address with a trailing slash", () => {
   it("is sent permanently to the one without it, the query kept", async () => {
-    const answered = await ask("/methodology/?from=a-link");
+    const answered = await ask("/privacy/?from=a-link");
 
     expect(answered.status).toBe(308);
-    expect(answered.headers.get("location")).toBe("/methodology?from=a-link");
+    expect(answered.headers.get("location")).toBe("/privacy?from=a-link");
   });
 
   it("leaves the front page where it is", async () => {
@@ -356,7 +356,7 @@ describe("an address written with repeated slashes", () => {
     ["//elsewhere.example/", "/elsewhere.example/"],
     ["//elsewhere.example", "/elsewhere.example"],
     ["/\\elsewhere.example/", "/elsewhere.example/"],
-    ["/methodology//?from=a-link", "/methodology/?from=a-link"],
+    ["/privacy//?from=a-link", "/privacy/?from=a-link"],
   ])(
     "is sent to the same address on this site with one slash at each step: %s",
     async (path, to) => {
@@ -379,7 +379,7 @@ describe("a request that fails where nothing caught it", () => {
       lines.push(String(line));
     });
 
-    const answered = await ask("/methodology", {
+    const answered = await ask("/privacy", {
       headers: { "x-request-id": "0190f4c5-1111-7222-8333-944455556666" },
     });
 

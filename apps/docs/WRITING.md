@@ -180,6 +180,7 @@ components either print as written or are dropped. Such a feature is written
 into `app/markdown.server.ts` before a page uses it, with a test.
 
 Each page is listed in `DOCS_GROUPS` in `packages/ui/src/docs.ts`, which the
-contents and the header's menu read, and given its file in `app/pages.ts`. A
+contents, the header's menu and the scanner's `llms.txt` read, and given its
+file in `app/pages.ts`. A
 client that prefers Markdown is answered with the page's Markdown as the build
 writes it out: examples included, boxes as quotations and links whole.

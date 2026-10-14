@@ -43,7 +43,7 @@ describe("robots.txt", () => {
 });
 
 describe("the sitemap", () => {
-  it("lists exactly the public pages and the page about selling to agents, with honest dates", async () => {
+  it("lists exactly the public pages, the page about selling to agents and the scanner's section of the documentation, with honest dates", async () => {
     const answered = await ask("/sitemap.xml");
     const sitemap = parseSitemap(await answered.text());
     const now = Date.now();
@@ -54,6 +54,8 @@ describe("the sitemap", () => {
     expect(sitemap.urls).toEqual([
       ...PUBLIC_PAGE_PATHS.map((path) => `${ORIGIN}${path}`),
       `${ORIGIN}/agentic-shop`,
+      `${ORIGIN}/docs/scanner/methodology`,
+      `${ORIGIN}/docs/scanner`,
     ]);
     expect(sitemap.lastmods.slice(0, PUBLIC_PAGE_PATHS.length)).toEqual(
       PUBLIC_PAGE_PATHS.map((path) => PUBLIC_PAGE_METADATA[path].lastModified),

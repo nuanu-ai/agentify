@@ -39,8 +39,8 @@ export function SiteFooter() {
           <SiteLink to="/agentic-shop">Sell to agents</SiteLink>
           <SiteLink to="/store">For stores</SiteLink>
           <SiteLink to="/local">For local</SiteLink>
-          <SiteLink to="/scanner">Scanner</SiteLink>
-          <SiteLink to="/methodology">Methodology</SiteLink>
+          <a href="/docs/scanner">Scanner</a>
+          <a href="/docs/scanner/methodology">Methodology</a>
           <SiteLink to="/privacy">Privacy</SiteLink>
           <SiteLink to="/terms">Terms</SiteLink>
           <SiteLink to="/data-request">Data request</SiteLink>

@@ -1,5 +1,5 @@
+import { DOCS_PAGES } from "@agentify/ui/docs";
 import { afterEach, describe, expect, it } from "vitest";
-
 import { PUBLIC_PAGE_PATHS } from "../content/public-page-metadata";
 import { buildLlmsText } from "./llms";
 
@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 describe("llms.txt", () => {
-  it("contains an H1 and only real absolute public links", () => {
+  it("contains an H1 and only real absolute public links, the documentation's pages among them", () => {
     process.env.APP_BASE_URL = "https://agentify.ad";
     const body = buildLlmsText();
     const links = [...body.matchAll(/\[[^\]]+\]\((https:\/\/[^)]+)\)/g)].map((match) => match[1]);
@@ -19,8 +19,10 @@ describe("llms.txt", () => {
     expect(body).toMatch(/^# Agentify$/m);
     expect(links).toEqual([
       ...PUBLIC_PAGE_PATHS.map((path) => `https://agentify.ad${path}`),
-      "https://agentify.ad/agentic-shop",
+      // Every page of the documentation, the scanner's own among them.
       "https://agentify.ad/docs/",
+      ...DOCS_PAGES.slice(1).map((page) => `https://agentify.ad/docs${page.path}`),
+      "https://agentify.ad/agentic-shop",
       // An agent that came to buy, rather than to read about selling, is
       // given the catalogue it buys from.
       "https://agentify.ad/x402/catalog",

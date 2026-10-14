@@ -23,7 +23,7 @@ export function PublicSharePage({ preview }: Readonly<{ preview: PublicResultPre
       </main>
       <footer className={styles.footer}>
         <nav aria-label="Public result information">
-          <SiteLink to="/methodology">Methodology</SiteLink>
+          <a href="/docs/scanner/methodology">Methodology</a>
           <SiteLink to="/privacy">Privacy</SiteLink>
           <PrivacyChoicesButton />
         </nav>

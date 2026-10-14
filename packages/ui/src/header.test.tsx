@@ -45,7 +45,7 @@ const headerOn = (surface: Surface) => {
 };
 
 describe("the site header", () => {
-  it("follows the scanner's own pages in place on the scanner, and loads the dashboard whole", () => {
+  it("follows the scanner's own pages in place on the scanner, and loads the dashboard and the documentation whole", () => {
     const header = headerOn("scanner");
 
     expect(header.href("Dashboard")).toBe("/dashboard/sign-in");
@@ -54,6 +54,9 @@ describe("the site header", () => {
     expect(header.href("Docs")).toBe("/docs/");
     expect(header.afterClicking("Docs")).toBe("not followed in place");
     expect(header.afterClicking("Sell to agents")).toBe("/agentic-shop");
+    expect(header.href("Scanner")).toBe("/docs/scanner");
+    expect(header.afterClicking("Scanner")).toBe("not followed in place");
+    expect(header.href("Methodology")).toBe("/docs/scanner/methodology");
   });
 
   it("leads straight into the dashboard from inside it, marked as where the page is, and loads the scanner's pages whole", () => {
@@ -65,8 +68,8 @@ describe("the site header", () => {
     for (const [name, href] of [
       ["Agentify", "/"],
       ["Sell to agents", "/agentic-shop"],
-      ["Scanner", "/scanner"],
-      ["Methodology", "/methodology"],
+      ["Scanner", "/docs/scanner"],
+      ["Methodology", "/docs/scanner/methodology"],
       ["Privacy", "/privacy"],
       ["Docs", "/docs/"],
     ] as const) {
@@ -75,7 +78,7 @@ describe("the site header", () => {
     }
   });
 
-  it("follows the documentation's own pages in place inside it, marked as where the page is, and leads to the dashboard's sign-in", () => {
+  it("follows the documentation's own pages, the scanner's section among them, in place inside it, marked as where the page is, and leads to the dashboard's sign-in", () => {
     const header = headerOn("docs");
 
     expect(header.href("Docs")).toBe("/docs");
@@ -85,6 +88,9 @@ describe("the site header", () => {
     expect(header.current("Dashboard")).toBe(false);
     expect(header.afterClicking("Dashboard")).toBe("not followed in place");
     expect(header.afterClicking("Agentify")).toBe("not followed in place");
+    expect(header.afterClicking("Scanner")).toBe("/docs/scanner");
+    expect(header.afterClicking("Methodology")).toBe("/docs/scanner/methodology");
+    expect(header.afterClicking("Privacy")).toBe("not followed in place");
   });
 });
 

@@ -76,7 +76,7 @@ export function ReportPage({ view }: Readonly<{ view: ReportView }>) {
                   {check.scopeNote ? (
                     <p className={styles.scopeNote}>
                       {check.scopeNote}{" "}
-                      <SiteLink to="/methodology#limits">Read the scope.</SiteLink>
+                      <a href="/docs/scanner/methodology#limits">Read the scope.</a>
                     </p>
                   ) : null}
                   {check.fix ? (

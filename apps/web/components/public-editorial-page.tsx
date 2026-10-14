@@ -9,10 +9,6 @@ import { EditorialPage, Notice, ProseList } from "./editorial-page";
 
 function renderNode(node: Exclude<RichText, string>[number], key: string): ReactNode {
   switch (node.kind) {
-    case "code":
-      return <code key={key}>{node.value}</code>;
-    case "strong":
-      return <strong key={key}>{node.value}</strong>;
     case "link":
       return (
         <a href={node.href} key={key}>

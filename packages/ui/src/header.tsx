@@ -39,8 +39,8 @@ const HOME: Place = { owner: "scanner", path: "/" };
 
 const SECTIONS: readonly (Place & Readonly<{ label: string }>)[] = [
   { owner: "scanner", path: "/agentic-shop", label: "Sell to agents" },
-  { owner: "scanner", path: "/scanner", label: "Scanner" },
-  { owner: "scanner", path: "/methodology", label: "Methodology" },
+  { owner: "docs", path: "/scanner", label: "Scanner" },
+  { owner: "docs", path: "/scanner/methodology", label: "Methodology" },
   { owner: "scanner", path: "/privacy", label: "Privacy" },
 ];
 

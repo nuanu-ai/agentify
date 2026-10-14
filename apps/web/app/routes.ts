@@ -4,7 +4,7 @@
  * answered with status 404.
  *
  * A page is a route module under `routes/` named after its address
- * (`/methodology` is `routes/methodology.tsx`): its `loader` reads what the
+ * (`/privacy` is `routes/privacy.tsx`): its `loader` reads what the
  * request carried and returns what the page shows, its `meta` builds the head
  * with `pageMeta`, and its component draws from the loader's data, never from
  * the environment or the server's modules, because it is drawn again in the
@@ -43,8 +43,8 @@ export default [
   at("store", "routes/store.tsx"),
   at("local", "routes/local.tsx"),
   at("owner", "routes/owner.ts"),
-  at("methodology", "routes/methodology.tsx"),
-  at("scanner", "routes/scanner.tsx"),
+  at("methodology", "routes/methodology.ts"),
+  at("scanner", "routes/scanner.ts"),
   at("privacy", "routes/privacy.tsx"),
   at("terms", "routes/terms.tsx"),
   at("agentic-shop", "routes/agentic-shop.tsx"),

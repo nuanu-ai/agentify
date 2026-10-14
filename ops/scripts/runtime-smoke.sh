@@ -77,7 +77,7 @@ sitemap="$(curl --silent --show-error --fail --max-time 20 "$WEB_BASE_URL/sitema
   echo "sitemap.xml does not contain eight canonical URLs" >&2
   exit 1
 }
-for path in / /store /local /methodology /scanner /privacy /terms /agentic-shop; do
+for path in / /store /local /privacy /terms /agentic-shop /docs/scanner/methodology /docs/scanner; do
   grep -q "<loc>https://agentify.ad$path</loc>" <<<"$sitemap" || {
     echo "sitemap.xml is missing $path" >&2
     exit 1

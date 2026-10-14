@@ -7,14 +7,17 @@
  * data Caddy did not fill; a click on a link whose page was fetched ahead asks
  * the network for nothing more; the search finds a page, shows the words it
  * was found by and keeps the query; the outline marks the section being read;
- * a phone reaches the pages and the page's sections; and the addresses the
- * documentation answered at before lead on.
+ * a phone reaches the pages and the page's sections; the addresses the
+ * documentation answered at before lead on; and so do the scanner's
+ * addresses for its pages that are now the documentation's, the one in its
+ * user agent among them.
  *
  * It needs the build (`pnpm --filter @agentify/docs build`) and Playwright's
  * Chromium.
  */
 
 import { readFile } from "node:fs/promises";
+import { request as forward } from "node:http";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { SURFACE_WORDS } from "@agentify/core";
@@ -25,6 +28,16 @@ import type { Browser, Page } from "playwright";
 import type { ServerBuild } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BUILT, CHANNELS, type Edge, standEdge } from "./edge.js";
+
+/**
+ * The scanner as its own tests run it, from source, standing behind the edge
+ * for every address outside `/docs` as it stands behind Caddy. Imported by
+ * its address, since it is another application's and compiled by its own
+ * settings.
+ */
+const { testScanner } = (await import(
+  String(new URL("../../web/testing/scanner.ts", import.meta.url))
+)) as { testScanner: () => Promise<{ origin: string }> };
 
 let browser: Browser;
 let edge: Edge;
@@ -40,9 +53,26 @@ beforeAll(async () => {
   viteManifest = JSON.parse(
     await readFile(join(BUILT, ".vite", "manifest.json"), "utf8"),
   ) as ViteManifest;
+  const scanner = new URL((await testScanner()).origin);
   edge = await standEdge({
     environment: CHANNELS.test,
     heard: (request) => reached.push(request),
+    upstream: (request, response) => {
+      const upstream = forward(
+        {
+          host: scanner.hostname,
+          port: scanner.port,
+          path: request.url,
+          method: request.method,
+          headers: request.headers,
+        },
+        (answered) => {
+          response.writeHead(answered.statusCode ?? 502, answered.headers);
+          answered.pipe(response);
+        },
+      );
+      request.pipe(upstream);
+    },
   });
   browser = await launchChromium();
 });
@@ -352,4 +382,36 @@ describe("a client that prefers Markdown", () => {
       expect(text).not.toMatch(/\]\(\/(?!\/)/);
     },
   );
+});
+
+describe("the scanner's addresses for its pages in the documentation", () => {
+  it.each([
+    ["/scanner", "/docs/scanner", "About agentify-scanner"],
+    ["/methodology", "/docs/scanner/methodology", "How the agent-readiness scan works"],
+  ])("lead %s, which a user agent or an old link names, to %s", async (address, now, heading) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const answered = await page.goto(`${edge.origin}${address}`);
+
+    expect(answered?.status()).toBe(200);
+    expect(new URL(page.url()).pathname).toBe(now);
+    expect(await page.locator(".doc h1").textContent()).toContain(heading);
+    await context.close();
+  });
+
+  it("are where the scanner's header leads", async () => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const page = await context.newPage();
+    await page.goto(`${edge.origin}/privacy`);
+    await page.locator("header .site-nav a", { hasText: "Methodology" }).click();
+    await page.waitForURL(`${edge.origin}/docs/scanner/methodology`);
+
+    expect(await page.locator(".doc h1").textContent()).toContain(
+      "How the agent-readiness scan works",
+    );
+    expect(await page.locator('.docs-aside a[aria-current="page"]').textContent()).toBe(
+      "Methodology",
+    );
+    await context.close();
+  });
 });

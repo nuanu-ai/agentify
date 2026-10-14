@@ -16,7 +16,7 @@ export const SITE_PICTURE = {
 } as const;
 
 /** The page that names the scanner and how to reach its operator. */
-const IDENTITY_PAGE = "/scanner";
+const IDENTITY_PAGE = "/docs/scanner";
 
 /**
  * What a crawler reads as the site's description. It says what the

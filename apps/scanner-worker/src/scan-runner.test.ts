@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { FetchArtifact } from "@agentify/scanner";
 import type { CheckResult, ScanJobV1 } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
@@ -156,6 +157,29 @@ describe("bounded scan graph", () => {
           ),
         ),
       ).toBe(true);
+  });
+
+  it("sends the user agents the documentation's page about the scanner names, with the channel's own address", async () => {
+    // The page names the site's address as `{{origin}}`, which Caddy fills
+    // from the address the scanner is given as its own.
+    const page = readFileSync(new URL("../../docs/scanner/index.md", import.meta.url), "utf8");
+    const named = [
+      ...page.replace(/\s+/g, " ").matchAll(/`([^`]*agentify-scanner\/1\.0[^`]*)`/g),
+    ].map(([, agent = ""]) => agent.replaceAll("{{origin}}", "https://test.agentify.ad"));
+    const target = transport();
+    await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://test.agentify.ad",
+    }).run(job);
+    // Each request is recorded as its method, path, Accept and user agent, in that order.
+    const sentAs = (agent: string) =>
+      target.paths.filter((request) => request.endsWith(` ${agent}`));
+
+    expect(named).toHaveLength(2);
+    for (const agent of named) expect(sentAs(agent), agent).not.toEqual([]);
   });
 
   it("is deterministic across two identical runs except transport timing evidence", async () => {
