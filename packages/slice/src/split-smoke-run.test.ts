@@ -214,10 +214,13 @@ function scriptedChain(options: {
     payoutKeyBalance: async () => options.payoutKeyBalance ?? 10n ** 16n,
     instruction: async () => {
       instructions += 1;
-      return options.instruction?.(instructions) ?? merchantPayout(NETWORK, [SPLIT]);
+      return (
+        options.instruction?.(instructions) ??
+        merchantPayout(NETWORK, [SPLIT], PAYOUT_SPLIT_NETWORKS)
+      );
     },
     operatorPayout: async () => {
-      const [only] = operatorPayouts(NETWORK, [SPLIT]);
+      const [only] = operatorPayouts(NETWORK, [SPLIT], PAYOUT_SPLIT_NETWORKS);
       if (only === undefined) {
         throw new Error("the operator's payout of one split is one transaction");
       }
@@ -467,8 +470,14 @@ describe("a split smoke run", () => {
       after: expect.anything(),
     });
     expect(JSON.parse(plan ?? "null")).toMatchObject({
-      instruction: { to: NETWORK.multicall3, data: merchantPayout(NETWORK, [SPLIT]).data },
-      operator: { to: NETWORK.multicall3, data: operatorPayouts(NETWORK, [SPLIT])[0]?.data },
+      instruction: {
+        to: NETWORK.multicall3,
+        data: merchantPayout(NETWORK, [SPLIT], PAYOUT_SPLIT_NETWORKS).data,
+      },
+      operator: {
+        to: NETWORK.multicall3,
+        data: operatorPayouts(NETWORK, [SPLIT], PAYOUT_SPLIT_NETWORKS)[0]?.data,
+      },
     });
     expect(journalLines(journal).map((line) => [line.stage, line.hash])).toStrictEqual([
       ["plan", undefined],
@@ -642,7 +651,8 @@ describe("a split smoke run", () => {
     const other = payoutSplitFor(NETWORK, SPLIT.merchantId, STRANGER);
     const chain = scriptedChain({
       effects: AS_THE_CONTRACTS_DO,
-      instruction: (asked) => merchantPayout(NETWORK, asked < 3 ? [SPLIT] : [SPLIT, other]),
+      instruction: (asked) =>
+        merchantPayout(NETWORK, asked < 3 ? [SPLIT] : [SPLIT, other], PAYOUT_SPLIT_NETWORKS),
     });
 
     const stopped = await stoppedAt(run(chain, aJournal()));
@@ -655,7 +665,7 @@ describe("a split smoke run", () => {
     const other = payoutSplitFor(NETWORK, SPLIT.merchantId, STRANGER);
     const chain = scriptedChain({
       effects: AS_THE_CONTRACTS_DO,
-      instruction: () => merchantPayout(NETWORK, [SPLIT, other]),
+      instruction: () => merchantPayout(NETWORK, [SPLIT, other], PAYOUT_SPLIT_NETWORKS),
     });
 
     const stopped = await stoppedAt(run(chain, aJournal()));

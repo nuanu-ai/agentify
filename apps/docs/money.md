@@ -20,8 +20,9 @@ no account of ours holds your money at any point.
 You can get paid out at any time. The Settings screen of your dashboard shows
 your payout contract and the one transaction that pays it out. You send it
 from any wallet that holds a little ETH, the currency Base charges its network
-fee in, and whose app lets you paste data into a transaction, and your share
-reaches your wallet in that same transaction. The transaction carries no money
+fee in, and whose app lets you paste data into a transaction ([Getting paid
+out](#getting-paid-out) says how), and your share reaches your wallet in that
+same transaction. The transaction carries no money
 of its own and costs only that fee. If you do not send it, your share arrives
 when Agentify collects its own, because collecting it pays out every payout
 contract, yours included; there is no fixed day for that. Until somebody pays
@@ -47,9 +48,40 @@ that supports the Base network, such as MetaMask, creates one. The app
 shows the address, which is what you enter in the dashboard's Settings, and a
 recovery phrase, which stays with you and is never entered anywhere at
 Agentify: whoever holds the phrase holds the money. On the test channel your
-wallet only ever receives test USDC, so it needs no money of its own; a wallet
-that sends a payout there pays the fee in test ETH, which a faucet, a site
-that hands out test currency, gives away.
+wallet only ever receives test USDC, so it needs no money of its own.
+
+### Getting paid out
+
+The payout on your Settings screen is three values for a transaction you send
+yourself: the address it goes to, which is Multicall3, an amount of zero, and
+its data. Send it on the network the screen names, Base, or Base Sepolia on the
+test channel, and on no other. Multicall3 sits at the same address on most
+networks, so the same transaction sent on another one can go through there,
+pay nothing out and still cost that network's fee. The steps below have not
+yet been checked by sending a payout on the test channel, so compare each one
+with what your wallet shows; once they have, this section says what that
+showed.
+
+Your wallet has to let you put data into a transaction. In MetaMask the field
+for it stays hidden until Show hex data is turned on, under Settings →
+Advanced; other wallet apps name it differently, and some do not offer it at
+all. The payout does not have to come from the wallet it pays: any wallet of
+yours whose app shows the field, and which holds a little ETH for the fee, can
+send it.
+
+On the test channel the fee is paid in test ETH on Base Sepolia, which is
+worth nothing and which a faucet, a site that hands out test currency, gives
+away. On the live channel it is paid in ETH on Base.
+
+Data pasted into a transaction from a web page is usually a warning sign,
+because that is how people are talked into signing a transaction that empties
+their wallet, and your wallet app may warn you about it. This transaction
+cannot do that: Multicall3 makes each of its calls itself, so none of them
+acts for the wallet that sent it, and the amount is zero, so the fee is all it
+takes from that wallet. Before you send it, check that the address your
+wallet is about to call is the Multicall3 address the screen shows, that the
+amount is zero, and that the data is the whole of what the screen gives, with
+nothing cut off.
 
 ## What they pay in
 

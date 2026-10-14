@@ -12,7 +12,7 @@
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
-import { type Gateway, merchantPayout, payoutSplitFor } from "@agentify/gateway";
+import { type Gateway, merchantPayout, payoutSplitFor, setPayoutWallet } from "@agentify/gateway";
 import {
   buyOverHttp,
   type Harness,
@@ -30,6 +30,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type DashboardConfig, loadConfig } from "./config.js";
+import { SIGN_OUT_EVERY_OTHER_DEVICE } from "./control-labels.js";
 import { DRAWN_FOR } from "./drawn-for.js";
 import {
   type Acting,
@@ -1992,9 +1993,36 @@ describe("the wallet a merchant's share is paid out to", () => {
     expect(screen.html).toContain(`href="https://sepolia.basescan.org/address/${split}"`);
     const data = /<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(screen.html)?.[1];
     expect(data).toBe(
-      merchantPayout(running.harnessed.runtime.config.payoutSplit, recorded.toPayOut).data,
+      merchantPayout(
+        running.harnessed.runtime.config.payoutSplit,
+        recorded.toPayOut,
+        running.harnessed.runtime.config.payoutSplitNetworks,
+      ).data,
     );
     expect(data).toHaveLength(3_146);
+  });
+
+  it("names the commission at the terms the split of the saved wallet was recorded with", async () => {
+    // The screen's words are the merchant's consent, and the split is what
+    // takes the money: the percentages on the page are the recorded split's.
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    await running.browser.signIn();
+    await running.browser.post("/settings/payout-wallet", { payout_wallet: AS_A_WALLET_SHOWS_IT });
+
+    const screen = await running.browser.get("/settings");
+
+    const { inForce } = await running.harnessed.gateway.payoutSplitsOf(
+      running.harnessed.merchant.id,
+    );
+    if (inForce === null) throw new Error("no split was recorded for the saved wallet");
+    const percent = (part: number): string => `${(part / inForce.totalAllocation) * 100}%`;
+    const text = readable(screen.html);
+    expect(text).toContain(`Agentify keeps ${percent(inForce.commissionAllocation)} of every sale`);
+    expect(text).toContain(
+      `it pays ${percent(inForce.merchantAllocation)} to the wallet and ${percent(inForce.commissionAllocation)} to Agentify`,
+    );
   });
 
   it("pays out, beside the contract of the wallet saved now, the earlier contract a sale was paid into, each to its own wallet", async () => {
@@ -2022,7 +2050,11 @@ describe("the wallet a merchant's share is paid out to", () => {
       [earlier?.address, now?.address].sort(),
     );
     expect(/<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(screen.html)?.[1]).toBe(
-      merchantPayout(harnessed.runtime.config.payoutSplit, toPayOut).data,
+      merchantPayout(
+        harnessed.runtime.config.payoutSplit,
+        toPayOut,
+        harnessed.runtime.config.payoutSplitNetworks,
+      ).data,
     );
     const shown = readable(screen.html.replaceAll(/<\/?span[^>]*>/g, ""));
     expect(shown).toContain(`${earlier?.address} pays ${harnessed.merchant.wallet}`);
@@ -2044,7 +2076,7 @@ describe("the wallet a merchant's share is paid out to", () => {
       [network.commissionWallet, /Agentify's commission wallet/],
       [network.warehouse.toLowerCase(), /0xSplits warehouse/],
       [network.multicall3, /Multicall3/],
-      [ownSplit, /a payout contract, not a wallet/],
+      [ownSplit, /one of your own payout contracts, not a wallet/],
       ["0x0000000000000000000000000000000000000000", /the zero address/],
     ] as const) {
       const answered = await running.browser.post("/settings/payout-wallet", {
@@ -2059,6 +2091,77 @@ describe("the wallet a merchant's share is paid out to", () => {
       expect(answered.html.replaceAll(/<[^>]*>/g, ""), address).toContain(address);
       expect(await paidInto(running), address).toBe(before);
     }
+  });
+
+  it("tells a payout contract of the merchant's own, an earlier wallet's too, from another merchant's, which pays that merchant", async () => {
+    // The gateway refuses every recorded split alike. The words differ because
+    // a share paid into another merchant's contract becomes that merchant's,
+    // and one paid into the merchant's own comes back to them split again.
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    const { harnessed } = running;
+    const network = harnessed.runtime.config.payoutSplit;
+    const earlier = (await harnessed.gateway.payoutSplitsOf(harnessed.merchant.id)).inForce;
+    const other = await harnessed.gateway.registerMerchant();
+    await setPayoutWallet(
+      harnessed.runtime.store,
+      network,
+      other,
+      "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+      harnessed.runtime.clock(),
+    );
+    const theirs = (await harnessed.gateway.payoutSplitsOf(other)).inForce;
+    await running.browser.signIn();
+    // The test channel applies a change at once, so the first wallet's
+    // contract is now neither in force nor paid into.
+    await running.browser.post("/settings/payout-wallet", { payout_wallet: AS_A_WALLET_SHOWS_IT });
+    const said = async (address: string | undefined): Promise<string> =>
+      readable(
+        (await running.browser.post("/settings/payout-wallet", { payout_wallet: address ?? "" }))
+          .html,
+      );
+
+    const ofAnEarlierWallet = await said(earlier?.address);
+    const ofAnotherMerchant = await said(theirs?.address);
+
+    expect(ofAnEarlierWallet).toMatch(/one of your own payout contracts, not a wallet/);
+    expect(ofAnEarlierWallet).not.toMatch(/another merchant/);
+    expect(ofAnotherMerchant).toMatch(/another merchant's payout contract, not a wallet/);
+    expect(ofAnotherMerchant).toMatch(/go to that merchant/);
+    expect(ofAnotherMerchant).not.toMatch(/your own/);
+    expect(await paidInto(running)).toBe(AS_A_WALLET_SHOWS_IT);
+  });
+
+  it("draws the rest of Settings, and no transaction, where the payout cannot be built", async () => {
+    // A wallet saved before the rule existed, written straight into the store:
+    // its split pays Multicall3, a payout over it would hand the share to
+    // whoever calls Multicall3 next, and the builder refuses it. The merchant
+    // still needs the page, the control that signs every other device out and
+    // the box that replaces the wallet among it.
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    const { harnessed } = running;
+    const network = harnessed.runtime.config.payoutSplit;
+    await setPayoutWallet(
+      harnessed.runtime.store,
+      network,
+      harnessed.merchant.id,
+      network.multicall3,
+      harnessed.runtime.clock(),
+    );
+    await running.browser.signIn();
+
+    const screen = await running.browser.get("/settings");
+
+    expect(screen.status).toBe(200);
+    expect(screen.html).not.toContain("<textarea");
+    const text = readable(screen.html);
+    expect(text).toMatch(/get your payout/i);
+    expect(text).toMatch(/could not build/i);
+    expect(text).toContain(SIGN_OUT_EVERY_OTHER_DEVICE);
+    expect(screen.html).toContain('name="payout_wallet"');
   });
 
   it("refuses an empty box and says what to paste into it", async () => {
@@ -4544,7 +4647,8 @@ describe("a wallet change waiting on the live deployment", () => {
     const running = await live();
     await running.browser.signIn();
     const merchantId = running.harnessed.merchant.id;
-    const network = running.harnessed.runtime.config.payoutSplit;
+    const { payoutSplit: network, payoutSplitNetworks: networks } =
+      running.harnessed.runtime.config;
     const paidNowSplit = (await running.harnessed.gateway.payoutSplitsOf(merchantId)).inForce;
     await aChangeWaits(running);
     const waitingSplit = (await running.harnessed.gateway.payoutSplitsOf(merchantId)).pending;
@@ -4557,14 +4661,14 @@ describe("a wallet change waiting on the live deployment", () => {
     const shown = waiting.html.replaceAll(/<[^>]*>/g, "");
     expect(shown.slice(shown.indexOf("Waiting to replace it"))).toContain(waitingSplit?.address);
     expect(dataOn(waiting)).toBe(
-      merchantPayout(network, paidNowSplit === null ? [] : [paidNowSplit]).data,
+      merchantPayout(network, paidNowSplit === null ? [] : [paidNowSplit], networks).data,
     );
 
     running.harnessed.advance(48 * 60 * 60 * 1_000);
     const applied = await running.browser.get("/settings");
 
     expect(dataOn(applied)).toBe(
-      merchantPayout(network, waitingSplit === null ? [] : [waitingSplit]).data,
+      merchantPayout(network, waitingSplit === null ? [] : [waitingSplit], networks).data,
     );
   });
 

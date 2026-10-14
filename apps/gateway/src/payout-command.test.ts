@@ -1,6 +1,6 @@
 /**
  * The operator's payout: Agentify is paid only when somebody sends it, and
- * the command that prints it holds no key and sends nothing, so what it
+ * the command that prints it signs nothing and sends nothing, so what it
  * prints must be exactly the transactions the builder makes from the splits
  * as recorded, and nothing where the gateway would refuse those splits.
  *
@@ -37,6 +37,17 @@ const card: Card = {
   price: { amount: "80.00", currency: "USD" },
   result: { access_code: { type: "string" } },
   fulfillment: "sync",
+};
+
+/** Goods that arrive after the purchase, so the payment is taken before anything is delivered. */
+const lateGoods: Card = {
+  merchant_item_id: "esim-7d",
+  title: "A seven day eSIM",
+  description: "Seven days of data",
+  price: { amount: "12.00", currency: "USD" },
+  result: { activation_code: { type: "string" } },
+  fulfillment: "async",
+  fulfill_deadline_seconds: 3_600,
 };
 
 let running: Gateway | null = null;
@@ -133,7 +144,7 @@ describe("the operator's payout, printed", () => {
     expect(code).toBe(0);
     expect(splits).toHaveLength(2);
     expect(partsIn(lines)).toStrictEqual(
-      operatorPayouts(T1_TEST, splits).map((part) => ({
+      operatorPayouts(T1_TEST, splits, T1).map((part) => ({
         to: part.to,
         amount: "0",
         data: part.data,
@@ -148,7 +159,7 @@ describe("the operator's payout, printed", () => {
       ).toBe(true);
     }
     expect(lines.some((line) => line.includes(T1_TEST.commissionWallet))).toBe(true);
-    expect(lines.join("\n")).toMatch(/sends nothing and holds no key/);
+    expect(lines.join("\n")).toMatch(/sends nothing and signs nothing/);
   });
 
   it("prints a payout too large for one transaction as several, each whole and each in its turn", async () => {
@@ -161,7 +172,7 @@ describe("the operator's payout, printed", () => {
     const { code, lines } = await printedBy(gateway);
 
     expect(code).toBe(0);
-    const built = operatorPayouts(T1_TEST, await gateway.splitsToPayOut());
+    const built = operatorPayouts(T1_TEST, await gateway.splitsToPayOut(), T1);
     expect(built).toHaveLength(2);
     expect(partsIn(lines).map((part) => part.data)).toStrictEqual(built.map((part) => part.data));
     expect(lines).toContain("Payout 1 of 2");
@@ -210,6 +221,71 @@ describe("the operator's payout, printed", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect((await database.store.orderById(offered.order.order.id))?.order.state).toBe(before);
+  });
+});
+
+describe("the chain it names", () => {
+  // The person sending what it prints chooses a network in a wallet by its
+  // name, and the same transaction on another chain pays nothing out.
+  it("is Base Sepolia in words beside its identifier, as the one chain to send on", async () => {
+    const database = aDatabase();
+    await aMerchantPaidAt(database, "mch_a", walletNumber(1));
+
+    const said = (await printedBy(aGatewayOver(database))).lines.join("\n");
+
+    expect(said).toContain("Base Sepolia (eip155:84532)");
+    expect(said).toMatch(/on Base Sepolia only/);
+  });
+
+  it("is Base in words on Base", async () => {
+    const gateway = aGatewayOver(aDatabase(), T1, {
+      PAYMENT_NETWORK: "eip155:8453",
+      FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+      CDP_API_KEY_ID: "key-id",
+      CDP_API_KEY_SECRET: "key-secret",
+    });
+
+    const said = (await printedBy(gateway)).lines.join("\n");
+
+    expect(said).toContain("Base (eip155:8453)");
+    expect(said).not.toContain("Base Sepolia");
+  });
+});
+
+describe("a payout over a split that would hand a share to an address no wallet may be", () => {
+  it("is not printed, and the refusal names the split's wallet", async () => {
+    // A sale was paid into the split of a wallet that no rule held when it was
+    // saved, and the merchant has moved on since: that split still holds the
+    // money, and a withdrawal of its share to Multicall3 goes to whoever calls
+    // Multicall3 next.
+    const database = aDatabase();
+    const merchant = await aMerchantPaidAt(database, "mch_a", T1_TEST.multicall3);
+    const gateway = aGatewayOver(database);
+    const stored = await database.store.publishCard(merchant, lateGoods, NOW);
+    const offered = await gateway.beginPurchase(stored.id, {});
+    if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
+    await gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    const moved = await database.store.setPayoutWallet(
+      merchant,
+      { address: T1_TEST.multicall3, pending: null },
+      {
+        address: walletNumber(1),
+        split: payoutSplitFor(T1_TEST, merchant, walletNumber(1)),
+        pending: null,
+      },
+      NOW,
+    );
+    expect(moved, "the wallet moved on").not.toBe("moved");
+    expect((await gateway.splitsToPayOut()).map((split) => split.merchantWallet)).toContain(
+      T1_TEST.multicall3,
+    );
+
+    const { code, lines } = await printedBy(gateway);
+
+    expect(code).toBe(1);
+    expect(partsIn(lines)).toStrictEqual([]);
+    expect(lines.join("\n")).toMatch(/^No payout is printed/m);
+    expect(lines.join("\n")).toContain(T1_TEST.multicall3);
   });
 });
 

@@ -467,9 +467,9 @@ describe("the payout a merchant is shown", () => {
     const read = await asTheOwner(harnessed).payoutSplits();
 
     const payout = read.ok ? read.document.payout : null;
-    expect(payout !== null && "splits" in payout ? payout.splits : []).toHaveLength(
-      SPLITS_PER_PAYOUT,
-    );
+    expect(
+      typeof payout === "object" && payout !== null && "splits" in payout ? payout.splits : [],
+    ).toHaveLength(SPLITS_PER_PAYOUT);
   });
 
   it("says how many there are, and builds no transaction, past the most one carries", async () => {

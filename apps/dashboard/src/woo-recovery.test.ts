@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
 import type { OrderWithStatus } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
+import { percentOf, sharesOf } from "./shares.js";
 import { recoverWooOrder, type WooRecoveryParts } from "./woo-recovery.js";
 import {
   type EligibleWooProduct,
@@ -408,8 +409,12 @@ describe("an operator-named shop order, read back", () => {
     return `http://127.0.0.1:${(stand.address() as AddressInfo).port}`;
   };
 
+  /** The lines the shop order of this very sale carries, the commission on what was paid among them. */
   const LINES = [
-    { key: "agentify_commission", value: "under 0.000001 USD (0.1%)" },
+    {
+      key: "agentify_commission",
+      value: `${sharesOf({ amount: FACTS.amount, currency: FACTS.currency }, PAID_INTO).commission} (${percentOf(PAID_INTO.commissionAllocation, PAID_INTO.totalAllocation)})`,
+    },
     { key: "agentify_payout_contract", value: PAID_INTO.address },
   ];
 
