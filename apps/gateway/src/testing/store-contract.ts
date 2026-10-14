@@ -1035,6 +1035,21 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           );
         });
 
+        it("is the same split when given again with the wallet in another spelling, and nothing new is recorded", async () => {
+          const store = await twoMerchants();
+          await store.recordPayoutSplits([splitOf(A, W1)], 3_000);
+
+          const again = await store.recordPayoutSplits(
+            [{ ...splitOf(A, W1), merchantWallet: lower(W1) }],
+            4_000,
+          );
+
+          expect(again).toStrictEqual([]);
+          expect(await store.payoutSplitAt(splitOf(A, W1).address)).toStrictEqual(
+            recorded(splitOf(A, W1), 3_000),
+          );
+        });
+
         it("refuses a split of that wallet in another spelling at another address, and writes nothing", async () => {
           // Two rows for one wallet would let the payment address and the
           // payout instruction name two different contracts.
