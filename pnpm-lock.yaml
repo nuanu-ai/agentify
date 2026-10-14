@@ -218,6 +218,9 @@ importers:
       pg-boss:
         specifier: 12.28.0
         version: 12.28.0
+      viem:
+        specifier: 2.47.0
+        version: 2.47.0(typescript@5.9.3)(zod@4.4.3)
       zod:
         specifier: 4.4.3
         version: 4.4.3
