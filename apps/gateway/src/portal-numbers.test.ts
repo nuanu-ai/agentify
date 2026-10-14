@@ -277,6 +277,23 @@ const PINS: readonly Pin[] = [
     '"{agentify}% commission, inside the price"',
   ),
 
+  // --- the commission, on the scanner's pages -------------------------------
+  ...sharesIn(
+    "the shares, on the scanner's page about selling to agents",
+    { page: "apps/web/app/routes/agentic-shop.tsx" },
+    "It sends {merchant}% to the wallet in your dashboard and {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the shares, in that page's payment path",
+    { page: "apps/web/app/routes/agentic-shop.tsx" },
+    "{merchant}% to your wallet, {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the shares, in the text for language models",
+    { page: "apps/web/lib/llms.ts" },
+    "which sends {merchant}% to the merchant's wallet and {agentify}% to Agentify",
+  ),
+
   // --- how long we wait for a price, and how long the answer lives ----------
   {
     what: "how long a price the merchant named goes on being good",
