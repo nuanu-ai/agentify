@@ -24,6 +24,9 @@ export function Outline({
     <details className="editorial-outline docs-outline" ref={outline}>
       <summary>On this page</summary>
       <nav aria-label="On this page">
+        <a href="#main" className="docs-to-top" onClick={toTop}>
+          Return to top
+        </a>
         {sections.map((section) => (
           <a
             href={`#${section.id}`}
@@ -34,9 +37,6 @@ export function Outline({
             {section.title}
           </a>
         ))}
-        <a href="#main" className="docs-to-top" onClick={toTop}>
-          Return to top
-        </a>
       </nav>
     </details>
   );

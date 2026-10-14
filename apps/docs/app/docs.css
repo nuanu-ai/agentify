@@ -419,28 +419,33 @@ input {
 }
 
 @media (max-width: 760px) {
-  /* Under the site header, which keeps 60px to itself on a phone. */
+  /* Under the site header, which keeps 68px to itself here and 60px on a
+     phone, with its rule under it. */
   .docs-bar {
     position: sticky;
     z-index: 10;
-    top: 61px;
+    top: 69px;
     display: flex;
     align-items: stretch;
     gap: 10px;
-    margin: -12px 0 28px;
-    padding: 12px 0;
+    margin: -8px 0 28px;
+    padding: 8px 0;
     background: var(--bg);
   }
 
   .docs-bar .docs-search-button {
-    min-height: 48px;
+    min-height: 44px;
     gap: 12px;
   }
 
+  /* The sections open across the whole bar, under it. */
   .docs-bar .editorial-outline {
-    position: relative;
     flex: 1;
     margin: 0;
+  }
+
+  .docs-bar .editorial-outline summary {
+    min-height: 44px;
   }
 
   .docs-outline nav {
@@ -467,9 +472,9 @@ input {
   }
 
   .docs-outline .docs-to-top {
-    border-top: var(--hairline) solid var(--line-soft);
-    padding-top: 12px;
-    color: var(--muted);
+    border-bottom: var(--hairline) solid var(--line-soft);
+    padding-bottom: 12px;
+    color: var(--accent-hover);
   }
 
   .docs-turn {
@@ -478,5 +483,11 @@ input {
 
   .docs-turn a[rel="next"] {
     grid-column: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .docs-bar {
+    top: 61px;
   }
 }
