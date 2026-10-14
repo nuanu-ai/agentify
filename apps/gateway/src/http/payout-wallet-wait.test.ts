@@ -15,7 +15,14 @@ import { type Card, PayoutWalletSchema } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { payoutSplitFor } from "../split/parameters.js";
-import { buyOverHttp, type Harness, harness, type Served, serve } from "../testing/harness.js";
+import {
+  buyOverHttp,
+  type Harness,
+  harness,
+  loggedWhile,
+  type Served,
+  serve,
+} from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
 
 const HOURS = 60 * 60 * 1_000;
@@ -95,6 +102,14 @@ const splitOf = (harnessed: Harness, wallet: string, merchantId = harnessed.merc
 /** The split recorded at the address the rule gives this merchant and wallet, or null. */
 const recordedSplitOf = (harnessed: Harness, wallet: string, merchantId = harnessed.merchant.id) =>
   harnessed.store.payoutSplitAt(splitOf(harnessed, wallet, merchantId).address);
+
+/** Every split the journal says was recorded while `during` ran, parsed back from its line. */
+const journalled = async (during: () => Promise<unknown>) => {
+  const logged = await loggedWhile(during);
+  return [...logged.matchAll(/payout split recorded: (\{.*\})/g)].map(
+    (line) => JSON.parse(line[1] ?? "") as Record<string, unknown>,
+  );
+};
 
 const card: Card = {
   merchant_item_id: "a-room",
@@ -378,10 +393,16 @@ describe("asking again", () => {
     const first = await ask(harnessed, A_WALLET);
     harnessed.advance(HOURS);
 
-    const again = await ask(harnessed, A_WALLET.toLowerCase());
+    let again: WalletAnswer | undefined;
+    const written = await journalled(async () => {
+      again = await ask(harnessed, A_WALLET.toLowerCase());
+    });
 
     expect(again).toStrictEqual(first);
     expect(harnessed.announcer.announced).toHaveLength(1);
+    // Its split was recorded with the first ask, and the retry records none.
+    expect(written).toStrictEqual([]);
+    expect(await recordedSplitOf(harnessed, A_WALLET)).not.toBeNull();
   });
 
   it("for a different address replaces the waiting change and starts the wait again", async () => {
@@ -428,6 +449,21 @@ describe("asking again", () => {
     expect(await payToNow(served, itemId)).toBe(S1);
     harnessed.advance(THE_WAIT);
     expect(await payToNow(served, itemId)).toBe(splitOf(harnessed, ANOTHER_WALLET).address);
+  });
+
+  it("names the kept split again after a cancel, and records nothing new for it", async () => {
+    const { served, harnessed } = await started();
+    const itemId = await published(served, harnessed.merchant.key);
+    await ask(harnessed, A_WALLET);
+
+    const written = await journalled(() => ask(harnessed, harnessed.merchant.wallet));
+    harnessed.advance(THE_WAIT);
+
+    expect(written).toStrictEqual([]);
+    expect(await recordedSplitOf(harnessed, A_WALLET)).not.toBeNull();
+    expect(await payToNow(served, itemId)).toBe(
+      splitOf(harnessed, harnessed.merchant.wallet).address,
+    );
   });
 
   it("for the address paid now cancels the waiting change, and says so", async () => {
@@ -871,5 +907,47 @@ describe("an address that cannot be a payout wallet, on the live deployment", ()
 
     expect(harnessed.announcer.announced).toStrictEqual([]);
     expect((await harnessed.gateway.payoutWallet(merchantId)).payout_wallet).toBeNull();
+  });
+});
+
+describe("the journal of recorded splits", () => {
+  it("writes down every split recorded for the first time, with everything needed to rebuild it", async () => {
+    // Until a split's first payout its parameters are nowhere but its row. A
+    // database restored from a copy older than the row loses them, and the
+    // journal is what they are entered again from.
+    const { harnessed } = await started();
+    const merchantId = await harnessed.gateway.registerMerchant();
+
+    const lines = await journalled(async () => {
+      await ask(harnessed, A_WALLET, merchantId);
+      await ask(harnessed, ANOTHER_WALLET, merchantId);
+    });
+
+    const expected = [
+      splitOf(harnessed, A_WALLET, merchantId),
+      splitOf(harnessed, ANOTHER_WALLET, merchantId),
+    ];
+    expect(lines).toHaveLength(2);
+    for (const [index, line] of lines.entries()) {
+      const split = expected[index];
+      // Every parameter the factory takes, read back from the line alone.
+      const rebuilt = payoutSplitFor(
+        {
+          ...harnessed.runtime.config.payoutSplit,
+          commissionWallet: String(line.commissionWallet),
+          factory: String(line.factory),
+          commissionAllocation: Number(line.commissionAllocation),
+          totalAllocation: Number(line.totalAllocation),
+          network: String(line.network),
+        },
+        String(line.merchantId),
+        String(line.merchantWallet),
+      );
+      expect(line).toMatchObject({ ...split, recordedAt: harnessed.now() });
+      expect(rebuilt).toStrictEqual(split);
+      expect(line.salt).toBe(split?.salt);
+      expect(line.owner).toBe(split?.owner);
+      expect(line.distributionIncentive).toBe(0);
+    }
   });
 });

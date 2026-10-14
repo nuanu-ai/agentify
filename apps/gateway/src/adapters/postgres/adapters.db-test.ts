@@ -31,21 +31,25 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { Gateway } from "../../app/gateway.js";
 import { setPayoutWallet } from "../../app/merchants.js";
 import type { Runtime } from "../../app/runtime.js";
+import { loadConfig } from "../../config.js";
 import { nobodyAnnounces } from "../../ports/announcer.js";
 import type { OrderChange } from "../../ports/store.js";
 import { payoutSplitNetworkOf } from "../../split/networks.js";
 import { payoutSplitFor } from "../../split/parameters.js";
+import { startGateway } from "../../start.js";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "../../testing/database.js";
 import {
   countedIds,
+  loggedWhile,
   SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
   testConfig,
   workUntilStopped,
 } from "../../testing/harness.js";
 import { anOrder, describeStore } from "../../testing/store-contract.js";
 import { ScriptedFacilitator } from "../memory/facilitator.js";
+import { MemoryQueue } from "../memory/queue.js";
 import { PgBossQueue, streamOf } from "../pgboss/queue.js";
-import { connect, PostgresStore } from "./store.js";
+import { connect, type Database, PostgresStore } from "./store.js";
 
 /** The merchant everything in this suite belongs to. */
 const A = "mch_a";
@@ -1454,6 +1458,110 @@ if (databaseUrl === null) {
           ),
         ).rejects.toThrow(/payout_splits_address_unique|duplicate key/);
         expect(await rowsOf(A)).toHaveLength(1);
+      });
+
+      /** A gateway of its own over this database, with nothing in memory but its queue. */
+      const aGatewayOn = (db: Database, table = SPLIT_NETWORKS_WITH_A_FIXTURE_BASE) =>
+        new Gateway({
+          config: loadConfig({ DATABASE_URL: databaseUrl }, table),
+          store: PostgresStore.over(db, countedIds()),
+          queue: new MemoryQueue(),
+          facilitator: new ScriptedFacilitator(),
+          clock: () => now,
+          ids: countedIds(),
+          announcer: nobodyAnnounces,
+        });
+
+      /** Merchants whose wallets were set before splits were, as that release left the rows. */
+      const asBeforeSplits = async () => {
+        await store.addMerchant({ id: "mch_old_one", name: "Old one" }, now);
+        await store.addMerchant({ id: "mch_old_two", name: "Old two" }, now);
+        await store.addMerchant({ id: "mch_old_none", name: "Old none" }, now);
+        await pool.query("update merchants set payout_wallet = $1 where id = 'mch_old_one'", [W1]);
+        await pool.query(
+          `update merchants set payout_wallet = $1, pending_payout_wallet = $2,
+             pending_payout_wallet_from = $3 where id = 'mch_old_two'`,
+          [W1, W2, new Date(now + 3_600_000)],
+        );
+        await store.addOrder({
+          ...anOrder("ord_old", "delivered", { merchantId: "mch_old_one", createdAt: now - 5_000 }),
+          payTo: W1,
+        });
+      };
+
+      it("gives every wallet set before splits its split at start, and touches no merchant and no order", async () => {
+        // The SQL migration cannot compute a hash, so the rows come from the
+        // start; a merchant left without one cannot sell after the release.
+        await asBeforeSplits();
+        const merchantsBefore = (await pool.query("select * from merchants order by id")).rows;
+        const ordersBefore = (await pool.query("select * from orders order by id")).rows;
+
+        const logged = await loggedWhile(() => aGatewayOn(contract.db).start());
+
+        expect((await rowsOf("mch_old_one")).map((row) => row.address)).toStrictEqual([
+          splitOf("mch_old_one", W1).address,
+        ]);
+        expect((await rowsOf("mch_old_two")).map((row) => row.address).sort()).toStrictEqual(
+          [splitOf("mch_old_two", W1).address, splitOf("mch_old_two", W2).address].sort(),
+        );
+        expect(await rowsOf("mch_old_none")).toStrictEqual([]);
+        expect((await pool.query("select * from merchants order by id")).rows).toStrictEqual(
+          merchantsBefore,
+        );
+        expect((await pool.query("select * from orders order by id")).rows).toStrictEqual(
+          ordersBefore,
+        );
+        expect(logged).toMatch(/recorded 3 payout splits/);
+      });
+
+      it("records each split once when two gateways start on one database at once, and again writes nothing", async () => {
+        // A restart, a retried release and two processes on one database must
+        // neither duplicate a row nor fail to start.
+        await asBeforeSplits();
+
+        const another = connect(databaseUrl);
+        try {
+          await Promise.all([aGatewayOn(contract.db).start(), aGatewayOn(another.db).start()]);
+        } finally {
+          await another.pool.end();
+        }
+        const first = (await pool.query("select * from payout_splits order by address")).rows;
+        await aGatewayOn(contract.db).start();
+
+        expect(first.filter((row) => row.merchant_id.startsWith("mch_old_"))).toHaveLength(3);
+        expect(
+          (await pool.query("select * from payout_splits order by address")).rows,
+        ).toStrictEqual(first);
+      });
+
+      it("refuses to start where the code's commission wallet is not the one recorded, before it listens", async () => {
+        // The edit is refused in words in the log, and nothing the start would
+        // write is written first.
+        await asBeforeSplits();
+        const edited = {
+          ...SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
+          "eip155:84532": { ...network, commissionWallet: W2 },
+        };
+        const config = loadConfig(
+          { DATABASE_URL: databaseUrl, FACILITATOR_URL: "sandbox:scripted" },
+          edited,
+        );
+
+        let refused: unknown;
+        const logged = await loggedWhile(async () => {
+          refused = await startGateway(config, nobodyAnnounces).then(
+            async (started) => {
+              await started.stop();
+              return null;
+            },
+            (thrown: unknown) => thrown,
+          );
+        });
+
+        expect(String(refused)).toMatch(/commission wallet or the rate/);
+        expect(logged).toMatch(/commission wallet or the rate/);
+        expect(logged).not.toMatch(/did not answer/);
+        expect(await rowsOf("mch_old_one")).toStrictEqual([]);
       });
     });
 
