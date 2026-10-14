@@ -333,6 +333,25 @@ describe("a refund owed", () => {
     const callout = text.slice(text.indexOf("Order ord_owed refund due"));
 
     expect(callout).toMatch(/the full price, 80\.00 USD/);
+    expect(callout).toMatch(/the commission stays with Agentify/);
     expect(callout).not.toContain("79.92");
+  });
+
+  it("says nothing of a commission on a refund owed for a payment to the wallet itself", () => {
+    // Paid before payments went to splits: no commission was taken. Where the
+    // cause could not be read, the sentence says only what holds for every
+    // debt.
+    const owing: OrderList = OrderListSchema.parse({
+      orders: [{ ...pricedAt("80.00", "ord_owed"), status: "refund_due" }],
+    });
+
+    const text = readable(
+      served(() => <OrdersScreen view={ordersView(SEEN_BY, cards, owing, false)} />),
+    );
+    const callout = text.slice(text.indexOf("Order ord_owed refund due"));
+
+    expect(callout).toMatch(/The payment was received and the product was not delivered/);
+    expect(callout).toMatch(/the full price, 80\.00 USD/);
+    expect(callout).not.toMatch(/commission/);
   });
 });

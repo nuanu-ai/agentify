@@ -9,7 +9,7 @@
  * in-memory harness.
  */
 
-import { type Gateway, payoutSplitFor } from "@agentify/gateway";
+import { type Gateway, payoutSplitFor, SPLITS_PER_PAYOUT } from "@agentify/gateway";
 import { type Harness, harness, type Served, serve, workOnce } from "@agentify/gateway/testing";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
@@ -415,6 +415,17 @@ describe("where an order's payment went", () => {
     expect(await client.paidIntoSplits()).toStrictEqual({ ok: true, document: {} });
   });
 
+  it("names no split for an order not paid yet", async () => {
+    const harnessed = await started();
+    const quoted = await aQuotedOrder(harnessed);
+
+    expect(await asTheOwner(harnessed).paidInto(quoted)).toStrictEqual({
+      ok: true,
+      document: null,
+    });
+    expect(await asTheOwner(harnessed).paidIntoSplits()).toStrictEqual({ ok: true, document: {} });
+  });
+
   it("answers for another merchant's order as one that is not there", async () => {
     const harnessed = await started();
     const other = await harnessed.addMerchant();
@@ -427,5 +438,65 @@ describe("where an order's payment went", () => {
       why: "there is no such order",
     });
     expect(await asTheOwner(harnessed).paidIntoSplits()).toStrictEqual({ ok: true, document: {} });
+  });
+});
+
+describe("the payout a merchant is shown", () => {
+  /** Saves a new wallet, as the test channel applies it at once, and sells once into its split. */
+  const paidInto = async (harnessed: Harness, wallet: string): Promise<void> => {
+    expect((await asTheOwner(harnessed).setPayoutWallet(wallet)).ok).toBe(true);
+    const published = await harnessed.gateway.publishCard(harnessed.merchant.id, AN_ESIM);
+    if (!published.ok) throw new Error(`the card was refused: ${JSON.stringify(published)}`);
+    const offered = await harnessed.gateway.beginPurchase(published.id, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    // A payment of its own each time: a payment presented twice is a replay.
+    await harnessed.gateway.payPurchase(offered.order.order.id, `PAY-${wallet}`, `PAY-${wallet}`);
+  };
+
+  /** The nth wallet, all digits so it is its own checksum. */
+  const walletNumber = (n: number): string => `0x${(1_000 + n).toString().padStart(40, "0")}`;
+
+  it("pays out every split that can hold the merchant's money in one transaction, up to the most one carries", async () => {
+    const harnessed = await started();
+    // The wallet the merchant started with was never paid into, so its split
+    // holds nothing; each of these holds one sale.
+    for (let n = 1; n <= SPLITS_PER_PAYOUT; n += 1) {
+      await paidInto(harnessed, walletNumber(n));
+    }
+
+    const read = await asTheOwner(harnessed).payoutSplits();
+
+    const payout = read.ok ? read.document.payout : null;
+    expect(payout !== null && "splits" in payout ? payout.splits : []).toHaveLength(
+      SPLITS_PER_PAYOUT,
+    );
+  });
+
+  it("says how many there are, and builds no transaction, past the most one carries", async () => {
+    const harnessed = await started();
+    for (let n = 1; n <= SPLITS_PER_PAYOUT + 1; n += 1) {
+      await paidInto(harnessed, walletNumber(n));
+    }
+
+    const read = await asTheOwner(harnessed).payoutSplits();
+
+    expect(read.ok ? read.document.payout : null).toStrictEqual({
+      tooMany: SPLITS_PER_PAYOUT + 1,
+    });
+  });
+
+  it("has no payout, and no split, for a merchant with no wallet", async () => {
+    const harnessed = await started();
+    const none = await harnessed.gateway.registerMerchant();
+
+    const read = await gatewayFor(harnessed.gateway, {
+      merchantId: none,
+      email: OWNER,
+    }).payoutSplits();
+
+    expect(read).toMatchObject({
+      ok: true,
+      document: { inForce: null, pending: null, payout: null },
+    });
   });
 });

@@ -672,16 +672,21 @@ describe("the whole way through, against a real gateway", () => {
       paidInto: async () => ({ ok: false as const, status: 0, why: "nothing answered" }),
     };
 
-    const answer = await filledAsPaid(
-      unread,
-      anOrder(),
-      connection(),
-      MERCHANT_EMAIL,
-      filling(memoryWooShops(), shop.place),
-    );
+    let answer: unknown;
+    const written = await loggedWhile(async () => {
+      answer = await filledAsPaid(
+        unread,
+        anOrder(),
+        connection(),
+        MERCHANT_EMAIL,
+        filling(memoryWooShops(), shop.place),
+      );
+    });
 
     expect(answer).toBeNull();
     expect(shop.placed).toStrictEqual([]);
+    // The merchant's log says which order waits, and why.
+    expect(written).toMatch(/ord_1.*could not be read.*nothing answered/);
   });
 
   it("keeps a committed order unknown when its successful response body is lost", async () => {
