@@ -626,22 +626,22 @@ agent sees how it ended. What happens depends on which step the waiting was at.
 
 The numbers are ours to set rather than the card's, and the ones below are what
 the system you are connecting to runs with. A price holds for thirty seconds. A
-synchronous answer has eight seconds. An asynchronous card can carry one
+synchronous answer has ten seconds. An asynchronous card can carry one
 deadline of yours, on the delivery, counted from the moment the buyer was
 charged; name it and the agent sees it before it buys, leave it out and a day
 applies that the agent is never shown ([The product card](/cards)). The
 confirmation mode has a deadline of its own — an hour, where the card names none
 — and it arrives together with the mode.
 
-The eight seconds run from the moment the payment checked out rather than from
+The ten seconds run from the moment the payment checked out rather than from
 the moment the agent first asked, so asking your price — which happens on the
 call before the payment — and checking the payment itself are behind them rather
 than inside them. They are not the whole of the agent's wait: executing the
 charge comes after your answer, on a clock of its own, and the two together fit
-inside the ten seconds we promise the agent for a synchronous purchase. Those
-ten start where your eight do, at the moment the payment checked out, so the
+inside the twenty seconds we promise the agent for a synchronous purchase. Those
+twenty start where your ten do, at the moment the payment checked out, so the
 check is on top of them and not inside: what the agent waits for is the check,
-and then the ten.
+and then the twenty.
 
 | Situation | Time ran out — what happened |
 | --- | --- |
@@ -738,10 +738,10 @@ delivery. The hard case is a delivery that began before the deadline and
 finished after it, by which time the purchase is closed as a refusal with
 nothing charged.
 
-A synchronous answer has eight seconds, counted from the moment the payment
+A synchronous answer has ten seconds, counted from the moment the payment
 checked out — asking your price is behind them, and so is whatever the agent
 spent deciding to pay, and so is the check on that payment. Say your handler
-began the delivery in the seventh second and finished in the tenth. By that
+began the delivery in the ninth second and finished in the twelfth. By that
 second the agent has already had a refusal and spent nothing, but the access you
 gave out has not gone anywhere.
 

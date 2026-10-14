@@ -34,6 +34,7 @@ const NUMBER_WORDS: Record<string, number> = {
   five: 5,
   eight: 8,
   ten: 10,
+  twenty: 20,
   thirty: 30,
 };
 
@@ -362,12 +363,12 @@ describe("a number the portal publishes is not also called undecided", () => {
     {
       page: "apps/docs/orders.md",
       claim: /how long we wait for a synchronous answer/,
-      truth: "eight seconds, named in “Time ran out”",
+      truth: "ten seconds, named in “Time ran out”",
     },
     {
       page: "apps/docs/quickstart.md",
       claim: /how long we wait for a synchronous answer/,
-      truth: "eight seconds, named on step 3",
+      truth: "ten seconds, named on step 3",
     },
     {
       page: "apps/docs/orders.md",

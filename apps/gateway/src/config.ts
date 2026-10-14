@@ -208,9 +208,12 @@ const environmentSchema = z.object({
   /**
    * How long we wait to be told whether the charge went through, on a
    * synchronous order: the goods are already made, and this wait is inside the
-   * ceiling its agent was promised (`SYNC_BUDGET_MS`).
+   * ceiling its agent was promised (`SYNC_BUDGET_MS`). The payment layer
+   * answers only once the transfer is in a block, so a wait near the block
+   * time declares silent a charge that then goes through, and the agent leaves
+   * without the goods it paid for.
    */
-  SETTLE_RESPONSE_MS: durationMs(2_000),
+  SETTLE_RESPONSE_MS: durationMs(10_000),
   /**
    * The same wait on an order paid before its goods (asynchronous, confirmed
    * or a parcel), which no promised ceiling contains. The payment layer
@@ -219,13 +222,19 @@ const environmentSchema = z.object({
    * purchase call does not wait on this; it waits on the payment layer itself.
    */
   SETTLE_BEFORE_GOODS_MS: durationMs(15_000),
-  /** How long the merchant has to answer a synchronous order with the goods. */
-  SYNC_RESPONSE_MS: durationMs(8_000),
   /**
-   * The ceiling the portal promises the agent for a synchronous purchase. No
-   * deadline in the machine carries this number; it bounds the two that do.
+   * How long the merchant has to answer a synchronous order with the goods,
+   * counted from the moment the payment checked out. The portal publishes this
+   * number to every merchant.
    */
-  SYNC_BUDGET_MS: durationMs(10_000),
+  SYNC_RESPONSE_MS: durationMs(10_000),
+  /**
+   * The ceiling the portal promises the agent for a synchronous purchase,
+   * counted from the same moment, and how long its purchase call waits. No
+   * deadline in the machine carries this number; it bounds the two that do,
+   * the merchant's answer and then the charge.
+   */
+  SYNC_BUDGET_MS: durationMs(20_000),
   /** How long a confirmed order waits for the agent's payment. */
   PAYMENT_AFTER_CONFIRMATION_MS: durationMs(300_000),
   /** What a card that names no confirmation deadline of its own is held to. */
