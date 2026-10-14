@@ -163,6 +163,27 @@ describe("the operator's payout, printed", () => {
     expect(lines.join("\n")).toMatch(/sends nothing and signs nothing/);
   });
 
+  it("pays out every split recorded on the network, one a restore carried over with no order and no wallet in force included, while a merchant's own payout keeps to theirs that can hold money", async () => {
+    // Nothing may hold money where no payout reaches it, and a split the
+    // operator's payout skipped would be one only a person building the call
+    // by hand could empty. The price is gas for splits that hold nothing.
+    const database = aDatabase();
+    const merchant = await aMerchantPaidAt(database, "mch_a", walletNumber(1));
+    const carried = payoutSplitFor(T1_TEST, merchant, walletNumber(2));
+    await database.store.recordPayoutSplits([carried], NOW);
+    const gateway = aGatewayOver(database);
+
+    const { code, lines } = await printedBy(gateway);
+
+    expect(code).toBe(0);
+    expect(
+      lines.some((line) => line.includes(carried.address) && line.includes(walletNumber(2))),
+    ).toBe(true);
+    expect(
+      (await gateway.payoutSplitsOf(merchant)).toPayOut.map((split) => split.address),
+    ).toStrictEqual([payoutSplitFor(T1_TEST, merchant, walletNumber(1)).address]);
+  });
+
   it("prints a payout too large for one transaction as several, each whole and each in its turn", async () => {
     const database = aDatabase();
     for (let n = 1; n <= 21; n += 1) {

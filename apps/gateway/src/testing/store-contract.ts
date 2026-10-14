@@ -792,7 +792,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           readBack(paidAt(A, W1), { address: 3_000 }),
         );
         expect(
-          await addressesOf(store.splitsToPayOutOn(BASE_SEPOLIA.network, 6_000)),
+          await addressesOf(store.splitsToPayOutFor(BASE_SEPOLIA.network, A, 6_000)),
         ).toStrictEqual([splitOf(A, W1).address]);
         expect(await store.payoutSplitAt(splitOf(A, W2).address)).toStrictEqual(
           recorded(splitOf(A, W2), 4_000),
@@ -969,7 +969,9 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         }
         expect(await store.payoutSplitAt(held.address)).toStrictEqual(recorded(held, 3_000));
         expect(await store.payoutSplitAt(splitOf(B, W2).address)).toBeNull();
-        expect(await store.splitsToPayOutOn(BASE_SEPOLIA.network, 5_000)).toStrictEqual([]);
+        expect(await store.payoutSplitsOn(BASE_SEPOLIA.network)).toStrictEqual([
+          recorded(held, 3_000),
+        ]);
       });
 
       it("names every network it holds splits of, and none it does not", async () => {
@@ -1132,17 +1134,22 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           expect(await store.splitsToPayOutFor(BASE.network, A, 8_000)).toStrictEqual([]);
         });
 
-        it("are, for a network, every merchant's, in the order they were recorded, and none of another network", async () => {
+        it("are, for the operator, every split recorded on a network, in the order recorded, and none of another network", async () => {
+          // A split no wallet is in force for and no order names may still
+          // hold money: one a restore carried over, or one a stray transfer
+          // reached. The operator's payout must see it.
           const store = await theRegistry();
 
-          const all = await store.splitsToPayOutOn(BASE_SEPOLIA.network, 8_000);
+          const all = await store.payoutSplitsOn(BASE_SEPOLIA.network);
           expect(all).toStrictEqual([
             recorded(splitOf(A, W1), 3_000),
+            recorded(splitOf(A, W2), 4_000),
             recorded(splitOf(A, W3), 5_000),
             recorded(splitOf(B, W1), 6_000),
+            recorded(splitOf("mch_gone", W1), 7_200),
           ]);
-          expect(await store.splitsToPayOutOn(BASE_SEPOLIA.network, 8_000)).toStrictEqual(all);
-          expect(await addressesOf(store.splitsToPayOutOn(BASE.network, 8_000))).toStrictEqual([
+          expect(await store.payoutSplitsOn(BASE_SEPOLIA.network)).toStrictEqual(all);
+          expect(await addressesOf(store.payoutSplitsOn(BASE.network))).toStrictEqual([
             splitOf(C, W2, BASE).address,
           ]);
         });
@@ -1174,9 +1181,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             );
           }
 
-          expect(
-            await addressesOf(store.splitsToPayOutOn(BASE_SEPOLIA.network, 7_000)),
-          ).toStrictEqual([
+          expect(await addressesOf(store.payoutSplitsOn(BASE_SEPOLIA.network))).toStrictEqual([
             splitOf(B, W1).address,
             splitOf(A, W1).address,
             lowest.address,
@@ -1197,9 +1202,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           ).toStrictEqual([splitOf(A, W1).address]);
           expect(
             await addressesOf(store.splitsToPayOutFor(BASE_SEPOLIA.network, A, 90_000)),
-          ).toStrictEqual([splitOf(A, W2).address]);
-          expect(
-            await addressesOf(store.splitsToPayOutOn(BASE_SEPOLIA.network, 90_000)),
           ).toStrictEqual([splitOf(A, W2).address]);
         });
       });
