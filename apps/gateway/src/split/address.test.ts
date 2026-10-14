@@ -95,7 +95,7 @@ describe("parameters the factory could never make into a split that pays out", (
   });
 
   it("are refused where a recipient has no allocation", () => {
-    expect(refusal({ allocations: [1_000_000] })).toMatch(/2 recipients and 1 allocation/);
+    expect(refusal({ allocations: [1_000_000] })).toMatch(/2 recipients and allocations for 1/);
   });
 
   it("are refused with a total of zero, which every distribution would divide by", () => {
@@ -136,8 +136,21 @@ describe("parameters the factory could never make into a split that pays out", (
     ).toMatch(/not an address/);
   });
 
-  it("are refused with a salt that is not thirty-two bytes", () => {
+  it("are refused with a salt that is not thirty-two bytes written in hexadecimal", () => {
     expect(refusal({ salt: S.salt.slice(0, -2) })).toMatch(/salt/);
+    expect(refusal({ salt: `${S.salt}00` })).toMatch(/salt/);
+    expect(refusal({ salt: `0x${"zz".repeat(32)}` })).toMatch(/salt/);
+    expect(refusal({ salt: S.salt.slice(2) })).toMatch(/salt/);
+  });
+
+  it("are refused where an allocation is not a whole number of parts, even where they add up", () => {
+    expect(refusal({ allocations: [1_001_000, -1_000] })).toMatch(/whole number/);
+    expect(refusal({ allocations: [999_000.5, 999.5] })).toMatch(/whole number/);
+  });
+
+  it("are refused where the total is not a whole number of parts", () => {
+    expect(refusal({ totalAllocation: 1_000_000.5 })).toMatch(/add up to 1000000.*1000000\.5/s);
+    expect(refusal({ totalAllocation: -1_000_000 })).toMatch(/add up to 1000000.*-1000000/s);
   });
 });
 
@@ -186,6 +199,8 @@ describe("the salt of a merchant's split", () => {
       "eip155:0",
       "EIP155:84532",
       "eip155:84532 ",
+      " eip155:84532",
+      "caip2:eip155:84532",
       "84532",
       "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
     ]) {

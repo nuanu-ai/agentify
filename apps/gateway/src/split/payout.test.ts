@@ -284,6 +284,16 @@ describe("a merchant's payout over every split that can hold their money", () =>
   });
 });
 
+describe("a payout's withdrawals", () => {
+  it("withdraw a wallet once whichever spelling each of its splits recorded it in", () => {
+    const lower = { ...recorded(S2, "mch_a"), merchantWallet: MERCHANT.toLowerCase() };
+    const withdrawals = callsOf(merchantPayout(TEST_NETWORK, [S_ROW, lower]).data).filter(
+      ({ target }) => target === ON_CHAIN.warehouse,
+    );
+    expect(withdrawals).toStrictEqual([call(ON_CHAIN.warehouse, true, WITHDRAW_M)]);
+  });
+});
+
 describe("a payout that would not do what it says", () => {
   const refusal = (build: () => unknown): string => {
     try {
@@ -326,6 +336,8 @@ describe("a payout that would not do what it says", () => {
   it("is refused where one split is named twice", () => {
     expect(refusal(() => merchantPayout(TEST_NETWORK, [S_ROW, S_ROW]))).toMatch(/twice/);
     expect(refusal(() => operatorPayouts(TEST_NETWORK, [S_ROW, S2_ROW, S_ROW]))).toMatch(/twice/);
+    const spelledLower = { ...S_ROW, address: S.address.toLowerCase() };
+    expect(refusal(() => operatorPayouts(TEST_NETWORK, [S_ROW, spelledLower]))).toMatch(/twice/);
   });
 
   it("is refused for a merchant over more than twenty splits, which no one transaction carries safely", () => {

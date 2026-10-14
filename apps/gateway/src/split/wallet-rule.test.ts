@@ -57,6 +57,40 @@ describe("a wallet the merchant's share could not come back from", () => {
     }
   });
 
+  it("refuses the contracts of every network, where networks do not share them", () => {
+    // The EIP-55 specification's example addresses, standing in for another
+    // chain's deployment of the payout contracts.
+    const elsewhere = {
+      ...live,
+      factory: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+      implementation: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+      warehouse: "0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+      multicall3: "0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+    };
+    const apart = {
+      "eip155:84532": payoutSplitNetworkOf(NETWORKS, "eip155:84532"),
+      "eip155:8453": elsewhere,
+    };
+    const verdict = (address: string) =>
+      whyNotAPayoutWallet(address, { networks: apart, splits: [] });
+
+    expect([ON_CHAIN.factory, elsewhere.factory].map(verdict)).toStrictEqual([
+      "split_factory",
+      "split_factory",
+    ]);
+    expect([IMPLEMENTATION, elsewhere.implementation].map(verdict)).toStrictEqual([
+      "split_implementation",
+      "split_implementation",
+    ]);
+    expect([ON_CHAIN.warehouse, elsewhere.warehouse].map(verdict)).toStrictEqual([
+      "split_warehouse",
+      "split_warehouse",
+    ]);
+    expect(
+      ["0xcA11bde05977b3631167028862bE2a173976CA11", elsewhere.multicall3].map(verdict),
+    ).toStrictEqual(["multicall3", "multicall3"]);
+  });
+
   it("refuses to judge something that is not an address", () => {
     expect(() => verdictOn("0xde3F8C4422A7F8C94bce9Cc2Ec118665108148E")).toThrowError(
       /not an address/,
