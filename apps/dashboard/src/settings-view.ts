@@ -56,7 +56,7 @@ export type PayoutView =
       arrives: string;
       withoutEth: string;
     }>
-  | Readonly<{ kind: "too_many"; said: string }>;
+  | Readonly<{ kind: "too_many" | "unbuilt"; said: string }>;
 
 /** What a press did, where it answers with the page rather than sending the browser on. */
 export type SettingsPress =
@@ -159,6 +159,12 @@ const splitBeside = (
 const payoutView = (mode: SurfaceMode, splits: PayoutSplits): PayoutView | null => {
   const { payout } = splits;
   if (mode === "sandbox" || payout === null) return null;
+  if (payout === "unbuilt") {
+    return {
+      kind: "unbuilt",
+      said: "Agentify could not build the transaction that pays out your payout contracts as they are recorded, so there is none to send here. Buyers' payments wait in them until somebody pays them out.",
+    };
+  }
   if ("tooMany" in payout) {
     return {
       kind: "too_many",

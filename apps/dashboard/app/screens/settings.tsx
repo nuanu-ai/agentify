@@ -264,7 +264,7 @@ function CopyData({ data }: Readonly<{ data: string }>) {
  * reason.
  */
 function PayoutPanel({ payout }: Readonly<{ payout: PayoutView }>) {
-  if (payout.kind === "too_many") {
+  if (payout.kind !== "send") {
     return (
       <div className="lede">
         <div>

@@ -89,16 +89,37 @@ export type RefundCause = "refused" | "deadline_passed" | "merchant_left" | "cha
 /**
  * A merchant's payout splits on this network, for the payout wallet screen,
  * and the one transaction that pays out every split that can hold their
- * money. `payout` is null where no split can hold any, and says how many
- * there are where one transaction cannot carry them all.
+ * money. `payout` is null where no split can hold any, says how many there
+ * are where one transaction cannot carry them all, and is `unbuilt` where the
+ * builder refused the splits as recorded.
  */
 export interface PayoutSplits {
   /** The terms every split recorded on this network from now is made with. */
   readonly rate: CommissionRate;
   readonly inForce: RecordedPayoutSplit | null;
   readonly pending: RecordedPayoutSplit | null;
-  readonly payout: PayoutTransaction | { readonly tooMany: number } | null;
+  readonly payout: PayoutTransaction | { readonly tooMany: number } | "unbuilt" | null;
 }
+
+/**
+ * The payout of these splits, or `unbuilt` where the builder refuses them.
+ * The builder is pure and throws only to refuse, and a refusal belongs to the
+ * payout panel alone: the rest of Settings, the control that signs every
+ * other device out among it, does not depend on it.
+ */
+const payoutOf = (
+  merchantId: string,
+  build: () => PayoutTransaction,
+): PayoutTransaction | "unbuilt" => {
+  try {
+    return build();
+  } catch (refused) {
+    console.error(
+      `[dashboard] no payout was built for ${merchantId}: ${refused instanceof Error ? refused.message : String(refused)}`,
+    );
+    return "unbuilt";
+  }
+};
 
 export interface GatewayClient {
   cards(): Promise<Answer<MerchantCardList>>;
@@ -580,7 +601,9 @@ export const gatewayFor = (
               ? null
               : toPayOut.length > SPLITS_PER_PAYOUT
                 ? { tooMany: toPayOut.length }
-                : merchantPayout(network, toPayOut, payoutSplitNetworks),
+                : payoutOf(merchantId, () =>
+                    merchantPayout(network, toPayOut, payoutSplitNetworks),
+                  ),
         });
       }),
     setPayoutWallet: (address) =>

@@ -1720,6 +1720,21 @@ const SETTINGS: GalleryState[] = [
       liveApproval: true,
     }),
   ),
+  settings(
+    {
+      id: "dashboard-settings-payout-unbuilt",
+      screen: "Settings",
+      when: "A merchant opens Settings while a payout contract of theirs is one no payout is built over.",
+      cause:
+        "The builder refuses a split as recorded, such as one paying its share to Multicall3, so no transaction is drawn; the rest of Settings is.",
+    },
+    settingsView("live", WHO, {
+      ...settingsOf({
+        payoutSplits: { ...splitsOf("live", PAID_INTO), payout: "unbuilt" },
+      }),
+      liveApproval: true,
+    }),
+  ),
   ((typed) =>
     settings(
       {
