@@ -2,10 +2,11 @@
  * The tables. An order is kept as one document so a change to the order
  * machine's shape needs no migration of live orders; only what the gateway
  * queries by is pulled into columns, written from the document on every save so
- * they cannot drift from it. Every table except the payment claims carries its
- * merchant, not null, so a row cannot exist without an owner. Money is never a
- * column: prices stay inside the documents as the contract's decimal strings,
- * so no database driver can turn one into a float.
+ * they cannot drift from it. Every table except the payment claims and the
+ * payout splits carries its merchant by a foreign key, so a row cannot exist
+ * without an owner. Money is never a column: prices stay inside the documents
+ * as the contract's decimal strings, so no database driver can turn one into a
+ * float.
  */
 
 import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
@@ -14,11 +15,14 @@ import {
   boolean,
   check,
   index,
+  integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { StoredOrder } from "../../ports/store.js";
 
@@ -215,5 +219,46 @@ export const paymentClaims = pgTable(
   (table) => [
     index("payment_claims_swept_idx").on(table.claimedAt),
     index("payment_claims_order_idx").on(table.orderId),
+  ],
+);
+
+/**
+ * Every payout split ever named as a payment address, with every parameter the
+ * factory creates it from. Until a split's first payout these columns are the
+ * only place its parameters exist, and without them nobody can create it or
+ * pay out what it holds, so a row is never changed or deleted: a trigger the
+ * migration adds refuses both, whoever asks, and leaves `truncate` to the
+ * tests that empty a database. It names its merchant with no foreign key,
+ * because money may still arrive at a split after a test merchant is
+ * forgotten. One row per merchant, wallet and network, and one per address in
+ * either spelling.
+ */
+export const payoutSplits = pgTable(
+  "payout_splits",
+  {
+    /** Where buyers pay, in the checksummed spelling. */
+    address: text("address").notNull(),
+    /** The CAIP-2 chain the split is on. */
+    network: text("network").notNull(),
+    merchantId: text("merchant_id").notNull(),
+    merchantWallet: text("merchant_wallet").notNull(),
+    commissionWallet: text("commission_wallet").notNull(),
+    merchantAllocation: integer("merchant_allocation").notNull(),
+    commissionAllocation: integer("commission_allocation").notNull(),
+    totalAllocation: integer("total_allocation").notNull(),
+    distributionIncentive: integer("distribution_incentive").notNull(),
+    owner: text("owner").notNull(),
+    /** The salt handed to the factory, as thirty-two bytes of hexadecimal. */
+    salt: text("salt").notNull(),
+    factory: text("factory").notNull(),
+    /** When the split was first recorded; a later write of the same split keeps it. */
+    recordedAt: timestamp("recorded_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      name: "payout_splits_pkey",
+      columns: [table.network, table.merchantId, table.merchantWallet],
+    }),
+    uniqueIndex("payout_splits_address_unique").on(table.network, sql`lower(${table.address})`),
   ],
 );

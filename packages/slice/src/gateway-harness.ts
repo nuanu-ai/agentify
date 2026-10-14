@@ -181,7 +181,12 @@ export async function bootGateway(
     // that must not be lost is written where the order is. It is `stage` rather
     // than `publish` because the store needs the two halves apart: take it
     // before the order is written, make it visible after.
-    const store = new MemoryStore(randomIds, systemClock, queue.envelopes());
+    const store = new MemoryStore(
+      config.payment.network,
+      randomIds,
+      systemClock,
+      queue.envelopes(),
+    );
 
     const runtime: Runtime = {
       config,
@@ -228,7 +233,13 @@ export async function bootGateway(
     // gateway rather than to the merchants selling on it; writing it onto a
     // merchant there would pay their sales to the operator.
     if (config.payment.payTo !== null) {
-      await setPayoutWallet(store, SEEDED_MERCHANT.id, config.payment.payTo, systemClock());
+      await setPayoutWallet(
+        store,
+        config.payoutSplit,
+        SEEDED_MERCHANT.id,
+        config.payment.payTo,
+        systemClock(),
+      );
     }
 
     server.on("request", buildApp(gateway));

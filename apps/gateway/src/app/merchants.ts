@@ -18,6 +18,8 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import type { Ids } from "../ports/clock.js";
 import type { Store, StoredKey, StoredMerchant } from "../ports/store.js";
+import type { PayoutSplitNetwork } from "../split/networks.js";
+import { payoutSplitFor } from "../split/parameters.js";
 
 const KEY_BYTES = 32;
 
@@ -95,18 +97,22 @@ export function payoutWalletFrom(payoutWallet: string): string {
 }
 
 /**
- * Sets a merchant's payout address at once, with no wait and no announcement.
- * Null where there is no such merchant. Only test and seed harnesses may call
- * this: a merchant's own change goes through `Gateway#setPayoutWallet`, which
- * waits and announces where the money is real.
+ * Sets a merchant's payout address at once, with no wait and no announcement,
+ * and records its split on this network with it. Null where there is no such
+ * merchant. Only test and seed harnesses may call this: a merchant's own
+ * change goes through `Gateway#setPayoutWallet`, which refuses an address a
+ * share could not come back from, and waits and announces where the money is
+ * real.
  */
 export async function setPayoutWallet(
   store: Store,
+  network: PayoutSplitNetwork,
   merchantId: string,
   payoutWallet: string,
   at: number,
 ): Promise<StoredMerchant | null> {
   const address = payoutWalletFrom(payoutWallet);
+  const split = payoutSplitFor(network, merchantId, address);
   for (;;) {
     const merchant = await store.merchantById(merchantId);
     if (merchant === null) {
@@ -115,11 +121,11 @@ export async function setPayoutWallet(
     const written = await store.setPayoutWallet(
       merchantId,
       merchant.payoutWallet,
-      { address, pending: null },
+      { address, split, pending: null },
       at,
     );
     if (written !== "moved") {
-      return written;
+      return written?.merchant ?? null;
     }
   }
 }

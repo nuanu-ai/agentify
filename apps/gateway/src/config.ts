@@ -16,6 +16,7 @@ import {
   type PayoutSplitNetworks,
   payoutSplitNetworkOf,
 } from "./split/networks.js";
+import { type NotAPayoutWallet, whyNotAPayoutWallet } from "./split/wallet-rule.js";
 
 /**
  * Re-exported from the core rather than defined here: the dashboard tests for
@@ -175,6 +176,9 @@ const SDK_WORKER_POLL_DEADLINE_MS = 50_000;
  * and the way back, which the worker's clock counts and this one does not.
  */
 const WORKER_POLL_WAIT_CEILING_MS = 40_000;
+
+/** The chain a gateway takes payments on where `PAYMENT_NETWORK` names none. */
+export const DEFAULT_PAYMENT_NETWORK = "eip155:84532";
 
 /**
  * The environment is an external boundary like any request, so it is parsed
@@ -360,7 +364,7 @@ const environmentSchema = z.object({
   PAYMENT_NETWORK: z
     .string()
     .regex(/^[^:\s]+:[^:\s]+$/, "must be a CAIP-2 chain such as eip155:84532")
-    .default("eip155:84532"),
+    .default(DEFAULT_PAYMENT_NETWORK),
   /**
    * How long a challenge stays payable. The payment authorisation is signed
    * against it, so it belongs to the protocol rather than to the order machine.
@@ -514,6 +518,18 @@ export function secondAttemptProblem(config: GatewayConfig, reminderPollMs: numb
   );
 }
 
+/** What a configured placeholder is, where it could not be a merchant's wallet. */
+const PLACEHOLDER_REFUSED: Readonly<Record<NotAPayoutWallet, string>> = {
+  zero_address: "the zero address",
+  commission_wallet: "a network's commission wallet",
+  split_factory: "the payout split factory",
+  split_implementation: "the payout split implementation",
+  split_warehouse: "the 0xSplits warehouse",
+  multicall3: "Multicall3",
+  usdc: "a network's USDC",
+  payout_split: "a payout split",
+};
+
 /**
  * Names every configuration problem at once rather than the first, so the
  * whole list is learned in one restart.
@@ -658,6 +674,19 @@ export function loadConfig(
     problems.push(
       `PAY_TO_ADDRESS is ${JSON.stringify(payTo)}, which is not an address on ${network}`,
     );
+  } else if (payTo !== null) {
+    // The sandbox pays a merchant with no wallet at the split of this address,
+    // so it is held to the rule a merchant's wallet is held to.
+    try {
+      const is = whyNotAPayoutWallet(payTo, { networks: payoutSplitNetworks, splits: [] });
+      if (is !== null) {
+        problems.push(
+          `PAY_TO_ADDRESS is ${payTo}, which is ${PLACEHOLDER_REFUSED[is]}, and no payout split could stand in for a merchant's wallet with it`,
+        );
+      }
+    } catch (thrown) {
+      problems.push(`PAY_TO_ADDRESS: ${thrown instanceof Error ? thrown.message : String(thrown)}`);
+    }
   }
 
   if (problems.length > 0) {

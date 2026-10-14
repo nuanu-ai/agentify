@@ -12,7 +12,7 @@
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
-import type { Gateway } from "@agentify/gateway";
+import { type Gateway, payoutSplitFor } from "@agentify/gateway";
 import {
   buyOverHttp,
   type Harness,
@@ -4503,7 +4503,16 @@ describe("a wallet change waiting on the live deployment", () => {
           expected,
           {
             address: running.harnessed.merchant.wallet,
-            pending: { address: OVERTAKING, takesEffectAt: when + 48 * 60 * 60 * 1_000 },
+            split: payoutSplitFor(
+              running.harnessed.runtime.config.payoutSplit,
+              id,
+              running.harnessed.merchant.wallet,
+            ),
+            pending: {
+              address: OVERTAKING,
+              takesEffectAt: when + 48 * 60 * 60 * 1_000,
+              split: payoutSplitFor(running.harnessed.runtime.config.payoutSplit, id, OVERTAKING),
+            },
           },
           when,
         );
@@ -4632,7 +4641,11 @@ describe("a wallet change waiting on the live deployment", () => {
       await store.setPayoutWallet(
         merchant.id,
         merchant.payoutWallet,
-        { address: PAID, pending: null },
+        {
+          address: PAID,
+          split: payoutSplitFor(running.harnessed.runtime.config.payoutSplit, merchant.id, PAID),
+          pending: null,
+        },
         running.harnessed.now(),
       );
       await running.browser.signIn();

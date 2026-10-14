@@ -57,22 +57,45 @@ merchant's identifier, which parts two merchants with one wallet. With no
 ordinal in it, the same merchant and wallet always give the same split.
 
 A registry table records every split ever named as a payment address, with all
-its parameters: address, merchant, network, both wallets, rate, salt, factory
-and when it was written. A row is written in the database transaction that
+its parameters: address, merchant, network, both wallets, both allocations and
+the total, the incentive, the owner, salt, factory and when it was first
+written. There is one row per network, merchant and wallet, and one per network
+and address in either spelling, so a wallet returning to a merchant finds its
+split already recorded. A row is written in the database transaction that
 writes its wallet, a first one or a pending replacement, and is never changed
 or deleted, because until a split's first payout its parameters exist nowhere
-else, and without them nobody can deploy it or divide what it holds. `payTo` is
-read from the row of the merchant's wallet in force and never recomputed from
-the constants, since after a change to one the recomputed address would have no
-row. Until a change of rate is designed, the gateway refuses to start while its
-constants disagree with the rows of the current wallets.
+else, and without them nobody can deploy it or divide what it holds: a trigger
+refuses every update and delete, an upsert included, whoever asks, and leaves
+`truncate` to the tests that empty a database. The row names its merchant with
+no foreign key, so it outlives a merchant forgotten on the test channel
+(ADR-0010). Every newly recorded row is also written to the process's journal
+with all its parameters, so a database restored from a copy older than the row
+can be given it again. `payTo` is read from the row of the merchant's wallet in
+force and never recomputed from the constants, since after a change to one the
+recomputed address would have no row; a wallet with no row is read as no
+wallet, and nothing of its merchant's is sold. A wallet that is any merchant's
+split, a commission wallet, a contract a payout calls or a network's token is
+refused before anything is written or announced.
+
+At every start the gateway first checks the registry and refuses to start,
+before it writes anything or takes any work, where it holds another network's
+splits, or a split of a wallet in force or waiting names another commission
+wallet, rate, owner, incentive or factory than the code, or is no longer what
+the code derives from its merchant, network and wallet. The SQL that adds the
+table cannot compute a split's address, so the start then records the split of
+every wallet that has none, which on the release that brings splits is every
+wallet already set; until a change of rate is designed, the refusal stands in
+for one, and a constant edited in code cannot quietly name new splits beside
+the old.
 
 A payout is one transaction anybody may send, the merchant included, for gas
 alone: a batch through Multicall3 `0xcA11bde05977b3631167028862bE2a173976CA11`,
 a public contract that runs several calls at once, which creates the split if
-it has no code, distributes its USDC and withdraws the merchant's share. The
-dashboard shows each merchant theirs; the operator sends one over every split
-of a network, with the commission's withdrawal, by hand. Agentify holds no key,
+it has no code, distributes its USDC and withdraws the merchant's share. It
+covers the splits that can hold money: the split of the wallet in force and
+every split a payment was verified against. The dashboard shows each merchant
+theirs; the operator sends one over every such split of a network, with the
+commission's withdrawal, by hand. Agentify holds no key,
 writes to no chain and reads no node.
 
 ## Consequences

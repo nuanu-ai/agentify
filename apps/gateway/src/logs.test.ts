@@ -313,7 +313,7 @@ describe("a failure beneath the gateway, in its log", () => {
       release: () => undefined,
     };
     const db = { $client: { connect: async () => client } } as unknown as Database;
-    const store = PostgresStore.over(db, countedIds());
+    const store = PostgresStore.over(db, "eip155:84532", countedIds());
 
     const written = await loggedWhile(() => store.runAlone("a_sweep", async () => "done"));
 

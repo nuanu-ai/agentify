@@ -49,7 +49,7 @@ export async function openCommandApplication(config: GatewayConfig): Promise<Com
   }
   const application = new Gateway({
     config,
-    store: PostgresStore.over(db, randomIds, queue.envelopes()),
+    store: PostgresStore.over(db, config.payment.network, randomIds, queue.envelopes()),
     queue,
     facilitator: refusesToAsk,
     clock: systemClock,

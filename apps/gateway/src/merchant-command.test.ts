@@ -14,7 +14,7 @@ import { runMerchant } from "./merchant-command.js";
 import { countedIds } from "./testing/harness.js";
 
 function aTerminal() {
-  const store = new MemoryStore(countedIds());
+  const store = new MemoryStore("eip155:84532", countedIds());
   const said: string[] = [];
   const at = Date.parse("2026-08-27T12:00:00.000Z");
   // One generator across every write, as in a process: two would issue two

@@ -480,9 +480,11 @@ describe("the payment challenge", () => {
     );
     expect(challenge.x402Version).toBe(2);
     expect(challenge.accepts[0]?.amount).toBe("80000000");
-    // The seller's own wallet, not the operator's configured address;
-    // `payout-wallet.test.ts` covers this properly.
-    expect(challenge.accepts[0]?.payTo).toBe(harnessed.merchant.wallet);
+    // The seller's own split, recorded with their wallet, not the operator's
+    // configured address; `payout-wallet.test.ts` covers this properly.
+    const split = (await harnessed.store.merchantById(harnessed.merchant.id))?.payoutWallet.split;
+    expect(split?.merchantWallet).toBe(harnessed.merchant.wallet);
+    expect(challenge.accepts[0]?.payTo).toBe(split?.address);
     expect(challenge.accepts[0]?.network).toBe("eip155:84532");
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
