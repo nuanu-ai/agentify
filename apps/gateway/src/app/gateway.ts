@@ -2362,10 +2362,11 @@ const MERCHANT_PROBLEMS: Readonly<Record<MerchantFinding, Problem>> = {
     path: [],
     code: MERCHANT_FINDINGS.NO_PAYOUT_WALLET,
     message:
-      "this merchant has not set a wallet to be paid at, so the money from sales of this card" +
-      " would have nowhere to go — a buyer's agent pays the merchant's own address directly and" +
-      " nothing of it is held here; a person signed in to the merchant's dashboard sets one on its" +
-      " Settings screen, and then this card can be published again",
+      "this merchant has not set a wallet for their share of sales, so the money from sales of" +
+      " this card would have nowhere to go — a buyer's agent pays into a payout contract made for" +
+      " the merchant's wallet, which sends the merchant's share there, and nothing of it is held" +
+      " here; a person signed in to the merchant's dashboard sets one on its Settings screen, and" +
+      " then this card can be published again",
   },
   no_operator_approval: {
     path: [],
