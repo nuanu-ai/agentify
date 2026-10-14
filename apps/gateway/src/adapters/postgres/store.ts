@@ -351,10 +351,19 @@ export class PostgresStore implements Store {
                   ),
                 ),
             ),
-            sql`lower(${payoutSplits.address}) in (
-              select lower(${orders.record} ->> 'payTo') from ${orders}
-              where ${orders.merchantId} = ${payoutSplits.merchantId}
-                and ${orders.record} ->> 'payTo' is not null)`,
+            // In the shape of the orders' index on the merchant and the
+            // lowered address, so each split costs one look-up.
+            exists(
+              this.#db
+                .select({ id: orders.id })
+                .from(orders)
+                .where(
+                  and(
+                    eq(orders.merchantId, payoutSplits.merchantId),
+                    sql`lower(${orders.record} ->> 'payTo') = lower(${payoutSplits.address})`,
+                  ),
+                ),
+            ),
           ),
         ),
       )

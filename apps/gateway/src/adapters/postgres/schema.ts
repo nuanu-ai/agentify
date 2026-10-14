@@ -180,9 +180,15 @@ export const orders = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
   },
-  // The merchant leads the index because a merchant lists their own orders,
-  // open ones first; an index on `open` alone would walk every merchant's.
-  (table) => [index("orders_open_idx").on(table.merchantId, table.open, table.createdAt)],
+  (table) => [
+    // The merchant leads the index because a merchant lists their own orders,
+    // open ones first; an index on `open` alone would walk every merchant's.
+    index("orders_open_idx").on(table.merchantId, table.open, table.createdAt),
+    // Whether any order of a merchant's was paid to a split, which a payout
+    // asks of every split it might cover; without it each question reads
+    // every document of that merchant's.
+    index("orders_pay_to_idx").on(table.merchantId, sql`lower(${table.record} ->> 'payTo')`),
+  ],
 );
 
 export const receipts = pgTable(
