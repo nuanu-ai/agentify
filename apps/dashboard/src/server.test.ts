@@ -2002,6 +2002,29 @@ describe("the wallet a merchant's share is paid out to", () => {
     expect(data).toHaveLength(3_146);
   });
 
+  it("names the commission at the terms the split of the saved wallet was recorded with", async () => {
+    // The screen's words are the merchant's consent, and the split is what
+    // takes the money: the percentages on the page are the recorded split's.
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    await running.browser.signIn();
+    await running.browser.post("/settings/payout-wallet", { payout_wallet: AS_A_WALLET_SHOWS_IT });
+
+    const screen = await running.browser.get("/settings");
+
+    const { inForce } = await running.harnessed.gateway.payoutSplitsOf(
+      running.harnessed.merchant.id,
+    );
+    if (inForce === null) throw new Error("no split was recorded for the saved wallet");
+    const percent = (part: number): string => `${(part / inForce.totalAllocation) * 100}%`;
+    const text = readable(screen.html);
+    expect(text).toContain(`Agentify keeps ${percent(inForce.commissionAllocation)} of every sale`);
+    expect(text).toContain(
+      `it pays ${percent(inForce.merchantAllocation)} to the wallet and ${percent(inForce.commissionAllocation)} to Agentify`,
+    );
+  });
+
   it("pays out, beside the contract of the wallet saved now, the earlier contract a sale was paid into, each to its own wallet", async () => {
     // A sale paid into the earlier wallet's contract waits there after the
     // change, and pays that wallet, not the new one.
