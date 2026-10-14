@@ -20,8 +20,9 @@ import {
   splitAddress,
   ZERO_ADDRESS,
 } from "./address.js";
-import type { PayoutSplitNetwork } from "./networks.js";
+import type { PayoutSplitNetwork, PayoutSplitNetworks } from "./networks.js";
 import { type PayoutSplit, splitParametersOf } from "./parameters.js";
+import { type NotAPayoutWallet, whyNotAPayoutWallet } from "./wallet-rule.js";
 
 /**
  * The most splits one payout pays out. Creating, distributing and withdrawing
@@ -166,13 +167,31 @@ interface Call {
   readonly callData: Hex;
 }
 
+/** What a payout would be withdrawing a merchant's share to, where it refuses to. */
+const NO_WALLET: Readonly<Record<NotAPayoutWallet, string>> = {
+  zero_address: "the zero address",
+  commission_wallet: "a commission wallet of Agentify's",
+  split_factory: "the split factory",
+  split_implementation: "the split implementation",
+  split_warehouse: "the 0xSplits warehouse",
+  multicall3: "Multicall3, whose next caller would take it",
+  usdc: "a network's USDC",
+  payout_split: "a payout split",
+};
+
 /**
- * Throws unless every split is this network's, was made by its factory, sits
- * at the address its own parameters give, and is named once: a payout over
- * any other would create one contract and distribute another, or be sent on a
- * chain where it does nothing.
+ * Throws unless every split is this network's, was made by its factory, pays
+ * its merchant's share to an address the wallet rule allows on any network
+ * known here, sits at the address its own parameters give, and is named once:
+ * a payout over any other would hand a share to whoever calls Multicall3 next
+ * or to a contract that never pays it on, create one contract and distribute
+ * another, or be sent on a chain where it does nothing.
  */
-function refuseUnlessPayable(network: PayoutSplitNetwork, splits: readonly PayoutSplit[]): void {
+function refuseUnlessPayable(
+  network: PayoutSplitNetwork,
+  splits: readonly PayoutSplit[],
+  everyNetwork: PayoutSplitNetworks,
+): void {
   const seen = new Set<string>();
   for (const split of splits) {
     if (split.network !== network.network) {
@@ -183,6 +202,13 @@ function refuseUnlessPayable(network: PayoutSplitNetwork, splits: readonly Payou
     if (split.factory.toLowerCase() !== network.factory.toLowerCase()) {
       throw new Error(
         `the split ${split.address} was made by the factory ${split.factory}, which ${network.network}'s payout split does not name, so the code it clones is unknown here`,
+      );
+    }
+    const wallet = checkedAddress(split.merchantWallet, "the merchant's wallet");
+    const is = whyNotAPayoutWallet(wallet, { networks: everyNetwork, splits: [] });
+    if (is !== null) {
+      throw new Error(
+        `the split ${split.address} would have its merchant's share withdrawn to ${wallet}, which is ${NO_WALLET[is]} and no merchant's wallet, so no payout is built over it`,
       );
     }
     const derived = splitAddress({
@@ -274,13 +300,15 @@ function transactionOf(
  * left credited in the warehouse, for the operator's payout to collect.
  *
  * Built from the splits as recorded, never from the network's commission
- * wallet or rate today; the network gives only the contracts and the token.
+ * wallet or rate today; the network gives only the contracts and the token,
+ * and every network known, the addresses no share may be withdrawn to.
  * Refuses an empty list, splits of more than one merchant, more than twenty
  * splits, and any split `operatorPayouts` refuses.
  */
 export function merchantPayout(
   network: PayoutSplitNetwork,
   splits: readonly PayoutSplit[],
+  everyNetwork: PayoutSplitNetworks,
 ): PayoutTransaction {
   if (splits.length === 0) {
     throw new Error("there is no split to pay out, so there is no payout to build");
@@ -294,7 +322,7 @@ export function merchantPayout(
       `the merchant has ${splits.length} splits to pay out, and one transaction carries at most ${SPLITS_PER_PAYOUT}`,
     );
   }
-  refuseUnlessPayable(network, splits);
+  refuseUnlessPayable(network, splits, everyNetwork);
   return transactionOf(network, splits, { withdrawCommission: false });
 }
 
@@ -305,14 +333,17 @@ export function merchantPayout(
  * others; then it withdraws each merchant wallet its splits name once, and
  * last each commission wallet they name. No split gives no transaction.
  *
- * Refuses a split of another network, one made by another factory, one whose
- * address its parameters do not give, and one named twice.
+ * Refuses a split of another network, one made by another factory, one that
+ * pays its merchant's share to an address the wallet rule refuses on any of
+ * `everyNetwork`, one whose address its parameters do not give, and one named
+ * twice.
  */
 export function operatorPayouts(
   network: PayoutSplitNetwork,
   splits: readonly PayoutSplit[],
+  everyNetwork: PayoutSplitNetworks,
 ): readonly PayoutTransaction[] {
-  refuseUnlessPayable(network, splits);
+  refuseUnlessPayable(network, splits, everyNetwork);
   const parts: PayoutTransaction[] = [];
   for (let start = 0; start < splits.length; start += SPLITS_PER_PAYOUT) {
     parts.push(

@@ -82,7 +82,7 @@ const splitsFor = (
         ? { tooMany }
         : paidOut.length === 0
           ? null
-          : merchantPayout(network, paidOut),
+          : merchantPayout(network, paidOut, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE),
   };
 };
 
@@ -441,7 +441,11 @@ describe("the payout instruction", () => {
 
   it("gives the whole data the builder makes for the merchant's recorded split, never cut", () => {
     const html = settingsPage({ mode: "test", wallet: W });
-    const built = merchantPayout(networkOf("test"), [splitOf("test", W)]).data;
+    const built = merchantPayout(
+      networkOf("test"),
+      [splitOf("test", W)],
+      SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
+    ).data;
 
     expect(dataIn(html)).toBe(built);
     expect(dataIn(html)).toHaveLength(3_146);
@@ -464,7 +468,10 @@ describe("the payout instruction", () => {
       fireEvent.click(screen.getByText("Copy the data"));
     });
 
-    expect(held).toBe(merchantPayout(networkOf("test"), [splitOf("test", W)]).data);
+    expect(held).toBe(
+      merchantPayout(networkOf("test"), [splitOf("test", W)], SPLIT_NETWORKS_WITH_A_FIXTURE_BASE)
+        .data,
+    );
     expect(screen.getByRole("status").textContent).toBe("Copied.");
     Reflect.deleteProperty(navigator, "clipboard");
   });
@@ -479,7 +486,8 @@ describe("the payout instruction", () => {
     expect(onLive).toMatch(/send one transaction on Base from/);
     expect(onLive).not.toMatch(/Base Sepolia|faucet|test ETH/);
     expect(dataIn(settingsPage({ mode: "live", wallet: W }))).toBe(
-      merchantPayout(networkOf("live"), [splitOf("live", W)]).data,
+      merchantPayout(networkOf("live"), [splitOf("live", W)], SPLIT_NETWORKS_WITH_A_FIXTURE_BASE)
+        .data,
     );
   });
 

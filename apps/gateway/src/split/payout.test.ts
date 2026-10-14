@@ -45,6 +45,9 @@ const WITH_THE_EXPERIMENTS_COMMISSION = { ...TEST_NETWORK, commissionWallet: COM
 
 const LIVE_NETWORK = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453");
 
+/** Every network a payout is built knowing of: no share is withdrawn to a contract or wallet of any. */
+const NETWORKS = SPLIT_NETWORKS_WITH_A_FIXTURE_BASE;
+
 /** One of the experiment's splits as the registry would hand it over. */
 const recorded = (split: { address: string; salt: string }, merchantId: string): PayoutSplit => ({
   address: split.address,
@@ -153,7 +156,7 @@ describe("the calls of a payout", () => {
 
 describe("a merchant's payout of one split", () => {
   it("is one transaction to Multicall3 carrying no money, laid out word by word", () => {
-    const paid = merchantPayout(TEST_NETWORK, [S_ROW]);
+    const paid = merchantPayout(TEST_NETWORK, [S_ROW], NETWORKS);
 
     expect(paid.to).toBe(MULTICALL3);
     expect(paid.value).toBe(0n);
@@ -175,14 +178,14 @@ describe("a merchant's payout of one split", () => {
     // when Circle has blocked the split itself. A failed create must stop the
     // transaction: the distribute of a split with no code "succeeds" and pays
     // nobody.
-    const flags = callsOf(merchantPayout(TEST_NETWORK, [S_ROW]).data).map(
+    const flags = callsOf(merchantPayout(TEST_NETWORK, [S_ROW], NETWORKS).data).map(
       ({ allowFailure }) => allowFailure,
     );
     expect(flags).toStrictEqual([false, true, true]);
   });
 
   it("does not withdraw the commission, which the merchant would pay gas for", () => {
-    expect(merchantPayout(TEST_NETWORK, [S_ROW]).data).not.toContain(WITHDRAW_A.slice(2));
+    expect(merchantPayout(TEST_NETWORK, [S_ROW], NETWORKS).data).not.toContain(WITHDRAW_A.slice(2));
   });
 
   it("is the transaction a hand encoder gives for a production-shaped split", () => {
@@ -192,14 +195,18 @@ describe("a merchant's payout of one split", () => {
       merchant.merchantId,
       merchant.merchantWallet,
     );
-    expect(merchantPayout(WITH_THE_EXPERIMENTS_COMMISSION, [split]).data).toBe(merchant.data);
+    expect(merchantPayout(WITH_THE_EXPERIMENTS_COMMISSION, [split], NETWORKS).data).toBe(
+      merchant.data,
+    );
     expect(merchant.data.length).toBe(3_146);
   });
 
   it("is built from the split as recorded, whatever commission wallet the network names today", () => {
     const today = { ...TEST_NETWORK, commissionWallet: LIVE_NETWORK.commissionWallet };
-    expect(merchantPayout(today, [S_ROW]).data).toBe(merchantPayout(TEST_NETWORK, [S_ROW]).data);
-    const [create, distribute] = callsOf(merchantPayout(today, [S_ROW]).data);
+    expect(merchantPayout(today, [S_ROW], NETWORKS).data).toBe(
+      merchantPayout(TEST_NETWORK, [S_ROW], NETWORKS).data,
+    );
+    const [create, distribute] = callsOf(merchantPayout(today, [S_ROW], NETWORKS).data);
     expect(create?.data).toBe(CREATE_S);
     expect(distribute?.data).toBe(DISTRIBUTE);
   });
@@ -229,7 +236,7 @@ describe("every call of a payout", () => {
         (vector) => vector.network === network.network && vector.merchantId === merchantId,
       );
       const [create, distribute, withdraw, ...more] = callsOf(
-        merchantPayout(network, [split]).data,
+        merchantPayout(network, [split], NETWORKS).data,
       );
       if (create === undefined || distribute === undefined || withdraw === undefined) {
         throw new Error("a call is missing");
@@ -267,13 +274,15 @@ describe("a merchant's payout over every split that can hold their money", () =>
       payoutSplitFor(WITH_THE_EXPERIMENTS_COMMISSION, merchantOverTwoWallets.merchantId, wallet),
     );
 
-    expect(merchantPayout(WITH_THE_EXPERIMENTS_COMMISSION, splits).data).toBe(
+    expect(merchantPayout(WITH_THE_EXPERIMENTS_COMMISSION, splits, NETWORKS).data).toBe(
       merchantOverTwoWallets.data,
     );
   });
 
   it("withdraws a wallet two of their splits name only once", () => {
-    const calls = callsOf(merchantPayout(TEST_NETWORK, [S_ROW, S2_OF_THE_SAME_MERCHANT]).data);
+    const calls = callsOf(
+      merchantPayout(TEST_NETWORK, [S_ROW, S2_OF_THE_SAME_MERCHANT], NETWORKS).data,
+    );
 
     expect(calls).toStrictEqual([
       call(ON_CHAIN.factory, false, CREATE_S),
@@ -290,7 +299,7 @@ describe("a merchant's payout over every split that can hold their money", () =>
     // split that can hold their money in this one transaction, so with the
     // flag down a blocked old split would revert it on every run and the
     // split in force would never be paid out by them.
-    const paid = merchantPayout(TEST_NETWORK, [S_ROW, S2_OF_THE_SAME_MERCHANT]);
+    const paid = merchantPayout(TEST_NETWORK, [S_ROW, S2_OF_THE_SAME_MERCHANT], NETWORKS);
 
     expect(paid.data).toBe(
       `0x82ad56cb${word("20")}${word("5")}` +
@@ -307,7 +316,7 @@ describe("a merchant's payout over every split that can hold their money", () =>
 describe("a payout's withdrawals", () => {
   it("withdraw a wallet once whichever spelling each of its splits recorded it in", () => {
     const lower = { ...S2_OF_THE_SAME_MERCHANT, merchantWallet: MERCHANT.toLowerCase() };
-    const withdrawals = callsOf(merchantPayout(TEST_NETWORK, [S_ROW, lower]).data).filter(
+    const withdrawals = callsOf(merchantPayout(TEST_NETWORK, [S_ROW, lower], NETWORKS).data).filter(
       ({ target }) => target === ON_CHAIN.warehouse,
     );
     expect(withdrawals).toStrictEqual([call(ON_CHAIN.warehouse, true, WITHDRAW_M)]);
@@ -316,47 +325,57 @@ describe("a payout's withdrawals", () => {
 
 describe("a payout that would not do what it says", () => {
   it("is refused over no split at all", () => {
-    expect(refusal(() => merchantPayout(TEST_NETWORK, []))).toMatch(/no split/);
+    expect(refusal(() => merchantPayout(TEST_NETWORK, [], NETWORKS))).toMatch(/no split/);
   });
 
   it("is refused over two merchants' splits, which one merchant's screen must not name", () => {
-    expect(refusal(() => merchantPayout(TEST_NETWORK, [S_ROW, S2_ROW]))).toMatch(/merchant/);
+    expect(refusal(() => merchantPayout(TEST_NETWORK, [S_ROW, S2_ROW], NETWORKS))).toMatch(
+      /merchant/,
+    );
   });
 
   it("is refused for a split of another network", () => {
     const elsewhere = payoutSplitFor(LIVE_NETWORK, MERCHANT_ID, MERCHANT);
-    expect(refusal(() => merchantPayout(TEST_NETWORK, [elsewhere]))).toMatch(/eip155:8453/);
-    expect(refusal(() => operatorPayouts(TEST_NETWORK, [S_ROW, elsewhere]))).toMatch(/eip155:8453/);
+    expect(refusal(() => merchantPayout(TEST_NETWORK, [elsewhere], NETWORKS))).toMatch(
+      /eip155:8453/,
+    );
+    expect(refusal(() => operatorPayouts(TEST_NETWORK, [S_ROW, elsewhere], NETWORKS))).toMatch(
+      /eip155:8453/,
+    );
   });
 
   it("is refused for a split whose address its own parameters do not give", () => {
     const mismatched = { ...S_ROW, salt: S2.salt };
-    expect(refusal(() => merchantPayout(TEST_NETWORK, [mismatched]))).toMatch(
+    expect(refusal(() => merchantPayout(TEST_NETWORK, [mismatched], NETWORKS))).toMatch(
       new RegExp(S.address),
     );
-    expect(refusal(() => operatorPayouts(TEST_NETWORK, [mismatched]))).toMatch(
+    expect(refusal(() => operatorPayouts(TEST_NETWORK, [mismatched], NETWORKS))).toMatch(
       new RegExp(S.address),
     );
   });
 
   it("is refused for a split made by a factory this network does not name", () => {
     const foreign = { ...S_ROW, factory: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed" };
-    expect(refusal(() => merchantPayout(TEST_NETWORK, [foreign]))).toMatch(/factory/);
+    expect(refusal(() => merchantPayout(TEST_NETWORK, [foreign], NETWORKS))).toMatch(/factory/);
   });
 
   it("is refused where one split is named twice", () => {
-    expect(refusal(() => merchantPayout(TEST_NETWORK, [S_ROW, S_ROW]))).toMatch(/twice/);
-    expect(refusal(() => operatorPayouts(TEST_NETWORK, [S_ROW, S2_ROW, S_ROW]))).toMatch(/twice/);
+    expect(refusal(() => merchantPayout(TEST_NETWORK, [S_ROW, S_ROW], NETWORKS))).toMatch(/twice/);
+    expect(refusal(() => operatorPayouts(TEST_NETWORK, [S_ROW, S2_ROW, S_ROW], NETWORKS))).toMatch(
+      /twice/,
+    );
     const spelledLower = { ...S_ROW, address: S.address.toLowerCase() };
-    expect(refusal(() => operatorPayouts(TEST_NETWORK, [S_ROW, spelledLower]))).toMatch(/twice/);
+    expect(refusal(() => operatorPayouts(TEST_NETWORK, [S_ROW, spelledLower], NETWORKS))).toMatch(
+      /twice/,
+    );
   });
 
   it("is refused for a merchant over more than twenty splits, which no one transaction carries safely", () => {
     const many = Array.from({ length: 21 }, (_, index) =>
       payoutSplitFor(TEST_NETWORK, MERCHANT_ID, aWallet(index)),
     );
-    expect(() => merchantPayout(TEST_NETWORK, many.slice(0, 20))).not.toThrow();
-    expect(refusal(() => merchantPayout(TEST_NETWORK, many))).toMatch(/21.*20/s);
+    expect(() => merchantPayout(TEST_NETWORK, many.slice(0, 20), NETWORKS)).not.toThrow();
+    expect(refusal(() => merchantPayout(TEST_NETWORK, many, NETWORKS))).toMatch(/21.*20/s);
   });
 });
 
@@ -367,7 +386,6 @@ describe("a payout that would withdraw a merchant's share to an address nobody c
   // to a token or to a commission wallet never reaches the merchant. Saving
   // such a wallet is refused, and so is building a payout over a split that
   // names one anyway, on every network the gateway knows of.
-  const NETWORKS = SPLIT_NETWORKS_WITH_A_FIXTURE_BASE;
 
   /** A split of this merchant that pays its share to `wallet`, at the address its own parameters give. */
   const payingTheShareTo = (wallet: string): PayoutSplit =>
@@ -385,17 +403,20 @@ describe("a payout that would withdraw a merchant's share to an address nobody c
     ["Multicall3", TEST_NETWORK.multicall3, /Multicall3/],
     ["this network's USDC", TEST_NETWORK.usdc, /USDC/],
     ["another network's USDC", LIVE_NETWORK.usdc, /USDC/],
-  ] as const)("is refused where the share would go to %s, and the refusal says which", (_what, wallet, said) => {
-    const split = payingTheShareTo(wallet);
+  ] as const)(
+    "is refused where the share would go to %s, and the refusal says which",
+    (_what, wallet, said) => {
+      const split = payingTheShareTo(wallet);
 
-    for (const refused of [
-      refusal(() => merchantPayout(TEST_NETWORK, [split], NETWORKS)),
-      refusal(() => operatorPayouts(TEST_NETWORK, [S_ROW, split], NETWORKS)),
-    ]) {
-      expect(refused).toContain(checksummedAddressOf(wallet));
-      expect(refused).toMatch(said);
-    }
-  });
+      for (const refused of [
+        refusal(() => merchantPayout(TEST_NETWORK, [split], NETWORKS)),
+        refusal(() => operatorPayouts(TEST_NETWORK, [S_ROW, split], NETWORKS)),
+      ]) {
+        expect(refused).toContain(checksummedAddressOf(wallet));
+        expect(refused).toMatch(said);
+      }
+    },
+  );
 
   it("is built where the same split pays an ordinary wallet", () => {
     // The negative control: the refusals above are of the wallet, not of how
@@ -413,7 +434,7 @@ describe("the operator's payout", () => {
     const later = payoutSplitFor(WITH_THE_EXPERIMENTS_COMMISSION, MERCHANT_ID, SECOND_WALLET);
     expect([S_ROW, S2_ROW, later].map(({ address }) => address)).toStrictEqual(operator.splits);
 
-    const parts = operatorPayouts(TEST_NETWORK, [S_ROW, S2_ROW, later]);
+    const parts = operatorPayouts(TEST_NETWORK, [S_ROW, S2_ROW, later], NETWORKS);
 
     expect(parts).toHaveLength(1);
     expect(parts[0]?.to).toBe(MULTICALL3);
@@ -436,7 +457,7 @@ describe("the operator's payout", () => {
     // A split Circle has blocked reverts in its distribution; with the flag
     // down it would take the other nineteen merchants of its part with it, on
     // every run, and the commission with them.
-    const calls = callsOf(operatorPayouts(TEST_NETWORK, [S_ROW, S2_ROW])[0]?.data ?? "");
+    const calls = callsOf(operatorPayouts(TEST_NETWORK, [S_ROW, S2_ROW], NETWORKS)[0]?.data ?? "");
     const distributes = calls.filter(
       ({ target }) => target !== ON_CHAIN.factory && target !== ON_CHAIN.warehouse,
     );
@@ -444,7 +465,7 @@ describe("the operator's payout", () => {
   });
 
   it("is no transaction at all where there is no split", () => {
-    expect(operatorPayouts(TEST_NETWORK, [])).toStrictEqual([]);
+    expect(operatorPayouts(TEST_NETWORK, [], NETWORKS)).toStrictEqual([]);
   });
 });
 
@@ -468,7 +489,7 @@ describe("the operator's payout over more splits than one transaction carries", 
     "comes in parts of at most twenty for %i splits, none left out and none twice",
     (count, sizes) => {
       const splits = splitsOf(count);
-      const parts = operatorPayouts(WITH_THE_EXPERIMENTS_COMMISSION, splits);
+      const parts = operatorPayouts(WITH_THE_EXPERIMENTS_COMMISSION, splits, NETWORKS);
 
       expect(parts.map((part) => part.splits.length)).toStrictEqual(sizes);
       const distributed: string[] = [];

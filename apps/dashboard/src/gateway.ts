@@ -566,7 +566,7 @@ export const gatewayFor = (
     // is the one a wallet saved now is recorded with.
     payoutSplits: () =>
       call("reading the payout splits", async () => {
-        const network = application.runtime.config.payoutSplit;
+        const { payoutSplit: network, payoutSplitNetworks } = application.runtime.config;
         const { inForce, pending, toPayOut } = await application.payoutSplitsOf(merchantId);
         return done({
           rate: {
@@ -580,7 +580,7 @@ export const gatewayFor = (
               ? null
               : toPayOut.length > SPLITS_PER_PAYOUT
                 ? { tooMany: toPayOut.length }
-                : merchantPayout(network, toPayOut),
+                : merchantPayout(network, toPayOut, payoutSplitNetworks),
         });
       }),
     setPayoutWallet: (address) =>

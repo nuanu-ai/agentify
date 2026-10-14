@@ -1992,7 +1992,11 @@ describe("the wallet a merchant's share is paid out to", () => {
     expect(screen.html).toContain(`href="https://sepolia.basescan.org/address/${split}"`);
     const data = /<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(screen.html)?.[1];
     expect(data).toBe(
-      merchantPayout(running.harnessed.runtime.config.payoutSplit, recorded.toPayOut).data,
+      merchantPayout(
+        running.harnessed.runtime.config.payoutSplit,
+        recorded.toPayOut,
+        running.harnessed.runtime.config.payoutSplitNetworks,
+      ).data,
     );
     expect(data).toHaveLength(3_146);
   });
@@ -2022,7 +2026,11 @@ describe("the wallet a merchant's share is paid out to", () => {
       [earlier?.address, now?.address].sort(),
     );
     expect(/<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(screen.html)?.[1]).toBe(
-      merchantPayout(harnessed.runtime.config.payoutSplit, toPayOut).data,
+      merchantPayout(
+        harnessed.runtime.config.payoutSplit,
+        toPayOut,
+        harnessed.runtime.config.payoutSplitNetworks,
+      ).data,
     );
     const shown = readable(screen.html.replaceAll(/<\/?span[^>]*>/g, ""));
     expect(shown).toContain(`${earlier?.address} pays ${harnessed.merchant.wallet}`);
@@ -4544,7 +4552,8 @@ describe("a wallet change waiting on the live deployment", () => {
     const running = await live();
     await running.browser.signIn();
     const merchantId = running.harnessed.merchant.id;
-    const network = running.harnessed.runtime.config.payoutSplit;
+    const { payoutSplit: network, payoutSplitNetworks: networks } =
+      running.harnessed.runtime.config;
     const paidNowSplit = (await running.harnessed.gateway.payoutSplitsOf(merchantId)).inForce;
     await aChangeWaits(running);
     const waitingSplit = (await running.harnessed.gateway.payoutSplitsOf(merchantId)).pending;
@@ -4557,14 +4566,14 @@ describe("a wallet change waiting on the live deployment", () => {
     const shown = waiting.html.replaceAll(/<[^>]*>/g, "");
     expect(shown.slice(shown.indexOf("Waiting to replace it"))).toContain(waitingSplit?.address);
     expect(dataOn(waiting)).toBe(
-      merchantPayout(network, paidNowSplit === null ? [] : [paidNowSplit]).data,
+      merchantPayout(network, paidNowSplit === null ? [] : [paidNowSplit], networks).data,
     );
 
     running.harnessed.advance(48 * 60 * 60 * 1_000);
     const applied = await running.browser.get("/settings");
 
     expect(dataOn(applied)).toBe(
-      merchantPayout(network, waitingSplit === null ? [] : [waitingSplit]).data,
+      merchantPayout(network, waitingSplit === null ? [] : [waitingSplit], networks).data,
     );
   });
 

@@ -271,7 +271,10 @@ const splitsOf = (
     },
     inForce: wallet === null ? null : splitOf(mode, wallet),
     pending: pending === undefined ? null : splitOf(mode, pending),
-    payout: paidOut.length === 0 ? null : merchantPayout(network, paidOut),
+    payout:
+      paidOut.length === 0
+        ? null
+        : merchantPayout(network, paidOut, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE),
   };
 };
 

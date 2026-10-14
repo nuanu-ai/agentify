@@ -34,7 +34,7 @@ export async function runPayout(
     return asked === "--help" || asked === "-h" ? 0 : 2;
   }
 
-  const { surfaceMode, payoutSplit: network } = application.runtime.config;
+  const { surfaceMode, payoutSplit: network, payoutSplitNetworks } = application.runtime.config;
   if (surfaceMode === "sandbox") {
     say(
       "This gateway is a sandbox: nothing settles there and no payout split is ever deployed, so there is nothing to pay out.",
@@ -58,7 +58,7 @@ export async function runPayout(
     return 0;
   }
 
-  const parts = operatorPayouts(network, splits);
+  const parts = operatorPayouts(network, splits, payoutSplitNetworks);
   say(
     `Payout splits on ${network.network} that can hold money: ${splits.length}.` +
       " Send every transaction below on that chain from a wallet of your own, which pays the gas;" +

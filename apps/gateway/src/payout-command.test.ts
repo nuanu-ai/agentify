@@ -133,7 +133,7 @@ describe("the operator's payout, printed", () => {
     expect(code).toBe(0);
     expect(splits).toHaveLength(2);
     expect(partsIn(lines)).toStrictEqual(
-      operatorPayouts(T1_TEST, splits).map((part) => ({
+      operatorPayouts(T1_TEST, splits, T1).map((part) => ({
         to: part.to,
         amount: "0",
         data: part.data,
@@ -161,7 +161,7 @@ describe("the operator's payout, printed", () => {
     const { code, lines } = await printedBy(gateway);
 
     expect(code).toBe(0);
-    const built = operatorPayouts(T1_TEST, await gateway.splitsToPayOut());
+    const built = operatorPayouts(T1_TEST, await gateway.splitsToPayOut(), T1);
     expect(built).toHaveLength(2);
     expect(partsIn(lines).map((part) => part.data)).toStrictEqual(built.map((part) => part.data));
     expect(lines).toContain("Payout 1 of 2");
