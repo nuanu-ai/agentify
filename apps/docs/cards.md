@@ -581,7 +581,7 @@ carries that same list under `problems`, inside the `error` its answer comes
 back with, and that error's code is `card_rejected`. Four findings can stand in
 our list that no check on your side can see, and all of them are about you
 rather than the card: no name set for buyers to read (`no_seller_name`), no
-wallet set for your sales to be paid into wherever a payment settles
+wallet set for your share of the sales wherever a payment settles
 (`no_payout_wallet`), on the live channel only, no approval from the operator
 yet (`no_operator_approval`), and on a parcel's card alone, no site set for
 your shop (`no_seller_site`) ([publishing a card](/quickstart)). The check on
