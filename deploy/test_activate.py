@@ -70,6 +70,7 @@ hook() {
 statement() {
   case $1 in
     *"to_regclass('public.payout_splits')"*) if grep -qx "the registry of payout splits" "$W/db/$db"; then echo t; else echo f; fi ;;
+    *"lower(address) from public.payout_splits"*) grep '^payout split ' "$W/db/$db" | awk '{ print tolower($3) }' | LC_ALL=C sort ;;
     "DROP DATABASE "*) db="${1#DROP DATABASE }"; db="${db#IF EXISTS }"; db="${db//\"/}"; rm -f "$W/db/${db%% *}" ;;
     "CREATE DATABASE "*) : > "$W/db/${1#CREATE DATABASE }" ;;
     "ALTER DATABASE "*) names="${1#ALTER DATABASE }"; mv "$W/db/${names%% *}" "$W/db/${names##* }" ;;
@@ -99,7 +100,14 @@ case "$args" in
       script="$(cat)"
       [[ -z ${SPLITS_COPY_FAILS:-} ]] || { echo "ERROR: the copy of the payout splits failed" >&2; exit 1; }
       grep -qx "the registry of payout splits" "$W/db/$db" || { echo 'ERROR: relation "public.payout_splits" does not exist' >&2; exit 1; }
-      while read -r row; do grep -qxF "$row" "$W/db/$db" || echo "$row" >> "$W/db/$db"; done < <(grep -o "payout split [^']*" <<<"$script")
+      # A row is "payout split <address>[ of <merchant and wallet>]", and either
+      # key already taken makes its insert do nothing, as the table's two keys do.
+      while read -r row; do
+        address="$(awk '{ print $3 }' <<<"$row")" key="${row#* of }"
+        if grep -q "^payout split $address\b" "$W/db/$db"; then continue; fi
+        if [[ $row == *" of "* ]] && grep -qF " of $key" "$W/db/$db"; then continue; fi
+        echo "$row" >> "$W/db/$db"
+      done < <(grep -o "payout split [^']*" <<<"$script")
     else
       script="$(cat)"
       mapfile -t renames < <(grep -o 'ALTER DATABASE [a-z0-9_]* RENAME TO [a-z0-9_]*' <<<"$script")
@@ -131,7 +139,10 @@ case "$args" in
   "up -d --wait --no-deps scanner scanner-worker"|"up -d --wait --no-deps app web")
     [[ -f $W/record-at-start || ! -f $record ]] || cat $record > $W/record-at-start
     for c in ${args#up -d --wait --no-deps }; do echo "new running" > $W/containers/$c; done
-    if [[ -n ${CARDS_AFTER+set} && $args == *" app web" ]]; then printf '%s' "$CARDS_AFTER" > $W/cards; fi ;;
+    if [[ -n ${CARDS_AFTER+set} && $args == *" app web" ]]; then printf '%s' "$CARDS_AFTER" > $W/cards; fi
+    # What the application's start records as it comes up, such as a split of
+    # a wallet the restored database names but has no row for.
+    if [[ -n ${STARTED_APP_RECORDS:-} && $args == *" app web" ]]; then echo "$STARTED_APP_RECORDS" >> $W/db/agentify; fi ;;
   "ps -aq "*) for c in ${args#ps -aq }; do [[ ! -f $W/containers/$c ]] || echo $c; done ;;
   "ps --status running --format {{.Service}} "*)
     for c in ${args##*\}\} }; do ! grep -qs running $W/containers/$c || echo $c; done ;;
@@ -643,6 +654,22 @@ class Activation(unittest.TestCase):
         self.assertEqual(self.replaced(), [replaced])
         self.assertIn("exit 0", self.run_script("activate"))
         self.assertEqual((self.splits("agentify"), self.replaced()), (["payout split 0xS1", "payout split 0xS2"], []))
+
+    def test_a_release_keeps_a_replaced_database_whose_payout_split_another_row_of_the_same_wallet_kept_out(self):
+        # A restore point older than the registry, then a start that recorded
+        # the same merchant's wallet under other constants: the old row's
+        # insert does nothing, and it may be the only record of a split
+        # holding money.
+        self.assertIn("exit 0", self.run_script("activate"))
+        self.record_splits("payout split 0xS1 of mch/W", registry=True)
+        [point] = self.restore_points()
+        self.assertIn("restore exit 0", self.run_script(f"restore /var/backups/agentify/test/{point}"))
+        [replaced] = self.replaced()
+        said = self.run_script("activate", MIGRATION_ADDS_REGISTRY="1", STARTED_APP_RECORDS="payout split 0xS9 of mch/W")
+        self.assertIn("exit 0", said)
+        self.assertEqual(self.replaced(), [replaced])
+        self.assertIn("0xs1", said)
+        self.assertEqual(self.splits("agentify"), ["payout split 0xS9 of mch/W"])
 
     def test_a_restore_of_a_bad_dump_leaves_the_databases_and_holds_no_release_back(self):
         self.assertIn("exit 0", self.run_script("activate"))
