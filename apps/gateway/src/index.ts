@@ -41,11 +41,10 @@ export type { Facilitator } from "./ports/facilitator.js";
 export type { Integration, RecordedPayoutSplit, StoredOrder } from "./ports/store.js";
 export {
   PAYOUT_SPLIT_NETWORKS,
-  type PayoutSplitNetwork,
   type PayoutSplitNetworks,
   payoutSplitNetworkOf,
 } from "./split/networks.js";
-export { type PayoutSplit, payoutSplitFor } from "./split/parameters.js";
+export { payoutSplitFor } from "./split/parameters.js";
 export {
   merchantPayout,
   type PayoutTransaction,
