@@ -93,6 +93,14 @@ beforeAll(async () => {
   ) as ViteManifest;
   const dashboard = buildApp(config, { pages, gateway: harnessed.gateway, identity });
   const counted = express();
+  // The site's font, which the edge serves to every process's pages, so the
+  // pages are measured in the face a visitor sees.
+  counted.use(
+    "/styles",
+    express.static(
+      fileURLToPath(new URL("../../../packages/visual/public/styles", import.meta.url)),
+    ),
+  );
   counted.use((request, _response, next) => {
     if (request.method === "GET" && request.path.endsWith(".data")) asked.push(request.path);
     // The receipts' data and the open orders' arrive late, as from a slow
@@ -404,6 +412,13 @@ describe("the header on the narrowest page", () => {
   it("keeps the lockup, the doors and the menu's button on one row", async () => {
     const page = await onTheCards({ width: 320, height: 600 });
     await page.evaluate(() => document.fonts.ready);
+    expect(
+      await page.evaluate(() =>
+        [...document.fonts].some(
+          (face) => face.family.includes("Schibsted Grotesk") && face.status === "loaded",
+        ),
+      ),
+    ).toBe(true);
 
     const middles = await page.locator("header.site-header").evaluate((bar) =>
       [...bar.querySelectorAll(".brand, .site-doors > a, .site-menu > summary")].map((item) => {
