@@ -268,7 +268,7 @@ describe("the merchant landing", () => {
     const { page, complaints } = await visit("/sell");
     await page.setViewportSize({ width: 390, height: 800 });
     const burger = page.locator(".masthead__burger");
-    const menu = page.locator("#site-menu");
+    const menu = page.locator("#masthead-menu");
     const opened = async () => {
       await burger.click();
       await menu.waitFor({ state: "visible" });
