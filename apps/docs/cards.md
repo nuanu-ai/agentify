@@ -614,8 +614,7 @@ what that ought to be is not settled.
 - The exact shape that describes the purchase parameters and the delivery
   result.
 - How long a delivery deadline may be, and whether an asynchronous card ought
-  to be required to name one at all, rather than fall to a default the buying
-  program is never shown.
+  to be required to name one at all, rather than fall to a default of ours.
 - The shape of the field a card declares a price check in.
 - Whether the vocabulary of recommended codes grows beyond three: we decide
   that from the refusals the pilot actually turns up.

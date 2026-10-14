@@ -629,7 +629,8 @@ the system you are connecting to runs with. A price holds for thirty seconds. A
 synchronous answer has ten seconds. An asynchronous card can carry one
 deadline of yours, on the delivery, counted from the moment the buyer was
 charged; name it and the agent sees it before it buys, leave it out and a day
-applies that the agent is never shown ([The product card](/cards)). The
+applies, which the agent sees on your card as if you had named it
+([The product card](/cards)). The
 confirmation mode has a deadline of its own — an hour, where the card names none
 — and it arrives together with the mode.
 
