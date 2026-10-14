@@ -132,8 +132,15 @@ export function describeWalletSpelling(
       const answered = await gateway.setPayoutWallet(id, P, SIGNED_IN);
 
       expect(answered).toMatchObject({ pending: { payout_wallet: P } });
+      // The message names the wallet as a wallet shows it, whatever the row holds.
       expect(announcer.announced).toMatchObject([
-        { kind: "wallet_change", from_split: split(W).address, to: P, to_split: split(P).address },
+        {
+          kind: "wallet_change",
+          from: W,
+          from_split: split(W).address,
+          to: P,
+          to_split: split(P).address,
+        },
       ]);
       const wallet = (await database.store.merchantById(id))?.payoutWallet;
       expect(wallet?.split?.address).toBe(split(W).address);
@@ -160,6 +167,25 @@ export function describeWalletSpelling(
         ...split(W),
         recordedAt: started,
       });
+    });
+
+    it("on the live deployment, a waiting wallet asked for again in the checksummed spelling is a retry that sends nothing and restarts no clock", async () => {
+      const { database, id } = await paidInLowerCase(LIVE_CHANNEL);
+      const takesEffectAt = now + 3_600_000;
+      await database.writeWalletWithoutSplit(id, {
+        address: W.toLowerCase(),
+        pending: { address: P.toLowerCase(), takesEffectAt },
+      });
+      const { gateway, announcer } = gatewayOn(database, LIVE);
+      await gateway.start();
+      now += 60_000;
+
+      await gateway.setPayoutWallet(id, P, SIGNED_IN);
+
+      expect(announcer.announced).toStrictEqual([]);
+      expect((await database.store.merchantById(id))?.payoutWallet.pending?.takesEffectAt).toBe(
+        takesEffectAt,
+      );
     });
 
     it("on the live deployment, asked for again in the checksummed spelling with nothing waiting, changes nothing and tells nobody", async () => {
