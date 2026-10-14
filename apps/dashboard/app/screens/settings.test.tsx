@@ -378,6 +378,20 @@ describe("the payout contract buyers pay into", () => {
 
     expect(asCopied(html)).toContain(split);
     expect(html).not.toContain("basescan");
+    expect(readable(html)).not.toMatch(/see what it holds/i);
+  });
+
+  it("names no contract beside a saved wallet the gateway recorded none for", () => {
+    // A wallet without a recorded split is read as no wallet by the gateway;
+    // the screen must not make one up.
+    const html = walletPanel({
+      mode: "test",
+      wallet: W,
+      splits: { ...splitsFor("test", W), inForce: null },
+    });
+
+    expect(asCopied(html)).toContain(W);
+    expect(readable(html)).not.toMatch(/buyers pay into 0x/i);
   });
 
   it("says the rate the recorded split pays, beside it", () => {
@@ -485,6 +499,24 @@ describe("the payout instruction", () => {
     expect(readable(html)).not.toMatch(/get your payout/i);
   });
 
+  it("is not drawn where no split can hold the merchant's money", () => {
+    const html = settingsPage({
+      mode: "test",
+      wallet: W,
+      splits: { ...splitsFor("test", W), payout: null },
+    });
+
+    expect(html).not.toContain("<textarea");
+    expect(readable(html)).not.toMatch(/get your payout/i);
+  });
+
+  it("is not drawn beside no saved wallet, even where the splits were read after one was saved", () => {
+    const html = settingsPage({ mode: "test", wallet: null, splits: splitsFor("test", W) });
+
+    expect(html).not.toContain(MULTICALL3);
+    expect(html).not.toContain("<textarea");
+  });
+
   it("is not drawn for a merchant with no wallet, on any channel", () => {
     for (const mode of ["sandbox", "test", "live"] as const) {
       const html = settingsPage({ mode, wallet: null });
@@ -513,6 +545,10 @@ describe("the payout instruction", () => {
       [earlier.address, W1],
       [now.address, W],
     ]);
+    expect(shownText(html)).toMatch(/Each share arrives in the wallet beside its contract/);
+    expect(shownText(settingsPage({ mode: "live", wallet: W }))).toMatch(
+      /Your share arrives in your wallet in the same transaction/,
+    );
     // Each wallet is the owner of a withdrawal in the data: `withdraw(owner, token)`.
     for (const [, wallet] of pairs) {
       expect(data).toContain(`f940e385${(wallet ?? "").slice(2).toLowerCase().padStart(64, "0")}`);

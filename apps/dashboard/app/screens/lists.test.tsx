@@ -223,6 +223,7 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
   // millionths exactly, where floating point makes it 0.28970999999999997.
   const SHARES: readonly (readonly [price: string, merchant: string, commission: string])[] = [
     ["80.00", "≈ 79.92 USD", "≈ 0.08 USD"],
+    ["5", "≈ 4.995 USD", "≈ 0.005 USD"],
     ["0.29", "≈ 0.28971 USD", "≈ 0.00029 USD"],
     ["0.09", "≈ 0.08991 USD", "≈ 0.00009 USD"],
     ["0.01", "≈ 0.00999 USD", "≈ 0.00001 USD"],
