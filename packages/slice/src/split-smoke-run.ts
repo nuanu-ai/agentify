@@ -204,7 +204,7 @@ export function planRun(
 }
 
 /** What the run reads of the chain at one block. */
-export interface Observation {
+interface Observation {
   readonly block: bigint;
   /** The USDC the run's four parties hold and are credited. */
   readonly ledger: Ledger;
