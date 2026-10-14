@@ -392,8 +392,19 @@ chmod 644 /etc/cron.d/agentify-release
 trap - ERR INT TERM HUP
 transition finish "$revision"
 rm -f "$state/cards-before"
-# The databases a restore replaced stay until a release after it is verified.
+# The databases a restore replaced stay until a release after it is verified,
+# and each goes only once every payout split recorded in it is in the database
+# it was replaced by: until a split's first payout its row is the only record
+# of how to create it.
 for replaced in $(stack exec -T postgres psql -U agentify -d postgres -Atc "select datname from pg_database where datname like '%\_replaced\_%'"); do
+  into="${replaced%%_replaced_*}" carried=0
+  "$root/deploy/carry-payout-splits" "$channel" "$replaced" "$into" || carried=$?
+  if ((carried != 0)); then
+    why="for the reason above"
+    ((carried != 10)) || why="since $into holds no registry of payout splits"
+    echo "activate: the payout splits recorded in $replaced could not be copied into $into, $why, so $replaced stays, and the next verified release tries again; until then a payout split recorded only there has no row in $into, and nobody can create it from there." >&2
+    continue
+  fi
   stack exec -T postgres psql -U agentify -d postgres -q -c "DROP DATABASE \"$replaced\" WITH (FORCE)" \
     || echo "activate: $replaced stays, and the next verified release tries again." >&2
 done

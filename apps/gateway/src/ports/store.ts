@@ -339,8 +339,9 @@ export interface StoredMerchant {
   /**
    * Where this merchant's share of a sale arrives, with the split buyers pay
    * into: the `payTo` of every payment request for the merchant's cards is the
-   * split recorded for the wallet in force. It is stored in the mixed-case
-   * spelling a wallet displays, so one address is never two strings. A null
+   * split recorded for the wallet in force. The gateway writes it in the
+   * mixed-case spelling a wallet displays; a row in lower case is the same
+   * wallet, and is read with the same split. A null
    * `address` means nobody has said where the money goes, and it is never
    * filled in from the gateway's own configured address, which is the
    * operator's.
@@ -417,6 +418,13 @@ export interface MerchantScope {
 }
 
 export interface Store {
+  /**
+   * The network whose split of a wallet this store reads as the one the
+   * wallet is paid through: the deployment's, so a row of another network is
+   * never read as a wallet's split.
+   */
+  readonly network: string;
+
   // --- merchants and their keys ---------------------------------------------
 
   /**
@@ -477,11 +485,9 @@ export interface Store {
    * A split already recorded is kept as recorded, with its first instant.
    * Refuses, writing nothing, a split that is not this merchant's for the
    * address it is given with on the store's network, and one whose merchant,
-   * wallet and network are recorded at another address.
-   *
-   * Addresses must already be in the checksummed spelling `payoutWalletFrom`
-   * in `app/merchants.ts` produces. A set address cannot be cleared, as the
-   * type of `next` says; ending sales is the pause.
+   * wallet and network are recorded at another address. A wallet and its
+   * split's wallet are matched in either spelling. A set address cannot be
+   * cleared, as the type of `next` says; ending sales is the pause.
    */
   setPayoutWallet(
     id: string,
@@ -497,7 +503,7 @@ export interface Store {
    * recorded; one already recorded is left as it is. Two callers recording one
    * split at once record it once. Refuses, writing nothing, a split whose
    * merchant, wallet and network are recorded at another address. No merchant
-   * is touched: this is how wallets set before splits existed get theirs.
+   * is touched: this is how a wallet found without its split gets one.
    */
   recordPayoutSplits(
     splits: readonly PayoutSplit[],

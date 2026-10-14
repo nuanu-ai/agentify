@@ -107,7 +107,6 @@ export type Database = NodePgDatabase & { readonly $client: Pool };
 
 export class PostgresStore implements Store {
   readonly #db: Database;
-  /** The network whose split of a wallet this store reads as the one it is paid through. */
   readonly #network: string;
   readonly #ids: Ids;
   readonly #envelopes: Envelopes;
@@ -132,6 +131,10 @@ export class PostgresStore implements Store {
     this.#network = network;
     this.#ids = ids;
     this.#envelopes = envelopes;
+  }
+
+  get network(): string {
+    return this.#network;
   }
 
   // --- merchants and their keys ---------------------------------------------
@@ -342,16 +345,25 @@ export class PostgresStore implements Store {
                 .where(
                   and(
                     eq(merchants.id, payoutSplits.merchantId),
-                    sql`(case when ${merchants.pendingPayoutWalletFrom} <= ${new Date(at)}
+                    sql`lower(case when ${merchants.pendingPayoutWalletFrom} <= ${new Date(at)}
                           then ${merchants.pendingPayoutWallet}
-                          else ${merchants.payoutWallet} end) = ${payoutSplits.merchantWallet}`,
+                          else ${merchants.payoutWallet} end) = lower(${payoutSplits.merchantWallet})`,
                   ),
                 ),
             ),
-            sql`lower(${payoutSplits.address}) in (
-              select lower(${orders.record} ->> 'payTo') from ${orders}
-              where ${orders.merchantId} = ${payoutSplits.merchantId}
-                and ${orders.record} ->> 'payTo' is not null)`,
+            // In the shape of the orders' index on the merchant and the
+            // lowered address, so each split costs one look-up.
+            exists(
+              this.#db
+                .select({ id: orders.id })
+                .from(orders)
+                .where(
+                  and(
+                    eq(orders.merchantId, payoutSplits.merchantId),
+                    sql`lower(${orders.record} ->> 'payTo') = lower(${payoutSplits.address})`,
+                  ),
+                ),
+            ),
           ),
         ),
       )
@@ -1093,8 +1105,9 @@ interface SplitAsJson {
 
 /**
  * The split recorded on this network for the merchant's wallet in this
- * column, as one JSON value, or null. The primary key makes it at most one
- * row.
+ * column, as one JSON value, or null. The wallet is compared in lower case,
+ * as the table's key compares it, so the key makes it at most one row and a
+ * wallet stored in lower case finds the row that names it checksummed.
  */
 const splitRecordedFor = (
   network: string,
@@ -1103,7 +1116,7 @@ const splitRecordedFor = (
   sql<SplitAsJson | null>`(
     select row_to_json(recorded) from ${payoutSplits} as recorded
     where recorded.network = ${network} and recorded.merchant_id = ${merchants.id}
-      and recorded.merchant_wallet = ${wallet})`;
+      and lower(recorded.merchant_wallet) = lower(${wallet}))`;
 
 function splitColumnsOf(json: SplitAsJson): typeof payoutSplits.$inferSelect {
   return {
@@ -1142,6 +1155,13 @@ function recordedSplitOf(row: typeof payoutSplits.$inferSelect): RecordedPayoutS
 }
 
 /**
+ * How many splits one statement records. A statement carries at most 65,535
+ * values and a row is thirteen, so a start over five thousand wallets without
+ * splits, sent as one statement, would be refused on every attempt.
+ */
+const SPLITS_PER_STATEMENT = 1_000;
+
+/**
  * Records the splits with no row yet, inside the caller's transaction, and
  * returns those it recorded. A split already recorded under its merchant,
  * wallet and network is left as it is, provided it is recorded at the same
@@ -1152,14 +1172,17 @@ async function recordWithin(
   splits: readonly PayoutSplit[],
   at: number,
 ): Promise<RecordedPayoutSplit[]> {
-  if (splits.length === 0) {
-    return [];
+  const inserted: (typeof payoutSplits.$inferSelect)[] = [];
+  for (let from = 0; from < splits.length; from += SPLITS_PER_STATEMENT) {
+    const chunk = splits.slice(from, from + SPLITS_PER_STATEMENT);
+    inserted.push(
+      ...(await tx
+        .insert(payoutSplits)
+        .values(chunk.map((split) => ({ ...split, recordedAt: new Date(at) })))
+        .onConflictDoNothing()
+        .returning()),
+    );
   }
-  const inserted = await tx
-    .insert(payoutSplits)
-    .values(splits.map((split) => ({ ...split, recordedAt: new Date(at) })))
-    .onConflictDoNothing()
-    .returning();
   const written = new Set(inserted.map((row) => row.address));
   for (const split of splits) {
     if (written.has(split.address)) {
@@ -1172,7 +1195,7 @@ async function recordWithin(
         and(
           eq(payoutSplits.network, split.network),
           eq(payoutSplits.merchantId, split.merchantId),
-          eq(payoutSplits.merchantWallet, split.merchantWallet),
+          sql`lower(${payoutSplits.merchantWallet}) = lower(${split.merchantWallet})`,
         ),
       )
       .limit(1);

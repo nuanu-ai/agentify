@@ -84,8 +84,9 @@ import type {
   StoredOrder,
   StoredPayoutWallet,
 } from "../ports/store.js";
+import { isSameAddress } from "../split/address.js";
 import { type PayoutSplit, payoutSplitFor } from "../split/parameters.js";
-import { type NotAPayoutWallet, whyNotAPayoutWallet } from "../split/wallet-rule.js";
+import type { NotAPayoutWallet } from "../split/wallet-rule.js";
 import { orderCallResponseOf } from "./answers.js";
 import {
   issueKey,
@@ -97,8 +98,9 @@ import {
 } from "./merchants.js";
 import {
   journal,
-  recordSplitsOfWalletsSetBefore,
+  recordMissingSplits,
   refuseUnlessTheSplitsAgree,
+  whyTheRuleRefuses,
 } from "./recorded-splits.js";
 import { OrderRunner, SWEEP_EFFECTS } from "./runner.js";
 import {
@@ -347,13 +349,13 @@ export class Gateway {
   /**
    * Checks the registry of payout splits against this network's payout split
    * in the code, and refuses to start where they disagree, before anything is
-   * written or any work is taken; then records the split of every wallet set
-   * before splits were. Only then starts the queue and points its reminders at
+   * written or any work is taken; then records the split of every wallet that
+   * has none. Only then starts the queue and points its reminders at
    * the order machine; each reminder becomes one event and nothing more.
    */
   async start(): Promise<void> {
     await refuseUnlessTheSplitsAgree(this.runtime);
-    await recordSplitsOfWalletsSetBefore(this.runtime);
+    await recordMissingSplits(this.runtime);
 
     this.runtime.queue.onReminder(async (reminder) => {
       try {
@@ -848,7 +850,11 @@ export class Gateway {
    *
    * Asking for the pending address again is a retry and sends nothing; asking
    * for the current address while a change is pending cancels it, written at
-   * once and announced afterwards. No lock is held across the announcement:
+   * once and announced afterwards. An address is the same in either spelling.
+   * A wallet in force with no recorded split is paid nothing, so the wallet set
+   * over it replaces nothing and is set as a first one is. A replacement is
+   * announced from the split recorded for the wallet in force, the one buyers
+   * pay into until it applies. No lock is held across the announcement:
    * the write is conditional on the row still holding what was read, so a
    * change recorded in between turns this one away as `raced`. The answer is
    * read off the written row, never echoed.
@@ -868,11 +874,7 @@ export class Gateway {
     // The dashboard holds the same rule on the way in, so a throw from here is
     // a caller that skipped it.
     const address = payoutWalletFrom(wallet);
-    const someSplit = await this.runtime.store.payoutSplitAt(address);
-    const is = whyNotAPayoutWallet(address, {
-      networks: this.runtime.config.payoutSplitNetworks,
-      splits: someSplit === null ? [] : [someSplit.address],
-    });
+    const is = await whyTheRuleRefuses(this.runtime, address);
     if (is !== null) {
       return { refused: "not_a_payout_wallet", is };
     }
@@ -892,7 +894,8 @@ export class Gateway {
       return await this.#recordWallet(merchantId, read, alone);
     }
 
-    if (now.address === null) {
+    const paidNow = now.split;
+    if (paidNow === null) {
       // The first address replaces nothing, so it waits on nothing and a
       // message that cannot be sent refuses nothing; the message is how the
       // owner hears of a session that is not theirs setting it.
@@ -909,7 +912,7 @@ export class Gateway {
       return set;
     }
 
-    if (address === now.address) {
+    if (isSameAddress(address, paidNow.merchantWallet)) {
       if (now.pending === null) {
         return payoutWalletAnswer(now);
       }
@@ -928,18 +931,17 @@ export class Gateway {
       return written;
     }
 
-    if (now.pending?.address === address) {
+    if (now.pending !== null && isSameAddress(now.pending.address, address)) {
       return payoutWalletAnswer(now);
     }
 
     // The splits the message names are the ones the write records, or finds
     // recorded as these, or it refuses: the merchant is never told of an
     // address buyers will not pay.
-    const paidNow = splitOf(now.address);
     const told = await this.#announce({
       kind: "wallet_change",
       merchant_id: merchantId,
-      from: now.address,
+      from: paidNow.merchantWallet,
       from_split: paidNow.address,
       to: address,
       to_split: alone.split.address,
@@ -953,7 +955,7 @@ export class Gateway {
     // Counted from now, after every message was handed over, so the change
     // takes effect no earlier than the moment any message named.
     const recorded = await this.#recordWallet(merchantId, read, {
-      address: now.address,
+      address: paidNow.merchantWallet,
       split: paidNow,
       pending: {
         address,

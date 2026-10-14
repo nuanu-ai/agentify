@@ -725,14 +725,13 @@ describe("the wallet document a merchant's code reads", () => {
 
 describe("a merchant whose wallet has no recorded split", () => {
   /**
-   * A wallet written straight to the store with no split, as the release
-   * before splits left one: a defect once the start has recorded every split,
-   * which this must still refuse to sell for.
+   * A wallet written straight to the store with no split: a defect once the
+   * start has recorded every split, which this must still refuse to sell for.
    */
   const withoutASplitHere = async (harnessed: Harness, served: Served) => {
     const { merchantId, key } = await fresh(harnessed);
     await named(served, key, "A shop whose split went missing");
-    await harnessed.store.writeWalletAsBeforeSplits(merchantId, {
+    await harnessed.store.writeWalletWithoutSplit(merchantId, {
       address: A_WALLET,
       pending: null,
     });

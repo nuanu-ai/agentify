@@ -32,6 +32,7 @@ import {
   type WalletWritten,
   type WithTheOrder,
 } from "../../ports/store.js";
+import { isSameAddress } from "../../split/address.js";
 import type { PayoutSplit } from "../../split/parameters.js";
 import { recordedOtherwise, splitsOfTheWrite } from "../registry.js";
 
@@ -104,7 +105,6 @@ export class MemoryStore implements Store {
   /** The tail of the queue of decisions waiting on each order. */
   readonly #locks = new Map<string, Promise<unknown>>();
   readonly #running = new Set<string>();
-  /** The network whose split of a wallet this store reads as the one it is paid through. */
   readonly #network: string;
   readonly #ids: Ids;
   readonly #now: Clock;
@@ -120,6 +120,10 @@ export class MemoryStore implements Store {
     this.#ids = ids;
     this.#now = now;
     this.#envelopes = envelopes;
+  }
+
+  get network(): string {
+    return this.#network;
   }
 
   // --- merchants and their keys ---------------------------------------------
@@ -220,12 +224,11 @@ export class MemoryStore implements Store {
   }
 
   /**
-   * Writes a merchant's wallet columns and no split, as a gateway of the
-   * release before splits left them. Only tests call this, to hold what a
-   * start finds on a database that release wrote; everything else writes a
-   * wallet through `setPayoutWallet`, with its split.
+   * Writes a merchant's wallet columns and no split. Only tests call this, to
+   * hold what a start finds where a wallet was written without its split;
+   * everything else writes a wallet through `setPayoutWallet`, with its split.
    */
-  async writeWalletAsBeforeSplits(id: string, wallet: PayoutWalletRead): Promise<void> {
+  async writeWalletWithoutSplit(id: string, wallet: PayoutWalletRead): Promise<void> {
     const row = this.#merchants.get(id);
     if (row === undefined) {
       throw new Error(`there is no merchant ${id} to write a wallet for`);
@@ -277,7 +280,7 @@ export class MemoryStore implements Store {
             ? wallet.pending.address
             : wallet?.address;
         return (
-          inForce === split.merchantWallet ||
+          (inForce != null && isSameAddress(inForce, split.merchantWallet)) ||
           paidTo.has(`${split.merchantId}\u0000${split.address.toLowerCase()}`)
         );
       }),
@@ -291,14 +294,17 @@ export class MemoryStore implements Store {
     return recorded;
   }
 
-  /** The split recorded for this merchant's wallet on this store's network, or null. */
+  /**
+   * The split recorded for this merchant's wallet on this store's network, in
+   * whichever spelling either is written, or null.
+   */
   #splitOf(merchantId: string, wallet: string): RecordedPayoutSplit | null {
     return (
       this.#splits.find(
         (split) =>
           split.network === this.#network &&
           split.merchantId === merchantId &&
-          split.merchantWallet === wallet,
+          isSameAddress(split.merchantWallet, wallet),
       ) ?? null
     );
   }
@@ -750,7 +756,8 @@ const NO_WALLET: StoredPayoutWallet = { address: null, split: null, pending: nul
 /**
  * Those of `splits` not recorded yet, each once, or a refusal where one's
  * merchant, wallet and network, or its address, is recorded otherwise, as the
- * table's two unique keys refuse it.
+ * table's two unique keys refuse it: both compare an address in either
+ * spelling.
  */
 function toRecord(
   recorded: readonly RecordedPayoutSplit[],
@@ -761,15 +768,16 @@ function toRecord(
     const held = [...recorded, ...fresh].find(
       (one) =>
         one.network === split.network &&
-        ((one.merchantId === split.merchantId && one.merchantWallet === split.merchantWallet) ||
-          one.address.toLowerCase() === split.address.toLowerCase()),
+        ((one.merchantId === split.merchantId &&
+          isSameAddress(one.merchantWallet, split.merchantWallet)) ||
+          isSameAddress(one.address, split.address)),
     );
     if (held === undefined) {
       fresh.push(split);
     } else if (
       held.address !== split.address ||
       held.merchantId !== split.merchantId ||
-      held.merchantWallet !== split.merchantWallet
+      !isSameAddress(held.merchantWallet, split.merchantWallet)
     ) {
       throw recordedOtherwise(split);
     }

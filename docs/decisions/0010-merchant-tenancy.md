@@ -18,12 +18,16 @@ card, order, receipt and key carries its merchant, not null, so no such row
 exists without an owner. Two tables are written down as exceptions, whose rows
 are not bound to a living merchant. The one table without a merchant records
 which order claimed a payment, because an agent's single signature must not be
-spendable once at each merchant. The registry of payout splits (ADR-0037)
+spendable once at each merchant. The registry of payout splits (ADR-0038)
 names its merchant with no foreign key, so a merchant forgotten on the test
 channel leaves their recorded splits behind: money can still arrive at a split
 after its merchant is gone, and until the split's first payout its parameters
 exist nowhere else. A read of the registry for one merchant still names that
-merchant in its predicate; only the operator's payout reads across merchants.
+merchant in its predicate. Three readers cross merchants on purpose and answer
+no request with what they read: the operator's payout; the start's check of the
+registry; and the wallet rule, on a dashboard save and at a start, which asks
+whether an address is any merchant's split and learns only that, of addresses
+every payment challenge already shows.
 
 A key is a row that names its merchant. Its secret is generated, shown once and
 stored as a SHA-256 digest, and a request is resolved by looking the digest up,

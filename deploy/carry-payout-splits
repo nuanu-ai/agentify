@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Copies into one database of a channel every row of the registry of payout
+# splits that another database of it holds and it lacks:
+#
+#   deploy/carry-payout-splits <channel> <from database> <into database>
+#
+# Until a split's first payout its row is the only record of the parameters
+# that create it, so a row must never go with a database that is dropped or
+# swapped out. Rows are never changed once written, so a row found in both is
+# the same row, and keeping what is there loses nothing. deploy/restore.sh
+# runs this from the database a restore replaced into the restored one, and
+# deploy/activate.sh from each such database into the one it was replaced by
+# before dropping it.
+#
+# Exit 0: copied, or <from> has no registry and there is nothing to copy.
+# Exit 10: <from> has a registry and <into> has none yet, as a database
+# restored from a copy older than the registry; nothing was copied. Any other
+# failure exits with the status of what failed, which psql and pg_dump keep
+# below 10, having copied nothing, since the rows go in one transaction.
+set -euo pipefail
+
+channel="$1" from="$2" into="$3"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+stack() { "$root/deploy/stack.sh" "$channel" "$@"; }
+registry_in() {
+  stack exec -T postgres psql -U agentify -d "$1" -v ON_ERROR_STOP=1 -Atc \
+    "select to_regclass('public.payout_splits') is not null"
+}
+
+# Read apart from the test, so a database that does not answer fails this
+# rather than reading as one with no registry.
+held="$(registry_in "$from")"
+[[ $held == t ]] || exit 0
+taking="$(registry_in "$into")"
+[[ $taking == t ]] || exit 10
+stack exec -T postgres pg_dump -U agentify --data-only --inserts --on-conflict-do-nothing \
+  --table=public.payout_splits "$from" \
+  | stack exec -T postgres psql -U agentify -d "$into" -v ON_ERROR_STOP=1 -q --single-transaction >/dev/null

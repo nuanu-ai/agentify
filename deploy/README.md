@@ -399,6 +399,16 @@ them in, in one transaction. The databases it replaced stay beside them as
 `<database>_replaced_<time>` until the next verified release drops them, so a
 restore made by mistake can still be undone by hand until then.
 
+Last, the restore copies into each restored database every payout split the
+database it replaced recorded and it lacks (`deploy/carry-payout-splits`):
+until a split's first payout its row is the only record of how to create it,
+and a split recorded after the restore point may already hold buyers' money.
+Rows are never changed once written, so the copy loses nothing. A restore
+point older than the registry has no table to take them, so they stay in the
+replaced database, and a copy that fails says so and exits non-zero after the
+restore has finished. Either way the next verified release copies them before
+it drops that database, and keeps the database, saying so, while it cannot.
+
 A bad dump or a failure before the swap leaves the databases as they were and
 the record as the restore found it, so it holds no release back, and the
 message says what to try: the same restore again if the cause has passed,

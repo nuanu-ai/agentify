@@ -57,9 +57,10 @@ afterEach(async () => {
   running = null;
 });
 
-const aDatabase = () => {
+/** An empty store and its queue, opened for the network a gateway over it takes payments on. */
+const aDatabase = (network = T1_TEST.network) => {
   const queue = new MemoryQueue();
-  const store = new MemoryStore(T1_TEST.network, countedIds(), () => NOW, queue.envelopes());
+  const store = new MemoryStore(network, countedIds(), () => NOW, queue.envelopes());
   return { store, queue };
 };
 
@@ -238,7 +239,7 @@ describe("the chain it names", () => {
   });
 
   it("is Base in words on Base", async () => {
-    const gateway = aGatewayOver(aDatabase(), T1, {
+    const gateway = aGatewayOver(aDatabase("eip155:8453"), T1, {
       PAYMENT_NETWORK: "eip155:8453",
       FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
       CDP_API_KEY_ID: "key-id",
@@ -305,6 +306,29 @@ describe("a payout the gateway would refuse to start with", () => {
     expect(code).toBe(1);
     expect(partsIn(lines)).toStrictEqual([]);
     expect(lines.join("\n")).toMatch(/no longer what this code makes/);
+  });
+
+  it("is not printed where a recorded split pays a wallet the wallet rule refuses, and the refusal names its merchant", async () => {
+    // Such a row was recorded before wallets found at a start were held to
+    // the rule; paid out, the merchant's share would go where it could never
+    // come back from.
+    const database = aDatabase();
+    await database.store.addMerchant({ id: "mch_refused", name: "mch_refused" }, NOW);
+    await database.store.recordPayoutSplits(
+      [payoutSplitFor(T1_TEST, "mch_refused", T1_TEST.multicall3)],
+      NOW,
+    );
+    await database.store.writeWalletWithoutSplit("mch_refused", {
+      address: T1_TEST.multicall3,
+      pending: null,
+    });
+    const gateway = aGatewayOver(database);
+
+    const { code, lines } = await printedBy(gateway);
+
+    expect(code).toBe(1);
+    expect(partsIn(lines)).toStrictEqual([]);
+    expect(lines.join("\n")).toContain("mch_refused");
   });
 
   it("is not printed on a database whose splits belong to another network", async () => {

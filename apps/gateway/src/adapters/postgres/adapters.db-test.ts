@@ -18,7 +18,7 @@
  * to misbehave.
  */
 
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
@@ -31,6 +31,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { Gateway } from "../../app/gateway.js";
 import { setPayoutWallet } from "../../app/merchants.js";
 import type { Runtime } from "../../app/runtime.js";
+import { openCommandApplication } from "../../command-application.js";
 import { loadConfig } from "../../config.js";
 import { nobodyAnnounces } from "../../ports/announcer.js";
 import type { OrderChange } from "../../ports/store.js";
@@ -46,6 +47,7 @@ import {
   workUntilStopped,
 } from "../../testing/harness.js";
 import { anOrder, describeStore } from "../../testing/store-contract.js";
+import { describeWalletSpelling } from "../../testing/wallet-spelling.js";
 import { ScriptedFacilitator } from "../memory/facilitator.js";
 import { MemoryQueue } from "../memory/queue.js";
 import { PgBossQueue, streamOf } from "../pgboss/queue.js";
@@ -1435,7 +1437,7 @@ if (databaseUrl === null) {
           "update payout_splits set recorded_at = now()",
           "delete from payout_splits",
           `insert into payout_splits select * from payout_splits
-           on conflict (network, merchant_id, merchant_wallet) do update set salt = excluded.salt`,
+           on conflict (network, merchant_id, lower(merchant_wallet)) do update set salt = excluded.salt`,
         ]) {
           expect((await refusal(pool.query(change))).message, change).toMatch(
             /never changed or deleted/,
@@ -1450,28 +1452,45 @@ if (databaseUrl === null) {
         expect(await rowsOf(A)).toStrictEqual([before]);
       });
 
-      it("keeps one split for one merchant and wallet on one network, and one row for one address", async () => {
+      it("keeps one split for one merchant and wallet on one network, and one row for one address, each in either spelling", async () => {
         // Two rows for one wallet would leave the payment address and the
         // payout instruction free to name two different contracts; a second
-        // spelling of one address is the same contract.
+        // spelling of one address is the same contract, and of one wallet the
+        // same wallet.
         const other = { ...network, commissionWallet: W2 };
         const second = payoutSplitFor(other, A, PAID_NOW);
         expect((await refusal(store.recordPayoutSplits([second], now))).message).toMatch(
           /recorded/,
         );
+        // At another address, so that only the key on the wallet can refuse it.
         const anotherCommission = await refusal(
           pool.query(
             `insert into payout_splits
-             select address, network, merchant_id, merchant_wallet, $1, merchant_allocation,
+             select $1, network, merchant_id, merchant_wallet, $2, merchant_allocation,
                     commission_allocation, total_allocation, distribution_incentive, owner, salt,
                     factory, recorded_at
-             from payout_splits where merchant_id = $2`,
-            [W2, A],
+             from payout_splits where merchant_id = $3`,
+            [splitOf("mch_elsewhere", PAID_NOW).address, W2, A],
           ),
         );
         expect(anotherCommission).toMatchObject({
           code: "23505",
-          constraint: "payout_splits_pkey",
+          constraint: "payout_splits_wallet_unique",
+        });
+        await store.recordPayoutSplits([splitOf("mch_lettered", W1)], now);
+        const theWalletInLowerCase = await refusal(
+          pool.query(
+            `insert into payout_splits
+             select $1, network, merchant_id, lower(merchant_wallet), commission_wallet,
+                    merchant_allocation, commission_allocation, total_allocation,
+                    distribution_incentive, owner, salt, factory, recorded_at
+             from payout_splits where merchant_id = 'mch_lettered'`,
+            [splitOf("mch_lettered", W2).address],
+          ),
+        );
+        expect(theWalletInLowerCase).toMatchObject({
+          code: "23505",
+          constraint: "payout_splits_wallet_unique",
         });
         const anotherSpelling = await refusal(
           pool.query(
@@ -1502,8 +1521,8 @@ if (databaseUrl === null) {
           announcer: nobodyAnnounces,
         });
 
-      /** Merchants whose wallets were set before splits were, as that release left the rows. */
-      const asBeforeSplits = async () => {
+      /** Merchants whose wallets were written with no split recorded. */
+      const withoutTheirSplits = async () => {
         await store.addMerchant({ id: "mch_old_one", name: "Old one" }, now);
         await store.addMerchant({ id: "mch_old_two", name: "Old two" }, now);
         await store.addMerchant({ id: "mch_old_none", name: "Old none" }, now);
@@ -1519,10 +1538,10 @@ if (databaseUrl === null) {
         });
       };
 
-      it("gives every wallet set before splits its split at start, and touches no merchant and no order", async () => {
+      it("gives every wallet found without a split its split at start, and touches no merchant and no order", async () => {
         // The SQL migration cannot compute a hash, so the rows come from the
         // start; a merchant left without one cannot sell after the release.
-        await asBeforeSplits();
+        await withoutTheirSplits();
         const merchantsBefore = (await pool.query("select * from merchants order by id")).rows;
         const ordersBefore = (await pool.query("select * from orders order by id")).rows;
 
@@ -1547,7 +1566,7 @@ if (databaseUrl === null) {
       it("records each split once when two gateways start on one database at once, and again writes nothing", async () => {
         // A restart, a retried release and two processes on one database must
         // neither duplicate a row nor fail to start.
-        await asBeforeSplits();
+        await withoutTheirSplits();
 
         const another = connect(databaseUrl);
         try {
@@ -1564,10 +1583,161 @@ if (databaseUrl === null) {
         ).toStrictEqual(first);
       });
 
+      it("refuses to start on a recorded split of a wallet the wallet rule refuses, naming its merchant, and records none for one found without", async () => {
+        // A split of Multicall3 recorded before the start held wallets to the
+        // rule would be paid out to it; a wallet found without a split gets
+        // none and its merchant cannot sell until they set another.
+        await store.addMerchant({ id: "mch_recorded", name: "Recorded" }, now);
+        await store.addMerchant({ id: "mch_found", name: "Found" }, now);
+        await pool.query("update merchants set payout_wallet = $1 where id = 'mch_found'", [
+          network.multicall3,
+        ]);
+        const logged = await loggedWhile(() => aGatewayOn(contract.db).start());
+        expect(logged).toMatch(/mch_found\b.*\bmulticall3\b/);
+        expect(await rowsOf("mch_found")).toStrictEqual([]);
+
+        await pool.query(
+          `insert into payout_splits values ($1, $2, 'mch_recorded', $3, $4, $5, $6, $7, 0, $8, $9, $10, now())`,
+          ((split) => [
+            split.address,
+            split.network,
+            split.merchantWallet,
+            split.commissionWallet,
+            split.merchantAllocation,
+            split.commissionAllocation,
+            split.totalAllocation,
+            split.owner,
+            split.salt,
+            split.factory,
+          ])(splitOf("mch_recorded", network.multicall3)),
+        );
+        await pool.query("update merchants set payout_wallet = $1 where id = 'mch_recorded'", [
+          network.multicall3,
+        ]);
+        await expect(aGatewayOn(contract.db).start()).rejects.toThrow(/mch_recorded/);
+      });
+
+      it("records at once more splits than one statement could carry", async () => {
+        // Thirteen columns a row and at most 65,535 values a statement: a
+        // start over five thousand wallets without splits sent as one
+        // statement would be refused on every attempt.
+        const many = Array.from({ length: 6_000 }, (_, at) => splitOf(`mch_bulk_${at}`, W1));
+
+        const recorded = await store.recordPayoutSplits(many, now);
+
+        expect(recorded).toHaveLength(6_000);
+        const [counted] = (
+          await pool.query(
+            "select count(*)::int as n from payout_splits where merchant_id like 'mch_bulk_%'",
+          )
+        ).rows;
+        expect(counted?.n).toBe(6_000);
+      });
+
+      it("says why when the splits a start lacks cannot be recorded, and not that the database did not answer", async () => {
+        await withoutTheirSplits();
+        await pool.query(
+          `alter table payout_splits add constraint refuse_the_wallet check (merchant_wallet <> '${W1}')`,
+        );
+        try {
+          const config = loadConfig({
+            DATABASE_URL: databaseUrl,
+            FACILITATOR_URL: "sandbox:scripted",
+          });
+
+          let refused: unknown;
+          const logged = await loggedWhile(async () => {
+            refused = await startGateway(config, nobodyAnnounces).then(
+              async (started) => {
+                await started.stop();
+                return null;
+              },
+              (thrown: unknown) => thrown,
+            );
+          });
+
+          expect(refused).toBeInstanceOf(Error);
+          expect(logged).toMatch(/payout split/);
+          expect(logged).toMatch(/refuse_the_wallet/);
+          expect(logged).not.toMatch(/did not answer/);
+        } finally {
+          await pool.query("alter table payout_splits drop constraint refuse_the_wallet");
+        }
+      });
+
+      describe("on a deployment of another network than the test chain", () => {
+        const base = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453");
+        const MERCHANT = "mch_on_base";
+
+        /**
+         * A CDP API key of the shape the signer takes, made here and never
+         * written down. It opens nothing: a start only signs with it, and
+         * nothing here speaks to Coinbase.
+         */
+        const anApiKeySecret = (): string => {
+          const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+          const seed = Buffer.from(privateKey.export({ format: "jwk" }).d as string, "base64url");
+          const key = Buffer.from(publicKey.export({ format: "jwk" }).x as string, "base64url");
+          return Buffer.concat([seed, key]).toString("base64");
+        };
+
+        /** The live deployment on Base, under the fixture's commission wallet. */
+        const onBase = () =>
+          loadConfig(
+            {
+              DATABASE_URL: databaseUrl,
+              PAYMENT_NETWORK: "eip155:8453",
+              FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+              CDP_API_KEY_ID: "key-id",
+              CDP_API_KEY_SECRET: anApiKeySecret(),
+            },
+            SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
+          );
+
+        /** A registry holding nothing of the test chain, and a merchant paid at W1. */
+        beforeEach(async () => {
+          await pool.query(EMPTY_EVERY_TABLE);
+          await store.addMerchant({ id: MERCHANT, name: "On Base" }, now);
+          await pool.query("update merchants set payout_wallet = $1 where id = $2", [W1, MERCHANT]);
+        });
+
+        afterEach(async () => {
+          await pool.query("drop schema if exists pgboss cascade");
+        });
+
+        it("starts, and reads each wallet's split on that network", async () => {
+          // Opened for the test chain instead, every live merchant's split
+          // would read as missing and nothing would sell.
+          const started = await startGateway(onBase(), nobodyAnnounces);
+          try {
+            started.closeListener();
+            expect((await started.application.payoutSplitsOf(MERCHANT)).inForce?.address).toBe(
+              payoutSplitFor(base, MERCHANT, W1).address,
+            );
+          } finally {
+            await started.stop();
+          }
+        });
+
+        it("opens a command's application that reads each wallet's split on that network", async () => {
+          // The operator's payout and the payment report run through it.
+          await store.recordPayoutSplits([payoutSplitFor(base, MERCHANT, W1)], now);
+
+          const opened = await openCommandApplication(onBase());
+          try {
+            expect((await opened.application.payoutSplitsOf(MERCHANT)).inForce?.address).toBe(
+              payoutSplitFor(base, MERCHANT, W1).address,
+            );
+          } finally {
+            await opened.close();
+          }
+        });
+      });
+
       it("refuses to start where the code's commission wallet is not the one recorded, before it listens", async () => {
         // The edit is refused in words in the log, and nothing the start would
         // write is written first.
-        await asBeforeSplits();
+        await withoutTheirSplits();
         const edited = {
           ...SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
           "eip155:84532": { ...network, commissionWallet: W2 },
@@ -1594,6 +1764,28 @@ if (databaseUrl === null) {
         expect(await rowsOf("mch_old_one")).toStrictEqual([]);
       });
     });
+
+    describeWalletSpelling(
+      "a wallet stored in another spelling than its split, on Postgres",
+      async (network) => {
+        await contract.pool.query(EMPTY_EVERY_TABLE);
+        return {
+          store: PostgresStore.over(contract.db, network, countedIds()),
+          writeWalletWithoutSplit: async (merchantId, wallet) => {
+            await contract.pool.query(
+              `update merchants set payout_wallet = $2, pending_payout_wallet = $3,
+                 pending_payout_wallet_from = $4 where id = $1`,
+              [
+                merchantId,
+                wallet.address,
+                wallet.pending?.address ?? null,
+                wallet.pending === null ? null : new Date(wallet.pending.takesEffectAt),
+              ],
+            );
+          },
+        };
+      },
+    );
 
     /**
      * Everything both stores promise, against the one a merchant's money rests

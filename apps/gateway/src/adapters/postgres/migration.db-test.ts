@@ -1074,5 +1074,34 @@ if (databaseUrl === null) {
       );
       expect(kept.rows[0]?.pay_to).toBe(wallet);
     });
+
+    it("then keys a wallet's split in either spelling, keeping every row it finds", async () => {
+      // A wallet may be stored in lower case while the rows name it
+      // checksummed; a second row for the same wallet in another
+      // spelling would be a second contract for one wallet.
+      await run("0015_payout_splits.sql");
+      const row = (address: string, merchant: string, wallet: string) =>
+        pool.query(
+          `insert into payout_splits values ($1, 'eip155:84532', $2, $3, '0xC', 999000, 1000,
+             1000000, 0, '0x0000000000000000000000000000000000000000', '0xsalt', '0xF', now())`,
+          [address, merchant, wallet],
+        );
+      const wallet = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+      await row("0x1111111111111111111111111111111111111111", "mch_paid", wallet);
+      await row("0x2222222222222222222222222222222222222222", "mch_other", wallet);
+      const before = (await pool.query("select * from payout_splits order by address")).rows;
+
+      await run("0016_payout_split_wallet_any_spelling.sql");
+
+      expect((await pool.query("select * from payout_splits order by address")).rows).toStrictEqual(
+        before,
+      );
+      await expect(
+        row("0x3333333333333333333333333333333333333333", "mch_paid", wallet.toLowerCase()),
+      ).rejects.toMatchObject({ code: "23505", constraint: "payout_splits_wallet_unique" });
+      await expect(
+        row("0x4444444444444444444444444444444444444444", "mch_third", wallet.toLowerCase()),
+      ).resolves.toBeDefined();
+    });
   });
 }

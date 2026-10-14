@@ -4,12 +4,14 @@
  */
 
 import type { PayoutWalletWrite } from "../ports/store.js";
+import { isSameAddress } from "../split/address.js";
 import type { PayoutSplit } from "../split/parameters.js";
 
 /**
  * The splits a wallet write records, each once, or a refusal where one is not
  * this merchant's split of the address it is written with on the store's
- * network: the registry says which wallet each split pays, and a wallet
+ * network, in whichever spelling either is written: the registry says which
+ * wallet each split pays, and a wallet
  * written beside another's split would have buyers pay somewhere the merchant
  * was never told of, while one written beside another network's split would
  * be read as a wallet with no split at all.
@@ -26,7 +28,7 @@ export function splitsOfTheWrite(
       : [{ address: next.pending.address, split: next.pending.split }]),
   ];
   for (const { address, split } of written) {
-    if (split.merchantId !== merchantId || split.merchantWallet !== address) {
+    if (split.merchantId !== merchantId || !isSameAddress(split.merchantWallet, address)) {
       throw new Error(
         `the split given for ${merchantId}'s wallet ${address} is ${split.merchantId}'s split of ${split.merchantWallet}, so neither the wallet nor the split was written`,
       );

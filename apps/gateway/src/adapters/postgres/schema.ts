@@ -18,7 +18,6 @@ import {
   integer,
   jsonb,
   pgTable,
-  primaryKey,
   text,
   timestamp,
   unique,
@@ -52,8 +51,9 @@ export const merchants = pgTable(
     /**
      * The address this merchant's sales are paid into, or null where nobody has
      * set one. Buyers' agents pay it directly, so it is never filled in from the
-     * operator's own configured address. Always in the mixed-case spelling a
-     * wallet displays, so one address is never two strings.
+     * operator's own configured address. The gateway writes the mixed-case
+     * spelling a wallet displays; a row in lower case is the same wallet, and
+     * the registry is read for it in either spelling.
      */
     payoutWallet: text("payout_wallet"),
     /**
@@ -180,9 +180,15 @@ export const orders = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
   },
-  // The merchant leads the index because a merchant lists their own orders,
-  // open ones first; an index on `open` alone would walk every merchant's.
-  (table) => [index("orders_open_idx").on(table.merchantId, table.open, table.createdAt)],
+  (table) => [
+    // The merchant leads the index because a merchant lists their own orders,
+    // open ones first; an index on `open` alone would walk every merchant's.
+    index("orders_open_idx").on(table.merchantId, table.open, table.createdAt),
+    // Whether any order of a merchant's was paid to a split, which a payout
+    // asks of every split it might cover; without it each question reads
+    // every document of that merchant's.
+    index("orders_pay_to_idx").on(table.merchantId, sql`lower(${table.record} ->> 'payTo')`),
+  ],
 );
 
 export const receipts = pgTable(
@@ -230,8 +236,9 @@ export const paymentClaims = pgTable(
  * migration adds refuses both, whoever asks, and leaves `truncate` to the
  * tests that empty a database. It names its merchant with no foreign key,
  * because money may still arrive at a split after a test merchant is
- * forgotten. One row per merchant, wallet and network, and one per address in
- * either spelling.
+ * forgotten. One row per network, merchant and wallet, and one per network and
+ * address, each in either spelling, since one address in two spellings is one
+ * contract.
  */
 export const payoutSplits = pgTable(
   "payout_splits",
@@ -255,10 +262,11 @@ export const payoutSplits = pgTable(
     recordedAt: timestamp("recorded_at", { withTimezone: true, mode: "date" }).notNull(),
   },
   (table) => [
-    primaryKey({
-      name: "payout_splits_pkey",
-      columns: [table.network, table.merchantId, table.merchantWallet],
-    }),
+    uniqueIndex("payout_splits_wallet_unique").on(
+      table.network,
+      table.merchantId,
+      sql`lower(${table.merchantWallet})`,
+    ),
     uniqueIndex("payout_splits_address_unique").on(table.network, sql`lower(${table.address})`),
   ],
 );
