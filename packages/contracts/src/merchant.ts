@@ -1,6 +1,6 @@
 /**
  * What a merchant says about themselves: the name their products are sold
- * under, the wallet their sales are paid into, and their keys.
+ * under, the wallet their share of each sale arrives at, and their keys.
  *
  * A key's secret appears in one document only, the answer to the call that
  * made the key; every other shape here refuses it, and Agentify keeps only a
@@ -239,24 +239,28 @@ export const SellerNameRequestSchema = z
  */
 export const PendingPayoutWalletSchema = z
   .strictObject({
-    /** The address the merchant will be paid at once the wait is over. */
+    /** The wallet the merchant's share will arrive at once the wait is over. */
     payout_wallet: EvmAddressSchema,
-    /** The moment it replaces the address paid now. */
+    /** The moment it replaces the wallet in force now. */
     takes_effect_at: TimestampSchema,
   })
   .meta({
     description:
-      "A replacement wallet that has been asked for and announced and has not taken effect yet. payout_wallet is the address sales will be paid into from takes_effect_at on, in the mixed-case spelling a wallet shows; until that moment every payment request still names the address paid now. The change takes effect then only if it is still the one waiting: asking for the address paid now cancels it, and asking for a different address replaces it and starts the wait again.",
+      "A replacement wallet that has been asked for and announced and has not taken effect yet. payout_wallet is the wallet the merchant's share of sales will arrive at from takes_effect_at on, in the mixed-case spelling a wallet shows. Until that moment every payment request still names the payout contract of the wallet in force now, and from it every payment request names the payout contract of this one; money already paid into the old contract is still paid out to the old wallet, since nobody can change whom a payout contract pays. The change takes effect then only if it is still the one waiting: asking for the wallet in force now cancels it, and asking for a different address replaces it and starts the wait again.",
   });
 
 /**
- * The wallet a merchant's sales are paid into, as the merchant reads it back.
+ * The wallet a merchant's share of their sales arrives at, as the merchant
+ * reads it back.
  *
- * A buyer's agent pays this address directly; nothing holds the money on the
- * way. Null means nobody has set one, which is where every merchant starts.
- * The address comes back in the checksummed spelling a wallet shows, whichever
- * accepted spelling was sent, so a merchant can compare it by eye with their
- * wallet.
+ * A buyer's agent never pays this address. It pays the merchant's payout
+ * contract for it, a 0xSplits split with no owner, which keeps what it is paid
+ * until somebody sends a payout and then sends 99.9% of it to this wallet and
+ * 0.1% to Agentify; nobody, Agentify included, can change those recipients or
+ * shares or send the money anywhere else. Null means nobody has set one, which
+ * is where every merchant starts. The address comes back in the checksummed
+ * spelling a wallet shows, whichever accepted spelling was sent, so a merchant
+ * can compare it by eye with their wallet.
  *
  * `pending` is a replacement waiting to take effect, or null. A merchant who
  * asked for a new address on the live deployment reads the old one back for
@@ -267,14 +271,14 @@ export const PendingPayoutWalletSchema = z
  */
 export const PayoutWalletSchema = z
   .strictObject({
-    /** Where this merchant's sales are paid now, or nothing at all. */
+    /** Where this merchant's share of their sales arrives now, or nothing at all. */
     payout_wallet: EvmAddressSchema.nullable(),
     /** A replacement that has been announced and is waiting, or nothing. */
     pending: PendingPayoutWalletSchema.nullable(),
   })
   .meta({
     description:
-      "The address a merchant's sales are paid into, and any change of it that is waiting. Payments are not held by anybody on the way: a buyer's agent pays payout_wallet directly, and it is the payTo of every payment request made for this merchant's products now. Null means nobody has set one, which is where every merchant starts; the field is always present rather than left out, because an absent field is indistinguishable from a client that dropped it. The address comes back in the mixed-case spelling a wallet shows, whichever of the two accepted spellings was sent — so what a merchant reads back on a screen is character for character what they copied out of their wallet. On a deployment that settles on a real chain a merchant with no wallet here cannot publish a card, because the money from that card's sales would have nowhere to go. pending is a replacement that has been asked for and has not taken effect: on the live deployment a merchant who already has a wallet and asks for a different one is told of it by message, and the new address takes effect forty-eight hours later, so until takes_effect_at this answer names the address still paid and the waiting one beside it. A caller reading its old address back beside a pending change has not failed to write; the change is waiting. Null means nothing is waiting, which is every answer on the test channel and in a sandbox, where a change applies at once.",
+      "The wallet a merchant's share of their sales arrives at, and any change of it that is waiting. A buyer's agent never pays payout_wallet, and it is never the payTo of a payment request. Every payment request made for this merchant's products names, as payTo, the merchant's payout contract for this wallet: a split contract of the 0xSplits protocol with no owner, which keeps what buyers pay into it until somebody sends a payout, as anybody may at any time, the merchant included, and then sends 99.9% of the accumulated balance to payout_wallet and 0.1% to Agentify, each share rounded down to the smallest unit of USDC. Nobody, Agentify included, can change those two recipients or their shares or send the money anywhere else. So what arrives at payout_wallet is one transfer per payout from the 0xSplits warehouse, the shared contract the payout contracts pay their shares through, covering everything paid in since the payout before, and never a buyer's own transfer. Neither the payout contract nor the commission on an order is named here, and there is no exact commission per order to name: a payout divides the accumulated balance, not each payment. Null means nobody has set one, which is where every merchant starts; the field is always present rather than left out, because an absent field is indistinguishable from a client that dropped it. The address comes back in the mixed-case spelling a wallet shows, whichever of the two accepted spellings was sent — so what a merchant reads back on a screen is character for character what they copied out of their wallet. On a deployment that settles on a real chain a merchant with no wallet here cannot publish a card, because a payout contract is made for a wallet, and without one the money from that card's sales would have nowhere to go. pending is a replacement that has been asked for and has not taken effect: on the live deployment a merchant who already has a wallet and asks for a different one is told of it by message, and the new address takes effect forty-eight hours later, so until takes_effect_at this answer names the wallet still in force and the waiting one beside it. A caller reading its old address back beside a pending change has not failed to write; the change is waiting. Null means nothing is waiting, which is every answer on the test channel and in a sandbox, where a change applies at once.",
   });
 
 export type SellerName = z.infer<typeof SellerNameSchema>;

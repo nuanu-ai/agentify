@@ -18,6 +18,7 @@ import type { Announcement, AskedInTheDashboard, AskedWith } from "@agentify/gat
 import { SIGN_OUT_EVERY_OTHER_DEVICE, STOP_ALL_SELLING } from "./control-labels.js";
 import type { Message } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
+import { type CommissionRate, percentagesOf } from "./shares.js";
 import { moment } from "./words.js";
 
 export interface Screens {
@@ -52,19 +53,30 @@ const IF_NOT_YOU =
 const PAUSE_THEN_SET = (settings: string): string =>
   `Somebody else may be signed in to your dashboard. First press ${STOP_ALL_SELLING} on the Cards screen, which stops new sales at once. Then press ${SIGN_OUT_EVERY_OTHER_DEVICE} in Settings, which ends every other session of your account: ${settings}. Then set your own address there; that waits forty-eight hours and is announced, so keep selling stopped until it applies.`;
 
+/**
+ * The split a wallet is paid through is checked by no eye, so the message is
+ * the merchant's record of it: whole, and what it pays to whom.
+ */
+const paysOnly = (rate: CommissionRate, wallet: string): string => {
+  const { commission, share } = percentagesOf(rate);
+  return `It pays only ${wallet}, ${share} of every sale, and Agentify, ${commission}.`;
+};
+
 export function announcementMessage(
   to: string,
   announcement: Announcement,
   screens: Screens,
+  rate: CommissionRate,
 ): Message {
   switch (announcement.kind) {
     case "wallet_change": {
       const notBefore = moment(announcement.not_before);
       const lead =
-        `A change of the wallet your sales are paid into was asked for ${askedIn(announcement.asked_with)}.` +
+        `A change of the wallet your share of every sale is paid out to was asked for ${askedIn(announcement.asked_with)}.` +
         ` From ${announcement.from} to ${announcement.to}.`;
       const paragraphs = [
-        `It takes effect not before ${notBefore}, and only if the Payout wallet section of your dashboard's Settings shows it waiting: ${screens.wallet}. Until then every sale is paid into ${announcement.from}.`,
+        `It takes effect not before ${notBefore}, and only if the Payout wallet section of your dashboard's Settings shows it waiting: ${screens.wallet}. Until then buyers pay into ${announcement.from_split}, the payout contract of ${announcement.from}.`,
+        `From then on buyers pay into ${announcement.to_split}, the payout contract made for ${announcement.to}. ${paysOnly(rate, "that wallet")}`,
         `If you did not ask for this, cancel it there. ${IF_NOT_YOU}`,
         "This message opens nothing by itself: sign in to your dashboard the usual way.",
       ];
@@ -80,7 +92,7 @@ export function announcementMessage(
     }
     case "wallet_set": {
       const lead =
-        `The wallet your sales are paid into was set to ${announcement.to} ${askedIn(announcement.asked_with)}.` +
+        `The wallet your share of every sale is paid out to was set to ${announcement.to} ${askedIn(announcement.asked_with)}.` +
         " It is the first address your merchant has had, so it applies now.";
       return written(to, {
         subject: "A payout wallet was set for your merchant",
@@ -90,6 +102,7 @@ export function announcementMessage(
         action: "Open Settings",
         link: screens.wallet,
         paragraphs: [
+          `Buyers now pay into ${announcement.to_split}, the payout contract made for this wallet. ${paysOnly(rate, "this wallet")}`,
           `If nobody at your business set it, act now. ${PAUSE_THEN_SET(screens.wallet)}`,
           "This message opens nothing by itself: sign in to your dashboard the usual way.",
         ],
@@ -98,7 +111,7 @@ export function announcementMessage(
     case "wallet_change_cancelled": {
       const lead =
         `The waiting change of your payout wallet to ${announcement.cancelled} was cancelled ${askedIn(announcement.asked_with)}.` +
-        ` Your sales are still paid into ${announcement.kept}.`;
+        ` Your share of every sale is still paid out to ${announcement.kept}.`;
       return written(to, {
         subject: "A payout wallet change was cancelled",
         eyebrow: "Payout wallet",
@@ -107,6 +120,7 @@ export function announcementMessage(
         action: "Open Settings",
         link: screens.wallet,
         paragraphs: [
+          `Buyers still pay into ${announcement.kept_split}, the payout contract of ${announcement.kept}. ${paysOnly(rate, "that wallet")}`,
           `If you did not cancel it, the cancel may have signed you out too, with every other session of your merchant, so sign in again. ${PAUSE_THEN_SET(screens.wallet)}`,
           "This message opens nothing by itself: sign in to your dashboard the usual way.",
         ],

@@ -18,6 +18,13 @@ import {
 } from "@agentify/core";
 import type { GalleryState, GallerySurface } from "@agentify/gallery";
 import {
+  merchantPayout,
+  payoutSplitFor,
+  payoutSplitNetworkOf,
+  type RecordedPayoutSplit,
+} from "@agentify/gateway";
+import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "@agentify/gateway/testing";
+import {
   MerchantCardListSchema,
   type MerchantKey,
   OrderListSchema,
@@ -35,7 +42,13 @@ import {
 } from "react-router";
 import config from "../react-router.config.js";
 import { NOT_FROM_HERE } from "../src/form-post.js";
-import { ANSWER_WITHIN_MS, type Answer, lateAnswer, switchRefused } from "../src/gateway.js";
+import {
+  ANSWER_WITHIN_MS,
+  type Answer,
+  lateAnswer,
+  type PayoutSplits,
+  switchRefused,
+} from "../src/gateway.js";
 import { integrationsView } from "../src/integrations-view.js";
 import { keysView, newKeyView } from "../src/keys.js";
 import {
@@ -49,7 +62,11 @@ import {
   signedOutOthers,
   whatIsWrongWithTheLabel,
 } from "../src/page-services.js";
-import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "../src/payout-wallet.js";
+import {
+  NOT_A_PAYOUT_WALLET,
+  WALLET_NEEDED,
+  whatIsWrongWithTheWallet,
+} from "../src/payout-wallet.js";
 import {
   NAME_CANNOT_BE_TAKEN_AWAY,
   NAME_NEEDED,
@@ -206,11 +223,68 @@ const TRANSACTIONS: Readonly<Record<SurfaceMode, string | null>> = {
   sandbox: null,
 };
 
+const ADDRESSES: Readonly<Record<SurfaceMode, string | null>> = {
+  live: "https://basescan.org/address/",
+  test: "https://sepolia.basescan.org/address/",
+  sandbox: null,
+};
+
 /** The example addresses from the checksum's own specification. */
 const PAID_INTO = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 const ASKED_FOR = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
 /** The first with its last letter's case flipped, which the checksum catches. */
 const MISTYPED = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAeD";
+
+const MERCHANT = idOf("mch", "Freeland");
+
+/**
+ * Each channel's payout split as the gateway makes it. Base has no commission
+ * wallet in the code yet, so the live examples stand on the tests' fixture
+ * for Base.
+ */
+const PAYOUT_NETWORKS: Readonly<Record<SurfaceMode, string>> = {
+  live: "eip155:8453",
+  test: "eip155:84532",
+  sandbox: "eip155:84532",
+};
+
+const networkIn = (mode: SurfaceMode) =>
+  payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, PAYOUT_NETWORKS[mode]);
+
+const splitOf = (mode: SurfaceMode, wallet: string): RecordedPayoutSplit => ({
+  ...payoutSplitFor(networkIn(mode), MERCHANT, wallet),
+  recordedAt: Date.parse("2026-10-01T09:00:00Z"),
+});
+
+/** The gateway's answer about the splits of a merchant paid at `wallet`, waiting on `pending`. */
+const splitsOf = (
+  mode: SurfaceMode,
+  wallet: string | null,
+  { pending, toPayOut }: { pending?: string; toPayOut?: readonly RecordedPayoutSplit[] } = {},
+): PayoutSplits => {
+  const network = networkIn(mode);
+  const paidOut = toPayOut ?? (wallet === null ? [] : [splitOf(mode, wallet)]);
+  return {
+    rate: {
+      commissionAllocation: network.commissionAllocation,
+      totalAllocation: network.totalAllocation,
+    },
+    inForce: wallet === null ? null : splitOf(mode, wallet),
+    pending: pending === undefined ? null : splitOf(mode, pending),
+    payout: paidOut.length === 0 ? null : merchantPayout(network, paidOut),
+  };
+};
+
+/** The split each order or receipt whose money moved was charged into. */
+const paidIntoSplit = (
+  mode: SurfaceMode,
+  rows: readonly { readonly id: string; readonly status: string }[],
+): Readonly<Record<string, RecordedPayoutSplit>> =>
+  Object.fromEntries(
+    rows
+      .filter((row) => ["delivered", "shipped", "refund_due", "refunded"].includes(row.status))
+      .map((row) => [row.id, splitOf(mode, PAID_INTO)]),
+  );
 
 const SHOP = "https://shop.example.com";
 
@@ -405,10 +479,12 @@ const OLD_WORKER = keyOf(
 /** Shown in place of a key: a key's length, its prefix, and words no key would carry. */
 const SECRET = `${keyPrefixFor("live")}shown-once-in-this-gallery-never-a-real-key`;
 
-const settingsOf = (more: Partial<Settings> = {}): Settings => ({
+const settingsOf = (more: Partial<Settings> = {}, mode: SurfaceMode = "live"): Settings => ({
   sellerName: "Freeland",
   sellerSite: "https://freeland.example",
   payoutWallet: PayoutWalletSchema.parse({ payout_wallet: PAID_INTO, pending: null }),
+  payoutSplits: splitsOf(mode, PAID_INTO),
+  addressPage: ADDRESSES[mode],
   ...more,
 });
 
@@ -838,7 +914,7 @@ const CARDS: GalleryState[] = [
       screen: "Cards",
       when: "A merchant on the test site has cards but has not set a payout wallet.",
       cause:
-        "Where payments settle, a card is off sale until the wallet its money arrives at is set.",
+        "Where payments settle, a card is off sale until the wallet its share is paid out to is set.",
     },
     cardsView(
       seenBy("test", { payout: { wallet: null } }),
@@ -915,16 +991,21 @@ const ORDERS: GalleryState[] = [
       cause:
         "The gateway lists orders that went through or are under way, none of them owing anything.",
     },
-    ordersView(
-      seenBy("live"),
-      CATALOGUE,
+    ((listed) =>
+      ordersView(
+        seenBy("live"),
+        CATALOGUE,
+        listed,
+        false,
+        {},
+        paidIntoSplit("live", listed.orders),
+      ))(
       ordersOf([
         ["vpn", "delivered"],
         ["esimEurope", "in_progress"],
         ["number", "delivered"],
         ["esimEurope", "delivered"],
       ]),
-      false,
     ),
     "live",
   ),
@@ -946,6 +1027,7 @@ const ORDERS: GalleryState[] = [
           .filter((order) => order.status === "refund_due")
           .map((order, at) => [order.id, at === 0 ? "deadline_passed" : "refused"]),
       ),
+      paidIntoSplit("live", OWING.orders),
     ),
     "live",
   ),
@@ -1030,15 +1112,22 @@ const RECEIPTS: GalleryState[] = [
       when: "A merchant whose products have been bought and delivered opens Receipts.",
       cause: "The gateway lists receipts, each with the transfer the payment layer reported.",
     },
-    receiptsView(
-      seenBy("live"),
-      CATALOGUE,
+    ((listed) =>
+      receiptsView(
+        seenBy("live"),
+        CATALOGUE,
+        listed,
+        TRANSACTIONS.live,
+        paidIntoSplit(
+          "live",
+          listed.receipts.map((receipt) => ({ id: receipt.order_id, status: receipt.outcome })),
+        ),
+      ))(
       receiptsOf([
         ["vpn", "delivered"],
         ["esimEurope", "delivered"],
         ["number", "delivered"],
       ]),
-      TRANSACTIONS.live,
     ),
     "live",
   ),
@@ -1543,6 +1632,8 @@ const SETTINGS: GalleryState[] = [
       sellerName: null,
       sellerSite: null,
       payoutWallet: PayoutWalletSchema.parse({ payout_wallet: null, pending: null }),
+      payoutSplits: splitsOf("test", null),
+      addressPage: ADDRESSES.test,
     }),
     { mode: "test" },
   ),
@@ -1563,7 +1654,68 @@ const SETTINGS: GalleryState[] = [
       cause:
         "A change of the wallet waits forty-eight hours after every account is told, and can be cancelled meanwhile.",
     },
-    settingsView("live", WHO, { ...settingsOf({ payoutWallet: WAITING }), liveApproval: true }),
+    settingsView("live", WHO, {
+      ...settingsOf({
+        payoutWallet: WAITING,
+        payoutSplits: splitsOf("live", PAID_INTO, { pending: ASKED_FOR }),
+      }),
+      liveApproval: true,
+    }),
+  ),
+  settings(
+    {
+      id: "dashboard-settings-test-payout",
+      screen: "Settings",
+      when: "A merchant on the test site opens Settings after saving their payout wallet.",
+      cause:
+        "Buyers pay into the merchant's payout contract on Base Sepolia, and the payout is sent with test ETH.",
+    },
+    settingsView("test", WHO, settingsOf({}, "test")),
+    { mode: "test" },
+  ),
+  settings(
+    {
+      id: "dashboard-settings-sandbox-wallet",
+      screen: "Settings",
+      when: "A merchant on a laptop's sandbox opens Settings after saving a payout wallet.",
+      cause:
+        "The payout contract is computed and recorded, and never deployed, so there is no payout to send.",
+    },
+    settingsView("sandbox", WHO, settingsOf({}, "sandbox")),
+    { mode: "sandbox" },
+  ),
+  settings(
+    {
+      id: "dashboard-settings-payout-earlier-contract",
+      screen: "Settings",
+      when: "A merchant opens Settings after their new payout wallet took effect.",
+      cause:
+        "Payments were made into the earlier wallet's contract, so the payout pays out both, each to its own wallet.",
+    },
+    settingsView("live", WHO, {
+      ...settingsOf({
+        payoutWallet: PayoutWalletSchema.parse({ payout_wallet: ASKED_FOR, pending: null }),
+        payoutSplits: splitsOf("live", ASKED_FOR, {
+          toPayOut: [splitOf("live", PAID_INTO), splitOf("live", ASKED_FOR)],
+        }),
+      }),
+      liveApproval: true,
+    }),
+  ),
+  settings(
+    {
+      id: "dashboard-settings-payout-too-many",
+      screen: "Settings",
+      when: "A merchant whose wallet changed many times opens Settings.",
+      cause:
+        "More payout contracts can hold the merchant's money than one transaction pays out, so the operator pays them out.",
+    },
+    settingsView("live", WHO, {
+      ...settingsOf({
+        payoutSplits: { ...splitsOf("live", PAID_INTO), payout: { tooMany: 23 } },
+      }),
+      liveApproval: true,
+    }),
   ),
   ((typed) =>
     settings(
@@ -1652,18 +1804,39 @@ const SETTINGS: GalleryState[] = [
     settingsView(
       "test",
       WHO,
-      settingsOf({
-        payoutWallet: PayoutWalletSchema.parse({ payout_wallet: null, pending: null }),
-      }),
+      settingsOf(
+        {
+          payoutWallet: PayoutWalletSchema.parse({ payout_wallet: null, pending: null }),
+          payoutSplits: splitsOf("test", null),
+        },
+        "test",
+      ),
       { kind: "wallet", problem: WALLET_NEEDED, typed: "" },
     ),
     { mode: "test", path: "/settings/payout-wallet" },
   ),
+  ((typed) =>
+    settings(
+      {
+        id: "dashboard-settings-wallet-not-a-wallet",
+        screen: "Settings",
+        when: "A merchant pastes Multicall3, the address the payout is sent to, as their payout wallet.",
+        cause:
+          "A share paid to a contract a payout calls could never come back, so the gateway refuses it and nothing is saved.",
+      },
+      settingsView(
+        "live",
+        WHO,
+        { ...settingsOf(), liveApproval: true },
+        { kind: "wallet", problem: NOT_A_PAYOUT_WALLET.multicall3, typed },
+      ),
+      { path: "/settings/payout-wallet" },
+    ))(networkIn("live").multicall3),
   settings(
     {
       id: "dashboard-settings-wallet-cancelled-by-typing",
       screen: "Settings",
-      when: "A merchant types the address paid into now while a change of it waits.",
+      when: "A merchant types the wallet paid out to now while a change of it waits.",
       cause: "Asking for the current address cancels the waiting change, and the page says so.",
     },
     settingsView(
@@ -1688,6 +1861,7 @@ const SETTINGS: GalleryState[] = [
       {
         ...settingsOf({
           payoutWallet: PayoutWalletSchema.parse({ payout_wallet: ASKED_FOR, pending: null }),
+          payoutSplits: splitsOf("live", ASKED_FOR),
         }),
         liveApproval: true,
       },

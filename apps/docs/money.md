@@ -9,15 +9,35 @@ what you are risking while that happens, and what we take.
 
 ## Where the money arrives
 
-The money goes from the buyer's wallet — the buyer is a program, buying on
-behalf of a person — straight to your wallet. Agentify never holds it: we check
-the payment and we set it going, and it passes through no account of ours on
-the way. So there is no payout here, no settlement period, and no balance
-sitting with us that has to be withdrawn.
+The buyer — a program, buying on behalf of a person — pays into your payout
+contract: a contract on Base made for your wallet, which keeps the money until
+it is paid out and then sends 99.9% to your wallet and 0.1% to Agentify.
+Nobody owns it. Neither Agentify nor anybody else can change whom it pays or
+in what shares, or send the money anywhere else, so a payout can only ever
+pay you and us, in those shares. We check each payment and set it going, and
+no account of ours holds your money at any point.
 
-Every payment arrives as its own transfer. A hundred sales are a hundred
-incoming transfers: if your accounting is used to one line per period, there
-will be as many lines here as there were sales.
+You can get paid out at any time. The Settings screen of your dashboard shows
+your payout contract and the one transaction that pays it out. You send it
+from any wallet that holds a little ETH, the currency Base charges its network
+fee in, and whose app lets you paste data into a transaction, and your share
+reaches your wallet in that same transaction. The transaction carries no money
+of its own and costs only that fee. If you do not send it, your share arrives
+when Agentify collects its own, because collecting it pays out every payout
+contract, yours included; there is no fixed day for that. Until somebody pays
+it out, the money waits in the contract and goes nowhere else.
+
+A payout pays out everything that came in since the one before, so the sales
+between two payouts reach your wallet as one transfer, and that transfer comes
+from the 0xSplits warehouse, the shared contract every payout contract pays
+its shares through, rather than from a buyer. If your accounting is used to
+one line per sale, there will be one line per payout instead, and it can
+cover many sales.
+
+Saving your wallet costs nothing and writes nothing to the chain: the payout
+contract's address follows from your wallet, and it can receive USDC from that
+moment. The first payout puts the contract itself on the chain, and from then
+on a block explorer shows its two recipients and their shares.
 
 ### If you have no wallet yet
 
@@ -26,9 +46,10 @@ followed by forty letters and digits. If your business has none, a wallet app
 that supports the Base network, such as MetaMask, creates one. The app
 shows the address, which is what you enter in the dashboard's Settings, and a
 recovery phrase, which stays with you and is never entered anywhere at
-Agentify: whoever holds the phrase holds the money. On the test channel the
-address only receives test USDC, so it needs no money of its own and nothing is
-paid out of it.
+Agentify: whoever holds the phrase holds the money. On the test channel your
+wallet only ever receives test USDC, so it needs no money of its own; a wallet
+that sends a payout there pays the fee in test ETH, which a faucet, a site
+that hands out test currency, gives away.
 
 ## What they pay in
 
@@ -51,17 +72,20 @@ its payment challenge, but its scripted settlement moves no funds and records
 no transaction on a chain. Test and sandbox receipts are marked as test; a
 live receipt is not.
 
-Who pays the network fee and how that fee sits against the price of the goods
-is still unsettled.
+Who pays the network fee on a buyer's payment and how that fee sits against
+the price of the goods is still unsettled.
 
 ## When the money reaches you
 
-It depends on the product. For some goods the money arrives after you have
-delivered: the payment executes as the last step of the purchase, and if the
-delivery did not work out, the purchase simply did not happen — the buyer spent
-nothing and you owe nobody anything. For the rest the money arrives at the
-moment of purchase, ahead of your delivery, and then a product that was never
-delivered leaves a debt: such an order is marked as needing a refund.
+It depends on the product, because the moment the buyer is charged does. For
+some goods the buyer is charged after you have delivered: the payment executes
+as the last step of the purchase, and if the delivery did not work out, the
+purchase simply did not happen — the buyer spent nothing and you owe nobody
+anything. For the rest the buyer is charged at the moment of purchase, ahead
+of your delivery, and then a product that was never delivered leaves a debt:
+such an order is marked as needing a refund. Either way the payment goes into
+your payout contract, and your share reaches your wallet with the payout after
+it.
 
 Which of the two comes first is your choice, and you make it product by product
 — it is written in the card for that product, the description a catalogue shows
@@ -69,15 +93,15 @@ a buyer, alongside its price. There is no switch for the whole shop: one
 product can be paid for after delivery and the one next to it before.
 
 Say you sell a month of access for five dollars (an example figure). If the
-access goes to the buyer in the answer to the purchase, those five dollars
-reach your wallet after your side has handed it over. If preparing the access
-takes minutes or hours, the same five dollars arrive at the moment of purchase
-and you deliver later.
+access goes to the buyer in the answer to the purchase, those five dollars are
+paid into your payout contract after your side has handed it over. If
+preparing the access takes minutes or hours, the same five dollars are paid in
+at the moment of purchase and you deliver later.
 
 A third arrangement exists, for goods you hand over yourself, and it arrives
 after the pilot. Before any money moves you are asked whether you will deliver;
-until you answer yes nothing is charged, and after your yes the money arrives
-at once, with the delivery still ahead of it.
+until you answer yes nothing is charged, and after your yes the buyer is
+charged at once, with the delivery still ahead of it.
 
 One rule covers all three. While your answer comes before the money, your
 silence costs the buyer nothing. After the charge, that same silence leaves
@@ -98,8 +122,7 @@ weigh here is how expensive and how irreversible your delivery is. Access you
 can revoke and a parcel already on its way are worth different amounts to you.
 
 You hear about such a case from us: we tell you the money did not arrive. There
-is no need to reconcile the transfers into your wallet against what you
-delivered by hand.
+is no need to reconcile the payments against what you delivered by hand.
 
 Sometimes that is the whole of what anybody knows. Where the payment network
 was asked and never answered, nobody can say whether the buyer was charged, and
@@ -130,10 +153,12 @@ the synchronous mode the charge comes seconds after the goods, and on a card
 whose price is checked at the purchase the agent may take minutes between the
 price and the payment.
 
-A receipt also names the transfer itself (`transaction`): the hash of the
-transaction the payment layer reported, which the dashboard links to the
-chain's explorer, so a receipt can be matched to the payment in your wallet
-without going by its time.
+A receipt also names the buyer's payment itself (`transaction`): the hash of
+the transfer into your payout contract that the payment layer reported, which
+the dashboard links to the chain's explorer, so a receipt can be matched to
+its payment without going by its time. That transfer goes into the contract
+and not into your wallet, which receives the payouts instead, each covering
+every sale since the payout before it.
 
 An order paid for and never delivered leaves no receipt, because no goods went
 out. What you have for that case is the order itself and the event telling you
@@ -148,13 +173,16 @@ apart](/orders).
 
 ## If the buyer did not get the goods
 
-You return the money for an undelivered product to the buyer yourself, out of
-your own wallet. It cannot be otherwise: the payment came from them straight to
-you, it never passed through our accounts, and we are in no position to give
-back what we never held. Our part of the work is to record the obligation and
-hand you the record — which order, for how much, and why it was left
-undelivered. That covers both the orders you did not manage to deliver in time
-and the orders still open at the moment you leave.
+You return the whole price of an undelivered product to the buyer yourself,
+out of your own wallet, although your payout contract pays you 99.9% of it:
+the 0.1% commission stays with Agentify. The refund has to come from you,
+because the contract pays only you and us and has no way to send a payment
+back to a buyer, and it makes no difference whether that sale has been paid
+out to you yet: what you owe the buyer is the price they paid. Our part of the
+work is to record the obligation and hand you the record — which order, for
+how much, and why it was left undelivered. That covers both the orders you did
+not manage to deliver in time and the orders still open at the moment you
+leave.
 
 How the money travels back remains open. We are looking at how working sellers
 do it and taking a pattern that works. What exactly you do during a refund is
@@ -170,20 +198,39 @@ of them — but not none, and each one is dealt with by hand.
 
 ## What we take
 
-We take no percentage of the payments, and there is nowhere for one to come
-from: the money goes past us. We earn on the tools and on a subscription — on
-what you use, not on what you sold. We name the price of the subscription and
-what it covers before you connect; today it is an open item at the bottom of
-this page.
+We take 0.1% of every payment, and it is inside your price. The buyer pays the
+price on your card and nothing on top of it, and your payout contract sends
+99.9% of it to you and 0.1% to us. If you want what reaches you to be the
+whole of a price you have in mind, raise the price on the card yourself. There
+is no subscription and no monthly fee. The Settings screen of your dashboard
+names the commission, and saving your wallet there is how you accept it.
+
+The contract divides what has accumulated in it, not each sale on its own, and
+rounds each share down to the smallest unit of USDC, a millionth of a dollar.
+It also leaves one such unit behind on a balance rather than pay the network
+fee of emptying it. So a payout gives you about 99.9% of what came in and
+never more, and what the rounding leaves over is divided in a later payout.
+For the same reason there is no exact commission to read off a single order.
+
+Your share is paid out whenever somebody sends the payout transaction: you, at
+any time, with the transaction your dashboard's Settings screen gives you, or
+Agentify, when it collects its own share ([Where the money
+arrives](#where-the-money-arrives)).
 
 ## What is not settled yet
 
-- Who pays the network fee and how it sits against the price of the goods.
+- Who pays the network fee on a buyer's payment and how it sits against the
+  price of the goods.
 - How you send money back for an undelivered order, and how we learn that you
   have.
-- Reconciling what came in against what was sold. A receipt follows the goods,
-  so an order paid for and not delivered has none, and matching the transfers
+- Reconciling what came in against what was sold. Your wallet receives one
+  transfer per payout, covering every sale since the payout before it, and
+  nothing yet shows which sales a payout covered. A receipt follows the goods,
+  so an order paid for and not delivered has none, and matching the payouts
   into your wallet against the orders is still yours to do by hand.
-- The price of the subscription and what it covers.
+- The written terms of the commission. Until they are published, saving your
+  wallet on the screen that names the commission is the whole of how you
+  accept it.
 - Who counts as the seller on paper, what document your accounting receives for
-  a sale, and how a stablecoin payment is reported.
+  a sale and for our commission on it, and how a stablecoin payment is
+  reported.

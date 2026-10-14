@@ -12,7 +12,14 @@
  * not recognise fails here rather than as a blank cell in front of a merchant.
  */
 
-import type { Caller, Gateway, Integration, WalletChangeRefusal } from "@agentify/gateway";
+import type {
+  Caller,
+  Gateway,
+  Integration,
+  PayoutTransaction,
+  RecordedPayoutSplit,
+  WalletChangeRefusal,
+} from "@agentify/gateway";
 import {
   bodyRefused,
   CONFLICT,
@@ -20,10 +27,12 @@ import {
   merchantDeparted,
   merchantOrderAnswer,
   merchantOrderList,
+  merchantPayout,
   NO_SUCH_ITEM,
   NO_SUCH_KEY,
   NO_SUCH_ORDER,
   type Refused,
+  SPLITS_PER_PAYOUT,
 } from "@agentify/gateway";
 import {
   API_ROUTES,
@@ -48,6 +57,8 @@ import {
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
+import { NOT_A_PAYOUT_WALLET } from "./payout-wallet.js";
+import type { CommissionRate } from "./shares.js";
 
 export type Answer<T> =
   | { readonly ok: true; readonly document: T }
@@ -75,6 +86,20 @@ export type Answer<T> =
  */
 export type RefundCause = "refused" | "deadline_passed" | "merchant_left" | "charge_confirmed_late";
 
+/**
+ * A merchant's payout splits on this network, for the payout wallet screen,
+ * and the one transaction that pays out every split that can hold their
+ * money. `payout` is null where no split can hold any, and says how many
+ * there are where one transaction cannot carry them all.
+ */
+export interface PayoutSplits {
+  /** The terms every split recorded on this network from now is made with. */
+  readonly rate: CommissionRate;
+  readonly inForce: RecordedPayoutSplit | null;
+  readonly pending: RecordedPayoutSplit | null;
+  readonly payout: PayoutTransaction | { readonly tooMany: number } | null;
+}
+
 export interface GatewayClient {
   cards(): Promise<Answer<MerchantCardList>>;
   pauseCard(itemId: string, paused: boolean): Promise<Answer<MerchantCard>>;
@@ -86,6 +111,19 @@ export interface GatewayClient {
    */
   refundsOwed(): Promise<Answer<Readonly<Record<string, RefundCause>>>>;
   receipts(): Promise<Answer<ReceiptList>>;
+  /**
+   * The payout split this order's payment was checked against, as recorded,
+   * whether or not the charge went through; null where it was checked against
+   * the wallet itself, before payments went to splits, or was never paid. The
+   * order documents do not name where a payment went.
+   */
+  paidInto(orderId: string): Promise<Answer<RecordedPayoutSplit | null>>;
+  /**
+   * The split each order was charged into, by order, for the shares the
+   * orders and receipts show: only where the charge went through, into a
+   * split recorded for this merchant.
+   */
+  paidIntoSplits(): Promise<Answer<Readonly<Record<string, RecordedPayoutSplit>>>>;
   /**
    * Every one can be disabled from here: a session holds no key, so none is the
    * key this call was made with.
@@ -101,6 +139,7 @@ export interface GatewayClient {
   seller(): Promise<Answer<{ readonly name: string | null; readonly site: string | null }>>;
   setSellerSite(site: string): Promise<Answer<string | null>>;
   payoutWallet(): Promise<Answer<PayoutWallet>>;
+  payoutSplits(): Promise<Answer<PayoutSplits>>;
   /** The only way a wallet is set; no HTTP route does it. */
   setPayoutWallet(address: string): Promise<Answer<PayoutWallet>>;
   /**
@@ -202,6 +241,12 @@ const UNAVAILABLE = 503;
 const BAD_REQUEST = 400;
 
 /**
+ * An address a merchant's share could never come back from, which the screen
+ * that asked for it words under its box.
+ */
+export const NOT_A_PAYOUT_WALLET_CODE = "not_a_payout_wallet";
+
+/**
  * Nothing was written in any case: the address paid now and any change already
  * waiting are as they were. A message that could not be confirmed as sent to
  * every account may still have reached some, and the words say so without
@@ -215,7 +260,8 @@ const walletRefusedAs = (why: WalletChangeRefusal): Answer<never> => {
     return {
       ok: false,
       status: BAD_REQUEST,
-      why: "this address cannot be a payout wallet: a share paid to it could never come back to the merchant, so nothing was changed and sales are paid where they were",
+      code: NOT_A_PAYOUT_WALLET_CODE,
+      why: NOT_A_PAYOUT_WALLET[why.is],
     };
   }
   switch (why) {
@@ -320,6 +366,18 @@ const orderCallAnswer = (
 
 const KeysSchema = z.array(MerchantKeySchema);
 
+/**
+ * The split recorded at this address among those that can hold this
+ * merchant's money, which are every split one of their payments was checked
+ * against; null for an address that is none of them, such as the wallet
+ * itself.
+ */
+const splitAt = (
+  splits: { readonly toPayOut: readonly RecordedPayoutSplit[] },
+  address: string,
+): RecordedPayoutSplit | null =>
+  splits.toPayOut.find((split) => split.address.toLowerCase() === address.toLowerCase()) ?? null;
+
 /** How many of the orders holding a switch the refusal names before counting the rest. */
 const ORDERS_NAMED = 5;
 
@@ -410,6 +468,31 @@ export const gatewayFor = (
       call("reading the receipts", async () =>
         answered(API_ROUTES.list_receipts, await application.receipts(merchantId)),
       ),
+    paidInto: (orderId) =>
+      call("reading where an order was paid", async () => {
+        const record = await application.merchantOrder(merchantId, orderId);
+        if (record === null) return refusedAs(NO_SUCH_ORDER);
+        const { payTo } = record;
+        if (payTo === null) return done(null);
+        return done(splitAt(await application.payoutSplitsOf(merchantId), payTo));
+      }),
+    // The orders are read before the splits: a split an order was paid into
+    // is recorded before the order names it, so nothing read here names a
+    // split the second read could miss.
+    paidIntoSplits: () =>
+      call("reading where the orders were paid", async () => {
+        const records = await application.orders(merchantId, undefined);
+        const splits = await application.payoutSplitsOf(merchantId);
+        const into: Record<string, RecordedPayoutSplit> = {};
+        for (const record of records) {
+          const split =
+            record.payTo === null || record.order.payment !== "settled"
+              ? null
+              : splitAt(splits, record.payTo);
+          if (split !== null) into[record.order.id] = split;
+        }
+        return done(into);
+      }),
     keys: () =>
       call("reading the keys", async () =>
         done(KeysSchema.parse(await application.merchantKeys(merchantId))),
@@ -479,6 +562,27 @@ export const gatewayFor = (
       call("reading the payout wallet", async () =>
         answered(API_ROUTES.get_payout_wallet, await application.payoutWallet(merchantId)),
       ),
+    // Built from the splits as recorded, on the network's contracts; the rate
+    // is the one a wallet saved now is recorded with.
+    payoutSplits: () =>
+      call("reading the payout splits", async () => {
+        const network = application.runtime.config.payoutSplit;
+        const { inForce, pending, toPayOut } = await application.payoutSplitsOf(merchantId);
+        return done({
+          rate: {
+            commissionAllocation: network.commissionAllocation,
+            totalAllocation: network.totalAllocation,
+          },
+          inForce,
+          pending,
+          payout:
+            toPayOut.length === 0
+              ? null
+              : toPayOut.length > SPLITS_PER_PAYOUT
+                ? { tooMany: toPayOut.length }
+                : merchantPayout(network, toPayOut),
+        });
+      }),
     setPayoutWallet: (address) =>
       call("setting the payout wallet", async () => {
         const asked = hold(EvmAddressSchema, address);

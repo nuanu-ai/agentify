@@ -1,8 +1,27 @@
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
 import type { OrderWithStatus } from "@nuanu-ai/agentify-contracts";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { recoverWooOrder, type WooRecoveryParts } from "./woo-recovery.js";
-import type { EligibleWooProduct, OrderMade, WooOrderRead } from "./woo-shop.js";
+import {
+  type EligibleWooProduct,
+  type OrderMade,
+  readTheOrderInTheShop,
+  type SoldItem,
+  type WooOrderRead,
+} from "./woo-shop.js";
 import { memoryWooShops, type WooOrderFacts } from "./woo-shops.js";
+
+/** The split the sale's payment was checked against, by the gateway's own rule. */
+const PAID_INTO = {
+  ...payoutSplitFor(
+    payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532"),
+    "m_1",
+    "0xde3F8C4422A7F8C94bce9Cc2Ec118665108148EF",
+  ),
+  recordedAt: Date.parse("2026-09-18T09:00:00.000Z"),
+};
 
 const NOW = new Date("2026-09-18T10:00:00.000Z");
 const EMAIL = "merchant@example.com";
@@ -95,6 +114,7 @@ const parts = (
   let created = 0;
   let read = 0;
   let gatewayReads = 0;
+  const sold: SoldItem[] = [];
   const made: OrderMade = {
     ok: true,
     id: "13",
@@ -127,10 +147,12 @@ const parts = (
           document: { ok: true as const, result: "debt_closed_by_delivery" as const },
         };
       },
+      paidInto: async () => ({ ok: true as const, document: PAID_INTO }),
     }),
     inspectProduct: async () => ({ ok: true, product: PRODUCT }),
-    createOrder: async () => {
+    createOrder: async (_keys, item) => {
       created += 1;
+      sold.push(item);
       return made;
     },
     readOrder: async () => {
@@ -140,7 +162,7 @@ const parts = (
     now: () => NOW,
     ...overrides,
   };
-  return { value, counts: () => ({ delivered, created, read }) };
+  return { value, counts: () => ({ delivered, created, read }), sold };
 };
 
 describe("exact Woo order recovery", () => {
@@ -156,6 +178,32 @@ describe("exact Woo order recovery", () => {
     });
     expect(test.counts()).toEqual({ delivered: 1, created: 1, read: 0 });
     expect(await shops.recoveryOrder("ord_1")).toMatchObject({ phase: "placed" });
+  });
+
+  it("makes the order again with the payout contract the sale's payment went to, for its commission lines", async () => {
+    const shops = await setup("precreate_refused");
+    const test = parts(shops);
+
+    await recoverWooOrder({ orderId: "ord_1" }, test.value);
+
+    expect(test.sold.map((item) => item.paidInto)).toStrictEqual([PAID_INTO]);
+  });
+
+  it("makes no order where it cannot read where the payment went, and can be asked again", async () => {
+    const shops = await setup("precreate_refused");
+    const base = parts(shops);
+    const test = parts(shops, {
+      gatewayFor: (acting) => ({
+        ...base.value.gatewayFor(acting),
+        paidInto: async () => ({ ok: false as const, status: 0, why: "nothing answered" }),
+      }),
+    });
+
+    expect(await recoverWooOrder({ orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+      state: "unresolved",
+    });
+    expect(test.counts()).toMatchObject({ created: 0 });
   });
 
   it("does not reopen a definite refusal under the same grant", async () => {
@@ -319,4 +367,72 @@ describe("a parcel's order the shop holds", () => {
     expect(outcome).toMatchObject({ ok: false, state: "refused" });
     expect(outcome.ok === false && outcome.why).not.toContain("do not ship");
   });
+});
+
+describe("an operator-named shop order, read back", () => {
+  // Orders made before the commission lines existed carry none, and those
+  // made after carry two; neither is a fact of the sale the recovery matches.
+  let stand: Server | null = null;
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) =>
+      stand === null ? resolve() : stand.close(() => resolve()),
+    );
+    stand = null;
+  });
+
+  const aShopHolding = async (meta: readonly { key: string; value: unknown }[]) => {
+    stand = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          id: 13,
+          number: "WOO-13",
+          order_key: "wc_order_13",
+          status: "processing",
+          currency: "USD",
+          total: "0.01",
+          total_tax: "0.00",
+          payment_method: "agentify",
+          transaction_id: "ord_1",
+          billing: { email: EMAIL },
+          line_items: [
+            { product_id: 22, quantity: 1, subtotal: "0.01", total: "0.01", total_tax: "0.00" },
+          ],
+          meta_data: meta,
+        }),
+      );
+    });
+    stand.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => stand?.once("listening", resolve));
+    return `http://127.0.0.1:${(stand.address() as AddressInfo).port}`;
+  };
+
+  const LINES = [
+    { key: "agentify_commission", value: "under 0.000001 USD (0.1%)" },
+    { key: "agentify_payout_contract", value: PAID_INTO.address },
+  ];
+
+  for (const [what, meta, binds] of [
+    ["without the commission lines", [{ key: "agentify_order_id", value: "ord_1" }], true],
+    ["with the commission lines", [{ key: "agentify_order_id", value: "ord_1" }, ...LINES], true],
+    [
+      "naming another sale, whatever lines it carries",
+      [{ key: "agentify_order_id", value: "ord_2" }, ...LINES],
+      false,
+    ],
+  ] as const) {
+    it(`${binds ? "binds" : "does not bind"} one ${what}`, async () => {
+      const shopUrl = await aShopHolding(meta);
+      const shops = await setup("create_unknown");
+      const test = parts(shops, {
+        readOrder: (keys, wooOrderId) =>
+          readTheOrderInTheShop({ ...keys, shopUrl }, wooOrderId, fetch),
+      });
+
+      const outcome = await recoverWooOrder({ orderId: "ord_1", wooOrderId: "13" }, test.value);
+
+      expect(outcome).toMatchObject(binds ? { ok: true, state: "delivered" } : { ok: false });
+    });
+  }
 });

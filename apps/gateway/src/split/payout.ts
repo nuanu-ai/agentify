@@ -30,7 +30,7 @@ import { type PayoutSplit, splitParametersOf } from "./parameters.js";
  * transaction at; whether Base enforces that cap is not known here, and a
  * transaction that cannot be mined pays nobody.
  */
-const SPLITS_PER_PAYOUT = 20;
+export const SPLITS_PER_PAYOUT = 20;
 
 /** One transaction to send, as a wallet asks for it. */
 export interface PayoutTransaction {
