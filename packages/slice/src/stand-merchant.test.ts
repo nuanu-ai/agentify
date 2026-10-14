@@ -398,16 +398,18 @@ describe("the handler told to answer only after the deadline", () => {
         feed.entries().some((entry) => detailOf(entry).order_id === "order-after-move");
       expect(await comesTrue(handed, 5_000)).toBe(true);
 
+      // The handler writes its goods to the log the moment its silence ends,
+      // before anything goes on the wire, so the log says whether it has.
+      const madeGoods = () => feed.entries().some((entry) => "delivery" in detailOf(entry));
       await vi.advanceTimersByTimeAsync(syncResponseMs);
-      const answered = () => gateway.delivered() !== undefined;
-      expect(await comesTrue(answered, 300), "the handler answered inside the deadline").toBe(
-        false,
-      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(madeGoods(), "the handler answered inside the deadline").toBe(false);
 
       // The negative control: the handler does answer once the deadline is
       // behind it, so the silence above was not a handler that never answers.
       await vi.advanceTimersByTimeAsync(5_000);
-      expect(await comesTrue(answered, 5_000)).toBe(true);
+      expect(madeGoods()).toBe(true);
+      expect(await comesTrue(() => gateway.delivered() !== undefined, 5_000)).toBe(true);
       expect(gateway.delivered()).toEqual({ delivered: {} });
     } finally {
       vi.useRealTimers();
