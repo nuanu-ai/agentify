@@ -16,6 +16,7 @@ import type {
   Caller,
   Gateway,
   Integration,
+  PayoutTransaction,
   RecordedPayoutSplit,
   WalletChangeRefusal,
 } from "@agentify/gateway";
@@ -26,10 +27,12 @@ import {
   merchantDeparted,
   merchantOrderAnswer,
   merchantOrderList,
+  merchantPayout,
   NO_SUCH_ITEM,
   NO_SUCH_KEY,
   NO_SUCH_ORDER,
   type Refused,
+  SPLITS_PER_PAYOUT,
 } from "@agentify/gateway";
 import {
   API_ROUTES,
@@ -54,6 +57,7 @@ import {
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
+import { NOT_A_PAYOUT_WALLET } from "./payout-wallet.js";
 
 export type Answer<T> =
   | { readonly ok: true; readonly document: T }
@@ -80,6 +84,20 @@ export type Answer<T> =
  * closed the order.
  */
 export type RefundCause = "refused" | "deadline_passed" | "merchant_left" | "charge_confirmed_late";
+
+/**
+ * A merchant's payout splits on this network, for the payout wallet screen,
+ * and the one transaction that pays out every split that can hold their
+ * money. `payout` is null where no split can hold any, and says how many
+ * there are where one transaction cannot carry them all.
+ */
+export interface PayoutSplits {
+  /** The terms every split recorded on this network from now is made with. */
+  readonly rate: { readonly commissionAllocation: number; readonly totalAllocation: number };
+  readonly inForce: RecordedPayoutSplit | null;
+  readonly pending: RecordedPayoutSplit | null;
+  readonly payout: PayoutTransaction | { readonly tooMany: number } | null;
+}
 
 export interface GatewayClient {
   cards(): Promise<Answer<MerchantCardList>>;
@@ -120,6 +138,7 @@ export interface GatewayClient {
   seller(): Promise<Answer<{ readonly name: string | null; readonly site: string | null }>>;
   setSellerSite(site: string): Promise<Answer<string | null>>;
   payoutWallet(): Promise<Answer<PayoutWallet>>;
+  payoutSplits(): Promise<Answer<PayoutSplits>>;
   /** The only way a wallet is set; no HTTP route does it. */
   setPayoutWallet(address: string): Promise<Answer<PayoutWallet>>;
   /**
@@ -221,6 +240,12 @@ const UNAVAILABLE = 503;
 const BAD_REQUEST = 400;
 
 /**
+ * An address a merchant's share could never come back from, which the screen
+ * that asked for it words under its box.
+ */
+export const NOT_A_PAYOUT_WALLET_CODE = "not_a_payout_wallet";
+
+/**
  * Nothing was written in any case: the address paid now and any change already
  * waiting are as they were. A message that could not be confirmed as sent to
  * every account may still have reached some, and the words say so without
@@ -234,7 +259,8 @@ const walletRefusedAs = (why: WalletChangeRefusal): Answer<never> => {
     return {
       ok: false,
       status: BAD_REQUEST,
-      why: "this address cannot be a payout wallet: a share paid to it could never come back to the merchant, so nothing was changed and sales are paid where they were",
+      code: NOT_A_PAYOUT_WALLET_CODE,
+      why: NOT_A_PAYOUT_WALLET[why.is],
     };
   }
   switch (why) {
@@ -535,6 +561,27 @@ export const gatewayFor = (
       call("reading the payout wallet", async () =>
         answered(API_ROUTES.get_payout_wallet, await application.payoutWallet(merchantId)),
       ),
+    // Built from the splits as recorded, on the network's contracts; the rate
+    // is the one a wallet saved now is recorded with.
+    payoutSplits: () =>
+      call("reading the payout splits", async () => {
+        const network = application.runtime.config.payoutSplit;
+        const { inForce, pending, toPayOut } = await application.payoutSplitsOf(merchantId);
+        return done({
+          rate: {
+            commissionAllocation: network.commissionAllocation,
+            totalAllocation: network.totalAllocation,
+          },
+          inForce,
+          pending,
+          payout:
+            toPayOut.length === 0
+              ? null
+              : toPayOut.length > SPLITS_PER_PAYOUT
+                ? { tooMany: toPayOut.length }
+                : merchantPayout(network, toPayOut),
+        });
+      }),
     setPayoutWallet: (address) =>
       call("setting the payout wallet", async () => {
         const asked = hold(EvmAddressSchema, address);

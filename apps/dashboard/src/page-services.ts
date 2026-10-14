@@ -24,7 +24,13 @@ import {
   type Person,
 } from "./dashboard-entry.js";
 import { clearingLines, dashboardPathFor, type Gate, gateFor, startOf } from "./gate.js";
-import type { Acting, Answer, GatewayClient, Registrar } from "./gateway.js";
+import {
+  type Acting,
+  type Answer,
+  type GatewayClient,
+  NOT_A_PAYOUT_WALLET_CODE,
+  type Registrar,
+} from "./gateway.js";
 import { SESSION_DAYS } from "./identity.js";
 import { type IntegrationsView, integrationsView } from "./integrations-view.js";
 import { type KeysView, keysView, type NewKeyView, newKeyView } from "./keys.js";
@@ -442,7 +448,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
 
   /**
    * One read of everything the settings page says, made after a press's work,
-   * so the page shows what the press left. Any of the three failing fails the
+   * so the page shows what the press left. Any of the reads failing fails the
    * page: drawn without an answer, it would claim something about a field
    * nobody asked about. The approval is read only on live, the one place
    * publishing needs it.
@@ -453,15 +459,17 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     status?: number,
   ): Promise<Outcome<SettingsView>> => {
     const gateway = gatewayAs(person);
-    const [seller, wallet, approval] = await Promise.all([
+    const [seller, wallet, splits, approval] = await Promise.all([
       gateway.seller(),
       gateway.payoutWallet(),
+      gateway.payoutSplits(),
       config.surfaceMode === "live"
         ? gateway.liveApproval()
         : Promise.resolve({ ok: true as const, document: undefined }),
     ]);
     if (!seller.ok) return problemOf(seller);
     if (!wallet.ok) return problemOf(wallet);
+    if (!splits.ok) return problemOf(splits);
     if (!approval.ok) return problemOf(approval);
     return {
       kind: "view",
@@ -473,6 +481,8 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           sellerName: seller.document.name,
           sellerSite: seller.document.site,
           payoutWallet: wallet.document,
+          payoutSplits: splits.document,
+          addressPage: config.addressPage,
           ...(approval.document === undefined ? {} : { liveApproval: approval.document }),
         },
         press,
@@ -972,6 +982,9 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           );
         }
         const set = await gateway.setPayoutWallet(typed);
+        if (!set.ok && set.code === NOT_A_PAYOUT_WALLET_CODE) {
+          return await settingsDrawn(person, { kind: "wallet", problem: set.why, typed }, 400);
+        }
         if (!set.ok) return problemOf(set);
         // The address stays out of the line: not a secret, but this log records
         // who changed it, not what to.
