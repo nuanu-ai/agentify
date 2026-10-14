@@ -163,8 +163,13 @@ describe("the salt of a merchant's split", () => {
   });
 
   it("differs between the test chain and the live chain, and between two merchants", () => {
-    const salts = new Set(handEncoded.salts.map(({ salt }) => salt));
-    expect(salts.size).toBe(handEncoded.salts.length);
+    const merchant = "mch_0123456789abcdef0123456789abcdef";
+    const salts = new Set([
+      payoutSplitSalt("eip155:84532", merchant),
+      payoutSplitSalt("eip155:8453", merchant),
+      payoutSplitSalt("eip155:84532", "mch_ffffffffffffffffffffffffffffffff"),
+    ]);
+    expect(salts.size).toBe(3);
   });
 
   it("gives a split whose address changes with the chain id alone", () => {
