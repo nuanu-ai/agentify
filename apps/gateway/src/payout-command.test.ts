@@ -48,7 +48,7 @@ afterEach(async () => {
 
 const aDatabase = () => {
   const queue = new MemoryQueue();
-  const store = new MemoryStore(countedIds(), () => NOW, queue.envelopes());
+  const store = new MemoryStore(T1_TEST.network, countedIds(), () => NOW, queue.envelopes());
   return { store, queue };
 };
 
@@ -79,8 +79,6 @@ const aMerchantPaidAt = async (
   database: ReturnType<typeof aDatabase>,
   id: string,
   wallet: string,
-  table: PayoutSplitNetworks = T1,
-  network = "eip155:84532",
 ): Promise<string> => {
   await database.store.addMerchant({ id, name: id }, NOW);
   await setServiceName(database.store, id, `Shop ${id}`, NOW);
@@ -89,7 +87,7 @@ const aMerchantPaidAt = async (
     { address: null, pending: null },
     {
       address: wallet,
-      split: payoutSplitFor(payoutSplitNetworkOf(table, network), id, wallet),
+      split: payoutSplitFor(T1_TEST, id, wallet),
       pending: null,
     },
     NOW - 60_000,
@@ -237,7 +235,11 @@ describe("a payout the gateway would refuse to start with", () => {
     // A gateway pointed at the wrong chain would otherwise print nothing to
     // pay out, or another chain's splits as this one's.
     const database = aDatabase();
-    await aMerchantPaidAt(database, "mch_a", walletNumber(1), T1, "eip155:8453");
+    await database.store.addMerchant({ id: "mch_a", name: "mch_a" }, NOW);
+    await database.store.recordPayoutSplits(
+      [payoutSplitFor(payoutSplitNetworkOf(T1, "eip155:8453"), "mch_a", walletNumber(1))],
+      NOW,
+    );
     const gateway = aGatewayOver(database);
 
     const { code, lines } = await printedBy(gateway);
