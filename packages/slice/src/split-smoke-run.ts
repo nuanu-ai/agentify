@@ -354,6 +354,21 @@ const listed = (transfers: readonly UsdcTransfer[]): string =>
     : transfers.map((transfer) => `${transfer.from} → ${transfer.to} ${transfer.value}`).join(", ");
 
 /**
+ * What the chain or the gateway answers, or the run stopped at this step with
+ * whatever they threw instead.
+ */
+async function within<T>(step: string, asking: () => Promise<T>): Promise<T> {
+  try {
+    return await asking();
+  } catch (thrown) {
+    if (thrown instanceof SmokeStopped) {
+      throw thrown;
+    }
+    throw new SmokeStopped(step, thrown instanceof Error ? thrown.message : String(thrown));
+  }
+}
+
+/**
  * Runs the smoke: refuses unless the chain, the split and the keys are what
  * it needs, predicts every step, and in a dry run stops there. Otherwise it
  * writes the plan to the journal, then makes each step happen and holds what
@@ -382,13 +397,13 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
       }),
     );
 
-  const chainId = await world.chainId();
+  const chainId = await within("the chain", () => world.chainId());
   const whyNot = whyNotBaseSepolia(chainId);
   if (whyNot !== null) {
     throw new SmokeStopped("the chain", whyNot);
   }
 
-  const initial = await world.observe("latest");
+  const initial = await within("the chain", () => world.observe("latest"));
   if (initial.splitCode !== undefined) {
     throw new SmokeStopped(
       "the chain",
@@ -402,7 +417,7 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
       `the buyer ${run.buyer} holds ${funds} USDC units, and the run pays ${2n * run.price}`,
     );
   }
-  const ether = await world.payoutKeyBalance();
+  const ether = await within("the payout key", () => world.payoutKeyBalance());
   if (ether < run.gasCap) {
     throw new SmokeStopped(
       "the payout key",
@@ -410,8 +425,8 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
     );
   }
 
-  const instruction = await world.instruction();
-  const operator = await world.operatorPayout();
+  const instruction = await within("the plan", () => world.instruction());
+  const operator = await within("the plan", () => world.operatorPayout());
   for (const [what, transaction] of [
     ["the payout screen's transaction", instruction],
     ["the operator's payout", operator],
@@ -463,10 +478,12 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
   say(`journal: ${run.journal} holds the split's parameters and both transactions`);
 
   let spent = 0n;
+  let last = initial.ledger;
   for (const step of steps) {
     const stop = (why: string): never => {
       throw new SmokeStopped(step.name, why);
     };
+    const ask = <T>(asking: () => Promise<T>): Promise<T> => within(step.name, asking);
     if (!journalHolds(run.journal, split)) {
       stop(
         `the journal ${run.journal} no longer holds the split's parameters, so nothing more is sent`,
@@ -475,22 +492,23 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
 
     let hash: Hex;
     if (step.kind === "payment") {
-      hash = await world.pay();
+      hash = await ask(() => world.pay());
     } else {
       const planned = step.kind === "instruction" ? instruction : operator;
-      const transaction = step.kind === "instruction" ? await world.instruction() : operator;
+      const transaction =
+        step.kind === "instruction" ? await ask(() => world.instruction()) : operator;
       if (transaction.data !== planned.data || transaction.to !== planned.to) {
         stop("the payout screen now gives another transaction than the one the plan wrote down");
       }
-      const cost = await world.costOf(transaction);
+      const cost = await ask(() => world.costOf(transaction));
       const tooDear = whyNotWithinGasCap(spent, cost, run.gasCap);
       if (tooDear !== null) {
         stop(`nothing was sent: ${tooDear}`);
       }
-      hash = await world.send(transaction, cost);
+      hash = await ask(() => world.send(transaction, cost));
     }
 
-    const mined = await world.mined(hash);
+    const mined = await ask(() => world.mined(hash));
     if (step.kind !== "payment") {
       spent += mined.paid;
     }
@@ -534,14 +552,14 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
       );
     }
 
-    const before = await world.observe(mined.block - 1n);
+    const before = await ask(() => world.observe(mined.block - 1n));
     const moved = differences(step.before, before.ledger);
     if (moved.length > 0) {
       stop(
         `between the run's last read and block ${mined.block - 1n} the balances moved without the run: ${moved.join("; ")}`,
       );
     }
-    const after = await world.observe(mined.block);
+    const after = await ask(() => world.observe(mined.block));
     const wrong = differences(step.after, after.ledger);
     if (wrong.length > 0) {
       stop(`at block ${mined.block}, after ${hash}: ${wrong.join("; ")}`);
@@ -567,6 +585,7 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
       );
     }
 
+    last = after.ledger;
     record(run.journal, {
       stage: step.name,
       hash,
@@ -580,9 +599,8 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
     );
   }
 
-  const end = steps.at(-1)?.after ?? initial.ledger;
   const delta = (column: "held" | "credited", address: string): bigint =>
-    (end[column][address] ?? 0n) - (initial.ledger[column][address] ?? 0n);
+    (last[column][address] ?? 0n) - (initial.ledger[column][address] ?? 0n);
   say("accounting, in USDC units, from the first read to the last block:");
   for (const [role, address] of parties) {
     say(
