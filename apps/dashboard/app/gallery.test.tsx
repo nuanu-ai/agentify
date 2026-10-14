@@ -17,6 +17,7 @@ import { renderToString } from "react-dom/server";
 import { matchRoutes, type RouteObject } from "react-router";
 import { describe, expect, it } from "vitest";
 import config from "../react-router.config.js";
+import { PAGES_IN_FRONT_OF_THE_GATE } from "../src/testing/in-front-of-the-gate.js";
 import { gallery } from "./gallery.js";
 import routes from "./routes.js";
 
@@ -73,10 +74,7 @@ describe("the dashboard's gallery", () => {
   it("names who is signed in on a page behind the gate, and nobody on one in front of it", () => {
     const wrong = gallery.states.flatMap((state) => {
       const path = new URL(state.address, "https://agentify.ad").pathname;
-      const behind =
-        matchRoutes(TABLE, path.slice(config.basename.length))?.some(
-          ({ route }) => route.id === "routes/gate",
-        ) === true;
+      const behind = !PAGES_IN_FRONT_OF_THE_GATE.includes(path.slice(config.basename.length));
       const named = renderToString(state.draw()).includes('class="site-who"');
       return named === behind ? [] : [`${state.id} ${named ? "names" : "does not name"} anybody`];
     });
