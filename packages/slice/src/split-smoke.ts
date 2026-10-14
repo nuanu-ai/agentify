@@ -290,7 +290,7 @@ async function main(): Promise<void> {
     networks: [SMOKE_NETWORK],
     table: PAYOUT_SPLIT_NETWORKS,
     clientOf: () => client,
-    owners: null,
+    owners: {},
   });
   for (const verdict of verdicts) {
     say(`${verdict.passed ? "PASS" : "FAIL"} ${verdict.check}: ${verdict.saw}`);

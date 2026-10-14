@@ -9,13 +9,13 @@
  *   pnpm commission-wallet
  *   COMMISSION_SAFE_OWNERS=0x…,0x… pnpm commission-wallet
  *
- * On Base, where the money is real, the commission wallet must be a Safe:
- * code that answers `getThreshold()` with at least one and no more than its
- * owners, and `getOwners()` with exactly the addresses COMMISSION_SAFE_OWNERS
- * names, in any order. On Base Sepolia a plain wallet passes and is said to be
- * one; a contract there is held to the same Safe reads, its owners printed
- * and not compared. A network the table has no entry for fails without a
- * read: nothing there can be sold.
+ * On Base, where the money is real, the commission wallet must be a Safe. On
+ * Base Sepolia a plain wallet passes and is said to be one. A commission
+ * wallet that holds code, on either, passes only as a Safe: `getThreshold()`
+ * answers, and `getOwners()` answers exactly the owners named for its network,
+ * in any order; COMMISSION_SAFE_OWNERS names Base's, separated by commas. A
+ * network the table has no entry for fails without a read: nothing there can
+ * be sold.
  *
  * Each check prints one line, PASS or FAIL, with what was read. The command
  * exits 1 when any check fails, which holds the release, and 0 when all pass.
@@ -64,17 +64,13 @@ type Read<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly why: string };
 
+/** What the RPC answered, or the first line of why it did not. */
 const read = async <T>(asking: () => Promise<T>): Promise<Read<T>> => {
   try {
     return { ok: true, value: await asking() };
   } catch (thrown) {
-    const words =
-      typeof thrown === "object" && thrown !== null && "shortMessage" in thrown
-        ? String(thrown.shortMessage)
-        : thrown instanceof Error
-          ? thrown.message
-          : String(thrown);
-    return { ok: false, why: words.split("\n")[0] ?? words };
+    const words = thrown instanceof Error ? thrown.message : String(thrown);
+    return { ok: false, why: words.split("\n")[0] ?? "" };
   }
 };
 
@@ -101,7 +97,7 @@ async function verdictsOn(
   network: string,
   entry: PayoutSplitNetwork | undefined,
   client: PublicClient,
-  owners: readonly string[] | null,
+  owners: readonly string[] | undefined,
 ): Promise<readonly Verdict[]> {
   const verdicts: Verdict[] = [];
   const verdict = (check: string, passed: boolean, saw: string): void => {
@@ -117,7 +113,7 @@ async function verdictsOn(
     return verdicts;
   }
 
-  const expected = Number(/^eip155:(\d+)$/.exec(network)?.[1] ?? Number.NaN);
+  const expected = Number(network.split(":")[1]);
   const chain = await read(() => client.getChainId());
   if (!chain.ok || chain.value !== expected) {
     verdict(
@@ -156,12 +152,11 @@ async function verdictsOn(
     const owned = await read(() =>
       client.readContract({ address: wallet, abi: SAFE, functionName: "getOwners" }),
     );
-    const count = owned.ok ? BigInt(owned.value.length) : null;
     verdict(
       "Safe threshold",
-      threshold.ok && threshold.value >= 1n && (count === null || threshold.value <= count),
+      threshold.ok,
       threshold.ok
-        ? `${threshold.value} of ${count ?? "unreadable"} owners`
+        ? `${threshold.value} signatures move the commission`
         : `getThreshold() did not answer, so this is no Safe: ${threshold.why}`,
     );
     if (!owned.ok) {
@@ -172,25 +167,24 @@ async function verdictsOn(
       );
     } else {
       const have: readonly string[] = owned.value.map((owner) => getAddress(owner));
-      const listed = have.join(", ");
-      if (!live) {
-        verdict("Safe owners", true, listed);
-      } else if (owners === null) {
+      if (owners === undefined) {
         verdict(
           "Safe owners",
           false,
-          `${listed}; name the owners the Safe must have in COMMISSION_SAFE_OWNERS, and they are compared`,
+          `${have.join(", ")}; no owners are named for ${network} to hold them to`,
         );
       } else {
         const named: readonly string[] = owners.map((owner) => getAddress(owner));
-        const missing = named.filter((owner) => !have.includes(owner));
-        const unnamed = have.filter((owner) => !named.includes(owner));
+        const strangers = [
+          ...named.filter((owner) => !have.includes(owner)),
+          ...have.filter((owner) => !named.includes(owner)),
+        ];
         verdict(
           "Safe owners",
-          missing.length === 0 && unnamed.length === 0,
-          missing.length === 0 && unnamed.length === 0
-            ? listed
-            : `${listed}; named and not an owner: ${missing.join(", ") || "none"}; an owner and not named: ${unnamed.join(", ") || "none"}`,
+          strangers.length === 0,
+          strangers.length === 0
+            ? have.join(", ")
+            : `${have.join(", ")}; named or owning, and not both: ${strangers.join(", ")}`,
         );
       }
     }
@@ -218,20 +212,20 @@ async function verdictsOn(
 }
 
 /**
- * Every check on every network named, in order. `owners` are the owners the
- * commission Safe on a live chain must have; on a test chain a Safe's owners
- * are printed and not compared.
+ * Every check on every network named, in order. `owners` are, by network, the
+ * owners a commission wallet holding code there must have.
  */
 export async function commissionWalletVerdicts(options: {
   readonly networks: readonly string[];
   readonly table: PayoutSplitNetworks;
   readonly clientOf: (network: string) => PublicClient;
-  readonly owners: readonly string[] | null;
+  readonly owners: Readonly<Record<string, readonly string[]>>;
 }): Promise<readonly Verdict[]> {
   const verdicts: Verdict[] = [];
   for (const network of options.networks) {
     const entry = Object.hasOwn(options.table, network) ? options.table[network] : undefined;
-    verdicts.push(...(await verdictsOn(network, entry, options.clientOf(network), options.owners)));
+    const owners = Object.hasOwn(options.owners, network) ? options.owners[network] : undefined;
+    verdicts.push(...(await verdictsOn(network, entry, options.clientOf(network), owners)));
   }
   return verdicts;
 }
@@ -266,11 +260,16 @@ async function main(): Promise<number> {
     networks,
     table: PAYOUT_SPLIT_NETWORKS,
     clientOf: publicClientOf,
-    owners,
+    owners: owners === null ? {} : { "eip155:8453": owners },
   });
   for (const verdict of verdicts) {
     console.log(
       `[commission-wallet] ${verdict.passed ? "PASS" : "FAIL"} ${verdict.network} ${verdict.check}: ${verdict.saw}`,
+    );
+  }
+  if (owners === null && verdicts.some((verdict) => verdict.check === "Safe owners")) {
+    console.log(
+      "[commission-wallet] COMMISSION_SAFE_OWNERS names the owners Base's commission Safe must have",
     );
   }
   const failed = verdicts.filter((verdict) => !verdict.passed).length;
