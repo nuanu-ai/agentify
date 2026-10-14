@@ -21,7 +21,11 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { CONSENT_STORAGE_KEY } from "@agentify/analytics/browser";
+import {
+  CONSENT_POLICY_VERSION,
+  CONSENT_STORAGE_KEY,
+  createConsentSnapshot,
+} from "@agentify/analytics/browser";
 import { precompressedFrom } from "@agentify/ui/assets";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
 import { dragUp, launchChromium } from "@agentify/ui/chromium";
@@ -701,6 +705,17 @@ const VISITORS = [
   ["no answer", { status: 503, body: {} }],
 ] as const;
 
+/** The choice of a visitor who answered the consent banner on an earlier visit. */
+const SAVED_CONSENT = createConsentSnapshot({
+  policy: {
+    policyVersion: CONSENT_POLICY_VERSION,
+    requireOptInForAdsMeasurement: true,
+    requireOptInForProductAnalytics: true,
+  },
+  decisions: {},
+  source: "banner",
+});
+
 /**
  * A phone-sized browser on `path` whose question of who is visiting is held
  * until `release`, and answered then with `answer`; the scan's status is the
@@ -904,6 +919,66 @@ describe("the site's menu on a phone", () => {
       await context.close();
     },
   );
+
+  it("refits the room under a scan's top when the phone is turned while it is open", async () => {
+    const context = await browser.newContext({ viewport: { width: 360, height: 740 } });
+    const page = await context.newPage();
+    // A visitor who has answered the consent banner, whose panel runs to the
+    // foot of the window rather than stopping above the banner.
+    await page.addInitScript(([key, choice]) => localStorage.setItem(key, choice), [
+      CONSENT_STORAGE_KEY,
+      JSON.stringify(SAVED_CONSENT),
+    ] as const);
+    await page.route(`**/api/v1/scans/${SCAN_ID}/status`, (route) =>
+      route.fulfill({ json: RUNNING }),
+    );
+    // An operator, whose part of the panel is the tallest.
+    await page.route("**/api/v2/session", (route) =>
+      route.fulfill({
+        json: { status: "signed_in", email: "ops@agentify.example", operator: true },
+      }),
+    );
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    await page.getByText("7 of 18 checks reported").first().waitFor();
+    await page.locator('.site-visitor[aria-busy="false"]').first().waitFor({ state: "attached" });
+    const panel = page.locator(".site-menu-panel");
+    await page.locator(".site-menu > summary").click();
+    await panel.waitFor({ state: "visible" });
+
+    await page.setViewportSize({ width: 740, height: 360 });
+    await page.waitForTimeout(300);
+
+    expect(await panel.isVisible()).toBe(true);
+    const room = await panel.boundingBox();
+    if (room === null) throw new Error("the open panel has no box");
+    expect(room.y + room.height).toBeLessThanOrEqual(360);
+    await context.close();
+  });
+
+  it("left open while the window is too wide to show it, is closed when the window narrows again, so the page is not held", async () => {
+    const { page, complaints } = await visit("/methodology");
+    await page.setViewportSize({ width: 900, height: 700 });
+    const menu = page.locator("header .site-menu");
+    const scrolled = () => page.evaluate(() => window.scrollY);
+    await menu.locator("summary").click();
+    await menu.locator(".site-menu-panel").waitFor({ state: "visible" });
+
+    await page.setViewportSize({ width: 1000, height: 700 });
+    await page.mouse.move(500, 400);
+    await page.mouse.wheel(0, 300);
+    await page.waitForTimeout(300);
+    await page.setViewportSize({ width: 900, height: 700 });
+    await page.waitForTimeout(300);
+
+    expect(await menu.evaluate((details) => (details as HTMLDetailsElement).open)).toBe(false);
+    const before = await scrolled();
+    expect(before).toBeGreaterThan(0);
+    await page.mouse.wheel(0, 300);
+    await page.waitForTimeout(300);
+    expect(await scrolled()).toBeGreaterThan(before);
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
 
   it("closes once the focus leaves it, so what has the focus is not behind it", async () => {
     const { page, complaints } = await visit("/methodology");
