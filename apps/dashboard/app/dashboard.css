@@ -874,12 +874,15 @@ h2 {
  * The working area under the site header: the numbered sections in a sidebar
  * beside the workspace, and a bar at the top of the workspace with the
  * screen's title and the selling light. On a laptop the sections and the bar
- * stay in view under the site header, which is 68px tall there; they sit
- * under it, never over it. Only the sidebar's own words stay in view, at
- * their own height, so the foot of a long page pushes none of them under
- * the header.
+ * stay in view under the site header, 68px tall there with its hairline under
+ * it; they stop at the hairline, never over it or under it. Only the
+ * sidebar's own words stay in view, at their own height, so on a window
+ * taller than those words and the foot of the page together the foot pushes
+ * none of them under the header; on a shorter one it moves them up by what
+ * is missing.
  */
 .app-shell {
+  --under-header: calc(68px + var(--hairline));
   min-height: calc(100vh - 68px);
   display: grid;
   grid-template-columns: 252px minmax(0, 1fr);
@@ -892,7 +895,7 @@ h2 {
 
 .app-sidebar-inner {
   position: sticky;
-  top: 68px;
+  top: var(--under-header);
   z-index: 10;
   display: flex;
   flex-direction: column;
@@ -975,7 +978,7 @@ h2 {
 }
 .app-workspace .top {
   position: sticky;
-  top: 68px;
+  top: var(--under-header);
   z-index: 10;
   border-bottom: var(--hairline) solid var(--line);
   background: color-mix(in srgb, var(--bg) 90%, transparent);
