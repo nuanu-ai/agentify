@@ -141,6 +141,7 @@ describe("parameters the factory could never make into a split that pays out", (
     expect(refusal({ salt: `${S.salt}00` })).toMatch(/salt/);
     expect(refusal({ salt: `0x${"zz".repeat(32)}` })).toMatch(/salt/);
     expect(refusal({ salt: S.salt.slice(2) })).toMatch(/salt/);
+    expect(refusal({ salt: `00${S.salt}` })).toMatch(/salt/);
   });
 
   it("are refused where an allocation is not a whole number of parts, even where they add up", () => {
