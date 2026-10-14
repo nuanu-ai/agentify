@@ -322,7 +322,7 @@ describe("a split smoke's predictions", () => {
     [10_000n, 9_988n, 9n, 9_990n, 10n],
     [1_000_000n, 998_998n, 999n, 999_000n, 1_000n],
   ])(
-    "pays a fresh split's merchant at 0.1%%, for two payments of %i units, %i and then %i credited to Agentify, %i and %i, with four one-unit residues at the end",
+    "pays the merchant of a fresh split and credits Agentify a thousandth, for two payments of %i units each, with four one-unit residues at the end",
     (price, firstToMerchant, firstToAgentify, secondToMerchant, secondToAgentify) => {
       const initial = ledger([10n * price, 0n, 0n, 0n], [0n, 0n, 0n, 0n]);
 
@@ -368,6 +368,19 @@ describe("a split smoke's predictions", () => {
     expect(operator?.transfers.at(-1)).toStrictEqual(
       transfer(WAREHOUSE, COMMISSION, 5n + 19n - 1n),
     );
+  });
+
+  it("keeps a second unit credited to the split where a price's shares both round down, and distributes it with the payout after", () => {
+    const price = 12_500n;
+    const initial = ledger([10n * price, 0n, 0n, 0n], [0n, 0n, 0n, 0n]);
+
+    const [, first, , second, operator] = planRun(SPLIT, WAREHOUSE, BUYER, price, initial);
+
+    expect(first?.after.credited[SPLIT.address]).toBe(1n);
+    expect(second?.distributed).toStrictEqual([12_500n]);
+    expect(second?.after.credited[SPLIT.address]).toBe(2n);
+    expect(operator?.distributed).toStrictEqual([1n]);
+    expect(operator?.after.credited[SPLIT.address]).toBe(2n);
   });
 });
 
