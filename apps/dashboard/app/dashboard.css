@@ -44,34 +44,7 @@ textarea {
   flex-direction: column;
 }
 
-/*
- * The bar matches the scanner's: 68px, sticky, a translucent page colour with
- * the content blurred behind it and one hairline under it. The tabs are the
- * dashboard's own, with an inset rule under the current one.
- *
- * Every tab is always on screen. Beside the lockup, the selling light and the
- * address they need about 1,050px, so under 1,100 they take a row of their own on
- * every page, keeping the bar one height per width.
- */
-.top {
-  position: sticky;
-  z-index: 20;
-  top: 0;
-  border-bottom: var(--hairline) solid var(--line);
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(12px);
-}
-
-.top-inner {
-  min-height: 68px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 36px;
-}
-
-/* The tabs take the room between the lockup and the light, and wrap onto a
-   second line where even their own row is too narrow for them. */
+/* The sections: the one on screen is marked, and the rest lead to theirs. */
 .tabs {
   flex: 1;
   display: flex;
@@ -99,16 +72,6 @@ textarea {
   color: var(--fg);
   font-weight: 500;
   box-shadow: inset 0 -2px 0 var(--accent);
-}
-
-/* The title, the light and the address wrap onto a second row where one row
-   is too narrow for them. */
-@media (max-width: 1100px) {
-  .top-inner {
-    flex-wrap: wrap;
-    row-gap: 6px;
-    padding-top: 14px;
-  }
 }
 
 /*
@@ -591,11 +554,12 @@ td.control {
  * The pages outside the dashboard: sign in, check your mail, open the link,
  * choose a name, come back from a shop, and every error page. One card at the
  * scanner's measures (520px, the panel corner, the shared soft shadow, padding
- * that grows with the window). The lockup sits above the card, and each page has
- * its own `h1` at the hero step; inside the dashboard `.lede h1` is the calmer one.
+ * that grows with the window), in the room the site header leaves, and each
+ * page has its own `h1` at the hero step; inside the dashboard `.lede h1` is
+ * the calmer one.
  */
 .gate {
-  min-height: 100vh;
+  flex: 1;
   display: grid;
   align-content: center;
   justify-items: center;
@@ -665,66 +629,6 @@ p.problem {
   margin-top: 16px;
   color: var(--fail);
   font-size: 0.875rem;
-}
-
-/* Who is signed in, at the end of the bar: behind a rule, in the muted weight of
-   a label, so the address does not read as a tab. */
-.account {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px 16px;
-  margin-left: auto;
-  padding-left: 20px;
-  border-left: var(--hairline) solid var(--line);
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-
-.account form {
-  display: inline;
-}
-
-.account button {
-  border: 0;
-  padding: 0;
-  background: none;
-  color: var(--fg);
-  cursor: pointer;
-  font: inherit;
-  font-weight: 500;
-}
-
-.account button:hover,
-.account button:focus-visible {
-  color: var(--accent);
-}
-
-.account > a {
-  max-width: 24ch;
-  overflow: hidden;
-  color: inherit;
-  text-decoration: none;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.account > a:hover {
-  color: var(--fg);
-}
-
-/* On a phone the account wraps under the title and the light, and drops the rule
-   that set it apart on one row. */
-@media (max-width: 480px) {
-  .account {
-    padding-left: 0;
-    border-left: 0;
-  }
-
-  .account > a {
-    max-width: 18ch;
-  }
 }
 
 /* `td.quiet` above is a table cell and does not apply here. */
@@ -966,37 +870,43 @@ h2 {
   }
 }
 
-/* The numbered sections in a sidebar beside the workspace, and a bar at the top
-   of the workspace with the screen's title, the selling light and who is signed
-   in. */
+/*
+ * The working area under the site header: the numbered sections in a sidebar
+ * beside the workspace, and a bar at the top of the workspace with the
+ * screen's title and the selling light. On a laptop the sections and the bar
+ * stay in view under the site header, 68px tall there with its hairline under
+ * it; they stop at the hairline, never over it or under it. Only the
+ * sidebar's own words stay in view, at their own height, so on a window
+ * taller than those words and the foot of the page together the foot pushes
+ * none of them under the header; on a shorter one it moves them up by what
+ * is missing.
+ */
 .app-shell {
-  min-height: 100vh;
+  --under-header: calc(68px + var(--hairline));
+  min-height: calc(100vh - 68px);
   display: grid;
   grid-template-columns: 252px minmax(0, 1fr);
 }
 
 .app-sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
   border-right: var(--hairline) solid var(--line);
   background: var(--surface);
-  z-index: 30;
 }
 
-.app-sidebar-brand {
-  padding: 24px 22px 20px;
-  border-bottom: var(--hairline) solid var(--line);
+.app-sidebar-inner {
+  position: sticky;
+  top: var(--under-header);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
 }
 
-.app-sidebar-brand > span {
-  display: block;
-  margin: 10px 0 0;
+.app-sidebar-name {
+  padding: 24px 26px 0;
   color: var(--faint);
   font: 600 0.625rem / 1.2 var(--font-mono);
   letter-spacing: 0.09em;
+  text-transform: uppercase;
 }
 
 .app-sidebar .tabs {
@@ -1042,7 +952,7 @@ h2 {
 }
 
 .sidebar-help {
-  margin: auto 14px 12px;
+  margin: 4px 14px 12px;
   padding: 14px;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-card);
@@ -1068,8 +978,8 @@ h2 {
 }
 .app-workspace .top {
   position: sticky;
-  top: 0;
-  z-index: 20;
+  top: var(--under-header);
+  z-index: 10;
   border-bottom: var(--hairline) solid var(--line);
   background: color-mix(in srgb, var(--bg) 90%, transparent);
   backdrop-filter: blur(14px);
@@ -1079,9 +989,10 @@ h2 {
   min-height: 68px;
   padding: 0 clamp(22px, 4vw, 52px);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 6px 20px;
 }
 
 .app-content {
@@ -1109,43 +1020,18 @@ h2 {
   box-shadow: 0 18px 48px -40px rgba(26, 25, 23, 0.55);
 }
 
+/* On a phone and a tablet the sidebar gives way to the menu at the end of the
+   site header's row, and only that row stays in view; the title bar scrolls
+   with the page. */
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
   }
   .app-sidebar {
-    position: sticky;
-    height: auto;
-    border-right: 0;
-    border-bottom: var(--hairline) solid var(--line);
-  }
-  .app-sidebar-brand {
-    display: flex;
-    align-items: center;
-    padding: 12px 18px;
-  }
-  .app-sidebar-brand > span {
-    margin: 0 0 0 auto;
-  }
-  .app-sidebar .tabs {
-    display: flex;
-    overflow-x: auto;
-    padding: 8px 12px 10px;
-  }
-  .app-sidebar .tabs a,
-  .app-sidebar .tabs span {
-    flex: 0 0 auto;
-    min-height: 36px;
-    padding-inline: 10px;
-  }
-  .app-sidebar .tabs i {
-    display: none;
-  }
-  .sidebar-help {
     display: none;
   }
   .app-workspace .top {
-    top: 109px;
+    position: static;
   }
   .app-content {
     width: calc(100% - 36px);
@@ -1153,12 +1039,6 @@ h2 {
 }
 
 @media (max-width: 560px) {
-  .app-sidebar-brand > span {
-    display: none;
-  }
-  .app-workspace .top {
-    top: 103px;
-  }
   .app-workspace .top-inner {
     min-height: 56px;
     padding-inline: 18px;
@@ -1331,6 +1211,22 @@ h2 {
   }
 }
 
+/* The site header over the frame starts its lockup on the sidebar's line of
+   words and ends its doors on the content's right edge, as the foot under the
+   frame does, rather than centring them in the window. */
+.app-frame .site-header-inner {
+  --workspace: calc(100% - 252px);
+  --content: min(1180px, calc(var(--workspace) - clamp(44px, 8vw, 104px)));
+  width: auto;
+  margin-inline: 0;
+  padding-inline: 26px calc((var(--workspace) - var(--content)) / 2);
+}
+@media (max-width: 900px) {
+  .app-frame .site-header-inner {
+    padding-inline: 18px;
+  }
+}
+
 /* The foot under the frame lines its words up with the content beside the
    sidebar, as the bar over the page does, rather than with the window. */
 .app-shell + .foot .foot-inner {
@@ -1343,14 +1239,6 @@ h2 {
   .app-shell + .foot .foot-inner {
     width: calc(100% - 36px);
     margin-inline: auto;
-  }
-}
-
-/* On a phone and a tablet the sidebar is a bar of the height it needs, so a short
-   page is not a stretched empty bar. */
-@media (max-width: 900px) {
-  .app-shell {
-    grid-template-rows: auto 1fr;
   }
 }
 
@@ -1381,165 +1269,34 @@ h2 {
   font-size: 0.875rem;
 }
 
-/* The burger menu. Where there is no room for the sidebar, the top bar is one row
-   (the lockup and the burger), and the sections, documentation and account open
-   over the page from it. */
-.app-menu {
-  display: none;
+/* The menu at the end of the header's row holds, where there is no room for
+   the sidebar, the sections as the sidebar numbers them and the way to the
+   documentation, over who is signed in. */
+.site-menu .app-menu-sections i {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  border: var(--hairline) solid var(--line);
+  border-radius: 7px;
+  color: var(--faint);
+  font: normal 600 0.625rem var(--font-mono);
 }
-
-@media (max-width: 900px) {
-  .app-sidebar {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    height: 60px;
-  }
-  .app-sidebar-brand {
-    flex: 1 1 auto;
-    padding: 0 18px;
-    border-bottom: 0;
-  }
-  .app-sidebar > .tabs,
-  .app-sidebar > .sidebar-help {
-    display: none;
-  }
-  .app-workspace .top {
-    top: 60px;
-  }
-  .app-sidebar .app-menu {
-    display: block;
-    margin-right: 12px;
-  }
-  .app-sidebar .app-menu > summary {
-    width: 44px;
-    height: 44px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    border: var(--hairline) solid var(--line);
-    border-radius: 10px;
-    background: var(--surface);
-    color: var(--fg);
-    cursor: pointer;
-    list-style: none;
-  }
-  .app-sidebar .app-menu > summary::-webkit-details-marker {
-    display: none;
-  }
-  .app-sidebar .app-menu > summary span {
-    width: 18px;
-    height: 2px;
-    border-radius: 1px;
-    background: currentColor;
-    transition:
-      transform 0.2s ease,
-      opacity 0.2s ease;
-  }
-  .app-sidebar .app-menu[open] > summary span:nth-child(1) {
-    transform: translateY(6px) rotate(45deg);
-  }
-  .app-sidebar .app-menu[open] > summary span:nth-child(2) {
-    opacity: 0;
-  }
-  .app-sidebar .app-menu[open] > summary span:nth-child(3) {
-    transform: translateY(-6px) rotate(-45deg);
-  }
-  .app-sidebar .app-menu-panel {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    left: 0;
-    max-height: calc(100dvh - 60px);
-    overflow-y: auto;
-    padding: 10px 14px 16px;
-    border-bottom: var(--hairline) solid var(--line);
-    background: var(--surface);
-    box-shadow: 0 24px 40px -32px rgb(26 25 23 / 45%);
-  }
-  .app-sidebar .app-menu-sections {
-    display: grid;
-    gap: 4px;
-  }
-  .app-sidebar .app-menu-sections a,
-  .app-sidebar .app-menu-sections span {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    min-height: 44px;
-    padding: 0 12px;
-    border-radius: 10px;
-    color: var(--fg-2);
-    font-size: 0.9375rem;
-    font-weight: 550;
-    text-decoration: none;
-  }
-  .app-sidebar .app-menu-sections i {
-    width: 23px;
-    height: 23px;
-    display: grid;
-    place-items: center;
-    border: var(--hairline) solid var(--line);
-    border-radius: 7px;
-    color: var(--faint);
-    font: normal 600 0.625rem var(--font-mono);
-  }
-  .app-sidebar .app-menu-sections [aria-current="page"] {
-    color: var(--accent);
-    background: var(--accent-soft);
-  }
-  .app-sidebar .app-menu-sections [aria-current="page"] i {
-    color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
-    background: var(--surface);
-  }
-  .app-sidebar .app-menu-docs {
-    display: flex;
-    align-items: center;
-    min-height: 44px;
-    margin-top: 6px;
-    padding: 0 12px;
-    font-size: 0.875rem;
-    font-weight: 650;
-  }
-  body:has(.app-menu[open]) {
-    overflow: hidden;
-  }
+.site-menu .app-menu-sections [aria-current="page"] {
+  color: var(--accent);
+  background: var(--accent-soft);
 }
-
-/* --- a page on its way -------------------------------------------------- */
-
-/* Fixed to the window, so it covers the top edge rather than pushing the page
-   down; a stripe runs along it while it is shown, and stands still for a
-   reader who asked for less motion. */
-.on-its-way {
-  position: fixed;
-  inset: 0 0 auto;
-  z-index: 100;
-  height: 3px;
-  background:
-    linear-gradient(90deg, transparent, var(--accent), transparent) 0 0 / 40% 100% no-repeat;
-  animation: on-its-way 1.1s ease-in-out infinite;
+.site-menu .app-menu-sections [aria-current="page"] i {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
+  background: var(--surface);
 }
-
-.on-its-way[hidden] {
-  display: none;
-}
-
-@keyframes on-its-way {
-  from {
-    background-position: -40% 0;
-  }
-  to {
-    background-position: 140% 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .on-its-way {
-    animation: none;
-    background: var(--accent);
-  }
+.site-menu .app-menu-docs {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0 12px;
+  font-size: 0.875rem;
+  font-weight: 650;
 }

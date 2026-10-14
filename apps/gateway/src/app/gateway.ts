@@ -90,7 +90,7 @@ import {
   setSellerSite,
   setServiceName,
 } from "./merchants.js";
-import { OrderRunner, orderDocumentOf, SWEEP_EFFECTS } from "./runner.js";
+import { OrderRunner, SWEEP_EFFECTS } from "./runner.js";
 import {
   cardAsHeld,
   missingFrom,
@@ -118,7 +118,7 @@ const KEY_USE_WRITTEN_EVERY_MS = 5 * 60_000;
  * than a setting: a knob here could turn the guard off on the field money is
  * sent to.
  */
-export const WALLET_CHANGE_WAITS_MS = 48 * 60 * 60 * 1_000;
+const WALLET_CHANGE_WAITS_MS = 48 * 60 * 60 * 1_000;
 
 /**
  * How long the gateway waits for the dashboard to hand every message of an
@@ -155,7 +155,7 @@ export type Caller =
   | { readonly kind: "signed_in"; readonly email: string };
 
 /** The queue's name for the daily sweep of claims on payments. */
-export const SWEEP_CLAIMS = "agentify_forget_old_claims";
+const SWEEP_CLAIMS = "agentify_forget_old_claims";
 
 /**
  * The catalog as it stands after the selling switch, or a refusal. A merchant
@@ -2415,5 +2415,3 @@ function findingsOf(
     message: issue.message,
   }));
 }
-
-export { orderDocumentOf };

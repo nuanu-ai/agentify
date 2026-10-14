@@ -79,7 +79,7 @@ export function PublicResultCard({
   );
 }
 
-export function formatLevel(level: DiagnosticLevel) {
+function formatLevel(level: DiagnosticLevel) {
   return (
     {
       invisible: "Invisible",

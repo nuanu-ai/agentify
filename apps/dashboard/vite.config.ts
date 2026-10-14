@@ -17,6 +17,9 @@ export default defineConfig({
   plugins: [reactRouter()],
   build: {
     assetsInlineLimit: 0,
+    // Kept for the speed budget, which reads from it which chunk a page can
+    // load later; nothing serves it.
+    manifest: true,
     rollupOptions: {
       output: {
         manualChunks(id) {

@@ -50,8 +50,7 @@ import { decodePaymentResponseHeader, wrapFetchWithPayment } from "@x402/fetch";
 import { privateKeyToAccount } from "viem/accounts";
 
 /** Where the public discovery catalog is read. No key, no cost. */
-export const DISCOVERY_ENDPOINT =
-  "https://api.cdp.coinbase.com/platform/v2/x402/discovery/resources";
+const DISCOVERY_ENDPOINT = "https://api.cdp.coinbase.com/platform/v2/x402/discovery/resources";
 
 /**
  * How many records one page of the catalog is asked for.
@@ -68,8 +67,8 @@ export const DISCOVERY_PAGE_SIZE = 1000;
 const MOST_PAGES = 200;
 
 /** The default ceiling on one purchase, and on everything a run may spend. */
-export const DEFAULT_MAX_USD = "0.05";
-export const DEFAULT_TOTAL_USD = "0.50";
+const DEFAULT_MAX_USD = "0.05";
+const DEFAULT_TOTAL_USD = "0.50";
 
 /**
  * How long the catalog is watched, and how often. A resource has been seen to
@@ -78,7 +77,7 @@ export const DEFAULT_TOTAL_USD = "0.50";
  * indefinitely would turn "not listed yet" into a process nobody ever gets an
  * answer out of.
  */
-export const DEFAULT_WAIT_MINUTES = 30;
+const DEFAULT_WAIT_MINUTES = 30;
 const WALK_EVERY_MS = 120_000;
 
 /** What a private key looks like, which is the one thing never taken from argv. */
@@ -127,7 +126,7 @@ export interface Challenge {
  * reached its facilitator. That is a sentence about somebody else's system,
  * asserted on no evidence.
  */
-export type FacilitatorWord =
+type FacilitatorWord =
   | { readonly heard: "verdict"; readonly error: string }
   | { readonly heard: "no reason" }
   | { readonly heard: "nothing" };
@@ -167,7 +166,7 @@ export type PurchaseOutcome =
   | { readonly kind: "unreachable"; readonly why: string };
 
 /** One page of the discovery catalog, read for the two things a walk needs. */
-export interface DiscoveryPage {
+interface DiscoveryPage {
   readonly total: number;
   readonly resources: readonly string[];
 }
@@ -211,7 +210,7 @@ export type Outside = (settings: Settings) => Reach;
  * `unresolved` is the one that has to exist: a call that never landed, after
  * which nobody can say whether the buyer was charged.
  */
-export type Verdict =
+type Verdict =
   | { readonly said: "listed"; readonly resource: string; readonly afterMs: number }
   | {
       readonly said: "settled";

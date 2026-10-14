@@ -1,4 +1,4 @@
-export type LogLevel = "debug" | "info" | "warn" | "error";
+type LogLevel = "debug" | "info" | "warn" | "error";
 
 export type LogSink = (line: string, level: LogLevel) => void;
 
@@ -159,7 +159,6 @@ const routePatterns: readonly [RegExp, string][] = [
   [/^\/api\/v1\/scans\/[^/]+\/status$/, "api_v1_scan_status"],
   [/^\/api\/v1\/scans\/[^/]+\/share-preview$/, "api_v1_scan_share_preview"],
   [/^\/api\/v1\/scans\/[^/]+\/share$/, "api_v1_scan_share"],
-  [/^\/api\/v1\/scans\/[^/]+\/registrations$/, "api_v1_scan_registration_legacy"],
   [/^\/api\/v1\/scans\/[^/]+\/browser-observation$/, "api_v1_browser_observation"],
   [/^\/api\/v1\/scans\/[^/]+\/remediation-prompt(?:\/download)?$/, "api_v1_scan_remediation"],
   [/^\/api\/v1\/reports\/[^/]+$/, "api_v1_report"],
@@ -173,7 +172,7 @@ const routePatterns: readonly [RegExp, string][] = [
   [/^\/api\/v1\/webhooks\/stripe$/, "api_v1_stripe_webhook"],
   [/^\/api\/v2\/session$/, "api_v2_session"],
   [/^\/api\/v2\/scans\/[^/]+\/(registrations|contact-access)$/, "api_v2_scan_contact"],
-  [/^\/_next\//, "asset_next"],
+  [/^\/assets\//, "asset"],
 ];
 
 export const classifyHttpRoute = (pathname: string): string =>

@@ -383,7 +383,7 @@ function emptyIsAbsent(rule: z.ZodType<string, string>) {
     .pipe(z.union([z.undefined(), rule]));
 }
 
-export interface DeadlineConfig {
+interface DeadlineConfig {
   readonly quoteResponseMs: number;
   readonly quoteTtlMs: number;
   /** The wait for the charge on a synchronous order, after its goods. */
@@ -399,14 +399,14 @@ export interface DeadlineConfig {
   readonly handlerAnswerMs: number;
 }
 
-export interface RedeliveryConfig {
+interface RedeliveryConfig {
   readonly baseDelayMs: number;
   readonly factor: number;
   readonly maxDelayMs: number;
   readonly maxAttempts: number;
 }
 
-export interface WorkerConfig {
+interface WorkerConfig {
   readonly pollWaitMs: number;
 }
 

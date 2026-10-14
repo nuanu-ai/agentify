@@ -37,14 +37,30 @@ describe("BrowserObservations", () => {
   it("keeps browser observations outside the canonical score", () => {
     const markup = renderToStaticMarkup(
       <BrowserObservations
-        host="example.com"
+        fixPrompts={{ accessibility_structure: "Name the unnamed controls." }}
         initialData={observation()}
-        remediationPromptEnabled
         scanId="scan-1"
         surface="report"
       />,
     );
     expect(markup).not.toContain("/100");
+  });
+
+  it("offers the report's fix for an actionable finding only where it was handed one", () => {
+    const withPrompt = renderToStaticMarkup(
+      <BrowserObservations
+        fixPrompts={{ accessibility_structure: "Name the unnamed controls." }}
+        initialData={observation()}
+        scanId="scan-1"
+        surface="report"
+      />,
+    );
+    const without = renderToStaticMarkup(
+      <BrowserObservations initialData={observation()} scanId="scan-1" surface="report" />,
+    );
+
+    expect(withPrompt).toContain("Copy this fix");
+    expect(without).not.toContain("Copy this fix");
   });
 
   it("announces queued work without changing the canonical score", () => {

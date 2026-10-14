@@ -1,26 +1,25 @@
-"use client";
-
-import { canonicalFindingHeadline, canonicalSummaryCopy } from "@agentify/remediation";
-import {
-  CHECK_DEFINITIONS,
-  type DiagnosticLevel,
-  type ScanStatusResponse,
-  type Segment,
-  scanStatusResponseSchema,
-} from "@agentify/scanner-contracts";
-import Link from "next/link";
-import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
-import { robotsHeadline, unexplainedUnavailable } from "../lib/robots-notice";
+import type { ScanStatusResponse, Segment } from "@agentify/scanner-contracts";
+import { type CSSProperties, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { scanStatusIn } from "../lib/api-answers";
+import type { ScanFixture } from "../lib/scan-fixtures";
 import { Brand } from "./brand";
-import { BrowserObservations } from "./browser-observations";
-import { CopyRemediationPrompt } from "./copy-remediation-prompt";
+import { lazyPart, useHere } from "./lazy-part";
 import { PrivacyChoicesButton } from "./privacy-choices-button";
-import { PublicShareActions } from "./public-share-actions";
-import { RegistrationForm } from "./registration-form";
-import { RobotsNotice } from "./robots-notice";
 import styles from "./scan-experience.module.css";
+import { ScanFailed } from "./scan-failed";
 import { SiteDoors } from "./site-chrome";
+import { SiteLink } from "./site-link";
 import { StatusBadge } from "./status-badge";
+
+// A scan's result, with the share, the prompt and the form for the full
+// report, and the browser's observations beside it are not part of the
+// page's first load: they are fetched while the scan runs, so the result
+// follows its progress at once. Why a scan ended without one is small, and
+// is drawn as soon as the status says so.
+const ScanTeaser = lazyPart(() => import("./scan-teaser").then((module) => module.ScanTeaser));
+const BrowserObservations = lazyPart(() =>
+  import("./browser-observations").then((module) => module.BrowserObservations),
+);
 
 const CHECK_LABELS = {
   robots: "robots.txt",
@@ -43,15 +42,15 @@ const CHECK_LABELS = {
   hreflang_locales: "Language alternatives",
 } as const;
 
-type FixtureName =
-  | "running"
-  | "partial"
-  | "failed"
-  | "blocked"
-  | "teaser"
-  | "robots"
-  | "robots-partial";
+/** The token that reads a scan, kept for the tab's life under the scan's own key. */
+const tokenKey = (scanId: string) => `agentify:scan-token:${scanId}`;
 
+/**
+ * A private scan, read by the browser from the API with the token the scan's
+ * link carried in its fragment: queued, running, ended without a result, or
+ * its teaser. A fixture, given outside production, is drawn instead and
+ * nothing is asked.
+ */
 export function ScanExperience({
   browserObservationsEnabled,
   fixture,
@@ -62,23 +61,23 @@ export function ScanExperience({
   segment,
 }: Readonly<{
   browserObservationsEnabled: boolean;
-  fixture?: string;
+  fixture?: ScanFixture | null;
   publicShareEnabled: boolean;
   remediationPromptEnabled: boolean;
   registrationEnabled: boolean;
   scanId: string;
   segment: Segment;
 }>) {
-  const fixtureName = parseFixtureName(fixture);
-  const [data, setData] = useState<ScanStatusResponse | null>(() =>
-    fixtureName ? createDevFixture(fixtureName) : null,
-  );
+  const fixtureName = fixture?.name;
+  const [data, setData] = useState<ScanStatusResponse | null>(fixture?.status ?? null);
   const [accessState, setAccessState] = useState<"loading" | "ready" | "missing" | "invalid">(
     fixtureName ? "ready" : "loading",
   );
   const [requestError, setRequestError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const terminal = data ? ["completed", "partial", "failed"].includes(data.status) : false;
+  const underway = data !== null && !terminal;
+  const [watchedItRun, setWatchedItRun] = useState(false);
 
   useEffect(() => {
     if (terminal || fixtureName) return;
@@ -92,7 +91,7 @@ export function ScanExperience({
 
   const poll = useCallback(async () => {
     if (fixtureName) return;
-    const token = getStoredToken(scanId);
+    const token = sessionStorage.getItem(tokenKey(scanId));
     if (!token) {
       setAccessState("missing");
       return;
@@ -107,13 +106,12 @@ export function ScanExperience({
         setAccessState("invalid");
         return;
       }
-      const payload: unknown = await response.json();
-      const parsed = scanStatusResponseSchema.safeParse(payload);
-      if (!response.ok || !parsed.success) {
+      const status = scanStatusIn(await response.json());
+      if (!response.ok || status === null) {
         setRequestError("The scanner returned an invalid or unavailable status response.");
         return;
       }
-      setData(parsed.data);
+      setData(status);
       setRequestError(null);
     } catch {
       setRequestError("Live status is temporarily unreachable. We will keep trying.");
@@ -144,7 +142,21 @@ export function ScanExperience({
     );
   }, [accessState, data?.teaser, fixtureName, scanId]);
 
+  useEffect(() => {
+    if (!underway) return;
+    setWatchedItRun(true);
+    ScanTeaser.preload();
+    if (browserObservationsEnabled) BrowserObservations.preload();
+  }, [browserObservationsEnabled, underway]);
+
   const phases = useMemo(() => buildPhases(data, segment), [data, segment]);
+  const finished = data !== null && (data.status === "completed" || data.status === "partial");
+  // A scan watched running keeps the list it ran with until its result can be
+  // drawn, what was open in it included; one opened after it ended shows the
+  // finished list while the result's script is on its way.
+  const scored = finished && Boolean(data.teaser);
+  const resultHere = useHere(ScanTeaser, scored && watchedItRun);
+  const holding = scored && watchedItRun && !resultHere;
 
   return (
     <main className={styles.page}>
@@ -174,28 +186,31 @@ export function ScanExperience({
           <AccessError invalid={accessState === "invalid"} />
         ) : null}
         {accessState === "ready" && !data ? <LoadingState /> : null}
-        {data && !terminal ? (
+        {data && (!terminal || holding) ? (
           <ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />
         ) : null}
         {data?.status === "failed" ? (
-          <FailedState
+          <ScanFailed
             blocked={data.blocked === true}
             checks={data.checks}
             onRetry={() => window.location.assign("/")}
           />
         ) : null}
-        {data && (data.status === "completed" || data.status === "partial") ? (
-          data.teaser ? (
-            <TeaserState
+        {finished && !data.teaser ? (
+          <ScanFailed blocked={false} checks={data.checks} onRetry={() => void poll()} />
+        ) : null}
+        {scored && !holding ? (
+          <Suspense
+            fallback={<ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />}
+          >
+            <ScanTeaser
               data={data}
               publicShareEnabled={publicShareEnabled}
               remediationPromptEnabled={remediationPromptEnabled}
               registrationEnabled={registrationEnabled}
               scanId={scanId}
             />
-          ) : (
-            <FailedState blocked={false} checks={data.checks} onRetry={() => void poll()} />
-          )
+          </Suspense>
         ) : null}
 
         {requestError ? (
@@ -204,17 +219,17 @@ export function ScanExperience({
           </div>
         ) : null}
       </section>
-      {browserObservationsEnabled &&
-      data?.teaser &&
-      (data.status === "completed" || data.status === "partial") ? (
+      {browserObservationsEnabled && finished && data.teaser ? (
         <div className={styles.browserWrap}>
-          <BrowserObservations scanId={scanId} surface="scan" />
+          <Suspense fallback={null}>
+            <BrowserObservations scanId={scanId} surface="scan" />
+          </Suspense>
         </div>
       ) : null}
       <nav aria-label="Scan help" className={styles.helpLinks}>
-        <Link href="/scanner">Scanner identity</Link>
-        <Link href="/methodology">Methodology</Link>
-        <Link href="/privacy">Privacy</Link>
+        <SiteLink to="/scanner">Scanner identity</SiteLink>
+        <SiteLink to="/methodology">Methodology</SiteLink>
+        <SiteLink to="/privacy">Privacy</SiteLink>
         <PrivacyChoicesButton className={styles.helpAction} />
       </nav>
     </main>
@@ -246,6 +261,9 @@ function buildPhases(data: ScanStatusResponse | null, segment: Segment): readonl
     }));
   if (data.status === "accepted" || data.status === "queued") {
     return labels.map((label) => ({ label, status: "pending" }));
+  }
+  if (data.status === "completed" || data.status === "partial") {
+    return labels.map((label) => ({ label, status: "done" }));
   }
 
   const terminalChecks = data.checks.filter((check) =>
@@ -327,210 +345,6 @@ function ProgressState({
   );
 }
 
-function TeaserState({
-  data,
-  publicShareEnabled,
-  remediationPromptEnabled,
-  registrationEnabled,
-  scanId,
-}: Readonly<{
-  data: ScanStatusResponse;
-  publicShareEnabled: boolean;
-  remediationPromptEnabled: boolean;
-  registrationEnabled: boolean;
-  scanId: string;
-}>) {
-  const teaser = data.teaser;
-  if (!teaser) return null;
-  const provisional = teaser.coverage < 0.7 || teaser.level === "incomplete";
-  const shareShown = publicShareEnabled && teaser.score !== null;
-  const promptShown =
-    remediationPromptEnabled && registrationEnabled && teaser.top_findings.length > 0;
-
-  return (
-    <div className={styles.teaser}>
-      <RobotsNotice checks={data.checks} className={styles.partialNotice} />
-      {unexplainedUnavailable(data.checks).length ? (
-        <div className={styles.partialNotice} data-unavailable-notice>
-          Some checks were unavailable. They reduce coverage and are not treated as confirmed
-          failures.
-        </div>
-      ) : null}
-      <div className={styles.scoreLine}>
-        <div>
-          <span className="eyebrow">
-            {provisional ? "Provisional diagnostic" : "Diagnostic level"}
-          </span>
-          <h1>{formatLevel(teaser.level)}</h1>
-        </div>
-        {teaser.score === null ? null : (
-          <div className={styles.score}>
-            {teaser.score}
-            <span>/100</span>
-          </div>
-        )}
-      </div>
-      {teaser.score === null ? null : <ScoreScale score={teaser.score} />}
-      <div className={styles.coverageLine}>
-        <span>Diagnostic level, not a certification</span>
-        <span>Coverage {Math.round(teaser.coverage * 100)}%</span>
-      </div>
-      {shareShown || promptShown ? (
-        <div className={styles.teaserActions}>
-          <div className={styles.teaserActionRows}>
-            <PublicShareActions
-              enabled={publicShareEnabled}
-              preview={{
-                hostLabel: null,
-                level: teaser.level,
-                score: teaser.score,
-              }}
-              scanId={scanId}
-              tokenStorageKey={`agentify:scan-token:${scanId}`}
-            />
-            {promptShown ? (
-              <CopyRemediationPrompt
-                allowDownload
-                contactGateScanId={scanId}
-                downloadUrl={`/api/v1/scans/${encodeURIComponent(scanId)}/remediation-prompt/download`}
-                label="Copy AI fix prompt"
-                promptUrl={`/api/v1/scans/${encodeURIComponent(scanId)}/remediation-prompt?scope=teaser`}
-                secondary
-              />
-            ) : null}
-          </div>
-          {shareShown ? (
-            <p className={styles.teaserCaption}>
-              The public link shows only the domain, level, score, and scan date.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      <div className={styles.findings}>
-        <h2 className="eyebrow">Top findings</h2>
-        {teaser.top_findings.map((finding, index) => (
-          <Finding code={finding} index={index} key={finding} status="attention" />
-        ))}
-        {teaser.positive ? (
-          <Finding code={teaser.positive} index={teaser.top_findings.length} status="pass" />
-        ) : null}
-      </div>
-      <div className={styles.reportCta} id="registration">
-        <div>
-          <strong>
-            {teaser.hidden_count > 0
-              ? `${teaser.hidden_count} more checks in the full report`
-              : "Get the complete diagnostic context"}
-          </strong>
-          <span>
-            {registrationEnabled
-              ? "The full report requires your email and one secure email confirmation. A phone number is optional."
-              : "Email verification is not enabled in this deployment yet."}
-          </span>
-        </div>
-        {registrationEnabled ? <RegistrationForm scanId={scanId} /> : null}
-      </div>
-    </div>
-  );
-}
-
-function Finding({
-  code,
-  index,
-  status,
-}: Readonly<{
-  code: string;
-  index: number;
-  status: "attention" | "pass";
-}>) {
-  const summary = canonicalSummaryCopy(code);
-  if (status === "pass") {
-    return (
-      <div className={`${styles.finding} ${styles.pass}`} style={{ "--i": index } as CSSProperties}>
-        <StatusBadge status="pass" />
-        <span>{summary}</span>
-      </div>
-    );
-  }
-
-  return (
-    <details
-      className={`${styles.finding} ${styles.attention}`}
-      open={index === 0}
-      style={{ "--i": index } as CSSProperties}
-    >
-      <summary className={styles.findingSummary}>
-        <span className={styles.attentionBadge}>
-          <span aria-hidden="true" />
-          needs attention
-        </span>
-        <strong className={styles.findingHeadline}>{canonicalFindingHeadline(code)}</strong>
-        <span aria-hidden="true" className={styles.findingChevron}>
-          +
-        </span>
-      </summary>
-      <p className={styles.findingDetail}>{summary}</p>
-    </details>
-  );
-}
-
-function ScoreScale({ score }: Readonly<{ score: number }>) {
-  return (
-    <div
-      aria-label={`Diagnostic score ${score} out of 100`}
-      aria-valuemax={100}
-      aria-valuemin={0}
-      aria-valuenow={score}
-      className={styles.scale}
-      role="meter"
-    >
-      <div className={styles.scaleFill} style={{ width: `${score}%` }} />
-      <i style={{ left: "25%" }} />
-      <i style={{ left: "50%" }} />
-      <i style={{ left: "70%" }} />
-    </div>
-  );
-}
-
-function FailedState({
-  blocked,
-  checks,
-  onRetry,
-}: Readonly<{
-  blocked: boolean;
-  checks: ScanStatusResponse["checks"];
-  onRetry: () => void;
-}>) {
-  const headline = robotsHeadline(checks);
-  return (
-    <div className={styles.failed}>
-      <h1
-        data-access-blocked={!headline && blocked ? "" : undefined}
-        data-robots-headline={headline ?? undefined}
-      >
-        {headline === "disallowed"
-          ? "Your robots.txt kept the scanner out"
-          : headline === "unassessed"
-            ? "The scanner could not assess your robots.txt"
-            : blocked
-              ? "The site blocked our reader"
-              : "No reliable diagnostic was produced"}
-      </h1>
-      <RobotsNotice checks={checks} />
-      {headline ? null : (
-        <p>
-          {blocked
-            ? "The site answered the scanner's request for its home page with a bot challenge or a refusal. What could be read around it is what the site shows a reader it turns away, so no score is given."
-            : "Coverage stayed below the minimum for an honest result. This can happen after a timeout, access block, or scanner failure."}
-        </p>
-      )}
-      <button className="button button-primary" onClick={onRetry} type="button">
-        Try again
-      </button>
-    </div>
-  );
-}
-
 function AccessError({ invalid }: Readonly<{ invalid: boolean }>) {
   return (
     <div className={styles.failed}>
@@ -538,9 +352,9 @@ function AccessError({ invalid }: Readonly<{ invalid: boolean }>) {
         {invalid ? "This scan link is no longer valid" : "Open the original private scan link"}
       </h1>
       <p>Scan progress is private.</p>
-      <Link className="button button-primary" href="/">
+      <SiteLink className="button button-primary" to="/">
         Start a new scan
-      </Link>
+      </SiteLink>
     </div>
   );
 }
@@ -589,121 +403,15 @@ function captureFragmentToken(scanId: string) {
   const fragment = new URLSearchParams(window.location.hash.slice(1));
   const token = fragment.get("access_token");
   if (!token) return;
-  sessionStorage.setItem(`agentify:scan-token:${scanId}`, token);
-  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-}
-
-function getStoredToken(scanId: string) {
-  return sessionStorage.getItem(`agentify:scan-token:${scanId}`);
-}
-
-function parseFixtureName(value?: string): FixtureName | undefined {
-  if (process.env.NODE_ENV === "production") return undefined;
-  return value &&
-    ["running", "partial", "failed", "blocked", "teaser", "robots", "robots-partial"].includes(
-      value,
-    )
-    ? (value as FixtureName)
-    : undefined;
-}
-
-// The checks robots.txt rules on: every check but the three that read
-// robots.txt itself and the platform fingerprint.
-const ROBOTS_CHECK_IDS = [4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18];
-const WELL_KNOWN_CHECK_IDS = [9, 10, 17];
-
-function createDevFixture(name: FixtureName): ScanStatusResponse {
-  const now = new Date().toISOString();
-  if (name === "robots") {
-    return {
-      status: "failed",
-      progress: { completed: 18, total: 18 },
-      checks: CHECK_DEFINITIONS.map((check) => {
-        const robots = ROBOTS_CHECK_IDS.includes(check.id);
-        return {
-          id: check.id,
-          label_code: check.labelCode,
-          status: robots ? ("unavailable" as const) : ("pass" as const),
-          robots: robots ? ("disallowed" as const) : null,
-        };
-      }),
-      updated_at: now,
-      target_host: "example.com",
-    };
-  }
-  if (name === "failed" || name === "blocked") {
-    return {
-      status: "failed",
-      progress: { completed: 4, total: 18 },
-      checks: CHECK_DEFINITIONS.slice(0, 4).map((check) => ({
-        id: check.id,
-        label_code: check.labelCode,
-        status: "unavailable" as const,
-        robots: null,
-      })),
-      updated_at: now,
-      target_host: "example.com",
-      ...(name === "blocked" ? { blocked: true as const } : {}),
-    };
-  }
-  if (name === "running") {
-    return {
-      status: "running",
-      progress: { completed: 7, total: 18 },
-      checks: CHECK_DEFINITIONS.slice(0, 9).map((check, index) => ({
-        id: check.id,
-        label_code: check.labelCode,
-        status:
-          index < 7 ? ("pass" as const) : index === 7 ? ("running" as const) : ("pending" as const),
-        robots: null,
-      })),
-      updated_at: now,
-      target_host: "example.com",
-    };
-  }
-  const wellKnownDisallowed = name === "robots-partial";
-  return {
-    status: name === "partial" || wellKnownDisallowed ? "partial" : "completed",
-    progress: { completed: 18, total: 18 },
-    checks: CHECK_DEFINITIONS.map((check, index) => ({
-      id: check.id,
-      label_code: check.labelCode,
-      status:
-        (name === "partial" && index > 13) ||
-        (wellKnownDisallowed && [...WELL_KNOWN_CHECK_IDS, 14].includes(check.id))
-          ? ("unavailable" as const)
-          : index % 4 === 0
-            ? ("partial" as const)
-            : ("pass" as const),
-      robots:
-        wellKnownDisallowed && WELL_KNOWN_CHECK_IDS.includes(check.id)
-          ? ("disallowed" as const)
-          : null,
-    })),
-    updated_at: now,
-    target_host: "example.com",
-    teaser: {
-      score: 46,
-      coverage: name === "partial" ? 0.78 : 1,
-      level: "readable",
-      top_findings: ["vertical_jsonld_missing", "markdown_negotiation_absent"],
-      positive: "ssr_content_substantive",
-      hidden_count: 7,
-    },
-  };
+  sessionStorage.setItem(tokenKey(scanId), token);
+  // The router's own entry state is kept, so going back and forth still works.
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${window.location.pathname}${window.location.search}`,
+  );
 }
 
 function labelFor(labelCode: string) {
   return CHECK_LABELS[labelCode as keyof typeof CHECK_LABELS] ?? labelCode.replaceAll("_", " ");
-}
-
-function formatLevel(level: DiagnosticLevel) {
-  const labels: Record<DiagnosticLevel, string> = {
-    invisible: "Invisible",
-    readable: "Readable",
-    callable_ready: "Callable-ready",
-    ahead_of_market: "Ahead of the market",
-    incomplete: "Incomplete",
-  };
-  return labels[level];
 }

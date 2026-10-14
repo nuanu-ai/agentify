@@ -8,6 +8,7 @@
 }
 
 .brandWrap {
+  position: relative;
   width: min(100%, 700px);
   display: flex;
   flex-wrap: wrap;
@@ -15,11 +16,6 @@
   justify-content: space-between;
   gap: 12px 24px;
   margin-bottom: 30px;
-}
-
-.brandWrap > nav {
-  padding-left: 0;
-  border-left: 0;
 }
 
 .card {
@@ -124,7 +120,9 @@
     padding: 24px 16px 56px;
   }
 
+  /* As on the scan's page: the doors stay beside the lockup. */
   .brandWrap {
+    column-gap: 12px;
     margin-bottom: 20px;
   }
 

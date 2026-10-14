@@ -1,31 +1,31 @@
-"use client";
-
 import { useVisitor } from "../lib/visitor";
-import styles from "./site-chrome.module.css";
 
 /**
- * Who this browser is signed in as, and the way to sign out.
+ * Who this browser is signed in as, and the way to sign out, for the site
+ * header's doors.
  *
  * Drawn in the browser so the page it sits on stays the same for everybody and
  * may be cached as one; a browser that runs no script sees no address. The
+ * address leads to the dashboard's settings, where the account is, and the
  * sign-out is the dashboard's own same-origin form, which ends the session
- * everywhere on the site.
+ * everywhere on the site. Not knowing who is visiting is said in words short
+ * enough for the doors' row on a phone.
  */
 export function VisitorDoor() {
   const visitor = useVisitor();
   // Busy while the header is still finding out, which is what a screen reader
-  // announces; the slot takes no room of its own in the row of doors.
+  // announces.
   return (
-    <span aria-busy={visitor.status === "loading"} className={styles.visitorSlot}>
+    <span aria-busy={visitor.status === "loading"} className="site-visitor">
       {visitor.status === "unknown" ? (
-        <span className={styles.visitor}>We cannot tell who is visiting right now</span>
+        <span className="site-unknown">Sign-in unknown</span>
       ) : visitor.status === "signed_in" ? (
         <>
           {visitor.operator ? <a href="/admin">Admin</a> : null}
-          <span className={styles.who} title={visitor.email}>
+          <a className="site-who" href="/dashboard/settings" title={visitor.email}>
             {visitor.email}
-          </span>
-          <form action="/dashboard/sign-out" className={styles.signOut} method="post">
+          </a>
+          <form action="/dashboard/sign-out" className="site-sign-out" method="post">
             <button type="submit">Sign out</button>
           </form>
         </>

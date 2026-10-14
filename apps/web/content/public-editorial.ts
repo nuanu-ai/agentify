@@ -9,7 +9,7 @@ import type { PublicAppConfig } from "../lib/app-config";
 
 export type PublicEditorialPath = "/methodology" | "/scanner" | "/privacy" | "/terms";
 
-export type InlineNode = Readonly<{
+type InlineNode = Readonly<{
   kind: "text" | "code" | "strong" | "link";
   value: string;
   href?: string;

@@ -52,10 +52,10 @@ const andSoTheOrder = (failure: TransportFailure): string =>
  * registers a function of this shape that attaches the order's calls and then
  * calls the merchant's own handler.
  */
-export type OrderDispatch = (order: Order) => HandlerAnswer | Promise<HandlerAnswer>;
+type OrderDispatch = (order: Order) => HandlerAnswer | Promise<HandlerAnswer>;
 
 /** The same, for "how much is this and is it there". */
-export type QuoteDispatch = (question: QuoteRequest) => QuoteResponse | Promise<QuoteResponse>;
+type QuoteDispatch = (question: QuoteRequest) => QuoteResponse | Promise<QuoteResponse>;
 
 /**
  * The name of one delivery of a message: its envelope's `id` and when it was
@@ -212,7 +212,7 @@ export const REGISTERED_AS = Object.freeze({
 export type StreamHandlerKind = (typeof REGISTERED_AS)[keyof typeof REGISTERED_AS];
 
 /** What answers each kind, in the shape this loop calls. */
-export interface StreamDispatch {
+interface StreamDispatch {
   order: OrderDispatch;
   quote: QuoteDispatch;
   event: EventHandler;

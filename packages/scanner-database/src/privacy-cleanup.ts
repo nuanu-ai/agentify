@@ -21,10 +21,10 @@ import {
   waitlistEntries,
 } from "./schema.js";
 
-export const REGISTRATION_INTENT_RETENTION_MS = 7 * 86_400_000;
-export const UNVERIFIED_LEAD_RETENTION_MS = 30 * 86_400_000;
+const REGISTRATION_INTENT_RETENTION_MS = 7 * 86_400_000;
+const UNVERIFIED_LEAD_RETENTION_MS = 30 * 86_400_000;
 
-export async function deleteExpiredMerchantApplications(db: Database, now = new Date()) {
+async function deleteExpiredMerchantApplications(db: Database, now = new Date()) {
   const deleted = await db
     .delete(merchantApplications)
     .where(lt(merchantApplications.expiresAt, now))
@@ -45,7 +45,7 @@ export async function listUnverifiedLeadRetentionCandidates(
     .limit(Math.min(1_000, Math.max(1, input.limit ?? 100)));
 }
 
-export async function deleteRetainedRegistrationIntents(db: Database, now = new Date()) {
+async function deleteRetainedRegistrationIntents(db: Database, now = new Date()) {
   const cutoff = new Date(now.getTime() - REGISTRATION_INTENT_RETENTION_MS);
   const removed = await db
     .delete(registrationIntents)
@@ -56,7 +56,7 @@ export async function deleteRetainedRegistrationIntents(db: Database, now = new 
   return removed.length;
 }
 
-export async function deleteExpiredRateLimitState(db: Database, now = new Date()) {
+async function deleteExpiredRateLimitState(db: Database, now = new Date()) {
   const [events, windows] = await Promise.all([
     db
       .delete(rateLimitEvents)

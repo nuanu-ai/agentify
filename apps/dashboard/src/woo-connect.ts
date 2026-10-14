@@ -23,7 +23,7 @@ export const APP_NAME = "Agentify";
  * Read and write: a paid order becomes an order in the merchant's shop, which
  * is a write. A read-only grant would fail only at the first sale.
  */
-export const SCOPE = "read_write";
+const SCOPE = "read_write";
 
 export const GRANT_MINUTES = 15;
 

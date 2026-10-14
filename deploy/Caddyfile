@@ -9,7 +9,6 @@
 #   AGENTIFY_FRONT_PAGE        required front-page route          no default
 #   AGENTIFY_ASSET_ROOT        the shared browser assets          /srv/assets
 #   AGENTIFY_PORTAL_ROOT       the portal's built output          /srv/docs
-#   AGENTIFY_SELL_ROOT         the merchant landing's files       /srv/sell
 #   AGENTIFY_DASHBOARD_UPSTREAM  the dashboard's listener         app:3001
 #   AGENTIFY_GATEWAY_UPSTREAM  the gateway's listener             app:3000
 #   AGENTIFY_SCANNER_UPSTREAM  host:port of the scanner process   scanner:3000
@@ -73,9 +72,10 @@
 	}
 }
 
-# The mark and the font files the dashboard's HTML asks for (the scanner
-# bundles its own). Named one by one: a broad /assets or /styles route would
-# take those namespaces away from the scanner.
+# The marks and the font files the dashboard's pages and the documentation
+# portal ask for by address (the scanner bundles its own). Named one by one: a
+# broad /assets or /styles route would take those namespaces away from the
+# scanner.
 (shared_assets) {
 	@shared_assets path /assets/agentify-mark.svg /assets/agentify-mark-heavy.svg /styles/fonts.css /styles/fonts/*.woff2
 	handle @shared_assets {
@@ -188,23 +188,18 @@
 		}
 	}
 
-	# A draft merchant landing, served everywhere except the live channel (there
-	# /sell falls through to the scanner). Its prices are not approved, so it is
-	# noindex and no-cache. A directory, like the portal, so the prefix is
-	# stripped.
-	@sell_page {
-		path /sell /sell/*
-		expression "{$AGENTIFY_SURFACE_MODE:sandbox}" != "live"
+	# The merchant landing at /sell is the scanner's page, and a draft: its
+	# prices are not approved, so the live channel never shows it. Only this
+	# file knows the channel, so on the live one every address of the landing
+	# is handed to the scanner as one it has no page for, and the visitor gets
+	# the scanner's page that says so. The target stays outside /sell: the
+	# browser takes the page over at /sell, and a target under it would hand the
+	# browser the landing's route along with the page that says there is none.
+	@sell_withheld {
+		path /sell /sell/* /sell.data
+		expression "{$AGENTIFY_SURFACE_MODE:sandbox}" == "live"
 	}
-	handle @sell_page {
-		header Cache-Control "no-cache"
-		header X-Robots-Tag "noindex"
-		redir /sell /sell/
-		handle_path /sell/* {
-			root * {$AGENTIFY_SELL_ROOT:/srv/sell}
-			file_server
-		}
-	}
+	rewrite @sell_withheld /sell-not-on-this-channel
 
 	# No default: a stack that names no front page is refused at load rather than
 	# answering a bare 404.

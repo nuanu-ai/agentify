@@ -26,7 +26,7 @@ import { REMINDER_POLL_MS } from "./ports/queue.js";
  * Fixed rather than read from `PORT`: the dashboard shares this process's
  * environment, so a `PORT` there could mean only one of them.
  */
-export const GATEWAY_PORT = 3000;
+const GATEWAY_PORT = 3000;
 
 /**
  * Work published by this process wakes a parked poll at once, so this interval

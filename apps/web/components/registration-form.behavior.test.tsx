@@ -96,12 +96,34 @@ describe("asking the scanner for a verification link", () => {
   });
 
   it("files a signed-in person's own ask under their address, sends none, and says so first", async () => {
-    // The ask carries no address: the session decides whose it is.
-    const fetched = answerWith(
-      200,
-      { status: "report_ready", report_url: `/report/${scanId}`, email: "owner@example.com" },
-      { status: 200, body: { status: "signed_in", email: "owner@example.com", operator: false } },
-    );
+    // The ask carries no address: the session decides whose it is. The API
+    // here refuses an ask that names one, or that does not acknowledge the
+    // data notice, so the report opens only for the ask the form must send.
+    let settled = () => {};
+    const answered = new Promise<void>((resolve) => {
+      settled = resolve;
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (String(input).endsWith("/api/v2/session")) {
+        return json(200, { status: "signed_in", email: "owner@example.com", operator: false });
+      }
+      const ask = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      settled();
+      return "email" in ask || ask.dataset_reuse_acknowledged !== true
+        ? json(400, {
+            error: {
+              code: "invalid_request",
+              message: "This ask is not one the form should send.",
+              retryable: false,
+              request_id: "019f5b6a-4b9f-7000-8000-000000000003",
+            },
+          })
+        : json(200, {
+            status: "report_ready",
+            report_url: `/report/${scanId}`,
+            email: "owner@example.com",
+          });
+    });
     sessionStorage.setItem(`agentify:scan-token:${scanId}`, "scan-token");
     render(<RegistrationForm scanId={scanId} />);
 
@@ -110,10 +132,11 @@ describe("asking the scanner for a verification link", () => {
     await userEvent.click(screen.getByLabelText(/acknowledge the scanner data notice/i));
     await userEvent.click(screen.getByRole("button"));
 
-    const ask = fetched.mock.calls.find(([input]) => String(input).includes("/registrations"));
-    const sent = JSON.parse(String(ask?.[1]?.body ?? "{}")) as Record<string, unknown>;
-    expect(sent.email).toBeUndefined();
-    expect(sent.dataset_reuse_acknowledged).toBe(true);
+    await answered;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Opening the report keeps the button waiting; a refusal would say why.
+    expect(screen.getByRole("button").textContent).toBe("Sending…");
+    expect(screen.queryByText(/not one the form should send/)).toBeNull();
   });
 
   it("links the data notice from the box that acknowledges it", async () => {

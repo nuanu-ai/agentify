@@ -79,7 +79,7 @@ export type Outcome<View> =
  * adds the way back: its own address where a page failed, so the merchant
  * keeps their place, and the first screen where a form did.
  */
-export interface Problem {
+interface Problem {
   readonly status: number;
   readonly said: string;
 }
@@ -281,6 +281,37 @@ const SESSION_ENDED =
 const UNSAVED = "You are not signed in, so the change you submitted was not saved.";
 
 /**
+ * A value named once, as a form or an address names it; named twice it is
+ * nobody's choice, and is read as not named at all.
+ */
+const once = (values: readonly unknown[]): unknown => (values.length === 1 ? values[0] : undefined);
+
+/**
+ * The sign-in form for a browser with no session, as its address asks for it:
+ * where the person was going, and why they are here. An expired session is
+ * the reason, said as the page's first line; a change lost with it is a
+ * refusal, drawn under the box.
+ */
+export const askViewOf = (query: URLSearchParams): Extract<SignInView, { screen: "ask" }> => {
+  const said = once(query.getAll("reason"));
+  const problem =
+    said === "session-ended-unsaved"
+      ? `${SESSION_ENDED} The change you submitted was not saved.`
+      : said === "unsaved"
+        ? UNSAVED
+        : undefined;
+  const reason = said === "session-ended" ? SESSION_ENDED : undefined;
+  return {
+    screen: "ask",
+    destination: dashboardDestinationIn(once(query.getAll("destination"))),
+    ...(problem === undefined ? {} : { problem }),
+    ...(reason === undefined ? {} : { reason }),
+  };
+};
+
+export const NOT_AN_ADDRESS = "Enter an address of the shape someone@example.com.";
+
+/**
  * The page a mailed link lands on and its press answer with these, and with no
  * cache, which every page here has. The policy keeps the token out of
  * `Referer`: `no-referrer` would make Chromium post the form with
@@ -288,12 +319,6 @@ const UNSAVED = "You are not signed in, so the change you submitted was not save
  * keeps the exact origin and sends no query.
  */
 const LINK_HEADERS = { "referrer-policy": "strict-origin" } as const;
-
-/**
- * A value named once, as a form or an address names it; named twice it is
- * nobody's choice, and is read as not named at all.
- */
-const once = (values: readonly unknown[]): unknown => (values.length === 1 ? values[0] : undefined);
 
 /**
  * Which switch a press on the cards names: one card's, or all selling's when
@@ -325,11 +350,32 @@ const typedIn = (form: FormData, box: string): string => {
 };
 
 /** The waiting change a settings page showed, which its wallet forms carry back. */
-interface Shown {
+export interface Shown {
   readonly waiting: string;
   readonly from: string | null;
   readonly paid: string | null;
 }
+
+/** How many other sessions of the account a press ended, the one thing its presser cannot see. */
+export const signedOutOthers = (ended: number): string =>
+  ended === 0
+    ? "No other session of this account was signed in, so none was signed out."
+    : ended === 1
+      ? "1 other session of this account was signed out."
+      : `${ended} other sessions of this account were signed out.`;
+
+/** Typed while a change waited, the address paid into now cancels it, and the person may not know. */
+export const cancelledByTyping = (applies: string, waiting: string): string =>
+  `${applies} is the address your sales are paid into now, so the waiting change to ${waiting} was cancelled. ` +
+  "Every other session of your merchant was signed out.";
+
+/** A press from a page drawn while a change waited, arriving after it took effect. */
+export const landedBeforePress = (shown: Shown): string =>
+  `The change to ${shown.waiting} took effect at ${shown.from === null ? "its moment" : moment(shown.from)}, before you pressed, and your sales are now paid into it. ` +
+  (shown.paid === null
+    ? "Setting another address back is a change like any other: it waits forty-eight hours and is announced. "
+    : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
+  "Every other session of your merchant was signed out.";
 
 /**
  * Each value is held to its shape before anything reads it: the post can carry
@@ -354,7 +400,7 @@ const shownIn = (form: FormData): Shown | null => {
  * contract's: one line, at most the length the gateway takes, which also keeps
  * the live announcement naming it to one line.
  */
-const whatIsWrongWithTheLabel = (label: string): string | null => {
+export const whatIsWrongWithTheLabel = (label: string): string | null => {
   if (label === "") {
     return "Give the key a name, so that you can tell it from the others when you come to revoke one.";
   }
@@ -473,9 +519,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       if (!byTyping) return toSettings;
       return await settingsDrawn(person, {
         kind: "wallet-notice",
-        notice:
-          `${applies} is the address your sales are paid into now, so the waiting change to ${pending.payout_wallet} was cancelled. ` +
-          "Every other session of your merchant was signed out.",
+        notice: cancelledByTyping(applies, pending.payout_wallet),
       });
     }
     noted(
@@ -508,15 +552,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       person,
       `${how} after a change of the address their money arrives at had taken effect, and ${ended} other sessions of the merchant were ended`,
     );
-    return await settingsDrawn(person, {
-      kind: "wallet-notice",
-      notice:
-        `The change to ${shown.waiting} took effect at ${shown.from === null ? "its moment" : moment(shown.from)}, before you pressed, and your sales are now paid into it. ` +
-        (shown.paid === null
-          ? "Setting another address back is a change like any other: it waits forty-eight hours and is announced. "
-          : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
-        "Every other session of your merchant was signed out.",
-    });
+    return await settingsDrawn(person, { kind: "wallet-notice", notice: landedBeforePress(shown) });
   };
 
   const registerMerchant = async (): Promise<string | null> => {
@@ -587,25 +623,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             setCookies: signedIn.setCookies,
           };
         }
-        // An expired session is why the person is here, so it is the page's
-        // first line; a change lost with it is a refusal.
-        const said = once(query.getAll("reason"));
-        const problem =
-          said === "session-ended-unsaved"
-            ? `${SESSION_ENDED} The change you submitted was not saved.`
-            : said === "unsaved"
-              ? UNSAVED
-              : undefined;
-        const reason = said === "session-ended" ? SESSION_ENDED : undefined;
-        return {
-          kind: "view",
-          view: {
-            screen: "ask",
-            destination,
-            ...(problem === undefined ? {} : { problem }),
-            ...(reason === undefined ? {} : { reason }),
-          },
-        };
+        return { kind: "view", view: askViewOf(query) };
       },
 
       async ask(form) {
@@ -619,7 +637,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             view: {
               screen: "ask",
               destination,
-              problem: "Enter an address of the shape someone@example.com.",
+              problem: NOT_AN_ADDRESS,
             },
           };
         }
@@ -908,15 +926,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       async signOutOthers(person, cookie) {
         const ended = await identity.endOtherSessionsOfPerson(person.id, cookie);
         noted(person, `signed out every other device of their account, ${ended} sessions in all`);
-        return await settingsDrawn(person, {
-          kind: "account",
-          notice:
-            ended === 0
-              ? "No other session of this account was signed in, so none was signed out."
-              : ended === 1
-                ? "1 other session of this account was signed out."
-                : `${ended} other sessions of this account were signed out.`,
-        });
+        return await settingsDrawn(person, { kind: "account", notice: signedOutOthers(ended) });
       },
 
       // A press of its own rather than a second field on the name's: sharing

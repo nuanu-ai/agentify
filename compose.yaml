@@ -12,10 +12,6 @@
 # are built into another image. All go into the one database, each set with
 # its own history.
 #
-# An older volume may still hold the scanner's tables in a second database,
-# `agentify_scanner`; this file ignores it and builds empty scanner tables in
-# `agentify`. `docker compose down -v` once starts from nothing.
-#
 # The database test suite runs against a database of its own, `agentify_test`,
 # on this same server, and needs nothing else from this file:
 #

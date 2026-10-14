@@ -20,7 +20,7 @@
  * something by its own machinery — which crossed nothing and must not be drawn
  * as though it had.
  */
-export type Way = "sent" | "got" | null;
+type Way = "sent" | "got" | null;
 
 export interface Entry {
   readonly id: number;

@@ -52,7 +52,7 @@ export const SITE_RULE =
   " as where to go with what an order cannot answer — goods that did not arrive, a return, your" +
   " terms. Agentify does not check it.";
 
-export const SITE_REFUSED =
+const SITE_REFUSED =
   "Write the address as https:// and your shop's domain name, with nothing after it:" +
   " https://yourshop.com, in lower case, with no page, query, port or slash at the end." +
   " Your site was not saved.";

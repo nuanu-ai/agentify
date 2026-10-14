@@ -60,7 +60,7 @@ export interface ShopKeys {
 }
 
 /** One protected file handed to the agent. */
-export interface EligibleDownload {
+interface EligibleDownload {
   readonly kind: "download";
   readonly productId: string;
   readonly downloadId: string;
@@ -71,7 +71,7 @@ export interface EligibleDownload {
 }
 
 /** Sold as a parcel for the shop to ship. */
-export interface EligibleParcel {
+interface EligibleParcel {
   readonly kind: "parcel";
   readonly productId: string;
   /** The goods alone; shipping is the shop's rate for the buyer's place. */

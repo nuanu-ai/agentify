@@ -19,27 +19,28 @@ import {
   waitlistEntries,
 } from "@agentify/scanner-database";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { NextRequest } from "next/server";
+import type { Params } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { POST as requestDataAction } from "../../app/api/v1/account/data-request/route";
-import { POST as unsubscribeAction } from "../../app/api/v1/account/unsubscribe/route";
-import { POST as persistAttribution } from "../../app/api/v1/attribution/route";
-import { POST as persistConsent } from "../../app/api/v1/consent/route";
-import { POST as persistClientEvent } from "../../app/api/v1/events/route";
-import { GET as downloadFullPrompt } from "../../app/api/v1/reports/[scanId]/remediation-prompt/download/route";
-import { GET as readFullReport } from "../../app/api/v1/reports/[scanId]/route";
-import { GET as downloadTeaserPrompt } from "../../app/api/v1/scans/[id]/remediation-prompt/download/route";
-import { GET as getTeaserPrompt } from "../../app/api/v1/scans/[id]/remediation-prompt/route";
-import { POST as publishShare } from "../../app/api/v1/scans/[id]/share/route";
-import { GET as previewShare } from "../../app/api/v1/scans/[id]/share-preview/route";
-import { POST as acceptScan } from "../../app/api/v1/scans/route";
-import { GET as getContactAccess } from "../../app/api/v2/scans/[id]/contact-access/route";
-import { POST as requestScannerRegistration } from "../../app/api/v2/scans/[id]/registrations/route";
-import { GET as readVisitor } from "../../app/api/v2/session/route";
+import { action as requestDataActionRoute } from "../../app/routes/api/v1/account.data-request";
+import { action as unsubscribeActionRoute } from "../../app/routes/api/v1/account.unsubscribe";
+import { action as persistAttributionRoute } from "../../app/routes/api/v1/attribution";
+import { action as consent } from "../../app/routes/api/v1/consent";
+import { action as persistClientEventRoute } from "../../app/routes/api/v1/events";
+import { loader as readFullReportRoute } from "../../app/routes/api/v1/reports.scanId";
+import { loader as downloadFullPromptRoute } from "../../app/routes/api/v1/reports.scanId.remediation-prompt.download";
+import { action as acceptScanRoute } from "../../app/routes/api/v1/scans";
+import { loader as getTeaserPromptRoute } from "../../app/routes/api/v1/scans.id.remediation-prompt";
+import { loader as downloadTeaserPromptRoute } from "../../app/routes/api/v1/scans.id.remediation-prompt.download";
+import { action as publishShareRoute } from "../../app/routes/api/v1/scans.id.share";
+import { loader as previewShareRoute } from "../../app/routes/api/v1/scans.id.share-preview";
+import { loader as shareImageRoute } from "../../app/routes/api/v1/shares.slug.image";
+import { loader as getContactAccessRoute } from "../../app/routes/api/v2/scans.id.contact-access";
+import { action as requestScannerRegistrationRoute } from "../../app/routes/api/v2/scans.id.registrations";
+import { loader as readVisitorRoute } from "../../app/routes/api/v2/session";
 import { latestReportOf, visitorOf } from "./auth";
 import { getServerConfig } from "./config";
-import { encryptEmail, hmacHex, sha256 } from "./crypto";
+import { encryptSensitiveValue, hmacHex, sha256 } from "./crypto";
 import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
 import { enqueueScanInTransaction, stopScanQueue } from "./queue";
@@ -54,6 +55,28 @@ import {
 import { requestScannerIdentityDeletion } from "./scanner-identity-deletion";
 import { createScannerRegistrationIntent } from "./scanner-registration";
 import { authorizeScan, createOrReplayScan, getScanStatus } from "./scans";
+
+/** A route's answer to one request, asked the way React Router asks it. */
+const answering =
+  (route: typeof consent) =>
+  (request: Request, params: Params = {}) =>
+    route({ request, params });
+const requestDataAction = answering(requestDataActionRoute);
+const unsubscribeAction = answering(unsubscribeActionRoute);
+const persistAttribution = answering(persistAttributionRoute);
+const persistConsent = answering(consent);
+const persistClientEvent = answering(persistClientEventRoute);
+const readFullReport = answering(readFullReportRoute);
+const downloadFullPrompt = answering(downloadFullPromptRoute);
+const acceptScan = answering(acceptScanRoute);
+const getTeaserPrompt = answering(getTeaserPromptRoute);
+const downloadTeaserPrompt = answering(downloadTeaserPromptRoute);
+const publishShare = answering(publishShareRoute);
+const previewShare = answering(previewShareRoute);
+const shareImage = answering(shareImageRoute);
+const getContactAccess = answering(getContactAccessRoute);
+const requestScannerRegistration = answering(requestScannerRegistrationRoute);
+const readVisitor = answering(readVisitorRoute);
 
 const connectionString = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!connectionString?.includes("_migration_test")) {
@@ -209,7 +232,7 @@ function registrationRequest(
   headers: Record<string, string> = {},
 ) {
   return requestScannerRegistration(
-    new NextRequest(`http://localhost:3000/api/v2/scans/${id}/registrations`, {
+    new Request(`http://localhost:3000/api/v2/scans/${id}/registrations`, {
       method: "POST",
       headers: {
         origin: "http://localhost:3000",
@@ -219,7 +242,7 @@ function registrationRequest(
       },
       body: JSON.stringify(body),
     }),
-    { params: Promise.resolve({ id }) },
+    { id },
   );
 }
 
@@ -373,7 +396,7 @@ afterAll(async () => {
 });
 
 describe("P4 dashboard-owned scanner identity", () => {
-  it("derives scheme omission in the route and ignores the legacy header", async () => {
+  it("derives scheme omission in the route and ignores a header claiming it", async () => {
     const submit = async (
       url: string,
       idempotencyKey: string,
@@ -381,7 +404,7 @@ describe("P4 dashboard-owned scanner identity", () => {
       ip: string,
     ) => {
       const response = await acceptScan(
-        new NextRequest("http://localhost:3000/api/v1/scans", {
+        new Request("http://localhost:3000/api/v1/scans", {
           method: "POST",
           headers: {
             origin: "http://localhost:3000",
@@ -425,6 +448,31 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(rows.find(({ id }) => id === omitted.scan_id)?.submittedWithoutScheme).toBe(true);
   });
 
+  it("follows a first visitor with an anonymous cookie for thirty days that the page's script cannot read", async () => {
+    const response = await acceptScan(
+      new Request("http://localhost:3000/api/v1/scans", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+          "idempotency-key": `first-visit-cookie-${createUuidV7()}`,
+          "x-forwarded-for": "203.0.113.45",
+        },
+        body: JSON.stringify({
+          url: "https://first-visit-cookie.example/",
+          segment: "owner",
+          landing_variant: "owner-v1",
+          turnstile_token: null,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(response.headers.get("set-cookie")).toMatch(
+      /^agentify_anonymous=[^;]+; Path=\/; Expires=[^;]+; Max-Age=2592000; HttpOnly; SameSite=lax$/,
+    );
+  });
+
   it("calls a database failure before acceptance temporary, not an invalid address", async () => {
     // The start page offers no retry for an invalid address, so a failure
     // that a retry can outlast must not be reported as one.
@@ -432,7 +480,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     await pool.query("alter table scans rename to scans_out_of_reach");
     try {
       const response = await acceptScan(
-        new NextRequest("http://localhost:3000/api/v1/scans", {
+        new Request("http://localhost:3000/api/v1/scans", {
           method: "POST",
           headers: {
             origin: "http://localhost:3000",
@@ -506,7 +554,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     // first makes a choice.
     let cookie = "";
     const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
-      new NextRequest(`http://localhost:3000${path}`, {
+      new Request(`http://localhost:3000${path}`, {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
@@ -656,10 +704,59 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(await visitorSession()).toMatchObject({ lastLandingVariant: "store-v2" });
   });
 
+  it("keeps a partner's click for thirty days in a cookie the page's script cannot read, once its visitor allows ads measurement", async () => {
+    const partnerClickId = "Rt5sJ2QpR4vN7bL0aZ9wMh";
+    const consented = await persistConsent(
+      new Request("http://localhost:3000/api/v1/consent", {
+        method: "POST",
+        headers: { origin: "http://localhost:3000", "content-type": "application/json" },
+        body: JSON.stringify({
+          policy_version: CONSENT_POLICY_VERSION,
+          categories: {
+            essential_processing: true,
+            product_analytics: true,
+            ads_measurement: true,
+            marketing_email: false,
+            dataset_reuse: false,
+            card_signal: false,
+          },
+        }),
+      }),
+    );
+    expect(consented.status).toBe(201);
+    const visitor =
+      /agentify_anonymous=[^;]+/.exec(consented.headers.get("set-cookie") ?? "")?.[0] ?? "";
+    expect(visitor).not.toBe("");
+
+    const attributed = await persistAttribution(
+      new Request("http://localhost:3000/api/v1/attribution", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          cookie: visitor,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          segment: "owner",
+          landing_variant: "owner-v1",
+          touch: {},
+          partner_click_id: partnerClickId,
+        }),
+      }),
+    );
+
+    expect(attributed.status).toBe(204);
+    expect(attributed.headers.get("set-cookie")).toMatch(
+      new RegExp(
+        `^clickid=${partnerClickId}; Path=/; Expires=[^;]+; Max-Age=2592000; HttpOnly; SameSite=lax$`,
+      ),
+    );
+  });
+
   it("keeps attribution neutral and both accepted registration links usable", async () => {
     const { db } = getDatabase();
     const attributionRequest = (campaign: string, fbclidHash: string) =>
-      new NextRequest("http://localhost:3000/api/v1/attribution", {
+      new Request("http://localhost:3000/api/v1/attribution", {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
@@ -699,7 +796,7 @@ describe("P4 dashboard-owned scanner identity", () => {
 
     const partnerClickId = "Xk8sJ2QpR4vN7bL0aZ9wQg";
     const partnerAttributionRequest = () =>
-      new NextRequest("http://localhost:3000/api/v1/attribution", {
+      new Request("http://localhost:3000/api/v1/attribution", {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
@@ -717,7 +814,7 @@ describe("P4 dashboard-owned scanner identity", () => {
       (await persistAttribution(partnerAttributionRequest())).headers.get("set-cookie") ?? "",
     ).not.toContain(`clickid=${partnerClickId}`);
     const consentRequest = (adsMeasurement: boolean) =>
-      new NextRequest("http://localhost:3000/api/v1/consent", {
+      new Request("http://localhost:3000/api/v1/consent", {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
@@ -743,7 +840,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     const revoked = await persistConsent(consentRequest(false));
     expect(revoked.headers.get("set-cookie")).toMatch(/clickid=;.*Max-Age=0/i);
     const piiAttribution = await persistAttribution(
-      new NextRequest("http://localhost:3000/api/v1/attribution", {
+      new Request("http://localhost:3000/api/v1/attribution", {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
@@ -760,7 +857,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(piiAttribution.status).toBe(400);
 
     const teaserEvent = await persistClientEvent(
-      new NextRequest("http://localhost:3000/api/v1/events", {
+      new Request("http://localhost:3000/api/v1/events", {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
@@ -1032,7 +1129,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     try {
       await expect(visitorOf(cookie)).resolves.toEqual({ kind: "unknown" });
       const header = await readVisitor(
-        new NextRequest("http://localhost:3000/api/v2/session", { headers: { cookie } }),
+        new Request("http://localhost:3000/api/v2/session", { headers: { cookie } }),
       );
       expect(header.status).toBe(503);
       expect(await header.json()).toEqual({ status: "unknown" });
@@ -1048,26 +1145,26 @@ describe("P4 dashboard-owned scanner identity", () => {
       // than that there is nothing here for them.
       const unknownAnswers = [
         await readFullReport(
-          new NextRequest(`http://localhost:3000/api/v1/reports/${scan.id}`, {
+          new Request(`http://localhost:3000/api/v1/reports/${scan.id}`, {
             headers: { cookie },
           }),
-          { params: Promise.resolve({ scanId: scan.id }) },
+          { scanId: scan.id },
         ),
         await downloadFullPrompt(
-          new NextRequest(
+          new Request(
             `http://localhost:3000/api/v1/reports/${scan.id}/remediation-prompt/download`,
             { headers: { cookie } },
           ),
-          { params: Promise.resolve({ scanId: scan.id }) },
+          { scanId: scan.id },
         ),
         await getContactAccess(
-          new NextRequest(`http://localhost:3000/api/v2/scans/${scan.id}/contact-access`, {
+          new Request(`http://localhost:3000/api/v2/scans/${scan.id}/contact-access`, {
             headers: { cookie },
           }),
-          { params: Promise.resolve({ id: scan.id }) },
+          { id: scan.id },
         ),
         await requestDataAction(
-          new NextRequest("http://localhost:3000/api/v1/account/data-request", {
+          new Request("http://localhost:3000/api/v1/account/data-request", {
             method: "POST",
             headers: {
               cookie,
@@ -1126,20 +1223,20 @@ describe("P4 dashboard-owned scanner identity", () => {
     });
     const refusals = [
       await requestDataAction(
-        new NextRequest(
+        new Request(
           "http://localhost:3000/api/v1/account/data-request",
           posted({ type: "deletion", signed_in_as: "first@example.com" }),
         ),
       ),
       // A page that names no address is not matched either.
       await requestDataAction(
-        new NextRequest(
+        new Request(
           "http://localhost:3000/api/v1/account/data-request",
           posted({ type: "deletion" }),
         ),
       ),
       await unsubscribeAction(
-        new NextRequest(
+        new Request(
           "http://localhost:3000/api/v1/account/unsubscribe",
           posted({ signed_in_as: "first@example.com" }),
         ),
@@ -1167,14 +1264,14 @@ describe("P4 dashboard-owned scanner identity", () => {
 
     // The same presses from a page loaded for the address signed in now go through.
     const accepted = await requestDataAction(
-      new NextRequest(
+      new Request(
         "http://localhost:3000/api/v1/account/data-request",
         posted({ type: "access", signed_in_as: email }),
       ),
     );
     expect(accepted.status).toBe(200);
     const unsubscribed = await unsubscribeAction(
-      new NextRequest(
+      new Request(
         "http://localhost:3000/api/v1/account/unsubscribe",
         posted({ signed_in_as: email }),
       ),
@@ -1185,7 +1282,7 @@ describe("P4 dashboard-owned scanner identity", () => {
 
   it("tells a signed-in person with no reports that there is nothing to request, not to sign in", async () => {
     const answer = await requestDataAction(
-      new NextRequest("http://localhost:3000/api/v1/account/data-request", {
+      new Request("http://localhost:3000/api/v1/account/data-request", {
         method: "POST",
         headers: {
           cookie: signedInAs("no-reports-data@example.com"),
@@ -1200,7 +1297,7 @@ describe("P4 dashboard-owned scanner identity", () => {
       "no_reports_for_address",
     );
     const stranger = await requestDataAction(
-      new NextRequest("http://localhost:3000/api/v1/account/data-request", {
+      new Request("http://localhost:3000/api/v1/account/data-request", {
         method: "POST",
         headers: { origin: "http://localhost:3000", "content-type": "application/json" },
         body: JSON.stringify({ type: "access", signed_in_as: "stranger@example.com" }),
@@ -1218,7 +1315,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     const config = getServerConfig();
     await db.insert(leads).values({
       id: createUuidV7(),
-      emailNormalizedCiphertext: encryptEmail(email, config.encryptionKey),
+      emailNormalizedCiphertext: encryptSensitiveValue(email, config.encryptionKey),
       emailLookupHash: hmacHex(config.hmacSecret, "email", email),
       role: "developer",
       verifiedAt: new Date(),
@@ -1303,9 +1400,9 @@ describe("P4 dashboard-owned scanner identity", () => {
     const cookie = signedInAs("header@example.com");
 
     const signedIn = await readVisitor(
-      new NextRequest("http://localhost:3000/api/v2/session", { headers: { cookie } }),
+      new Request("http://localhost:3000/api/v2/session", { headers: { cookie } }),
     );
-    const stranger = await readVisitor(new NextRequest("http://localhost:3000/api/v2/session"));
+    const stranger = await readVisitor(new Request("http://localhost:3000/api/v2/session"));
 
     expect(signedIn.status).toBe(200);
     expect(await signedIn.json()).toEqual({
@@ -1324,7 +1421,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     // The header shows an operator the way to the dashboard, and the flag
     // rides on the answer that already carries their address.
     const answered = await readVisitor(
-      new NextRequest("http://localhost:3000/api/v2/session", {
+      new Request("http://localhost:3000/api/v2/session", {
         headers: { cookie: signedInAs("operator@example.com", { operator: true }) },
       }),
     );
@@ -1460,10 +1557,10 @@ describe("P4 dashboard-owned scanner identity", () => {
       expect(
         (
           await getContactAccess(
-            new NextRequest(`http://localhost:3000/api/v2/scans/${scan.id}/contact-access`, {
+            new Request(`http://localhost:3000/api/v2/scans/${scan.id}/contact-access`, {
               headers: cookie ? { cookie } : {},
             }),
-            { params: Promise.resolve({ id: scan.id }) },
+            { id: scan.id },
           )
         ).status,
         String(cookie),
@@ -1472,11 +1569,11 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(
       (
         await getTeaserPrompt(
-          new NextRequest(
+          new Request(
             `http://localhost:3000/api/v1/scans/${scan.id}/remediation-prompt?scope=teaser`,
             { headers: { authorization: `Bearer ${accessToken}` } },
           ),
-          { params: Promise.resolve({ id: scan.id }) },
+          { id: scan.id },
         )
       ).status,
     ).toBe(401);
@@ -1487,24 +1584,27 @@ describe("P4 dashboard-owned scanner identity", () => {
       expect(
         (
           await getTeaserPrompt(
-            new NextRequest(
+            new Request(
               `http://localhost:3000/api/v1/scans/${scan.id}/remediation-prompt?scope=teaser`,
               { headers: { cookie } },
             ),
-            { params: Promise.resolve({ id: scan.id }) },
+            { id: scan.id },
           )
         ).status,
         cookie,
       ).toBe(status);
     }
     const verifiedDownload = await downloadTeaserPrompt(
-      new NextRequest(`http://localhost:3000/api/v1/scans/${scan.id}/remediation-prompt/download`, {
+      new Request(`http://localhost:3000/api/v1/scans/${scan.id}/remediation-prompt/download`, {
         headers: { cookie: authorizedCookie },
       }),
-      { params: Promise.resolve({ id: scan.id }) },
+      { id: scan.id },
     );
     expect(verifiedDownload.status).toBe(200);
     expect(verifiedDownload.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
+    expect(verifiedDownload.headers.get("content-disposition")).toBe(
+      'attachment; filename="agentify-visible-findings-prompt.md"',
+    );
     const lead = onlyRow(
       await db.select().from(leads).where(eq(leads.emailLookupHash, emailLookupHash)),
     );
@@ -1604,11 +1704,10 @@ describe("P4 dashboard-owned scanner identity", () => {
     });
     expect(scan.id).toBe(scanId);
     const fullDownload = await downloadFullPrompt(
-      new NextRequest(
-        `http://localhost:3000/api/v1/reports/${scanId}/remediation-prompt/download`,
-        { headers: { cookie: owner } },
-      ),
-      { params: Promise.resolve({ scanId }) },
+      new Request(`http://localhost:3000/api/v1/reports/${scanId}/remediation-prompt/download`, {
+        headers: { cookie: owner },
+      }),
+      { scanId },
     );
     expect(fullDownload.status).toBe(200);
     expect(fullDownload.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
@@ -1617,7 +1716,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     );
     expect(await fullDownload.text()).toContain("# Agentify remediation implementation prompt");
     const verifiedView = await persistClientEvent(
-      new NextRequest("http://localhost:3000/api/v1/events", {
+      new Request("http://localhost:3000/api/v1/events", {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
@@ -1637,15 +1736,15 @@ describe("P4 dashboard-owned scanner identity", () => {
     });
     expect(await getDatabase().db.select().from(scanShares)).toHaveLength(0);
     const unauthorizedPreview = await previewShare(
-      new NextRequest(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`),
-      { params: Promise.resolve({ id: scanId }) },
+      new Request(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`),
+      { id: scanId },
     );
     expect(unauthorizedPreview.status).toBe(404);
     const previewResponse = await previewShare(
-      new NextRequest(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
+      new Request(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
         headers: { authorization: `Bearer ${scanAccessToken}` },
       }),
-      { params: Promise.resolve({ id: scanId }) },
+      { id: scanId },
     );
     expect(previewResponse.status).toBe(200);
     expect(await previewResponse.json()).toEqual({
@@ -1682,10 +1781,10 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(shared && !shared.conflict).toBe(true);
     if (!shared || shared.conflict) throw new Error("share_failed");
     const publishedPreview = await previewShare(
-      new NextRequest(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
+      new Request(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
         headers: { authorization: `Bearer ${scanAccessToken}` },
       }),
-      { params: Promise.resolve({ id: scanId }) },
+      { id: scanId },
     );
     expect(await publishedPreview.json()).toMatchObject({
       existing_share: {
@@ -1701,6 +1800,16 @@ describe("P4 dashboard-owned scanner identity", () => {
       rubric_version: "gtm-v1.0.0",
       generated_at: expect.any(String),
     });
+    const sharePicture = () =>
+      shareImage(new Request(`http://localhost:3000/api/v1/shares/${shared.slug}/image`), {
+        slug: shared.slug,
+      });
+    const download = await sharePicture();
+    expect(download.status).toBe(200);
+    expect(download.headers.get("content-type")).toBe("image/png");
+    expect(download.headers.get("content-disposition")).toBe(
+      'attachment; filename="agentify-example.com.png"',
+    );
     expect(
       await revokePublicShare(shared.slug, {
         verifiedLeadId: leadId,
@@ -1708,6 +1817,11 @@ describe("P4 dashboard-owned scanner identity", () => {
       }),
     ).toBe("revoked");
     expect(await getPublicShare(shared.slug)).toBeUndefined();
+    const revokedDownload = await sharePicture();
+    expect(revokedDownload.status).toBe(404);
+    expect(((await revokedDownload.json()) as { error: { code: string } }).error.code).toBe(
+      "share_not_found",
+    );
     expect(
       await getDatabase().pool.query<{
         name: string;
@@ -1732,7 +1846,7 @@ describe("P4 dashboard-owned scanner identity", () => {
       .where(eq(scans.id, scanId));
     expect(await authorizeScan(scanId, scanAccessToken)).toBeUndefined();
     const expiredShare = await publishShare(
-      new NextRequest(`http://localhost:3000/api/v1/scans/${scanId}/share`, {
+      new Request(`http://localhost:3000/api/v1/scans/${scanId}/share`, {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
@@ -1741,7 +1855,7 @@ describe("P4 dashboard-owned scanner identity", () => {
         },
         body: JSON.stringify({ allow_indexing: false }),
       }),
-      { params: Promise.resolve({ id: scanId }) },
+      { id: scanId },
     );
     expect(expiredShare.status).toBe(404);
   });
@@ -2053,7 +2167,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     }
 
     const response = await acceptScan(
-      new NextRequest("http://localhost:3000/api/v1/scans", {
+      new Request("http://localhost:3000/api/v1/scans", {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
@@ -2090,7 +2204,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     const leadId = createUuidV7();
     await db.insert(leads).values({
       id: leadId,
-      emailNormalizedCiphertext: encryptEmail(email, config.encryptionKey),
+      emailNormalizedCiphertext: encryptSensitiveValue(email, config.encryptionKey),
       emailLookupHash: hmacHex(config.hmacSecret, "email", email),
       role: "developer",
       verifiedAt: new Date(),
@@ -2178,7 +2292,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     const leadId = createUuidV7();
     await db.insert(leads).values({
       id: leadId,
-      emailNormalizedCiphertext: encryptEmail(email, config.encryptionKey),
+      emailNormalizedCiphertext: encryptSensitiveValue(email, config.encryptionKey),
       emailLookupHash: hmacHex(config.hmacSecret, "email", email),
       role: "developer",
       verifiedAt: new Date(),
@@ -2259,7 +2373,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     const oldLeadId = createUuidV7();
     await db.insert(leads).values({
       id: oldLeadId,
-      emailNormalizedCiphertext: encryptEmail(oldEmail, config.encryptionKey),
+      emailNormalizedCiphertext: encryptSensitiveValue(oldEmail, config.encryptionKey),
       emailLookupHash: hmacHex(config.hmacSecret, "email", oldEmail),
       role: "developer",
       verifiedAt: new Date(),
@@ -2337,7 +2451,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     process.env.REGISTRATION_ENABLED = "true";
     try {
       const response = await requestScannerRegistration(
-        new NextRequest(`http://localhost:3000/api/v2/scans/${scan.id}/registrations`, {
+        new Request(`http://localhost:3000/api/v2/scans/${scan.id}/registrations`, {
           method: "POST",
           headers: {
             origin: "http://localhost:3000",
@@ -2346,7 +2460,7 @@ describe("P4 dashboard-owned scanner identity", () => {
           },
           body: JSON.stringify(body),
         }),
-        { params: Promise.resolve({ id: scan.id }) },
+        { id: scan.id },
       );
       expect(response.status).toBe(429);
       expect(await response.clone().text()).not.toContain("verification_sent");
@@ -2424,7 +2538,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     sendCooldownUntil = new Date(Date.now() + 40_000);
     try {
       const response = await requestScannerRegistration(
-        new NextRequest(`http://localhost:3000/api/v2/scans/${scan.id}/registrations`, {
+        new Request(`http://localhost:3000/api/v2/scans/${scan.id}/registrations`, {
           method: "POST",
           headers: {
             origin: "http://localhost:3000",
@@ -2433,7 +2547,7 @@ describe("P4 dashboard-owned scanner identity", () => {
           },
           body: JSON.stringify(body),
         }),
-        { params: Promise.resolve({ id: scan.id }) },
+        { id: scan.id },
       );
 
       expect(response.status).toBe(429);

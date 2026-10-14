@@ -22,7 +22,7 @@ import { UNSET_WORDS, type Unset } from "./words.js";
  * A shape of its own rather than the stored row, which also holds the shop's
  * key and secret: a type keeps those off every page.
  */
-export interface ConnectedShop {
+interface ConnectedShop {
   readonly shopUrl: string;
   readonly permissions: string;
   readonly connectedAt: Date;
@@ -106,7 +106,7 @@ export const noKeysYet = (state: ShopState): NoKeysYet | null => {
  * standing notice announced on every visit would drown it. The connector is not
  * offered on live, so the operator's approval never stands in the way here.
  */
-export interface BeforeImporting {
+interface BeforeImporting {
   readonly refused: boolean;
   /** The settings, in the words Settings uses for them. */
   readonly what: string;
@@ -235,21 +235,21 @@ interface Sent {
 }
 
 /** Our catalogue identifier for the card. */
-export interface Published extends Sent {
+interface Published extends Sent {
   readonly published: string;
 }
 
 /** Word for word, one finding per field. */
-export interface Refused extends Sent {
+interface Refused extends Sent {
   readonly problems: readonly string[];
 }
 
 /** What came back instead of an answer. */
-export interface Unanswered extends Sent {
+interface Unanswered extends Sent {
   readonly failed: string;
 }
 
-export interface NotAttempted extends Sent {
+interface NotAttempted extends Sent {
   readonly notAttempted: true;
 }
 

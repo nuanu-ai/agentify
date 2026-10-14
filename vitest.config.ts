@@ -66,7 +66,7 @@ export const unitTests: TestOptions = {
     "packages/*/**/*.test.ts",
     "packages/*/**/*.test.tsx",
   ],
-  exclude: [...configDefaults.exclude, "**/.next/**", "**/*.integration.test.ts"],
+  exclude: [...configDefaults.exclude, "**/*.integration.test.ts"],
 };
 
 /** The ones that own a database, a browser, a built server or more than one. */
@@ -74,8 +74,15 @@ const integrationTests: TestOptions = {
   ...shared,
   name: "integration",
   include: ["apps/*/**/*.integration.test.ts", "packages/*/**/*.integration.test.ts"],
-  exclude: [...configDefaults.exclude, "**/.next/**"],
 };
+
+/**
+ * The scanner draws its pictures with WebAssembly it imports with `?inline`,
+ * which Vite inlines only as an asset. A test importing that code directly
+ * compiles it under this config, and under the mutation runner's, which takes
+ * this by name.
+ */
+export const scannerAssets = ["**/*.wasm"];
 
 export const scannerSourceAlias = scannerSources.map(([specifier, path]) => ({
   find: new RegExp(`^${specifier.replaceAll("/", "\\/")}$`),
@@ -83,18 +90,21 @@ export const scannerSourceAlias = scannerSources.map(([specifier, path]) => ({
 }));
 
 /**
- * `apps/web` says `preserve` in its tsconfig because Next asks for it; left
- * alone, the test transform would read that and hand the runner untransformed
- * JSX.
+ * React Router rewrites `<app>/.react-router/types` whenever a Vite server
+ * starts, and the scanner's tests start one per file, in parallel, so a
+ * rewrite can lose a race with another and fail where nothing awaits it. Its
+ * Vite plugin has no setting that leaves the rewrite out or writes elsewhere.
+ * Those files are for an editor and no test reads them, so such a failure is
+ * not the run's; any other unhandled error still fails it.
  */
-export const jsxRuntime: NonNullable<ViteUserConfig["oxc"]> = {
-  jsx: { runtime: "automatic", importSource: "react" },
-};
+const isTypegenRace = (error: unknown): boolean =>
+  /[\\/]\.react-router[\\/]types([\\/]|$)/.test(String((error as { path?: unknown }).path ?? ""));
 
 export default defineConfig({
   resolve: { alias: scannerSourceAlias },
-  oxc: jsxRuntime,
+  assetsInclude: scannerAssets,
   test: {
+    onUnhandledError: (error) => !isTypegenRace(error),
     // Two projects rather than two configs: a file the configuration does not
     // collect cannot be run by naming it, so the integration commands name
     // the second project.

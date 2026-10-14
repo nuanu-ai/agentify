@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import {
   LANDING_EXAMPLE_CHECKS,
   LANDING_SHARED_CONTENT,
@@ -8,16 +6,19 @@ import {
 import { LANDING_SEGMENT_ATTRIBUTE, LANDING_VARIANT_ATTRIBUTE } from "../lib/landing-announcement";
 import { publicSiteSchema } from "../lib/schema";
 import styles from "./landing-page.module.css";
-import { MarketingHeader, SiteFooter } from "./site-chrome";
+import { usePublicConfig } from "./public-config";
+import { SiteFooter, SiteHeader } from "./site-chrome";
+import { SiteLink } from "./site-link";
 import { StatusBadge } from "./status-badge";
 import { StructuredData } from "./structured-data";
 import { UrlScanForm } from "./url-scan-form";
 
 export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
+  const site = usePublicConfig();
   return (
     <>
-      <StructuredData schema={publicSiteSchema()} />
-      <MarketingHeader />
+      <StructuredData schema={publicSiteSchema(site)} />
+      <SiteHeader />
       <main
         id="main"
         {...{
@@ -44,7 +45,7 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
               {config.secondDoor ? (
                 <p className={styles.secondDoor}>
                   {config.secondDoor.lead}{" "}
-                  <Link href={config.secondDoor.href}>{config.secondDoor.label} →</Link>
+                  <SiteLink to={config.secondDoor.href}>{config.secondDoor.label} →</SiteLink>
                 </p>
               ) : null}
             </div>
@@ -73,7 +74,7 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
           <div className={styles.reportCard}>
             <div className={styles.reportIntro}>
               <h3>{LANDING_SHARED_CONTENT.reportHeading}</h3>
-              <Link href="/methodology">{LANDING_SHARED_CONTENT.reportMethodologyLink}</Link>
+              <SiteLink to="/methodology">{LANDING_SHARED_CONTENT.reportMethodologyLink}</SiteLink>
             </div>
             <div className={styles.exampleChecks}>
               {LANDING_EXAMPLE_CHECKS.map((check) => (

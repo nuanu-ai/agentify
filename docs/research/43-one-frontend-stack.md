@@ -451,3 +451,49 @@ ownership in its rule, not only the speed. The move starts on React Router 8,
 the current major of the same framework, measured equivalent: the brotli
 script of the first moved dashboard pages is 91.0 to 91.8 KB a page on 8.4.0
 against 91.7 to 92.4 KB on 7.18.4.
+
+## Where the move stands
+
+Every surface a person uses on the origin, apart from the documentation, now
+runs on React Router 8 in framework mode on Express 5. The dashboard's pages
+are drawn inside the application's process, beside the gateway, as the spike
+drew them. The scanner's pages and its API answer from the scanner's own
+process, which keeps its own secrets and its own image: its build bundles the
+pages, the API routes and every package they import into one server module,
+and the image runs that module with nothing installed beside it. Next.js has
+left the workspace, and with it every setting and file kept only for it. Both
+surfaces draw one site header from the shared component package, the
+scanner's front-page header, which the dashboard draws over its own sections.
+The documentation portal stays on VitePress; whether it joins the one stack is
+decided separately, later.
+
+Two things the decision above expected did not hold once the scanner moved,
+and the move departs from them for the reasons that follow.
+
+The first is that the landings and the methodology would be rendered without
+any client script. Every scanner page hydrates, those included, because the
+consent banner and the analytics a visitor consents to run on every page: a
+choice made on the banner takes effect at once, without a reload, and a
+landing's view is recorded only after consent, by script on the page. A page
+without script would show a banner whose choice cannot be made, or no banner,
+and would record no landing at all. What a page that hydrates costs is held
+instead by the speed budget below, and by loading the heavy parts behind an
+import when they are needed: the card form's Stripe, the registration form and
+the large panels of a report.
+
+The second is one script limit for every page. The budget is checked against
+each build in CI, as the brotli-compressed script a page asks for on its first
+visit, and it has three limits. Every dashboard page keeps to 100 KB, which
+its pages meet with room, since they carry no consent banner and no analytics.
+A scanner page a stranger lands on keeps to 105 KB: the front page and the two
+segment landings, the sell-to-agents page and its notice, a shared result, the
+trust pages, the merchant landing and the page that says there is no such
+page. The framework alone is about 88 KB of each of them and the consent
+banner, the analytics and the scan form bring the front page to about 99 KB,
+so a limit of 100 KB would leave no room for any change to a landing. A
+scanner page reached by somebody already using the scanner keeps to 130 KB: a
+scan and its start, a report and the latest one, the two account forms and
+the operator's figures. Their script is what they are for, the scan's
+progress and the report's panels, and the person opening them has already
+chosen to scan; the report, the heaviest, asks for about 110 KB. Each page is
+printed against its own limit, so neither number hides the other.

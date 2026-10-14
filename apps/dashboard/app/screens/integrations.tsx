@@ -63,7 +63,7 @@ function ShopTile({ tile, base }: Readonly<{ tile: ShopTileView; base: string }>
           <h3>WooCommerce</h3>
           <div className="callout">
             <div className="what">{tile.what}</div>
-            <div className="why">{tile.why}</div>
+            <p className="why">{tile.why}</p>
           </div>
           <div className="connect-actions">
             <a className="button button-primary" href={shop}>

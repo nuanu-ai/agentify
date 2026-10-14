@@ -43,6 +43,8 @@ const sameHost = (origin: string, host: string): boolean => {
   return here !== null && hostOf(origin) === here;
 };
 
+export const NOT_FROM_HERE = "This form did not come from the dashboard.";
+
 /** Why a post is refused before it is read, in the words its page says. */
 export type Refusal = Readonly<{ status: 403 | 413; said: string }>;
 
@@ -64,7 +66,7 @@ export const refusalOfPost = (
       `[dashboard] a form post was refused: its origin is ${printable(origin)},` +
         ` and it was addressed to ${printable(host ?? "nothing at all")}`,
     );
-    return { status: 403, said: "This form did not come from the dashboard." };
+    return { status: 403, said: NOT_FROM_HERE };
   }
   // A body that does not say how long it is could be any length, and a page
   // reads a form whole.

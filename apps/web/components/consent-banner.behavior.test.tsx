@@ -4,11 +4,9 @@ import { CONSENT_STORAGE_KEY, readCurrentConsent } from "@agentify/analytics/bro
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { onSite } from "../testing/on-site";
 import { ConsentBanner } from "./consent-banner";
-
-vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
 
 describe("consent persistence", () => {
   beforeEach(() => {
@@ -24,7 +22,7 @@ describe("consent persistence", () => {
   it("keeps optional analytics off and the banner visible when saving fails", async () => {
     globalThis.fetch = async () => new Response(null, { status: 503 });
     const user = userEvent.setup();
-    render(<ConsentBanner />);
+    render(onSite(<ConsentBanner />));
 
     await user.click(screen.getByRole("button", { name: "Allow optional analytics" }));
 
@@ -36,7 +34,7 @@ describe("consent persistence", () => {
   it("stores only the optional categories the visitor selected", async () => {
     globalThis.fetch = async () => new Response(null, { status: 201 });
     const user = userEvent.setup();
-    render(<ConsentBanner />);
+    render(onSite(<ConsentBanner />));
 
     await user.click(screen.getByRole("button", { name: "Preferences" }));
     await user.click(screen.getByRole("checkbox", { name: /product analytics/i }));

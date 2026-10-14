@@ -1,17 +1,36 @@
 import type { PublicShareSnapshot } from "@agentify/scanner-contracts";
-import { ImageResponse } from "next/og";
 
-import { BrandMark } from "../../components/brand-mark";
+import { BrandMark } from "@agentify/ui";
 import { getPublicAppConfig } from "../app-config";
 import { type ShareTone, shareCopy } from "../share-copy";
-import { BRAND_IMAGE_FONTS, BRAND_IMAGE_HUMAN_FONT, BRAND_IMAGE_MONO_FONT } from "./brand-image";
+import { drawPng, HUMAN_FONT, MONO_FONT } from "./drawing";
+
+/**
+ * The site's colours the picture draws with, named as the tokens in
+ * `packages/visual/tokens.css` they copy, since it is drawn where no
+ * stylesheet applies; a test holds each to its token.
+ */
+export const INK = {
+  fg: "#1A1917",
+  muted: "#6B6862",
+  faint: "#726F69",
+  line: "#E7E3DB",
+  accent: "#0F736E",
+  "accent-soft": "#E6F0EF",
+  pass: "#2C774F",
+  "pass-soft": "#E7F1EA",
+  partial: "#926310",
+  fail: "#B4462F",
+} as const;
 
 const TONE: Record<ShareTone, { color: string; soft: string }> = {
-  critical: { color: "#B4462F", soft: "#F7E9E4" },
-  warning: { color: "#9A6811", soft: "#F3ECD9" },
-  neutral: { color: "#0F736E", soft: "#E6F0EF" },
-  positive: { color: "#2E7D53", soft: "#E7F1EA" },
+  critical: { color: INK.fail, soft: "#F7E9E4" },
+  warning: { color: INK.partial, soft: "#F3ECD9" },
+  neutral: { color: INK.accent, soft: INK["accent-soft"] },
+  positive: { color: INK.pass, soft: INK["pass-soft"] },
 };
+
+const SHARE_IMAGE_SIZE = { width: 1200, height: 630 } as const;
 
 const ZONES = [
   { key: "invisible", name: "Invisible", range: "0–24" },
@@ -20,7 +39,8 @@ const ZONES = [
   { key: "ahead_of_market", name: "Ahead", range: "70–100" },
 ];
 
-export function renderShareImage(snapshot: PublicShareSnapshot) {
+/** The card a published share unfurls into, and the picture a visitor downloads of it. */
+export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Array<ArrayBuffer>> {
   const { displayBrand } = getPublicAppConfig();
   const copy = shareCopy(snapshot);
   const tone = TONE[copy.tone];
@@ -30,7 +50,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
   const dash = circumference * pct;
   const date = new Date(snapshot.generated_at).toISOString().slice(0, 10);
 
-  return new ImageResponse(
+  return drawPng(
     <div
       style={{
         width: "100%",
@@ -38,7 +58,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
         display: "flex",
         padding: 40,
         background: "#EFEBE2",
-        fontFamily: BRAND_IMAGE_HUMAN_FONT,
+        fontFamily: HUMAN_FONT,
       }}
     >
       <div
@@ -49,10 +69,10 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
           justifyContent: "space-between",
           padding: 60,
           borderRadius: 28,
-          border: "1px solid #E7E3DB",
+          border: `1px solid ${INK.line}`,
           background: "#FFFFFF",
           backgroundImage: `radial-gradient(680px 360px at 88% 4%, ${tone.soft}, transparent 62%)`,
-          color: "#1A1917",
+          color: INK.fg,
           boxShadow: "0 30px 70px -46px rgba(26,25,23,0.42)",
         }}
       >
@@ -76,8 +96,8 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
             </strong>
             <span
               style={{
-                color: "#8A8781",
-                fontFamily: BRAND_IMAGE_MONO_FONT,
+                color: INK.faint,
+                fontFamily: MONO_FONT,
                 fontSize: 20,
                 letterSpacing: 2,
               }}
@@ -87,8 +107,8 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
           </div>
           <span
             style={{
-              color: "#8A8781",
-              fontFamily: BRAND_IMAGE_MONO_FONT,
+              color: INK.faint,
+              fontFamily: MONO_FONT,
               fontSize: 20,
             }}
           >
@@ -121,7 +141,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
                   background: tone.soft,
                   border: `1px solid ${tone.color}`,
                   color: tone.color,
-                  fontFamily: BRAND_IMAGE_MONO_FONT,
+                  fontFamily: MONO_FONT,
                   fontSize: 22,
                   fontWeight: 500,
                   letterSpacing: 2,
@@ -134,7 +154,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
             <strong style={{ fontSize: 52, fontWeight: 600, lineHeight: 1.12 }}>
               {copy.headline}
             </strong>
-            <span style={{ fontSize: 25, color: "#6B6862", lineHeight: 1.4 }}>{copy.subline}</span>
+            <span style={{ fontSize: 25, color: INK.muted, lineHeight: 1.4 }}>{copy.subline}</span>
           </div>
 
           <div
@@ -148,7 +168,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
             }}
           >
             <svg width="280" height="280" viewBox="0 0 280 280" style={{ position: "absolute" }}>
-              <circle cx="140" cy="140" r="120" fill="none" stroke="#E7E3DB" strokeWidth="20" />
+              <circle cx="140" cy="140" r="120" fill="none" stroke={INK.line} strokeWidth="20" />
               <circle
                 cx="140"
                 cy="140"
@@ -172,7 +192,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
               >
                 {score}
               </strong>
-              <span style={{ fontSize: 30, color: "#8A8781" }}>/100</span>
+              <span style={{ fontSize: 30, color: INK.faint }}>/100</span>
             </div>
           </div>
         </div>
@@ -205,13 +225,13 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
                     display: "flex",
                     flexDirection: "column",
                     gap: 2,
-                    color: active ? tone.color : "#8A8781",
-                    fontFamily: BRAND_IMAGE_MONO_FONT,
+                    color: active ? tone.color : INK.faint,
+                    fontFamily: MONO_FONT,
                     fontWeight: active ? 600 : 400,
                   }}
                 >
                   <span style={{ fontSize: 18 }}>{zone.name}</span>
-                  <span style={{ fontSize: 15, color: "#8A8781" }}>{zone.range}</span>
+                  <span style={{ fontSize: 15, color: INK.faint }}>{zone.range}</span>
                 </div>
               );
             })}
@@ -222,20 +242,16 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
               justifyContent: "space-between",
               alignItems: "center",
               marginTop: 8,
-              fontFamily: BRAND_IMAGE_MONO_FONT,
+              fontFamily: MONO_FONT,
               fontSize: 19,
             }}
           >
-            <span style={{ color: "#8A8781" }}>Diagnostic, not a certification</span>
-            <span style={{ color: "#0F736E", fontWeight: 500 }}>Scan yours → agentify.ad</span>
+            <span style={{ color: INK.faint }}>Diagnostic, not a certification</span>
+            <span style={{ color: INK.accent, fontWeight: 500 }}>Scan yours → agentify.ad</span>
           </div>
         </div>
       </div>
     </div>,
-    {
-      width: 1200,
-      height: 630,
-      fonts: BRAND_IMAGE_FONTS.length ? [...BRAND_IMAGE_FONTS] : undefined,
-    },
+    SHARE_IMAGE_SIZE,
   );
 }

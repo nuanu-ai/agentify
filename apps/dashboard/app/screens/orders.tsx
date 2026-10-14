@@ -1,8 +1,8 @@
 import { Table } from "@agentify/ui";
 import { Link } from "react-router";
 import type { OrdersView } from "../../src/views.js";
+import { useGoingTo } from "../components/going-to.js";
 import { Moment } from "../components/moment.js";
-import { useGoingTo } from "../components/on-its-way.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
 
@@ -92,10 +92,10 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
           <div className="what">
             Order <span className="mono">{callout.id}</span> {callout.state}
           </div>
-          <div className="why">
+          <p className="why">
             {callout.why}
             {callout.rest === null ? null : <Rest rest={callout.rest} />}
-          </div>
+          </p>
         </div>
       ))}
     </>

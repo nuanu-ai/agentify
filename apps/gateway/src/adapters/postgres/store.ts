@@ -68,7 +68,7 @@ export interface Envelopes {
  * For a store that writes no orders, such as the command-line verbs'. It
  * refuses out loud rather than dropping a merchant's work.
  */
-export const noEnvelopes: Envelopes = {
+const noEnvelopes: Envelopes = {
   async within(_tx, _merchantId, envelope) {
     throw new Error(
       `this store was built with nowhere to put the envelope ${envelope.id}: a store that writes orders is given a stream`,

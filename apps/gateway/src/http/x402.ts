@@ -38,7 +38,7 @@ export const X402_VERSION = 2;
 export const PAYMENT_REQUIRED_HEADER = "PAYMENT-REQUIRED";
 export const PAYMENT_SIGNATURE_HEADER = "payment-signature";
 /** The payment header's name in version 1 of the protocol. */
-export const PAYMENT_SIGNATURE_HEADER_V1 = "x-payment";
+const PAYMENT_SIGNATURE_HEADER_V1 = "x-payment";
 export const PAYMENT_RESPONSE_HEADER = "PAYMENT-RESPONSE";
 
 export const ORDER_ID_IN_EXTRA = "order_id";

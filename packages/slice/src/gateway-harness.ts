@@ -60,7 +60,7 @@ const sliceMerchantKeyFor = (environment: Environment): string =>
  * can name; the smoke overrides it with a real testnet merchant address, and
  * there the sale really does land at it.
  */
-export const SLICE_PAY_TO = "0x1111111111111111111111111111111111111111";
+const SLICE_PAY_TO = "0x1111111111111111111111111111111111111111";
 
 export interface Booted {
   /** Where the gateway answers, for the buyer and the merchant to point at. */

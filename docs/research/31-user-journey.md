@@ -81,14 +81,14 @@ wrote them; every one of them made sense in the product it came from.
 
 The front page `/` answers with a permanent redirect to `/owner`, the
 landing of the owner segment, titled "Website diagnostic for business
-owners" (`apps/web/app/page.tsx`). Its hero does not mention selling to
+owners" (`apps/web/app/routes/home.tsx`). Its hero does not mention selling to
 agents; the header's "Agentic Shop" and the footer's "For merchants" are the
 only signs of it. The redirect is served with `Cache-Control: no-store`,
 verified against the live site on 2026-09-21, so browsers do not remember it
 and moving the front page has no cached tail.
 
 The public header carries four links: Agentic Shop, Scanner, Methodology,
-Privacy (`apps/web/components/site-chrome.tsx`). Neither the cabinet nor the
+Privacy (`packages/ui/src/header.tsx`). Neither the cabinet nor the
 documentation is among them. That header is rendered by the landing pages
 only; the trust pages, methodology, privacy, terms, the scanner's own page,
 render a header of their own with three links and no door either
@@ -98,7 +98,7 @@ page leads to `/owner`.
 
 Selling to agents lives at `/agentic-shop` as a subbrand, "Agentify
 Agentic Shop", with a lockup, a title, a social image and a navigation of
-its own (`apps/web/app/agentic-shop/page.tsx`). Its header and its last
+its own (`apps/web/app/routes/agentic-shop.tsx`). Its header and its last
 section open the cabinet's door. Its footer's "Explore Agentify" leads back
 to the owner landing. The historical privacy notice under the same prefix
 renders the same lockup, and the site's `llms.txt` lists the page under the
@@ -106,7 +106,7 @@ second name.
 
 The full report offers the cabinet under the heading "Your cabinet" with the
 sentence "Manage cards and integrations through the same verified email"
-(`apps/web/app/report/[scanId]/page.tsx`). Cards and integrations are words
+(`apps/web/app/routes/report.scanId.tsx`). Cards and integrations are words
 an integrator has a referent for and a site owner does not. Below the checks
 the same page asks "What do you want to do next?" with three choices, fix it
 with AI, send to a developer, share with my team, and shows "Waitlist #N"
@@ -125,7 +125,7 @@ and derive the variant name from the segment a second time, beside the
 variant the landing configuration already carries.
 
 The cabinet's only way out is "Docs →" and the brand mark, which leads to
-`/` (`apps/dashboard/src/html.ts`). The documentation links the cabinet's door
+`/` (`apps/dashboard/app/components/frame.tsx`). The documentation links the cabinet's door
 from its front page and from the quickstart.
 
 ## The journey

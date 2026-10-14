@@ -21,11 +21,7 @@ RUN pnpm --filter @agentify/docs exec vitepress build --base /docs/
 FROM caddy:2.10.0-alpine@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8cb23a7e8ac557aa3c
 
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
-# The mark and the font files the dashboard's pages ask for, at the addresses
-# the route table names.
+# The marks and the font files the dashboard's pages and the documentation
+# portal ask for, at the addresses the route table names.
 COPY packages/visual/public /srv/assets
 COPY --from=portal /app/apps/docs/.vitepress/dist /srv/docs
-# The merchant landing at /sell (deploy/Caddyfile), with the shared palette
-# beside it, because the page asks for /sell/tokens.css.
-COPY apps/commerce-landing /srv/sell
-COPY packages/visual/tokens.css /srv/sell/tokens.css

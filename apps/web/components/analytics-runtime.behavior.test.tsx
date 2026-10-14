@@ -5,9 +5,8 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LANDING_SEGMENT_ATTRIBUTE, LANDING_VARIANT_ATTRIBUTE } from "../lib/landing-announcement";
+import { onSite } from "../testing/on-site";
 import { AnalyticsRuntime, type BrowserAnalyticsConfig } from "./analytics-runtime";
-
-vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
 
 const config: BrowserAnalyticsConfig = {
   runtimeEnvironment: "test",
@@ -49,7 +48,7 @@ describe("a visit before and after the visitor's choice", () => {
         : new Response(null, { status: 204 });
     });
 
-    render(<AnalyticsRuntime config={config} />);
+    render(onSite(<AnalyticsRuntime config={config} />));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(asked).toEqual([]);
 

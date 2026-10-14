@@ -25,13 +25,7 @@ import {
 } from "@agentify/scanner-database";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getServerConfig } from "./config";
-import {
-  decryptSensitiveValue,
-  encryptEmail,
-  encryptSensitiveValue,
-  hmacHex,
-  normalizeEmail,
-} from "./crypto";
+import { decryptSensitiveValue, encryptSensitiveValue, hmacHex, normalizeEmail } from "./crypto";
 import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
 import type { LinkSendOutcome } from "./link-wait";
@@ -56,9 +50,11 @@ function intentValues(
     id: createUuidV7(),
     scanId: scan.id,
     sessionId: scan.sessionId,
-    emailNormalizedCiphertext: encryptEmail(normalizedEmail, config.encryptionKey),
+    emailNormalizedCiphertext: encryptSensitiveValue(normalizedEmail, config.encryptionKey),
     emailLookupHash: hmacHex(config.hmacSecret, "email", normalizedEmail),
-    phoneE164Ciphertext: body.phone ? encryptEmail(body.phone, config.encryptionKey) : null,
+    phoneE164Ciphertext: body.phone
+      ? encryptSensitiveValue(body.phone, config.encryptionKey)
+      : null,
     phoneLookupHash: body.phone ? hmacHex(config.hmacSecret, "phone", body.phone) : null,
     partnerClickIdCiphertext: partnerClickId
       ? encryptSensitiveValue(partnerClickId, config.encryptionKey)

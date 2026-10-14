@@ -13,6 +13,9 @@
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "check:decisions": "./scripts/check-decisions.sh",
+    "deadcode": "knip",
+    "gallery": "pnpm --filter @agentify/gallery gallery",
+    "gallery:check": "pnpm --filter @agentify/gallery check",
     "db:migrate": "pnpm --filter @agentify/gateway db:migrate && pnpm --filter @agentify/dashboard db:migrate",
     "worktrees": "./scripts/worktrees.sh list",
     "worktrees:clean": "./scripts/worktrees.sh clean",
@@ -35,6 +38,8 @@
     "scanner:test:integration": "node ops/scripts/with-env.mjs pnpm run scanner:test:integration:inner",
     "scanner:test:actor": "vitest run --project integration apps/browser-observer-actor/src/actor.integration.test.ts",
     "dashboard:test:browser": "pnpm --filter @agentify/dashboard build && vitest run --project integration apps/dashboard/src/in-chromium.integration.test.ts",
+    "scanner:test:browser": "pnpm --filter @agentify/web build && vitest run --project integration apps/web/server/in-chromium.integration.test.ts",
+    "scanner:test:start": "vitest run --project integration apps/web/server/start.integration.test.ts",
     "scanner:test:db": "pnpm scanner:build && pnpm scanner:db:check && pnpm scanner:db:test:migrations",
     "scanner:self-readiness": "node ops/scripts/self-readiness-candidate.mjs",
     "scanner:test:admin-door": "vitest run --project integration apps/web/admin-door.integration.test.ts",
@@ -48,12 +53,10 @@
     "scanner:db:test:migrations": "node ops/scripts/with-env.mjs vitest run --project integration packages/scanner-database/src/migrations.integration.test.ts",
     "scanner:ops:static": "bash ops/scripts/static-release-check.sh",
     "scanner:ops:runtime": "node ops/scripts/with-env.mjs bash ops/scripts/runtime-smoke.sh",
-    "scanner:ops:browser": "node ops/scripts/with-env.mjs bash ops/scripts/browser-smoke.sh",
     "scanner:ops:load": "node ops/scripts/with-env.mjs node ops/scripts/load-scan.mjs",
     "scanner:ops:golden-corpus": "node ops/scripts/with-env.mjs node ops/scripts/golden-corpus.mjs",
     "scanner:ops:test": "node --test ops/scripts/*.test.mjs && python3 deploy/ansible/test_agentify_test_woo_hairpin.py",
-    "scanner:privacy:cleanup": "node ops/scripts/with-env.mjs bash ops/scripts/privacy-retention-cleanup.sh",
-    "scanner:ops:local-core": "node ops/scripts/with-env.mjs bash ops/scripts/local-core-flow-smoke.sh"
+    "scanner:privacy:cleanup": "node ops/scripts/with-env.mjs bash ops/scripts/privacy-retention-cleanup.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",
@@ -61,8 +64,8 @@
     "@stryker-mutator/core": "10.0.0",
     "@stryker-mutator/vitest-runner": "10.0.0",
     "@types/node": "^26.3.0",
+    "knip": "6.41.0",
     "typescript": "5.9.3",
-    "vitest": "^4.1.11",
-    "axe-core": "4.12.1"
+    "vitest": "^4.1.11"
   }
 }

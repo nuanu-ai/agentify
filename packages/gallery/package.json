@@ -1,0 +1,27 @@
+{
+  "name": "@agentify/gallery",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Every screen of every surface in every state, drawn by the surfaces' own components into one static page",
+  "exports": {
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts"
+  },
+  "scripts": {
+    "gallery": "tsx src/main.ts",
+    "check": "tsx src/check.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agentify/visual": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.17",
+    "axe-core": "4.12.1",
+    "playwright": "1.61.1",
+    "tsx": "4.23.12",
+    "vite": "7.3.6",
+    "vitest": "4.1.11"
+  }
+}

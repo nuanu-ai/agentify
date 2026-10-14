@@ -18,7 +18,7 @@ export type ContentUsePolicy = Readonly<{
   aiTrain: "yes" | "no";
 }>;
 
-export const PRODUCTION_CONTENT_USE_POLICY = {
+const PRODUCTION_CONTENT_USE_POLICY = {
   search: "yes",
   aiInput: "yes",
   aiTrain: "no",

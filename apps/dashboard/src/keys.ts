@@ -19,7 +19,7 @@ import { type FrameView, type MomentView, momentView } from "./views.js";
  */
 const FRAME: FrameView = { unnamed: false };
 
-export interface KeyRow {
+interface KeyRow {
   readonly id: string;
   readonly label: string;
   readonly created: MomentView;

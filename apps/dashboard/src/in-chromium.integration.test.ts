@@ -5,18 +5,23 @@
  * shown: the headers that promise this are held offline in `server.test.ts`,
  * and a change of React Router's data addresses could break it with every
  * header still in place. A press answered on its own page leaves the merchant
- * where they were on it, which only a page that really scrolls can show.
+ * where they were on it, and the sections stay in reach however far a page is
+ * scrolled, which only a page that really scrolls can show.
  *
  * It needs the build (`pnpm --filter @agentify/dashboard build`) and
  * Playwright's Chromium, and counts what reaches the dashboard rather than what
  * the browser says about its cache.
  */
 
-import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
+import { fileURLToPath } from "node:url";
 import { type Harness, harness } from "@agentify/gateway/testing";
+import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
+import { launchChromium } from "@agentify/ui/chromium";
 import express from "express";
-import { type Browser, chromium, type Page } from "playwright";
+import type { Browser, Page } from "playwright";
+import type { ServerBuild } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import { identityFor } from "./identity.js";
@@ -34,6 +39,8 @@ let browser: Browser;
 let close: () => Promise<void>;
 let origin: string;
 let cookies: { name: string; value: string }[];
+let build: ServerBuild;
+let viteManifest: ViteManifest;
 const asked: string[] = [];
 
 beforeAll(async () => {
@@ -77,6 +84,13 @@ beforeAll(async () => {
   });
 
   const pages = await builtPages();
+  build = pages.build as ServerBuild;
+  viteManifest = JSON.parse(
+    await readFile(
+      fileURLToPath(new URL("../dist/client/.vite/manifest.json", import.meta.url)),
+      "utf8",
+    ),
+  ) as ViteManifest;
   const dashboard = buildApp(config, { pages, gateway: harnessed.gateway, identity });
   const counted = express();
   counted.use((request, _response, next) => {
@@ -96,12 +110,7 @@ beforeAll(async () => {
   const server = counted.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  // The Chrome a Mac already has, as the browser observer's test does;
-  // Playwright's own Chromium wherever there is none.
-  const macChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  browser = await chromium.launch(
-    process.platform === "darwin" && existsSync(macChrome) ? { executablePath: macChrome } : {},
-  );
+  browser = await launchChromium();
   close = async () => {
     await browser.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -169,6 +178,34 @@ describe("the page data Chromium keeps", () => {
   });
 });
 
+describe("a page's first visit in Chromium", () => {
+  it.each([
+    ["/sign-in", "routes/sign-in", false],
+    ["/cards", "routes/cards", true],
+  ])(
+    "loads the scripts the speed budget counts for it, no more and no fewer: %s",
+    async (path, routeId, signedIn) => {
+      const context = await browser.newContext();
+      if (signedIn) await context.addCookies(cookies.map((one) => ({ ...one, url: origin })));
+      const page = await context.newPage();
+      const scripts = new Set<string>();
+      page.on("request", (request) => {
+        const { pathname } = new URL(request.url());
+        if (pathname.startsWith(`${BASE}/assets/`) && pathname.endsWith(".js")) {
+          scripts.add(pathname.slice(`${BASE}/`.length));
+        }
+      });
+      await page.goto(`${origin}${BASE}${path}`);
+      await page.waitForLoadState("networkidle");
+
+      expect([...scripts].sort()).toEqual(
+        [...firstVisitScripts(build, viteManifest, routeId)].sort(),
+      );
+      await context.close();
+    },
+  );
+});
+
 describe("a press answered on its own page", () => {
   it("leaves the merchant where they were on it", async () => {
     // A merchant pausing the last card reads the last card next.
@@ -216,6 +253,83 @@ describe("a click under the dashboard's prefix", () => {
     await page.waitForTimeout(400);
     expect(await page.locator(".filter .here").textContent()).toBe("Open");
     await page.waitForURL(`${origin}${BASE}/orders?open=true`);
+    await page.context().close();
+  });
+});
+
+describe("the sections on a long page", () => {
+  it("stay in reach on a phone from the menu at the end of the header's row, which shows who is signed in and closes on Escape", async () => {
+    const page = await onTheCards({ width: 390, height: 600 });
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const burger = page.locator(".site-menu > summary");
+    const panel = page.locator(".site-menu-panel");
+
+    const reach = await burger.boundingBox();
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    expect(reach?.y).toBeGreaterThanOrEqual(0);
+    expect((reach?.y ?? 600) + (reach?.height ?? 0)).toBeLessThanOrEqual(600);
+    await burger.click();
+    await panel.waitFor({ state: "visible" });
+    expect(await panel.getByRole("link", { name: /Orders/ }).isVisible()).toBe(true);
+    expect(await panel.getByText(PERSON).isVisible()).toBe(true);
+    expect(await panel.getByRole("button", { name: "Sign out" }).isVisible()).toBe(true);
+
+    await panel.getByRole("link", { name: /Orders/ }).focus();
+    await page.keyboard.press("Escape");
+    await panel.waitFor({ state: "hidden" });
+    expect(await burger.evaluate((element) => element === document.activeElement)).toBe(true);
+    await page.context().close();
+  });
+
+  it("are in a phone's menu that Escape closes wherever the focus is, so the page scrolls again", async () => {
+    const page = await onTheCards({ width: 390, height: 600 });
+    const burger = page.locator(".site-menu > summary");
+    const panel = page.locator(".site-menu-panel");
+    const pageScrolls = () =>
+      page.evaluate(() => getComputedStyle(document.body).overflowY !== "hidden");
+
+    await burger.click();
+    await panel.waitFor({ state: "visible" });
+    expect(await pageScrolls()).toBe(false);
+    // A browser that does not focus a pressed summary, as Safari does not.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press("Escape");
+
+    await panel.waitFor({ state: "hidden" });
+    expect(await pageScrolls()).toBe(true);
+    expect(await burger.evaluate((element) => element === document.activeElement)).toBe(true);
+    await page.context().close();
+  });
+
+  it("are in a phone's menu that closes when the page moves on, though the page drawn stays", async () => {
+    const page = await onTheCards({ width: 390, height: 600 });
+    await page.goto(`${origin}${BASE}/orders`);
+    await page.waitForLoadState("networkidle");
+    const panel = page.locator(".site-menu-panel");
+
+    await page.locator(".site-menu > summary").click();
+    await panel.waitFor({ state: "visible" });
+    // The orders' filter leads to the same page, which is drawn again in
+    // place rather than anew; the menu is open over it.
+    await page.locator(".filter a", { hasText: "Open" }).focus();
+    await page.keyboard.press("Enter");
+    await page.waitForURL(`${origin}${BASE}/orders?open=true`);
+    await page.waitForLoadState("networkidle");
+
+    expect(await page.locator(".filter .here").textContent()).toBe("Open");
+    expect(await panel.isVisible()).toBe(false);
+    await page.context().close();
+  });
+
+  it("stay whole under the header on a laptop, down to the foot of the page", async () => {
+    // A window taller than the sidebar's words and the foot together.
+    const page = await onTheCards({ width: 1280, height: 700 });
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+
+    const header = await page.locator("header.site-header").boundingBox();
+    const sidebar = await page.locator(".app-sidebar-inner").boundingBox();
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    expect(sidebar?.y).toBeGreaterThanOrEqual((header?.y ?? 0) + (header?.height ?? 0));
     await page.context().close();
   });
 });
