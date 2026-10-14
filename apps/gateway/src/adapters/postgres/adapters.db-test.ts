@@ -1617,6 +1617,54 @@ if (databaseUrl === null) {
         await expect(aGatewayOn(contract.db).start()).rejects.toThrow(/mch_recorded/);
       });
 
+      it("records at once more splits than one statement could carry", async () => {
+        // Thirteen columns a row and at most 65,535 values a statement: a
+        // start over five thousand wallets without splits sent as one
+        // statement would be refused on every attempt.
+        const many = Array.from({ length: 6_000 }, (_, at) => splitOf(`mch_bulk_${at}`, W1));
+
+        const recorded = await store.recordPayoutSplits(many, now);
+
+        expect(recorded).toHaveLength(6_000);
+        const [counted] = (
+          await pool.query(
+            "select count(*)::int as n from payout_splits where merchant_id like 'mch_bulk_%'",
+          )
+        ).rows;
+        expect(counted?.n).toBe(6_000);
+      });
+
+      it("says why when the splits a start lacks cannot be recorded, and not that the database did not answer", async () => {
+        await asBeforeSplits();
+        await pool.query(
+          `alter table payout_splits add constraint refuse_the_wallet check (merchant_wallet <> '${W1}')`,
+        );
+        try {
+          const config = loadConfig({
+            DATABASE_URL: databaseUrl,
+            FACILITATOR_URL: "sandbox:scripted",
+          });
+
+          let refused: unknown;
+          const logged = await loggedWhile(async () => {
+            refused = await startGateway(config, nobodyAnnounces).then(
+              async (started) => {
+                await started.stop();
+                return null;
+              },
+              (thrown: unknown) => thrown,
+            );
+          });
+
+          expect(refused).toBeInstanceOf(Error);
+          expect(logged).toMatch(/payout split/);
+          expect(logged).toMatch(/refuse_the_wallet/);
+          expect(logged).not.toMatch(/did not answer/);
+        } finally {
+          await pool.query("alter table payout_splits drop constraint refuse_the_wallet");
+        }
+      });
+
       describe("on a deployment of another network than the test chain", () => {
         const base = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453");
         const MERCHANT = "mch_on_base";
