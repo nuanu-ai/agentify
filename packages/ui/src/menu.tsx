@@ -34,6 +34,29 @@ function Menu({ children }: Readonly<{ children: ReactNode }>) {
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, []);
 
+  // The panel reaches from where it opens to the foot of the window, and only
+  // the drawn page knows where it opens: under the sticky header, at the
+  // header's foot; under a page's own top, wherever that top ends. It is
+  // measured as the menu opens, before the panel is first painted, which the
+  // details element's own toggle event comes too late for.
+  useEffect(() => {
+    const details = menu.current;
+    if (details === null) return;
+    const fitToRoom = () => {
+      const panel = details.lastElementChild;
+      if (!details.open || panel === null) return;
+      details.style.setProperty("--site-menu-top", `${panel.getBoundingClientRect().top}px`);
+    };
+    fitToRoom();
+    const opening = new MutationObserver(fitToRoom);
+    opening.observe(details, { attributeFilter: ["open"] });
+    window.addEventListener("resize", fitToRoom);
+    return () => {
+      opening.disconnect();
+      window.removeEventListener("resize", fitToRoom);
+    };
+  }, []);
+
   return (
     <details className="site-menu" ref={menu}>
       <summary aria-label="Menu">

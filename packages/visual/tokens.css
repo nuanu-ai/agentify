@@ -786,6 +786,9 @@ p {
  * the nearest box with a position, the sticky header or that top.
  */
 .site-menu {
+  /* Where the panel opens, from the top of the window: under the site
+     header until the menu's script measures it. */
+  --site-menu-top: 69px;
   display: none;
 }
 
@@ -842,13 +845,14 @@ p {
   transform: translateY(-6px) rotate(-45deg);
 }
 
+/* The panel reaches no lower than the foot of the window. */
 .site-menu-panel {
   position: absolute;
   z-index: 30;
   top: 100%;
   right: 0;
   left: 0;
-  max-height: calc(100dvh - 69px);
+  max-height: calc(100dvh - var(--site-menu-top));
   overflow-y: auto;
   padding: 10px 14px 16px;
   border-bottom: var(--hairline) solid var(--line);
