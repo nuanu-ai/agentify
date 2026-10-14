@@ -6,16 +6,17 @@ import { Brand } from "./brand";
 import { lazyPart, useHere } from "./lazy-part";
 import { PrivacyChoicesButton } from "./privacy-choices-button";
 import styles from "./scan-experience.module.css";
+import { ScanFailed } from "./scan-failed";
 import { SiteDoors } from "./site-chrome";
 import { SiteLink } from "./site-link";
 import { StatusBadge } from "./status-badge";
 
-// How a scan ended, its result with the share, the prompt and the form for
-// the full report, or why there is none, and the browser's observations
-// beside it, are not part of the page's first load: they are fetched while
-// the scan runs, so the result follows its progress at once.
+// A scan's result, with the share, the prompt and the form for the full
+// report, and the browser's observations beside it are not part of the
+// page's first load: they are fetched while the scan runs, so the result
+// follows its progress at once. Why a scan ended without one is small, and
+// is drawn as soon as the status says so.
 const ScanTeaser = lazyPart(() => import("./scan-teaser").then((module) => module.ScanTeaser));
-const ScanFailed = lazyPart(() => import("./scan-failed").then((module) => module.ScanFailed));
 const BrowserObservations = lazyPart(() =>
   import("./browser-observations").then((module) => module.BrowserObservations),
 );
@@ -145,7 +146,6 @@ export function ScanExperience({
     if (!underway) return;
     setWatchedItRun(true);
     ScanTeaser.preload();
-    ScanFailed.preload();
     if (browserObservationsEnabled) BrowserObservations.preload();
   }, [browserObservationsEnabled, underway]);
 
@@ -154,8 +154,9 @@ export function ScanExperience({
   // A scan watched running keeps the list it ran with until its result can be
   // drawn, what was open in it included; one opened after it ended shows the
   // finished list while the result's script is on its way.
-  const resultHere = useHere(data?.teaser ? ScanTeaser : ScanFailed, finished && watchedItRun);
-  const holding = finished && watchedItRun && !resultHere;
+  const scored = finished && Boolean(data.teaser);
+  const resultHere = useHere(ScanTeaser, scored && watchedItRun);
+  const holding = scored && watchedItRun && !resultHere;
 
   return (
     <main className={styles.page}>
@@ -189,29 +190,26 @@ export function ScanExperience({
           <ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />
         ) : null}
         {data?.status === "failed" ? (
-          <Suspense fallback={null}>
-            <ScanFailed
-              blocked={data.blocked === true}
-              checks={data.checks}
-              onRetry={() => window.location.assign("/")}
-            />
-          </Suspense>
+          <ScanFailed
+            blocked={data.blocked === true}
+            checks={data.checks}
+            onRetry={() => window.location.assign("/")}
+          />
         ) : null}
-        {finished && !holding ? (
+        {finished && !data.teaser ? (
+          <ScanFailed blocked={false} checks={data.checks} onRetry={() => void poll()} />
+        ) : null}
+        {scored && !holding ? (
           <Suspense
             fallback={<ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />}
           >
-            {data.teaser ? (
-              <ScanTeaser
-                data={data}
-                publicShareEnabled={publicShareEnabled}
-                remediationPromptEnabled={remediationPromptEnabled}
-                registrationEnabled={registrationEnabled}
-                scanId={scanId}
-              />
-            ) : (
-              <ScanFailed blocked={false} checks={data.checks} onRetry={() => void poll()} />
-            )}
+            <ScanTeaser
+              data={data}
+              publicShareEnabled={publicShareEnabled}
+              remediationPromptEnabled={remediationPromptEnabled}
+              registrationEnabled={registrationEnabled}
+              scanId={scanId}
+            />
           </Suspense>
         ) : null}
 
