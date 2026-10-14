@@ -387,9 +387,10 @@ td.control {
   text-align: right;
 }
 
-/* Where the orders' words wrap, their filter is the list's own control, on a
-   row of its own right above the list, rather than beside the words. */
-@media (max-width: 900px) {
+/* On a phone and a tablet, where the frame has no sidebar, the orders' filter
+   is the list's own control, on a row of its own right above the list, rather
+   than beside the words. */
+@media (max-width: 910px) {
   .lede:has(> .filter) {
     flex-direction: column;
     align-items: stretch;
@@ -1022,8 +1023,11 @@ h2 {
 
 /* On a phone and a tablet the sidebar gives way to the menu at the end of the
    site header's row, and only that row stays in view; the title bar scrolls
-   with the page. */
-@media (max-width: 900px) {
+   with the page. The frame turns at the width where the shared header takes
+   up its menu and leaves who is signed in to it, so the bar never shows the
+   sidebar and the menu together; the frame's other narrow rules below turn at
+   the same width. */
+@media (max-width: 910px) {
   .app-shell {
     grid-template-columns: 1fr;
   }
@@ -1203,7 +1207,7 @@ h2 {
 }
 /* Where the title, the light and the address wrap onto two rows, the title
    keeps the room above it that one centred row gives it. */
-@media (max-width: 900px) {
+@media (max-width: 910px) {
   .app-workspace .top-inner {
     width: calc(100% - 36px);
     min-height: 64px;
@@ -1221,7 +1225,7 @@ h2 {
   margin-inline: 0;
   padding-inline: 26px calc((var(--workspace) - var(--content)) / 2);
 }
-@media (max-width: 900px) {
+@media (max-width: 910px) {
   .app-frame .site-header-inner {
     padding-inline: 18px;
   }
@@ -1235,7 +1239,7 @@ h2 {
   width: var(--content);
   margin-inline: calc(252px + (var(--workspace) - var(--content)) / 2) 0;
 }
-@media (max-width: 900px) {
+@media (max-width: 910px) {
   .app-shell + .foot .foot-inner {
     width: calc(100% - 36px);
     margin-inline: auto;

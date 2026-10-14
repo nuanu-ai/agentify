@@ -115,7 +115,7 @@ html:has(.sell) {
 .sell .masthead__burger[aria-expanded="true"] span:nth-child(3) {
   transform: translateY(-6px) rotate(-45deg);
 }
-.sell .site-menu {
+.sell .masthead__menu {
   position: absolute;
   top: 100%;
   left: 0;
@@ -126,16 +126,16 @@ html:has(.sell) {
   background: var(--bg);
   box-shadow: 0 24px 40px -32px rgba(26, 25, 23, 0.45);
 }
-.sell .site-menu[hidden] {
+.sell .masthead__menu[hidden] {
   display: none;
 }
-.sell .site-menu a:not(.button) {
+.sell .masthead__menu a:not(.button) {
   padding: 14px 0;
   border-bottom: 1px solid var(--line);
   color: var(--fg);
   font-size: 17px;
 }
-.sell .site-menu .button {
+.sell .masthead__menu .button {
   margin-top: 18px;
 }
 .sell .hero {

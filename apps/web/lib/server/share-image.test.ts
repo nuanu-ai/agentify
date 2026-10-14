@@ -1,7 +1,9 @@
 /**
- * A share's picture is drawn on the server, where no stylesheet applies, so it
- * carries the site's colours as values of its own; each is held here to the
- * token it copies, so the picture changes when the site's colours do.
+ * A share's picture is drawn on the server, where no stylesheet applies, so
+ * the inks it shares with the site are values of its own; each is held here
+ * to the token it copies, so the picture's inks change when the site's do.
+ * The picture's ground, its card's white and the tints of its critical and
+ * warning tones copy no token and are not held.
  */
 
 import { readFileSync } from "node:fs";
@@ -20,7 +22,7 @@ const token = (name: string): string | undefined =>
   new RegExp(`--${name}:\\s*(#[0-9a-f]{6})\\s*;`, "i").exec(TOKENS)?.[1]?.toLowerCase();
 
 describe("a share's picture", () => {
-  it.each(Object.entries(INK))("draws in the site's own %s", (name, value) => {
+  it.each(Object.entries(INK))("draws its %s ink as the site's token gives it", (name, value) => {
     expect(value.toLowerCase()).toBe(token(name));
   });
 });

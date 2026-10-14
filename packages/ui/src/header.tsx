@@ -163,7 +163,7 @@ export function SiteHeader({
 export function SiteMenu({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: ReactNode }>) {
   return (
     <HeaderMenu>
-      <nav aria-label="Primary" className="site-menu-sections">
+      <nav aria-label="Site sections" className="site-menu-sections">
         {SECTIONS.map((section) => (
           <PlaceLink key={section.path} place={section} {...drawn}>
             {section.label}
