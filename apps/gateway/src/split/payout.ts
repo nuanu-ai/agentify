@@ -188,29 +188,22 @@ function refuseUnlessPayable(network: PayoutSplitNetwork, splits: readonly Payou
       factory: split.factory,
       implementation: network.implementation,
     });
-    if (derived.toLowerCase() !== split.address.toLowerCase()) {
+    if (derived !== checkedAddress(split.address, "the split")) {
       throw new Error(
         `the split recorded at ${split.address} has parameters that give ${derived}, so a payout of it would create one contract and distribute another`,
       );
     }
-    const address = split.address.toLowerCase();
-    if (seen.has(address)) {
+    if (seen.has(derived)) {
       throw new Error(`the split ${split.address} is named twice in one payout`);
     }
-    seen.add(address);
+    seen.add(derived);
   }
 }
 
-/** Each wallet in the order the splits first name it, once. */
-const eachOnce = (wallets: readonly string[]): readonly string[] => {
-  const seen = new Set<string>();
-  return wallets.filter((wallet) => {
-    const key = wallet.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-};
+/** Each wallet in the order the splits first name it, once, whatever its spelling. */
+const eachOnce = (wallets: readonly string[]): readonly string[] => [
+  ...new Set(wallets.map((wallet) => checkedAddress(wallet, "a wallet"))),
+];
 
 function transactionOf(
   network: PayoutSplitNetwork,
@@ -287,9 +280,7 @@ export function merchantPayout(
   }
   const merchants = new Set(splits.map((split) => split.merchantId));
   if (merchants.size > 1) {
-    throw new Error(
-      `one merchant's payout names the splits of ${merchants.size} merchants: ${[...merchants].join(", ")}`,
-    );
+    throw new Error(`one merchant's payout names the splits of ${merchants.size} merchants`);
   }
   if (splits.length > SPLITS_PER_PAYOUT) {
     throw new Error(

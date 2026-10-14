@@ -13,7 +13,6 @@ import {
   getContractAddress,
   type Hex,
   isAddress,
-  isHex,
   keccak256,
 } from "viem";
 
@@ -63,11 +62,11 @@ export const SPLIT_TUPLE = {
 /**
  * An address in its checksummed spelling, or a refusal. Lower case and the
  * exact checksummed spelling are taken; capitals that disagree with the
- * address are refused, because they mean a character is wrong and a wrong
- * address is somebody else's.
+ * address are refused, as `isAddress` does by default, because they mean a
+ * character is wrong and a wrong address is somebody else's.
  */
 export function checkedAddress(address: string, what: string): Address {
-  if (!isAddress(address, { strict: true })) {
+  if (!isAddress(address)) {
     throw new Error(
       `${what}, ${JSON.stringify(address)}, is not an address: an address is 0x and forty hexadecimal characters, in lower case or in its exact checksummed spelling`,
     );
@@ -90,7 +89,7 @@ export function checkedSplit(split: SplitParameters): CheckedSplit {
 
   if (recipients.length !== allocations.length) {
     refuse(
-      `they name ${recipients.length} recipients and ${allocations.length} allocation${allocations.length === 1 ? "" : "s"}, and the factory creates a split only where each recipient has one`,
+      `they name ${recipients.length} recipients and allocations for ${allocations.length}, and the factory creates a split only where each recipient has one`,
     );
   }
   if (recipients.length !== 2) {
@@ -98,9 +97,7 @@ export function checkedSplit(split: SplitParameters): CheckedSplit {
       `a payout split has two recipients, the merchant's wallet and then the commission wallet, and these name ${recipients.length}`,
     );
   }
-  const checked = recipients.map((recipient, index) =>
-    checkedAddress(recipient, `recipient ${index + 1}`),
-  );
+  const checked = recipients.map((recipient) => checkedAddress(recipient, "a recipient"));
   if (checked.includes(ZERO_ADDRESS)) {
     refuse(
       "a recipient is the zero address, and USDC sends nothing there, so its share would never leave",
@@ -111,15 +108,10 @@ export function checkedSplit(split: SplitParameters): CheckedSplit {
       "they name one wallet twice, which would take both shares; the merchant's wallet and the commission wallet are two wallets",
     );
   }
-  allocations.forEach((allocation, index) => {
+  for (const allocation of allocations) {
     if (!Number.isSafeInteger(allocation) || allocation < 0) {
-      refuse(
-        `allocation ${index + 1} is ${allocation}, and an allocation is a whole number of parts`,
-      );
+      refuse(`an allocation is ${allocation}, and an allocation is a whole number of parts`);
     }
-  });
-  if (!Number.isSafeInteger(totalAllocation) || totalAllocation < 0) {
-    refuse(`the total allocation is ${totalAllocation}, and a total is a whole number of parts`);
   }
   if (totalAllocation === 0) {
     refuse(
@@ -143,7 +135,7 @@ export function checkedSplit(split: SplitParameters): CheckedSplit {
       `the owner is ${owner}: an owner can change the recipients and make the split call anything, so a payout split has none, the zero address`,
     );
   }
-  if (!isHex(split.salt, { strict: true }) || split.salt.length !== 66) {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(split.salt)) {
     refuse(`the salt ${JSON.stringify(split.salt)} is not thirty-two bytes written in hexadecimal`);
   }
 
