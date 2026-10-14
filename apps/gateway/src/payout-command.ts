@@ -60,8 +60,8 @@ export async function runPayout(
 
   const parts = operatorPayouts(network, splits);
   say(
-    `${splits.length} payout split${splits.length === 1 ? "" : "s"} on ${network.network} can hold money.` +
-      ` Send ${parts.length === 1 ? "the transaction" : "each transaction"} below on that chain from a wallet of your own, which pays the gas;` +
+    `Payout splits on ${network.network} that can hold money: ${splits.length}.` +
+      " Send every transaction below on that chain from a wallet of your own, which pays the gas;" +
       " this command sends nothing and holds no key.",
   );
   parts.forEach((part, at) => {
