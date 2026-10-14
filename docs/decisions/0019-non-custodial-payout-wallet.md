@@ -17,12 +17,14 @@ it redirects money, so the threat to it is a dashboard session not the owner's.
 
 Payments are non-custodial: a payment request pays the split of the merchant
 who published the card, as recorded for their wallet in force when the request
-is written (ADR-0037), and a verified payment settles where it was verified.
+is written (ADR-0037, ADR-0038), and a verified payment settles where it was
+verified.
 The wallet is a column on the merchant, held to `EvmAddressSchema`: `0x` and
 forty hexadecimal characters, in lower case or the exact EIP-55 spelling a
 wallet shows, refused in between, because a typo is somebody else's valid
-address and the checksum is the only warning. It is stored and answered
-checksummed, which a person can check by eye (ADR-0017). Outside the sandbox
+address and the checksum is the only warning. It is written checksummed, which
+a person can check by eye (ADR-0017); a row holding it in lower case is the
+same wallet, paid through the same split. Outside the sandbox
 (ADR-0026 §5) a merchant without one cannot publish (`no_payout_wallet`). It is
 changed, never removed: the pause ends sales. Saving it on the screen that
 names the commission is consent to the commission. The wire keeps
