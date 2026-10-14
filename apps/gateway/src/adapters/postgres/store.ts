@@ -310,33 +310,32 @@ export class PostgresStore implements Store {
     return rows.map((row) => row.network);
   }
 
+  async payoutSplitsOn(network: string): Promise<readonly RecordedPayoutSplit[]> {
+    const rows = await this.#db
+      .select()
+      .from(payoutSplits)
+      .where(eq(payoutSplits.network, network))
+      .orderBy(payoutSplits.recordedAt, sql`${payoutSplits.address} collate "C"`);
+    return rows.map(recordedSplitOf);
+  }
+
+  /**
+   * The merchant's splits that can hold money at `at`: the split of their
+   * wallet in force then, and every split an order of theirs was verified
+   * against, in either spelling.
+   */
   async splitsToPayOutFor(
     network: string,
     merchantId: string,
     at: number,
   ): Promise<readonly RecordedPayoutSplit[]> {
-    return this.#splitsToPayOut(
-      and(eq(payoutSplits.network, network), eq(payoutSplits.merchantId, merchantId)),
-      at,
-    );
-  }
-
-  async splitsToPayOutOn(network: string, at: number): Promise<readonly RecordedPayoutSplit[]> {
-    return this.#splitsToPayOut(eq(payoutSplits.network, network), at);
-  }
-
-  /**
-   * The splits among `which` that can hold money at `at`: the split of a
-   * merchant's wallet in force then, and every split an order of that
-   * merchant's was verified against, in either spelling.
-   */
-  async #splitsToPayOut(which: SQL | undefined, at: number): Promise<RecordedPayoutSplit[]> {
     const rows = await this.#db
       .select()
       .from(payoutSplits)
       .where(
         and(
-          which,
+          eq(payoutSplits.network, network),
+          eq(payoutSplits.merchantId, merchantId),
           or(
             exists(
               this.#db

@@ -535,10 +535,14 @@ export interface Store {
   ): Promise<readonly RecordedPayoutSplit[]>;
 
   /**
-   * The same over every merchant of this network, for the operator's payout,
-   * in the same order. Never reachable from a request.
+   * Every split recorded on this network, every merchant's and a forgotten
+   * merchant's, in the order they were recorded (address breaking a tie), for
+   * the operator's payout and the start's check. A split no wallet is in force
+   * for and no order names may still hold money: a restore carries such rows
+   * over, and anybody may send USDC to any split. Never reachable from a
+   * request.
    */
-  splitsToPayOutOn(network: string, at: number): Promise<readonly RecordedPayoutSplit[]>;
+  payoutSplitsOn(network: string): Promise<readonly RecordedPayoutSplit[]>;
 
   /** Writes one key of one merchant; only its digest is kept. */
   addKey(

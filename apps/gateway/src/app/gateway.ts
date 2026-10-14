@@ -821,15 +821,14 @@ export class Gateway {
   }
 
   /**
-   * Every split of this network that can hold money, every merchant's, for
-   * the operator's payout command, in the order they were recorded. Across
-   * merchants on purpose, so nothing reachable from a request may call it.
+   * Every split recorded on this network, every merchant's, for the
+   * operator's payout command, in the order they were recorded: any of them
+   * may hold money, and a payout of one that holds nothing costs only gas.
+   * Across merchants on purpose, so nothing reachable from a request may call
+   * it.
    */
   async splitsToPayOut(): Promise<readonly RecordedPayoutSplit[]> {
-    return this.runtime.store.splitsToPayOutOn(
-      this.runtime.config.payoutSplit.network,
-      this.runtime.clock(),
-    );
+    return this.runtime.store.payoutSplitsOn(this.runtime.config.payoutSplit.network);
   }
 
   /**

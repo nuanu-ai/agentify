@@ -69,9 +69,9 @@ export async function whyTheRuleRefuses(
  * or a split of a wallet in force or waiting is not, in every parameter, the
  * split the code makes today for that merchant and wallet, whether a
  * commission wallet, the rate or the factory changed, or the way a salt and an
- * address are derived; or where a split in force, waiting or holding an
- * order's money pays a wallet the wallet rule refuses, to which a payout
- * would send the merchant's share for good. Until a change of rate is
+ * address are derived; or where any split recorded on the network pays a
+ * wallet the wallet rule refuses, to which the operator's payout would send
+ * the merchant's share for good. Until a change of rate is
  * designed, this refusal is what makes an edit to those constants loud rather
  * than a second split beside every merchant's first.
  *
@@ -108,10 +108,8 @@ async function whyTheSplitsDisagree(runtime: Runtime): Promise<string | null> {
   }
 
   const disagreeing: RecordedPayoutSplit[] = [];
-  const payable = new Map<string, RecordedPayoutSplit>();
   for (const merchant of await runtime.store.merchants()) {
     for (const split of recordedOf(merchant.payoutWallet)) {
-      payable.set(split.address, split);
       if (!madeToday(split, todaysSplitOf(network, merchant.id, split.merchantWallet))) {
         disagreeing.push(split);
       }
@@ -122,11 +120,10 @@ async function whyTheSplitsDisagree(runtime: Runtime): Promise<string | null> {
     return `${disagreeing.length} recorded split${disagreeing.length === 1 ? "" : "s"} of a wallet in force or waiting on ${network.network}, beginning with ${first.address}, ${disagreeing.length === 1 ? "is" : "are"} no longer what this code makes for that merchant and wallet: the commission wallet or the rate, the factory, or the way a salt and an address are derived changed since, and there is no way yet to move merchants onto new splits, so the gateway does not start`;
   }
 
-  for (const split of await runtime.store.splitsToPayOutOn(network.network, runtime.clock())) {
-    payable.set(split.address, split);
-  }
+  // Every recorded split is in the operator's payout, so every one is held
+  // to the rule, not only those buyers pay now.
   const refused: { readonly split: RecordedPayoutSplit; readonly is: NotAPayoutWallet }[] = [];
-  for (const split of payable.values()) {
+  for (const split of await runtime.store.payoutSplitsOn(network.network)) {
     const is = await whyTheRuleRefuses(runtime, split.merchantWallet);
     if (is !== null) {
       refused.push({ split, is });
@@ -134,7 +131,7 @@ async function whyTheSplitsDisagree(runtime: Runtime): Promise<string | null> {
   }
   const [worst] = refused;
   if (worst !== undefined) {
-    return `${refused.length} recorded split${refused.length === 1 ? "" : "s"} on ${network.network} that buyers pay or that can hold money ${refused.length === 1 ? "pays" : "pay"} a wallet the wallet rule refuses, beginning with ${worst.split.address} of ${worst.split.merchantId}, which pays ${worst.split.merchantWallet}, refused as ${worst.is}: a payout would send that merchant's share where it could never come back from, so the gateway does not start`;
+    return `${refused.length} recorded split${refused.length === 1 ? "" : "s"} on ${network.network} ${refused.length === 1 ? "pays" : "pay"} a wallet the wallet rule refuses, beginning with ${worst.split.address} of ${worst.split.merchantId}, which pays ${worst.split.merchantWallet}, refused as ${worst.is}: a payout would send that merchant's share where it could never come back from, so the gateway does not start`;
   }
   return null;
 }

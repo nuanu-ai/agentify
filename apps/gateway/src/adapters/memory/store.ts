@@ -260,12 +260,6 @@ export class MemoryStore implements Store {
     merchantId: string,
     at: number,
   ): Promise<readonly RecordedPayoutSplit[]> {
-    return (await this.splitsToPayOutOn(network, at)).filter(
-      (split) => split.merchantId === merchantId,
-    );
-  }
-
-  async splitsToPayOutOn(network: string, at: number): Promise<readonly RecordedPayoutSplit[]> {
     const paidTo = new Set(
       [...this.#orders.values()].flatMap((record) =>
         record.payTo === null ? [] : [`${record.merchantId}\u0000${record.payTo.toLowerCase()}`],
@@ -273,7 +267,7 @@ export class MemoryStore implements Store {
     );
     return splitsInOrder(
       this.#splits.filter((split) => {
-        if (split.network !== network) return false;
+        if (split.network !== network || split.merchantId !== merchantId) return false;
         const wallet = this.#merchants.get(split.merchantId)?.payoutWallet;
         const inForce =
           wallet?.pending != null && wallet.pending.takesEffectAt <= at
@@ -285,6 +279,10 @@ export class MemoryStore implements Store {
         );
       }),
     );
+  }
+
+  async payoutSplitsOn(network: string): Promise<readonly RecordedPayoutSplit[]> {
+    return splitsInOrder(this.#splits.filter((split) => split.network === network));
   }
 
   /** Writes these splits, recorded at `at`, and hands back what was written. */

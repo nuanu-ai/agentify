@@ -671,10 +671,7 @@ describe("an address that cannot be a payout wallet", () => {
     const { served, harnessed } = await started();
     const before = await payoutWallet(served, harnessed.merchant.key);
     const recorded = () =>
-      harnessed.store.splitsToPayOutOn(
-        harnessed.runtime.config.payoutSplit.network,
-        harnessed.now(),
-      );
+      harnessed.store.payoutSplitsOn(harnessed.runtime.config.payoutSplit.network);
     const cases = await notWallets(harnessed);
     const splitsBefore = await recorded();
 
