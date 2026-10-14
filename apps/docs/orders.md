@@ -22,7 +22,7 @@ word it does not know as a failure.
 | Mode | `fulfillment` | The goods reach the agent | When the buyer is charged | If you refused or stayed silent |
 | --- | --- | --- | --- | --- |
 | Synchronous | `'sync'` | in the answer to the purchase | after your delivery, as the last step | the purchase did not happen and the buyer spent nothing |
-| Asynchronous | `'async'` | later, by a separate call | at the moment of purchase, before your delivery | the money is with you and the buyer has no goods: the order is marked as needing a refund |
+| Asynchronous | `'async'` | later, by a separate call | at the moment of purchase, before your delivery | the money is in your payout contract and the buyer has no goods: the order is marked as needing a refund |
 | A parcel | `'ship'` | with a carrier, once you record the shipment by a separate call or your handler's answer | at the moment of purchase, before your shipment | as in the asynchronous mode |
 | With confirmation | `'confirm'` | later, by a separate call | right after your confirmation | before the confirmation nothing is charged; after it, as in the asynchronous mode |
 
@@ -508,10 +508,11 @@ that one wrong.
 
 The silence that costs money is the notice that an order needs a refund. The
 buyer has paid, the goods did not go out, the one message that would have told
-you did not arrive — and the money sits with you while nobody asks for it. What
-closes that hole is the list of open orders. Every order still owed something is
-on it, an order marked as needing a refund included, so walking that list finds
-what a lost event would otherwise have been your only word of. Walk it on a
+you did not arrive — and the money sits in your payout contract while nobody
+asks for it. What closes that hole is the list of open orders. Every order still
+owed something is on it, an order marked as needing a refund included, so
+walking that list finds what a lost event would otherwise have been your only
+word of. Walk it on a
 schedule and not only after a restart: a process that stayed up loses an event
 the same way one that went down does, and it has no restart to prompt it.
 
@@ -584,13 +585,13 @@ becomes a refund you owe.
 
 | Situation | Where the money is | What the agent sees |
 | --- | --- | --- |
-| You delivered the goods | with you | the goods, the price they were charged and whether the money behind it was real |
-| You recorded a parcel's shipment | with you | that the parcel shipped, with your carrier, your tracking number and when you recorded it — and nothing after: whether it arrives is between you and the buyer |
+| You delivered the goods | in your payout contract | the goods, the price they were charged and whether the money behind it was real |
+| You recorded a parcel's shipment | in your payout contract | that the parcel shipped, with your carrier, your tracking number and when you recorded it — and nothing after: whether it arrives is between you and the buyer |
 | There is none, the parameters did not fit, the payment failed its check — or you refused in the synchronous mode | never moved | a refusal, and that the purchase did not happen; where the refusal was yours, your code and your message arrive with it |
 | You answered "I will not deliver" to a request to confirm | never moved | a refusal with your code and your message, and that nothing was charged |
 | Time ran out: no confirmation, no payment or no synchronous delivery arrived | never moved | the order was closed on its deadline |
 | You left | for what was not delivered, [you send it back](/money) | an unpaid order is closed; a paid one waits for your refund |
-| The money was charged and no delivery happened | with you | the order is waiting for a refund |
+| The money was charged and no delivery happened | in your payout contract | the order is waiting for a refund |
 | You delivered synchronously and the payment did not execute | never arrived | the purchase did not happen; the same buyer can retry payment for this order with a fresh authorization |
 | The payment network did not say whether the money was charged | not known — and nothing on our side is asking again | "the outcome of the payment is not known", not "refused": another payment is refused while the first is unknown |
 
@@ -649,7 +650,7 @@ and then the ten.
 | A request asking whether you will deliver has arrived | the order closed, and the buyer's money never moved |
 | The agent owes payment for a confirmed order | the order closed and you are free; an event comes to you |
 | You are delivering a synchronous order | the purchase did not happen and nothing was charged; the same buyer can retry payment for that order with a fresh authorization, and the stored delivery is released only if it settles |
-| You are delivering an asynchronous order | the money is already with you, and the order is marked as needing a refund |
+| You are delivering an asynchronous order | the money is already in your payout contract, and the order is marked as needing a refund |
 
 ## Telling a repeat apart
 

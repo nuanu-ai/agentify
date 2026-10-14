@@ -24,8 +24,10 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { gatewayFor } from "./gateway.js";
 import { cardsFromTheShop, merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
+import type { WooRequest } from "./woo-request.js";
 import {
   createTheOrderInTheShop,
+  createTheParcelInTheShop,
   type EligibleWooProduct,
   inspectProductInTheShop,
   type OrderMade,
@@ -1956,6 +1958,123 @@ describe("a parcel the whole way through, against a real gateway", () => {
     expect(status.status).toBe("shipped");
     expect(status.shipment).toMatchObject({ carrier: "Bali courier", tracking_number: null });
     expect(status.delivered).toBeNull();
+  });
+
+  it("names on the shop's parcel order the payout contract the payment went to, though the merchant moved their wallet since", async () => {
+    // The line records where this payment went, goods and shipping together,
+    // read from the order's own payment; after a change of wallet the
+    // contract in force is another one.
+    open = await harness();
+    served = await serve(open);
+    const harnessed = open;
+    const gateway = gatewayFor(harnessed.gateway, {
+      merchantId: harnessed.merchant.id,
+      email: MERCHANT_EMAIL,
+    });
+    await harnessed.gateway.sellThrough(harnessed.merchant.id, "woocommerce");
+    await harnessed.gateway.setSellerName(harnessed.merchant.id, {
+      seller_site: "https://shop.example.com",
+    });
+    const { cards } = cardsFromTheShop(
+      [
+        aProduct({
+          id: 28,
+          virtual: false,
+          downloadable: false,
+          downloads: [],
+          prices: { price: "2000", currency_code: "USD", currency_minor_unit: 2 },
+        }),
+      ],
+      "https://shop.example.com",
+    );
+    const published = await gateway.publishCard(cards[0]?.card ?? ({} as never));
+    const itemId = published.ok && published.document.ok ? published.document.id : "";
+    const paidInto = (await harnessed.gateway.payoutSplitsOf(harnessed.merchant.id)).inForce;
+    const sent: { meta_data: { key: string; value: unknown }[] }[] = [];
+    // A shop that takes the order and answers with it, as WooCommerce does.
+    const theShop: WooRequest = async (_url, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      sent.push(body);
+      return new Response(
+        JSON.stringify({
+          id: 30,
+          number: "30",
+          order_key: "wc_order_30",
+          status: "processing",
+          currency: body.currency,
+          total: "23.00",
+          total_tax: "0.00",
+          payment_method: body.payment_method,
+          transaction_id: body.transaction_id,
+          billing: body.billing,
+          shipping: body.shipping,
+          meta_data: body.meta_data,
+          line_items: body.line_items.map((line: object) => ({ ...line, total_tax: "0.00" })),
+          shipping_lines: body.shipping_lines,
+        }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      );
+    };
+    const shops = memoryWooShops();
+    const connected = connection();
+    await shops.connect(connected);
+    const parts: Filling = {
+      shops,
+      now: () => new Date(harnessed.now()),
+      inspectProduct: async () => ({
+        ok: true,
+        product: {
+          kind: "parcel",
+          productId: "28",
+          price: { amount: "20.00", currency: "USD" },
+          fingerprint: "accepted-parcel-fingerprint",
+        },
+      }),
+      shippingRates: async () => ({
+        ok: true,
+        rates: [{ methodId: "flat_rate", instanceId: "1", title: "Bali courier", cost: "3.00" }],
+      }),
+      placeParcel: (keys, sold) => createTheParcelInTheShop(keys, sold, theShop),
+    };
+
+    await buyOverHttp(
+      harnessed,
+      served,
+      itemId,
+      {
+        through: "woocommerce",
+        onQuote: async (question) => {
+          const answer = await quoteFromTheShop(
+            connected,
+            QuoteRequestSchema.parse(question),
+            new Date(harnessed.now()),
+            parts,
+          );
+          if (answer === null) throw new Error("the shop answered and the worker said nothing");
+          return answer;
+        },
+        onOrder: async (order) => {
+          // Paid, and the merchant saves another wallet before the shop is asked.
+          expect(
+            (await gateway.setPayoutWallet("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")).ok,
+          ).toBe(true);
+          return (
+            (await filledAsPaid(gateway, order, connected, MERCHANT_EMAIL, parts)) ??
+            Promise.reject(new Error("the shop was not asked"))
+          );
+        },
+      },
+      { priced: { params: {}, ship_to: ADDRESS }, paid: { params: {}, ship_to: ADDRESS } },
+    );
+
+    const now = (await harnessed.gateway.payoutSplitsOf(harnessed.merchant.id)).inForce;
+    expect(now?.address).not.toBe(paidInto?.address);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.meta_data).toContainEqual({
+      key: "agentify_payout_contract",
+      value: paidInto?.address,
+    });
+    expect(JSON.stringify(sent[0]?.meta_data)).not.toContain(now?.address ?? "no split");
   });
 });
 
