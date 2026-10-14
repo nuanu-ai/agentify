@@ -24,9 +24,11 @@ import type { PayoutSplitNetwork } from "./networks.js";
 import { type PayoutSplit, splitParametersOf } from "./parameters.js";
 
 /**
- * The most splits one payout pays out. Creating and distributing one costs up
- * to about 400 thousand gas, so twenty stay near half of the 16,777,216 one
- * transaction may use; a transaction that cannot be mined pays nobody.
+ * The most splits one payout pays out. Creating, distributing and withdrawing
+ * for one cost up to about 400 thousand gas in the experiment, so twenty come
+ * to about eight million, half of the 16,777,216 that EIP-7825 caps one
+ * transaction at; whether Base enforces that cap is not known here, and a
+ * transaction that cannot be mined pays nobody.
  */
 const SPLITS_PER_PAYOUT = 20;
 
