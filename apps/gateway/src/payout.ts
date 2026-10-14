@@ -5,18 +5,18 @@
  *   docker compose exec app pnpm --filter @agentify/gateway payout
  */
 
-import { openCommandApplication } from "./command-application.js";
+import { openReadingApplication } from "./command-application.js";
 import { loadConfig } from "./config.js";
 import { runPayout } from "./payout-command.js";
 
 const NO_SUCH_TABLE = "42P01";
 
 const config = loadConfig(process.env);
-let opened: Awaited<ReturnType<typeof openCommandApplication>> | undefined;
+let opened: ReturnType<typeof openReadingApplication> | undefined;
 
 let code = 1;
 try {
-  opened = await openCommandApplication(config);
+  opened = openReadingApplication(config);
   code = await runPayout(process.argv.slice(2), opened.application, (line) => {
     console.log(line);
   });
