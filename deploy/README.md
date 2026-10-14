@@ -407,7 +407,13 @@ Rows are never changed once written, so the copy loses nothing. A restore
 point older than the registry has no table to take them, so they stay in the
 replaced database, and a copy that fails says so and exits non-zero after the
 restore has finished. Either way the next verified release copies them before
-it drops that database, and keeps the database, saying so, while it cannot.
+it drops that database, and keeps the database, saying so, while it cannot. A
+copy counts only when every address the replaced database holds is in the
+current one afterwards: a row whose insert did nothing, because the current
+database holds another row for the same merchant and wallet, keeps the
+replaced database and is named. A release of a revision older than this copy
+drops a replaced database without it, so release such a revision only once no
+`<database>_replaced_<time>` holds payout splits.
 
 A bad dump or a failure before the swap leaves the databases as they were and
 the record as the restore found it, so it holds no release back, and the
