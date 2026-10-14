@@ -12,7 +12,13 @@
  * not recognise fails here rather than as a blank cell in front of a merchant.
  */
 
-import type { Caller, Gateway, Integration, WalletChangeRefusal } from "@agentify/gateway";
+import type {
+  Caller,
+  Gateway,
+  Integration,
+  RecordedPayoutSplit,
+  WalletChangeRefusal,
+} from "@agentify/gateway";
 import {
   bodyRefused,
   CONFLICT,
@@ -86,6 +92,19 @@ export interface GatewayClient {
    */
   refundsOwed(): Promise<Answer<Readonly<Record<string, RefundCause>>>>;
   receipts(): Promise<Answer<ReceiptList>>;
+  /**
+   * The payout split this order's payment was checked against, as recorded,
+   * whether or not the charge went through; null where it was checked against
+   * the wallet itself, before payments went to splits, or was never paid. The
+   * order documents do not name where a payment went.
+   */
+  paidInto(orderId: string): Promise<Answer<RecordedPayoutSplit | null>>;
+  /**
+   * The split each order was charged into, by order, for the shares the
+   * orders and receipts show: only where the charge went through, into a
+   * split recorded for this merchant.
+   */
+  paidIntoSplits(): Promise<Answer<Readonly<Record<string, RecordedPayoutSplit>>>>;
   /**
    * Every one can be disabled from here: a session holds no key, so none is the
    * key this call was made with.
@@ -320,6 +339,18 @@ const orderCallAnswer = (
 
 const KeysSchema = z.array(MerchantKeySchema);
 
+/**
+ * The split recorded at this address among those that can hold this
+ * merchant's money, which are every split one of their payments was checked
+ * against; null for an address that is none of them, such as the wallet
+ * itself.
+ */
+const splitAt = (
+  splits: { readonly toPayOut: readonly RecordedPayoutSplit[] },
+  address: string,
+): RecordedPayoutSplit | null =>
+  splits.toPayOut.find((split) => split.address.toLowerCase() === address.toLowerCase()) ?? null;
+
 /** How many of the orders holding a switch the refusal names before counting the rest. */
 const ORDERS_NAMED = 5;
 
@@ -410,6 +441,31 @@ export const gatewayFor = (
       call("reading the receipts", async () =>
         answered(API_ROUTES.list_receipts, await application.receipts(merchantId)),
       ),
+    paidInto: (orderId) =>
+      call("reading where an order was paid", async () => {
+        const record = await application.merchantOrder(merchantId, orderId);
+        if (record === null) return refusedAs(NO_SUCH_ORDER);
+        const { payTo } = record;
+        if (payTo === null) return done(null);
+        return done(splitAt(await application.payoutSplitsOf(merchantId), payTo));
+      }),
+    // The orders are read before the splits: a split an order was paid into
+    // is recorded before the order names it, so nothing read here names a
+    // split the second read could miss.
+    paidIntoSplits: () =>
+      call("reading where the orders were paid", async () => {
+        const records = await application.orders(merchantId, undefined);
+        const splits = await application.payoutSplitsOf(merchantId);
+        const into: Record<string, RecordedPayoutSplit> = {};
+        for (const record of records) {
+          const split =
+            record.payTo === null || record.order.payment !== "settled"
+              ? null
+              : splitAt(splits, record.payTo);
+          if (split !== null) into[record.order.id] = split;
+        }
+        return done(into);
+      }),
     keys: () =>
       call("reading the keys", async () =>
         done(KeysSchema.parse(await application.merchantKeys(merchantId))),

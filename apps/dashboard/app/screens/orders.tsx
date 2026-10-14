@@ -1,5 +1,6 @@
 import { Table } from "@agentify/ui";
 import { Link } from "react-router";
+import type { Shares } from "../../src/shares.js";
 import type { OrdersView } from "../../src/views.js";
 import { useGoingTo } from "../components/going-to.js";
 import { Moment } from "../components/moment.js";
@@ -17,6 +18,15 @@ export const TestMark = ({ test }: Readonly<{ test: boolean }>) =>
       <span className="tag">test</span>
     </>
   ) : null;
+
+/** Under the price, which stays the sum the buyer paid. */
+export const SharesOf = ({ shares }: Readonly<{ shares: Shares | null }>) =>
+  shares === null ? null : (
+    <>
+      <div className="under">{shares.merchant} to you</div>
+      <div className="under">{shares.commission} to Agentify</div>
+    </>
+  );
 
 export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
   // The filter chosen is marked as soon as it is clicked.
@@ -74,6 +84,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
                 <>
                   {row.amount}
                   <TestMark test={row.test} />
+                  <SharesOf shares={row.shares} />
                 </>
               ),
             },

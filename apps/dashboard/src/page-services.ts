@@ -845,16 +845,18 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         // Only the exact word narrows the list, as the contract says.
         const open = once(query.getAll("open")) === "true";
         const gateway = gatewayAs(person);
-        const [cards, orders, name, owed] = await Promise.all([
+        const [cards, orders, name, owed, paidInto] = await Promise.all([
           gateway.cards(),
           gateway.orders(open),
           gateway.sellerName(),
           gateway.refundsOwed(),
+          gateway.paidIntoSplits(),
         ]);
         if (!cards.ok) return problemOf(cards);
         if (!orders.ok) return problemOf(orders);
         if (!name.ok) return problemOf(name);
         if (!owed.ok) return problemOf(owed);
+        if (!paidInto.ok) return problemOf(paidInto);
         return {
           kind: "view",
           view: ordersView(
@@ -863,20 +865,23 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             orders.document,
             open,
             owed.document,
+            paidInto.document,
           ),
         };
       },
 
       async receipts(person) {
         const gateway = gatewayAs(person);
-        const [cards, receipts, name] = await Promise.all([
+        const [cards, receipts, name, paidInto] = await Promise.all([
           gateway.cards(),
           gateway.receipts(),
           gateway.sellerName(),
+          gateway.paidIntoSplits(),
         ]);
         if (!cards.ok) return problemOf(cards);
         if (!receipts.ok) return problemOf(receipts);
         if (!name.ok) return problemOf(name);
+        if (!paidInto.ok) return problemOf(paidInto);
         return {
           kind: "view",
           view: receiptsView(
@@ -884,6 +889,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             cards.document,
             receipts.document,
             config.transactionPage,
+            paidInto.document,
           ),
         };
       },
