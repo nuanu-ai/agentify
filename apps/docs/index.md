@@ -130,11 +130,15 @@ wallet you had, and it pays out to that wallet. The wait is there because the
 wallet is the one setting that sends your money somewhere else, and a dashboard
 session left open on another device, or taken by somebody else, could ask for a
 change: you hear about it, and cancelling it on the Settings screen also signs
-every other session out. If you have lost access to the old wallet, pause
-selling for those two days. The first wallet you save applies at once, and on
-the live channel you are sent a message about it too, so a wallet somebody else
-set is not news you find on a screen. On the test channel every change applies
-at once and nothing is sent.
+every other session out. Whatever is already in the old payout contract, those
+two days' sales included, is paid out to the old wallet only, whoever sends the
+payout: if somebody else may hold that wallet's keys, it is theirs to collect,
+and if you have lost access to it, it is lost with it. So replace a wallet you
+can no longer trust as soon as you know, and pause selling for the two days so
+that nothing more is paid into the old contract. The first wallet you save
+applies at once, and on the live channel you are sent a message about it too,
+so a wallet somebody else set is not news you find on a screen. On the test
+channel every change applies at once and nothing is sent.
 
 The first test purchase is started by an Agentify operator. If an operator is
 already coordinating your pilot, give them the catalogue ID and keep your

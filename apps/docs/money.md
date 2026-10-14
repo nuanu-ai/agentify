@@ -42,6 +42,15 @@ contract's address follows from your wallet, and it can receive USDC from that
 moment. The first payout puts the contract itself on the chain, and from then
 on a block explorer shows its two recipients and their shares.
 
+A new wallet comes with a new payout contract, and the old contract goes on
+paying the old wallet. Whatever is already in it is paid out to the old wallet
+only, whoever sends the payout: if somebody else may hold that wallet's keys,
+it is theirs to collect, and if you have lost access to it, it is lost with it.
+On the live channel a new wallet takes effect forty-eight hours after the
+change is announced, and buyers pay into the old contract until then, so if
+you can no longer trust the old wallet, replace it at once and pause selling
+for those two days.
+
 ### If you have no wallet yet
 
 Your wallet is an address on Base, the network these payments run on: `0x`
