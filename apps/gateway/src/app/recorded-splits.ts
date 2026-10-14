@@ -157,11 +157,10 @@ export async function recordMissingSplits(runtime: Runtime): Promise<void> {
       ...(pending !== null && pending.split === null ? [pending.address] : []),
     ];
     for (const wallet of unrecorded) {
-      const noSplit = new RefusedToStart(
-        `${merchant.id} is paid at ${wallet}, for which no payout split can be made on ${network.network}, so the gateway does not start`,
-      );
       if (!isAddress(wallet)) {
-        throw noSplit;
+        throw new RefusedToStart(
+          `${merchant.id} is paid at ${wallet}, which is no address, so no payout split can be made for it on ${network.network}, and the gateway does not start`,
+        );
       }
       const is = await whyTheRuleRefuses(runtime, wallet);
       if (is !== null) {
@@ -170,11 +169,8 @@ export async function recordMissingSplits(runtime: Runtime): Promise<void> {
         );
         continue;
       }
-      const made = todaysSplitOf(network, merchant.id, wallet);
-      if (made === null) {
-        throw noSplit;
-      }
-      missing.push(made);
+      // The rule refuses every address the split could not be made for.
+      missing.push(payoutSplitFor(network, merchant.id, wallet));
     }
   }
   const recorded = await runtime.store
