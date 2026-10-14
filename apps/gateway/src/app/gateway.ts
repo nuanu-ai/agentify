@@ -86,7 +86,7 @@ import type {
 } from "../ports/store.js";
 import { isSameAddress } from "../split/address.js";
 import { type PayoutSplit, payoutSplitFor } from "../split/parameters.js";
-import { type NotAPayoutWallet, whyNotAPayoutWallet } from "../split/wallet-rule.js";
+import type { NotAPayoutWallet } from "../split/wallet-rule.js";
 import { orderCallResponseOf } from "./answers.js";
 import {
   issueKey,
@@ -100,6 +100,7 @@ import {
   journal,
   recordSplitsOfWalletsSetBefore,
   refuseUnlessTheSplitsAgree,
+  whyTheRuleRefuses,
 } from "./recorded-splits.js";
 import { OrderRunner, SWEEP_EFFECTS } from "./runner.js";
 import {
@@ -873,11 +874,7 @@ export class Gateway {
     // The dashboard holds the same rule on the way in, so a throw from here is
     // a caller that skipped it.
     const address = payoutWalletFrom(wallet);
-    const someSplit = await this.runtime.store.payoutSplitAt(address);
-    const is = whyNotAPayoutWallet(address, {
-      networks: this.runtime.config.payoutSplitNetworks,
-      splits: someSplit === null ? [] : [someSplit.address],
-    });
+    const is = await whyTheRuleRefuses(this.runtime, address);
     if (is !== null) {
       return { refused: "not_a_payout_wallet", is };
     }

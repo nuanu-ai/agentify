@@ -6,9 +6,11 @@
  * it.
  */
 
+import { isAddress } from "viem";
 import type { RecordedPayoutSplit, StoredPayoutWallet } from "../ports/store.js";
 import type { PayoutSplitNetwork } from "../split/networks.js";
 import { type PayoutSplit, payoutSplitFor } from "../split/parameters.js";
+import { type NotAPayoutWallet, whyNotAPayoutWallet } from "../split/wallet-rule.js";
 import type { Runtime } from "./runtime.js";
 
 /**
@@ -45,15 +47,33 @@ const todaysSplitOf = (
 };
 
 /**
+ * Why a merchant's share could never come back from this wallet, held against
+ * every network of the table and every split recorded, or null where the
+ * wallet rule takes it. Throws on a string that is not an address.
+ */
+export async function whyTheRuleRefuses(
+  runtime: Runtime,
+  wallet: string,
+): Promise<NotAPayoutWallet | null> {
+  const someSplit = await runtime.store.payoutSplitAt(wallet);
+  return whyNotAPayoutWallet(wallet, {
+    networks: runtime.config.payoutSplitNetworks,
+    splits: someSplit === null ? [] : [someSplit.address],
+  });
+}
+
+/**
  * Throws `RefusedToStart` where the registry is not what this network's
  * payout split in the code makes: where the store reads splits on another
  * network than the split is made on, where it holds a split of another network,
  * or a split of a wallet in force or waiting is not, in every parameter, the
  * split the code makes today for that merchant and wallet, whether a
  * commission wallet, the rate or the factory changed, or the way a salt and an
- * address are derived. Until a change of rate is designed, this refusal is
- * what makes an edit to those constants loud rather than a second split beside
- * every merchant's first.
+ * address are derived; or where a split in force, waiting or holding an
+ * order's money pays a wallet the wallet rule refuses, to which a payout
+ * would send the merchant's share for good. Until a change of rate is
+ * designed, this refusal is what makes an edit to those constants loud rather
+ * than a second split beside every merchant's first.
  *
  * It reads and writes nothing else, so a start asks it before anything, and
  * the operator's payout command can ask it alone.
@@ -75,8 +95,10 @@ export async function refuseUnlessTheSplitsAgree(runtime: Runtime): Promise<void
   }
 
   const disagreeing: RecordedPayoutSplit[] = [];
+  const payable = new Map<string, RecordedPayoutSplit>();
   for (const merchant of await runtime.store.merchants()) {
     for (const split of recordedOf(merchant.payoutWallet)) {
+      payable.set(split.address, split);
       if (!madeToday(split, todaysSplitOf(network, merchant.id, split.merchantWallet))) {
         disagreeing.push(split);
       }
@@ -86,6 +108,23 @@ export async function refuseUnlessTheSplitsAgree(runtime: Runtime): Promise<void
   if (first !== undefined) {
     throw new RefusedToStart(
       `${disagreeing.length} recorded split${disagreeing.length === 1 ? "" : "s"} of a wallet in force or waiting on ${network.network}, beginning with ${first.address}, ${disagreeing.length === 1 ? "is" : "are"} no longer what this code makes for that merchant and wallet: the commission wallet or the rate, the factory, or the way a salt and an address are derived changed since, and there is no way yet to move merchants onto new splits, so the gateway does not start`,
+    );
+  }
+
+  for (const split of await runtime.store.splitsToPayOutOn(network.network, runtime.clock())) {
+    payable.set(split.address, split);
+  }
+  const refused: { readonly split: RecordedPayoutSplit; readonly is: NotAPayoutWallet }[] = [];
+  for (const split of payable.values()) {
+    const is = await whyTheRuleRefuses(runtime, split.merchantWallet);
+    if (is !== null) {
+      refused.push({ split, is });
+    }
+  }
+  const [worst] = refused;
+  if (worst !== undefined) {
+    throw new RefusedToStart(
+      `${refused.length} recorded split${refused.length === 1 ? "" : "s"} on ${network.network} that buyers pay or that can hold money ${refused.length === 1 ? "pays" : "pay"} a wallet the wallet rule refuses, beginning with ${worst.split.address} of ${worst.split.merchantId}, which pays ${worst.split.merchantWallet}, refused as ${worst.is}: a payout would send that merchant's share where it could never come back from, so the gateway does not start`,
     );
   }
 }
@@ -107,11 +146,22 @@ export async function recordSplitsOfWalletsSetBefore(runtime: Runtime): Promise<
       ...(pending !== null && pending.split === null ? [pending.address] : []),
     ];
     for (const wallet of unrecorded) {
+      const noSplit = new RefusedToStart(
+        `${merchant.id} is paid at ${wallet}, for which no payout split can be made on ${network.network}, so the gateway does not start`,
+      );
+      if (!isAddress(wallet)) {
+        throw noSplit;
+      }
+      const is = await whyTheRuleRefuses(runtime, wallet);
+      if (is !== null) {
+        console.error(
+          `[gateway] ${merchant.id}'s payout wallet ${wallet} is refused by the wallet rule as ${is}: a merchant's share could never come back from it, so no payout split is recorded for it, and nothing of theirs sells on it until they set another wallet`,
+        );
+        continue;
+      }
       const made = todaysSplitOf(network, merchant.id, wallet);
       if (made === null) {
-        throw new RefusedToStart(
-          `${merchant.id} is paid at ${wallet}, for which no payout split can be made on ${network.network}, so the gateway does not start`,
-        );
+        throw noSplit;
       }
       missing.push(made);
     }
