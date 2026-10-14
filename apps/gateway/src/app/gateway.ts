@@ -84,6 +84,7 @@ import type {
   StoredPayoutWallet,
 } from "../ports/store.js";
 import { type PayoutSplit, payoutSplitFor } from "../split/parameters.js";
+import { type NotAPayoutWallet, whyNotAPayoutWallet } from "../split/wallet-rule.js";
 import { orderCallResponseOf } from "./answers.js";
 import {
   issueKey,
@@ -140,13 +141,17 @@ const ANNOUNCEMENT_ANSWER_MS = 20_000;
  * or telling failed or did not finish in time — though some may have gone
  * out. `raced`: another write landed between reading the wallet and writing
  * it, on a change nothing had announced; `raced_after_announcing`: the same,
- * after this change's own message went out.
+ * after this change's own message went out. `not_a_payout_wallet`: the
+ * address is one a merchant's share could never come back from, and `is`
+ * says what it is; it is refused before anything is read, written or
+ * announced, and the dashboard words it.
  */
 export type WalletChangeRefusal =
   | "nobody_to_tell"
   | "not_announced"
   | "raced"
-  | "raced_after_announcing";
+  | "raced_after_announcing"
+  | { readonly refused: "not_a_payout_wallet"; readonly is: NotAPayoutWallet };
 
 /**
  * Who a call comes from: a key, as the door resolved it, or a dashboard
@@ -793,6 +798,12 @@ export class Gateway {
    * the write is conditional on the row still holding what was read, so a
    * change recorded in between turns this one away as `raced`. The answer is
    * read off the written row, never echoed.
+   *
+   * On every path, live or not, an address a merchant's share could never
+   * come back from is refused first, before any message goes out: any
+   * merchant's split, a commission wallet, a contract a payout calls, a
+   * network's token, or the zero address. Every address written is recorded
+   * with its split in the same write.
    */
   async setPayoutWallet(
     merchantId: string,
@@ -803,6 +814,14 @@ export class Gateway {
     // The dashboard holds the same rule on the way in, so a throw from here is
     // a caller that skipped it.
     const address = payoutWalletFrom(wallet);
+    const someSplit = await this.runtime.store.payoutSplitAt(address);
+    const is = whyNotAPayoutWallet(address, {
+      networks: this.runtime.config.payoutSplitNetworks,
+      splits: someSplit === null ? [] : [someSplit.address],
+    });
+    if (is !== null) {
+      return { refused: "not_a_payout_wallet", is };
+    }
     const merchant = await this.runtime.store.merchantById(merchantId);
     if (merchant === null) {
       throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);

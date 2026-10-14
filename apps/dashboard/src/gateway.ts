@@ -198,6 +198,9 @@ const done = <T>(document: T): Answer<T> => ({ ok: true, document });
  */
 const UNAVAILABLE = 503;
 
+/** What was asked for cannot be done as asked, and nothing was recorded. */
+const BAD_REQUEST = 400;
+
 /**
  * Nothing was written in any case: the address paid now and any change already
  * waiting are as they were. A message that could not be confirmed as sent to
@@ -208,6 +211,13 @@ const UNAVAILABLE = 503;
  * was, nor sent looking for a message that does not exist.
  */
 const walletRefusedAs = (why: WalletChangeRefusal): Answer<never> => {
+  if (typeof why === "object") {
+    return {
+      ok: false,
+      status: BAD_REQUEST,
+      why: "this address cannot be a payout wallet: a share paid to it could never come back to the merchant, so nothing was changed and sales are paid where they were",
+    };
+  }
   switch (why) {
     case "nobody_to_tell":
       return {
@@ -474,7 +484,7 @@ export const gatewayFor = (
         const asked = hold(EvmAddressSchema, address);
         if (!asked.ok) return refusedAs(bodyRefused(asked.problems));
         const set = await application.setPayoutWallet(merchantId, asked.value as string, session);
-        return typeof set === "string"
+        return typeof set === "string" || "refused" in set
           ? walletRefusedAs(set)
           : answered(API_ROUTES.get_payout_wallet, set);
       }),

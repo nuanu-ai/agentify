@@ -670,21 +670,22 @@ describe("an address that cannot be a payout wallet", () => {
     // them is the likely way it happens.
     const { served, harnessed } = await started();
     const before = await payoutWallet(served, harnessed.merchant.key);
+    const recorded = () =>
+      harnessed.store.splitsToPayOutOn(
+        harnessed.runtime.config.payoutSplit.network,
+        harnessed.now(),
+      );
+    const cases = await notWallets(harnessed);
+    const splitsBefore = await recorded();
 
-    for (const [what, address, is] of await notWallets(harnessed)) {
+    for (const [what, address, is] of cases) {
       expect(await setPayoutWallet(harnessed, harnessed.merchant.id, address), what).toStrictEqual({
         refused: "not_a_payout_wallet",
         is,
       });
-      expect(
-        await harnessed.store.payoutSplitAt(
-          payoutSplitFor(harnessed.runtime.config.payoutSplit, harnessed.merchant.id, address)
-            .address,
-        ),
-        what,
-      ).toBeNull();
     }
     expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual(before);
+    expect(await recorded()).toStrictEqual(splitsBefore);
   });
 
   it("is refused as a first wallet too", async () => {
