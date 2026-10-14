@@ -96,9 +96,11 @@ const unescapeHtml = (text: string): string =>
  * the build itself, and wherever the files are served without Caddy.
  */
 export function siteValuesIn(served: string): SiteValues | null {
-  const element =
-    /<div hidden="" id="site-values"([^>]*)>|<div hidden id="site-values"([^>]*)>/.exec(served);
-  const attributes = element?.[1] ?? element?.[2];
+  // A browser writes the element back as `hidden=""`, and may write a `>`
+  // inside an attribute as `&gt;`.
+  const attributes = /<div hidden(?:="")? id="site-values"((?:\s+data-[a-z-]+="[^"]*")*)\s*>/.exec(
+    served,
+  )?.[1];
   if (attributes === undefined) return null;
   const values: Partial<Record<SiteValueName, string>> = {};
   for (const [, name = "", value = ""] of attributes.matchAll(/data-([a-z-]+)="([^"]*)"/g)) {

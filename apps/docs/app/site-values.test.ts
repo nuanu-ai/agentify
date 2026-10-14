@@ -55,7 +55,18 @@ describe("the values a deployment decides", () => {
   );
 
   it("are not read where nobody filled them, so the build's templates stay for Caddy", () => {
+    // As the build writes them, and as a browser writes them back from a
+    // document nobody filled, `<` and `>` in an attribute as entities.
+    const readBack = servedTemplate()
+      .replace(
+        /="(<!--\{\{[^"]*)"/g,
+        (_whole, value: string) => `="${value.replaceAll("<", "&lt;").replaceAll(">", "&gt;")}"`,
+      )
+      .replace("<div hidden id=", '<div hidden="" id=');
+
     expect(siteValuesIn(servedTemplate())).toBeNull();
+    expect(readBack).toContain('data-origin="&lt;!--{{');
+    expect(siteValuesIn(readBack)).toBeNull();
   });
 });
 
