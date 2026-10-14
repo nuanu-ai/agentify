@@ -1,10 +1,10 @@
+import { PrivacyChoicesButton } from "@agentify/consent";
 import type { ScanStatusResponse, Segment } from "@agentify/scanner-contracts";
 import { type CSSProperties, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { scanStatusIn } from "../lib/api-answers";
 import type { ScanFixture } from "../lib/scan-fixtures";
 import { Brand } from "./brand";
 import { lazyPart, useHere } from "./lazy-part";
-import { PrivacyChoicesButton } from "./privacy-choices-button";
 import styles from "./scan-experience.module.css";
 import { ScanFailed } from "./scan-failed";
 import { SiteDoors } from "./site-chrome";

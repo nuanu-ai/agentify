@@ -7,11 +7,7 @@ import {
   saveConsentDecision,
 } from "@agentify/analytics/browser";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router";
-
-import { DISPLAY_BRAND } from "../lib/brand";
-import styles from "./consent-banner.module.css";
-import { OPEN_PRIVACY_CHOICES_EVENT } from "./privacy-choices-button";
+import { CONSENT_CHANGED_EVENT, OPEN_PRIVACY_CHOICES_EVENT } from "./events.js";
 
 const policy = {
   policyVersion: CONSENT_POLICY_VERSION,
@@ -35,28 +31,28 @@ export function ConsentPreferencesPanel(props: {
   onClose: () => void;
 }) {
   return (
-    <div className={styles.backdrop} role="presentation" onMouseDown={props.onClose}>
+    <div className="consent-backdrop" role="presentation" onMouseDown={props.onClose}>
       <section
         aria-describedby="consent-description"
         aria-labelledby="consent-title"
         aria-modal="true"
-        className={styles.dialog}
+        className="consent-dialog"
         role="dialog"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h2 id="consent-title" tabIndex={-1}>
           Privacy choices
         </h2>
-        <p className={styles.copy} id="consent-description">
+        <p className="consent-copy" id="consent-description">
           Optional measurement is off until you choose otherwise. Your location never changes these
           choices automatically.
         </p>
-        <label className={styles.option}>
+        <label className="consent-option">
           <input checked disabled type="checkbox" />
           <strong>Essential processing</strong>
           <span>Required to save your preferences and run a scan you request.</span>
         </label>
-        <label className={styles.option}>
+        <label className="consent-option">
           <input
             checked={props.productAnalytics}
             onChange={(event) => props.onProductAnalytics(event.target.checked)}
@@ -67,7 +63,7 @@ export function ConsentPreferencesPanel(props: {
             Explicit, pseudonymous product events in PostHog. No autocapture or session replay.
           </span>
         </label>
-        <label className={styles.option}>
+        <label className="consent-option">
           <input
             checked={props.adsMeasurement}
             onChange={(event) => props.onAdsMeasurement(event.target.checked)}
@@ -80,11 +76,11 @@ export function ConsentPreferencesPanel(props: {
           </span>
         </label>
         {props.error ? (
-          <p aria-live="polite" className={styles.error} role="status">
+          <p aria-live="polite" className="consent-error" role="status">
             {props.error}
           </p>
         ) : null}
-        <div className={styles.actions}>
+        <div className="consent-actions">
           <button
             className="button button-primary"
             disabled={props.saving}
@@ -107,13 +103,16 @@ export function ConsentPreferencesPanel(props: {
   );
 }
 
-export function ConsentBanner() {
-  const { pathname } = useLocation();
-  if (pathname === "/admin" || pathname.startsWith("/admin/")) return null;
-  return <ConsentBannerContent />;
-}
-
-function ConsentBannerContent() {
+/**
+ * The bar that asks a visitor how their visit may be measured, until they
+ * choose, and the preferences it and the page's "Privacy choices" open. The
+ * choice is kept in the browser and recorded by the scanner at
+ * `/api/v1/consent`, so one choice holds on every surface of the origin.
+ * `brand` names the site in its question. It is drawn with
+ * `@agentify/visual/consent.css`, which the page's root imports with its own
+ * stylesheets, so the banner adds no stylesheet of its own to a first visit.
+ */
+export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
   const [visible, setVisible] = useState(true);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [productAnalytics, setProductAnalytics] = useState(false);
@@ -125,7 +124,7 @@ function ConsentBannerContent() {
   const banner = useRef<HTMLElement>(null);
 
   // The bar is fixed over the bottom of the window, so while it is up the page
-  // is padded by its height (app/globals.css): a page no taller than the window
+  // is padded by its height (@agentify/visual/consent.css): a page no taller than the window
   // can still scroll its last control out from under the bar. The height is
   // measured because it depends on the width the words wrap at.
   useEffect(() => {
@@ -209,7 +208,7 @@ function ConsentBannerContent() {
       setAdsMeasurement(ads);
       closePreferences();
       setVisible(false);
-      window.dispatchEvent(new CustomEvent("agentify:consent-changed", { detail: snapshot }));
+      window.dispatchEvent(new CustomEvent(CONSENT_CHANGED_EVENT, { detail: snapshot }));
     } catch {
       setError("We could not save your choices. No optional analytics were enabled.");
     } finally {
@@ -220,20 +219,20 @@ function ConsentBannerContent() {
   return (
     <>
       {visible ? (
-        <aside aria-label="Privacy choices" className={styles.banner} ref={banner}>
-          <div className={styles.bannerCopy}>
-            <strong>Choose how {DISPLAY_BRAND} measures this visit</strong>
-            <p className={styles.copy}>
+        <aside aria-label="Privacy choices" className="consent-banner" ref={banner}>
+          <div className="consent-banner-copy">
+            <strong>Choose how {brand} measures this visit</strong>
+            <p className="consent-copy">
               Optional analytics stay off unless you allow them. Read our{" "}
               <a href="/privacy">privacy notice</a>.
             </p>
             {error ? (
-              <p aria-live="polite" className={styles.error} role="status">
+              <p aria-live="polite" className="consent-error" role="status">
                 {error}
               </p>
             ) : null}
           </div>
-          <div className={styles.actions}>
+          <div className="consent-actions">
             <button
               className="button button-primary button-compact"
               disabled={saving}
@@ -251,7 +250,7 @@ function ConsentBannerContent() {
               Essential only
             </button>
             <button
-              className={styles.preferencesLink}
+              className="consent-preferences-link"
               disabled={saving}
               onClick={() => {
                 preferencesOpener.current = preferencesButton.current;

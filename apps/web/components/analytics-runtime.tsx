@@ -3,6 +3,7 @@ import {
   consentAllowsMeasurement,
   readCurrentConsent,
 } from "@agentify/analytics/browser";
+import { type BrowserAnalyticsConfig, CONSENT_CHANGED_EVENT } from "@agentify/consent";
 import type { Segment } from "@agentify/scanner-contracts";
 import { useCallback, useEffect, useRef } from "react";
 import { useLocation } from "react-router";
@@ -10,19 +11,6 @@ import { useLocation } from "react-router";
 import type { PendingEvent } from "../lib/analytics-delivery";
 import { captureLandingAttribution } from "../lib/attribution-client";
 import { readLandingAnnouncement } from "../lib/landing-announcement";
-
-export type BrowserAnalyticsConfig = Readonly<{
-  runtimeEnvironment: "local" | "test" | "preview" | "production";
-  posthog: Readonly<{
-    key: string | null;
-    host: string | null;
-    destinationEnvironment: "local" | "test" | "preview" | "production";
-  }>;
-  meta: Readonly<{
-    pixelId: string | null;
-    destinationEnvironment: "local" | "test" | "preview" | "production";
-  }>;
-}>;
 
 export function AnalyticsRuntime({ config }: Readonly<{ config: BrowserAnalyticsConfig }>) {
   const { pathname } = useLocation();
@@ -63,8 +51,8 @@ export function AnalyticsRuntime({ config }: Readonly<{ config: BrowserAnalytics
         );
       }
     };
-    window.addEventListener("agentify:consent-changed", changed);
-    return () => window.removeEventListener("agentify:consent-changed", changed);
+    window.addEventListener(CONSENT_CHANGED_EVENT, changed);
+    return () => window.removeEventListener(CONSENT_CHANGED_EVENT, changed);
   }, [pathname, track]);
 
   useEffect(() => {

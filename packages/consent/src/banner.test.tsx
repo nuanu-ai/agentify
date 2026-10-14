@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ConsentPreferencesPanel } from "./consent-banner.js";
+import { ConsentPreferencesPanel } from "./banner.js";
 
 describe("consent preferences accessibility", () => {
   it("renders an explicitly labelled modal with independent unchecked options", () => {

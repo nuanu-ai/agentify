@@ -1,8 +1,8 @@
+import { PrivacyChoicesButton } from "@agentify/consent";
 import type { ReportView } from "../lib/report-view";
 import { BrowserObservations } from "./browser-observations";
 import { CardSignal } from "./card-signal";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
-import { PrivacyChoicesButton } from "./privacy-choices-button";
 import { ReportActionPanel } from "./report-action-panel";
 import { ReportBenchmark } from "./report-benchmark";
 import { ReportDashboardControl } from "./report-dashboard-control";

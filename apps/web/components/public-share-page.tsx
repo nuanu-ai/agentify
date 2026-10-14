@@ -1,5 +1,5 @@
+import { PrivacyChoicesButton } from "@agentify/consent";
 import { Brand } from "./brand";
-import { PrivacyChoicesButton } from "./privacy-choices-button";
 import { PublicResultCard, type PublicResultPreview } from "./public-result-card";
 import styles from "./public-share-page.module.css";
 import { SiteLink } from "./site-link";

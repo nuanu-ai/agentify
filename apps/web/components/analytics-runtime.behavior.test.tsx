@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 
 import { CONSENT_STORAGE_KEY, createConsentSnapshot } from "@agentify/analytics/browser";
+import { type BrowserAnalyticsConfig, CONSENT_CHANGED_EVENT } from "@agentify/consent";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import { LANDING_SEGMENT_ATTRIBUTE, LANDING_VARIANT_ATTRIBUTE } from "../lib/landing-announcement";
 import { onSite } from "../testing/on-site";
-import { AnalyticsRuntime, type BrowserAnalyticsConfig } from "./analytics-runtime";
+import { AnalyticsRuntime } from "./analytics-runtime";
 
 const config: BrowserAnalyticsConfig = {
   runtimeEnvironment: "test",
@@ -62,7 +62,7 @@ describe("a visit before and after the visitor's choice", () => {
       source: "banner",
     });
     localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify(allowed));
-    window.dispatchEvent(new CustomEvent("agentify:consent-changed", { detail: allowed }));
+    window.dispatchEvent(new CustomEvent(CONSENT_CHANGED_EVENT, { detail: allowed }));
 
     await waitFor(() => expect(asked).toEqual(["/api/v1/attribution", "/api/v1/events"]));
   });

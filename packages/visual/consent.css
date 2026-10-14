@@ -1,11 +1,31 @@
-.banner,
-.dialog {
+/*
+ * The consent banner and its preferences, one for the whole origin: every
+ * surface that measures a visit draws them from @agentify/consent with these
+ * rules. While the banner is up it sets its height on the root, so a page
+ * that fits the window can still scroll its last control out from under the
+ * bar, and the header's menu stops above it.
+ */
+
+:root {
+  --consent-banner-height: 0px;
+}
+
+body {
+  padding-bottom: var(--consent-banner-height);
+}
+
+.site-menu {
+  --site-menu-foot: var(--consent-banner-height);
+}
+
+.consent-banner,
+.consent-dialog {
   border: 1px solid var(--line);
   background: var(--surface);
   box-shadow: var(--shadow-soft);
 }
 
-.banner {
+.consent-banner {
   position: fixed;
   z-index: 80;
   right: 0;
@@ -22,7 +42,7 @@
   box-shadow: 0 -8px 24px rgb(26 25 23 / 8%);
 }
 
-.bannerCopy {
+.consent-banner-copy {
   flex: 1 1 320px;
   min-width: 240px;
 }
@@ -30,40 +50,40 @@
 /* The title takes its own line, or it runs into the sentence and the two read
    as one. Beside the buttons the two lines take about the buttons' height, so
    the bar does not grow. */
-.bannerCopy strong {
+.consent-banner-copy strong {
   display: block;
   font-size: 0.9375rem;
 }
 
-.copy {
+.consent-copy {
   margin: 0;
   color: var(--fg-2);
   font-size: 0.875rem;
   line-height: 1.5;
 }
 
-.copy a {
+.consent-copy a {
   color: var(--accent);
 }
 
 /* The buttons keep their own width and wrap, on a phone as well: stacked
    full-width, the three would make the bar a third of the screen. */
-.actions {
+.consent-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 0;
 }
 
-.dialog .actions {
+.consent-dialog .consent-actions {
   margin-top: 18px;
 }
 
-.actions button {
+.consent-actions button {
   min-height: 44px;
 }
 
-.preferencesLink {
+.consent-preferences-link {
   min-height: 44px;
   border: 0;
   padding: 0;
@@ -76,22 +96,22 @@
   text-underline-offset: 3px;
 }
 
-.preferencesLink:hover:not(:disabled) {
+.consent-preferences-link:hover:not(:disabled) {
   color: var(--accent);
 }
 
-.preferencesLink:disabled {
+.consent-preferences-link:disabled {
   cursor: not-allowed;
   color: var(--na);
 }
 
-.error {
+.consent-error {
   margin: 12px 0 0;
   color: var(--fail);
   font-size: 0.875rem;
 }
 
-.backdrop {
+.consent-backdrop {
   position: fixed;
   z-index: 90;
   inset: 0;
@@ -101,7 +121,7 @@
   background: rgb(26 25 23 / 42%);
 }
 
-.dialog {
+.consent-dialog {
   width: min(560px, 100%);
   max-height: min(720px, calc(100vh - 40px));
   overflow: auto;
@@ -109,51 +129,51 @@
   padding: 24px;
 }
 
-.dialog h2 {
+.consent-dialog h2 {
   margin: 0;
   font-size: 1.5rem;
 }
 
-.option {
+.consent-option {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
   gap: 4px 12px;
   margin-top: 20px;
 }
 
-.option input {
+.consent-option input {
   width: 20px;
   height: 20px;
   margin: 2px 0 0;
   accent-color: var(--accent);
 }
 
-.option strong,
-.option span {
+.consent-option strong,
+.consent-option span {
   grid-column: 2;
 }
 
-.option strong {
+.consent-option strong {
   grid-row: 1;
 }
 
-.option span {
+.consent-option span {
   color: var(--muted);
   font-size: 0.875rem;
   line-height: 1.45;
 }
 
 @media (max-width: 600px) {
-  .banner {
+  .consent-banner {
     padding: 14px 16px;
   }
 
-  .backdrop {
+  .consent-backdrop {
     align-items: end;
     padding: 12px;
   }
 
-  .dialog {
+  .consent-dialog {
     max-height: calc(100vh - 24px);
     padding: 20px;
   }

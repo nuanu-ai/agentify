@@ -13,8 +13,10 @@ import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "@fontsource/ibm-plex-mono/600.css";
 import "@agentify/visual/tokens.css";
+import "@agentify/visual/consent.css";
 import "./globals.css";
 
+import { ConsentBanner } from "@agentify/consent";
 import { OnItsWay } from "@agentify/ui";
 import type { ReactNode } from "react";
 import {
@@ -26,11 +28,11 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLocation,
   useRouteError,
   useRouteLoaderData,
 } from "react-router";
 import { AnalyticsRuntime } from "../components/analytics-runtime";
-import { ConsentBanner } from "../components/consent-banner";
 import { NotFoundPage } from "../components/not-found-page";
 import { PublicConfigProvider } from "../components/public-config";
 import { SystemMessagePage } from "../components/system-message-page";
@@ -78,6 +80,9 @@ export const meta = ({ loaderData, error }: MetaArgs<typeof loader>) =>
  */
 export function SiteBody({ children }: Readonly<{ children: ReactNode }>) {
   const site = useRouteLoaderData<typeof loader>("root");
+  const { pathname } = useLocation();
+  // The operator's pages are measured by nobody, so nobody is asked.
+  const operator = pathname === "/admin" || pathname.startsWith("/admin/");
   return site === undefined ? (
     children
   ) : (
@@ -85,7 +90,7 @@ export function SiteBody({ children }: Readonly<{ children: ReactNode }>) {
       <OnItsWay />
       {children}
       <AnalyticsRuntime config={site.analytics} />
-      <ConsentBanner />
+      {operator ? null : <ConsentBanner brand={DISPLAY_BRAND} />}
     </PublicConfigProvider>
   );
 }

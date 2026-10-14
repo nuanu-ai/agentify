@@ -1,6 +1,6 @@
+import { PrivacyChoicesButton } from "@agentify/consent";
 import { SiteDoors as Doors, SiteHeader as Header, SiteMenu as Menu } from "@agentify/ui";
 import { Brand } from "./brand";
-import { PrivacyChoicesButton } from "./privacy-choices-button";
 import { usePublicConfig } from "./public-config";
 import styles from "./site-chrome.module.css";
 import { SiteLink } from "./site-link";
