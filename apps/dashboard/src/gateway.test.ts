@@ -9,7 +9,7 @@
  * in-memory harness.
  */
 
-import type { Gateway } from "@agentify/gateway";
+import { type Gateway, payoutSplitFor } from "@agentify/gateway";
 import { type Harness, harness, type Served, serve, workOnce } from "@agentify/gateway/testing";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
@@ -223,7 +223,16 @@ describe("a wallet change the gateway would not record", () => {
     harnessed.store.setPayoutWallet = async (id, expected, next, when) => {
       if (!overtaken) {
         overtaken = true;
-        await writing(id, expected, { address: ANOTHER_WALLET, pending: null }, when);
+        await writing(
+          id,
+          expected,
+          {
+            address: ANOTHER_WALLET,
+            split: payoutSplitFor(harnessed.runtime.config.payoutSplit, id, ANOTHER_WALLET),
+            pending: null,
+          },
+          when,
+        );
       }
       return await writing(id, expected, next, when);
     };

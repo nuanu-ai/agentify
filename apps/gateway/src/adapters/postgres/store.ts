@@ -11,7 +11,7 @@
 
 import { isOpen, MERCHANT_SELLING, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
-import { and, eq, exists, inArray, isNull, lt, not, or, sql } from "drizzle-orm";
+import { and, eq, exists, inArray, isNull, lt, not, or, type SQL, sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
 import type { DrizzleTransactionLike } from "pg-boss";
@@ -27,16 +27,30 @@ import {
   type OrderLookup,
   OWING_ONLY_MONEY,
   type PaymentClaim,
+  type PayoutWalletRead,
+  type PayoutWalletWrite,
   type Ran,
+  type RecordedPayoutSplit,
   type Store,
   type StoredCard,
   type StoredKey,
   type StoredMerchant,
   type StoredOrder,
   type StoredPayoutWallet,
+  type WalletWritten,
 } from "../../ports/store.js";
+import type { PayoutSplit } from "../../split/parameters.js";
 import { failingWithoutValues } from "../database-failure.js";
-import { cards, merchantKeys, merchants, orders, paymentClaims, receipts } from "./schema.js";
+import { recordedOtherwise, splitsOfTheWrite } from "../registry.js";
+import {
+  cards,
+  merchantKeys,
+  merchants,
+  orders,
+  paymentClaims,
+  payoutSplits,
+  receipts,
+} from "./schema.js";
 
 /**
  * How an envelope that has to be written with an order gets onto a merchant's
@@ -128,12 +142,31 @@ export class PostgresStore implements Store {
       .onConflictDoNothing({ target: merchants.id })
       .returning();
     // Nothing came back: the identifier is taken and nothing was overwritten.
-    return row === undefined ? null : storedMerchantOf(row);
+    // A merchant just made has no wallet, so no split either.
+    return row === undefined ? null : storedMerchantOf({ ...row, split: null, pendingSplit: null });
   }
 
   async merchantById(id: string): Promise<StoredMerchant | null> {
-    const [row] = await this.#db.select().from(merchants).where(eq(merchants.id, id)).limit(1);
-    return row === undefined ? null : storedMerchantOf(row);
+    const [merchant] = await this.#merchantsWhere(this.#db, eq(merchants.id, id));
+    return merchant ?? null;
+  }
+
+  /**
+   * Merchants with the splits recorded for their wallet and their waiting
+   * wallet, read in the one statement that reads the merchant, so a wallet
+   * and its split are never read at two instants.
+   */
+  async #merchantsWhere(on: Queries, where?: SQL): Promise<StoredMerchant[]> {
+    const rows = await on
+      .select({
+        ...MERCHANT_COLUMNS,
+        split: splitRecordedFor(merchants.payoutWallet),
+        pendingSplit: splitRecordedFor(merchants.pendingPayoutWallet),
+      })
+      .from(merchants)
+      .where(where)
+      .orderBy(merchants.createdAt, merchants.id);
+    return rows.map(storedMerchantOf);
   }
 
   async grantLiveApproval(
@@ -146,9 +179,10 @@ export class PostgresStore implements Store {
       .update(merchants)
       .set({ liveApprovedAt: new Date(at) })
       .where(and(eq(merchants.id, id), isNull(merchants.liveApprovedAt)))
-      .returning();
-    if (granted !== undefined) {
-      return { merchant: storedMerchantOf(granted), changed: true };
+      .returning({ id: merchants.id });
+    const merchant = granted === undefined ? null : await this.merchantById(id);
+    if (merchant !== null) {
+      return { merchant, changed: true };
     }
 
     // Tells a repeat from a missing merchant. `updated_at` is deliberately not
@@ -158,8 +192,7 @@ export class PostgresStore implements Store {
   }
 
   async merchants(): Promise<readonly StoredMerchant[]> {
-    const rows = await this.#db.select().from(merchants).orderBy(merchants.createdAt);
-    return rows.map(storedMerchantOf);
+    return this.#merchantsWhere(this.#db);
   }
 
   async setServiceName(
@@ -171,8 +204,8 @@ export class PostgresStore implements Store {
       .update(merchants)
       .set({ serviceName, updatedAt: new Date(at) })
       .where(eq(merchants.id, id))
-      .returning();
-    return row === undefined ? null : storedMerchantOf(row);
+      .returning({ id: merchants.id });
+    return row === undefined ? null : this.merchantById(id);
   }
 
   async setSellerSite(id: string, sellerSite: string, at: number): Promise<StoredMerchant | null> {
@@ -180,44 +213,140 @@ export class PostgresStore implements Store {
       .update(merchants)
       .set({ sellerSite, updatedAt: new Date(at) })
       .where(eq(merchants.id, id))
-      .returning();
-    return row === undefined ? null : storedMerchantOf(row);
+      .returning({ id: merchants.id });
+    return row === undefined ? null : this.merchantById(id);
   }
 
   async setPayoutWallet(
     id: string,
-    expected: StoredPayoutWallet,
-    next: StoredPayoutWallet & { readonly address: string },
+    expected: PayoutWalletRead,
+    next: PayoutWalletWrite,
     at: number,
-  ): Promise<StoredMerchant | "moved" | null> {
-    // Compare and write in one statement, so two changes read from one row
-    // cannot both be recorded. `is not distinct from`, because `=` against a
-    // null answers nothing.
+  ): Promise<WalletWritten | "moved" | null> {
+    const splits = splitsOfTheWrite(id, next);
+    // The wallet and its splits in one transaction: a split that cannot be
+    // written leaves the wallet as it was, and a wallet that moved records no
+    // split.
+    return await this.#db.transaction(async (tx): Promise<WalletWritten | "moved" | null> => {
+      // Compare and write in one statement, so two changes read from one row
+      // cannot both be recorded. `is not distinct from`, because `=` against a
+      // null answers nothing.
+      const [row] = await tx
+        .update(merchants)
+        .set({
+          payoutWallet: next.address,
+          pendingPayoutWallet: next.pending?.address ?? null,
+          pendingPayoutWalletFrom:
+            next.pending === null ? null : new Date(next.pending.takesEffectAt),
+          updatedAt: new Date(at),
+        })
+        .where(
+          and(
+            eq(merchants.id, id),
+            sql`${merchants.payoutWallet} is not distinct from ${expected.address}`,
+            sql`${merchants.pendingPayoutWallet} is not distinct from ${expected.pending?.address ?? null}`,
+            sql`${merchants.pendingPayoutWalletFrom} is not distinct from ${
+              expected.pending === null ? null : new Date(expected.pending.takesEffectAt)
+            }`,
+          ),
+        )
+        .returning({ id: merchants.id });
+      if (row === undefined) {
+        // Nothing matched: the row has moved, or there is no such merchant.
+        const [found] = await tx
+          .select({ id: merchants.id })
+          .from(merchants)
+          .where(eq(merchants.id, id))
+          .limit(1);
+        return found === undefined ? null : "moved";
+      }
+      const recorded = await recordWithin(tx, splits, at);
+      const [merchant] = await this.#merchantsWhere(tx, eq(merchants.id, id));
+      if (merchant === undefined) {
+        throw new Error(`the wallet of ${id} was written and the merchant could not be read back`);
+      }
+      return { merchant, recorded };
+    });
+  }
+
+  // --- the payout splits ----------------------------------------------------
+
+  async recordPayoutSplits(
+    splits: readonly PayoutSplit[],
+    at: number,
+  ): Promise<readonly RecordedPayoutSplit[]> {
+    const once = [...new Map(splits.map((split) => [split.address, split])).values()];
+    return await this.#db.transaction((tx) => recordWithin(tx, once, at));
+  }
+
+  async payoutSplitAt(address: string): Promise<RecordedPayoutSplit | null> {
     const [row] = await this.#db
-      .update(merchants)
-      .set({
-        payoutWallet: next.address,
-        pendingPayoutWallet: next.pending?.address ?? null,
-        pendingPayoutWalletFrom:
-          next.pending === null ? null : new Date(next.pending.takesEffectAt),
-        updatedAt: new Date(at),
-      })
+      .select()
+      .from(payoutSplits)
+      .where(sql`lower(${payoutSplits.address}) = lower(${address})`)
+      .orderBy(payoutSplits.recordedAt)
+      .limit(1);
+    return row === undefined ? null : recordedSplitOf(row);
+  }
+
+  async networksWithPayoutSplits(): Promise<readonly string[]> {
+    const rows = await this.#db
+      .selectDistinct({ network: payoutSplits.network })
+      .from(payoutSplits)
+      .orderBy(payoutSplits.network);
+    return rows.map((row) => row.network);
+  }
+
+  async splitsToPayOutFor(
+    network: string,
+    merchantId: string,
+    at: number,
+  ): Promise<readonly RecordedPayoutSplit[]> {
+    return this.#splitsToPayOut(
+      and(eq(payoutSplits.network, network), eq(payoutSplits.merchantId, merchantId)),
+      at,
+    );
+  }
+
+  async splitsToPayOutOn(network: string, at: number): Promise<readonly RecordedPayoutSplit[]> {
+    return this.#splitsToPayOut(eq(payoutSplits.network, network), at);
+  }
+
+  /**
+   * The splits among `which` that can hold money at `at`: the split of a
+   * merchant's wallet in force then, and every split an order of that
+   * merchant's was verified against, in either spelling.
+   */
+  async #splitsToPayOut(which: SQL | undefined, at: number): Promise<RecordedPayoutSplit[]> {
+    const rows = await this.#db
+      .select()
+      .from(payoutSplits)
       .where(
         and(
-          eq(merchants.id, id),
-          sql`${merchants.payoutWallet} is not distinct from ${expected.address}`,
-          sql`${merchants.pendingPayoutWallet} is not distinct from ${expected.pending?.address ?? null}`,
-          sql`${merchants.pendingPayoutWalletFrom} is not distinct from ${
-            expected.pending === null ? null : new Date(expected.pending.takesEffectAt)
-          }`,
+          which,
+          or(
+            exists(
+              this.#db
+                .select({ id: merchants.id })
+                .from(merchants)
+                .where(
+                  and(
+                    eq(merchants.id, payoutSplits.merchantId),
+                    sql`(case when ${merchants.pendingPayoutWalletFrom} <= ${new Date(at)}
+                          then ${merchants.pendingPayoutWallet}
+                          else ${merchants.payoutWallet} end) = ${payoutSplits.merchantWallet}`,
+                  ),
+                ),
+            ),
+            sql`lower(${payoutSplits.address}) in (
+              select lower(${orders.record} ->> 'payTo') from ${orders}
+              where ${orders.merchantId} = ${payoutSplits.merchantId}
+                and ${orders.record} ->> 'payTo' is not null)`,
+          ),
         ),
       )
-      .returning();
-    if (row !== undefined) {
-      return storedMerchantOf(row);
-    }
-    // Nothing matched: the row has moved, or there is no such merchant.
-    return (await this.merchantById(id)) === null ? null : "moved";
+      .orderBy(payoutSplits.recordedAt, sql`${payoutSplits.address} collate "C"`);
+    return rows.map(recordedSplitOf);
   }
 
   async addKey(
@@ -406,6 +535,8 @@ export class PostgresStore implements Store {
         payoutWallet: merchants.payoutWallet,
         pendingPayoutWallet: merchants.pendingPayoutWallet,
         pendingPayoutWalletFrom: merchants.pendingPayoutWalletFrom,
+        split: splitRecordedFor(merchants.payoutWallet),
+        pendingSplit: splitRecordedFor(merchants.pendingPayoutWallet),
         serviceName: merchants.serviceName,
         sellerSite: merchants.sellerSite,
         liveApprovedAt: merchants.liveApprovedAt,
@@ -892,6 +1023,9 @@ interface WalletColumns {
   payoutWallet: string | null;
   pendingPayoutWallet: string | null;
   pendingPayoutWalletFrom: Date | null;
+  /** The split recorded for each, as `splitRecordedFor` reads it, or null. */
+  split: SplitAsJson | null;
+  pendingSplit: SplitAsJson | null;
 }
 
 /**
@@ -902,14 +1036,141 @@ interface WalletColumns {
 function payoutWalletOf(row: WalletColumns): StoredPayoutWallet {
   return {
     address: row.payoutWallet,
+    split: row.split === null ? null : recordedSplitOf(splitColumnsOf(row.split)),
     pending:
       row.pendingPayoutWallet === null || row.pendingPayoutWalletFrom === null
         ? null
         : {
             address: row.pendingPayoutWallet,
             takesEffectAt: row.pendingPayoutWalletFrom.getTime(),
+            split:
+              row.pendingSplit === null ? null : recordedSplitOf(splitColumnsOf(row.pendingSplit)),
           },
   };
+}
+
+/** Every column of a merchant, for a read that adds the splits beside them. */
+const MERCHANT_COLUMNS = {
+  id: merchants.id,
+  name: merchants.name,
+  serviceName: merchants.serviceName,
+  sellerSite: merchants.sellerSite,
+  payoutWallet: merchants.payoutWallet,
+  pendingPayoutWallet: merchants.pendingPayoutWallet,
+  pendingPayoutWalletFrom: merchants.pendingPayoutWalletFrom,
+  liveApprovedAt: merchants.liveApprovedAt,
+  selling: merchants.selling,
+  integration: merchants.integration,
+  createdAt: merchants.createdAt,
+};
+
+/** A row of the registry as `row_to_json` writes it: the column names, the instant as text. */
+interface SplitAsJson {
+  readonly address: string;
+  readonly network: string;
+  readonly merchant_id: string;
+  readonly merchant_wallet: string;
+  readonly commission_wallet: string;
+  readonly merchant_allocation: number;
+  readonly commission_allocation: number;
+  readonly total_allocation: number;
+  readonly distribution_incentive: number;
+  readonly owner: string;
+  readonly salt: string;
+  readonly factory: string;
+  readonly recorded_at: string;
+}
+
+/**
+ * The split recorded for the merchant's wallet in this column, as one JSON
+ * value, or null. A database serves one network, and the start refuses one
+ * holding another's splits, so the first recorded is the one; the memory
+ * store reads it the same way.
+ */
+const splitRecordedFor = (
+  wallet: typeof merchants.payoutWallet | typeof merchants.pendingPayoutWallet,
+) =>
+  sql<SplitAsJson | null>`(
+    select row_to_json(recorded) from ${payoutSplits} as recorded
+    where recorded.merchant_id = ${merchants.id} and recorded.merchant_wallet = ${wallet}
+    order by recorded.recorded_at limit 1)`;
+
+function splitColumnsOf(json: SplitAsJson): typeof payoutSplits.$inferSelect {
+  return {
+    address: json.address,
+    network: json.network,
+    merchantId: json.merchant_id,
+    merchantWallet: json.merchant_wallet,
+    commissionWallet: json.commission_wallet,
+    merchantAllocation: json.merchant_allocation,
+    commissionAllocation: json.commission_allocation,
+    totalAllocation: json.total_allocation,
+    distributionIncentive: json.distribution_incentive,
+    owner: json.owner,
+    salt: json.salt,
+    factory: json.factory,
+    recordedAt: new Date(json.recorded_at),
+  };
+}
+
+function recordedSplitOf(row: typeof payoutSplits.$inferSelect): RecordedPayoutSplit {
+  return {
+    address: row.address,
+    network: row.network,
+    merchantId: row.merchantId,
+    merchantWallet: row.merchantWallet,
+    commissionWallet: row.commissionWallet,
+    merchantAllocation: row.merchantAllocation,
+    commissionAllocation: row.commissionAllocation,
+    totalAllocation: row.totalAllocation,
+    distributionIncentive: row.distributionIncentive,
+    owner: row.owner,
+    salt: row.salt,
+    factory: row.factory,
+    recordedAt: row.recordedAt.getTime(),
+  };
+}
+
+/**
+ * Records the splits with no row yet, inside the caller's transaction, and
+ * returns those it recorded. A split already recorded under its merchant,
+ * wallet and network is left as it is, provided it is recorded at the same
+ * address; any other clash refuses, and the transaction with it.
+ */
+async function recordWithin(
+  tx: Queries,
+  splits: readonly PayoutSplit[],
+  at: number,
+): Promise<RecordedPayoutSplit[]> {
+  if (splits.length === 0) {
+    return [];
+  }
+  const inserted = await tx
+    .insert(payoutSplits)
+    .values(splits.map((split) => ({ ...split, recordedAt: new Date(at) })))
+    .onConflictDoNothing()
+    .returning();
+  const written = new Set(inserted.map((row) => row.address));
+  for (const split of splits) {
+    if (written.has(split.address)) {
+      continue;
+    }
+    const [held] = await tx
+      .select({ address: payoutSplits.address })
+      .from(payoutSplits)
+      .where(
+        and(
+          eq(payoutSplits.network, split.network),
+          eq(payoutSplits.merchantId, split.merchantId),
+          eq(payoutSplits.merchantWallet, split.merchantWallet),
+        ),
+      )
+      .limit(1);
+    if (held?.address !== split.address) {
+      throw recordedOtherwise(split);
+    }
+  }
+  return inserted.map(recordedSplitOf);
 }
 
 function storedMerchantOf(

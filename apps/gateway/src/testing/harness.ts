@@ -167,7 +167,7 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
     // One wallet per merchant, or a gateway paying every sale to one address
     // would pass a test about whose it is.
     const wallet = aSeededWallet();
-    await setPayoutWallet(store, made.id, wallet, now);
+    await setPayoutWallet(store, config.payoutSplit, made.id, wallet, now);
     // A live gateway sells only for approved merchants. Approval is granted
     // here rather than defaulted, so merchants made any other way stay
     // unapproved.

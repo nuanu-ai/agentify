@@ -19,6 +19,7 @@ import type {
   ShipTo,
   WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
+import type { PayoutSplit } from "../split/parameters.js";
 
 /**
  * How a merchant's products reach Agentify and their orders are filled: their
@@ -238,25 +239,78 @@ export type PaymentClaim =
   | { readonly claimed: false; readonly heldBy: string };
 
 /**
+ * A payout split as the registry holds it: every parameter it was recorded
+ * with, and the instant it was first recorded. A recorded split is never
+ * changed or deleted, by this code or by hand, and outlives its merchant,
+ * because until its first payout nothing else holds its parameters and money
+ * paid to it could not be paid out without them.
+ */
+export interface RecordedPayoutSplit extends PayoutSplit {
+  readonly recordedAt: number;
+}
+
+/**
+ * Where a merchant is paid, as a write is compared against it: the address
+ * and the waiting replacement as they were read. A change is recorded only
+ * where the row still holds exactly this, the instant included.
+ */
+export interface PayoutWalletRead {
+  readonly address: string | null;
+  readonly pending: { readonly address: string; readonly takesEffectAt: number } | null;
+}
+
+/**
  * A wallet change that has been announced to the merchant and has not taken
- * effect yet. Both fields or neither: the table refuses half of one.
+ * effect yet, with the split it is paid through once it does. Address and
+ * moment both or neither: the table refuses half of one.
  */
 interface PendingPayoutWallet {
   readonly address: string;
   /** When it replaces the address paid now, counted from the announcement. */
   readonly takesEffectAt: number;
+  /** The split recorded for this address, or null where none is: a defect, read as no wallet. */
+  readonly split: RecordedPayoutSplit | null;
 }
 
 /**
  * Where a merchant is paid, as their row holds it: `address` as of the last
- * write (null where none was ever set) and a `pending` replacement, or null.
- * They are one value because they are written and compared together: a change
- * is recorded only where the row still holds the pair read before it was
- * announced.
+ * write (null where none was ever set) with the split recorded for it, and a
+ * `pending` replacement with its own, or null. The address and the waiting
+ * change are one value because they are written and compared together; the
+ * splits travel with them so a wallet and the split it is paid through are
+ * read at one instant, in one read.
+ *
+ * A database serves one network, and a start refuses one whose registry
+ * holds another's splits, so the split here is the merchant's for this
+ * wallet without naming the network.
  */
 export interface StoredPayoutWallet {
   readonly address: string | null;
+  /** The split recorded for `address`, or null where none is: a defect, read as no wallet. */
+  readonly split: RecordedPayoutSplit | null;
   readonly pending: PendingPayoutWallet | null;
+}
+
+/**
+ * A wallet as a write records it: the address with its split and the waiting
+ * replacement with its own, each computed for this merchant by the network's
+ * payout split. The splits are a required part of the write so that no
+ * caller can save a wallet whose payments would have no recorded parameters.
+ */
+export interface PayoutWalletWrite {
+  readonly address: string;
+  readonly split: PayoutSplit;
+  readonly pending: {
+    readonly address: string;
+    readonly takesEffectAt: number;
+    readonly split: PayoutSplit;
+  } | null;
+}
+
+/** A wallet write that landed: the merchant as they now stand and the splits recorded by it for the first time. */
+export interface WalletWritten {
+  readonly merchant: StoredMerchant;
+  readonly recorded: readonly RecordedPayoutSplit[];
 }
 
 /**
@@ -283,12 +337,13 @@ export interface StoredMerchant {
    */
   readonly sellerSite: string | null;
   /**
-   * Where this merchant's sales are paid: buyers' agents pay this address
-   * directly, and it is the `payTo` of every payment request for the
-   * merchant's cards. It is stored in the mixed-case spelling a wallet
-   * displays, so one address is never two strings. A null `address` means
-   * nobody has said where the money goes, and it is never filled in from the
-   * gateway's own configured address, which is the operator's.
+   * Where this merchant's share of a sale arrives, with the split buyers pay
+   * into: the `payTo` of every payment request for the merchant's cards is the
+   * split recorded for the wallet in force. It is stored in the mixed-case
+   * spelling a wallet displays, so one address is never two strings. A null
+   * `address` means nobody has said where the money goes, and it is never
+   * filled in from the gateway's own configured address, which is the
+   * operator's.
    *
    * This is the row as written: a pending change whose moment has passed is
    * already the address, so anything deciding where a sale goes asks
@@ -409,12 +464,19 @@ export interface Store {
 
   /**
    * Writes the merchant's payout wallet only where the row still holds
-   * `expected`, compared by both halves and the instant, and returns the
-   * merchant as they now stand; `"moved"` means the row changed meanwhile and
-   * nothing was written, null means no such merchant. It is a compare-and-set
-   * rather than a lock because a live change is announced to the merchant
-   * between the read and the write, and a lock across that call would hold a
-   * row on the money path for seconds.
+   * `expected`, compared by both halves and the instant, and records the split
+   * of each address in `next` that has none, in the same write: both land or
+   * neither. Returns the merchant as they now stand and the splits recorded
+   * for the first time; `"moved"` means the row changed meanwhile and nothing
+   * was written, split included; null means no such merchant. It is a
+   * compare-and-set rather than a lock because a live change is announced to
+   * the merchant between the read and the write, and a lock across that call
+   * would hold a row on the money path for seconds.
+   *
+   * A split already recorded is kept as recorded, with its first instant.
+   * Refuses, writing nothing, a split that is not this merchant's for the
+   * address it is given with, and one whose merchant, wallet and network are
+   * recorded at another address.
    *
    * Addresses must already be in the checksummed spelling `payoutWalletFrom`
    * in `app/merchants.ts` produces. A set address cannot be cleared, as the
@@ -422,10 +484,54 @@ export interface Store {
    */
   setPayoutWallet(
     id: string,
-    expected: StoredPayoutWallet,
-    next: StoredPayoutWallet & { readonly address: string },
+    expected: PayoutWalletRead,
+    next: PayoutWalletWrite,
     at: number,
-  ): Promise<StoredMerchant | "moved" | null>;
+  ): Promise<WalletWritten | "moved" | null>;
+
+  // --- the payout splits ----------------------------------------------------
+
+  /**
+   * Records each split that has no row yet, at `at`, and returns those it
+   * recorded; one already recorded is left as it is. Two callers recording one
+   * split at once record it once. Refuses, writing nothing, a split whose
+   * merchant, wallet and network are recorded at another address. No merchant
+   * is touched: this is how wallets set before splits existed get theirs.
+   */
+  recordPayoutSplits(
+    splits: readonly PayoutSplit[],
+    at: number,
+  ): Promise<readonly RecordedPayoutSplit[]>;
+
+  /**
+   * The split recorded at this address, in either spelling, whoever's it is,
+   * or null. Across merchants because no wallet may be any merchant's split;
+   * nothing reachable from a request may hand its answer to a caller.
+   */
+  payoutSplitAt(address: string): Promise<RecordedPayoutSplit | null>;
+
+  /** Every network the registry holds a split of, each once. */
+  networksWithPayoutSplits(): Promise<readonly string[]>;
+
+  /**
+   * One merchant's splits on this network that can hold money: the split of
+   * the wallet in force at `at`, and every recorded split one of their
+   * orders was verified against, in the order they were recorded (address
+   * breaking a tie). An order verified against a wallet itself names no
+   * split, and a waiting split that never took effect and was never paid
+   * holds nothing.
+   */
+  splitsToPayOutFor(
+    network: string,
+    merchantId: string,
+    at: number,
+  ): Promise<readonly RecordedPayoutSplit[]>;
+
+  /**
+   * The same over every merchant of this network, for the operator's payout,
+   * in the same order. Never reachable from a request.
+   */
+  splitsToPayOutOn(network: string, at: number): Promise<readonly RecordedPayoutSplit[]>;
 
   /** Writes one key of one merchant; only its digest is kept. */
   addKey(

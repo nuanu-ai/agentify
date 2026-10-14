@@ -123,14 +123,15 @@ export function sellingFor(
 }
 
 /**
- * The merchant's wallet as it stands at `at`. Nothing rewrites the row when a
- * pending change's wait ends, so a pending change whose moment has come is
- * already the address: whatever decides where a sale's money goes must ask
- * this with the gateway's clock and never read `address` off the row.
+ * The merchant's wallet as it stands at `at`, with the split it is paid
+ * through. Nothing rewrites the row when a pending change's wait ends, so a
+ * pending change whose moment has come is already the address, and its split
+ * the one recorded with it: whatever decides where a sale's money goes must
+ * ask this with the gateway's clock and never read `address` off the row.
  */
 export function payoutWalletAt(wallet: StoredPayoutWallet, at: number): StoredPayoutWallet {
   return wallet.pending !== null && wallet.pending.takesEffectAt <= at
-    ? { address: wallet.pending.address, pending: null }
+    ? { address: wallet.pending.address, split: wallet.pending.split, pending: null }
     : wallet;
 }
 

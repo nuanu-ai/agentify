@@ -44,11 +44,16 @@ async function aGatewayOnAPort() {
   const store = new MemoryStore(ids, () => Date.now(), queue.envelopes());
   const facilitator = new ScriptedFacilitator();
 
+  const config = loadConfig({
+    DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
+    PAY_TO_ADDRESS: PAY_TO,
+  });
+
   // The calls below carry only the key; the door turns it into the merchant.
   // Without the name or the payout address the first publish would be refused.
   await store.addMerchant({ id: "mch_the_walk", name: "The merchant of this walk" }, Date.now());
   await setServiceName(store, "mch_the_walk", "The walk's own shop", Date.now());
-  await setPayoutWallet(store, "mch_the_walk", THE_WALKS_WALLET, Date.now());
+  await setPayoutWallet(store, config.payoutSplit, "mch_the_walk", THE_WALKS_WALLET, Date.now());
   await store.addKey(
     {
       id: "mk_the_walk",
@@ -60,10 +65,7 @@ async function aGatewayOnAPort() {
   );
 
   const gateway = new Gateway({
-    config: loadConfig({
-      DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
-      PAY_TO_ADDRESS: PAY_TO,
-    }),
+    config,
     store,
     queue,
     facilitator,

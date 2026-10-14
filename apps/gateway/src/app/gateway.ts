@@ -76,11 +76,14 @@ import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
 import type {
   Integration,
   IntegrationSwitch,
+  PayoutWalletRead,
+  PayoutWalletWrite,
   StoredCard,
   StoredKey,
   StoredOrder,
   StoredPayoutWallet,
 } from "../ports/store.js";
+import { type PayoutSplit, payoutSplitFor } from "../split/parameters.js";
 import { orderCallResponseOf } from "./answers.js";
 import {
   issueKey,
@@ -805,16 +808,21 @@ export class Gateway {
     }
     const read = merchant.payoutWallet;
     const now = payoutWalletAt(read, this.runtime.clock());
+    // Every address written goes with its split, computed by this network's
+    // payout split and recorded in the same write as the wallet.
+    const splitOf = (wallet: string): PayoutSplit =>
+      payoutSplitFor(this.runtime.config.payoutSplit, merchantId, wallet);
+    const alone = { address, split: splitOf(address), pending: null };
 
     if (!this.#announces()) {
-      return await this.#recordWallet(merchantId, read, { address, pending: null });
+      return await this.#recordWallet(merchantId, read, alone);
     }
 
     if (now.address === null) {
       // The first address replaces nothing, so it waits on nothing and a
       // message that cannot be sent refuses nothing; the message is how the
       // owner hears of a session that is not theirs setting it.
-      const set = await this.#recordWallet(merchantId, read, { address, pending: null });
+      const set = await this.#recordWallet(merchantId, read, alone);
       if (typeof set !== "string") {
         this.#announceAfterwards({
           kind: "wallet_set",
@@ -831,7 +839,7 @@ export class Gateway {
         return payoutWalletAnswer(now);
       }
       const cancelled = now.pending.address;
-      const written = await this.#recordWallet(merchantId, read, { address, pending: null });
+      const written = await this.#recordWallet(merchantId, read, alone);
       if (typeof written !== "string") {
         this.#announceAfterwards({
           kind: "wallet_change_cancelled",
@@ -864,7 +872,12 @@ export class Gateway {
     // takes effect no earlier than the moment any message named.
     const recorded = await this.#recordWallet(merchantId, read, {
       address: now.address,
-      pending: { address, takesEffectAt: this.runtime.clock() + WALLET_CHANGE_WAITS_MS },
+      split: splitOf(now.address),
+      pending: {
+        address,
+        takesEffectAt: this.runtime.clock() + WALLET_CHANGE_WAITS_MS,
+        split: splitOf(address),
+      },
     });
     return recorded === "raced" ? "raced_after_announcing" : recorded;
   }
@@ -881,8 +894,8 @@ export class Gateway {
    */
   async #recordWallet(
     merchantId: string,
-    read: StoredPayoutWallet,
-    next: StoredPayoutWallet & { readonly address: string },
+    read: PayoutWalletRead,
+    next: PayoutWalletWrite,
   ): Promise<PayoutWallet | "raced"> {
     const written = await this.runtime.store.setPayoutWallet(
       merchantId,
@@ -894,7 +907,9 @@ export class Gateway {
       throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
     if (written !== "moved") {
-      return payoutWalletAnswer(payoutWalletAt(written.payoutWallet, this.runtime.clock()));
+      return payoutWalletAnswer(
+        payoutWalletAt(written.merchant.payoutWallet, this.runtime.clock()),
+      );
     }
     // Another write landed in between. If it wrote exactly what this call
     // asked for, it was a retry after a dropped connection, and the answer is

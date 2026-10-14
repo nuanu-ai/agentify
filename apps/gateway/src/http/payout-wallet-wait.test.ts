@@ -14,6 +14,7 @@
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { payoutSplitFor } from "../split/parameters.js";
 import { buyOverHttp, type Harness, harness, type Served, serve } from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
 
@@ -86,6 +87,10 @@ const ask = async (
 };
 
 const at = (instant: number): string => new Date(instant).toISOString();
+
+/** This merchant's split of this wallet on the gateway's network, as the rule computes it. */
+const splitOf = (harnessed: Harness, wallet: string, merchantId = harnessed.merchant.id) =>
+  payoutSplitFor(harnessed.runtime.config.payoutSplit, merchantId, wallet);
 
 const card: Card = {
   merchant_item_id: "a-room",
@@ -505,7 +510,12 @@ describe("two changes for one merchant at once", () => {
           expected,
           {
             address: harnessed.merchant.wallet,
-            pending: { address: ANOTHER_WALLET, takesEffectAt: when + 48 * HOURS },
+            split: splitOf(harnessed, harnessed.merchant.wallet),
+            pending: {
+              address: ANOTHER_WALLET,
+              takesEffectAt: when + 48 * HOURS,
+              split: splitOf(harnessed, ANOTHER_WALLET),
+            },
           },
           when,
         );
@@ -532,7 +542,12 @@ describe("two changes for one merchant at once", () => {
     harnessed.store.setPayoutWallet = async (id, expected, next, when) => {
       if (!overtaken) {
         overtaken = true;
-        await writing(id, expected, { address: ANOTHER_WALLET, pending: null }, when);
+        await writing(
+          id,
+          expected,
+          { address: ANOTHER_WALLET, split: splitOf(harnessed, ANOTHER_WALLET, id), pending: null },
+          when,
+        );
       }
       return await writing(id, expected, next, when);
     };
