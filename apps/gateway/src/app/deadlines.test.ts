@@ -14,8 +14,9 @@ import {
 const BUYER = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 /**
- * Each test here is one row of the portal's "time ran out" table: what happens
- * when a deadline runs out, and whose money is where afterwards.
+ * What happens when a deadline runs out, and whose money is where afterwards:
+ * the cases behind the portal's "time ran out" table, and the waits behind
+ * them.
  */
 
 const syncCard: Card = {
@@ -323,8 +324,8 @@ describe("the wait for the charge", () => {
 });
 
 describe("a synchronous purchase on the waits this gateway ships", () => {
-  // The portal gives the handler ten seconds, the charge ten more, and the
-  // agent twenty in all. Those are seconds of real time, so the timers are
+  // The handler has ten seconds, the charge ten more, and the agent is
+  // promised twenty in all. Those are seconds of real time, so the timers are
   // faked and moved together with the harness's clock.
   const STEP_MS = 100;
 
@@ -379,10 +380,10 @@ describe("a synchronous purchase on the waits this gateway ships", () => {
     vi.useRealTimers();
   });
 
-  it("takes goods a handler sends in its tenth second, and charges for them", async () => {
+  it("takes goods a handler sends in the last instant of its ten seconds, and charges for them", async () => {
     const { harnessed, buying, deliver } = await inTheHandlersHands();
 
-    await pass(harnessed, 9_900);
+    await pass(harnessed, 9_999);
     expect(await deliver()).toStrictEqual({ ok: true, result: "delivered" });
 
     const { status, answered } = await agentHears(buying);
@@ -408,14 +409,14 @@ describe("a synchronous purchase on the waits this gateway ships", () => {
     expect(harnessed.facilitator.settles).toHaveLength(0);
   });
 
-  it("counts a charge whose answer comes in its tenth second, and hands the agent its goods", async () => {
+  it("counts a charge whose answer comes in the last instant of its ten seconds, and hands the agent its goods", async () => {
     // The payment layer answers once the transfer is in a block, which on Base
     // comes every two seconds, so an answer past two seconds is ordinary.
     const { harnessed, buying, deliver, answeredAt } = await inTheHandlersHands();
     const release = harnessed.facilitator.holdSettle();
     const delivering = deliver();
 
-    await pass(harnessed, 9_900);
+    await pass(harnessed, 9_999);
     expect(answeredAt(), "the agent was answered before the charge was").toBeNull();
     release();
     await delivering;
@@ -448,14 +449,14 @@ describe("a synchronous purchase on the waits this gateway ships", () => {
     const { harnessed, buying, deliver, checkedOutAt, answeredAt } = await inTheHandlersHands();
     const release = harnessed.facilitator.holdSettle();
 
-    await pass(harnessed, 9_900);
+    await pass(harnessed, 9_999);
     const delivering = deliver();
     await pass(harnessed, 9_999);
     expect(
       answeredAt(),
       "the agent stopped waiting while the charge could still answer",
     ).toBeNull();
-    await pass(harnessed, 101);
+    await pass(harnessed, 2);
 
     const { status } = await agentHears(buying);
     expect(status).toBe("payment_unresolved");
