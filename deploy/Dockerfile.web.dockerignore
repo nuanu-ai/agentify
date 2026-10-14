@@ -1,3 +1,6 @@
+# The context of deploy/Dockerfile.web, Caddy with the documentation built
+# inside it; each image reads the ignore file beside its Dockerfile.
+#
 # The image installs from the lockfile; a host's node_modules would be the
 # largest thing in the context and the wrong platform's binaries.
 node_modules
@@ -22,14 +25,14 @@ node_modules
 .DS_Store
 
 # Scanner sources have their own Dockerfile-specific contexts. Keep them out
-# of the commerce images that use this default repository context.
+# of this image, except the consent's rules, which the documentation's consent
+# banner and page views read from the analytics package's source, with the
+# contracts that package names.
 /apps/web
 /apps/scanner-worker
 /apps/browser-observer-actor
-/packages/scanner-contracts
 /packages/scanner-database
 /packages/scanner
-/packages/analytics
 /packages/observability
 /packages/remediation
 /ops

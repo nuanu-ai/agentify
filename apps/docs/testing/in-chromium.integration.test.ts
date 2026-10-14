@@ -8,36 +8,87 @@
  * the network for nothing more; the search finds a page, shows the words it
  * was found by and keeps the query; the outline marks the section being read;
  * a phone reaches the pages and the page's sections; the addresses the
- * documentation answered at before lead on; and so do the scanner's
- * addresses for its pages that are now the documentation's, the one in its
- * user agent among them.
+ * documentation answered at before lead on; so do the scanner's addresses
+ * for its pages that are now the documentation's, the one in its user agent
+ * among them; and a visit is measured only as its visitor chose, one choice
+ * holding on the scanner's pages and the documentation's alike.
  *
  * It needs the build (`pnpm --filter @agentify/docs build`) and Playwright's
  * Chromium.
  */
 
 import { readFile } from "node:fs/promises";
-import { request as forward } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  CONSENT_POLICY_VERSION,
+  CONSENT_STORAGE_KEY,
+  createConsentSnapshot,
+} from "@agentify/analytics/browser";
 import { SURFACE_WORDS } from "@agentify/core";
+import { precompressedFrom } from "@agentify/ui/assets";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
 import { launchChromium } from "@agentify/ui/chromium";
 import { DOCS_PAGES, docsAddress } from "@agentify/ui/docs";
-import type { Browser, Page } from "playwright";
+import type { Browser, BrowserContext, Page } from "playwright";
 import type { ServerBuild } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BUILT, CHANNELS, type Edge, standEdge } from "./edge.js";
 
 /**
- * The scanner as its own tests run it, from source, standing behind the edge
- * for every address outside `/docs` as it stands behind Caddy. Imported by
- * its address, since it is another application's and compiled by its own
- * settings.
+ * The scanner as it is built, standing behind the edge for every address
+ * outside `/docs` as it stands behind Caddy, its pages coming alive in the
+ * browser as they do on the site. It needs `pnpm --filter @agentify/web
+ * build`; its pages read the scanner's settings, which name a database that
+ * nothing here asks.
  */
-const { testScanner } = (await import(
-  String(new URL("../../web/testing/scanner.ts", import.meta.url))
-)) as { testScanner: () => Promise<{ origin: string }> };
+const SCANNER = fileURLToPath(new URL("../../web/dist", import.meta.url));
+process.env.DATABASE_URL ??= "postgresql://nobody:unused@127.0.0.1:1/nowhere";
+const { scannerApp } = (await import(pathToFileURL(join(SCANNER, "server", "index.js")).href)) as {
+  scannerApp: (parts: {
+    assets: Awaited<ReturnType<typeof precompressedFrom>>;
+    mode: "production";
+  }) => (request: IncomingMessage, response: ServerResponse) => void;
+};
+
+/**
+ * Where this stand's measurements go: a PostHog named for the environment it
+ * runs in, at an address nothing answers but the browser's own routing, so
+ * every request a page makes to it is seen and none leaves the machine.
+ */
+const POSTHOG = "https://posthog.test.invalid";
+const MEASURED = {
+  ANALYTICS_RUNTIME_ENV: "test",
+  POSTHOG_BROWSER_KEY: "docs-browser-test",
+  POSTHOG_BROWSER_HOST: POSTHOG,
+  POSTHOG_DESTINATION_ENV: "test",
+};
+
+/**
+ * A person's browser: PostHog drops what a browser naming itself headless, or
+ * driven by a tool, sends.
+ */
+const asAPerson = (context: BrowserContext) =>
+  context.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "webdriver", { get: () => false });
+  });
+const PERSON =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
+
+/** A visitor's choice as the banner keeps it in the browser. */
+const choiceOf = (allowed: boolean): string =>
+  JSON.stringify(
+    createConsentSnapshot({
+      policy: {
+        policyVersion: CONSENT_POLICY_VERSION,
+        requireOptInForAdsMeasurement: true,
+        requireOptInForProductAnalytics: true,
+      },
+      decisions: { product_analytics: allowed, ads_measurement: allowed },
+      source: "banner",
+    }),
+  );
 
 let browser: Browser;
 let edge: Edge;
@@ -53,26 +104,14 @@ beforeAll(async () => {
   viteManifest = JSON.parse(
     await readFile(join(BUILT, ".vite", "manifest.json"), "utf8"),
   ) as ViteManifest;
-  const scanner = new URL((await testScanner()).origin);
+  const scanner = scannerApp({
+    assets: await precompressedFrom(join(SCANNER, "client", "assets")),
+    mode: "production",
+  });
   edge = await standEdge({
-    environment: CHANNELS.test,
+    environment: { ...CHANNELS.test, ...MEASURED },
     heard: (request) => reached.push(request),
-    upstream: (request, response) => {
-      const upstream = forward(
-        {
-          host: scanner.hostname,
-          port: scanner.port,
-          path: request.url,
-          method: request.method,
-          headers: request.headers,
-        },
-        (answered) => {
-          response.writeHead(answered.statusCode ?? 502, answered.headers);
-          answered.pipe(response);
-        },
-      );
-      request.pipe(upstream);
-    },
+    upstream: scanner,
   });
   browser = await launchChromium();
 });
@@ -85,12 +124,32 @@ afterAll(async () => {
 type Visit = Readonly<{ page: Page; complaints: string[]; asked: string[] }>;
 
 /** A browser with nothing kept, on `path`, with what it complained of and what it asked for. */
+/**
+ * A browser with nothing kept, on `path`, with what it complained of and what
+ * it asked for. Unless `chosen` is false, its visitor has already chosen to
+ * keep optional measuring off, so the banner is not over the page.
+ */
 const visit = async (
   path: string,
   viewport = { width: 1280, height: 900 },
   phone = false,
+  chosen = true,
 ): Promise<Visit> => {
-  const context = await browser.newContext({ viewport, isMobile: phone, hasTouch: phone });
+  const context = await browser.newContext({
+    viewport,
+    isMobile: phone,
+    hasTouch: phone,
+    userAgent: PERSON,
+  });
+  await asAPerson(context);
+  if (chosen) {
+    await context.addInitScript(
+      ([key, value]) => {
+        if (window.localStorage.getItem(key) === null) window.localStorage.setItem(key, value);
+      },
+      [CONSENT_STORAGE_KEY, choiceOf(false)] as const,
+    );
+  }
   const page = await context.newPage();
   const complaints: string[] = [];
   const asked: string[] = [];
@@ -523,5 +582,103 @@ describe("the scanner's addresses for its pages in the documentation", () => {
       "Methodology",
     );
     await context.close();
+  });
+});
+
+/** What a page asked of the measuring services, its consent recorded as the scanner records it. */
+const measured = async (context: BrowserContext): Promise<string[]> => {
+  const sent: string[] = [];
+  await context.route(`${POSTHOG}/**`, (route) => {
+    sent.push(route.request().url());
+    return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  });
+  // The route's own answer, which needs a database, is held by its integration
+  // test; here the browser is answered as the route answers a saved choice.
+  await context.route("**/api/v1/consent", (route) =>
+    route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "saved", policy_version: CONSENT_POLICY_VERSION }),
+    }),
+  );
+  return sent;
+};
+
+/** A capture PostHog is sent, as against the settings it asks for when it starts. */
+const captures = (sent: readonly string[]) => sent.filter((url) => /\/e\/|\/i\/v0\/e\//.test(url));
+
+describe("measuring a visit", () => {
+  it("asks on a first visit, and sends nothing and loads nothing to measure before a choice", async () => {
+    const { page, asked } = await visit("/docs/money", undefined, false, false);
+    const sent = await measured(page.context());
+    const banner = page.getByRole("complementary", { name: "Privacy choices" });
+
+    expect(await banner.isVisible()).toBe(true);
+    await contents(page).getByRole("link", { name: "Orders and fulfillment modes" }).click();
+    await drawn(page, "/docs/orders");
+    await page.waitForTimeout(500);
+
+    expect(sent).toEqual([]);
+    expect(asked.filter((path) => /page-view|module-/.test(path))).toEqual([]);
+    expect(await banner.isVisible()).toBe(true);
+    await page.context().close();
+  });
+
+  it("records a view of the page a visitor allowed it on and of every page they move to", async () => {
+    const { page } = await visit("/docs/money", undefined, false, false);
+    const sent = await measured(page.context());
+
+    await page.getByRole("button", { name: "Allow optional analytics" }).click();
+    await expect.poll(() => captures(sent).length, { timeout: 10_000 }).toBeGreaterThan(0);
+    const first = captures(sent).length;
+    await contents(page).getByRole("link", { name: "Orders and fulfillment modes" }).click();
+    await drawn(page, "/docs/orders");
+
+    await expect.poll(() => captures(sent).length, { timeout: 10_000 }).toBeGreaterThan(first);
+    expect(await stayed(page)).toBe(true);
+    await page.context().close();
+  });
+
+  it("records nothing after a visitor kept optional measuring off, a move included", async () => {
+    const { page } = await visit("/docs/money", undefined, false, false);
+    const sent = await measured(page.context());
+
+    await page.getByRole("button", { name: "Essential only" }).click();
+    await page
+      .getByRole("complementary", { name: "Privacy choices" })
+      .waitFor({ state: "detached" });
+    await contents(page).getByRole("link", { name: "Orders and fulfillment modes" }).click();
+    await drawn(page, "/docs/orders");
+    await page.waitForTimeout(1_000);
+
+    expect(sent).toEqual([]);
+    await page.context().close();
+  });
+
+  it.each([
+    ["the scanner's", "/privacy", "the documentation", "/docs/money"],
+    ["the documentation's", "/docs/money", "the scanner's", "/privacy"],
+  ])("holds a choice made on %s pages on %s pages", async (_where, from, _there, to) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await measured(context);
+    await page.goto(`${edge.origin}${from}`);
+    await page.getByRole("button", { name: "Essential only" }).click();
+    await page
+      .getByRole("complementary", { name: "Privacy choices" })
+      .waitFor({ state: "detached" });
+
+    await page.goto(`${edge.origin}${to}`);
+    await page.waitForLoadState("networkidle");
+    expect(await page.getByRole("complementary", { name: "Privacy choices" }).count()).toBe(0);
+    await context.close();
+  });
+
+  it("opens the choices again from the foot of a page", async () => {
+    const { page } = await visit("/docs/money");
+    await page.locator("footer").getByRole("button", { name: "Privacy choices" }).click();
+
+    await page.getByRole("dialog", { name: "Privacy choices" }).waitFor();
+    await page.context().close();
   });
 });

@@ -11,7 +11,9 @@
  * nothing a script fetches afterwards. A page drawn in the browser after a
  * move from another page is drawn from data the build wrote, so the browser
  * fills the same templates itself from the values Caddy filled into the
- * document it did serve (`served.ts`).
+ * document it did serve (`served.ts`). The same document carries where the
+ * deployment's measurements go, which no page names but the browser reads
+ * once a visitor allows measuring.
  */
 
 /** Each value a page may name, by the name a writer uses, with the variable Caddy reads it from. */
@@ -24,9 +26,26 @@ const SITE_VALUES = {
 
 export type SiteValueName = keyof typeof SITE_VALUES;
 
-export type SiteValues = Readonly<Record<SiteValueName, string>>;
+/** Where the deployment's measurements go, as the scanner is told it too. */
+const ANALYTICS_SETTINGS = {
+  "analytics-runtime": "ANALYTICS_RUNTIME_ENV",
+  "posthog-key": "POSTHOG_BROWSER_KEY",
+  "posthog-host": "POSTHOG_BROWSER_HOST",
+  "posthog-destination": "POSTHOG_DESTINATION_ENV",
+  "meta-pixel": "META_PIXEL_ID",
+  "meta-destination": "META_DESTINATION_ENV",
+} as const;
+
+/** Everything Caddy fills into the document it serves, by name. */
+const SERVED = { ...SITE_VALUES, ...ANALYTICS_SETTINGS } as const;
+
+type ServedName = keyof typeof SERVED;
+
+export type SiteValues = Readonly<Record<ServedName, string>>;
 
 const NAMES = Object.keys(SITE_VALUES) as SiteValueName[];
+
+const SERVED_NAMES = Object.keys(SERVED) as ServedName[];
 
 export const isSiteValueName = (name: string): name is SiteValueName =>
   (NAMES as string[]).includes(name);
@@ -36,8 +55,8 @@ export const isSiteValueName = (name: string): name is SiteValueName =>
  * safe in an attribute and harmless in Markdown. Backticks rather than
  * quotes, so the template survives inside an attribute and inside JSON.
  */
-export const valueTemplate = (name: SiteValueName): string =>
-  `<!--{{env \`${SITE_VALUES[name]}\` | html}}-->`;
+export const valueTemplate = (name: ServedName): string =>
+  `<!--{{env \`${SERVED[name]}\` | html}}-->`;
 
 /** The start of a part shown unless the value is `true`; `UNLESS_END` closes it. */
 export const unlessTemplate = (name: SiteValueName): string =>
@@ -60,7 +79,10 @@ const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/
  * inside an `unless` is dropped where its value is `true` and kept otherwise;
  * parts do not nest.
  */
-export function fillSiteValues(html: string, values: SiteValues): string {
+export function fillSiteValues(
+  html: string,
+  values: Readonly<Record<SiteValueName, string>>,
+): string {
   let filled = html;
   for (const name of NAMES) {
     filled = filled.replace(
@@ -81,7 +103,7 @@ export function fillSiteValues(html: string, values: SiteValues): string {
  * browser reads back (`served.ts`).
  */
 export const siteValuesElement = (): string =>
-  `<div hidden id="site-values" ${NAMES.map((name) => `data-${name}="${valueTemplate(name)}"`).join(" ")}></div>`;
+  `<div hidden id="site-values" ${SERVED_NAMES.map((name) => `data-${name}="${valueTemplate(name)}"`).join(" ")}></div>`;
 
 const unescapeHtml = (text: string): string =>
   text
@@ -103,12 +125,12 @@ export function siteValuesIn(served: string): SiteValues | null {
     served,
   )?.[1];
   if (attributes === undefined) return null;
-  const values: Partial<Record<SiteValueName, string>> = {};
+  const values: Partial<Record<ServedName, string>> = {};
   for (const [, name = "", value = ""] of attributes.matchAll(/data-([a-z-]+)="([^"]*)"/g)) {
-    if (isSiteValueName(name)) values[name] = unescapeHtml(value);
+    if ((SERVED_NAMES as string[]).includes(name)) values[name as ServedName] = unescapeHtml(value);
   }
-  const complete = NAMES.every((name) => values[name] !== undefined);
-  const filled = NAMES.every((name) => !values[name]?.includes("<!--{{"));
+  const complete = SERVED_NAMES.every((name) => values[name] !== undefined);
+  const filled = SERVED_NAMES.every((name) => !values[name]?.includes("<!--{{"));
   return complete && filled ? (values as SiteValues) : null;
 }
 

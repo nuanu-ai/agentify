@@ -39,6 +39,12 @@ describe("the values a deployment decides", () => {
         "abuse-email": environment.ABUSE_EMAIL,
         operator: environment.LEGAL_OPERATOR,
         "identity-confirmed": environment.LEGAL_IDENTITY_CONFIRMED,
+        "analytics-runtime": environment.ANALYTICS_RUNTIME_ENV ?? "",
+        "posthog-key": environment.POSTHOG_BROWSER_KEY ?? "",
+        "posthog-host": environment.POSTHOG_BROWSER_HOST ?? "",
+        "posthog-destination": environment.POSTHOG_DESTINATION_ENV ?? "",
+        "meta-pixel": environment.META_PIXEL_ID ?? "",
+        "meta-destination": environment.META_DESTINATION_ENV ?? "",
       });
     },
   );
@@ -70,9 +76,9 @@ describe("the values a deployment decides", () => {
   });
 });
 
-/** One service's environment as compose.yaml writes it, each variable with its expression. */
-const environmentOf = (service: string): ReadonlyMap<string, string> => {
-  const compose = readFileSync(new URL("../../../compose.yaml", import.meta.url), "utf8");
+/** One service's environment as a compose file writes it, each variable with its expression. */
+const environmentOf = (file: string, service: string): ReadonlyMap<string, string> => {
+  const compose = readFileSync(new URL(`../../../${file}`, import.meta.url), "utf8");
   const block = new RegExp(`^  ${service}:\\n([\\s\\S]*?)(?=^  [\\w-]+:\\n|^\\S)`, "m").exec(
     compose,
   )?.[1];
@@ -85,15 +91,42 @@ const environmentOf = (service: string): ReadonlyMap<string, string> => {
   );
 };
 
+/** Where the scanner's pages and the documentation's measurements go. */
+const ANALYTICS = [
+  "ANALYTICS_RUNTIME_ENV",
+  "POSTHOG_BROWSER_KEY",
+  "POSTHOG_BROWSER_HOST",
+  "POSTHOG_DESTINATION_ENV",
+  "META_PIXEL_ID",
+  "META_DESTINATION_ENV",
+];
+
 describe("what Caddy fills the documentation with", () => {
   it("is what the scanner is given, so its own pages and the documentation's say the same", () => {
-    const caddy = environmentOf("web");
-    const scanner = environmentOf("scanner");
+    const caddy = environmentOf("compose.yaml", "web");
+    const scanner = environmentOf("compose.yaml", "scanner");
 
     expect(caddy.get("AGENTIFY_PUBLIC_ORIGIN")).toBe(scanner.get("APP_BASE_URL"));
-    for (const name of ["ABUSE_EMAIL", "LEGAL_OPERATOR", "LEGAL_IDENTITY_CONFIRMED"]) {
+    for (const name of [
+      "ABUSE_EMAIL",
+      "LEGAL_OPERATOR",
+      "LEGAL_IDENTITY_CONFIRMED",
+      ...ANALYTICS,
+    ]) {
       expect(caddy.get(name), name).toBe(scanner.get(name));
     }
     expect(scanner.size).toBeGreaterThan(10);
   });
+
+  it.each(["deploy/compose.agentify-test.yaml", "deploy/compose.hetzner-commerce.yaml"])(
+    "sends the documentation's page views where %s sends the scanner's",
+    (file) => {
+      const caddy = environmentOf(file, "web");
+      const scanner = environmentOf(file, "scanner");
+      const named = ANALYTICS.filter((name) => scanner.has(name) || caddy.has(name));
+
+      expect(named.length).toBeGreaterThan(0);
+      for (const name of named) expect(caddy.get(name), name).toBe(scanner.get(name));
+    },
+  );
 });

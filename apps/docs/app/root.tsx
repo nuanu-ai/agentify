@@ -2,8 +2,8 @@
  * The document every page of the documentation is drawn in: the site header
  * every surface draws, whose menu lists the documentation's pages where the
  * page has no room for its contents, the part Caddy fills under it, the page
- * and the site's foot. The documentation carries no consent banner and no
- * analytics.
+ * and the site's foot, with the consent banner every measured page of the
+ * origin carries and the page views a visitor's choice allows.
  *
  * The root's data never changes, yet it carries no `shouldRevalidate`: a
  * route that opts out of revalidation makes React Router prefetch a page's
@@ -16,8 +16,10 @@
 import "@agentify/visual/public/styles/fonts.css";
 import "@agentify/visual/tokens.css";
 import "@agentify/visual/editorial.css";
+import "@agentify/visual/consent.css";
 import "./docs.css";
 
+import { ConsentBanner, PrivacyChoicesButton } from "@agentify/consent";
 import { Footer, SiteHeader, SiteMenu } from "@agentify/ui";
 import { type ReactNode, useMemo, useState } from "react";
 import {
@@ -33,6 +35,7 @@ import {
   useRouteLoaderData,
 } from "react-router";
 import { Contents } from "./components/contents.js";
+import { Measured } from "./components/measured.js";
 import { Missing, Unavailable } from "./components/missing.js";
 import { SERVED_CLASS, servedPart, servedTemplate } from "./served.js";
 
@@ -102,7 +105,11 @@ export function DocsBody({ children }: Readonly<{ children: ReactNode }>) {
       />
       {site === undefined ? null : <Served built={site.served} />}
       {children}
-      <Footer links={FOOT_LINKS} />
+      <Footer links={FOOT_LINKS}>
+        <PrivacyChoicesButton className="foot-action" />
+      </Footer>
+      <ConsentBanner brand="Agentify" />
+      {site === undefined ? null : <Measured built={site.served} />}
     </>
   );
 }

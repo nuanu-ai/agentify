@@ -39,7 +39,7 @@
     "scanner:test:actor": "vitest run --project integration apps/browser-observer-actor/src/actor.integration.test.ts",
     "dashboard:test:browser": "pnpm --filter @agentify/dashboard build && vitest run --project integration apps/dashboard/src/in-chromium.integration.test.ts",
     "scanner:test:browser": "pnpm --filter @agentify/web build && vitest run --project integration apps/web/server/in-chromium.integration.test.ts",
-    "docs:test:browser": "pnpm --filter @agentify/docs build && vitest run --project integration apps/docs/testing/in-chromium.integration.test.ts",
+    "docs:test:browser": "pnpm --filter @agentify/web build && pnpm --filter @agentify/docs build && vitest run --project integration apps/docs/testing/in-chromium.integration.test.ts",
     "scanner:test:start": "vitest run --project integration apps/web/server/start.integration.test.ts",
     "scanner:test:db": "pnpm scanner:build && pnpm scanner:db:check && pnpm scanner:db:test:migrations",
     "scanner:self-readiness": "node ops/scripts/self-readiness-candidate.mjs",

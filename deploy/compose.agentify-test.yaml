@@ -47,6 +47,9 @@ services:
       - "${AGENTIFY_TEST_LISTEN_ADDRESS:?set the address the test edge binds on}:8443:443"
     environment:
       AGENTIFY_SITE_ADDRESS: "test.agentify.ad"
+      # The documentation's page views are measured as the scanner's pages
+      # are on this channel.
+      ANALYTICS_RUNTIME_ENV: "test"
     networks:
       default:
       agentify-ingress:

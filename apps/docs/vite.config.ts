@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { reactRouter } from "@react-router/dev/vite";
 import { defineConfig } from "vite";
 
@@ -12,6 +13,16 @@ import { defineConfig } from "vite";
 export default defineConfig({
   base: "/docs/",
   plugins: [reactRouter()],
+  // The consent's own rules are read from their source, which the image
+  // carries, rather than from a build of the scanner's package, which it
+  // does not make.
+  resolve: {
+    alias: {
+      "@agentify/analytics/browser": fileURLToPath(
+        new URL("../../packages/analytics/src/browser-entry.ts", import.meta.url),
+      ),
+    },
+  },
   build: {
     assetsInlineLimit: 0,
     // Kept for the speed budget, which reads from it which chunk a page can

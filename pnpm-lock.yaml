@@ -173,6 +173,12 @@ importers:
 
   apps/docs:
     dependencies:
+      '@agentify/analytics':
+        specifier: workspace:*
+        version: link:../../packages/analytics
+      '@agentify/consent':
+        specifier: workspace:*
+        version: link:../../packages/consent
       '@agentify/core':
         specifier: workspace:*
         version: link:../../packages/core

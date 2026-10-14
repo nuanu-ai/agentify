@@ -509,6 +509,14 @@ services:
       ABUSE_EMAIL: "${ABUSE_EMAIL:-abuse@agentify.ad}"
       LEGAL_OPERATOR: "${LEGAL_OPERATOR:-Operator identity pending confirmation}"
       LEGAL_IDENTITY_CONFIRMED: "${LEGAL_IDENTITY_CONFIRMED:-false}"
+      # Where a documentation page's consented page views go, as the scanner's
+      # pages are told it.
+      ANALYTICS_RUNTIME_ENV: "${ANALYTICS_RUNTIME_ENV:-local}"
+      POSTHOG_BROWSER_KEY: "${POSTHOG_BROWSER_KEY:-}"
+      POSTHOG_BROWSER_HOST: "${POSTHOG_BROWSER_HOST:-}"
+      POSTHOG_DESTINATION_ENV: "${POSTHOG_DESTINATION_ENV:-local}"
+      META_PIXEL_ID: "${META_PIXEL_ID:-}"
+      META_DESTINATION_ENV: "${META_DESTINATION_ENV:-local}"
     volumes:
       # The routing and the shared assets are mounted over the copies baked
       # into the image so that editing either shows up on reload. The

@@ -1048,6 +1048,21 @@ p {
   text-decoration: none;
 }
 
+/* A control among the links, such as the one that opens the privacy choices. */
+.foot-action {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--footer-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.foot-action:hover,
+.foot-action:focus-visible {
+  color: var(--bg);
+}
+
 .foot-copy {
   color: var(--footer-faint);
   font: var(--text-caption) / 1.5 var(--font-mono);

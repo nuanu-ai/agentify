@@ -3,8 +3,10 @@
 # documentation first.
 #
 # The documentation is built from the workspace, since its pages draw the
-# shared header and the shared stylesheets, as the application's image
-# installs it: the dependencies off the lockfile alone first, so that layer
+# shared header, the shared stylesheets and the consent banner, whose rules
+# it reads from the analytics package's source (the context is
+# Dockerfile.web.dockerignore's), and it installs as the application's image
+# does: the dependencies off the lockfile alone first, so that layer
 # survives every edit to the source. Its diagrams are drawn already and kept
 # beside the Markdown, so the build runs no browser. Vite's manifest, which
 # only the speed budget reads, is not served.

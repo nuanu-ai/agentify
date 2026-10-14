@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { BrandLockup } from "./header.js";
 
 export interface FooterLink {
@@ -8,9 +9,13 @@ export interface FooterLink {
 /**
  * The ink band at the foot of a page. Its links are whole addresses on the
  * shared origin, because what they lead to is served beside this surface
- * rather than by it.
+ * rather than by it; `children` are controls drawn after them, such as the
+ * button that opens the privacy choices.
  */
-export function Footer({ links }: Readonly<{ links: readonly FooterLink[] }>) {
+export function Footer({
+  links,
+  children,
+}: Readonly<{ links: readonly FooterLink[]; children?: ReactNode }>) {
   return (
     <footer className="foot">
       <div className="foot-inner container">
@@ -21,6 +26,7 @@ export function Footer({ links }: Readonly<{ links: readonly FooterLink[] }>) {
               {link.label}
             </a>
           ))}
+          {children}
         </nav>
         <span className="foot-copy">© 2026 Agentify</span>
       </div>
