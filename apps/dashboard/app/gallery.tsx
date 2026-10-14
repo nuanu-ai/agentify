@@ -1711,7 +1711,7 @@ const SETTINGS: GalleryState[] = [
       screen: "Settings",
       when: "A merchant whose wallet changed many times opens Settings.",
       cause:
-        "More payout contracts can hold the merchant's money than one transaction pays out, so the operator pays them out.",
+        "More payout contracts can hold the merchant's money than one transaction pays out, so they wait for Agentify's own payout, on no set date.",
     },
     settingsView("live", WHO, {
       ...settingsOf({
