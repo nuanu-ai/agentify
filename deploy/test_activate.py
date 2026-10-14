@@ -44,6 +44,7 @@ INIT = {"01-test-databases.sql": "CREATE DATABASE agentify_test;\n"}
 ORIGINAL = {"agentify": "agentify: the old release's data"}
 MIGRATED = {"agentify": ORIGINAL["agentify"] + "\na scanner migration\nthe gateway's migration\nthe dashboard's migration"}
 ORDER = "an order written while the new release ran"
+REGISTRY = "the registry of payout splits"
 FAILED_MIGRATION = "run --rm --no-deps -T migrate"
 FAILED_START = "up -d --wait --no-deps app web"
 
@@ -68,6 +69,7 @@ hook() {
 [[ $args == "run --rm --no-deps -T migrate" ]] || hook
 statement() {
   case $1 in
+    *"to_regclass('public.payout_splits')"*) if grep -qx "the registry of payout splits" "$W/db/$db"; then echo t; else echo f; fi ;;
     "DROP DATABASE "*) db="${1#DROP DATABASE }"; db="${db#IF EXISTS }"; db="${db//\"/}"; rm -f "$W/db/${db%% *}" ;;
     "CREATE DATABASE "*) : > "$W/db/${1#CREATE DATABASE }" ;;
     "ALTER DATABASE "*) names="${1#ALTER DATABASE }"; mv "$W/db/${names%% *}" "$W/db/${names##* }" ;;
@@ -86,9 +88,18 @@ case "$args" in
   "exec -T postgres pg_dump -U agentify -Fc "*)
     [[ -f $W/record-at-dump ]] || cat $record > $W/record-at-dump 2>/dev/null
     cat "$W/db/${args##* }" ;;
+  "exec -T postgres pg_dump -U agentify --data-only "*)
+    grep '^payout split ' "$W/db/${args##* }" | sed "s/.*/INSERT INTO public.payout_splits VALUES ('&') ON CONFLICT DO NOTHING;/" || true ;;
   "exec -T postgres psql"*)
+    db="${args#* -d }" db="${db%% *}"
     if [[ $args == *" -c "* || $args == *" -Atc "* ]]; then
       while (($#)); do [[ $1 != -c && $1 != -Atc ]] || statement "$2"; shift; done
+    elif [[ $db != postgres ]]; then
+      # The rows a copy of the registry inserts, each added where it is missing.
+      script="$(cat)"
+      [[ -z ${SPLITS_COPY_FAILS:-} ]] || { echo "ERROR: the copy of the payout splits failed" >&2; exit 1; }
+      grep -qx "the registry of payout splits" "$W/db/$db" || { echo 'ERROR: relation "public.payout_splits" does not exist' >&2; exit 1; }
+      while read -r row; do grep -qxF "$row" "$W/db/$db" || echo "$row" >> "$W/db/$db"; done < <(grep -o "payout split [^']*" <<<"$script")
     else
       script="$(cat)"
       mapfile -t renames < <(grep -o 'ALTER DATABASE [a-z0-9_]* RENAME TO [a-z0-9_]*' <<<"$script")
@@ -111,6 +122,7 @@ case "$args" in
   "run --rm --no-deps -T scanner-migrate") echo "a scanner migration" >> $W/db/agentify ;;
   "run --rm --no-deps -T migrate")
     echo "the gateway's migration" >> $W/db/agentify
+    [[ -z ${MIGRATION_ADDS_REGISTRY:-} ]] || echo "the registry of payout splits" >> $W/db/agentify
     hook
     echo "the dashboard's migration" >> $W/db/agentify ;;
   "up -d --wait --no-deps postgres")
@@ -272,6 +284,16 @@ class Activation(unittest.TestCase):
                   "cards": "/var/lib/agentify/test/cards-before"}
         (self.root / "state/test/transition").write_text(json.dumps(record))
         return record
+
+    def splits(self, database):
+        """The rows of a database's registry of payout splits, in the order written."""
+        lines = (self.world / "db" / database).read_text().splitlines()
+        return [line for line in lines if line.startswith("payout split ")]
+
+    def record_splits(self, *rows, registry=False):
+        """Writes rows into the channel's database, as the running application records them."""
+        with open(self.world / "db/agentify", "a") as database:
+            database.write("".join(f"{line}\n" for line in ([REGISTRY] if registry else []) + list(rows)))
 
     def replaced(self):
         return sorted(path.name for path in (self.world / "db").iterdir() if "_replaced_" in path.name)
@@ -575,6 +597,52 @@ class Activation(unittest.TestCase):
         self.assertEqual(self.replaced(), replaced)
         self.assertIn("exit 0", self.run_script("activate"))
         self.assertEqual(self.replaced(), [])
+
+    # The registry of payout splits, whose rows are the only record of a split
+    # nobody has created yet, and so never go with a database.
+
+    def test_a_restore_carries_into_the_restored_database_every_payout_split_recorded_after_its_restore_point(self):
+        self.record_splits("payout split 0xS1", registry=True)
+        self.assertIn("exit 0", self.run_script("activate"))
+        self.record_splits("payout split 0xS2")
+        [point] = self.restore_points()
+        said = self.run_script(f"restore /var/backups/agentify/test/{point}")
+        self.assertIn("restore exit 0", said)
+        self.assertEqual(self.splits("agentify"), ["payout split 0xS1", "payout split 0xS2"])
+        self.assertNotIn("the gateway's migration", self.databases()["agentify"])
+        [replaced] = self.replaced()
+        self.assertEqual(self.splits(replaced), ["payout split 0xS1", "payout split 0xS2"])
+
+    def test_a_restore_older_than_the_registry_keeps_its_splits_in_the_database_it_replaced_until_a_release_carries_them_over(self):
+        self.assertIn("exit 0", self.run_script("activate"))
+        self.record_splits("payout split 0xS1", registry=True)
+        [point] = self.restore_points()
+        said = self.run_script(f"restore /var/backups/agentify/test/{point}")
+        self.assertIn("restore exit 0", said)
+        [replaced] = self.replaced()
+        self.assertIn(replaced, said)
+        self.assertEqual(self.splits("agentify"), [])
+        said = self.run_script("activate", MIGRATION_ADDS_REGISTRY="1")
+        self.assertIn("exit 0", said)
+        self.assertEqual((self.splits("agentify"), self.replaced()), (["payout split 0xS1"], []))
+
+    def test_a_restore_whose_copy_of_the_payout_splits_fails_says_so_and_no_release_drops_them_before_they_are_carried_over(self):
+        self.record_splits("payout split 0xS1", registry=True)
+        self.assertIn("exit 0", self.run_script("activate"))
+        self.record_splits("payout split 0xS2")
+        [point] = self.restore_points()
+        said = self.run_script(f"restore /var/backups/agentify/test/{point}", SPLITS_COPY_FAILS="1")
+        self.assertIn("restore exit 1", said)
+        [replaced] = self.replaced()
+        self.assertIn(replaced, said)
+        # The restore itself finished, so it holds no release back.
+        self.assertEqual((self.record(), self.current(), self.splits("agentify")), (None, OLD, ["payout split 0xS1"]))
+        said = self.run_script("activate", SPLITS_COPY_FAILS="1")
+        self.assertIn("exit 0", said)
+        self.assertIn(replaced, said)
+        self.assertEqual(self.replaced(), [replaced])
+        self.assertIn("exit 0", self.run_script("activate"))
+        self.assertEqual((self.splits("agentify"), self.replaced()), (["payout split 0xS1", "payout split 0xS2"], []))
 
     def test_a_restore_of_a_bad_dump_leaves_the_databases_and_holds_no_release_back(self):
         self.assertIn("exit 0", self.run_script("activate"))
