@@ -78,6 +78,7 @@ import type {
   IntegrationSwitch,
   PayoutWalletRead,
   PayoutWalletWrite,
+  RecordedPayoutSplit,
   StoredCard,
   StoredKey,
   StoredOrder,
@@ -785,6 +786,48 @@ export class Gateway {
       throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
     return payoutWalletAnswer(payoutWalletAt(merchant.payoutWallet, this.runtime.clock()));
+  }
+
+  /**
+   * This merchant's payout splits on this network, for their payout screen:
+   * the split of the wallet in force now, the split of a wallet waiting (null
+   * where none waits), and every split that can hold money, which their
+   * payout transaction covers: the one in force and each one a payment of
+   * theirs was checked against, in the order they were recorded. Only their
+   * own; the dashboard calls it in-process, and no route answers with it.
+   */
+  async payoutSplitsOf(merchantId: string): Promise<{
+    readonly inForce: RecordedPayoutSplit | null;
+    readonly pending: RecordedPayoutSplit | null;
+    readonly toPayOut: readonly RecordedPayoutSplit[];
+  }> {
+    const merchant = await this.runtime.store.merchantById(merchantId);
+    if (merchant === null) {
+      throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
+    }
+    const at = this.runtime.clock();
+    const now = payoutWalletAt(merchant.payoutWallet, at);
+    return {
+      inForce: now.split,
+      pending: now.pending?.split ?? null,
+      toPayOut: await this.runtime.store.splitsToPayOutFor(
+        this.runtime.config.payoutSplit.network,
+        merchantId,
+        at,
+      ),
+    };
+  }
+
+  /**
+   * Every split of this network that can hold money, every merchant's, for
+   * the operator's payout command, in the order they were recorded. Across
+   * merchants on purpose, so nothing reachable from a request may call it.
+   */
+  async splitsToPayOut(): Promise<readonly RecordedPayoutSplit[]> {
+    return this.runtime.store.splitsToPayOutOn(
+      this.runtime.config.payoutSplit.network,
+      this.runtime.clock(),
+    );
   }
 
   /**
