@@ -18,7 +18,6 @@ import {
   integer,
   jsonb,
   pgTable,
-  primaryKey,
   text,
   timestamp,
   unique,
@@ -52,8 +51,9 @@ export const merchants = pgTable(
     /**
      * The address this merchant's sales are paid into, or null where nobody has
      * set one. Buyers' agents pay it directly, so it is never filled in from the
-     * operator's own configured address. Always in the mixed-case spelling a
-     * wallet displays, so one address is never two strings.
+     * operator's own configured address. The gateway writes the mixed-case
+     * spelling a wallet displays; a row in lower case is the same wallet, and
+     * the registry is read for it in either spelling.
      */
     payoutWallet: text("payout_wallet"),
     /**
@@ -230,8 +230,9 @@ export const paymentClaims = pgTable(
  * migration adds refuses both, whoever asks, and leaves `truncate` to the
  * tests that empty a database. It names its merchant with no foreign key,
  * because money may still arrive at a split after a test merchant is
- * forgotten. One row per merchant, wallet and network, and one per address in
- * either spelling.
+ * forgotten. One row per network, merchant and wallet, and one per network and
+ * address, each in either spelling, since one address in two spellings is one
+ * contract.
  */
 export const payoutSplits = pgTable(
   "payout_splits",
@@ -255,10 +256,11 @@ export const payoutSplits = pgTable(
     recordedAt: timestamp("recorded_at", { withTimezone: true, mode: "date" }).notNull(),
   },
   (table) => [
-    primaryKey({
-      name: "payout_splits_pkey",
-      columns: [table.network, table.merchantId, table.merchantWallet],
-    }),
+    uniqueIndex("payout_splits_wallet_unique").on(
+      table.network,
+      table.merchantId,
+      sql`lower(${table.merchantWallet})`,
+    ),
     uniqueIndex("payout_splits_address_unique").on(table.network, sql`lower(${table.address})`),
   ],
 );

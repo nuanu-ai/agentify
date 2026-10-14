@@ -75,6 +75,15 @@ export function checkedAddress(address: string, what: string): Address {
 }
 
 /**
+ * Whether two strings spell one address. A checksum's capitals are no part of
+ * the address, so a wallet stored in lower case and its split's row, which
+ * names it checksummed, are one wallet.
+ */
+export function isSameAddress(one: string, other: string): boolean {
+  return one.toLowerCase() === other.toLowerCase();
+}
+
+/**
  * The split's parameters, or a refusal naming why no payout could ever empty
  * the split they make. The factory itself checks only that the allocations
  * match the recipients and add up to the total; the rest are what a payout

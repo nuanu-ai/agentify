@@ -342,9 +342,9 @@ export class PostgresStore implements Store {
                 .where(
                   and(
                     eq(merchants.id, payoutSplits.merchantId),
-                    sql`(case when ${merchants.pendingPayoutWalletFrom} <= ${new Date(at)}
+                    sql`lower(case when ${merchants.pendingPayoutWalletFrom} <= ${new Date(at)}
                           then ${merchants.pendingPayoutWallet}
-                          else ${merchants.payoutWallet} end) = ${payoutSplits.merchantWallet}`,
+                          else ${merchants.payoutWallet} end) = lower(${payoutSplits.merchantWallet})`,
                   ),
                 ),
             ),
@@ -1093,8 +1093,9 @@ interface SplitAsJson {
 
 /**
  * The split recorded on this network for the merchant's wallet in this
- * column, as one JSON value, or null. The primary key makes it at most one
- * row.
+ * column, as one JSON value, or null. The wallet is compared in lower case,
+ * as the table's key compares it, so the key makes it at most one row and a
+ * wallet stored in lower case finds the row that names it checksummed.
  */
 const splitRecordedFor = (
   network: string,
@@ -1103,7 +1104,7 @@ const splitRecordedFor = (
   sql<SplitAsJson | null>`(
     select row_to_json(recorded) from ${payoutSplits} as recorded
     where recorded.network = ${network} and recorded.merchant_id = ${merchants.id}
-      and recorded.merchant_wallet = ${wallet})`;
+      and lower(recorded.merchant_wallet) = lower(${wallet}))`;
 
 function splitColumnsOf(json: SplitAsJson): typeof payoutSplits.$inferSelect {
   return {
@@ -1172,7 +1173,7 @@ async function recordWithin(
         and(
           eq(payoutSplits.network, split.network),
           eq(payoutSplits.merchantId, split.merchantId),
-          eq(payoutSplits.merchantWallet, split.merchantWallet),
+          sql`lower(${payoutSplits.merchantWallet}) = lower(${split.merchantWallet})`,
         ),
       )
       .limit(1);
