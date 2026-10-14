@@ -91,10 +91,12 @@ function headingAnchors(md: MarkdownIt): void {
       used.add(id);
       open.attrSet("id", id);
       open.attrSet("tabindex", "-1");
+      env.headings.push({ level: Number(open.tag.slice(1)), id, title });
+      // The page's own title is linked to by the page's address.
+      if (open.tag === "h1") return;
       const anchor = new state.Token("html_inline", "", 0);
       anchor.content = ` <a class="header-anchor" href="#${id}" aria-label="Permalink to &quot;${md.utils.escapeHtml(inline.content)}&quot;">&ZeroWidthSpace;</a>`;
       inline.children.push(anchor);
-      env.headings.push({ level: Number(open.tag.slice(1)), id, title });
     });
   });
 }

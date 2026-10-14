@@ -24,7 +24,7 @@ const environments: [string, Environment][] = [
     "a channel whose operator is published, with a name that needs escaping",
     {
       ...CHANNELS.live,
-      LEGAL_OPERATOR: `O'Brien & "Sons" <Ltd>`,
+      LEGAL_OPERATOR: `O'Brien & "Sons" <Ltd> $& co`,
       LEGAL_IDENTITY_CONFIRMED: "true",
     },
   ],

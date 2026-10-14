@@ -70,7 +70,8 @@ export function fillSiteValues(html: string, values: SiteValues): string {
       ),
       (_whole, kept: string) => (values[name] === "true" ? "" : kept),
     );
-    filled = filled.replaceAll(valueTemplate(name), escapeHtml(values[name]));
+    const value = escapeHtml(values[name]);
+    filled = filled.replaceAll(valueTemplate(name), () => value);
   }
   return filled;
 }

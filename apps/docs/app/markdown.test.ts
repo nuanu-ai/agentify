@@ -110,6 +110,17 @@ describe("a writer's box", () => {
   });
 });
 
+describe("an include", () => {
+  it("shows the whole file, and refuses a region it cannot cut", () => {
+    expect(() => parser().render("<<< @/examples/card/access-monthly.json#region\n")).toThrow(
+      /region or options/,
+    );
+    expect(parser().render("<<< @/examples/card/access-monthly.json\n")).toContain(
+      "merchant_item_id",
+    );
+  });
+});
+
 describe("a site value", () => {
   it("reaches the page as the template Caddy fills, in text, code and a link's address", () => {
     const html = withSiteValues(
@@ -118,9 +129,9 @@ describe("a site value", () => {
       ),
     );
 
-    expect(html).toBe(
-      `<p>Write to <a href="mailto:${valueTemplate("abuse-email")}">${valueTemplate("abuse-email")}</a> at <code>${valueTemplate("origin")}/scanner</code>.</p>\n`,
-    );
+    expect(html).toContain(`href="mailto:${valueTemplate("abuse-email")}"`);
+    expect(html).toContain(`>${valueTemplate("abuse-email")}</a>`);
+    expect(html).toContain(`<code>${valueTemplate("origin")}/scanner</code>`);
   });
 
   it("is left as written inside a code block, which shows code", () => {

@@ -9,6 +9,19 @@ import { docsAddress } from "@agentify/ui/docs";
 import MiniSearch from "minisearch";
 import { renderedPages } from "./markdown.server.js";
 import { SEARCH_OPTIONS } from "./search-options.js";
+import { fillSiteValues } from "./site-values.js";
+
+/**
+ * What the index says where a page names what a deployment decides: one index
+ * serves every channel and no Caddy fills it, so it names each value in words
+ * rather than any channel's value, and leaves out what a channel may not show.
+ */
+const IN_WORDS = {
+  origin: "this site",
+  "abuse-email": "the abuse contact",
+  operator: "the operator",
+  "identity-confirmed": "true",
+} as const;
 
 const HEADING = /<h(\d*).*?>(.*?<a.*? href="#.*?".*?>.*?<\/a>)<\/h\1>/gi;
 const HEADING_CONTENT = /(.*?)<a.*? href="#(.*?)".*?>.*?<\/a>/i;
@@ -50,7 +63,7 @@ export async function searchIndex(): Promise<unknown> {
   const index = new MiniSearch(SEARCH_OPTIONS);
   for (const page of (await renderedPages()).values()) {
     const address = docsAddress(page.path);
-    for (const { anchor, text, titles } of sectionsOf(page.html)) {
+    for (const { anchor, text, titles } of sectionsOf(fillSiteValues(page.html, IN_WORDS))) {
       index.add({
         id: anchor ? `${address}#${anchor}` : address,
         text,

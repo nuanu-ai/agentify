@@ -153,7 +153,9 @@ prints its kind where it is given no title.
 
 An example payload is not written into a page but included from its file with
 a line of its own, `<<< @/examples/card/access-monthly.json`, where `@/` is this
-directory. The page then shows the very file the contracts tests validate.
+directory. The page then shows the very file the contracts tests validate. An
+include always shows the whole file: a region (`#name`) or options (`{2,4}`)
+after the path stop the build.
 
 A diagram is a `mermaid` code block. The build does not draw it: it shows the
 drawing kept in `diagrams/` under the hash of the diagram's source, and stops
