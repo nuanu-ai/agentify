@@ -57,7 +57,7 @@ import {
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
-import { NOT_A_PAYOUT_WALLET } from "./payout-wallet.js";
+import { NOT_A_PAYOUT_WALLET, type NotAWallet } from "./payout-wallet.js";
 import type { CommissionRate } from "./shares.js";
 
 export type Answer<T> =
@@ -267,6 +267,13 @@ const BAD_REQUEST = 400;
  */
 export const NOT_A_PAYOUT_WALLET_CODE = "not_a_payout_wallet";
 
+const notAWallet = (is: NotAWallet): Answer<never> => ({
+  ok: false,
+  status: BAD_REQUEST,
+  code: NOT_A_PAYOUT_WALLET_CODE,
+  why: NOT_A_PAYOUT_WALLET[is],
+});
+
 /**
  * Nothing was written in any case: the address paid now and any change already
  * waiting are as they were. A message that could not be confirmed as sent to
@@ -276,15 +283,7 @@ export const NOT_A_PAYOUT_WALLET_CODE = "not_a_payout_wallet";
  * raced before has none: a merchant must not be told nothing was sent when it
  * was, nor sent looking for a message that does not exist.
  */
-const walletRefusedAs = (why: WalletChangeRefusal): Answer<never> => {
-  if (typeof why === "object") {
-    return {
-      ok: false,
-      status: BAD_REQUEST,
-      code: NOT_A_PAYOUT_WALLET_CODE,
-      why: NOT_A_PAYOUT_WALLET[why.is],
-    };
-  }
+const walletRefusedAs = (why: Exclude<WalletChangeRefusal, object>): Answer<never> => {
   switch (why) {
     case "nobody_to_tell":
       return {
@@ -438,6 +437,17 @@ export const gatewayFor = (
   const caller: Caller = session;
   const call = <T>(name: string, work: () => Promise<Answer<T>>): Promise<Answer<T>> =>
     within(name, answerWithinMs, work);
+  // The gateway refuses every recorded split alike, and the registry row says
+  // whose it is; a refused address it holds no row for is a defect, not words.
+  const whosePayoutSplit = async (address: string): Promise<NotAWallet> => {
+    const split = await application.runtime.store.payoutSplitAt(address);
+    if (split === null) {
+      throw new Error(
+        `the gateway refused ${address} as a payout split the registry does not hold`,
+      );
+    }
+    return split.merchantId === merchantId ? "own_payout_split" : "another_merchants_payout_split";
+  };
 
   return {
     cards: () =>
@@ -611,9 +621,13 @@ export const gatewayFor = (
         const asked = hold(EvmAddressSchema, address);
         if (!asked.ok) return refusedAs(bodyRefused(asked.problems));
         const set = await application.setPayoutWallet(merchantId, asked.value as string, session);
-        return typeof set === "string" || "refused" in set
-          ? walletRefusedAs(set)
-          : answered(API_ROUTES.get_payout_wallet, set);
+        if (typeof set === "string") return walletRefusedAs(set);
+        if ("refused" in set) {
+          return notAWallet(
+            set.is === "payout_split" ? await whosePayoutSplit(asked.value as string) : set.is,
+          );
+        }
+        return answered(API_ROUTES.get_payout_wallet, set);
       }),
     // A refused card is an answer with findings, checked by the flow itself as
     // at the HTTP route, so there is no request schema to hold it to first.
