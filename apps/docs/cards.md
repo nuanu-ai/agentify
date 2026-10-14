@@ -263,7 +263,7 @@ so naming your own is the way to keep the time yours. What happens when a
 delivery deadline runs out is in [Time ran out](/orders).
 
 A synchronous card has no such field, because how long to wait for a synchronous
-answer is set by us, the same for every product: eight seconds. That one runs
+answer is set by us, the same for every product: ten seconds. That one runs
 from the moment the payment checked out rather than from the moment the agent
 first asked, so the price question and the payment check are behind it rather
 than inside it. The confirmation mode has a deadline of its own — an hour, where
@@ -614,8 +614,7 @@ what that ought to be is not settled.
 - The exact shape that describes the purchase parameters and the delivery
   result.
 - How long a delivery deadline may be, and whether an asynchronous card ought
-  to be required to name one at all, rather than fall to a default the buying
-  program is never shown.
+  to be required to name one at all, rather than fall to a default of ours.
 - The shape of the field a card declares a price check in.
 - Whether the vocabulary of recommended codes grows beyond three: we decide
   that from the refusals the pilot actually turns up.

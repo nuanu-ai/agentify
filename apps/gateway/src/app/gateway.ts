@@ -1278,14 +1278,15 @@ export class Gateway {
       };
     }
 
-    // Every clock the goods run on counts from this instant, and the park
-    // below waits `syncBudgetMs` from it, the longest the machine may still be
-    // deciding. Counted from when the order opened or when this call arrived,
-    // the park would give up while the answer is still on its way, and the
-    // agent is charged and told "in progress" while holding nothing.
-    // `presentVerifiedPayment` stamps `paidAt` a little later; the park may
-    // outlast the machine's window but must not fall short of it, so this
-    // earlier reading is the one used.
+    // The park below waits `syncBudgetMs` from this instant, where the ceiling
+    // promised to the agent is counted from. Counted from when the order opened
+    // or when this call arrived, the park would give up while the answer is
+    // still on its way, and the agent is charged and told "in progress" while
+    // holding nothing. The goods' clock runs from `paidAt`, which
+    // `presentVerifiedPayment` stamps a little later, and the charge's from the
+    // merchant's answer, so with both used to the end the machine can still be
+    // deciding when the park ends; the agent is then told "in progress", which
+    // is true, and keeps the order's status address.
     const checkedOutAt = this.runtime.clock();
 
     // The owner is who the payment layer says paid, never the address the

@@ -34,6 +34,7 @@ const NUMBER_WORDS: Record<string, number> = {
   five: 5,
   eight: 8,
   ten: 10,
+  twenty: 20,
   thirty: 30,
 };
 
@@ -205,6 +206,57 @@ const PINS: readonly Pin[] = [
     reads: "seconds",
     is: deadlines.syncBudgetMs,
   },
+  // The pages then name both numbers again, without the word "seconds", where
+  // they say the two clocks start together.
+  {
+    what: "the ceiling, where the reference says where its clock starts",
+    page: "apps/docs/orders.md",
+    anchor: /Those (\w+) start where your \w+ do/,
+    reads: "seconds",
+    is: deadlines.syncBudgetMs,
+  },
+  {
+    what: "the answer's time, beside the ceiling it starts with",
+    page: "apps/docs/orders.md",
+    anchor: /Those \w+ start where your (\w+) do/,
+    reads: "seconds",
+    is: deadlines.syncResponseMs,
+  },
+  {
+    what: "the ceiling, as what the agent waits for after the check",
+    page: "apps/docs/orders.md",
+    anchor: /what the agent waits for is the check, and then the (\w+)/,
+    reads: "seconds",
+    is: deadlines.syncBudgetMs,
+  },
+  {
+    what: "the answer's time, as what the check runs before",
+    page: "apps/docs/quickstart.md",
+    anchor: /the check itself runs before the (\w+) begin/,
+    reads: "seconds",
+    is: deadlines.syncResponseMs,
+  },
+  {
+    what: "the ceiling, where the handler is written and its clock's start is named",
+    page: "apps/docs/quickstart.md",
+    anchor: /The (\w+) start where your \w+ do/,
+    reads: "seconds",
+    is: deadlines.syncBudgetMs,
+  },
+  {
+    what: "the answer's time, beside the ceiling it starts with, where the handler is written",
+    page: "apps/docs/quickstart.md",
+    anchor: /The \w+ start where your (\w+) do/,
+    reads: "seconds",
+    is: deadlines.syncResponseMs,
+  },
+  {
+    what: "the ceiling, as what the agent waits for after the check, where the handler is written",
+    page: "apps/docs/quickstart.md",
+    anchor: /the agent waits for the check, and then for the (\w+)/,
+    reads: "seconds",
+    is: deadlines.syncBudgetMs,
+  },
 
   // --- what a card that names no deadline of its own is held to -------------
   {
@@ -362,12 +414,12 @@ describe("a number the portal publishes is not also called undecided", () => {
     {
       page: "apps/docs/orders.md",
       claim: /how long we wait for a synchronous answer/,
-      truth: "eight seconds, named in “Time ran out”",
+      truth: "ten seconds, named in “Time ran out”",
     },
     {
       page: "apps/docs/quickstart.md",
       claim: /how long we wait for a synchronous answer/,
-      truth: "eight seconds, named on step 3",
+      truth: "ten seconds, named on step 3",
     },
     {
       page: "apps/docs/orders.md",

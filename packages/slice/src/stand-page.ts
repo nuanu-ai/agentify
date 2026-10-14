@@ -510,7 +510,7 @@ const ordersTab = (state: PageState): string => {
         </div>
       </details>
     </form>
-    <p>Six of these are answers a merchant's own code can give. <b>Hold it and ask me</b> is the console's own addition — real merchant code answers and returns — and it is on a much shorter clock than it looks. Three clocks run at once: the gateway waits about three seconds for one delivery attempt before it calls that attempt unanswered and sends the order round again, the goods themselves are due within eight seconds of the payment, and the agent is promised an answer within ten. Hold one and you will usually watch it expire, which is the lesson. The roomy place to decide by hand is <b>Owed</b> below: accept the order inside the budget, and then the clock is the card's own deadline.</p>
+    <p>Six of these are answers a merchant's own code can give. <b>Hold it and ask me</b> is the console's own addition — real merchant code answers and returns — and it is on a much shorter clock than it looks. Three clocks run at once: the gateway waits about three seconds for one delivery attempt before it calls that attempt unanswered and sends the order round again, the goods themselves are due within ten seconds of the payment, and the agent is promised an answer within twenty. Hold one and you will usually watch it expire, which is the lesson. The roomy place to decide by hand is <b>Owed</b> below: accept the order inside the budget, and then the clock is the card's own deadline.</p>
   </div>
 </section>
 <section class="panel">
@@ -857,7 +857,7 @@ for (const box of document.querySelectorAll(".decisions .applies")) {
   box.addEventListener("change", () => box.form.submit());
 }
 // How long a held order has been held. Ticking, because the number it is racing
-// is the order's own deadline — eight seconds from the payment — and a figure
+// is the order's own deadline — ten seconds from the payment — and a figure
 // rendered once would always read 0.0.
 const clocks = document.querySelectorAll(".held-for[data-since]");
 if (clocks.length > 0) {

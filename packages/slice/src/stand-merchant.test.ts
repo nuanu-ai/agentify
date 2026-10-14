@@ -7,8 +7,10 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { loadConfig } from "@agentify/gateway/config";
 import { CONTRACT_VERSION, type WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { sliceEnv } from "./gateway-harness.js";
 import { type Entry, makeFeed } from "./stand-log.js";
 import { makeStandMerchant } from "./stand-merchant.js";
 import { renderEntry } from "./stand-page.js";
@@ -359,6 +361,58 @@ describe("connecting the stand somewhere else", () => {
       ).toBe(false);
     } finally {
       oldGateway.releaseDelivery();
+    }
+  });
+});
+
+describe("the handler told to answer only after the deadline", () => {
+  /**
+   * Whether `that` comes true while real time passes and the timers stay
+   * faked: the exchanges with the gateway run over a socket, and they move on
+   * real time, not on the faked timers.
+   */
+  const comesTrue = async (that: () => boolean, within: number): Promise<boolean> => {
+    const until = Date.now() + within;
+    while (!that() && Date.now() < until) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    return that();
+  };
+
+  it("answers past the deadline the gateway ships for a synchronous answer", async () => {
+    // Goods that reach the gateway in time are delivered and charged for,
+    // which is the opposite of what a person choosing this answer came to see.
+    // The deadline runs from the payment, before the order reaches the
+    // handler, so a silence as long as the deadline is already past it.
+    const { syncResponseMs } = loadConfig(sliceEnv()).deadlines;
+    const gateway = await orderGateway();
+    shutting.push(gateway.close);
+    const feed = makeFeed();
+    merchant = makeStandMerchant(feed);
+    merchant.moods.order = "say_nothing";
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await merchant.connect(gateway.url, KEY);
+      const handed = () =>
+        feed.entries().some((entry) => detailOf(entry).order_id === "order-after-move");
+      expect(await comesTrue(handed, 5_000)).toBe(true);
+
+      // The handler writes its goods to the log the moment its silence ends,
+      // before anything goes on the wire, so the log says whether it has.
+      const madeGoods = () => feed.entries().some((entry) => "delivery" in detailOf(entry));
+      await vi.advanceTimersByTimeAsync(syncResponseMs);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(madeGoods(), "the handler answered inside the deadline").toBe(false);
+
+      // The negative control: the handler does answer once the deadline is
+      // behind it, so the silence above was not a handler that never answers.
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(madeGoods()).toBe(true);
+      expect(await comesTrue(() => gateway.delivered() !== undefined, 5_000)).toBe(true);
+      expect(gateway.delivered()).toEqual({ delivered: {} });
+    } finally {
+      vi.useRealTimers();
     }
   });
 });
