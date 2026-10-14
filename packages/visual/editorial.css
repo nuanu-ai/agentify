@@ -6,7 +6,9 @@
  * surface draws inside the article stays with that surface.
  *
  * The article's measure is `--editorial-measure`, which a surface whose pages
- * carry code and tables may widen on its own layout.
+ * carry code and tables may widen on its own layout. The column folds away
+ * where the site header folds its links into its menu, at 910px, so a tablet
+ * reads the article at its whole measure.
  */
 
 .editorial {
@@ -126,15 +128,20 @@
   margin-bottom: 0;
 }
 
-/* The contents on a phone: a disclosure above the article. */
+/* The contents where the column folds: a disclosure above the article. */
 .editorial-outline {
   display: none;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 910px) {
   .editorial {
     display: block;
     padding-block: 40px 64px;
+  }
+
+  .editorial-article {
+    max-width: var(--editorial-measure);
+    margin-inline: auto;
   }
 
   .editorial-contents {

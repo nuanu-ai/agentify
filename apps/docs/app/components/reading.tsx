@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import { Contents, type Section } from "./contents.js";
 import { useSectionInView } from "./in-view.js";
 import { Outline } from "./outline.js";
@@ -16,8 +16,17 @@ export function Reading({
   children,
 }: Readonly<{ current: string | null; sections: readonly Section[]; children: ReactNode }>) {
   const [searching, setSearching] = useState(false);
-  const open = useCallback(() => setSearching(true), []);
-  const close = useCallback(() => setSearching(false), []);
+  const opener = useRef<Element | null>(null);
+  const open = useCallback(() => {
+    opener.current = document.activeElement;
+    setSearching(true);
+  }, []);
+  // Closed by the reader, the focus goes back to what opened the search.
+  const close = useCallback((restoreFocus: boolean) => {
+    setSearching(false);
+    const back = opener.current;
+    if (restoreFocus && back instanceof HTMLElement) requestAnimationFrame(() => back.focus());
+  }, []);
   const ids = useMemo(() => sections.map((section) => section.id), [sections]);
   const inView = useSectionInView(ids);
   return (

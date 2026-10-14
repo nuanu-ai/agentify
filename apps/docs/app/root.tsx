@@ -21,6 +21,7 @@ import "./docs.css";
 import { Footer, SiteHeader, SiteMenu } from "@agentify/ui";
 import { type ReactNode, useMemo, useState } from "react";
 import {
+  isRouteErrorResponse,
   Link,
   Links,
   Meta,
@@ -32,7 +33,7 @@ import {
   useRouteLoaderData,
 } from "react-router";
 import { Contents } from "./components/contents.js";
-import { Missing } from "./components/missing.js";
+import { Missing, Unavailable } from "./components/missing.js";
 import { SERVED_CLASS, servedPart, servedTemplate } from "./served.js";
 
 export const links = () => [
@@ -128,7 +129,8 @@ export default function App() {
   return <Outlet />;
 }
 
+/** A page the documentation does not have says so; any other failure says it is not known what is there. */
 export function ErrorBoundary() {
-  useRouteError();
-  return <Missing />;
+  const error = useRouteError();
+  return isRouteErrorResponse(error) && error.status === 404 ? <Missing /> : <Unavailable />;
 }

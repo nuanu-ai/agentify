@@ -115,7 +115,7 @@ const stayed = (page: Page): Promise<boolean | undefined> =>
 const drawn = async (page: Page, path: string): Promise<string> => {
   await page.waitForURL(`${edge.origin}${path}`);
   await page
-    .locator(`.docs-aside a[aria-current="page"][href="${path === "/docs/" ? "/docs" : path}"]`)
+    .locator(`.docs-aside a[aria-current="page"][href="${path}"]`)
     .waitFor({ state: "attached" });
   return (await page.locator(".doc h1").textContent()) ?? "";
 };
@@ -235,7 +235,7 @@ describe("the search", () => {
   it("finds a page, shows the words it was found by, and keeps the query", async () => {
     const { page } = await visit("/docs/");
     await page.keyboard.press("/");
-    const input = page.getByRole("searchbox", { name: "Search the documentation" });
+    const input = page.getByRole("combobox", { name: "Search the documentation" });
     await input.fill("tracking number");
     const first = page.locator(".search-results a").first();
     await first.waitFor();
@@ -258,12 +258,76 @@ describe("the search", () => {
     await page.context().close();
   });
 
+  it("is a combobox a screen reader follows, keeps Tab inside, and hands the focus back on Escape", async () => {
+    const { page } = await visit("/docs/");
+    const button = page.locator(".docs-aside .docs-search-button");
+    await button.focus();
+    await page.keyboard.press("Enter");
+    const input = page.getByRole("combobox", { name: "Search the documentation" });
+    await input.fill("refusal codes");
+    await page.getByRole("option").first().waitFor();
+
+    expect(await input.getAttribute("aria-activedescendant")).toBe("search-result-0");
+    await page.keyboard.press("ArrowDown");
+    expect(await input.getAttribute("aria-activedescendant")).toBe("search-result-1");
+    expect(await page.locator("#search-result-1").getAttribute("aria-selected")).toBe("true");
+    await page.keyboard.press("Tab");
+    expect(await input.evaluate((element) => element === document.activeElement)).toBe(true);
+    await page.keyboard.press("Escape");
+    await input.waitFor({ state: "detached" });
+    await page.waitForFunction(() =>
+      document.activeElement?.classList.contains("docs-search-button"),
+    );
+    await page.context().close();
+  });
+
+  it("says it could not load, rather than loading forever, and loads when opened again", async () => {
+    const { page } = await visit("/docs/");
+    let refused = true;
+    await page.route("**/docs/search-index.json", (route) =>
+      refused ? route.fulfill({ status: 503, body: "" }) : route.continue(),
+    );
+    await page.keyboard.press("/");
+    await page.getByText("The search could not be loaded").waitFor();
+
+    refused = false;
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("/");
+    await page.getByRole("combobox").fill("metamask");
+    await page.getByRole("option").first().waitFor();
+    await page.context().close();
+  });
+
   it("says when nothing matches", async () => {
     const { page } = await visit("/docs/");
     await page.keyboard.press("/");
-    await page.getByRole("searchbox").fill("zzqqxx");
+    await page.getByRole("combobox").fill("zzqqxx");
 
     await page.getByText("Nothing in the documentation matches").waitFor();
+    await page.context().close();
+  });
+});
+
+describe("a move between pages", () => {
+  it("lands at the new page's top at once and gives its heading the focus", async () => {
+    const { page } = await visit("/docs/money");
+    await page.evaluate(() => window.scrollTo({ top: 1200, behavior: "instant" }));
+    await contents(page).getByRole("link", { name: "Orders and fulfillment modes" }).click();
+    await drawn(page, "/docs/orders");
+
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await page.waitForFunction(() => document.activeElement === document.querySelector(".doc h1"));
+    await page.context().close();
+  });
+
+  it("that fails says the page could not be loaded, not that there is none", async () => {
+    const { page } = await visit("/docs/money");
+    await page.route("**/docs/orders.data", (route) => route.fulfill({ status: 500, body: "" }));
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+    await contents(page).getByRole("link", { name: "Orders and fulfillment modes" }).click();
+
+    await page.getByRole("heading", { name: "This page could not be loaded" }).waitFor();
+    expect(await page.getByText("There is no such page").count()).toBe(0);
     await page.context().close();
   });
 });
@@ -341,10 +405,45 @@ describe("on a phone", () => {
     expect(await outline.getByRole("link").count()).toBe(sections + 1);
     expect(await outline.locator('a[aria-current="location"]').count()).toBe(1);
 
+    // A section followed from the outline is not left under the bar.
+    const section = outline.getByRole("link").nth(3);
+    const id = ((await section.getAttribute("href")) ?? "").slice(1);
+    await section.click();
+    await page.waitForFunction((target) => {
+      const heading = document.getElementById(target);
+      return heading !== null && Math.abs(heading.getBoundingClientRect().top - 136) < 4;
+    }, id);
+    const barBottom = await bar.evaluate((element) => element.getBoundingClientRect().bottom);
+    const headingTop = await page
+      .locator(`[id="${id}"]`)
+      .evaluate((element) => element.getBoundingClientRect().top);
+    expect(headingTop).toBeGreaterThan(barBottom);
+
+    await bar.getByText("On this page").click();
     await outline.getByRole("link", { name: "Return to top" }).click();
     await page.waitForFunction(() => window.scrollY === 0);
     await bar.locator(".docs-search-button").click();
-    await page.getByRole("searchbox").waitFor();
+    await page.getByRole("combobox").waitFor();
+    await page.context().close();
+  });
+});
+
+describe("on a tablet", () => {
+  it("reads the article at its whole measure, with the search and the sections in the bar and the pages in the menu", async () => {
+    const { page } = await visit("/docs/orders", { width: 768, height: 1024 });
+    const article = await page.locator("article").boundingBox();
+
+    // The page's whole width inside its margins, as today's portal gives it.
+    expect(article?.width).toBeGreaterThanOrEqual(680);
+    expect(await page.locator(".docs-aside").isVisible()).toBe(false);
+    expect(await page.locator(".docs-bar .docs-search-button").isVisible()).toBe(true);
+    await page.locator(".site-menu > summary").click();
+    expect(
+      await page
+        .getByRole("navigation", { name: "Documentation pages" })
+        .getByRole("link", { name: "Money", exact: true })
+        .isVisible(),
+    ).toBe(true);
     await page.context().close();
   });
 });

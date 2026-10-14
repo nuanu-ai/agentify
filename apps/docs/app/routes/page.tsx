@@ -6,7 +6,7 @@
  */
 
 import { DOCS_GROUPS } from "@agentify/ui/docs";
-import { type MouseEvent, useMemo } from "react";
+import { type MouseEvent, useEffect, useMemo, useRef } from "react";
 import {
   data,
   Link,
@@ -91,8 +91,26 @@ function usePressesInside() {
   };
 }
 
+/**
+ * After a move to another page, the focus goes to its heading, so a screen
+ * reader reads the page the reader moved to; the page's first drawing leaves
+ * the focus where the browser put it.
+ */
+function useHeadingFocusedOnMove(path: string) {
+  const first = useRef(true);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the page's address is what a move changes
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    document.querySelector<HTMLElement>(".doc h1")?.focus({ preventScroll: true });
+  }, [path]);
+}
+
 export default function DocPage() {
   const page = useLoaderData<typeof loader>();
+  useHeadingFocusedOnMove(page.kind === "page" ? page.path : "");
   const built = useRouteLoaderData<typeof rootLoader>("root")?.served ?? "";
   const pressInside = usePressesInside();
   const values = servedValues(built);

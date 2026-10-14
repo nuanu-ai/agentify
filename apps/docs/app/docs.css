@@ -3,12 +3,16 @@
  * @agentify/visual/editorial.css: its contents in groups with the search
  * above them, the search's panel, and the parts of a page the scanner's pages
  * do not have — smaller headings, code, tables, boxes and diagrams — in the
- * same type and palette. On a phone, a bar under the site header holds the
- * search and the page's sections, and the header's menu the pages.
+ * same type and palette. Where the column folds away, a bar under the site
+ * header holds the search and the page's sections, and the header's menu the
+ * pages.
+ *
+ * The page does not scroll smoothly: a move to another page scrolls to its
+ * top, and an animation from the old page's offset over the new one would
+ * show both.
  */
 
 html {
-  scroll-behavior: smooth;
   overflow-x: clip;
 }
 
@@ -160,7 +164,7 @@ input {
 
 .search-results a:hover,
 .search-results a:focus-visible,
-.search-results a[aria-current] {
+.search-results [aria-selected="true"] a {
   background: var(--accent-soft);
 }
 
@@ -190,6 +194,11 @@ input {
   margin: 0;
   padding: 16px 20px;
   color: var(--muted);
+}
+
+.search-reload {
+  align-self: flex-start;
+  margin: 0 20px 20px;
 }
 
 /* --- the article ------------------------------------------------------- */
@@ -412,13 +421,18 @@ input {
   background: var(--accent-soft);
 }
 
-@media (min-width: 761px) {
+@media (min-width: 911px) {
   .docs-menu {
     display: none;
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 910px) {
+  /* A heading a link scrolls to stands clear of the header and the bar. */
+  .doc :is(h1, h2, h3) {
+    scroll-margin-top: 144px;
+  }
+
   /* Under the site header, which keeps 68px to itself here and 60px on a
      phone, with its rule under it. */
   .docs-bar {
@@ -454,7 +468,7 @@ input {
     top: calc(100% + 6px);
     right: 0;
     left: 0;
-    max-height: 60vh;
+    max-height: calc(100dvh - 160px);
     overflow-y: auto;
     border: var(--hairline) solid var(--line);
     border-radius: var(--radius-control);
@@ -476,7 +490,9 @@ input {
     padding-bottom: 12px;
     color: var(--accent-hover);
   }
+}
 
+@media (max-width: 760px) {
   .docs-turn {
     grid-template-columns: 1fr;
   }
@@ -489,5 +505,9 @@ input {
 @media (max-width: 640px) {
   .docs-bar {
     top: 61px;
+  }
+
+  .doc :is(h1, h2, h3) {
+    scroll-margin-top: 136px;
   }
 }

@@ -104,13 +104,11 @@ export async function standEdge({
   environment,
   upstream,
   heard,
-  built = BUILT,
 }: Readonly<{
   environment: Environment;
   upstream?: Upstream;
   /** Told of every request that reaches the edge, by its method and path. */
   heard?: (request: string) => void;
-  built?: string;
 }>): Promise<Edge> {
   const send = async (
     request: IncomingMessage,
@@ -186,12 +184,12 @@ export async function standEdge({
     };
     if (prefersMarkdown(request.headers.accept ?? "")) {
       for (const candidate of [`${inside}.md`, `${inside}index.md`]) {
-        const file = await fileAt(join(built, candidate));
+        const file = await fileAt(join(BUILT, candidate));
         if (file !== null) return send(request, response, file, { headers: markdown });
       }
     }
     if (inside.endsWith(".md")) {
-      const file = await fileAt(join(built, inside));
+      const file = await fileAt(join(BUILT, inside));
       if (file !== null)
         return send(request, response, file, {
           headers: { "content-type": markdown["content-type"], "cache-control": RULES.pagesKept },
@@ -209,10 +207,10 @@ export async function standEdge({
       inside.endsWith("/") ? `${inside}index.html` : inside,
       `${inside}.html`,
     ]) {
-      const file = await fileAt(join(built, candidate));
+      const file = await fileAt(join(BUILT, candidate));
       if (file !== null) return send(request, response, file, { headers });
     }
-    return send(request, response, join(built, "404.html"), { status: 404 });
+    return send(request, response, join(BUILT, "404.html"), { status: 404 });
   };
 
   const server: Server = createServer((request, response) => {

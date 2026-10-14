@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
 
-/** How far under the window's top a section's heading counts as reached: the site header and a little air. */
-const REACHED = 104;
+/**
+ * How far under the window's top a section's heading counts as reached: under
+ * the site header, and under the bar that holds the sections where the column
+ * folds away, with a little air.
+ */
+const reachedAt = (): number => {
+  const bar = document.querySelector(".docs-bar");
+  const under =
+    bar !== null && bar.getClientRects().length > 0 ? bar.getBoundingClientRect().bottom : 80;
+  return under + 24;
+};
 
 /**
  * The section being read, marked in the outline as the page scrolls, as
@@ -19,12 +28,13 @@ export function useSectionInView(ids: readonly string[]): string | null {
       const atEnd =
         Math.abs(scrolled + window.innerHeight - document.documentElement.scrollHeight) < 2;
       let reached: string | null = null;
+      const line = reachedAt();
       if (ids.length > 0 && scrolled >= 1) {
         if (atEnd) reached = ids.at(-1) ?? null;
         else {
           for (const id of ids) {
             const heading = document.getElementById(id);
-            if (heading === null || heading.getBoundingClientRect().top > REACHED) break;
+            if (heading === null || heading.getBoundingClientRect().top > line) break;
             reached = id;
           }
         }
