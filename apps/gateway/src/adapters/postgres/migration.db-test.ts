@@ -1076,8 +1076,8 @@ if (databaseUrl === null) {
     });
 
     it("then keys a wallet's split in either spelling, keeping every row it finds", async () => {
-      // A wallet set before splits may be stored in lower case, and the rows
-      // name it checksummed; a second row for the same wallet in another
+      // A wallet may be stored in lower case while the rows name it
+      // checksummed; a second row for the same wallet in another
       // spelling would be a second contract for one wallet.
       await run("0015_payout_splits.sql");
       const row = (address: string, merchant: string, wallet: string) =>

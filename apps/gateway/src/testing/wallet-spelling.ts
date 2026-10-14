@@ -1,9 +1,8 @@
 /**
  * A gateway over a payout wallet stored in another spelling than its split's
  * row, run against memory under `pnpm test` and against Postgres under
- * `pnpm test:db`. A wallet set before splits existed may be stored in lower
- * case, and every row of the registry names its wallet in the checksummed
- * spelling the rule makes. One address in two spellings is one wallet: its
+ * `pnpm test:db`. A wallet may be stored in lower case, while every row of the
+ * registry names its wallet in the checksummed spelling the rule makes. One address in two spellings is one wallet: its
  * merchant sells at its split, a change from it is announced from that split,
  * and a return to it finds that row.
  */
@@ -27,7 +26,7 @@ export interface WalletSpellingDatabase {
   readonly store: Store;
   /**
    * Writes a merchant's wallet columns exactly as given and records no split,
-   * as a wallet set before splits existed is found.
+   * as a wallet written without its split is found.
    */
   writeWalletWithoutSplit(merchantId: string, wallet: PayoutWalletRead): Promise<void>;
 }

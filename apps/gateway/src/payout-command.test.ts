@@ -241,7 +241,7 @@ describe("a payout the gateway would refuse to start with", () => {
       [payoutSplitFor(T1_TEST, "mch_refused", T1_TEST.multicall3)],
       NOW,
     );
-    await database.store.writeWalletAsBeforeSplits("mch_refused", {
+    await database.store.writeWalletWithoutSplit("mch_refused", {
       address: T1_TEST.multicall3,
       pending: null,
     });

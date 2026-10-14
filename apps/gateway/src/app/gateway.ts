@@ -98,7 +98,7 @@ import {
 } from "./merchants.js";
 import {
   journal,
-  recordSplitsOfWalletsSetBefore,
+  recordMissingSplits,
   refuseUnlessTheSplitsAgree,
   whyTheRuleRefuses,
 } from "./recorded-splits.js";
@@ -349,13 +349,13 @@ export class Gateway {
   /**
    * Checks the registry of payout splits against this network's payout split
    * in the code, and refuses to start where they disagree, before anything is
-   * written or any work is taken; then records the split of every wallet set
-   * before splits were. Only then starts the queue and points its reminders at
+   * written or any work is taken; then records the split of every wallet that
+   * has none. Only then starts the queue and points its reminders at
    * the order machine; each reminder becomes one event and nothing more.
    */
   async start(): Promise<void> {
     await refuseUnlessTheSplitsAgree(this.runtime);
-    await recordSplitsOfWalletsSetBefore(this.runtime);
+    await recordMissingSplits(this.runtime);
 
     this.runtime.queue.onReminder(async (reminder) => {
       try {

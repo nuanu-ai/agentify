@@ -1,9 +1,8 @@
 /**
  * The registry of payout splits as a gateway meets it when it starts: checked
  * against the network's payout split in the code before anything else runs,
- * then given the split of every wallet set before splits existed. And the
- * journal line every newly recorded split gets, from whichever write recorded
- * it.
+ * then given the split of every wallet that has none. And the journal line
+ * every newly recorded split gets, from whichever write recorded it.
  */
 
 import { isAddress } from "viem";
@@ -142,12 +141,13 @@ async function whyTheSplitsDisagree(runtime: Runtime): Promise<string | null> {
 
 /**
  * Records the split of every wallet in force and every wallet waiting that
- * has none, as the release before splits left them, touching no merchant and
- * no order, and says how many where it recorded any. Two gateways starting
- * at once record each split once. A count after the release that brought
- * splits points at a write that skipped its split.
+ * has none, touching no merchant and no order, and says how many where it
+ * recorded any. Two gateways starting at once record each split once. Every
+ * write of a wallet records its split with it, so a wallet found here without
+ * one was written by something that does not: a hand, or a gateway that kept
+ * no registry.
  */
-export async function recordSplitsOfWalletsSetBefore(runtime: Runtime): Promise<void> {
+export async function recordMissingSplits(runtime: Runtime): Promise<void> {
   const network = runtime.config.payoutSplit;
   const missing: PayoutSplit[] = [];
   for (const merchant of await runtime.store.merchants()) {
@@ -187,7 +187,7 @@ export async function recordSplitsOfWalletsSetBefore(runtime: Runtime): Promise<
     });
   if (recorded.length > 0) {
     console.log(
-      `[gateway] recorded ${recorded.length} payout split${recorded.length === 1 ? "" : "s"} of wallets set before their splits were`,
+      `[gateway] recorded ${recorded.length} payout split${recorded.length === 1 ? "" : "s"} of wallets that had none`,
     );
   }
   journal(recorded);

@@ -912,7 +912,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("records only the splits not recorded before, and says which", async () => {
-        // The start gives a split to every wallet set before splits were, and a
+        // The start gives a split to every wallet found without one, and a
         // restart, or a second gateway starting beside it, must record each
         // one once and keep its first instant.
         const store = await twoMerchants();
@@ -989,8 +989,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       describe("of a wallet stored in another spelling than its row", () => {
-        // A wallet set before splits existed may be stored in lower case, and
-        // its split's row names it in the checksummed spelling the rule makes.
+        // A wallet may be stored in lower case while its split's row names it
+        // in the checksummed spelling the rule makes.
         // One address in two spellings is one wallet: its merchant sells at
         // its split, and it never gets a second one.
         const lower = (wallet: string): string => wallet.toLowerCase();

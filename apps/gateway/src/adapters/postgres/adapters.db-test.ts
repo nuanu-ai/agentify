@@ -1521,8 +1521,8 @@ if (databaseUrl === null) {
           announcer: nobodyAnnounces,
         });
 
-      /** Merchants whose wallets were set before splits were, as that release left the rows. */
-      const asBeforeSplits = async () => {
+      /** Merchants whose wallets were written with no split recorded. */
+      const withoutTheirSplits = async () => {
         await store.addMerchant({ id: "mch_old_one", name: "Old one" }, now);
         await store.addMerchant({ id: "mch_old_two", name: "Old two" }, now);
         await store.addMerchant({ id: "mch_old_none", name: "Old none" }, now);
@@ -1538,10 +1538,10 @@ if (databaseUrl === null) {
         });
       };
 
-      it("gives every wallet set before splits its split at start, and touches no merchant and no order", async () => {
+      it("gives every wallet found without a split its split at start, and touches no merchant and no order", async () => {
         // The SQL migration cannot compute a hash, so the rows come from the
         // start; a merchant left without one cannot sell after the release.
-        await asBeforeSplits();
+        await withoutTheirSplits();
         const merchantsBefore = (await pool.query("select * from merchants order by id")).rows;
         const ordersBefore = (await pool.query("select * from orders order by id")).rows;
 
@@ -1566,7 +1566,7 @@ if (databaseUrl === null) {
       it("records each split once when two gateways start on one database at once, and again writes nothing", async () => {
         // A restart, a retried release and two processes on one database must
         // neither duplicate a row nor fail to start.
-        await asBeforeSplits();
+        await withoutTheirSplits();
 
         const another = connect(databaseUrl);
         try {
@@ -1635,7 +1635,7 @@ if (databaseUrl === null) {
       });
 
       it("says why when the splits a start lacks cannot be recorded, and not that the database did not answer", async () => {
-        await asBeforeSplits();
+        await withoutTheirSplits();
         await pool.query(
           `alter table payout_splits add constraint refuse_the_wallet check (merchant_wallet <> '${W1}')`,
         );
@@ -1737,7 +1737,7 @@ if (databaseUrl === null) {
       it("refuses to start where the code's commission wallet is not the one recorded, before it listens", async () => {
         // The edit is refused in words in the log, and nothing the start would
         // write is written first.
-        await asBeforeSplits();
+        await withoutTheirSplits();
         const edited = {
           ...SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
           "eip155:84532": { ...network, commissionWallet: W2 },

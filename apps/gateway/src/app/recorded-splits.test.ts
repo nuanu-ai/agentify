@@ -6,8 +6,8 @@
  * code and refuses, in words, where they disagree, before it writes anything
  * or takes any work from the queue: until a change of rate is designed, a
  * constant edited in code must not quietly name new splits beside the old
- * ones. Then it records the split of every wallet set before splits existed,
- * so existing merchants keep selling. A payment address is always the one
+ * ones. Then it records the split of every wallet that has none, so a
+ * merchant whose wallet was written without one keeps selling. A payment address is always the one
  * recorded, never one recomputed from today's constants.
  *
  * Each case builds its own gateway over a store prepared first, because the
@@ -132,12 +132,12 @@ const paidUnder = async (
   return split;
 };
 
-/** A wallet as the release before splits wrote it: the merchant's columns and no row. */
-const paidBeforeSplits = (
+/** A wallet written without its split: the merchant's columns and no row. */
+const paidWithoutASplit = (
   database: ReturnType<typeof aDatabase>,
   merchantId: string,
   wallet: PayoutWalletRead,
-) => database.store.writeWalletAsBeforeSplits(merchantId, wallet);
+) => database.store.writeWalletWithoutSplit(merchantId, wallet);
 
 /** Why the start was refused, or a failure saying it started. */
 const refusalOf = async (gateway: Gateway): Promise<string> => {
@@ -208,7 +208,7 @@ describe("a start where the code's payout split changed since the registry was w
       // A wallet the backfill would give a split, which must not be written
       // under constants the start is about to refuse.
       await aMerchant(database, "mch_two");
-      await paidBeforeSplits(database, "mch_two", { address: P, pending: null });
+      await paidWithoutASplit(database, "mch_two", { address: P, pending: null });
       const { gateway } = aGatewayOver(database, table);
       const waiting = await aReminderWaiting(database, gateway, "mch_one");
 
@@ -356,7 +356,7 @@ describe("a start on a database whose splits belong to another network", () => {
     const database = aDatabase("eip155:8453");
     await aMerchant(database, "mch_one");
     await database.store.recordPayoutSplits([payoutSplitFor(T1_TEST, "mch_one", W)], NOW);
-    await paidBeforeSplits(database, "mch_one", { address: W, pending: null });
+    await paidWithoutASplit(database, "mch_one", { address: W, pending: null });
 
     const refused = await refusalOf(aGatewayOver(database, T1, LIVE).gateway);
 
@@ -402,15 +402,15 @@ describe("a start on a store that reads splits on another network than its payou
   });
 });
 
-describe("a start that finds wallets set before splits were", () => {
-  /** Merchant 1 with no wallet, 2 with W, 3 with W and P waiting, all as before splits. */
-  const asBeforeSplits = async () => {
+describe("a start that finds wallets with no split recorded", () => {
+  /** Merchant 1 with no wallet, 2 with W, 3 with W and P waiting, none with a split. */
+  const withoutTheirSplits = async () => {
     const database = aDatabase();
     await aMerchant(database, "mch_1");
     await aMerchant(database, "mch_2");
     await aMerchant(database, "mch_3");
-    await paidBeforeSplits(database, "mch_2", { address: W, pending: null });
-    await paidBeforeSplits(database, "mch_3", {
+    await paidWithoutASplit(database, "mch_2", { address: W, pending: null });
+    await paidWithoutASplit(database, "mch_3", {
       address: W,
       pending: { address: P, takesEffectAt: NOW + 3_600_000 },
     });
@@ -421,7 +421,7 @@ describe("a start that finds wallets set before splits were", () => {
     // The release moves existing wallets to splits without mail. A merchant
     // left without a row cannot sell, and one whose waiting wallet has none
     // stops selling at its moment.
-    const database = await asBeforeSplits();
+    const database = await withoutTheirSplits();
     const before = await database.store.merchants();
 
     const logged = await loggedWhile(() => aGatewayOver(database).gateway.start());
@@ -469,10 +469,10 @@ describe("a start that finds wallets set before splits were", () => {
   it("refuses to start on a wallet that is no address at all, naming its merchant, and records nothing", async () => {
     // Capitals that disagree with the checksum mean a character is wrong;
     // no split can be made for it, and no rule can say what it is.
-    const database = await asBeforeSplits();
+    const database = await withoutTheirSplits();
     const misspelt = "0x5AAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
     await aMerchant(database, "mch_misspelt");
-    await paidBeforeSplits(database, "mch_misspelt", { address: misspelt, pending: null });
+    await paidWithoutASplit(database, "mch_misspelt", { address: misspelt, pending: null });
 
     const refused = await refusalOf(aGatewayOver(database).gateway);
 
@@ -482,7 +482,7 @@ describe("a start that finds wallets set before splits were", () => {
   });
 
   it("records nothing on a second start, and writes nothing to the journal", async () => {
-    const database = await asBeforeSplits();
+    const database = await withoutTheirSplits();
     await aGatewayOver(database).gateway.start();
     await running?.stop();
 
@@ -493,7 +493,7 @@ describe("a start that finds wallets set before splits were", () => {
 
   it("names, from then on, the split it recorded, and checks a payment against it", async () => {
     // An existing merchant's next challenge is their split, from the registry.
-    const database = await asBeforeSplits();
+    const database = await withoutTheirSplits();
     const { gateway, facilitator } = aGatewayOver(database);
     const stored = await database.store.publishCard("mch_2", card, NOW);
 
@@ -508,7 +508,7 @@ describe("a start that finds wallets set before splits were", () => {
   });
 });
 
-describe("a start that finds a wallet set before splits that the wallet rule refuses", () => {
+describe("a start that finds a wallet with no split that the wallet rule refuses", () => {
   // Paid into a split, the merchant's share would go to an address it could
   // never come back from. Before splits the payment went to that address
   // itself; the release is the moment to stop it.
@@ -528,7 +528,7 @@ describe("a start that finds a wallet set before splits that the wallet rule ref
       const database = aDatabase();
       const wallet = await walletIn(database);
       await aMerchant(database, "mch_refused");
-      await paidBeforeSplits(database, "mch_refused", { address: wallet, pending: null });
+      await paidWithoutASplit(database, "mch_refused", { address: wallet, pending: null });
       const stored = await database.store.publishCard("mch_refused", card, NOW);
       const { gateway } = aGatewayOver(database);
 
@@ -543,7 +543,7 @@ describe("a start that finds a wallet set before splits that the wallet rule ref
   it("records the split of the wallet in force and none for a waiting one the rule refuses", async () => {
     const database = aDatabase();
     await aMerchant(database, "mch_waiting");
-    await paidBeforeSplits(database, "mch_waiting", {
+    await paidWithoutASplit(database, "mch_waiting", {
       address: W,
       pending: { address: T1_TEST.multicall3, takesEffectAt: NOW + 3_600_000 },
     });
@@ -559,7 +559,10 @@ describe("a start that finds a wallet set before splits that the wallet rule ref
   it("lets the merchant sell once they set a wallet the rule takes", async () => {
     const database = aDatabase();
     await aMerchant(database, "mch_refused");
-    await paidBeforeSplits(database, "mch_refused", { address: T1_TEST.multicall3, pending: null });
+    await paidWithoutASplit(database, "mch_refused", {
+      address: T1_TEST.multicall3,
+      pending: null,
+    });
     const stored = await database.store.publishCard("mch_refused", card, NOW);
     const { gateway } = aGatewayOver(database);
     await gateway.start();
@@ -577,7 +580,7 @@ describe("a start that finds a wallet set before splits that the wallet rule ref
     const database = aDatabase("eip155:8453");
     const base = payoutSplitNetworkOf(T1, "eip155:8453");
     await aMerchant(database, "mch_refused");
-    await paidBeforeSplits(database, "mch_refused", { address: base.multicall3, pending: null });
+    await paidWithoutASplit(database, "mch_refused", { address: base.multicall3, pending: null });
     const { gateway, announcer } = aGatewayOver(database, T1, LIVE);
     await gateway.start();
 
@@ -608,7 +611,10 @@ describe("a start on a registry holding a split of a wallet the wallet rule refu
     const database = aDatabase();
     await aMerchant(database, "mch_refused");
     await recordedFor(database, "mch_refused");
-    await paidBeforeSplits(database, "mch_refused", { address: T1_TEST.multicall3, pending: null });
+    await paidWithoutASplit(database, "mch_refused", {
+      address: T1_TEST.multicall3,
+      pending: null,
+    });
 
     const refused = await refusalOf(aGatewayOver(database).gateway);
 
@@ -664,7 +670,7 @@ describeWalletSpelling(
     return {
       store,
       writeWalletWithoutSplit: (merchantId, wallet) =>
-        store.writeWalletAsBeforeSplits(merchantId, wallet),
+        store.writeWalletWithoutSplit(merchantId, wallet),
     };
   },
 );

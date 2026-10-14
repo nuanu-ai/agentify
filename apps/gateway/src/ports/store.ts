@@ -503,7 +503,7 @@ export interface Store {
    * recorded; one already recorded is left as it is. Two callers recording one
    * split at once record it once. Refuses, writing nothing, a split whose
    * merchant, wallet and network are recorded at another address. No merchant
-   * is touched: this is how wallets set before splits existed get theirs.
+   * is touched: this is how a wallet found without its split gets one.
    */
   recordPayoutSplits(
     splits: readonly PayoutSplit[],

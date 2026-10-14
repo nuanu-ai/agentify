@@ -224,12 +224,11 @@ export class MemoryStore implements Store {
   }
 
   /**
-   * Writes a merchant's wallet columns and no split, as a gateway of the
-   * release before splits left them. Only tests call this, to hold what a
-   * start finds on a database that release wrote; everything else writes a
-   * wallet through `setPayoutWallet`, with its split.
+   * Writes a merchant's wallet columns and no split. Only tests call this, to
+   * hold what a start finds where a wallet was written without its split;
+   * everything else writes a wallet through `setPayoutWallet`, with its split.
    */
-  async writeWalletAsBeforeSplits(id: string, wallet: PayoutWalletRead): Promise<void> {
+  async writeWalletWithoutSplit(id: string, wallet: PayoutWalletRead): Promise<void> {
     const row = this.#merchants.get(id);
     if (row === undefined) {
       throw new Error(`there is no merchant ${id} to write a wallet for`);
