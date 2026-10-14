@@ -847,6 +847,12 @@ describe("the site's menu on a phone", () => {
       hasTouch: true,
     });
     const page = await context.newPage();
+    // A visitor who has answered the consent banner, so the finger lands on
+    // the page wherever the runner's fonts make the banner's foot reach.
+    await page.addInitScript(([key, choice]) => localStorage.setItem(key, choice), [
+      CONSENT_STORAGE_KEY,
+      JSON.stringify(SAVED_CONSENT),
+    ] as const);
     await page.route("**/api/v2/session", (route) =>
       route.fulfill({ json: { status: "signed_out" } }),
     );
@@ -857,8 +863,10 @@ describe("the site's menu on a phone", () => {
     const scrolled = () => page.evaluate(() => window.scrollY);
     await page.evaluate(() => window.scrollTo(0, 300));
     await dragUp(page, { x: 100, y: 450 }, 200);
+    // A finger's scroll reaches the page's script a frame or more after it lifts.
+    await expect.poll(scrolled).toBeGreaterThan(300);
+    await page.waitForTimeout(300);
     const before = await scrolled();
-    expect(before).toBeGreaterThan(300);
 
     await burger.tap();
     await panel.waitFor({ state: "visible" });
@@ -879,7 +887,7 @@ describe("the site's menu on a phone", () => {
     await burger.tap();
     await panel.waitFor({ state: "hidden" });
     await dragUp(page, under, 200);
-    expect(await scrolled()).toBeGreaterThan(before);
+    await expect.poll(scrolled).toBeGreaterThan(before);
     await context.close();
   });
 
