@@ -1,6 +1,18 @@
-.layout {
+/*
+ * The editorial layout: a page of reading, its contents in a column beside
+ * the article and folded into a disclosure above it on a phone. The scanner's
+ * trust pages and the documentation are drawn in it. Colours, faces and radii
+ * come from tokens.css, which is imported ahead of this file; what only one
+ * surface draws inside the article stays with that surface.
+ *
+ * The article's measure is `--editorial-measure`, which a surface whose pages
+ * carry code and tables may widen on its own layout.
+ */
+
+.editorial {
+  --editorial-measure: 660px;
   display: grid;
-  grid-template-columns: 220px minmax(0, 660px);
+  grid-template-columns: 220px minmax(0, var(--editorial-measure));
   align-items: start;
   justify-content: center;
   gap: 56px;
@@ -9,7 +21,7 @@
 
 /* The site header stays over the page, so the contents and a section a link
    scrolls to stand clear of it. */
-.desktopToc {
+.editorial-contents {
   position: sticky;
   top: 100px;
   display: flex;
@@ -17,7 +29,8 @@
   gap: 12px;
 }
 
-.desktopToc > span {
+.editorial-contents > span,
+.editorial-label {
   margin-bottom: 4px;
   color: var(--muted);
   font: 0.6875rem / 1.4 var(--font-mono);
@@ -25,23 +38,23 @@
   text-transform: uppercase;
 }
 
-.desktopToc a {
+.editorial-contents a {
   color: var(--fg-2);
   font-size: 0.875rem;
   text-decoration: none;
 }
 
-.desktopToc a:hover,
-.desktopToc a:focus-visible,
-.article a {
+.editorial-contents a:hover,
+.editorial-contents a:focus-visible,
+.editorial-article a {
   color: var(--accent-hover);
 }
 
-.article {
+.editorial-article {
   min-width: 0;
 }
 
-.article > h1 {
+.editorial-article h1 {
   max-width: 17ch;
   margin: 14px 0 16px;
   font-size: clamp(2.5rem, 5vw, 2.75rem);
@@ -51,34 +64,41 @@
   text-wrap: balance;
 }
 
-.article section {
+.editorial-article h2 {
   scroll-margin-top: 96px;
-  margin-top: 42px;
-}
-
-.article section:first-of-type {
-  margin-top: 0;
-}
-
-.article h2 {
-  margin: 0 0 12px;
+  margin: 42px 0 12px;
   font-size: 1.5rem;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
 
-.article p,
-.article li {
+/* A page that keeps each section in an element of its own scrolls to the
+   section, and its first section follows the introduction closely. */
+.editorial-article section {
+  scroll-margin-top: 96px;
+  margin-top: 42px;
+}
+
+.editorial-article section:first-of-type {
+  margin-top: 0;
+}
+
+.editorial-article section > h2 {
+  margin-top: 0;
+}
+
+.editorial-article p,
+.editorial-article li {
   color: var(--fg-strong);
   font-size: 1rem;
   line-height: 1.75;
 }
 
-.article p {
+.editorial-article p {
   margin: 0 0 16px;
 }
 
-.article code {
+.editorial-article code {
   overflow-wrap: anywhere;
   border-radius: 5px;
   padding: 2px 6px;
@@ -87,48 +107,49 @@
   font: 0.875em var(--font-mono);
 }
 
-.proseList {
+.editorial-list {
   display: grid;
   gap: 8px;
   margin: 0;
   padding-left: 22px;
 }
 
-.notice {
+.editorial-notice {
   margin: 22px 0;
-  border: 1px solid var(--line);
+  border: var(--hairline) solid var(--line);
   border-radius: var(--radius-card);
   padding: 18px 20px;
   background: var(--surface);
 }
 
-.notice > :last-child {
+.editorial-notice > :last-child {
   margin-bottom: 0;
 }
 
-.mobileToc {
+/* The contents on a phone: a disclosure above the article. */
+.editorial-outline {
   display: none;
 }
 
 @media (max-width: 760px) {
-  .layout {
+  .editorial {
     display: block;
     padding-block: 40px 64px;
   }
 
-  .desktopToc {
+  .editorial-contents {
     display: none;
   }
 
-  .mobileToc {
+  .editorial-outline {
     display: block;
     margin: 0 0 36px;
-    border: 1px solid var(--line);
+    border: var(--hairline) solid var(--line);
     border-radius: var(--radius-control);
     background: var(--surface);
   }
 
-  .mobileToc summary {
+  .editorial-outline summary {
     min-height: 48px;
     display: flex;
     align-items: center;
@@ -140,30 +161,34 @@
     text-transform: uppercase;
   }
 
-  .mobileToc summary::after {
+  .editorial-outline summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .editorial-outline summary::after {
     content: "+";
     font-size: 1rem;
   }
 
-  .mobileToc[open] summary::after {
+  .editorial-outline[open] summary::after {
     content: "−";
   }
 
-  .mobileToc nav {
+  .editorial-outline nav {
     display: grid;
     gap: 14px;
-    border-top: 1px solid var(--line-soft);
+    border-top: var(--hairline) solid var(--line-soft);
     padding: 16px;
   }
 
-  .mobileToc a {
+  .editorial-outline a {
     font-size: 0.875rem;
     text-decoration: none;
   }
 }
 
 @media (max-width: 480px) {
-  .article > h1 {
+  .editorial-article h1 {
     font-size: 2.25rem;
   }
 }

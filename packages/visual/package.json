@@ -3,13 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The visual language: one stylesheet of tokens, base element rules and shared primitives, and the marks and faces every surface on the origin is drawn with",
+  "description": "The visual language: the stylesheet of tokens, base element rules and shared primitives, the editorial layout reading pages are drawn in, and the marks and faces every surface on the origin is drawn with",
   "exports": {
     "./tokens.css": "./tokens.css",
+    "./editorial.css": "./editorial.css",
     "./public/*": "./public/*"
   },
   "files": [
     "tokens.css",
+    "editorial.css",
     "public"
   ]
 }
