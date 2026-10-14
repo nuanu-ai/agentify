@@ -28,7 +28,7 @@ import {
 } from "@agentify/analytics/browser";
 import { precompressedFrom } from "@agentify/ui/assets";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
-import { dragUp, launchChromium } from "@agentify/ui/chromium";
+import { dragUp, launchChromium, theBar } from "@agentify/ui/chromium";
 import express from "express";
 import type { Browser, Page } from "playwright";
 import type { ServerBuild } from "react-router";
@@ -717,9 +717,9 @@ const SAVED_CONSENT = createConsentSnapshot({
 });
 
 /**
- * A phone-sized browser on `path` whose question of who is visiting is held
- * until `release`, and answered then with `answer`; the scan's status is the
- * running one.
+ * A browser `width` pixels wide, a phone's by default, on `path`, whose
+ * question of who is visiting is held until `release`, and answered then with
+ * `answer`; the scan's status is the running one.
  */
 const onAPhone = async (
   path: string,
@@ -783,6 +783,28 @@ describe("the doors on a phone", () => {
   );
 });
 
+/** The site's sections, as the header lists them. */
+const SECTIONS = ["Sell to agents", "Scanner", "Methodology", "Privacy"];
+
+/**
+ * How many of the sections the bar keeps beside the doors and the menu's
+ * button at a width, from a phone's to the widest the menu shows at, with the
+ * pixel on each side of every step. The last of them leaves first.
+ */
+const IN_THE_BAR = [
+  [320, 0],
+  [390, 0],
+  [439, 0],
+  [440, 1],
+  [519, 1],
+  [520, 2],
+  [767, 2],
+  [768, 3],
+  [839, 3],
+  [840, 4],
+  [910, 4],
+] as const;
+
 describe("the site's menu on a phone", () => {
   it("holds the site's sections, Sell to agents first, closes on Escape, and closes once a link in it is followed, fetched ahead as the bar's are", async () => {
     const { page, complaints } = await visit("/methodology");
@@ -796,12 +818,7 @@ describe("the site's menu on a phone", () => {
     expect(await panel.isVisible()).toBe(false);
     await burger.click();
     await panel.waitFor({ state: "visible" });
-    expect(await panel.locator("nav a").allTextContents()).toEqual([
-      "Sell to agents",
-      "Scanner",
-      "Methodology",
-      "Privacy",
-    ]);
+    expect(await panel.locator("nav a").allTextContents()).toEqual(SECTIONS);
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.keyboard.press("Escape");
     await panel.waitFor({ state: "hidden" });
@@ -1009,10 +1026,12 @@ describe("the site's menu on a phone", () => {
   });
 
   it.each(
-    VISITORS.flatMap(([who, answer]) => [320, 390].map((width) => [who, width, answer] as const)),
+    VISITORS.flatMap(([who, answer]) =>
+      IN_THE_BAR.map(([width, shown]) => [who, width, answer, shown] as const),
+    ),
   )(
-    "keeps the header to one row of the same height when %s comes back at %ipx, and holds who is visiting",
-    async (_who, width, answer) => {
+    "keeps the header to one row of the same height when %s comes back at %ipx, with the sections that fit, and holds who is visiting and every section in its menu",
+    async (_who, width, answer, shown) => {
       const { page, answered } = await onAPhone("/methodology", answer, width);
       await page.locator("h1").first().waitFor();
       await page.evaluate(() => document.fonts.ready);
@@ -1021,16 +1040,14 @@ describe("the site's menu on a phone", () => {
 
       await answered();
       expect(await header.boundingBox()).toEqual(before);
-      const middles = await header.evaluate((bar) =>
-        [...bar.querySelectorAll(".brand, .site-doors > a, .site-menu > summary")].map((item) => {
-          const box = item.getBoundingClientRect();
-          return box.top + box.height / 2;
-        }),
-      );
-      expect(middles).toHaveLength(4);
-      expect(Math.max(...middles) - Math.min(...middles)).toBeLessThanOrEqual(1);
+      const bar = await theBar(header);
+      expect(bar.spread).toBeLessThanOrEqual(1);
+      expect(bar.sections).toEqual(SECTIONS.slice(0, shown));
+      expect(bar.visitor).toBe(0);
+      expect(bar.button).toBe(true);
 
       await header.locator(".site-menu > summary").click();
+      expect(await header.locator(".site-menu-panel nav a").allTextContents()).toEqual(SECTIONS);
       const visitor = header.locator(".site-menu-panel .site-visitor");
       if ("email" in answer.body) {
         const address = visitor.getByRole("link", { name: answer.body.email });

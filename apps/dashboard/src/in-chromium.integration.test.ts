@@ -18,7 +18,7 @@ import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { type Harness, harness } from "@agentify/gateway/testing";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
-import { dragUp, launchChromium } from "@agentify/ui/chromium";
+import { dragUp, launchChromium, theBar } from "@agentify/ui/chromium";
 import express from "express";
 import type { Browser, Page } from "playwright";
 import type { ServerBuild } from "react-router";
@@ -408,26 +408,37 @@ describe("the sections on a long page", () => {
   });
 });
 
-describe("the header on the narrowest page", () => {
-  it("keeps the lockup, the doors and the menu's button on one row", async () => {
-    const page = await onTheCards({ width: 320, height: 600 });
-    await page.evaluate(() => document.fonts.ready);
-    expect(
-      await page.evaluate(() =>
-        [...document.fonts].some(
-          (face) => face.family.includes("Schibsted Grotesk") && face.status === "loaded",
+describe("the header over the frame", () => {
+  it.each([
+    [320, []],
+    [481, []],
+    [499, []],
+    [500, ["Methodology", "Privacy"]],
+    [640, ["Methodology", "Privacy"]],
+    [641, ["Scanner", "Methodology", "Privacy"]],
+    [910, ["Scanner", "Methodology", "Privacy"]],
+  ] as const)(
+    "keeps one row at %ipx with the site's sections %j, who is signed in only in its menu",
+    async (width, sections) => {
+      const page = await onTheCards({ width, height: 600 });
+      await page.evaluate(() => document.fonts.ready);
+      expect(
+        await page.evaluate(() =>
+          [...document.fonts].some(
+            (face) => face.family.includes("Schibsted Grotesk") && face.status === "loaded",
+          ),
         ),
-      ),
-    ).toBe(true);
+      ).toBe(true);
+      const header = page.locator("header.site-header");
 
-    const middles = await page.locator("header.site-header").evaluate((bar) =>
-      [...bar.querySelectorAll(".brand, .site-doors > a, .site-menu > summary")].map((item) => {
-        const box = item.getBoundingClientRect();
-        return box.top + box.height / 2;
-      }),
-    );
-    expect(middles).toHaveLength(4);
-    expect(Math.max(...middles) - Math.min(...middles)).toBeLessThanOrEqual(1);
-    await page.context().close();
-  });
+      const bar = await theBar(header);
+      expect(bar.spread).toBeLessThanOrEqual(1);
+      expect(bar.sections).toEqual(sections);
+      expect(bar.visitor).toBe(0);
+      expect(bar.button).toBe(true);
+      await header.locator(".site-menu > summary").click();
+      expect(await header.locator(".site-menu-panel").getByText(PERSON).isVisible()).toBe(true);
+      await page.context().close();
+    },
+  );
 });
