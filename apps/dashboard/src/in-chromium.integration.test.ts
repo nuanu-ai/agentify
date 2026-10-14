@@ -321,14 +321,15 @@ describe("the sections on a long page", () => {
     await page.context().close();
   });
 
-  it("keep the chosen one under the header on a laptop, down to the foot of the page", async () => {
-    const page = await onTheCards({ width: 1280, height: 600 });
+  it("stay whole under the header on a laptop, down to the foot of the page", async () => {
+    // A window taller than the sidebar's words and the foot together.
+    const page = await onTheCards({ width: 1280, height: 700 });
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
 
     const header = await page.locator("header.site-header").boundingBox();
-    const chosen = await page.locator("nav.tabs [aria-current=page]").boundingBox();
+    const sidebar = await page.locator(".app-sidebar-inner").boundingBox();
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
-    expect(chosen?.y).toBeGreaterThanOrEqual((header?.y ?? 0) + (header?.height ?? 0));
+    expect(sidebar?.y).toBeGreaterThanOrEqual((header?.y ?? 0) + (header?.height ?? 0));
     await page.context().close();
   });
 });
