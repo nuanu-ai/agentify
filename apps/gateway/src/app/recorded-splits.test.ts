@@ -348,11 +348,10 @@ describe("a refusal to start on a laptop's sandbox", () => {
 
 describe("a start on a database whose splits belong to another network", () => {
   it("refuses, naming both networks", async () => {
-    // Moved from the test channel to the live one, the database would name
-    // Base Sepolia's splits, with a test commission wallet inside, as payment
-    // addresses on Base, where the same formula gives the same addresses.
-    // Opened by the live gateway, it holds the wallet and its Base Sepolia
-    // split as the test channel wrote them.
+    // A database holding another network's splits is not this channel's: a
+    // test channel's database opened by the live gateway, say. Opened by the
+    // live gateway, it holds the wallet and its Base Sepolia split as the test
+    // channel wrote them.
     const database = aDatabase("eip155:8453");
     await aMerchant(database, "mch_one");
     await database.store.recordPayoutSplits([payoutSplitFor(T1_TEST, "mch_one", W)], NOW);

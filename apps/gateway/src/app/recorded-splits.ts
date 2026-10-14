@@ -104,7 +104,7 @@ async function whyTheSplitsDisagree(runtime: Runtime): Promise<string | null> {
     (recorded) => recorded !== network.network,
   );
   if (elsewhere.length > 0) {
-    return `the database records payout splits on ${elsewhere.join(", ")}, and this gateway takes payments on ${network.network}; the same formula gives the same addresses on both chains, so it would name another network's splits, with another commission wallet inside, as its own payment addresses, and it does not start`;
+    return `the database records payout splits on ${elsewhere.join(", ")}, and this gateway takes payments on ${network.network}; a database holding another network's payout splits is not this channel's database, so the gateway does not start`;
   }
 
   const disagreeing: RecordedPayoutSplit[] = [];
