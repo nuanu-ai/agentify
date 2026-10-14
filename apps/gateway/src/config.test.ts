@@ -601,6 +601,21 @@ describe("the environment is derived from the chain", () => {
   });
 });
 
+describe("a network the code names no commission wallet for", () => {
+  it("refuses to start on Base until Base's commission wallet is written into the code", () => {
+    // Every payment there would name a split paying 0.1% to a wallet nobody
+    // has chosen, and a split cannot be changed once it exists.
+    const refused = refusalFor({
+      PAYMENT_NETWORK: "eip155:8453",
+      FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+      CDP_API_KEY_ID: "key-id",
+      CDP_API_KEY_SECRET: "secret",
+    });
+
+    expect(refused).toMatch(/eip155:8453.*commission wallet/s);
+  });
+});
+
 describe("a live chain is allowed exactly one facilitator", () => {
   const live = {
     ...required,
