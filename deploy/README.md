@@ -113,6 +113,14 @@ succeeded.
 
 ## Releasing to production
 
+While the code that takes a commission names no commission wallet on Base,
+the gateway does not start there, so no `app-v*` tag of such a commit is
+released to production until ADR-0037's status says the hold has ended; and
+no such commit goes to TEST with `deploy-test` until the test channel's
+commission wallet replaces the experiment's placeholder in the code
+(`docs/research/47-commission-in-the-product.md`, «Выпуск ждёт двух
+кошельков»).
+
 A production release starts from `main`. Every change a merchant can see in
 the published packages carries a Changeset (`pnpm changeset` on the branch
 that makes it). When a release is due, one pull request prepares the versions:

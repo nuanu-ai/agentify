@@ -2,9 +2,16 @@
 
 Date: 2026-10-14
 Status: accepted (the product owner, 2026-10-14: a commission on every
-payment, payouts by hand, a Safe for the commission). Built, not yet released;
-at its release the wallets already set move to their splits unannounced, since
-nobody sells on the live channel.
+payment, payouts by hand, a Safe for the commission). Built, not yet released,
+and held: the code names no commission wallet on Base, so the gateway does not
+start there, and a production release of this code would stop commerce. The
+hold ends when the product owner's Safe exists on Base, its address is the Base
+entry of the gateway's network table, `pnpm commission-wallet` passes with its
+owners named, and this status is edited. The test channel's commission wallet
+in the code is the experiment's placeholder; every split records it for good,
+so the wallet the product owner names replaces it before any `deploy-test` of
+this code. At the release the wallets already set move to their splits
+unannounced, since nobody sells on the live channel.
 
 ## Context
 
@@ -41,14 +48,17 @@ a Safe, whose signers change while its address does not. The address is computed
 offline from the factory's CREATE2, with a salt hashing a fixed label, the chain
 id, which parts the two networks, and the merchant's identifier, which parts two
 merchants with one wallet; with no ordinal, a merchant and wallet always give
-the same split. Every split named as a payment address is recorded as ADR-0038
-says.
+the same split. Every split named as a payment address outside the sandbox is
+recorded as ADR-0038 says.
 
-A payout is one transaction anybody may send, the merchant included, for gas
+A payout is a transaction anybody may send, the merchant included, for gas
 alone: a batch through Multicall3 `0xcA11bde05977b3631167028862bE2a173976CA11`
 that creates each split with no code yet, distributes its USDC and withdraws the
-merchant's share, over every split that can hold money. Agentify holds no key,
-writes to no chain and reads no node.
+merchant's share, for at most twenty splits. A merchant's covers the split of
+their wallet in force and every split an order of theirs was paid to; the
+operator's covers every split recorded on the network, in parts of twenty,
+since any of them may hold money, at the price of gas for those that hold
+nothing. Agentify holds no key, writes to no chain and reads no node.
 
 ## Consequences
 

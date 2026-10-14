@@ -72,7 +72,8 @@ session was signed in as, or the key a call was made with.
 Agentify cannot move the merchant's money, and the money waits in the split
 until somebody, the merchant included, sends a payout (ADR-0037). The gateway
 keeps no ledger, only a registry of the splits it named, and runs no payout
-job; the operator sends one over every split by hand. The merchant checks the
+job; the operator sends one over every split recorded, twenty to a transaction,
+by hand. The merchant checks the
 wallet by eye but not the split, whose recipients a block explorer shows from
 its first payout. The checksum's Keccak-256 is hand-written in the contracts
 package, whose published tree is `zod` alone (ADR-0003 §1); the split's address
