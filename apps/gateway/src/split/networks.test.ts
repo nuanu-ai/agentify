@@ -3,8 +3,9 @@
  * calls, and a split is immutable, so a value that drifts moves every
  * merchant's money for good. The contracts are compared with the addresses the
  * experiment's transactions called on Base Sepolia rather than with a copy
- * typed here, and a network the table does not describe is refused rather than
- * given another network's values.
+ * typed here, on every network, since 0xSplits sits at the same addresses on
+ * Base; and a network the table does not describe is refused rather than given
+ * another network's values.
  */
 
 import { checksummedAddressOf } from "@nuanu-ai/agentify-contracts";
@@ -45,11 +46,35 @@ const addressesOf = (entry: PayoutSplitNetwork): readonly string[] => [
 
 const TEST_CHANNEL = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532");
 
+/**
+ * Every entry a gateway runs on: the code's own, and the Base entry that tests
+ * starting a live gateway put in place of the code's.
+ */
+const EVERY_ENTRY: readonly PayoutSplitNetwork[] = [
+  ...entriesOf(PAYOUT_SPLIT_NETWORKS),
+  payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453"),
+];
+
+/** The token a gateway on this network asks a buyer for, as its payment library names it. */
+const tokenOn = (network: string): string => {
+  const config =
+    network === "eip155:8453"
+      ? loadConfig(LIVE, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE)
+      : loadConfig({ DATABASE_URL, PAYMENT_NETWORK: network });
+  return new PaymentEdge(config.payment, config.publicBaseUrl, 300).token().asset;
+};
+
 describe("the payout split table in the code", () => {
-  it("names on Base Sepolia the contracts the experiment's transactions called", () => {
-    expect(TEST_CHANNEL.factory.toLowerCase()).toBe(ON_CHAIN.factory);
-    expect(TEST_CHANNEL.implementation).toBe(IMPLEMENTATION);
-    expect(TEST_CHANNEL.warehouse.toLowerCase()).toBe(ON_CHAIN.warehouse);
+  it("names on every network the contracts the experiment called and the token payments there are asked in", () => {
+    for (const entry of EVERY_ENTRY) {
+      expect(entry.factory.toLowerCase(), entry.network).toBe(ON_CHAIN.factory);
+      expect(entry.implementation, entry.network).toBe(IMPLEMENTATION);
+      expect(entry.warehouse.toLowerCase(), entry.network).toBe(ON_CHAIN.warehouse);
+      // The experiment never called Multicall3, which sits at one address on
+      // every chain it is deployed to; the payout tests hold that address.
+      expect(entry.multicall3, entry.network).toBe(TEST_CHANNEL.multicall3);
+      expect(entry.usdc, entry.network).toBe(tokenOn(entry.network));
+    }
     expect(TEST_CHANNEL.usdc.toLowerCase()).toBe(ON_CHAIN.usdc);
     // The token word of every distribute: selector, the tuple's offset, then the token.
     expect(`0x${inputOf("distribute").slice(2 + 8 + 64 + 24, 2 + 8 + 128)}`).toBe(ON_CHAIN.usdc);
@@ -63,21 +88,6 @@ describe("the payout split table in the code", () => {
             address,
           );
         }
-      }
-    }
-  });
-
-  it("names on every network the token the gateway's payment challenges ask for", () => {
-    const tokenOn = (network: string): string => {
-      const config =
-        network === "eip155:8453"
-          ? loadConfig(LIVE, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE)
-          : loadConfig({ DATABASE_URL, PAYMENT_NETWORK: network });
-      return new PaymentEdge(config.payment, config.publicBaseUrl, 300).token().asset;
-    };
-    for (const table of [PAYOUT_SPLIT_NETWORKS, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE]) {
-      for (const entry of entriesOf(table)) {
-        expect(entry.usdc, entry.network).toBe(tokenOn(entry.network));
       }
     }
   });
