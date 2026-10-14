@@ -527,10 +527,13 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
   }
 
   say("accounting, in USDC units, from the first read to the last block:");
+  let together = 0n;
   for (const [role, address] of parties) {
     const change = (column: "held" | "credited") =>
       (last[column][address] ?? 0n) - (initial.ledger[column][address] ?? 0n);
+    together += change("held") + change("credited");
     say(`  ${role} ${address}: held ${change("held")}, credited ${change("credited")}`);
   }
+  say(`  together ${together}`);
   say(`gas: ${spent} wei for the three payouts, under the cap of ${run.gasCap} wei`);
 }

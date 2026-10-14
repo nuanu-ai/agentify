@@ -47,9 +47,9 @@
  *      merchant a transfer of 0 and the commission wallet c + 9 + 10 - 1; one
  *      unit stays credited to each, four one-unit residues in all.
  *   6. At every transaction's block each party's USDC, held and credited, is
- *      the predicted amount, and no USDC transfer names any address but the
- *      buyer, the split, the warehouse, the merchant wallet and the commission
- *      wallet. The parties' USDC sums to what it summed to before the run.
+ *      the predicted amount, and the transaction's USDC transfers are exactly
+ *      the predicted ones, between the buyer, the split, the warehouse, the
+ *      merchant wallet and the commission wallet and nobody else.
  *
  * Decision rule: any difference fails the run at its step, printing the
  * prediction and what the chain showed; the run sends nothing after it. Gas
