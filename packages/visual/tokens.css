@@ -941,7 +941,11 @@ p {
     display: none;
   }
 
-  body:has(.site-menu[open]) {
+  /* While the menu is open the window's scroll stands still. The lock is on
+     the root rather than the body: a surface that clips the root sideways
+     keeps the body's overflow from reaching the window, and a body that
+     scrolls on its own takes the sticky header to the top of the page. */
+  html:has(.site-menu[open]) {
     overflow: hidden;
   }
 }
