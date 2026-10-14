@@ -38,8 +38,10 @@ import {
 } from "../http/x402.js";
 import type { Ids } from "../ports/clock.js";
 import type { Integration } from "../ports/store.js";
+import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "./split-networks.js";
 
 export { loggedWhile } from "./logged.js";
+export { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "./split-networks.js";
 
 /** Identifiers a test can read: ord_1, item_1, env_3. */
 export const countedIds = (): Ids => {
@@ -51,11 +53,18 @@ export const countedIds = (): Ids => {
   };
 };
 
+/**
+ * A configuration as `loadConfig` reads it, on the payout split table with a
+ * fixture's Base entry, so a test can run a live gateway.
+ */
 export const testConfig = (overrides: Record<string, string> = {}): GatewayConfig =>
-  loadConfig({
-    DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
-    ...overrides,
-  });
+  loadConfig(
+    {
+      DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
+      ...overrides,
+    },
+    SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
+  );
 
 /** A merchant the harness made, with one key of theirs, readable once here. */
 export interface SeededMerchant {

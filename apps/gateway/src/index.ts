@@ -39,3 +39,12 @@ export { nobodyAnnounces } from "./ports/announcer.js";
 export { randomIds, systemClock } from "./ports/clock.js";
 export type { Facilitator } from "./ports/facilitator.js";
 export type { Integration, StoredOrder } from "./ports/store.js";
+export {
+  PAYOUT_SPLIT_NETWORKS,
+  type PayoutSplitNetwork,
+  type PayoutSplitNetworks,
+  payoutSplitNetworkOf,
+} from "./split/networks.js";
+export { type PayoutSplit, payoutSplitFor } from "./split/parameters.js";
+export { merchantPayout, operatorPayouts, type PayoutTransaction } from "./split/payout.js";
+export { type NotAPayoutWallet, whyNotAPayoutWallet } from "./split/wallet-rule.js";
