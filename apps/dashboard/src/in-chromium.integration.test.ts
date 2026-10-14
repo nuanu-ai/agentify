@@ -261,8 +261,8 @@ describe("the sections on a long page", () => {
   it("stay in reach on a phone from the menu at the end of the header's row, which shows who is signed in and closes on Escape", async () => {
     const page = await onTheCards({ width: 390, height: 600 });
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    const burger = page.locator(".app-menu > summary");
-    const panel = page.locator(".app-menu-panel");
+    const burger = page.locator(".site-menu > summary");
+    const panel = page.locator(".site-menu-panel");
 
     const reach = await burger.boundingBox();
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
@@ -283,8 +283,8 @@ describe("the sections on a long page", () => {
 
   it("are in a phone's menu that Escape closes wherever the focus is, so the page scrolls again", async () => {
     const page = await onTheCards({ width: 390, height: 600 });
-    const burger = page.locator(".app-menu > summary");
-    const panel = page.locator(".app-menu-panel");
+    const burger = page.locator(".site-menu > summary");
+    const panel = page.locator(".site-menu-panel");
     const pageScrolls = () =>
       page.evaluate(() => getComputedStyle(document.body).overflowY !== "hidden");
 
@@ -305,9 +305,9 @@ describe("the sections on a long page", () => {
     const page = await onTheCards({ width: 390, height: 600 });
     await page.goto(`${origin}${BASE}/orders`);
     await page.waitForLoadState("networkidle");
-    const panel = page.locator(".app-menu-panel");
+    const panel = page.locator(".site-menu-panel");
 
-    await page.locator(".app-menu > summary").click();
+    await page.locator(".site-menu > summary").click();
     await panel.waitFor({ state: "visible" });
     // The orders' filter leads to the same page, which is drawn again in
     // place rather than anew; the menu is open over it.

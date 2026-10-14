@@ -1270,7 +1270,7 @@ h2 {
    header's row, and the sections, the documentation and who is signed in with
    the way out open under the header from it, over the page. The header's own
    address and sign-out give way to it there. */
-.app-menu {
+.site-menu {
   display: none;
 }
 
@@ -1278,10 +1278,10 @@ h2 {
   .app-frame .site-doors .site-visitor {
     display: none;
   }
-  .app-menu {
+  .site-menu {
     display: block;
   }
-  .app-menu > summary {
+  .site-menu > summary {
     width: 44px;
     height: 44px;
     display: flex;
@@ -1296,10 +1296,10 @@ h2 {
     cursor: pointer;
     list-style: none;
   }
-  .app-menu > summary::-webkit-details-marker {
+  .site-menu > summary::-webkit-details-marker {
     display: none;
   }
-  .app-menu > summary span {
+  .site-menu > summary span {
     width: 18px;
     height: 2px;
     border-radius: 1px;
@@ -1308,17 +1308,17 @@ h2 {
       transform 0.2s ease,
       opacity 0.2s ease;
   }
-  .app-menu[open] > summary span:nth-child(1) {
+  .site-menu[open] > summary span:nth-child(1) {
     transform: translateY(6px) rotate(45deg);
   }
-  .app-menu[open] > summary span:nth-child(2) {
+  .site-menu[open] > summary span:nth-child(2) {
     opacity: 0;
   }
-  .app-menu[open] > summary span:nth-child(3) {
+  .site-menu[open] > summary span:nth-child(3) {
     transform: translateY(-6px) rotate(-45deg);
   }
   /* Placed against the header, which is the nearest box with a position. */
-  .app-menu .app-menu-panel {
+  .site-menu .site-menu-panel {
     position: absolute;
     top: 100%;
     right: 0;
@@ -1330,12 +1330,12 @@ h2 {
     background: var(--surface);
     box-shadow: 0 24px 40px -32px rgb(26 25 23 / 45%);
   }
-  .app-menu .app-menu-sections {
+  .site-menu .app-menu-sections {
     display: grid;
     gap: 4px;
   }
-  .app-menu .app-menu-sections a,
-  .app-menu .app-menu-sections span {
+  .site-menu .app-menu-sections a,
+  .site-menu .app-menu-sections span {
     display: flex;
     align-items: center;
     gap: 11px;
@@ -1347,7 +1347,7 @@ h2 {
     font-weight: 550;
     text-decoration: none;
   }
-  .app-menu .app-menu-sections i {
+  .site-menu .app-menu-sections i {
     width: 23px;
     height: 23px;
     display: grid;
@@ -1357,16 +1357,16 @@ h2 {
     color: var(--faint);
     font: normal 600 0.625rem var(--font-mono);
   }
-  .app-menu .app-menu-sections [aria-current="page"] {
+  .site-menu .app-menu-sections [aria-current="page"] {
     color: var(--accent);
     background: var(--accent-soft);
   }
-  .app-menu .app-menu-sections [aria-current="page"] i {
+  .site-menu .app-menu-sections [aria-current="page"] i {
     color: var(--accent);
     border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
     background: var(--surface);
   }
-  .app-menu .app-menu-docs {
+  .site-menu .app-menu-docs {
     display: flex;
     align-items: center;
     min-height: 44px;
@@ -1376,7 +1376,7 @@ h2 {
     font-weight: 650;
   }
   /* Who is signed in, whole, and the way out, under a line of their own. */
-  .app-menu .app-menu-account .site-visitor {
+  .site-menu .app-menu-account .site-visitor {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -1386,19 +1386,19 @@ h2 {
     padding: 14px 12px 0;
     border-top: var(--hairline) solid var(--line);
   }
-  .app-menu .app-menu-account .site-who {
+  .site-menu .app-menu-account .site-who {
     min-width: 0;
     overflow-wrap: anywhere;
     color: var(--muted);
     font-size: var(--text-label);
     text-decoration: none;
   }
-  .app-menu .app-menu-account .site-sign-out button {
+  .site-menu .app-menu-account .site-sign-out button {
     min-height: 44px;
     font-size: 0.875rem;
     font-weight: 650;
   }
-  body:has(.app-menu[open]) {
+  body:has(.site-menu[open]) {
     overflow: hidden;
   }
 }
