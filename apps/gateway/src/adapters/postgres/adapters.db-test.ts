@@ -1436,7 +1436,7 @@ if (databaseUrl === null) {
           "update payout_splits set recorded_at = now()",
           "delete from payout_splits",
           `insert into payout_splits select * from payout_splits
-           on conflict (network, merchant_id, merchant_wallet) do update set salt = excluded.salt`,
+           on conflict (network, merchant_id, lower(merchant_wallet)) do update set salt = excluded.salt`,
         ]) {
           expect((await refusal(pool.query(change))).message, change).toMatch(
             /never changed or deleted/,
@@ -1451,28 +1451,45 @@ if (databaseUrl === null) {
         expect(await rowsOf(A)).toStrictEqual([before]);
       });
 
-      it("keeps one split for one merchant and wallet on one network, and one row for one address", async () => {
+      it("keeps one split for one merchant and wallet on one network, and one row for one address, each in either spelling", async () => {
         // Two rows for one wallet would leave the payment address and the
         // payout instruction free to name two different contracts; a second
-        // spelling of one address is the same contract.
+        // spelling of one address is the same contract, and of one wallet the
+        // same wallet.
         const other = { ...network, commissionWallet: W2 };
         const second = payoutSplitFor(other, A, PAID_NOW);
         expect((await refusal(store.recordPayoutSplits([second], now))).message).toMatch(
           /recorded/,
         );
+        // At another address, so that only the key on the wallet can refuse it.
         const anotherCommission = await refusal(
           pool.query(
             `insert into payout_splits
-             select address, network, merchant_id, merchant_wallet, $1, merchant_allocation,
+             select $1, network, merchant_id, merchant_wallet, $2, merchant_allocation,
                     commission_allocation, total_allocation, distribution_incentive, owner, salt,
                     factory, recorded_at
-             from payout_splits where merchant_id = $2`,
-            [W2, A],
+             from payout_splits where merchant_id = $3`,
+            [splitOf("mch_elsewhere", PAID_NOW).address, W2, A],
           ),
         );
         expect(anotherCommission).toMatchObject({
           code: "23505",
-          constraint: "payout_splits_pkey",
+          constraint: "payout_splits_wallet_unique",
+        });
+        await store.recordPayoutSplits([splitOf("mch_lettered", W1)], now);
+        const theWalletInLowerCase = await refusal(
+          pool.query(
+            `insert into payout_splits
+             select $1, network, merchant_id, lower(merchant_wallet), commission_wallet,
+                    merchant_allocation, commission_allocation, total_allocation,
+                    distribution_incentive, owner, salt, factory, recorded_at
+             from payout_splits where merchant_id = 'mch_lettered'`,
+            [splitOf("mch_lettered", W2).address],
+          ),
+        );
+        expect(theWalletInLowerCase).toMatchObject({
+          code: "23505",
+          constraint: "payout_splits_wallet_unique",
         });
         const anotherSpelling = await refusal(
           pool.query(
