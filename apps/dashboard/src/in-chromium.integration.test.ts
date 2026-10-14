@@ -18,7 +18,7 @@ import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { type Harness, harness } from "@agentify/gateway/testing";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
-import { launchChromium } from "@agentify/ui/chromium";
+import { dragUp, launchChromium } from "@agentify/ui/chromium";
 import express from "express";
 import type { Browser, Page } from "playwright";
 import type { ServerBuild } from "react-router";
@@ -123,9 +123,12 @@ afterAll(async () => {
   await close();
 });
 
-/** A browser with nothing kept yet, signed in, on the cards. */
-const onTheCards = async (viewport = { width: 1280, height: 900 }): Promise<Page> => {
-  const context = await browser.newContext({ viewport });
+/** A browser with nothing kept yet, signed in, on the cards; `phone` gives it a phone's touch. */
+const onTheCards = async (
+  viewport = { width: 1280, height: 900 },
+  phone = false,
+): Promise<Page> => {
+  const context = await browser.newContext({ viewport, isMobile: phone, hasTouch: phone });
   await context.addCookies(cookies.map((one) => ({ ...one, url: origin })));
   const page = await context.newPage();
   await page.goto(`${origin}${BASE}/cards`);
@@ -281,22 +284,49 @@ describe("the sections on a long page", () => {
     await page.context().close();
   });
 
-  it("are in a phone's menu that Escape closes wherever the focus is, so the page scrolls again", async () => {
+  it("are in a phone's menu that, opened on a scrolled page, keeps the header at the top and holds the page still under a wheel and a finger until it closes", async () => {
+    const page = await onTheCards({ width: 390, height: 600 }, true);
+    const burger = page.locator(".site-menu > summary");
+    const panel = page.locator(".site-menu-panel");
+    const scrolled = () => page.evaluate(() => window.scrollY);
+    await page.evaluate(() => window.scrollTo(0, 300));
+    const before = await scrolled();
+    expect(before).toBe(300);
+
+    await burger.tap();
+    await panel.waitFor({ state: "visible" });
+    expect((await page.locator("header.site-header").boundingBox())?.y).toBe(0);
+    const box = await panel.boundingBox();
+    const bottom = (box?.y ?? 0) + (box?.height ?? 0);
+    expect(box?.y).toBeGreaterThan(0);
+    expect(bottom).toBeLessThanOrEqual(600);
+    // A point on the page itself, just under the panel.
+    const under = { x: 100, y: bottom + 20 };
+    await page.mouse.move(under.x, under.y);
+    await page.mouse.wheel(0, 400);
+    await dragUp(page, under, 200);
+    await page.waitForTimeout(300);
+    expect(await scrolled()).toBe(before);
+
+    await burger.tap();
+    await panel.waitFor({ state: "hidden" });
+    await dragUp(page, under, 200);
+    expect(await scrolled()).toBeGreaterThan(before);
+    await page.context().close();
+  });
+
+  it("are in a phone's menu that Escape closes wherever the focus is, handing the focus back to its button", async () => {
     const page = await onTheCards({ width: 390, height: 600 });
     const burger = page.locator(".site-menu > summary");
     const panel = page.locator(".site-menu-panel");
-    const pageScrolls = () =>
-      page.evaluate(() => getComputedStyle(document.body).overflowY !== "hidden");
 
     await burger.click();
     await panel.waitFor({ state: "visible" });
-    expect(await pageScrolls()).toBe(false);
     // A browser that does not focus a pressed summary, as Safari does not.
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.keyboard.press("Escape");
 
     await panel.waitFor({ state: "hidden" });
-    expect(await pageScrolls()).toBe(true);
     expect(await burger.evaluate((element) => element === document.activeElement)).toBe(true);
     await page.context().close();
   });

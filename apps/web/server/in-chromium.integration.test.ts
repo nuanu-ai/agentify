@@ -24,7 +24,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { CONSENT_STORAGE_KEY } from "@agentify/analytics/browser";
 import { precompressedFrom } from "@agentify/ui/assets";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
-import { launchChromium } from "@agentify/ui/chromium";
+import { dragUp, launchChromium } from "@agentify/ui/chromium";
 import express from "express";
 import type { Browser, Page } from "playwright";
 import type { ServerBuild } from "react-router";
@@ -805,6 +805,49 @@ describe("the site's menu on a phone", () => {
     expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
     expect(complaints).toEqual([]);
     await page.context().close();
+  });
+
+  it("opened on a scrolled page keeps the bar at the top and itself in view, and holds the page still under a wheel and a finger until it closes", async () => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 700 },
+      isMobile: true,
+      hasTouch: true,
+    });
+    const page = await context.newPage();
+    await page.route("**/api/v2/session", (route) =>
+      route.fulfill({ json: { status: "signed_out" } }),
+    );
+    await page.goto(`${origin}/methodology`);
+    await page.waitForLoadState("networkidle");
+    const burger = page.locator("header .site-menu > summary");
+    const panel = page.locator("header .site-menu-panel");
+    const scrolled = () => page.evaluate(() => window.scrollY);
+    await page.evaluate(() => window.scrollTo(0, 300));
+    await dragUp(page, { x: 100, y: 450 }, 200);
+    const before = await scrolled();
+    expect(before).toBeGreaterThan(300);
+
+    await burger.tap();
+    await panel.waitFor({ state: "visible" });
+    expect((await page.locator("header.site-header").boundingBox())?.y).toBe(0);
+    const box = await panel.boundingBox();
+    const bottom = (box?.y ?? 0) + (box?.height ?? 0);
+    expect(box?.y).toBeGreaterThan(0);
+    expect(bottom).toBeLessThanOrEqual(700);
+    // A point on the page itself, just under the panel.
+    const under = { x: 100, y: bottom + 20 };
+    await page.mouse.move(under.x, under.y);
+    await page.mouse.wheel(0, 400);
+    await dragUp(page, under, 200);
+    await page.waitForTimeout(300);
+    expect(await scrolled()).toBe(before);
+    expect((await page.locator("header.site-header").boundingBox())?.y).toBe(0);
+
+    await burger.tap();
+    await panel.waitFor({ state: "hidden" });
+    await dragUp(page, under, 200);
+    expect(await scrolled()).toBeGreaterThan(before);
+    await context.close();
   });
 
   it.each(VISITORS)(
