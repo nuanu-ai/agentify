@@ -2638,7 +2638,8 @@ describe("the orders screen", () => {
 
     expect(text).toContain("refund due");
     expect(text).toContain("1 order needs you");
-    expect(text).toContain("You return it from your own wallet");
+    // The whole price, though the split paid the merchant only their share.
+    expect(text).toContain("the full price, 8.00 USD");
     // `refund_due` is what a program branches on; a merchant reads a sentence.
     expect(text).not.toContain("refund_due");
   });
@@ -2708,6 +2709,23 @@ describe("the receipts screen", () => {
     expect(row.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/g)).toHaveLength(3);
     // The summary counts what it can stand behind.
     expect(text).toContain("Delivered or shipped 1 of 1 receipt");
+  });
+
+  it("says on Orders and Receipts about how much of a sale is the merchant's and how much Agentify's", async () => {
+    // The sale went into the merchant's payout split, which pays 99.9% to
+    // their wallet and 0.1% to Agentify when it is paid out.
+    const { browser, gateway, harnessed } = await started();
+    const itemId = await publish(gateway, roomCard);
+    await buyOverHttp(harnessed, gateway, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    await browser.signIn();
+
+    for (const path of ["/orders", "/receipts"]) {
+      const html = (await browser.get(path)).html;
+      const cell = /<td class="amount"[^>]*>([\s\S]*?)<\/td>/.exec(html)?.[1] ?? "";
+      expect(readable(cell), path).toBe("80.00 USD test ≈ 79.92 USD to you ≈ 0.08 USD to Agentify");
+    }
   });
 
   it("links each receipt to its transfer on the chain the money moved on", async () => {
