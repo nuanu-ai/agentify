@@ -162,8 +162,19 @@ describe("the first address a merchant sets", () => {
       payout_wallet: A_WALLET,
       pending: null,
     });
+    // The message is the merchant's record of the address buyers pay, which
+    // the checksum's check by eye does not cover, so it names the split as
+    // recorded.
+    const recorded = await recordedSplitOf(harnessed, A_WALLET, merchantId);
+    expect(recorded?.merchantWallet).toBe(A_WALLET);
     expect(harnessed.announcer.announced).toStrictEqual([
-      { kind: "wallet_set", merchant_id: merchantId, to: A_WALLET, asked_with: SIGNED_IN },
+      {
+        kind: "wallet_set",
+        merchant_id: merchantId,
+        to: A_WALLET,
+        to_split: recorded?.address,
+        asked_with: SIGNED_IN,
+      },
     ]);
   });
 
@@ -348,11 +359,22 @@ describe("a replacement on the live deployment", () => {
         kind: "wallet_change",
         merchant_id: harnessed.merchant.id,
         from: harnessed.merchant.wallet,
+        from_split: splitOf(harnessed, harnessed.merchant.wallet).address,
         to: A_WALLET,
+        to_split: splitOf(harnessed, A_WALLET).address,
         not_before: at(asked + THE_WAIT),
         asked_with: SIGNED_IN,
       },
     ]);
+    // The splits the message named are the ones recorded once it was handed
+    // over: the one buyers pay now, and the one they pay once the change
+    // applies.
+    expect((await recordedSplitOf(harnessed, A_WALLET))?.address).toBe(
+      splitOf(harnessed, A_WALLET).address,
+    );
+    expect(
+      (await harnessed.store.merchantById(harnessed.merchant.id))?.payoutWallet.split?.address,
+    ).toBe(splitOf(harnessed, harnessed.merchant.wallet).address);
   });
 
   it("records nothing of a change whose message could not go out, not even its split", async () => {
@@ -481,6 +503,7 @@ describe("asking again", () => {
       kind: "wallet_change_cancelled",
       merchant_id: harnessed.merchant.id,
       kept: harnessed.merchant.wallet,
+      kept_split: (await recordedSplitOf(harnessed, harnessed.merchant.wallet))?.address,
       cancelled: A_WALLET,
       asked_with: SIGNED_IN,
     });
