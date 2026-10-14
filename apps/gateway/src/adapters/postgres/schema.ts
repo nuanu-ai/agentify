@@ -49,9 +49,10 @@ export const merchants = pgTable(
      */
     sellerSite: text("seller_site"),
     /**
-     * The address this merchant's sales are paid into, or null where nobody has
-     * set one. Buyers' agents pay it directly, so it is never filled in from the
-     * operator's own configured address. The gateway writes the mixed-case
+     * The wallet this merchant's share of sales is paid out to, or null where
+     * nobody has set one. Buyers' agents pay into its payout split, which pays
+     * this wallet and nobody else the merchant's share, so it is never filled
+     * in from the operator's own configured address. The gateway writes the mixed-case
      * spelling a wallet displays; a row in lower case is the same wallet, and
      * the registry is read for it in either spelling.
      */
