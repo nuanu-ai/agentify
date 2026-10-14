@@ -1,0 +1,3120 @@
+{
+ "taken": "2026-10-14T16:09:58.846Z",
+ "latencyMs": 200,
+ "runs": 5,
+ "sizes": {
+  "A": [
+   {
+    "page": "/",
+    "jsKB": 92.4,
+    "jsWithoutPrefetchKB": 92.4,
+    "cssKB": 4.8,
+    "htmlKB": 6.3,
+    "htmlRawKB": 33.5,
+    "totalKB": 103.5,
+    "prefetchedDataKB": 67.1,
+    "fontKB": 89.1,
+    "files": [
+     {
+      "file": "apps/docs/dist/client/index.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 6471
+     },
+     {
+      "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 368
+     },
+     {
+      "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 125
+     },
+     {
+      "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 88204
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 726
+     },
+     {
+      "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 4340
+     },
+     {
+      "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 853
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 4945
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10049
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-500-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10064
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "apps/docs/dist/client/_.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3928
+     },
+     {
+      "file": "apps/docs/dist/client/money.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4471
+     },
+     {
+      "file": "apps/docs/dist/client/faq.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3854
+     },
+     {
+      "file": "apps/docs/dist/client/quickstart.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 12368
+     },
+     {
+      "file": "apps/docs/dist/client/cards.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 13450
+     },
+     {
+      "file": "apps/docs/dist/client/orders.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 21165
+     },
+     {
+      "file": "apps/docs/dist/client/failures.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4870
+     },
+     {
+      "file": "apps/docs/dist/client/scanner.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 2220
+     },
+     {
+      "file": "apps/docs/dist/client/scanner/methodology.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 2365
+     }
+    ]
+   },
+   {
+    "page": "/money",
+    "jsKB": 92.4,
+    "jsWithoutPrefetchKB": 92.4,
+    "cssKB": 4.8,
+    "htmlKB": 7,
+    "htmlRawKB": 39,
+    "totalKB": 104.2,
+    "prefetchedDataKB": 67.1,
+    "fontKB": 89.1,
+    "files": [
+     {
+      "file": "apps/docs/dist/client/money.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 7187
+     },
+     {
+      "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 368
+     },
+     {
+      "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 125
+     },
+     {
+      "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 88204
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 726
+     },
+     {
+      "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 4340
+     },
+     {
+      "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 853
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 4945
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10049
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-500-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10064
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "apps/docs/dist/client/_.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3928
+     },
+     {
+      "file": "apps/docs/dist/client/money.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4471
+     },
+     {
+      "file": "apps/docs/dist/client/faq.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3854
+     },
+     {
+      "file": "apps/docs/dist/client/quickstart.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 12368
+     },
+     {
+      "file": "apps/docs/dist/client/cards.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 13450
+     },
+     {
+      "file": "apps/docs/dist/client/orders.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 21165
+     },
+     {
+      "file": "apps/docs/dist/client/failures.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4870
+     },
+     {
+      "file": "apps/docs/dist/client/scanner.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 2220
+     },
+     {
+      "file": "apps/docs/dist/client/scanner/methodology.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 2365
+     }
+    ]
+   },
+   {
+    "page": "/faq",
+    "jsKB": 92.4,
+    "jsWithoutPrefetchKB": 92.4,
+    "cssKB": 4.8,
+    "htmlKB": 6.4,
+    "htmlRawKB": 37.4,
+    "totalKB": 103.6,
+    "prefetchedDataKB": 67.1,
+    "fontKB": 89.1,
+    "files": [
+     {
+      "file": "apps/docs/dist/client/faq.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 6523
+     },
+     {
+      "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 368
+     },
+     {
+      "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 125
+     },
+     {
+      "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 88204
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 726
+     },
+     {
+      "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 4340
+     },
+     {
+      "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 853
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 4945
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10049
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-500-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10064
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "apps/docs/dist/client/_.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3928
+     },
+     {
+      "file": "apps/docs/dist/client/money.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4471
+     },
+     {
+      "file": "apps/docs/dist/client/faq.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3854
+     },
+     {
+      "file": "apps/docs/dist/client/quickstart.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 12368
+     },
+     {
+      "file": "apps/docs/dist/client/cards.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 13450
+     },
+     {
+      "file": "apps/docs/dist/client/orders.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 21165
+     },
+     {
+      "file": "apps/docs/dist/client/failures.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4870
+     },
+     {
+      "file": "apps/docs/dist/client/scanner.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 2220
+     },
+     {
+      "file": "apps/docs/dist/client/scanner/methodology.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 2365
+     }
+    ]
+   },
+   {
+    "page": "/quickstart",
+    "jsKB": 92.4,
+    "jsWithoutPrefetchKB": 92.4,
+    "cssKB": 4.8,
+    "htmlKB": 17.1,
+    "htmlRawKB": 120.9,
+    "totalKB": 114.3,
+    "prefetchedDataKB": 62.6,
+    "fontKB": 89.1,
+    "files": [
+     {
+      "file": "apps/docs/dist/client/quickstart.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 17463
+     },
+     {
+      "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 368
+     },
+     {
+      "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 125
+     },
+     {
+      "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 88204
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 726
+     },
+     {
+      "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 4340
+     },
+     {
+      "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 853
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 4945
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10049
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-500-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10064
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "apps/docs/dist/client/_.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3928
+     },
+     {
+      "file": "apps/docs/dist/client/money.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4471
+     },
+     {
+      "file": "apps/docs/dist/client/faq.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3854
+     },
+     {
+      "file": "apps/docs/dist/client/quickstart.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 12368
+     },
+     {
+      "file": "apps/docs/dist/client/cards.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 13450
+     },
+     {
+      "file": "apps/docs/dist/client/orders.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 21165
+     },
+     {
+      "file": "apps/docs/dist/client/failures.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4870
+     }
+    ]
+   },
+   {
+    "page": "/cards",
+    "jsKB": 92.4,
+    "jsWithoutPrefetchKB": 92.4,
+    "cssKB": 4.8,
+    "htmlKB": 18.8,
+    "htmlRawKB": 140.8,
+    "totalKB": 116,
+    "prefetchedDataKB": 37.2,
+    "fontKB": 89.1,
+    "files": [
+     {
+      "file": "apps/docs/dist/client/cards.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 19261
+     },
+     {
+      "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 368
+     },
+     {
+      "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 125
+     },
+     {
+      "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 88204
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 726
+     },
+     {
+      "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 4340
+     },
+     {
+      "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 853
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 4945
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10049
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-500-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10064
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "apps/docs/dist/client/_.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3928
+     },
+     {
+      "file": "apps/docs/dist/client/money.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4471
+     },
+     {
+      "file": "apps/docs/dist/client/faq.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3854
+     },
+     {
+      "file": "apps/docs/dist/client/quickstart.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 12368
+     },
+     {
+      "file": "apps/docs/dist/client/cards.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 13450
+     }
+    ]
+   },
+   {
+    "page": "/orders",
+    "jsKB": 92.4,
+    "jsWithoutPrefetchKB": 92.4,
+    "cssKB": 4.8,
+    "htmlKB": 28.3,
+    "htmlRawKB": 323.8,
+    "totalKB": 125.5,
+    "prefetchedDataKB": 57.8,
+    "fontKB": 89.1,
+    "files": [
+     {
+      "file": "apps/docs/dist/client/orders.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 28985
+     },
+     {
+      "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 368
+     },
+     {
+      "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 125
+     },
+     {
+      "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 88204
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 726
+     },
+     {
+      "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 4340
+     },
+     {
+      "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 853
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 4945
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10049
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-500-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10064
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "apps/docs/dist/client/_.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3928
+     },
+     {
+      "file": "apps/docs/dist/client/money.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4471
+     },
+     {
+      "file": "apps/docs/dist/client/faq.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3854
+     },
+     {
+      "file": "apps/docs/dist/client/quickstart.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 12368
+     },
+     {
+      "file": "apps/docs/dist/client/cards.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 13450
+     },
+     {
+      "file": "apps/docs/dist/client/orders.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 21165
+     }
+    ]
+   },
+   {
+    "page": "/failures",
+    "jsKB": 92.4,
+    "jsWithoutPrefetchKB": 92.4,
+    "cssKB": 4.8,
+    "htmlKB": 7.5,
+    "htmlRawKB": 42.8,
+    "totalKB": 104.7,
+    "prefetchedDataKB": 62.6,
+    "fontKB": 89.1,
+    "files": [
+     {
+      "file": "apps/docs/dist/client/failures.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 7693
+     },
+     {
+      "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 368
+     },
+     {
+      "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 125
+     },
+     {
+      "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 88204
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 726
+     },
+     {
+      "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 4340
+     },
+     {
+      "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 853
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 4945
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10049
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-500-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10064
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "apps/docs/dist/client/_.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3928
+     },
+     {
+      "file": "apps/docs/dist/client/money.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4471
+     },
+     {
+      "file": "apps/docs/dist/client/faq.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3854
+     },
+     {
+      "file": "apps/docs/dist/client/quickstart.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 12368
+     },
+     {
+      "file": "apps/docs/dist/client/cards.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 13450
+     },
+     {
+      "file": "apps/docs/dist/client/orders.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 21165
+     },
+     {
+      "file": "apps/docs/dist/client/failures.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4870
+     }
+    ]
+   },
+   {
+    "page": "/scanner",
+    "jsKB": 92.4,
+    "jsWithoutPrefetchKB": 92.4,
+    "cssKB": 4.8,
+    "htmlKB": 4.8,
+    "htmlRawKB": 24.7,
+    "totalKB": 102,
+    "prefetchedDataKB": 67.1,
+    "fontKB": 89.1,
+    "files": [
+     {
+      "file": "apps/docs/dist/client/scanner.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 4936
+     },
+     {
+      "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 368
+     },
+     {
+      "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 125
+     },
+     {
+      "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 88204
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 726
+     },
+     {
+      "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 4340
+     },
+     {
+      "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 853
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 4945
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10049
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-500-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10064
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "apps/docs/dist/client/_.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3928
+     },
+     {
+      "file": "apps/docs/dist/client/money.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4471
+     },
+     {
+      "file": "apps/docs/dist/client/faq.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3854
+     },
+     {
+      "file": "apps/docs/dist/client/quickstart.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 12368
+     },
+     {
+      "file": "apps/docs/dist/client/cards.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 13450
+     },
+     {
+      "file": "apps/docs/dist/client/orders.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 21165
+     },
+     {
+      "file": "apps/docs/dist/client/failures.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4870
+     },
+     {
+      "file": "apps/docs/dist/client/scanner.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 2220
+     },
+     {
+      "file": "apps/docs/dist/client/scanner/methodology.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 2365
+     }
+    ]
+   },
+   {
+    "page": "/scanner/methodology",
+    "jsKB": 92.4,
+    "jsWithoutPrefetchKB": 92.4,
+    "cssKB": 4.8,
+    "htmlKB": 5.1,
+    "htmlRawKB": 26.5,
+    "totalKB": 102.3,
+    "prefetchedDataKB": 67.1,
+    "fontKB": 89.1,
+    "files": [
+     {
+      "file": "apps/docs/dist/client/scanner/methodology.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 5176
+     },
+     {
+      "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 368
+     },
+     {
+      "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 125
+     },
+     {
+      "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 88204
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 726
+     },
+     {
+      "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 4340
+     },
+     {
+      "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 853
+     },
+     {
+      "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 4945
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10049
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-500-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10064
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "apps/docs/dist/client/_.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3928
+     },
+     {
+      "file": "apps/docs/dist/client/money.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4471
+     },
+     {
+      "file": "apps/docs/dist/client/faq.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 3854
+     },
+     {
+      "file": "apps/docs/dist/client/quickstart.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 12368
+     },
+     {
+      "file": "apps/docs/dist/client/cards.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 13450
+     },
+     {
+      "file": "apps/docs/dist/client/orders.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 21165
+     },
+     {
+      "file": "apps/docs/dist/client/failures.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 4870
+     },
+     {
+      "file": "apps/docs/dist/client/scanner.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 2220
+     },
+     {
+      "file": "apps/docs/dist/client/scanner/methodology.data",
+      "kind": "data",
+      "prefetch": true,
+      "brotli": 2365
+     }
+    ]
+   }
+  ],
+  "B": [
+   {
+    "page": "/",
+    "jsKB": 246.1,
+    "jsWithoutPrefetchKB": 194.3,
+    "cssKB": 18,
+    "htmlKB": 5.3,
+    "htmlRawKB": 20.9,
+    "totalKB": 269.5,
+    "prefetchedDataKB": 0,
+    "fontKB": 135.6,
+    "files": [
+     {
+      "file": "apps/docs/.vitepress/dist/index.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 5475
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/style.DNnfNeaq.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 18462
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/vp-icons.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 1
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/app.CRt9Ia6E.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 143262
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/inter-roman-latin.Di8DUHzh.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 67797
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/framework.B02wg2PO.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 41467
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/theme.Dqt0_OJ4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 13963
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/index.md.Df95eI_2.lean.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 251
+     },
+     {
+      "file": "packages/visual/public/assets/agentify-mark.svg",
+      "kind": "image",
+      "prefetch": false,
+      "brotli": 232
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/index.md.Df95eI_2.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3324
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/money.md.C7SnuXkz.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3803
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/faq.md.Bk6RbCEf.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3306
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/quickstart.md.iAygAXVY.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 11519
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/cards.md.RUkf2WkO.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 12409
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/orders.md.DS7JJ9UA.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 14565
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/failures.md.Dm7OlxyS.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 4167
+     }
+    ]
+   },
+   {
+    "page": "/money",
+    "jsKB": 242.4,
+    "jsWithoutPrefetchKB": 194.3,
+    "cssKB": 18,
+    "htmlKB": 5.8,
+    "htmlRawKB": 23.2,
+    "totalKB": 266.3,
+    "prefetchedDataKB": 0,
+    "fontKB": 145.5,
+    "files": [
+     {
+      "file": "apps/docs/.vitepress/dist/money.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 5973
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/style.DNnfNeaq.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 18462
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/vp-icons.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 1
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/app.CRt9Ia6E.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 143262
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/inter-roman-latin.Di8DUHzh.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 67797
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/framework.B02wg2PO.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 41467
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/theme.Dqt0_OJ4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 13963
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/money.md.C7SnuXkz.lean.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 243
+     },
+     {
+      "file": "packages/visual/public/assets/agentify-mark.svg",
+      "kind": "image",
+      "prefetch": false,
+      "brotli": 232
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10049
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/index.md.Df95eI_2.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3324
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/faq.md.Bk6RbCEf.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3306
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/quickstart.md.iAygAXVY.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 11519
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/cards.md.RUkf2WkO.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 12409
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/orders.md.DS7JJ9UA.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 14565
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/failures.md.Dm7OlxyS.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 4167
+     }
+    ]
+   },
+   {
+    "page": "/faq",
+    "jsKB": 242.9,
+    "jsWithoutPrefetchKB": 194.3,
+    "cssKB": 18,
+    "htmlKB": 5.3,
+    "htmlRawKB": 22.5,
+    "totalKB": 266.2,
+    "prefetchedDataKB": 0,
+    "fontKB": 145.5,
+    "files": [
+     {
+      "file": "apps/docs/.vitepress/dist/faq.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 5446
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/style.DNnfNeaq.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 18462
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/vp-icons.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 1
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/app.CRt9Ia6E.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 143262
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/inter-roman-latin.Di8DUHzh.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 67797
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/framework.B02wg2PO.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 41467
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/theme.Dqt0_OJ4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 13963
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/faq.md.Bk6RbCEf.lean.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 242
+     },
+     {
+      "file": "packages/visual/public/assets/agentify-mark.svg",
+      "kind": "image",
+      "prefetch": false,
+      "brotli": 232
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10049
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/index.md.Df95eI_2.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3324
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/money.md.C7SnuXkz.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3803
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/quickstart.md.iAygAXVY.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 11519
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/cards.md.RUkf2WkO.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 12409
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/orders.md.DS7JJ9UA.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 14565
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/failures.md.Dm7OlxyS.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 4167
+     }
+    ]
+   },
+   {
+    "page": "/quickstart",
+    "jsKB": 234.9,
+    "jsWithoutPrefetchKB": 194.3,
+    "cssKB": 18,
+    "htmlKB": 13.3,
+    "htmlRawKB": 63.6,
+    "totalKB": 266.2,
+    "prefetchedDataKB": 0,
+    "fontKB": 145.5,
+    "files": [
+     {
+      "file": "apps/docs/.vitepress/dist/quickstart.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 13647
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/style.DNnfNeaq.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 18462
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/vp-icons.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 1
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/app.CRt9Ia6E.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 143262
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/inter-roman-latin.Di8DUHzh.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 67797
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/framework.B02wg2PO.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 41467
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/theme.Dqt0_OJ4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 13963
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/quickstart.md.iAygAXVY.lean.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 245
+     },
+     {
+      "file": "packages/visual/public/assets/agentify-mark.svg",
+      "kind": "image",
+      "prefetch": false,
+      "brotli": 232
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10049
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/index.md.Df95eI_2.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3324
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/money.md.C7SnuXkz.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3803
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/faq.md.Bk6RbCEf.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3306
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/cards.md.RUkf2WkO.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 12409
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/orders.md.DS7JJ9UA.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 14565
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/failures.md.Dm7OlxyS.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 4167
+     }
+    ]
+   },
+   {
+    "page": "/cards",
+    "jsKB": 234,
+    "jsWithoutPrefetchKB": 194.3,
+    "cssKB": 18,
+    "htmlKB": 14.3,
+    "htmlRawKB": 71.8,
+    "totalKB": 266.3,
+    "prefetchedDataKB": 0,
+    "fontKB": 145.5,
+    "files": [
+     {
+      "file": "apps/docs/.vitepress/dist/cards.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 14602
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/style.DNnfNeaq.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 18462
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/vp-icons.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 1
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/app.CRt9Ia6E.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 143262
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/inter-roman-latin.Di8DUHzh.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 67797
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/framework.B02wg2PO.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 41467
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/theme.Dqt0_OJ4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 13963
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/cards.md.RUkf2WkO.lean.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 250
+     },
+     {
+      "file": "packages/visual/public/assets/agentify-mark.svg",
+      "kind": "image",
+      "prefetch": false,
+      "brotli": 232
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10049
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/index.md.Df95eI_2.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3324
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/money.md.C7SnuXkz.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3803
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/faq.md.Bk6RbCEf.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3306
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/quickstart.md.iAygAXVY.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 11519
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/orders.md.DS7JJ9UA.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 14565
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/failures.md.Dm7OlxyS.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 4167
+     }
+    ]
+   },
+   {
+    "page": "/orders",
+    "jsKB": 616.8,
+    "jsWithoutPrefetchKB": 579.1,
+    "cssKB": 18,
+    "htmlKB": 16.6,
+    "htmlRawKB": 72.1,
+    "totalKB": 651.4,
+    "prefetchedDataKB": 0,
+    "fontKB": 155.3,
+    "files": [
+     {
+      "file": "apps/docs/.vitepress/dist/orders.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 17005
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/style.DNnfNeaq.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 18462
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/vp-icons.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 1
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/app.CRt9Ia6E.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 143262
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/inter-roman-latin.Di8DUHzh.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 67797
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/framework.B02wg2PO.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 41467
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/theme.Dqt0_OJ4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 13963
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/katex.C5jXJg4s.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 63703
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/sizeCapture-INFHLROL.CXuuo7TD.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 495
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/dagre-GXQ25YYZ.BLEDfWD7.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 3813
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/swimlanes-42K2YHIH.D99HB_gq.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 37014
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/cose-bilkent-JH36ORCC.BD3fA9II.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 19547
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/c4Diagram-7LVT6UL2.DGDNBOqX.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 15263
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/flowDiagram-HODETNUW.DC7s4pRs.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 16521
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/swimlanesDiagram-VR7AAH4N.cw80WnZs.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 379
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/erDiagram-RLTQ6QDP.C8VU-OWM.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 9240
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/gitGraphDiagram-WWUBYQGX.B2jt0yeb.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 7983
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/ganttDiagram-EL5Y4UJY.BVKhKjIM.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 20615
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/infoDiagram-27XIBGKW.DLtvdHTg.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 362
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/pieDiagram-E7YTZNPT.Cy9OIVtl.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 2441
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/quadrantDiagram-AXDQQJYC.DoARLwf5.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 8681
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/xychartDiagram-S5SC5T6Z.CipzdbCJ.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 11077
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/requirementDiagram-BXWQKSXE.DUfDpMYH.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 8325
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/sequenceDiagram-WJ2MYXX4.De3GIvGV.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 25879
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/classDiagram-ZZMXUADV.CRugNip5.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 314
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/classDiagram-v2-VYDZK3BY.CRugNip5.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 314
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/stateDiagram-D77RDMKH.BMonnwqm.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 3344
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/stateDiagram-v2-MP3YSRHH.BkP1NeQf.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 277
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/journeyDiagram-3NMN7TZE.Ch46kTaZ.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 7540
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/timeline-definition-24CTP7MA.CMNvo2Dd.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 9347
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/mindmap-definition-YA3MSWOX.WerGOWcK.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 7095
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/kanban-definition-UXKFOSKX.BbHspRey.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 6503
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/sankeyDiagram-P5KCCOFB.B7jrOOvz.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 7848
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/diagram-Z3DM3KII.B6RD-BEP.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 1694
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/diagram-UQ7AKVKN.DoALzrx9.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 2416
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/blockDiagram-I7D4REHJ.PJISVbRv.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 12254
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/diagram-S7CK7UJ4.DJfzo2ub.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 3399
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/architectureDiagram-5GKGNRK7.Bm5pCvTS.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 36982
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/diagram-VSXAHHWV.CPH5aC3J.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 3833
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/ishikawaDiagram-5VMMS53U.CggrXq7-.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 6051
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/vennDiagram-4TSXK5OY.B_aJpkwv.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 14093
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/diagram-VX7I27RA.Hu6I7qf5.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 5218
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/wardleyDiagram-VM6X3IG4.sVMYXH1f.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 6235
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/cynefinDiagram-5FMLGOSQ.CJbssfm2.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 3260
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/railroadDiagram-O6MQD6OU.DxCpiDd0.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 691
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/ebnfDiagram-PWID7BFC.DpElGckT.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 797
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/abnfDiagram-VCTEODGH.B6llSSjT.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 800
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/pegDiagram-XKGWAZYB.BVI1woZf.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 831
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/virtual_mermaid-config.DDnGl6nM.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 65
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/orders.md.DS7JJ9UA.lean.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 942
+     },
+     {
+      "file": "packages/visual/public/assets/agentify-mark.svg",
+      "kind": "image",
+      "prefetch": false,
+      "brotli": 232
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-500-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10064
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 10049
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/chunk-2Q5K7J3B.Yar7V9vX.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 134
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/chunk-F27PBJKO.DhWck3yI.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 725
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/index.md.Df95eI_2.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3324
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/money.md.C7SnuXkz.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3803
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/faq.md.Bk6RbCEf.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3306
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/quickstart.md.iAygAXVY.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 11519
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/cards.md.RUkf2WkO.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 12409
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/failures.md.Dm7OlxyS.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 4167
+     }
+    ]
+   },
+   {
+    "page": "/failures",
+    "jsKB": 242.1,
+    "jsWithoutPrefetchKB": 194.3,
+    "cssKB": 18,
+    "htmlKB": 6.2,
+    "htmlRawKB": 24.6,
+    "totalKB": 266.3,
+    "prefetchedDataKB": 0,
+    "fontKB": 135.6,
+    "files": [
+     {
+      "file": "apps/docs/.vitepress/dist/failures.html",
+      "kind": "html",
+      "prefetch": false,
+      "brotli": 6335
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/style.DNnfNeaq.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 18462
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/vp-icons.css",
+      "kind": "css",
+      "prefetch": false,
+      "brotli": 1
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/app.CRt9Ia6E.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 143262
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/inter-roman-latin.Di8DUHzh.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 67797
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/framework.B02wg2PO.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 41467
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/chunks/theme.Dqt0_OJ4.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 13963
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/failures.md.Dm7OlxyS.lean.js",
+      "kind": "js",
+      "prefetch": false,
+      "brotli": 254
+     },
+     {
+      "file": "packages/visual/public/assets/agentify-mark.svg",
+      "kind": "image",
+      "prefetch": false,
+      "brotli": 232
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-400-latin.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 24348
+     },
+     {
+      "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+      "kind": "font",
+      "prefetch": false,
+      "brotli": 46756
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/index.md.Df95eI_2.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3324
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/money.md.C7SnuXkz.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3803
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/faq.md.Bk6RbCEf.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 3306
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/quickstart.md.iAygAXVY.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 11519
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/cards.md.RUkf2WkO.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 12409
+     },
+     {
+      "file": "apps/docs/.vitepress/dist/assets/orders.md.DS7JJ9UA.js",
+      "kind": "js",
+      "prefetch": true,
+      "brotli": 14565
+     }
+    ]
+   }
+  ]
+ },
+ "diagrams": {
+  "fences": 3,
+  "inlineSvgInA": 3,
+  "ordersJsBeyondLightestKB": {
+   "A": 0,
+   "B": 382.8
+  }
+ },
+ "search": {
+  "A": {
+   "indexKB": 67.2,
+   "codeKB": 6.2,
+   "fetchedOnOpening": [
+    {
+     "file": "apps/docs/dist/client/assets/search-panel-BYnFDd1h.js",
+     "brotliKB": 6.2
+    },
+    {
+     "file": "apps/docs/dist/client/search-index.json",
+     "brotliKB": 67.2
+    }
+   ],
+   "hits": 12,
+   "answers": [
+    {
+     "query": "metamask",
+     "right": "/docs/money",
+     "firstThree": [
+      "/docs/money#if-you-have-no-wallet-yet"
+     ],
+     "hit": true
+    },
+    {
+     "query": "restaurant",
+     "right": "/docs/faq",
+     "firstThree": [
+      "/docs/faq#can-a-restaurant-or-a-hotel-sell-this-way"
+     ],
+     "hit": true
+    },
+    {
+     "query": "tracking number",
+     "right": "/docs/orders",
+     "firstThree": [
+      "/docs/orders#a-parcel",
+      "/docs/orders#how-an-order-can-end",
+      "/docs/orders#refusing-after-you-have-taken-the-order-on"
+     ],
+     "hit": true
+    },
+    {
+     "query": "refusal codes",
+     "right": "/docs/cards",
+     "firstThree": [
+      "/docs/cards#refusal-codes",
+      "/docs/orders#what-a-handler-can-answer",
+      "/docs/failures#you-could-not-deliver"
+     ],
+     "hit": true
+    },
+    {
+     "query": "handler crashed",
+     "right": "/docs/failures",
+     "firstThree": [
+      "/docs/failures#the-handler-crashed-without-answering",
+      "/docs/orders#what-a-handler-can-answer",
+      "/docs/orders#running-the-handler-in-several-instances"
+     ],
+     "hit": true
+    },
+    {
+     "query": "createClient",
+     "right": "/docs/quickstart",
+     "firstThree": [
+      "/docs/quickstart#_2-install-the-tools"
+     ],
+     "hit": true
+    },
+    {
+     "query": "change wallet two days",
+     "right": "/docs/",
+     "firstThree": [
+      "/docs/#how-to-start",
+      "/docs/quickstart#_1-make-the-merchant-account-ready",
+      "/docs/#who-buys-here"
+     ],
+     "hit": true
+    },
+    {
+     "query": "several instances",
+     "right": "/docs/orders",
+     "firstThree": [
+      "/docs/orders#running-the-handler-in-several-instances",
+      "/docs/quickstart#_4-take-an-order-and-deliver-the-goods",
+      "/docs/cards#description"
+     ],
+     "hit": true
+    },
+    {
+     "query": "network fee",
+     "right": "/docs/money",
+     "firstThree": [
+      "/docs/money#what-they-pay-in",
+      "/docs/money#what-is-not-settled-yet",
+      "/docs/money#if-you-have-no-wallet-yet"
+     ],
+     "hit": true
+    },
+    {
+     "query": "who settles a dispute",
+     "right": "/docs/faq",
+     "firstThree": [
+      "/docs/faq#the-buyer-is-unhappy-—-who-settles-the-dispute",
+      "/docs/cards#a-price-worked-out-at-the-moment-of-purchase",
+      "/docs/#after-you-are-connected"
+     ],
+     "hit": true
+    },
+    {
+     "query": "robots.txt",
+     "right": "/docs/scanner",
+     "firstThree": [
+      "/docs/scanner#robots",
+      "/docs/scanner/methodology#what",
+      "/docs/scanner/methodology#coverage-boundary"
+     ],
+     "hit": true
+    },
+    {
+     "query": "coverage score",
+     "right": "/docs/scanner/methodology",
+     "firstThree": [
+      "/docs/scanner/methodology#scoring",
+      "/docs/scanner/methodology#browser-observation",
+      "/docs/scanner#browser-observation"
+     ],
+     "hit": true
+    },
+    {
+     "query": "qzxv wqpj",
+     "right": "/docs/money",
+     "firstThree": [],
+     "hit": false
+    }
+   ]
+  },
+  "B": {
+   "indexKB": 24.5,
+   "codeKB": 19,
+   "fetchedOnOpening": [
+    {
+     "file": "apps/docs/.vitepress/dist/assets/chunks/VPLocalSearchBox.9-6Y1DYD.js",
+     "brotliKB": 19
+    },
+    {
+     "file": "packages/visual/public/styles/fonts/ibm-plex-mono-400-latin.woff2",
+     "brotliKB": 9.8
+    },
+    {
+     "file": "apps/docs/.vitepress/dist/assets/chunks/@localSearchIndexroot.BbfltdWa.js",
+     "brotliKB": 24.5
+    }
+   ],
+   "hits": 10,
+   "answers": [
+    {
+     "query": "metamask",
+     "right": "/docs/money",
+     "firstThree": [
+      "/docs/money#if-you-have-no-wallet-yet"
+     ],
+     "hit": true
+    },
+    {
+     "query": "restaurant",
+     "right": "/docs/faq",
+     "firstThree": [
+      "/docs/faq#can-a-restaurant-or-a-hotel-sell-this-way"
+     ],
+     "hit": true
+    },
+    {
+     "query": "tracking number",
+     "right": "/docs/orders",
+     "firstThree": [
+      "/docs/orders#a-parcel",
+      "/docs/orders#how-an-order-can-end",
+      "/docs/orders#refusing-after-you-have-taken-the-order-on"
+     ],
+     "hit": true
+    },
+    {
+     "query": "refusal codes",
+     "right": "/docs/cards",
+     "firstThree": [
+      "/docs/cards#refusal-codes",
+      "/docs/orders#what-a-handler-can-answer",
+      "/docs/failures#you-could-not-deliver"
+     ],
+     "hit": true
+    },
+    {
+     "query": "handler crashed",
+     "right": "/docs/failures",
+     "firstThree": [
+      "/docs/failures#the-handler-crashed-without-answering",
+      "/docs/orders#what-a-handler-can-answer",
+      "/docs/orders#running-the-handler-in-several-instances"
+     ],
+     "hit": true
+    },
+    {
+     "query": "createClient",
+     "right": "/docs/quickstart",
+     "firstThree": [
+      "/docs/quickstart#_2-install-the-tools"
+     ],
+     "hit": true
+    },
+    {
+     "query": "change wallet two days",
+     "right": "/docs/",
+     "firstThree": [
+      "/docs/#how-to-start",
+      "/docs/quickstart#_1-make-the-merchant-account-ready",
+      "/docs/#who-buys-here"
+     ],
+     "hit": true
+    },
+    {
+     "query": "several instances",
+     "right": "/docs/orders",
+     "firstThree": [
+      "/docs/orders#running-the-handler-in-several-instances",
+      "/docs/quickstart#_4-take-an-order-and-deliver-the-goods",
+      "/docs/cards#description"
+     ],
+     "hit": true
+    },
+    {
+     "query": "network fee",
+     "right": "/docs/money",
+     "firstThree": [
+      "/docs/money#what-they-pay-in",
+      "/docs/money#what-is-not-settled-yet",
+      "/docs/money#if-you-have-no-wallet-yet"
+     ],
+     "hit": true
+    },
+    {
+     "query": "who settles a dispute",
+     "right": "/docs/faq",
+     "firstThree": [
+      "/docs/faq#the-buyer-is-unhappy-—-who-settles-the-dispute",
+      "/docs/cards#a-price-worked-out-at-the-moment-of-purchase",
+      "/docs/#after-you-are-connected"
+     ],
+     "hit": true
+    },
+    {
+     "query": "qzxv wqpj",
+     "right": "/docs/money",
+     "firstThree": [],
+     "hit": false
+    }
+   ]
+  }
+ },
+ "parity": [
+  {
+   "page": "/",
+   "counts": {
+    "headings": [
+     7,
+     7
+    ],
+    "tables": [
+     0,
+     0
+    ],
+    "code": [
+     0,
+     0
+    ],
+    "examples": [
+     0,
+     0
+    ],
+    "diagrams": [
+     0,
+     0
+    ],
+    "links": [
+     15,
+     15
+    ]
+   },
+   "differences": {
+    "headings": [],
+    "tables": [],
+    "code": [],
+    "examples": [],
+    "diagrams": [],
+    "links": []
+   },
+   "differenceCount": 0,
+   "proseOnlyInB": [],
+   "proseOnlyInA": []
+  },
+  {
+   "page": "/money",
+   "counts": {
+    "headings": [
+     10,
+     10
+    ],
+    "tables": [
+     0,
+     0
+    ],
+    "code": [
+     0,
+     0
+    ],
+    "examples": [
+     0,
+     0
+    ],
+    "diagrams": [
+     0,
+     0
+    ],
+    "links": [
+     14,
+     14
+    ]
+   },
+   "differences": {
+    "headings": [],
+    "tables": [],
+    "code": [],
+    "examples": [],
+    "diagrams": [],
+    "links": []
+   },
+   "differenceCount": 0,
+   "proseOnlyInB": [],
+   "proseOnlyInA": []
+  },
+  {
+   "page": "/faq",
+   "counts": {
+    "headings": [
+     18,
+     18
+    ],
+    "tables": [
+     0,
+     0
+    ],
+    "code": [
+     0,
+     0
+    ],
+    "examples": [
+     0,
+     0
+    ],
+    "diagrams": [
+     0,
+     0
+    ],
+    "links": [
+     34,
+     34
+    ]
+   },
+   "differences": {
+    "headings": [],
+    "tables": [],
+    "code": [],
+    "examples": [],
+    "diagrams": [],
+    "links": []
+   },
+   "differenceCount": 0,
+   "proseOnlyInB": [],
+   "proseOnlyInA": []
+  },
+  {
+   "page": "/quickstart",
+   "counts": {
+    "headings": [
+     10,
+     10
+    ],
+    "tables": [
+     0,
+     0
+    ],
+    "code": [
+     10,
+     10
+    ],
+    "examples": [
+     0,
+     0
+    ],
+    "diagrams": [
+     0,
+     0
+    ],
+    "links": [
+     33,
+     33
+    ]
+   },
+   "differences": {
+    "headings": [],
+    "tables": [],
+    "code": [],
+    "examples": [],
+    "diagrams": [],
+    "links": []
+   },
+   "differenceCount": 0,
+   "proseOnlyInB": [
+    "A synchronous card carries no such field: how long to wait for a synchronous answer is set by us, as one number for everybody, and it is eight seconds. The clock starts when the payment checked out, so they are the eight seconds your handler has, less the trip the order makes to reach you and the trip your answer makes coming back: the price question is asked and answered on the call before the payment, and the check itself runs before the eight begin. They are not the agent's whole wait: the charge executes after your answer, and the ten seconds we promise the agent for a synchronous purchase cover your answer and that charge together. The ten start where your eight do, when the payment checked out, so the check sits on top of them rather than inside — the agent waits for the check, and then for the ten. Both numbers are ours to set rather than the card's, and both are what the system you are connecting to runs with (Time ran out)."
+   ],
+   "proseOnlyInA": [
+    "A synchronous card carries no such field: how long to wait for a synchronous answer is set by us, as one number for everybody, and it is ten seconds. The clock starts when the payment checked out, so they are the ten seconds your handler has, less the trip the order makes to reach you and the trip your answer makes coming back: the price question is asked and answered on the call before the payment, and the check itself runs before the ten begin. They are not the agent's whole wait: the charge executes after your answer, and the twenty seconds we promise the agent for a synchronous purchase cover your answer and that charge together. The twenty start where your ten do, when the payment checked out, so the check sits on top of them rather than inside — the agent waits for the check, and then for the twenty. Both numbers are ours to set rather than the card's, and both are what the system you are connecting to runs with (Time ran out)."
+   ]
+  },
+  {
+   "page": "/cards",
+   "counts": {
+    "headings": [
+     19,
+     19
+    ],
+    "tables": [
+     3,
+     3
+    ],
+    "code": [
+     8,
+     8
+    ],
+    "examples": [
+     6,
+     6
+    ],
+    "diagrams": [
+     0,
+     0
+    ],
+    "links": [
+     39,
+     39
+    ]
+   },
+   "differences": {
+    "headings": [],
+    "tables": [],
+    "code": [],
+    "examples": [],
+    "diagrams": [],
+    "links": []
+   },
+   "differenceCount": 0,
+   "proseOnlyInB": [
+    "A synchronous card has no such field, because how long to wait for a synchronous answer is set by us, the same for every product: eight seconds. That one runs from the moment the payment checked out rather than from the moment the agent first asked, so the price question and the payment check are behind it rather than inside it. The confirmation mode has a deadline of its own — an hour, where the card names none — and it arrives together with the mode.",
+    "How long a delivery deadline may be, and whether an asynchronous card ought to be required to name one at all, rather than fall to a default the buying program is never shown."
+   ],
+   "proseOnlyInA": [
+    "A synchronous card has no such field, because how long to wait for a synchronous answer is set by us, the same for every product: ten seconds. That one runs from the moment the payment checked out rather than from the moment the agent first asked, so the price question and the payment check are behind it rather than inside it. The confirmation mode has a deadline of its own — an hour, where the card names none — and it arrives together with the mode.",
+    "How long a delivery deadline may be, and whether an asynchronous card ought to be required to name one at all, rather than fall to a default of ours."
+   ]
+  },
+  {
+   "page": "/orders",
+   "counts": {
+    "headings": [
+     24,
+     24
+    ],
+    "tables": [
+     6,
+     6
+    ],
+    "code": [
+     4,
+     4
+    ],
+    "examples": [
+     0,
+     0
+    ],
+    "diagrams": [
+     3,
+     3
+    ],
+    "links": [
+     40,
+     40
+    ]
+   },
+   "differences": {
+    "headings": [],
+    "tables": [],
+    "code": [],
+    "examples": [],
+    "diagrams": [],
+    "links": []
+   },
+   "differenceCount": 0,
+   "proseOnlyInB": [
+    "The numbers are ours to set rather than the card's, and the ones below are what the system you are connecting to runs with. A price holds for thirty seconds. A synchronous answer has eight seconds. An asynchronous card can carry one deadline of yours, on the delivery, counted from the moment the buyer was charged; name it and the agent sees it before it buys, leave it out and a day applies that the agent is never shown (The product card). The confirmation mode has a deadline of its own — an hour, where the card names none — and it arrives together with the mode.",
+    "The eight seconds run from the moment the payment checked out rather than from the moment the agent first asked, so asking your price — which happens on the call before the payment — and checking the payment itself are behind them rather than inside them. They are not the whole of the agent's wait: executing the charge comes after your answer, on a clock of its own, and the two together fit inside the ten seconds we promise the agent for a synchronous purchase. Those ten start where your eight do, at the moment the payment checked out, so the check is on top of them and not inside: what the agent waits for is the check, and then the ten.",
+    "A synchronous answer has eight seconds, counted from the moment the payment checked out — asking your price is behind them, and so is whatever the agent spent deciding to pay, and so is the check on that payment. Say your handler began the delivery in the seventh second and finished in the tenth. By that second the agent has already had a refusal and spent nothing, but the access you gave out has not gone anywhere."
+   ],
+   "proseOnlyInA": [
+    "The numbers are ours to set rather than the card's, and the ones below are what the system you are connecting to runs with. A price holds for thirty seconds. A synchronous answer has ten seconds. An asynchronous card can carry one deadline of yours, on the delivery, counted from the moment the buyer was charged; name it and the agent sees it before it buys, leave it out and a day applies, which the agent sees on your card as if you had named it (The product card). The confirmation mode has a deadline of its own — an hour, where the card names none — and it arrives together with the mode.",
+    "The ten seconds run from the moment the payment checked out rather than from the moment the agent first asked, so asking your price — which happens on the call before the payment — and checking the payment itself are behind them rather than inside them. They are not the whole of the agent's wait: executing the charge comes after your answer, on a clock of its own, and the two together fit inside the twenty seconds we promise the agent for a synchronous purchase. Those twenty start where your ten do, at the moment the payment checked out, so the check is on top of them and not inside: what the agent waits for is the check, and then the twenty.",
+    "A synchronous answer has ten seconds, counted from the moment the payment checked out — asking your price is behind them, and so is whatever the agent spent deciding to pay, and so is the check on that payment. Say your handler began the delivery in the ninth second and finished in the twelfth. By that second the agent has already had a refusal and spent nothing, but the access you gave out has not gone anywhere."
+   ]
+  },
+  {
+   "page": "/failures",
+   "counts": {
+    "headings": [
+     10,
+     10
+    ],
+    "tables": [
+     0,
+     0
+    ],
+    "code": [
+     0,
+     0
+    ],
+    "examples": [
+     0,
+     0
+    ],
+    "diagrams": [
+     0,
+     0
+    ],
+    "links": [
+     24,
+     24
+    ]
+   },
+   "differences": {
+    "headings": [],
+    "tables": [],
+    "code": [],
+    "examples": [],
+    "diagrams": [],
+    "links": []
+   },
+   "differenceCount": 0,
+   "proseOnlyInB": [
+    "Say an asynchronous card of yours names no delivery deadline, so the day we hold it to is the one running. The day passes with no confirmation of a delivery from you — the order is marked as needing a refund, and the money for it is already with you. Name a deadline of your own and the agent sees it before it buys; leave it out and that day applies with no deadline shown to the agent at all (The product card). How long to wait for a synchronous answer is set by us and no card carries it: eight seconds, counted from the moment the payment checked out (Time ran out)."
+   ],
+   "proseOnlyInA": [
+    "Say an asynchronous card of yours names no delivery deadline, so the day we hold it to is the one running. The day passes with no confirmation of a delivery from you — the order is marked as needing a refund, and the money for it is already with you. Name a deadline of your own and the agent sees it before it buys; leave it out and that day applies, and the agent sees it on your card all the same (The product card). How long to wait for a synchronous answer is set by us and no card carries it: ten seconds, counted from the moment the payment checked out (Time ran out)."
+   ]
+  },
+  {
+   "page": "control: B's Money against A's Common questions",
+   "differenceCount": 18
+  },
+  {
+   "page": "/scanner",
+   "differences": {
+    "scannerText": [
+     "Scanner user agent: agentify-scanner/1.0 (+https://agentify.ad/scanner)",
+     "One check asks for your page twice more with the tokens ChatGPT and Claude agents send, followed by the scanner's own name, for example ChatGPT-User/1.0 (compatible; agentify-scanner/1.0; +https://agentify.ad/scanner), to see whether your site answers AI agents differently. It never presents itself as OpenAI or Anthropic without its own name.",
+     "Operator: Operator identity pending confirmation. Abuse and opt-out contact: abuse@agentify.ad.",
+     "Send the affected host, approximate UTC time, and request identifier if available to abuse@agentify.ad. Do not email access tokens, private URLs, credentials, or personal data."
+    ]
+   },
+   "differenceCount": 4
+  },
+  {
+   "page": "/scanner/methodology",
+   "differences": {
+    "scannerText": []
+   },
+   "differenceCount": 0
+  },
+  {
+   "page": "control: the methodology's text against the scanner identity page",
+   "differenceCount": 7
+  }
+ ],
+ "moves": {
+  "A": [
+   {
+    "from": "/",
+    "to": "/quickstart",
+    "rest": "after a 300 ms rest",
+    "medianMs": 54.2,
+    "samples": [
+     56.8,
+     51.9,
+     53,
+     54.2,
+     64.8
+    ]
+   },
+   {
+    "from": "/",
+    "to": "/quickstart",
+    "rest": "at once",
+    "medianMs": 52.6,
+    "samples": [
+     52.6,
+     53,
+     52.9,
+     51,
+     52.2
+    ]
+   },
+   {
+    "from": "/money",
+    "to": "/orders",
+    "rest": "after a 300 ms rest",
+    "medianMs": 66.7,
+    "samples": [
+     56.3,
+     52.4,
+     71.7,
+     70.2,
+     66.7
+    ]
+   },
+   {
+    "from": "/money",
+    "to": "/orders",
+    "rest": "at once",
+    "medianMs": 71,
+    "samples": [
+     71,
+     56.7,
+     71,
+     70.8,
+     74.1
+    ]
+   }
+  ],
+  "B": [
+   {
+    "from": "/",
+    "to": "/quickstart",
+    "rest": "after a 300 ms rest",
+    "medianMs": 60,
+    "samples": [
+     55.4,
+     60.8,
+     52.4,
+     65.3,
+     60
+    ]
+   },
+   {
+    "from": "/",
+    "to": "/quickstart",
+    "rest": "at once",
+    "medianMs": 55.3,
+    "samples": [
+     60.2,
+     53.4,
+     55.4,
+     55.3,
+     53.1
+    ]
+   },
+   {
+    "from": "/money",
+    "to": "/orders",
+    "rest": "after a 300 ms rest",
+    "medianMs": 65.9,
+    "samples": [
+     66.3,
+     55.7,
+     53.2,
+     65.9,
+     69.8
+    ]
+   },
+   {
+    "from": "/money",
+    "to": "/orders",
+    "rest": "at once",
+    "medianMs": 55.4,
+    "samples": [
+     56.2,
+     57.3,
+     54.9,
+     55.4,
+     55
+    ]
+   }
+  ]
+ },
+ "paint": {
+  "A": [
+   {
+    "page": "/",
+    "lcpMs": 448,
+    "fcpMs": 448
+   },
+   {
+    "page": "/money",
+    "lcpMs": 452,
+    "fcpMs": 452
+   },
+   {
+    "page": "/faq",
+    "lcpMs": 456,
+    "fcpMs": 456
+   },
+   {
+    "page": "/quickstart",
+    "lcpMs": 460,
+    "fcpMs": 460
+   },
+   {
+    "page": "/cards",
+    "lcpMs": 452,
+    "fcpMs": 452
+   },
+   {
+    "page": "/orders",
+    "lcpMs": 456,
+    "fcpMs": 456
+   },
+   {
+    "page": "/failures",
+    "lcpMs": 444,
+    "fcpMs": 444
+   }
+  ],
+  "B": [
+   {
+    "page": "/",
+    "lcpMs": 448,
+    "fcpMs": 448
+   },
+   {
+    "page": "/money",
+    "lcpMs": 452,
+    "fcpMs": 452
+   },
+   {
+    "page": "/faq",
+    "lcpMs": 456,
+    "fcpMs": 456
+   },
+   {
+    "page": "/quickstart",
+    "lcpMs": 456,
+    "fcpMs": 456
+   },
+   {
+    "page": "/cards",
+    "lcpMs": 468,
+    "fcpMs": 468
+   },
+   {
+    "page": "/orders",
+    "lcpMs": 468,
+    "fcpMs": 468
+   },
+   {
+    "page": "/failures",
+    "lcpMs": 448,
+    "fcpMs": 448
+   }
+  ]
+ },
+ "notices": {
+  "test": {
+   "onLoad": {
+    "marker": "test",
+    "words": [
+     "Test environment. Payments settle on Bas"
+    ]
+   },
+   "afterMove": {
+    "marker": "test",
+    "words": [
+     "Test environment. Payments settle on Bas"
+    ]
+   },
+   "errors": []
+  },
+  "live": {
+   "onLoad": {
+    "marker": "live",
+    "words": []
+   },
+   "afterMove": {
+    "marker": "live",
+    "words": []
+   },
+   "errors": []
+  }
+ }
+}
