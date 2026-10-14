@@ -94,6 +94,11 @@ import {
   setSellerSite,
   setServiceName,
 } from "./merchants.js";
+import {
+  journal,
+  recordSplitsOfWalletsSetBefore,
+  refuseUnlessTheSplitsAgree,
+} from "./recorded-splits.js";
 import { OrderRunner, SWEEP_EFFECTS } from "./runner.js";
 import {
   cardAsHeld,
@@ -339,10 +344,16 @@ export class Gateway {
   }
 
   /**
-   * Starts the queue and points its reminders at the order machine; each
-   * reminder becomes one event and nothing more.
+   * Checks the registry of payout splits against this network's payout split
+   * in the code, and refuses to start where they disagree, before anything is
+   * written or any work is taken; then records the split of every wallet set
+   * before splits were. Only then starts the queue and points its reminders at
+   * the order machine; each reminder becomes one event and nothing more.
    */
   async start(): Promise<void> {
+    await refuseUnlessTheSplitsAgree(this.runtime);
+    await recordSplitsOfWalletsSetBefore(this.runtime);
+
     this.runtime.queue.onReminder(async (reminder) => {
       try {
         await this.#onReminder(reminder);
@@ -902,6 +913,15 @@ export class Gateway {
     return recorded === "raced" ? "raced_after_announcing" : recorded;
   }
 
+  /**
+   * Refuses, in words, where the registry of payout splits disagrees with this
+   * network's payout split in the code (`RefusedToStart`). `start` asks it
+   * first; a command that reads the registry asks it alone, starting nothing.
+   */
+  async refuseUnlessTheSplitsAgree(): Promise<void> {
+    await refuseUnlessTheSplitsAgree(this.runtime);
+  }
+
   /** Whether this deployment waits on and announces a change: the live one alone. */
   #announces(): boolean {
     return this.runtime.config.surfaceMode === "live";
@@ -927,6 +947,7 @@ export class Gateway {
       throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
     if (written !== "moved") {
+      journal(written.recorded);
       return payoutWalletAnswer(
         payoutWalletAt(written.merchant.payoutWallet, this.runtime.clock()),
       );

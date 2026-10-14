@@ -391,15 +391,14 @@ describe("a start that finds wallets set before splits were", () => {
     expect(lines).toStrictEqual(expected.map((split) => ({ ...split, recordedAt: NOW })));
   });
 
-  it("records nothing on a second start, and says so", async () => {
+  it("records nothing on a second start, and writes nothing to the journal", async () => {
     const database = await asBeforeSplits();
     await aGatewayOver(database).gateway.start();
     await running?.stop();
 
     const logged = await loggedWhile(() => aGatewayOver(database).gateway.start());
 
-    expect(logged).toMatch(/recorded 0 payout splits/);
-    expect(logged).not.toMatch(/payout split recorded:/);
+    expect(logged).not.toMatch(/payout split/);
   });
 
   it("names, from then on, the split it recorded, and checks a payment against it", async () => {

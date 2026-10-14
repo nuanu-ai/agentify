@@ -13,6 +13,7 @@ import { facilitatorClientFor, refuseUnlessCredentialsSign } from "./adapters/x4
 import { X402Facilitator } from "./adapters/x402/facilitator.js";
 import { Gateway } from "./app/gateway.js";
 import { seedSandboxKey } from "./app/merchants.js";
+import { RefusedToStart } from "./app/recorded-splits.js";
 import type { Runtime } from "./app/runtime.js";
 import { type GatewayConfig, isSandboxFacilitator, secondAttemptProblem } from "./config.js";
 import { buildApp } from "./http/server.js";
@@ -213,11 +214,16 @@ export async function startGateway(
     await gateway.start();
     await seedTheSandbox(config, runtime);
   } catch (thrown) {
-    // Names the database that did not answer, which a stack trace from the
-    // queue's internals does not.
-    console.error(
-      `[gateway] cannot start: the queue and the store both live in ${databaseNamed(config.databaseUrl)}, and it did not answer`,
-    );
+    if (thrown instanceof RefusedToStart) {
+      console.error(`[gateway] cannot start: ${thrown.message}`);
+    } else {
+      // Names the database that did not answer, which a stack trace from the
+      // queue's internals does not.
+      console.error(
+        `[gateway] cannot start: the queue and the store both live in ${databaseNamed(config.databaseUrl)}, and it did not answer`,
+      );
+    }
+    await pool.end().catch(() => undefined);
     throw thrown;
   }
 
