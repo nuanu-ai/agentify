@@ -12,6 +12,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { brotliCompressSync } from "node:zlib";
 
 const CADDY_IMAGE =
   "caddy:2.10.0-alpine@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8cb23a7e8ac557aa3c";
@@ -196,6 +197,10 @@ function runInner({ configPath, containerName, trustedEdge, ports, surfaceMode =
     "-e",
     `AGENTIFY_SURFACE_MODE=${surfaceMode}`,
     "-e",
+    "AGENTIFY_PUBLIC_ORIGIN=https://smoke.example",
+    "-e",
+    "ABUSE_EMAIL=abuse@smoke.example",
+    "-e",
     `AGENTIFY_TRUSTED_EDGE_CIDR=${trustedEdge}/32`,
     "-e",
     `AGENTIFY_SCANNER_UPSTREAM=host.docker.internal:${ports.scanner}`,
@@ -211,9 +216,21 @@ try {
   const docsRoot = path.join(temporary, "docs");
   mkdirSync(path.join(docsRoot, "assets"), { recursive: true });
   writeFileSync(path.join(docsRoot, "index.html"), "<p>documentation fixture</p>");
-  writeFileSync(path.join(docsRoot, "guide.html"), "<p>documentation guide</p>");
+  writeFileSync(
+    path.join(docsRoot, "guide.html"),
+    '<p>documentation guide</p><link rel="canonical" href="<!--{{env `AGENTIFY_PUBLIC_ORIGIN` | html}}-->/docs/guide">',
+  );
+  writeFileSync(
+    path.join(docsRoot, "guide.md"),
+    "# Documentation guide\n\nWrite to <!--{{env `ABUSE_EMAIL` | html}}-->.\n",
+  );
+  writeFileSync(path.join(docsRoot, "guide.data"), '[{"_1":2},"loaderData"]\n');
   writeFileSync(path.join(docsRoot, "404.html"), "<p>documentation missing fixture</p>");
   writeFileSync(path.join(docsRoot, "assets/doc.css"), "body { color: black; }\n");
+  writeFileSync(
+    path.join(docsRoot, "assets/doc.css.br"),
+    brotliCompressSync("body { color: black; }\n"),
+  );
 
   const ports = {
     scanner: await listen("scanner"),
@@ -296,12 +313,43 @@ try {
   response = await fetch(`${innerBase}/docs/`);
   assert.equal(response.status, 200);
   assert.match(await response.text(), /documentation fixture/);
-  response = await fetch(`${innerBase}/docs/guide`);
+  response = await fetch(`${innerBase}/docs/guide`, { headers: { accept: "text/html" } });
   assert.equal(response.status, 200);
-  assert.match(await response.text(), /documentation guide/);
-  response = await fetch(`${innerBase}/docs/assets/doc.css`);
+  assert.equal(response.headers.get("cache-control"), "no-cache");
+  assert.match(response.headers.get("vary") ?? "", /\bAccept\b/);
+  const guide = await response.text();
+  assert.match(guide, /documentation guide/);
+  // The template in an attribute is filled, as the documentation's head needs.
+  assert.match(guide, /href="https:\/\/smoke\.example\/docs\/guide"/);
+  // A client that prefers Markdown gets the page's Markdown, templates filled.
+  response = await fetch(`${innerBase}/docs/guide`, {
+    headers: { accept: "text/markdown, text/html;q=0.9" },
+  });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/markdown(?:;|$)/);
+  assert.match(await response.text(), /Write to abuse@smoke\.example\./);
+  response = await fetch(`${innerBase}/docs/guide`, {
+    headers: { accept: "text/html, text/markdown" },
+  });
+  assert.match(response.headers.get("content-type") ?? "", /^text\/html(?:;|$)/);
+  // An address the documentation answered at before leads to the page's own.
+  response = await fetch(`${innerBase}/docs/guide.html?from=a-link`, { redirect: "manual" });
+  assert.equal(response.status, 308);
+  assert.equal(response.headers.get("location"), "/docs/guide?from=a-link");
+  // A page's data is text a browser may keep five minutes.
+  response = await fetch(`${innerBase}/docs/guide.data`, {
+    headers: { "accept-encoding": "gzip" },
+  });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/x-script(?:;|$)/);
+  assert.equal(response.headers.get("cache-control"), "public, max-age=300");
+  response = await fetch(`${innerBase}/docs/assets/doc.css`, {
+    headers: { "accept-encoding": "br" },
+  });
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/css(?:;|$)/);
+  assert.equal(response.headers.get("cache-control"), "public, max-age=31536000, immutable");
+  assert.equal(response.headers.get("content-encoding"), "br");
   response = await fetch(`${innerBase}/docs/missing`);
   assert.equal(response.status, 404);
   assert.match(await response.text(), /documentation missing fixture/);
