@@ -121,7 +121,7 @@ const checkOn = (
     networks: [network],
     table: entry === null ? {} : { [network]: entry },
     clientOf: () => answeringAs(answeredBy),
-    owners,
+    owners: owners === null ? {} : { [network]: owners },
   });
 
 const outcome = (verdicts: readonly Verdict[]) =>
@@ -154,7 +154,7 @@ describe("the pre-release check of the commission wallets", () => {
       networks: [BASE, BASE_SEPOLIA],
       table: { [BASE_SEPOLIA]: SEPOLIA_ENTRY },
       clientOf: (network) => answeringAs(network),
-      owners: null,
+      owners: {},
     });
 
     expect(
@@ -165,8 +165,12 @@ describe("the pre-release check of the commission wallets", () => {
     ).toBe(true);
   });
 
-  it("passes Base when its commission wallet is a Safe whose owners are exactly the ones named", async () => {
-    const verdicts = await checkOn(BASE, baseWith(named(BASE, "safe")), SAFE_OWNERS);
+  it("passes Base when its commission wallet is a Safe whose owners are exactly the ones named, in any order and spelling", async () => {
+    const verdicts = await checkOn(
+      BASE,
+      baseWith(named(BASE, "safe")),
+      [...SAFE_OWNERS].reverse().map((owner) => owner.toLowerCase()),
+    );
 
     expect(outcome(verdicts)).toStrictEqual([
       ["chain id", true],
@@ -187,12 +191,52 @@ describe("the pre-release check of the commission wallets", () => {
     expect(owners?.saw).toContain(left);
   });
 
-  it("fails a Safe on Base when no owners are named to hold it to", async () => {
-    const verdicts = await checkOn(BASE, baseWith(named(BASE, "safe")));
+  it("fails a Safe on Base whose owners the names add one to, naming the one that is no owner", async () => {
+    const verdicts = await checkOn(BASE, baseWith(named(BASE, "safe")), [
+      ...SAFE_OWNERS,
+      named(BASE, "distributor"),
+    ]);
 
     const owners = verdicts.find((verdict) => verdict.check === "Safe owners");
     expect(owners?.passed).toBe(false);
-    expect(owners?.saw).toMatch(/COMMISSION_SAFE_OWNERS/);
+    expect(owners?.saw).toContain(named(BASE, "distributor"));
+  });
+
+  it("fails a Safe on Base when no owners are named to hold it to", async () => {
+    const verdicts = await checkOn(BASE, baseWith(named(BASE, "safe")));
+
+    expect(verdicts.find((verdict) => verdict.check === "Safe owners")?.passed).toBe(false);
+  });
+
+  it("holds a commission wallet with code on Base Sepolia to the same reads, and fails one whose owners cannot be read", async () => {
+    const verdicts = await checkOn(BASE_SEPOLIA, {
+      ...SEPOLIA_ENTRY,
+      commissionWallet: named(BASE_SEPOLIA, "safeSingleton"),
+    });
+
+    expect(outcome(verdicts)).toStrictEqual([
+      ["chain id", true],
+      ["commission wallet", true],
+      ["Safe threshold", true],
+      ["Safe owners", false],
+      ...CONTRACTS_PASS,
+    ]);
+  });
+
+  it("fails what the RPC does not answer, taking no silence for a plain wallet or for code", async () => {
+    const unanswered = named(BASE_SEPOLIA, "commission");
+
+    const verdicts = await checkOn(BASE, baseWith(unanswered, unanswered), SAFE_OWNERS);
+
+    expect(outcome(verdicts)).toStrictEqual([
+      ["chain id", true],
+      ["commission wallet", false],
+      ["factory", true],
+      ["implementation", true],
+      ["warehouse", true],
+      ["Multicall3", true],
+      ["USDC", false],
+    ]);
   });
 
   it("fails a plain wallet on Base, where one lost key would lose every commission", async () => {
