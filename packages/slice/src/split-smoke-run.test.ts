@@ -19,6 +19,7 @@ import {
   payoutSplitNetworkOf,
 } from "@agentify/gateway";
 import type { Hex } from "viem";
+import { generatePrivateKey } from "viem/accounts";
 import { describe, expect, it } from "vitest";
 import type { Ledger, UsdcTransfer } from "./split-ledger.js";
 import {
@@ -281,8 +282,8 @@ const journalLines = (journal: string): readonly Record<string, unknown>[] =>
 
 const ENV = {
   AGENTIFY_SMOKE: "1",
-  SMOKE_BUYER_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-  SMOKE_PAYOUT_KEY: "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+  SMOKE_BUYER_KEY: generatePrivateKey(),
+  SMOKE_PAYOUT_KEY: generatePrivateKey(),
 };
 
 describe("the settings of a split smoke", () => {
