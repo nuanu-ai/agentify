@@ -87,8 +87,8 @@ interface Effect {
   readonly succeeded?: boolean;
   /** What its sender paid, in wei. */
   readonly paid?: bigint;
-  /** The split's code from this block on, where it is not the factory's proxy. */
-  readonly code?: Hex;
+  /** The split's code from this block on, where it is not the factory's proxy; null for none. */
+  readonly code?: Hex | null;
   /** A block somebody else's transaction makes just before this one. */
   readonly elsewhere?: { readonly after: Ledger; readonly createsSplit?: boolean };
 }
@@ -179,7 +179,8 @@ function scriptedChain(options: {
     const creates = (effect.created ?? []).length > 0;
     blocks.push({
       ledger: effect.after,
-      code: effect.code ?? (creates ? CLONE : blocks.at(-1)?.code),
+      code:
+        effect.code === null ? undefined : (effect.code ?? (creates ? CLONE : blocks.at(-1)?.code)),
     });
     const block = 100n + BigInt(blocks.length - 1);
     const hash = `0x${block.toString(16).padStart(64, "0")}` as Hex;
@@ -454,6 +455,17 @@ describe("a split smoke run", () => {
         factory: SPLIT.factory,
       },
     });
+    expect(
+      (JSON.parse(plan ?? "null") as { predicted: { step: string; transfers: unknown }[] })
+        .predicted[1],
+    ).toStrictEqual({
+      step: "the first payout",
+      transfers: [
+        { from: SPLIT.address, to: WAREHOUSE, value: "9999" },
+        { from: WAREHOUSE, to: MERCHANT, value: "9988" },
+      ],
+      after: expect.anything(),
+    });
     expect(JSON.parse(plan ?? "null")).toMatchObject({
       instruction: { to: NETWORK.multicall3, data: merchantPayout(NETWORK, [SPLIT]).data },
       operator: { to: NETWORK.multicall3, data: operatorPayouts(NETWORK, [SPLIT])[0]?.data },
@@ -571,6 +583,18 @@ describe("a split smoke run", () => {
       withEffect(1, (payout) => ({ ...payout, code: cloneOf(STRANGER) })),
     ],
     [
+      "the split's code is longer than the factory's proxy",
+      withEffect(1, (payout) => ({ ...payout, code: `${CLONE}00` as Hex })),
+    ],
+    ["the split holds no code after it", withEffect(1, (payout) => ({ ...payout, code: null }))],
+    [
+      "the factory created the split with the two wallets swapped",
+      withEffect(1, (payout) => ({
+        ...payout,
+        created: [{ ...CREATED, recipients: [...CREATED.recipients].reverse() }],
+      })),
+    ],
+    [
       "its fees passed the gas cap, the L1 fee above its estimate",
       withEffect(1, (payout) => ({ ...payout, paid: 5n * 10n ** 14n + 1n })),
     ],
@@ -662,6 +686,71 @@ describe("a split smoke run", () => {
 
     expect(stopped.step).toBe("the chain");
     expect(chain.made()).toBe(0);
+  });
+
+  it("stops at the first payment when the buyer lost more than the price, as a second settlement would take", async () => {
+    const effects = withEffect(0, (payment) => ({
+      ...payment,
+      after: ledger([30_000n, 10_000n, 0n, 119_997n], [0n, 0n, 0n, 1n]),
+    }));
+
+    const stopped = await stoppedAt(run(scriptedChain({ effects }), aJournal()));
+
+    expect(stopped.step).toBe("the first payment");
+    expect(stopped.message).toContain(BUYER);
+  });
+
+  it("stops at the second payment when somebody paid the merchant wallet between the steps", async () => {
+    const effects = withEffect(2, (payment) => ({
+      ...payment,
+      elsewhere: { after: ledger([40_000n, 1n, 9_989n, 119_997n], [0n, 1n, 1n, 10n]) },
+    }));
+
+    const stopped = await stoppedAt(run(scriptedChain({ effects }), aJournal()));
+
+    expect(stopped.step).toBe("the second payment");
+    expect(stopped.message).toContain(MERCHANT);
+  });
+
+  it("counts the payouts' gas against the cap and not the payments', which the facilitator pays", async () => {
+    const effects = AS_THE_CONTRACTS_DO.map((effect, at) =>
+      at % 2 === 0 && at < 4 ? { ...effect, paid: 10n ** 18n } : effect,
+    );
+
+    await run(scriptedChain({ effects }), aJournal());
+  });
+
+  it("runs on payouts whose fees fill the gas cap to the wei", async () => {
+    const cap = 5n * 10n ** 14n;
+    const effects = AS_THE_CONTRACTS_DO.map((effect, at) =>
+      at === 1 ? { ...effect, paid: cap - 2n * 3_000_000_000_000n } : effect,
+    );
+    const chain = scriptedChain({
+      effects,
+      cost: () => ({ gas: 1n, maxFeePerGas: 1n, maxPriorityFeePerGas: 1n, l1Fee: 0n }),
+    });
+
+    await run(chain, aJournal(), { gasCap: cap });
+
+    expect(chain.made()).toBe(5);
+  });
+
+  it("runs for a buyer who holds exactly both payments", async () => {
+    const less = (effect: Effect): Effect => ({
+      ...effect,
+      after: {
+        ...effect.after,
+        held: { ...effect.after.held, [BUYER]: (effect.after.held[BUYER] ?? 0n) - 30_000n },
+      },
+    });
+    const chain = scriptedChain({
+      effects: AS_THE_CONTRACTS_DO.map(less),
+      initial: ledger([20_000n, 0n, 0n, 119_997n], [0n, 0n, 0n, 1n]),
+    });
+
+    await run(chain, aJournal());
+
+    expect(chain.made()).toBe(5);
   });
 
   it("runs on a payout key that holds exactly the gas cap", async () => {
