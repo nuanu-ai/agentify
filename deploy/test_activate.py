@@ -203,7 +203,7 @@ class Activation(unittest.TestCase):
             (self.root / directory).mkdir(parents=True)
         for name, body in INIT.items():
             (self.root / "tree/deploy/postgres-init" / name).write_text(body)
-        for name in ("activate.sh", "restore.sh", "transition"):
+        for name in ("activate.sh", "restore.sh", "transition", "carry-payout-splits"):
             shutil.copy(HERE / name, self.root / "tree/deploy" / name)
         for path, body in ((self.root / "tree/deploy/stack.sh", STACK), (self.root / "bin/docker", DOCKER), (self.root / "bin/curl", CURL)):
             path.write_text(body)
