@@ -61,8 +61,13 @@ const telling = async (
   for (const [email, merchantId] of people) {
     await identity.make(email, merchantId);
   }
-  return { tell: tellerFor(settings, identity, postman), sent };
+  return { tell: tellerFor(settings, identity, postman, LIVE), sent };
 };
+
+/** A share of the payout split's total, formatted from the network's own terms. */
+const percent = (part: number): string => `${(part / LIVE.totalAllocation) * 100}%`;
+const COMMISSION = percent(LIVE.commissionAllocation);
+const SHARE = percent(LIVE.totalAllocation - LIVE.commissionAllocation);
 
 describe("a wallet change", () => {
   it("is told to every account naming the merchant, and to nobody else", async () => {
@@ -303,5 +308,72 @@ describe("what is announced once it is done", () => {
     expect(answered).toBe("handed_over");
     expect(sent[0]?.body).toContain("the price desk");
     expect(sent[0]?.body).toContain("mk_91c0");
+  });
+});
+
+describe("the payout contract a message names", () => {
+  // Nobody can check a split's address by eye against anything they know, so
+  // the message is the merchant's record of where buyers pay: whole, named as
+  // the payout contract, and saying that it pays only the wallet and Agentify.
+
+  /** The paragraph of the text that names this split. */
+  const naming = (text: string, split: string): string => {
+    const at = text.indexOf(split);
+    expect(at, `the message names ${split}`).toBeGreaterThan(-1);
+    return text.slice(Math.max(0, text.lastIndexOf("\n\n", at)), text.indexOf("\n\n", at));
+  };
+
+  it("names, with a first wallet, the contract buyers now pay into and what it pays", async () => {
+    const { tell, sent } = await telling([["owner@example.com", MERCHANT]]);
+
+    await tell({
+      kind: "wallet_set",
+      merchant_id: MERCHANT,
+      to: TO,
+      to_split: TO_SPLIT,
+      asked_with: { kind: "signed_in", email: "owner@example.com" },
+    } satisfies Announcement);
+
+    const said = naming(sent[0]?.body ?? "", TO_SPLIT);
+    expect(said).toMatch(/payout contract/);
+    expect(said).toContain(
+      `pays only this wallet, ${SHARE} of every sale, and Agentify, ${COMMISSION}`,
+    );
+    expect(sent[0]?.html).toContain(TO_SPLIT);
+  });
+
+  it("names, with a replacement, the contract paid until it applies and the one paid after", async () => {
+    const { tell, sent } = await telling([["owner@example.com", MERCHANT]]);
+
+    await tell(aWalletChange);
+
+    const body = sent[0]?.body ?? "";
+    expect(naming(body, FROM_SPLIT)).toMatch(/until then buyers pay into/i);
+    const after = naming(body, TO_SPLIT);
+    expect(after).toMatch(/from then on buyers pay into/i);
+    expect(after).toContain(`${SHARE} of every sale`);
+    expect(after).toContain(`Agentify, ${COMMISSION}`);
+    expect(body.indexOf(FROM_SPLIT)).toBeLessThan(body.indexOf(TO_SPLIT));
+    for (const split of [FROM_SPLIT, TO_SPLIT]) {
+      expect(sent[0]?.html).toContain(split);
+    }
+  });
+
+  it("names, with a cancel, the contract buyers still pay into", async () => {
+    const { tell, sent } = await telling([["owner@example.com", MERCHANT]]);
+
+    await tell({
+      kind: "wallet_change_cancelled",
+      merchant_id: MERCHANT,
+      kept: FROM,
+      kept_split: FROM_SPLIT,
+      cancelled: TO,
+      asked_with: { kind: "signed_in", email: "owner@example.com" },
+    } satisfies Announcement);
+
+    const said = naming(sent[0]?.body ?? "", FROM_SPLIT);
+    expect(said).toMatch(/buyers still pay into/i);
+    expect(said).toContain(`Agentify, ${COMMISSION}`);
+    expect(sent[0]?.body).not.toContain(TO_SPLIT);
   });
 });
