@@ -32,9 +32,12 @@ export const OrderEventSchema = z.discriminatedUnion("type", [
     order_id: IdentifierSchema,
     at: TimestampSchema,
     /**
-     * The sum owed: the price the sale went through at. The payment went from
-     * the buyer straight to the merchant's wallet, so returning it is the
-     * merchant's to do.
+     * The sum owed: the whole price the sale went through at, which the
+     * merchant pays back to the buyer from their own wallet. The buyer paid it
+     * into the merchant's payout contract, which sends 99.9% of it to the
+     * merchant and 0.1% to Agentify when it is paid out, and the commission is
+     * not given back, so the sum owed is more than the merchant's share of the
+     * sale, whether or not that sale has been paid out yet.
      */
     price: MoneySchema,
     reason: RefundDueReasonSchema,

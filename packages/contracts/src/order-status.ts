@@ -62,9 +62,10 @@ export const ORDER_STATUSES = Object.freeze([
    * the debt and make the order `delivered`.
    *
    * It does not say whether the money has already gone back. The merchant pays
-   * a refund from their own wallet and the gateway has no way to record that
-   * they did, so nothing moves an order on to `refunded`, and a buyer already
-   * paid back still reads this word.
+   * back the whole price from their own wallet, although their payout contract
+   * paid them only their share and the commission stays with Agentify. The
+   * gateway has no way to record that they did, so nothing moves an order on to
+   * `refunded`, and a buyer already paid back still reads this word.
    */
   "refund_due",
   /** That debt has since been paid back to the buyer. */
