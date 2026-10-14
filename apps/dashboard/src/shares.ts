@@ -31,12 +31,13 @@ export interface Shares {
 }
 
 /**
- * Throws on an amount with more places than USDC carries: no payment could
- * have been charged at it.
+ * Throws on an amount with more places than USDC carries, which no payment
+ * could have been charged at; read anyway, it would be a sum ten times or
+ * more what was paid.
  */
 const unitsOf = (amount: string): bigint => {
   const [whole = "", fraction = ""] = amount.split(".");
-  if (!/^\d+$/.test(whole) || !/^\d*$/.test(fraction) || fraction.length > PLACES) {
+  if (fraction.length > PLACES) {
     throw new Error(`${amount} is not an amount USDC can be paid in`);
   }
   return BigInt(`${whole}${fraction.padEnd(PLACES, "0")}`);
