@@ -988,6 +988,75 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         );
       });
 
+      describe("of a wallet stored in another spelling than its row", () => {
+        // A wallet set before splits existed may be stored in lower case, and
+        // its split's row names it in the checksummed spelling the rule makes.
+        // One address in two spellings is one wallet: its merchant sells at
+        // its split, and it never gets a second one.
+        const lower = (wallet: string): string => wallet.toLowerCase();
+
+        it("is that wallet's split, in force and waiting, wherever the merchant is read", async () => {
+          const store = await twoMerchants();
+          const write: PayoutWalletWrite = {
+            address: lower(W1),
+            split: splitOf(A, W1),
+            pending: { address: lower(W2), takesEffectAt: 90_000, split: splitOf(A, W2) },
+          };
+
+          await store.setPayoutWallet(A, NO_WALLET, write, 3_000);
+          await store.publishCard(A, card("sku-1", "A's room"), 4_000);
+
+          const asWritten = readBack(write, { address: 3_000 });
+          expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(asWritten);
+          expect((await store.catalogEntries())[0]?.payoutWallet).toStrictEqual(asWritten);
+          expect(
+            await addressesOf(store.splitsToPayOutFor(BASE_SEPOLIA.network, A, 89_999)),
+          ).toStrictEqual([splitOf(A, W1).address]);
+          expect(
+            await addressesOf(store.splitsToPayOutFor(BASE_SEPOLIA.network, A, 90_000)),
+          ).toStrictEqual([splitOf(A, W2).address]);
+        });
+
+        it("is found again by a return to that wallet written in another spelling, and recorded once", async () => {
+          const store = await twoMerchants();
+          await store.setPayoutWallet(A, NO_WALLET, paidAt(A, W1), 3_000);
+          await store.setPayoutWallet(A, paidAt(A, W1), paidAt(A, W2), 4_000);
+
+          const back = await store.setPayoutWallet(
+            A,
+            paidAt(A, W2),
+            { address: lower(W1), split: splitOf(A, W1), pending: null },
+            5_000,
+          );
+
+          expect(back === null || back === "moved" ? back : back.recorded).toStrictEqual([]);
+          expect((await store.merchantById(A))?.payoutWallet.split).toStrictEqual(
+            recorded(splitOf(A, W1), 3_000),
+          );
+        });
+
+        it("refuses a split of that wallet in another spelling at another address, and writes nothing", async () => {
+          // Two rows for one wallet would let the payment address and the
+          // payout instruction name two different contracts.
+          const store = await twoMerchants();
+          await store.recordPayoutSplits([splitOf(A, W1)], 3_000);
+          const second = { ...splitOf(A, W2), merchantWallet: lower(W1) };
+
+          await refusedWith(store.recordPayoutSplits([second], 4_000), /recorded/);
+          await refusedWith(
+            store.setPayoutWallet(
+              A,
+              NO_WALLET,
+              { address: lower(W1), split: second, pending: null },
+              4_000,
+            ),
+            /recorded/,
+          );
+          expect(await store.payoutSplitAt(second.address)).toBeNull();
+          expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(NO_WALLET);
+        });
+      });
+
       describe("that can hold money", () => {
         /**
          * Merchant A: S1 of W1, which was in force and has an order paid to it;

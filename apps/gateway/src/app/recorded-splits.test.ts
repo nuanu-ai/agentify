@@ -28,6 +28,7 @@ import { DISTRIBUTOR } from "../split/fixture.js";
 import { type PayoutSplitNetworks, payoutSplitNetworkOf } from "../split/networks.js";
 import { type PayoutSplit, payoutSplitFor, splitParametersOf } from "../split/parameters.js";
 import { countedIds, loggedWhile, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "../testing/harness.js";
+import { describeWalletSpelling } from "../testing/wallet-spelling.js";
 import { Gateway } from "./gateway.js";
 import { setServiceName } from "./merchants.js";
 
@@ -480,3 +481,15 @@ describe("the address a payment is asked for", () => {
     expect(facilitator.verifies.at(-1)?.payTo).toBe(recorded.address);
   });
 });
+
+describeWalletSpelling(
+  "a wallet stored in another spelling than its split, in memory",
+  async (network) => {
+    const store = new MemoryStore(network, countedIds(), () => NOW);
+    return {
+      store,
+      writeWalletWithoutSplit: (merchantId, wallet) =>
+        store.writeWalletAsBeforeSplits(merchantId, wallet),
+    };
+  },
+);

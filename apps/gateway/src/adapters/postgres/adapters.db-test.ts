@@ -46,6 +46,7 @@ import {
   workUntilStopped,
 } from "../../testing/harness.js";
 import { anOrder, describeStore } from "../../testing/store-contract.js";
+import { describeWalletSpelling } from "../../testing/wallet-spelling.js";
 import { ScriptedFacilitator } from "../memory/facilitator.js";
 import { MemoryQueue } from "../memory/queue.js";
 import { PgBossQueue, streamOf } from "../pgboss/queue.js";
@@ -1594,6 +1595,28 @@ if (databaseUrl === null) {
         expect(await rowsOf("mch_old_one")).toStrictEqual([]);
       });
     });
+
+    describeWalletSpelling(
+      "a wallet stored in another spelling than its split, on Postgres",
+      async (network) => {
+        await contract.pool.query(EMPTY_EVERY_TABLE);
+        return {
+          store: PostgresStore.over(contract.db, network, countedIds()),
+          writeWalletWithoutSplit: async (merchantId, wallet) => {
+            await contract.pool.query(
+              `update merchants set payout_wallet = $2, pending_payout_wallet = $3,
+                 pending_payout_wallet_from = $4 where id = $1`,
+              [
+                merchantId,
+                wallet.address,
+                wallet.pending?.address ?? null,
+                wallet.pending === null ? null : new Date(wallet.pending.takesEffectAt),
+              ],
+            );
+          },
+        };
+      },
+    );
 
     /**
      * Everything both stores promise, against the one a merchant's money rests
