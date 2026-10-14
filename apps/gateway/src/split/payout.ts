@@ -210,7 +210,7 @@ const eachOnce = (wallets: readonly string[]): readonly string[] => [
 function transactionOf(
   network: PayoutSplitNetwork,
   splits: readonly PayoutSplit[],
-  terms: { readonly distributeMayFail: boolean; readonly withdrawCommission: boolean },
+  terms: { readonly withdrawCommission: boolean },
 ): PayoutTransaction {
   const calls: Call[] = [];
   for (const split of splits) {
@@ -224,9 +224,13 @@ function transactionOf(
         allowFailure: false,
         callData: createSplitCall(parameters, ZERO_ADDRESS),
       },
+      // A split Circle has frozen must not hold back the others. A mismatch
+      // of parameters cannot hide behind the flag: the split was refused
+      // unless its address follows from them, and its create, which may not
+      // fail, runs first.
       {
         target: split.address,
-        allowFailure: terms.distributeMayFail,
+        allowFailure: true,
         callData: distributeCall(parameters, network.usdc, ZERO_ADDRESS),
       },
     );
@@ -264,9 +268,10 @@ function transactionOf(
 /**
  * The one transaction that pays a merchant out of their splits on this
  * network, as their payout screen shows it: each split created and
- * distributed, then each of their wallets withdrawn once. Only a withdrawal
- * may fail without undoing the rest. Agentify's share is left credited in the
- * warehouse, for the operator's payout to collect.
+ * distributed, then each of their wallets withdrawn once. A distribution or a
+ * withdrawal may fail without undoing the rest, so a split Circle has blocked
+ * does not stop the merchant's others; a creation may not. Agentify's share is
+ * left credited in the warehouse, for the operator's payout to collect.
  *
  * Built from the splits as recorded, never from the network's commission
  * wallet or rate today; the network gives only the contracts and the token.
@@ -290,7 +295,7 @@ export function merchantPayout(
     );
   }
   refuseUnlessPayable(network, splits);
-  return transactionOf(network, splits, { distributeMayFail: false, withdrawCommission: false });
+  return transactionOf(network, splits, { withdrawCommission: false });
 }
 
 /**
@@ -312,7 +317,6 @@ export function operatorPayouts(
   for (let start = 0; start < splits.length; start += SPLITS_PER_PAYOUT) {
     parts.push(
       transactionOf(network, splits.slice(start, start + SPLITS_PER_PAYOUT), {
-        distributeMayFail: true,
         withdrawCommission: true,
       }),
     );

@@ -172,12 +172,13 @@ export interface DashboardConfig {
 /** Used only in the sandbox, where messages go to the log. */
 const NOBODY_READS_THIS = "Agentify <no-reply@localhost>";
 
-/** Each chain a deployment may run on, and where a transaction on it is looked at. */
+/**
+ * Where a transaction is looked at on each chain a gateway takes payments on,
+ * Base and Base Sepolia.
+ */
 const TRANSACTION_PAGES: Readonly<Record<string, string>> = {
   "eip155:8453": "https://basescan.org/tx/",
   "eip155:84532": "https://sepolia.basescan.org/tx/",
-  "eip155:11155111": "https://sepolia.etherscan.io/tx/",
-  "eip155:80002": "https://amoy.polygonscan.com/tx/",
 };
 
 export function loadConfig(environment: Record<string, string | undefined>): DashboardConfig {
