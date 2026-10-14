@@ -312,6 +312,25 @@ describe("a replacement on the live deployment", () => {
     );
   });
 
+  it("checks a payment against the split in force when it arrives, though its order opened before the moment", async () => {
+    // A merchant often leaves a wallet because its key leaked. Checked
+    // against the split in force when the order opened, every order that
+    // straddles the moment would be paid to the wallet they left.
+    const { served, harnessed } = await started();
+    const itemId = await published(served, harnessed.merchant.key);
+    await ask(harnessed, A_WALLET);
+    harnessed.advance(THE_WAIT - 1_000);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
+    harnessed.advance(2_000);
+
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+
+    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(
+      (await recordedSplitOf(harnessed, A_WALLET))?.address,
+    );
+  });
+
   it("charges the split verified before the moment, even when the charge comes after it", async () => {
     // In the synchronous mode the charge comes after the goods. Sent to the
     // split that took effect meanwhile, it would be refused after the goods
