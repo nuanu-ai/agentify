@@ -372,12 +372,12 @@ export const signedOutOthers = (ended: number): string =>
 
 /** Typed while a change waited, the address paid into now cancels it, and the person may not know. */
 export const cancelledByTyping = (applies: string, waiting: string): string =>
-  `${applies} is the address your sales are paid into now, so the waiting change to ${waiting} was cancelled. ` +
+  `${applies} is the wallet your share is paid out to now, so the waiting change to ${waiting} was cancelled. ` +
   "Every other session of your merchant was signed out.";
 
 /** A press from a page drawn while a change waited, arriving after it took effect. */
 export const landedBeforePress = (shown: Shown): string =>
-  `The change to ${shown.waiting} took effect at ${shown.from === null ? "its moment" : moment(shown.from)}, before you pressed, and your sales are now paid into it. ` +
+  `The change to ${shown.waiting} took effect at ${shown.from === null ? "its moment" : moment(shown.from)}, before you pressed, and your share is now paid out to it. ` +
   (shown.paid === null
     ? "Setting another address back is a change like any other: it waits forty-eight hours and is announced. "
     : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
