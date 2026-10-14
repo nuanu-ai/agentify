@@ -459,10 +459,14 @@ describe("asking again", () => {
       pending: { payout_wallet: ANOTHER_WALLET, takes_effect_at: at(replaced + THE_WAIT) },
     });
     expect(harnessed.announcer.announced).toHaveLength(2);
+    // Buyers pay into the split in force until the new change applies, not
+    // into the waiting one it replaces, which never took effect.
     expect(harnessed.announcer.announced[1]).toMatchObject({
       kind: "wallet_change",
       from: harnessed.merchant.wallet,
+      from_split: splitOf(harnessed, harnessed.merchant.wallet).address,
       to: ANOTHER_WALLET,
+      to_split: splitOf(harnessed, ANOTHER_WALLET).address,
     });
 
     // And the first change never takes effect: its moment passes and the
