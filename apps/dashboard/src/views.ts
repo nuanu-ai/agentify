@@ -445,7 +445,7 @@ const whyItNeedsYou = (
   intoASplit: boolean,
 ): string =>
   order.status === "refund_due"
-    ? `${cause === undefined ? "The payment was received and the product was not delivered." : OWED_BECAUSE[cause]} You return the full price, ${money(order.price)}, from your own wallet${intoASplit ? "; Agentify's commission is not given back" : ""}. A late delivery still clears the debt.`
+    ? `${cause === undefined ? "The payment was received and the product was not delivered." : OWED_BECAUSE[cause]} You return the full price, ${money(order.price)}, from your own wallet${intoASplit ? "; the commission stays with Agentify" : ""}. A late delivery still clears the debt.`
     : "Your integration returned the product, but the payment did not go through, so the product was not released to the buyer. The order stays open.";
 
 const sharesIn = (

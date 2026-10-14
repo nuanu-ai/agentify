@@ -914,7 +914,7 @@ const CARDS: GalleryState[] = [
       screen: "Cards",
       when: "A merchant on the test site has cards but has not set a payout wallet.",
       cause:
-        "Where payments settle, a card is off sale until the wallet its money arrives at is set.",
+        "Where payments settle, a card is off sale until the wallet its share is paid out to is set.",
     },
     cardsView(
       seenBy("test", { payout: { wallet: null } }),
@@ -1836,7 +1836,7 @@ const SETTINGS: GalleryState[] = [
     {
       id: "dashboard-settings-wallet-cancelled-by-typing",
       screen: "Settings",
-      when: "A merchant types the address paid into now while a change of it waits.",
+      when: "A merchant types the wallet paid out to now while a change of it waits.",
       cause: "Asking for the current address cancels the waiting change, and the page says so.",
     },
     settingsView(

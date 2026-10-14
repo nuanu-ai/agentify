@@ -1858,7 +1858,7 @@ describe("the account on the settings screen", () => {
   });
 });
 
-describe("the address a merchant's money arrives at", () => {
+describe("the wallet a merchant's share is paid out to", () => {
   /**
    * Of the right shape and obviously nobody's. Two spellings: the lower case a
    * block explorer prints, and the checksummed mixed case a wallet shows,

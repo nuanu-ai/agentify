@@ -370,7 +370,7 @@ export const signedOutOthers = (ended: number): string =>
       ? "1 other session of this account was signed out."
       : `${ended} other sessions of this account were signed out.`;
 
-/** Typed while a change waited, the address paid into now cancels it, and the person may not know. */
+/** Typed while a change waited, the wallet paid out to now cancels it, and the person may not know. */
 export const cancelledByTyping = (applies: string, waiting: string): string =>
   `${applies} is the wallet your share is paid out to now, so the waiting change to ${waiting} was cancelled. ` +
   "Every other session of your merchant was signed out.";
@@ -524,7 +524,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     if (cancelled.document.pending === null) {
       noted(
         person,
-        `cancelled a waiting change of the address their money arrives at, and ${ended} other sessions of the merchant were ended`,
+        `cancelled a waiting change of the wallet their share is paid out to, and ${ended} other sessions of the merchant were ended`,
       );
       if (!byTyping) return toSettings;
       return await settingsDrawn(person, {
@@ -534,7 +534,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     }
     noted(
       person,
-      `asked for the address their money arrives at back as a change of it took effect; that now waits, and ${ended} other sessions of the merchant were ended`,
+      `asked for the wallet their share is paid out to back as a change of it took effect; that now waits, and ${ended} other sessions of the merchant were ended`,
     );
     return await settingsDrawn(person, {
       kind: "wallet-notice",
@@ -560,7 +560,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     const ended = await signOutTheOthers(person, cookie);
     noted(
       person,
-      `${how} after a change of the address their money arrives at had taken effect, and ${ended} other sessions of the merchant were ended`,
+      `${how} after a change of the wallet their share is paid out to had taken effect, and ${ended} other sessions of the merchant were ended`,
     );
     return await settingsDrawn(person, { kind: "wallet-notice", notice: landedBeforePress(shown) });
   };
@@ -991,8 +991,8 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         noted(
           person,
           set.document.pending === null
-            ? "changed the address their money arrives at"
-            : "asked for a change of the address their money arrives at, which now waits",
+            ? "changed the wallet their share is paid out to"
+            : "asked for a change of the wallet their share is paid out to, which now waits",
         );
         return toSettings;
       },
