@@ -25,6 +25,7 @@
     "test": "vitest run --project unit && pnpm scanner:ops:test",
     "test:db": "vitest run --config vitest.db.config.ts",
     "smoke": "pnpm --filter @agentify/slice run smoke",
+    "commission-wallet": "pnpm --filter @agentify/slice run commission-wallet",
     "smoke:listing": "pnpm --filter @agentify/gateway run listing",
     "smoke:bootstrap": "pnpm --filter @agentify/slice run bootstrap",
     "outside": "./scripts/outside.sh",
