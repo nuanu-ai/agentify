@@ -46,3 +46,4 @@ export {
   payoutSplitNetworkOf,
 } from "./split/networks.js";
 export { type PayoutSplit, payoutSplitFor } from "./split/parameters.js";
+export { type NotAPayoutWallet, whyNotAPayoutWallet } from "./split/wallet-rule.js";
