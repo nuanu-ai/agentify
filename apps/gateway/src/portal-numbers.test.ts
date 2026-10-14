@@ -198,6 +198,58 @@ const PINS: readonly Pin[] = [
     "which pays {merchant}% to the merchant's wallet and {agentify}% to Agentify",
   ),
 
+  // --- what Agentify takes, and what reaches the merchant -------------------
+  ...sharesIn(
+    "how a payout divides what came in",
+    { page: "apps/docs/money.md" },
+    "then sends {merchant}% to your wallet and {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the rate, where the page says what we take",
+    { page: "apps/docs/money.md" },
+    "We take {agentify}% of every payment",
+  ),
+  ...sharesIn(
+    "the rate inside the price",
+    { page: "apps/docs/money.md" },
+    "your payout contract sends {merchant}% of it to you and {agentify}% to us",
+  ),
+  ...sharesIn(
+    "the share a payout gives after rounding",
+    { page: "apps/docs/money.md" },
+    "a payout gives you about {merchant}% of what came in",
+  ),
+  ...sharesIn(
+    "the commission a refund of the whole price leaves with us",
+    { page: "apps/docs/money.md" },
+    "although your payout contract pays you {merchant}% of it: the {agentify}% commission stays with Agentify",
+  ),
+  ...sharesIn(
+    "the shares, where the owner decides whether to connect",
+    { page: "apps/docs/index.md" },
+    "then sends {merchant}% to your wallet and {agentify}% to us",
+  ),
+  ...sharesIn(
+    "the rate inside the price, where the owner decides whether to connect",
+    { page: "apps/docs/index.md" },
+    "Our {agentify}% is inside your price",
+  ),
+  ...sharesIn(
+    "the rate, in the short answer about cost",
+    { page: "apps/docs/faq.md" },
+    "We take {agentify}% of every payment",
+  ),
+  ...sharesIn(
+    "the shares, in the short answer about cost",
+    { page: "apps/docs/faq.md" },
+    "your payout contract sends {merchant}% of it to your wallet and {agentify}% to us",
+  ),
+  ...sharesIn(
+    "the shares, where the engineer reads the wallet back",
+    { page: "apps/docs/quickstart.md" },
+    "that pays {merchant}% to `payout_wallet` and {agentify}% to Agentify",
+  ),
+
   // --- how long we wait for a price, and how long the answer lives ----------
   {
     what: "how long a price the merchant named goes on being good",
