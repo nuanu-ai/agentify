@@ -350,6 +350,33 @@ describe("a start on a database whose splits belong to another network", () => {
   });
 });
 
+describe("a start on a store that reads splits on another network than its payout split", () => {
+  it("refuses, naming both networks, where the store was opened for another network", async () => {
+    // Every wallet would read as having no split, so nothing would sell, and
+    // every wallet save would be refused as written beside another
+    // network's split.
+    const database = aDatabase("eip155:8453");
+    await aMerchant(database, "mch_one");
+
+    const refused = await refusalOf(aGatewayOver(database).gateway);
+
+    expect(refused).toContain("eip155:8453");
+    expect(refused).toContain("eip155:84532");
+  });
+
+  it("refuses where the payout split's own network is not the one its table files it under", async () => {
+    // The store is opened for the network payments are taken on, and the
+    // split is made for the network its entry names; the two must agree.
+    const database = aDatabase();
+    const misfiled = editedTo({ network: "eip155:8453" });
+
+    const refused = await refusalOf(aGatewayOver(database, misfiled).gateway);
+
+    expect(refused).toContain("eip155:8453");
+    expect(refused).toContain("eip155:84532");
+  });
+});
+
 describe("a start that finds wallets set before splits were", () => {
   /** Merchant 1 with no wallet, 2 with W, 3 with W and P waiting, all as before splits. */
   const asBeforeSplits = async () => {

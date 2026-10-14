@@ -18,7 +18,7 @@
  * to misbehave.
  */
 
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
@@ -31,6 +31,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { Gateway } from "../../app/gateway.js";
 import { setPayoutWallet } from "../../app/merchants.js";
 import type { Runtime } from "../../app/runtime.js";
+import { openCommandApplication } from "../../command-application.js";
 import { loadConfig } from "../../config.js";
 import { nobodyAnnounces } from "../../ports/announcer.js";
 import type { OrderChange } from "../../ports/store.js";
@@ -1580,6 +1581,75 @@ if (databaseUrl === null) {
         expect(
           (await pool.query("select * from payout_splits order by address")).rows,
         ).toStrictEqual(first);
+      });
+
+      describe("on a deployment of another network than the test chain", () => {
+        const base = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453");
+        const MERCHANT = "mch_on_base";
+
+        /**
+         * A CDP API key of the shape the signer takes, made here and never
+         * written down. It opens nothing: a start only signs with it, and
+         * nothing here speaks to Coinbase.
+         */
+        const anApiKeySecret = (): string => {
+          const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+          const seed = Buffer.from(privateKey.export({ format: "jwk" }).d as string, "base64url");
+          const key = Buffer.from(publicKey.export({ format: "jwk" }).x as string, "base64url");
+          return Buffer.concat([seed, key]).toString("base64");
+        };
+
+        /** The live deployment on Base, under the fixture's commission wallet. */
+        const onBase = () =>
+          loadConfig(
+            {
+              DATABASE_URL: databaseUrl,
+              PAYMENT_NETWORK: "eip155:8453",
+              FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+              CDP_API_KEY_ID: "key-id",
+              CDP_API_KEY_SECRET: anApiKeySecret(),
+            },
+            SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
+          );
+
+        /** A registry holding nothing of the test chain, and a merchant paid at W1. */
+        beforeEach(async () => {
+          await pool.query(EMPTY_EVERY_TABLE);
+          await store.addMerchant({ id: MERCHANT, name: "On Base" }, now);
+          await pool.query("update merchants set payout_wallet = $1 where id = $2", [W1, MERCHANT]);
+        });
+
+        afterEach(async () => {
+          await pool.query("drop schema if exists pgboss cascade");
+        });
+
+        it("starts, and reads each wallet's split on that network", async () => {
+          // Opened for the test chain instead, every live merchant's split
+          // would read as missing and nothing would sell.
+          const started = await startGateway(onBase(), nobodyAnnounces);
+          try {
+            started.closeListener();
+            expect((await started.application.payoutSplitsOf(MERCHANT)).inForce?.address).toBe(
+              payoutSplitFor(base, MERCHANT, W1).address,
+            );
+          } finally {
+            await started.stop();
+          }
+        });
+
+        it("opens a command's application that reads each wallet's split on that network", async () => {
+          // The operator's payout and the payment report run through it.
+          await store.recordPayoutSplits([payoutSplitFor(base, MERCHANT, W1)], now);
+
+          const opened = await openCommandApplication(onBase());
+          try {
+            expect((await opened.application.payoutSplitsOf(MERCHANT)).inForce?.address).toBe(
+              payoutSplitFor(base, MERCHANT, W1).address,
+            );
+          } finally {
+            await opened.close();
+          }
+        });
       });
 
       it("refuses to start where the code's commission wallet is not the one recorded, before it listens", async () => {
