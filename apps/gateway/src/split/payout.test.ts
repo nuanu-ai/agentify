@@ -315,15 +315,6 @@ describe("a payout's withdrawals", () => {
 });
 
 describe("a payout that would not do what it says", () => {
-  const refusal = (build: () => unknown): string => {
-    try {
-      build();
-    } catch (thrown) {
-      return thrown instanceof Error ? thrown.message : String(thrown);
-    }
-    throw new Error("a payout was built");
-  };
-
   it("is refused over no split at all", () => {
     expect(refusal(() => merchantPayout(TEST_NETWORK, []))).toMatch(/no split/);
   });
@@ -366,6 +357,53 @@ describe("a payout that would not do what it says", () => {
     );
     expect(() => merchantPayout(TEST_NETWORK, many.slice(0, 20))).not.toThrow();
     expect(refusal(() => merchantPayout(TEST_NETWORK, many))).toMatch(/21.*20/s);
+  });
+});
+
+describe("a payout that would withdraw a merchant's share to an address nobody can be paid at", () => {
+  // A payout withdraws each share to the wallet its split names, and Multicall3
+  // runs that withdrawal as itself: a share withdrawn to Multicall3 is taken by
+  // whoever calls it next, and one withdrawn to a contract of the payout's own,
+  // to a token or to a commission wallet never reaches the merchant. Saving
+  // such a wallet is refused, and so is building a payout over a split that
+  // names one anyway, on every network the gateway knows of.
+  const NETWORKS = SPLIT_NETWORKS_WITH_A_FIXTURE_BASE;
+
+  /** A split of this merchant that pays its share to `wallet`, at the address its own parameters give. */
+  const payingTheShareTo = (wallet: string): PayoutSplit =>
+    wallet === ZERO
+      ? // No split pays the zero address: the parameters give no address at all.
+        { ...payoutSplitFor(TEST_NETWORK, MERCHANT_ID, MERCHANT), merchantWallet: ZERO }
+      : payoutSplitFor(TEST_NETWORK, MERCHANT_ID, wallet);
+
+  it.each([
+    ["the zero address", ZERO, /zero address/],
+    ["another network's commission wallet", LIVE_NETWORK.commissionWallet, /commission wallet/],
+    ["the split factory", TEST_NETWORK.factory, /factory/],
+    ["the split implementation", TEST_NETWORK.implementation, /implementation/],
+    ["the warehouse", TEST_NETWORK.warehouse, /warehouse/],
+    ["Multicall3", TEST_NETWORK.multicall3, /Multicall3/],
+    ["this network's USDC", TEST_NETWORK.usdc, /USDC/],
+    ["another network's USDC", LIVE_NETWORK.usdc, /USDC/],
+  ] as const)("is refused where the share would go to %s, and the refusal says which", (_what, wallet, said) => {
+    const split = payingTheShareTo(wallet);
+
+    for (const refused of [
+      refusal(() => merchantPayout(TEST_NETWORK, [split], NETWORKS)),
+      refusal(() => operatorPayouts(TEST_NETWORK, [S_ROW, split], NETWORKS)),
+    ]) {
+      expect(refused).toContain(checksummedAddressOf(wallet));
+      expect(refused).toMatch(said);
+    }
+  });
+
+  it("is built where the same split pays an ordinary wallet", () => {
+    // The negative control: the refusals above are of the wallet, not of how
+    // the split was put together.
+    const split = payingTheShareTo(MERCHANT);
+
+    expect(merchantPayout(TEST_NETWORK, [split], NETWORKS).splits).toStrictEqual([split]);
+    expect(operatorPayouts(TEST_NETWORK, [S_ROW, split], NETWORKS)).toHaveLength(1);
   });
 });
 
@@ -463,6 +501,16 @@ describe("the operator's payout over more splits than one transaction carries", 
     },
   );
 });
+
+/** Why building a payout threw, or a failure of the test where it built one. */
+function refusal(build: () => unknown): string {
+  try {
+    build();
+  } catch (thrown) {
+    return thrown instanceof Error ? thrown.message : String(thrown);
+  }
+  throw new Error("a payout was built");
+}
 
 /** A wallet no other index gives: all digits, so it is its own checksummed spelling. */
 function aWallet(index: number): string {
