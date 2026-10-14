@@ -496,9 +496,6 @@ importers:
       '@agentify/analytics':
         specifier: workspace:*
         version: link:../analytics
-      '@agentify/visual':
-        specifier: workspace:*
-        version: link:../visual
       posthog-js:
         specifier: 1.399.2
         version: 1.399.2

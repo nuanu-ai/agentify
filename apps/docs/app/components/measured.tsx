@@ -15,7 +15,7 @@ const environmentOf = (written: string): (typeof ENVIRONMENTS)[number] =>
   ENVIRONMENTS.find((each) => each === written) ?? "local";
 
 /** Where measurements go, from the settings Caddy filled in as the scanner is given them. */
-export const analyticsConfigOf = (values: SiteValues): BrowserAnalyticsConfig => ({
+const analyticsConfigOf = (values: SiteValues): BrowserAnalyticsConfig => ({
   runtimeEnvironment: environmentOf(values["analytics-runtime"]),
   posthog: {
     key: values["posthog-key"] || null,
