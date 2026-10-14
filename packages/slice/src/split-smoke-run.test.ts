@@ -476,6 +476,25 @@ describe("a split smoke run", () => {
     expect(stopped.step).toBe("the second payout");
   });
 
+  it("stops at the second payment, sending no payout after it, when the facilitator does not settle it", async () => {
+    let payments = 0;
+    const chain = scriptedChain({
+      effects: AS_THE_CONTRACTS_DO,
+      onPayment: () => {
+        payments += 1;
+        if (payments === 2) {
+          throw new Error("nothing was charged: the settlement did not succeed");
+        }
+      },
+    });
+
+    const stopped = await stoppedAt(run(chain, aJournal()));
+
+    expect(stopped.step).toBe("the second payment");
+    expect(stopped.message).toMatch(/nothing was charged/);
+    expect(chain.made()).toBe(2);
+  });
+
   it("pays nothing when the journal cannot be written", async () => {
     const chain = scriptedChain({ effects: AS_THE_CONTRACTS_DO });
     const nowhere = path.join(path.dirname(aJournal()), "no-such-directory", "journal.jsonl");
