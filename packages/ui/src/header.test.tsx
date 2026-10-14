@@ -20,8 +20,10 @@ afterEach(() => {
 
 /** The header as a surface mounted where it is deployed draws it, on one of its pages. */
 const headerOn = (surface: Surface) => {
-  const basename = surface === "dashboard" ? "/dashboard" : "/";
-  const start = surface === "dashboard" ? "/dashboard/cards" : "/methodology";
+  const basename = { scanner: "/", dashboard: "/dashboard", docs: "/docs" }[surface];
+  const start = { scanner: "/privacy", dashboard: "/dashboard/cards", docs: "/docs/money" }[
+    surface
+  ];
   const router = createMemoryRouter(
     [{ path: "*", element: <SiteHeader surface={surface} link={Link} /> }],
     { basename, initialEntries: [start] },
@@ -71,6 +73,18 @@ describe("the site header", () => {
       expect(header.href(name), name).toBe(href);
       expect(header.afterClicking(name), name).toBe("not followed in place");
     }
+  });
+
+  it("follows the documentation's own pages in place inside it, marked as where the page is, and leads to the dashboard's sign-in", () => {
+    const header = headerOn("docs");
+
+    expect(header.href("Docs")).toBe("/docs");
+    expect(header.current("Docs")).toBe(true);
+    expect(header.afterClicking("Docs")).toBe("/docs");
+    expect(header.href("Dashboard")).toBe("/dashboard/sign-in");
+    expect(header.current("Dashboard")).toBe(false);
+    expect(header.afterClicking("Dashboard")).toBe("not followed in place");
+    expect(header.afterClicking("Agentify")).toBe("not followed in place");
   });
 });
 
