@@ -474,29 +474,6 @@ td.control {
   font-size: 0.875rem;
 }
 
-/* Which stack this is, on every page but a live one: a band across the window
-   above the bar, its words lined up with the content. A band has no corners for
-   the window edge to cut, and stays short on a phone. */
-.stack-note {
-  border-bottom: var(--hairline) solid var(--line);
-  background: var(--notice-bg);
-  color: var(--notice-ink);
-}
-
-.surface-words {
-  margin: 0;
-  padding-block: 10px;
-  font-size: 0.8125rem;
-  line-height: 1.5;
-}
-
-@media (max-width: 760px) {
-  .surface-words {
-    padding-block: 8px;
-    font-size: 0.75rem;
-  }
-}
-
 .summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

@@ -1,9 +1,10 @@
 /*
  * The visual language shared by every surface on the origin: the tokens, the
  * base element rules, and the primitives every surface draws (page width,
- * button, field, badge, table, brand lockup, footer band, small typographic
- * classes). The layout of one page does not belong here; it lives with that
- * page.
+ * button, field, badge, table, brand lockup, footer band, the channel's
+ * notice, small typographic classes). The layout of one page does not belong
+ * here; it lives with that page, and the layout reading pages share lives in
+ * editorial.css.
  *
  * Nothing serves this file over HTTP on the deployed origin: the Caddyfile
  * routes shared assets one path at a time and this one is not among them, so
@@ -1050,6 +1051,29 @@ p {
 .foot-copy {
   color: var(--footer-faint);
   font: var(--text-caption) / 1.5 var(--font-mono);
+}
+
+/* Which stack this is, on every page but a live one: a band across the window
+   under the site header, its words lined up with the content. A band has no
+   corners for the window edge to cut, and stays short on a phone. */
+.stack-note {
+  border-bottom: var(--hairline) solid var(--line);
+  background: var(--notice-bg);
+  color: var(--notice-ink);
+}
+
+.surface-words {
+  margin: 0;
+  padding-block: 10px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .surface-words {
+    padding-block: 8px;
+    font-size: 0.75rem;
+  }
 }
 
 @media (max-width: 700px) {
