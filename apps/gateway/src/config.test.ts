@@ -6,6 +6,7 @@ import {
   secondAttemptProblem,
 } from "./config.js";
 import { nobodyAnnounces } from "./ports/announcer.js";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "./split/networks.js";
 import { startGateway } from "./start.js";
 import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "./testing/split-networks.js";
 
@@ -363,6 +364,30 @@ describe("loadConfig", () => {
     );
     expect(() =>
       loadConfig({ ...required, PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000001" }),
+    ).not.toThrow();
+  });
+
+  it("refuses a placeholder address no payout split could be made for, saying what it is", () => {
+    // The sandbox pays a merchant with no wallet at the split of this address.
+    // The commission wallet there makes a split paying one wallet twice, which
+    // no factory creates, and a payout contract or the token there is an
+    // address no share comes back from.
+    const network = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532");
+    const sandbox = { ...required, FACILITATOR_URL: SANDBOX_FACILITATOR };
+
+    for (const [placeholder, said] of [
+      [network.commissionWallet, /commission wallet/],
+      [network.multicall3.toLowerCase(), /Multicall3/],
+      [network.usdc, /USDC/],
+      ["0x0000000000000000000000000000000000000000", /zero address/],
+      ["0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed", /not an address/],
+    ] as const) {
+      expect(refusalFor({ ...sandbox, PAY_TO_ADDRESS: placeholder }), placeholder).toMatch(
+        new RegExp(`PAY_TO_ADDRESS.*${said.source}`, "s"),
+      );
+    }
+    expect(() =>
+      loadConfig({ ...sandbox, PAY_TO_ADDRESS: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" }),
     ).not.toThrow();
   });
 
