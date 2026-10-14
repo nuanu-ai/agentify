@@ -848,7 +848,7 @@ describe("the site's menu on a phone", () => {
     });
     const page = await context.newPage();
     // A visitor who has answered the consent banner, so the finger lands on
-    // the page wherever the runner's fonts make the banner's foot reach.
+    // the page whatever height the runner's fonts give the banner.
     await page.addInitScript(([key, choice]) => localStorage.setItem(key, choice), [
       CONSENT_STORAGE_KEY,
       JSON.stringify(SAVED_CONSENT),
@@ -862,11 +862,8 @@ describe("the site's menu on a phone", () => {
     const panel = page.locator("header .site-menu-panel");
     const scrolled = () => page.evaluate(() => window.scrollY);
     await page.evaluate(() => window.scrollTo(0, 300));
-    await dragUp(page, { x: 100, y: 450 }, 200);
-    // A finger's scroll reaches the page's script a frame or more after it lifts.
-    await expect.poll(scrolled).toBeGreaterThan(300);
-    await page.waitForTimeout(300);
     const before = await scrolled();
+    expect(before).toBe(300);
 
     await burger.tap();
     await panel.waitFor({ state: "visible" });
@@ -886,6 +883,9 @@ describe("the site's menu on a phone", () => {
 
     await burger.tap();
     await panel.waitFor({ state: "hidden" });
+    // The same finger scrolls the page once the menu is closed, so its standing
+    // still above is the menu's doing. A finger's scroll reaches the page's
+    // script a frame or more after it lifts.
     await dragUp(page, under, 200);
     await expect.poll(scrolled).toBeGreaterThan(before);
     await context.close();
