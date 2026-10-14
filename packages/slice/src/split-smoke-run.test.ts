@@ -84,6 +84,13 @@ interface Effect {
   readonly transfers: readonly UsdcTransfer[];
   readonly created?: readonly SplitCreation[];
   readonly distributed?: readonly bigint[];
+  readonly succeeded?: boolean;
+  /** What its sender paid, in wei. */
+  readonly paid?: bigint;
+  /** The split's code from this block on, where it is not the factory's proxy. */
+  readonly code?: Hex;
+  /** A block somebody else's transaction makes just before this one. */
+  readonly elsewhere?: { readonly after: Ledger; readonly createsSplit?: boolean };
 }
 
 const AS_THE_CONTRACTS_DO: readonly Effect[] = [
@@ -113,8 +120,15 @@ const AS_THE_CONTRACTS_DO: readonly Effect[] = [
   },
 ];
 
-const CLONE =
-  `0x36602c57343d527f9e4ac34f21c619cefc926c8bd93b54bf5a39c7ab2127a895af1cc0691d7e3dff593da1005b3d3d3d3d363d3d37363d73${NETWORK.implementation.slice(2).toLowerCase()}5af43d3d93803e605757fd5bf3` as Hex;
+/** The contracts' run with one of its five transactions showing otherwise. */
+const withEffect = (at: number, change: (effect: Effect) => Effect): readonly Effect[] =>
+  AS_THE_CONTRACTS_DO.map((effect, index) => (index === at ? change(effect) : effect));
+
+const cloneOf = (implementation: string): Hex =>
+  `0x36602c57343d527f9e4ac34f21c619cefc926c8bd93b54bf5a39c7ab2127a895af1cc0691d7e3dff593da1005b3d3d3d3d363d3d37363d73${implementation.slice(2).toLowerCase()}5af43d3d93803e605757fd5bf3`;
+
+/** A real split's code on Base Sepolia, read from the experiment's S. */
+const CLONE = cloneOf(NETWORK.implementation);
 
 const CHEAP: Cost = {
   gas: 400_000n,
@@ -131,63 +145,76 @@ interface Scripted extends SmokeWorld {
 /**
  * A chain that answers as the script says: block 100 holds `initial`, and each
  * payment or transaction the run makes is mined in the next block with the
- * next effect.
+ * next effect, after any block somebody else makes first.
  */
 function scriptedChain(options: {
   readonly effects: readonly Effect[];
+  readonly initial?: Ledger;
+  readonly splitExists?: boolean;
   readonly chainId?: number;
   readonly payoutKeyBalance?: bigint;
   readonly cost?: (made: number) => Cost;
   readonly onPayment?: () => void;
+  readonly instruction?: (asked: number) => PayoutTransaction;
 }): Scripted {
-  const states: Ledger[] = [INITIAL];
+  const blocks: { ledger: Ledger; code: Hex | undefined }[] = [
+    { ledger: options.initial ?? INITIAL, code: options.splitExists === true ? CLONE : undefined },
+  ];
   const mined = new Map<Hex, Mined>();
-  let createdAt: bigint | null = null;
+  let made = 0;
+  let instructions = 0;
   const make = (): Hex => {
-    const at = states.length - 1;
-    const effect = options.effects[at];
+    const effect = options.effects[made];
     if (effect === undefined) {
-      throw new Error(`the script has no transaction ${at + 1}`);
+      throw new Error(`the script has no transaction ${made + 1}`);
     }
-    states.push(effect.after);
-    const block = 100n + BigInt(states.length - 1);
-    if ((effect.created ?? []).length > 0 && createdAt === null) {
-      createdAt = block;
+    made += 1;
+    const codeBefore = blocks.at(-1)?.code;
+    if (effect.elsewhere !== undefined) {
+      blocks.push({
+        ledger: effect.elsewhere.after,
+        code: effect.elsewhere.createsSplit === true ? CLONE : codeBefore,
+      });
     }
+    const creates = (effect.created ?? []).length > 0;
+    blocks.push({
+      ledger: effect.after,
+      code: effect.code ?? (creates ? CLONE : blocks.at(-1)?.code),
+    });
+    const block = 100n + BigInt(blocks.length - 1);
     const hash = `0x${block.toString(16).padStart(64, "0")}` as Hex;
     mined.set(hash, {
       hash,
       block,
-      succeeded: true,
+      succeeded: effect.succeeded ?? true,
       gasUsed: 300_000n,
-      paid: 3_000_000_000_000n,
+      paid: effect.paid ?? 3_000_000_000_000n,
       transfers: effect.transfers,
       created: effect.created ?? [],
       distributed: effect.distributed ?? [],
     });
     return hash;
   };
-  const stateAt = (block: bigint) => {
-    const at = Number(block - 100n);
-    const state = states[Math.min(at, states.length - 1)];
-    if (at < 0 || state === undefined) {
+  const blockAt = (block: bigint) => {
+    const found = blocks[Number(block - 100n)];
+    if (found === undefined) {
       throw new Error(`the script holds no block ${block}`);
     }
-    return state;
+    return found;
   };
   return {
-    made: () => states.length - 1,
+    made: () => made,
     chainId: async () => options.chainId ?? 84532,
     observe: async (at) => {
-      const block = at === "latest" ? 100n + BigInt(states.length - 1) : at;
-      return {
-        block,
-        ledger: stateAt(block),
-        splitCode: createdAt !== null && block >= createdAt ? CLONE : undefined,
-      };
+      const block = at === "latest" ? 100n + BigInt(blocks.length - 1) : at;
+      const { ledger, code } = blockAt(block);
+      return { block, ledger, splitCode: code };
     },
     payoutKeyBalance: async () => options.payoutKeyBalance ?? 10n ** 16n,
-    instruction: async () => merchantPayout(NETWORK, [SPLIT]),
+    instruction: async () => {
+      instructions += 1;
+      return options.instruction?.(instructions) ?? merchantPayout(NETWORK, [SPLIT]);
+    },
     operatorPayout: async () => {
       const [only] = operatorPayouts(NETWORK, [SPLIT]);
       if (only === undefined) {
@@ -199,7 +226,7 @@ function scriptedChain(options: {
       options.onPayment?.();
       return make();
     },
-    costOf: async () => options.cost?.(states.length - 1) ?? CHEAP,
+    costOf: async () => options.cost?.(made) ?? CHEAP,
     send: async (_: PayoutTransaction) => make(),
     mined: async (hash) => {
       const found = mined.get(hash);
@@ -427,6 +454,10 @@ describe("a split smoke run", () => {
         factory: SPLIT.factory,
       },
     });
+    expect(JSON.parse(plan ?? "null")).toMatchObject({
+      instruction: { to: NETWORK.multicall3, data: merchantPayout(NETWORK, [SPLIT]).data },
+      operator: { to: NETWORK.multicall3, data: operatorPayouts(NETWORK, [SPLIT])[0]?.data },
+    });
     expect(journalLines(journal).map((line) => [line.stage, line.hash])).toStrictEqual([
       ["plan", undefined],
       ["the first payment", `0x${(101).toString(16).padStart(64, "0")}`],
@@ -438,14 +469,11 @@ describe("a split smoke run", () => {
   });
 
   it("stops at the first payout, naming the split, when it leaves the split's credit without the unit the rounding leaves, and sends nothing after", async () => {
-    const [pay, payout, ...rest] = AS_THE_CONTRACTS_DO;
-    if (pay === undefined || payout === undefined) throw new Error("the script is short");
     const chain = scriptedChain({
-      effects: [
-        pay,
-        { ...payout, after: ledger([40_000n, 1n, 9_988n, 119_997n], [0n, 0n, 2n, 10n]) },
-        ...rest,
-      ],
+      effects: withEffect(1, (payout) => ({
+        ...payout,
+        after: ledger([40_000n, 1n, 9_988n, 119_997n], [0n, 0n, 2n, 10n]),
+      })),
     });
     const journal = aJournal();
 
@@ -461,8 +489,7 @@ describe("a split smoke run", () => {
   });
 
   it("stops at the operator's payout, naming the address, when a unit of USDC reaches anybody but the run's five", async () => {
-    const effects = [...AS_THE_CONTRACTS_DO];
-    effects[4] = {
+    const effects = withEffect(4, () => ({
       after: ledger([30_000n, 1n, 19_978n, 120_015n], [0n, 1n, 1n, 1n]),
       transfers: [
         transfer(WAREHOUSE, MERCHANT, 0n),
@@ -470,7 +497,7 @@ describe("a split smoke run", () => {
         transfer(WAREHOUSE, STRANGER, 1n),
       ],
       distributed: [0n],
-    };
+    }));
 
     const stopped = await stoppedAt(run(scriptedChain({ effects }), aJournal()));
 
@@ -479,10 +506,7 @@ describe("a split smoke run", () => {
   });
 
   it("stops at the second payout when it creates the split again, which a deployed split never is", async () => {
-    const effects = [...AS_THE_CONTRACTS_DO];
-    const second = effects[3];
-    if (second === undefined) throw new Error("the script is short");
-    effects[3] = { ...second, created: [CREATED] };
+    const effects = withEffect(3, (second) => ({ ...second, created: [CREATED] }));
 
     const stopped = await stoppedAt(run(scriptedChain({ effects }), aJournal()));
 
@@ -506,6 +530,146 @@ describe("a split smoke run", () => {
     expect(stopped.step).toBe("the second payment");
     expect(stopped.message).toMatch(/nothing was charged/);
     expect(chain.made()).toBe(2);
+  });
+
+  it.each([
+    ["its transaction reverted", withEffect(1, (payout) => ({ ...payout, succeeded: false }))],
+    [
+      "the merchant's share reached the commission wallet",
+      withEffect(1, (payout) => ({
+        ...payout,
+        transfers: [
+          transfer(SPLIT.address, WAREHOUSE, 9_999n),
+          transfer(WAREHOUSE, COMMISSION, 9_988n),
+        ],
+      })),
+    ],
+    [
+      "the merchant was paid one unit less than the shares give",
+      withEffect(1, (payout) => ({
+        ...payout,
+        transfers: [
+          transfer(SPLIT.address, WAREHOUSE, 9_999n),
+          transfer(WAREHOUSE, MERCHANT, 9_987n),
+        ],
+      })),
+    ],
+    [
+      "the factory created the split with the shares swapped",
+      withEffect(1, (payout) => ({
+        ...payout,
+        created: [{ ...CREATED, allocations: [...CREATED.allocations].reverse() }],
+      })),
+    ],
+    ["the factory created nothing", withEffect(1, (payout) => ({ ...payout, created: [] }))],
+    [
+      "the split distributed other than its balance less the units it keeps",
+      withEffect(1, (payout) => ({ ...payout, distributed: [9_998n] })),
+    ],
+    [
+      "the split's code is a proxy of another implementation",
+      withEffect(1, (payout) => ({ ...payout, code: cloneOf(STRANGER) })),
+    ],
+    [
+      "its fees passed the gas cap, the L1 fee above its estimate",
+      withEffect(1, (payout) => ({ ...payout, paid: 5n * 10n ** 14n + 1n })),
+    ],
+  ])("stops at the first payout, sending nothing after it, when %s", async (_, effects) => {
+    const chain = scriptedChain({ effects });
+
+    const stopped = await stoppedAt(run(chain, aJournal()));
+
+    expect(stopped.step).toBe("the first payout");
+    expect(chain.made()).toBe(2);
+  });
+
+  it("stops at the first payment when it came from another wallet than the buyer's", async () => {
+    const effects = withEffect(0, (payment) => ({
+      ...payment,
+      transfers: [transfer(STRANGER, SPLIT.address, 10_000n)],
+    }));
+
+    const stopped = await stoppedAt(run(scriptedChain({ effects }), aJournal()));
+
+    expect(stopped.step).toBe("the first payment");
+  });
+
+  it("stops at the first payment when somebody created the split just before it, so no payment reached a split without code", async () => {
+    const effects = withEffect(0, (payment) => ({
+      ...payment,
+      elsewhere: { after: INITIAL, createsSplit: true },
+    }));
+
+    const stopped = await stoppedAt(run(scriptedChain({ effects }), aJournal()));
+
+    expect(stopped.step).toBe("the first payment");
+  });
+
+  it("stops at the second payment when another split credited the commission wallet between the steps, since the predictions no longer hold", async () => {
+    const effects = withEffect(2, (payment) => ({
+      ...payment,
+      elsewhere: { after: ledger([40_000n, 1n, 9_988n, 119_997n], [0n, 1n, 1n, 15n]) },
+    }));
+
+    const stopped = await stoppedAt(run(scriptedChain({ effects }), aJournal()));
+
+    expect(stopped.step).toBe("the second payment");
+    expect(stopped.message).toContain(COMMISSION);
+  });
+
+  it("sends no second payout when the payout screen's transaction has changed since the journal took it", async () => {
+    const other = payoutSplitFor(NETWORK, SPLIT.merchantId, STRANGER);
+    const chain = scriptedChain({
+      effects: AS_THE_CONTRACTS_DO,
+      instruction: (asked) => merchantPayout(NETWORK, asked < 3 ? [SPLIT] : [SPLIT, other]),
+    });
+
+    const stopped = await stoppedAt(run(chain, aJournal()));
+
+    expect(stopped.step).toBe("the second payout");
+    expect(chain.made()).toBe(3);
+  });
+
+  it("pays nothing when the payout screen's transaction pays out another split besides the run's", async () => {
+    const other = payoutSplitFor(NETWORK, SPLIT.merchantId, STRANGER);
+    const chain = scriptedChain({
+      effects: AS_THE_CONTRACTS_DO,
+      instruction: () => merchantPayout(NETWORK, [SPLIT, other]),
+    });
+
+    const stopped = await stoppedAt(run(chain, aJournal()));
+
+    expect(stopped.step).toBe("the plan");
+    expect(chain.made()).toBe(0);
+  });
+
+  it("pays nothing when the buyer holds less than both payments", async () => {
+    const chain = scriptedChain({
+      effects: AS_THE_CONTRACTS_DO,
+      initial: ledger([19_999n, 0n, 0n, 119_997n], [0n, 0n, 0n, 1n]),
+    });
+
+    const stopped = await stoppedAt(run(chain, aJournal()));
+
+    expect(stopped.step).toBe("the buyer");
+    expect(chain.made()).toBe(0);
+  });
+
+  it("pays nothing when the split already holds code", async () => {
+    const chain = scriptedChain({ effects: AS_THE_CONTRACTS_DO, splitExists: true });
+
+    const stopped = await stoppedAt(run(chain, aJournal()));
+
+    expect(stopped.step).toBe("the chain");
+    expect(chain.made()).toBe(0);
+  });
+
+  it("runs on a payout key that holds exactly the gas cap", async () => {
+    const chain = scriptedChain({ effects: AS_THE_CONTRACTS_DO, payoutKeyBalance: 10n ** 15n });
+
+    await run(chain, aJournal(), { gasCap: 10n ** 15n });
+
+    expect(chain.made()).toBe(5);
   });
 
   it("pays nothing when the journal cannot be written", async () => {
