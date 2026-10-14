@@ -80,19 +80,32 @@ export async function whyTheRuleRefuses(
  * the operator's payout command can ask it alone.
  */
 export async function refuseUnlessTheSplitsAgree(runtime: Runtime): Promise<void> {
+  const why = await whyTheSplitsDisagree(runtime);
+  if (why !== null) {
+    throw new RefusedToStart(
+      runtime.config.surfaceMode === "sandbox" ? `${why}. ${THE_SANDBOX_WAY_OUT}` : why,
+    );
+  }
+}
+
+/**
+ * Said after a refusal on a laptop's sandbox, where no split holds money and
+ * a recorded row cannot be deleted: its database can go instead.
+ */
+const THE_SANDBOX_WAY_OUT =
+  "This is a sandbox, where no payout split holds money: `docker compose down -v` drops its database, with every split recorded in it, and the next `docker compose up` starts from nothing";
+
+/** Why `refuseUnlessTheSplitsAgree` refuses, or null where the registry agrees. */
+async function whyTheSplitsDisagree(runtime: Runtime): Promise<string | null> {
   const network = runtime.config.payoutSplit;
   if (runtime.store.network !== network.network) {
-    throw new RefusedToStart(
-      `this gateway's store reads payout splits on ${runtime.store.network} and its payout split is made on ${network.network}, so every wallet would read as having no split and nothing would sell, and the gateway does not start`,
-    );
+    return `this gateway's store reads payout splits on ${runtime.store.network} and its payout split is made on ${network.network}, so every wallet would read as having no split and nothing would sell, and the gateway does not start`;
   }
   const elsewhere = (await runtime.store.networksWithPayoutSplits()).filter(
     (recorded) => recorded !== network.network,
   );
   if (elsewhere.length > 0) {
-    throw new RefusedToStart(
-      `the database records payout splits on ${elsewhere.join(", ")}, and this gateway takes payments on ${network.network}; the same formula gives the same addresses on both chains, so it would name another network's splits, with another commission wallet inside, as its own payment addresses, and it does not start`,
-    );
+    return `the database records payout splits on ${elsewhere.join(", ")}, and this gateway takes payments on ${network.network}; the same formula gives the same addresses on both chains, so it would name another network's splits, with another commission wallet inside, as its own payment addresses, and it does not start`;
   }
 
   const disagreeing: RecordedPayoutSplit[] = [];
@@ -107,9 +120,7 @@ export async function refuseUnlessTheSplitsAgree(runtime: Runtime): Promise<void
   }
   const [first] = disagreeing;
   if (first !== undefined) {
-    throw new RefusedToStart(
-      `${disagreeing.length} recorded split${disagreeing.length === 1 ? "" : "s"} of a wallet in force or waiting on ${network.network}, beginning with ${first.address}, ${disagreeing.length === 1 ? "is" : "are"} no longer what this code makes for that merchant and wallet: the commission wallet or the rate, the factory, or the way a salt and an address are derived changed since, and there is no way yet to move merchants onto new splits, so the gateway does not start`,
-    );
+    return `${disagreeing.length} recorded split${disagreeing.length === 1 ? "" : "s"} of a wallet in force or waiting on ${network.network}, beginning with ${first.address}, ${disagreeing.length === 1 ? "is" : "are"} no longer what this code makes for that merchant and wallet: the commission wallet or the rate, the factory, or the way a salt and an address are derived changed since, and there is no way yet to move merchants onto new splits, so the gateway does not start`;
   }
 
   for (const split of await runtime.store.splitsToPayOutOn(network.network, runtime.clock())) {
@@ -124,10 +135,9 @@ export async function refuseUnlessTheSplitsAgree(runtime: Runtime): Promise<void
   }
   const [worst] = refused;
   if (worst !== undefined) {
-    throw new RefusedToStart(
-      `${refused.length} recorded split${refused.length === 1 ? "" : "s"} on ${network.network} that buyers pay or that can hold money ${refused.length === 1 ? "pays" : "pay"} a wallet the wallet rule refuses, beginning with ${worst.split.address} of ${worst.split.merchantId}, which pays ${worst.split.merchantWallet}, refused as ${worst.is}: a payout would send that merchant's share where it could never come back from, so the gateway does not start`,
-    );
+    return `${refused.length} recorded split${refused.length === 1 ? "" : "s"} on ${network.network} that buyers pay or that can hold money ${refused.length === 1 ? "pays" : "pay"} a wallet the wallet rule refuses, beginning with ${worst.split.address} of ${worst.split.merchantId}, which pays ${worst.split.merchantWallet}, refused as ${worst.is}: a payout would send that merchant's share where it could never come back from, so the gateway does not start`;
   }
+  return null;
 }
 
 /**
