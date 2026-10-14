@@ -149,8 +149,8 @@ const ANNOUNCEMENT_ANSWER_MS = 20_000;
  * it, on a change nothing had announced; `raced_after_announcing`: the same,
  * after this change's own message went out. `not_a_payout_wallet`: the
  * address is one a merchant's share could never come back from, and `is`
- * says what it is; it is refused before anything is read, written or
- * announced, and the dashboard words it.
+ * says what it is; it is refused before the wallet is read and before
+ * anything is written or announced, and the dashboard words it.
  */
 export type WalletChangeRefusal =
   | "nobody_to_tell"

@@ -26,16 +26,10 @@ const recordedOf = (wallet: StoredPayoutWallet): readonly RecordedPayoutSplit[] 
   ...(wallet.pending?.split == null ? [] : [wallet.pending.split]),
 ];
 
-/** Whether a split names this network's commission wallet, rate, owner, incentive and factory. */
-const onTheseTerms = (split: PayoutSplit, today: PayoutSplit): boolean =>
-  split.network === today.network &&
-  split.commissionWallet === today.commissionWallet &&
-  split.merchantAllocation === today.merchantAllocation &&
-  split.commissionAllocation === today.commissionAllocation &&
-  split.totalAllocation === today.totalAllocation &&
-  split.distributionIncentive === today.distributionIncentive &&
-  split.owner === today.owner &&
-  split.factory === today.factory;
+/** Whether a recorded split is, in every parameter, the one the code makes today. */
+const madeToday = (recorded: RecordedPayoutSplit, today: PayoutSplit | null): boolean =>
+  today !== null &&
+  (Object.keys(today) as (keyof PayoutSplit)[]).every((key) => recorded[key] === today[key]);
 
 /** Today's split of this merchant's wallet, or null where the code could make none. */
 const todaysSplitOf = (
@@ -52,12 +46,13 @@ const todaysSplitOf = (
 
 /**
  * Throws `RefusedToStart` where the registry is not what this network's
- * payout split in the code makes: it holds a split of another network; a
- * split of a wallet in force or waiting names another commission wallet,
- * rate, owner, incentive or factory; or the code no longer derives such a
- * split's salt and address from its merchant, network and wallet. Until a
- * change of rate is designed, this refusal is what makes an edit to those
- * constants loud rather than a second split beside every merchant's first.
+ * payout split in the code makes: where it holds a split of another network,
+ * or a split of a wallet in force or waiting is not, in every parameter, the
+ * split the code makes today for that merchant and wallet, whether a
+ * commission wallet, the rate or the factory changed, or the way a salt and an
+ * address are derived. Until a change of rate is designed, this refusal is
+ * what makes an edit to those constants loud rather than a second split beside
+ * every merchant's first.
  *
  * It reads and writes nothing else, so a start asks it before anything, and
  * the operator's payout command can ask it alone.
@@ -73,26 +68,18 @@ export async function refuseUnlessTheSplitsAgree(runtime: Runtime): Promise<void
     );
   }
 
-  const changed: RecordedPayoutSplit[] = [];
-  let underived: RecordedPayoutSplit | null = null;
+  const disagreeing: RecordedPayoutSplit[] = [];
   for (const merchant of await runtime.store.merchants()) {
     for (const split of recordedOf(merchant.payoutWallet)) {
-      const today = todaysSplitOf(network, merchant.id, split.merchantWallet);
-      if (today === null || !onTheseTerms(split, today)) {
-        changed.push(split);
-      } else if (split.salt !== today.salt || split.address !== today.address) {
-        underived ??= split;
+      if (!madeToday(split, todaysSplitOf(network, merchant.id, split.merchantWallet))) {
+        disagreeing.push(split);
       }
     }
   }
-  if (changed.length > 0) {
+  const [first] = disagreeing;
+  if (first !== undefined) {
     throw new RefusedToStart(
-      `the commission wallet or the rate of the payout split on ${network.network}, or the factory it is made by, is not what the registry recorded: ${changed.length} recorded split${changed.length === 1 ? "" : "s"} of a wallet in force or waiting ${changed.length === 1 ? "names" : "name"} other terms, beginning with ${changed[0]?.address}, and there is no way yet to move merchants onto new splits, so the gateway does not start`,
-    );
-  }
-  if (underived !== null) {
-    throw new RefusedToStart(
-      `the payout split recorded at ${underived.address} for ${underived.merchantId} on ${network.network} is no longer what this code derives from its merchant, network and wallet, so new merchants would be given addresses computed another way, and the gateway does not start`,
+      `${disagreeing.length} recorded split${disagreeing.length === 1 ? "" : "s"} of a wallet in force or waiting on ${network.network}, beginning with ${first.address}, ${disagreeing.length === 1 ? "is" : "are"} no longer what this code makes for that merchant and wallet: the commission wallet or the rate, the factory, or the way a salt and an address are derived changed since, and there is no way yet to move merchants onto new splits, so the gateway does not start`,
     );
   }
 }
