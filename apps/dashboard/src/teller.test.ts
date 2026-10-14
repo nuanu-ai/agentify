@@ -6,7 +6,9 @@
  * dashboard, where the deciding screen is) and nothing that opens anything.
  */
 
+import { payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
 import type { Announcement } from "@agentify/gateway/announcements";
+import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "@agentify/gateway/testing";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import { SIGN_OUT_EVERY_OTHER_DEVICE, STOP_ALL_SELLING } from "./control-labels.js";
@@ -17,6 +19,10 @@ import { tellerFor } from "./teller.js";
 const MERCHANT = "mch_the_shop";
 const FROM = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 const TO = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+/** The splits buyers pay into for each wallet, as the gateway's facts carry them. */
+const LIVE = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453");
+const FROM_SPLIT = payoutSplitFor(LIVE, MERCHANT, FROM).address;
+const TO_SPLIT = payoutSplitFor(LIVE, MERCHANT, TO).address;
 const THE_SETTINGS_SCREEN = "https://agentify.ad/dashboard/settings";
 
 const config = () =>
@@ -33,7 +39,9 @@ const aWalletChange: Announcement = {
   kind: "wallet_change",
   merchant_id: MERCHANT,
   from: FROM,
+  from_split: FROM_SPLIT,
   to: TO,
+  to_split: TO_SPLIT,
   not_before: "2026-09-26T12:00:00.000Z",
   asked_with: { kind: "signed_in", email: "owner@example.com" },
 };
@@ -147,6 +155,7 @@ describe("what a message advises and claims", () => {
         kind: "wallet_set",
         merchant_id: MERCHANT,
         to: TO,
+        to_split: TO_SPLIT,
         asked_with: { kind: "signed_in", email: "owner@example.com" },
       },
     ],
@@ -156,6 +165,7 @@ describe("what a message advises and claims", () => {
         kind: "wallet_change_cancelled",
         merchant_id: MERCHANT,
         kept: FROM,
+        kept_split: FROM_SPLIT,
         cancelled: TO,
         asked_with: { kind: "signed_in", email: "owner@example.com" },
       },
@@ -192,7 +202,13 @@ describe("who asked", () => {
     ["a replacement", { ...aWalletChange, asked_with: ASKED_FROM }],
     [
       "a first wallet",
-      { kind: "wallet_set", merchant_id: MERCHANT, to: TO, asked_with: ASKED_FROM },
+      {
+        kind: "wallet_set",
+        merchant_id: MERCHANT,
+        to: TO,
+        to_split: TO_SPLIT,
+        asked_with: ASKED_FROM,
+      },
     ],
     [
       "a cancelled change",
@@ -200,6 +216,7 @@ describe("who asked", () => {
         kind: "wallet_change_cancelled",
         merchant_id: MERCHANT,
         kept: FROM,
+        kept_split: FROM_SPLIT,
         cancelled: TO,
         asked_with: ASKED_FROM,
       },
@@ -244,6 +261,7 @@ describe("what is announced once it is done", () => {
       kind: "wallet_set",
       merchant_id: MERCHANT,
       to: TO,
+      to_split: TO_SPLIT,
       asked_with: { kind: "signed_in", email: "owner@example.com" },
     } satisfies Announcement);
 
@@ -262,6 +280,7 @@ describe("what is announced once it is done", () => {
       kind: "wallet_change_cancelled",
       merchant_id: MERCHANT,
       kept: FROM,
+      kept_split: FROM_SPLIT,
       cancelled: TO,
       asked_with: { kind: "signed_in", email: "owner@example.com" },
     } satisfies Announcement);

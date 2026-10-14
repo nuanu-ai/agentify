@@ -859,6 +859,7 @@ export class Gateway {
           kind: "wallet_set",
           merchant_id: merchantId,
           to: address,
+          to_split: alone.split.address,
           asked_with: askedWith,
         });
       }
@@ -876,6 +877,7 @@ export class Gateway {
           kind: "wallet_change_cancelled",
           merchant_id: merchantId,
           kept: address,
+          kept_split: alone.split.address,
           cancelled,
           asked_with: askedWith,
         });
@@ -887,11 +889,17 @@ export class Gateway {
       return payoutWalletAnswer(now);
     }
 
+    // The splits the message names are the ones the write records, or finds
+    // recorded as these, or it refuses: the merchant is never told of an
+    // address buyers will not pay.
+    const paidNow = splitOf(now.address);
     const told = await this.#announce({
       kind: "wallet_change",
       merchant_id: merchantId,
       from: now.address,
+      from_split: paidNow.address,
       to: address,
+      to_split: alone.split.address,
       not_before: asTimestamp(this.runtime.clock() + WALLET_CHANGE_WAITS_MS),
       asked_with: askedWith,
     });
@@ -903,11 +911,11 @@ export class Gateway {
     // takes effect no earlier than the moment any message named.
     const recorded = await this.#recordWallet(merchantId, read, {
       address: now.address,
-      split: splitOf(now.address),
+      split: paidNow,
       pending: {
         address,
         takesEffectAt: this.runtime.clock() + WALLET_CHANGE_WAITS_MS,
-        split: splitOf(address),
+        split: alone.split,
       },
     });
     return recorded === "raced" ? "raced_after_announcing" : recorded;
