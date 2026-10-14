@@ -41,8 +41,8 @@ blocked recipient stops only its own withdrawal. Its distribution incentive, a
 cut for whoever sends the distribution, is zero.
 
 The recipients are the merchant's payout wallet and then the commission wallet,
-with allocations `1000000 − rate` and `rate` of `1000000`. The rate, 50000
-(5%), and each network's commission wallet are constants in the gateway's code,
+with allocations `1000000 − rate` and `rate` of `1000000`. The rate, 1000
+(0.1%), and each network's commission wallet are constants in the gateway's code,
 and the gateway does not start for a network without one: both enter every
 split's address, so a change moves every merchant's money to new addresses at
 once, which a setting on the host would allow without review. On Base the
