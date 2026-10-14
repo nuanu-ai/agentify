@@ -40,6 +40,7 @@ import {
 import { memoryWooShops, type WooConnection, type WooShops } from "./woo-shops.js";
 import {
   type Filling,
+  filledAsPaid,
   fillFromTheShop,
   followShipments,
   quoteFromTheShop,
@@ -48,6 +49,13 @@ import {
 } from "./woo-worker.js";
 
 const showing = (product: EligibleWooProduct): ProductInspection => ({ ok: true, product });
+
+/**
+ * A payment checked against the merchant's wallet itself, before payments
+ * went to splits: its shop order carries no commission line, which the cases
+ * handing it are not about.
+ */
+const NO_SPLIT = null;
 
 const RULED_OUT: ProductInspection = {
   ok: false,
@@ -152,6 +160,7 @@ describe("one paid order, in the merchant's own shop", () => {
       connection(),
       MERCHANT_EMAIL,
       filling(shops, shop.place),
+      NO_SPLIT,
     );
 
     expect(answer).toMatchObject({
@@ -164,6 +173,7 @@ describe("one paid order, in the merchant's own shop", () => {
         email: MERCHANT_EMAIL,
         price: { amount: "25.00", currency: "USD" },
         download: { id: "dl_guide", name: "Guide" },
+        paidInto: NO_SPLIT,
       },
     ]);
   });
@@ -180,6 +190,7 @@ describe("one paid order, in the merchant's own shop", () => {
       connection(),
       MERCHANT_EMAIL,
       filling(shops, shop.place),
+      NO_SPLIT,
     );
 
     expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
@@ -195,14 +206,20 @@ describe("one paid order, in the merchant's own shop", () => {
     const shops = memoryWooShops();
     const shop = aShopThatAccepts();
 
-    const answer = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, {
-      ...filling(shops, shop.place),
-      inspectProduct: async () => ({
-        ok: false,
-        why: "The shop did not answer the protected product check.",
-        again: true,
-      }),
-    });
+    const answer = await fillFromTheShop(
+      anOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      {
+        ...filling(shops, shop.place),
+        inspectProduct: async () => ({
+          ok: false,
+          why: "The shop did not answer the protected product check.",
+          again: true,
+        }),
+      },
+      NO_SPLIT,
+    );
 
     expect(answer).toMatchObject({
       refused: { code: "cannot_fulfill", message: expect.stringMatching(/did not answer/) },
@@ -216,10 +233,16 @@ describe("one paid order, in the merchant's own shop", () => {
     const shops = memoryWooShops();
     const shop = aShopThatAccepts();
 
-    const answer = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, {
-      ...filling(shops, shop.place),
-      inspectProduct: async () => RULED_OUT,
-    });
+    const answer = await fillFromTheShop(
+      anOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      {
+        ...filling(shops, shop.place),
+        inspectProduct: async () => RULED_OUT,
+      },
+      NO_SPLIT,
+    );
 
     expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
     expect(JSON.stringify(answer)).not.toMatch(/did not answer/);
@@ -233,8 +256,8 @@ describe("one paid order, in the merchant's own shop", () => {
     const shop = aShopThatAccepts();
     const parts = filling(shops, shop.place);
 
-    const first = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, parts);
-    const again = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, parts);
+    const first = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, parts, NO_SPLIT);
+    const again = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, parts, NO_SPLIT);
 
     expect(shop.placed).toHaveLength(1);
     expect(again).toEqual(first);
@@ -253,6 +276,7 @@ describe("one paid order, in the merchant's own shop", () => {
       connection(),
       MERCHANT_EMAIL,
       filling(shops, shop.place),
+      NO_SPLIT,
     );
 
     expect(answer).toBeNull();
@@ -273,6 +297,7 @@ describe("one paid order, in the merchant's own shop", () => {
         why: "The shop answered 400: Fatal error in /var/www/html/wp-content/plugins/x.php",
         again: false,
       })),
+      NO_SPLIT,
     );
 
     expect(answer).not.toBeNull();
@@ -289,12 +314,19 @@ describe("one paid order, in the merchant's own shop", () => {
       placements += 1;
       return { ok: false as const, why: "gone", again: false };
     };
-    await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, filling(shops, refuse));
+    await fillFromTheShop(
+      anOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      filling(shops, refuse),
+      NO_SPLIT,
+    );
     const again = await fillFromTheShop(
       anOrder(),
       connection(),
       MERCHANT_EMAIL,
       filling(shops, refuse),
+      NO_SPLIT,
     );
 
     expect((await shops.knownOrder("ord_1"))?.kind).toBe("unknown");
@@ -311,6 +343,7 @@ describe("one paid order, in the merchant's own shop", () => {
       connection(),
       MERCHANT_EMAIL,
       filling(shops, async () => ({ ok: false, why: "no answer", again: true })),
+      NO_SPLIT,
     );
     expect(answer).toBeNull();
   });
@@ -328,8 +361,9 @@ describe("one paid order, in the merchant's own shop", () => {
       connection(),
       MERCHANT_EMAIL,
       filling(shops, async () => ({ ok: false, why: "the shop did not answer", again: true })),
+      NO_SPLIT,
     );
-    const again = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, parts);
+    const again = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, parts, NO_SPLIT);
 
     expect(shop.placed).toHaveLength(0);
     expect(again).not.toBeNull();
@@ -348,6 +382,7 @@ describe("one paid order, in the merchant's own shop", () => {
       { ...connection(), permissions: "read" },
       MERCHANT_EMAIL,
       filling(shops, shop.place),
+      NO_SPLIT,
     );
     expect(shop.placed).toHaveLength(0);
     expect(answer && "refused" in answer).toBe(true);
@@ -373,6 +408,7 @@ describe("one paid order, in the merchant's own shop", () => {
             price: { amount: "25.00", currency: "USD" },
           }),
       },
+      NO_SPLIT,
     );
 
     expect(answer && "refused" in answer).toBe(true);
@@ -401,13 +437,14 @@ describe("one paid order, in the merchant's own shop", () => {
           : RULED_OUT,
     };
 
-    const refused = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, parts);
+    const refused = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, parts, NO_SPLIT);
     supported = true;
     const redelivered = await fillFromTheShop(
       anOrder(),
       { ...connection(), consumerKey: "ck_reconnected" },
       MERCHANT_EMAIL,
       parts,
+      NO_SPLIT,
     );
 
     expect(refused && "refused" in refused).toBe(true);
@@ -526,7 +563,7 @@ describe("the whole way through, against a real gateway", () => {
     const bought = await buyOverHttp(open, served, itemId, {
       through: "woocommerce",
       onOrder: async (order) => {
-        const answer = await fillFromTheShop(order, connected, MERCHANT_EMAIL, parts);
+        const answer = await fillFromTheShop(order, connected, MERCHANT_EMAIL, parts, NO_SPLIT);
         if (answer === null) {
           throw new Error("the shop was not asked");
         }
@@ -565,6 +602,88 @@ describe("the whole way through, against a real gateway", () => {
     expect(placed.line_items[0]?.total).toBe("25.00");
   });
 
+  it("names on the shop's order the payout contract the payment went to, though the merchant moved their wallet since", async () => {
+    // The line records where this payment went; after a change of wallet the
+    // contract in force is another one.
+    open = await harness();
+    served = await serve(open);
+    const shop = await aShopOnAPort();
+    const gateway = gatewayFor(open.gateway, {
+      merchantId: open.merchant.id,
+      email: MERCHANT_EMAIL,
+    });
+    expect((await gateway.sellThrough("woocommerce")).ok).toBe(true);
+    const { cards } = cardsFromTheShop([aProduct()], shop.url);
+    const published = await gateway.publishCard(cards[0]?.card ?? ({} as never));
+    const itemId = published.ok && published.document.ok ? published.document.id : "";
+    const paidInto = (await open.gateway.payoutSplitsOf(open.merchant.id)).inForce;
+    const parts = {
+      shops: memoryWooShops(),
+      now: () => new Date("2026-09-14T12:00:00.000Z"),
+      placeOrder: (
+        keys: Parameters<typeof createTheOrderInTheShop>[0],
+        sold: Parameters<typeof createTheOrderInTheShop>[1],
+      ) => createTheOrderInTheShop(keys, sold, fetch),
+      inspectProduct: async () =>
+        showing({
+          kind: "download",
+          productId: "11",
+          downloadId: "dl_guide",
+          fileName: "Guide",
+          price: { amount: "25.00", currency: "USD" },
+          fingerprint: "accepted-download-fingerprint",
+        }),
+      quotedProduct: async () => "accepted-download-fingerprint",
+    };
+    const connected: WooConnection = { ...connection(), shopUrl: shop.url };
+
+    await buyOverHttp(open, served, itemId, {
+      through: "woocommerce",
+      onOrder: async (order) => {
+        // Paid, and the merchant saves another wallet before the shop is asked.
+        expect(
+          (await gateway.setPayoutWallet("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359")).ok,
+        ).toBe(true);
+        const answer = await filledAsPaid(gateway, order, connected, MERCHANT_EMAIL, parts);
+        if (answer === null) throw new Error("the shop was not asked");
+        return answer;
+      },
+      onQuote: async () => ({
+        available: true,
+        price: { amount: "25.00", currency: "USD" },
+        as_of: "2026-09-14T12:00:00.000Z",
+      }),
+    });
+
+    const now = (await open.gateway.payoutSplitsOf(open.merchant.id)).inForce;
+    expect(now?.address).not.toBe(paidInto?.address);
+    const placed = shop.orders[0] as { meta_data: { key: string; value: unknown }[] };
+    expect(placed.meta_data).toContainEqual({
+      key: "agentify_payout_contract",
+      value: paidInto?.address,
+    });
+    expect(JSON.stringify(placed.meta_data)).not.toContain(now?.address ?? "no split");
+  });
+
+  it("asks the shop for nothing where it cannot read where the payment went", async () => {
+    // A shop order made without the line would claim no commission was taken.
+    const shop = aShopThatAccepts();
+    const unread = {
+      paidInto: async () => ({ ok: false as const, status: 0, why: "nothing answered" }),
+    };
+
+    const answer = await filledAsPaid(
+      unread,
+      anOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      filling(memoryWooShops(), shop.place),
+    );
+
+    expect(answer).toBeNull();
+    expect(shop.placed).toStrictEqual([]);
+  });
+
   it("keeps a committed order unknown when its successful response body is lost", async () => {
     const shop = await aShopOnAPort(true);
     const shops = memoryWooShops();
@@ -588,9 +707,9 @@ describe("the whole way through, against a real gateway", () => {
       quotedProduct: async () => "accepted-download-fingerprint",
     };
 
-    const first = await fillFromTheShop(anOrder(), connected, MERCHANT_EMAIL, parts);
+    const first = await fillFromTheShop(anOrder(), connected, MERCHANT_EMAIL, parts, NO_SPLIT);
     const durable = await shops.knownOrder("ord_1");
-    const redelivery = await fillFromTheShop(anOrder(), connected, MERCHANT_EMAIL, parts);
+    const redelivery = await fillFromTheShop(anOrder(), connected, MERCHANT_EMAIL, parts, NO_SPLIT);
 
     expect(first).toBeNull();
     expect(durable?.kind).toBe("unknown");
@@ -856,6 +975,7 @@ describe("a price question off the merchant's stream", () => {
           document: { envelopes: [turns.shift()].filter((envelope) => envelope !== undefined) },
         }),
         answerQuote: async () => ({ ok: true as const, document: { used: true } }),
+        paidInto: async () => ({ ok: true as const, document: NO_SPLIT }),
         answerOrder: async (_orderId: string, answer: unknown) => {
           answered = answer;
           return {
@@ -1228,6 +1348,7 @@ describe("a parcel's paid order", () => {
           return TODAY;
         },
       }),
+      NO_SPLIT,
     );
 
     expect(answer).toStrictEqual({ accepted: {} });
@@ -1277,6 +1398,7 @@ describe("a parcel's paid order", () => {
       connection(),
       MERCHANT_EMAIL,
       parcelParts(memoryWooShops(), shop.place),
+      NO_SPLIT,
     );
 
     expect(answer).toStrictEqual({ accepted: {} });
@@ -1294,6 +1416,7 @@ describe("a parcel's paid order", () => {
       parcelParts(shops, shop.place, {
         shippingRates: async () => ({ ok: true, rates: [rate("Standard", "6.00", "3")] }),
       }),
+      NO_SPLIT,
     );
 
     expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
@@ -1327,6 +1450,7 @@ describe("a parcel's paid order", () => {
         connection(),
         MERCHANT_EMAIL,
         parcelParts(shops, shop.place, changed),
+        NO_SPLIT,
       );
 
       expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
@@ -1361,6 +1485,7 @@ describe("a parcel's paid order", () => {
         connection(),
         MERCHANT_EMAIL,
         parcelParts(shops, shop.place, silent),
+        NO_SPLIT,
       );
 
       expect(answer).toBeNull();
@@ -1374,8 +1499,14 @@ describe("a parcel's paid order", () => {
     const shop = aParcelShop();
     const parts = parcelParts(shops, shop.place);
 
-    await fillFromTheShop(parcelOrder(), connection(), MERCHANT_EMAIL, parts);
-    const again = await fillFromTheShop(parcelOrder(), connection(), MERCHANT_EMAIL, parts);
+    await fillFromTheShop(parcelOrder(), connection(), MERCHANT_EMAIL, parts, NO_SPLIT);
+    const again = await fillFromTheShop(
+      parcelOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      parts,
+      NO_SPLIT,
+    );
 
     expect(again).toStrictEqual({ accepted: {} });
     expect(shop.placed).toHaveLength(1);
@@ -1389,6 +1520,7 @@ describe("a parcel's paid order", () => {
       connection(),
       MERCHANT_EMAIL,
       parcelParts(memoryWooShops(), shop.place),
+      NO_SPLIT,
     );
 
     expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
@@ -1429,6 +1561,7 @@ describe("a parcel's paid order", () => {
           connection(),
           MERCHANT_EMAIL,
           parcelParts(memoryWooShops(), aParcelShop().place, overrides),
+          NO_SPLIT,
         ).catch(() => null);
       }
     } finally {
@@ -1446,6 +1579,7 @@ describe("a parcel's paid order", () => {
         { ...connection(), shopUrl: "https://shop.exam\nple.com", permissions: "read" },
         MERCHANT_EMAIL,
         parcelParts(memoryWooShops(), aParcelShop().place),
+        NO_SPLIT,
       ),
     );
 
@@ -1775,7 +1909,7 @@ describe("a parcel the whole way through, against a real gateway", () => {
           return answer;
         },
         onOrder: async (order) =>
-          (await fillFromTheShop(order, connected, MERCHANT_EMAIL, parts)) ??
+          (await fillFromTheShop(order, connected, MERCHANT_EMAIL, parts, NO_SPLIT)) ??
           Promise.reject(new Error("the shop was not asked")),
       },
       { priced: { params: {}, ship_to: ADDRESS }, paid: { params: {}, ship_to: ADDRESS } },
@@ -2107,6 +2241,7 @@ describe("a shop whose Number of decimals changed after the quote", () => {
         connected,
         MERCHANT_EMAIL,
         fillingAgainst(shops, quoted.ok ? quoted.product.fingerprint : null),
+        NO_SPLIT,
       );
 
       expect(answer !== null && "refused" in answer, changedTo).toBe(true);
@@ -2131,6 +2266,7 @@ describe("a shop whose Number of decimals changed after the quote", () => {
       connected,
       MERCHANT_EMAIL,
       fillingAgainst(memoryWooShops(), quoted.ok ? quoted.product.fingerprint : null),
+      NO_SPLIT,
     );
 
     expect(answer).toMatchObject({ delivered: { file_name: "Guide", order_number: "13" } });
@@ -2252,6 +2388,7 @@ describe("what the worker writes in the merchant's log when something fails", ()
         { ...connection(), shopUrl: typed, permissions: "read" },
         MERCHANT_EMAIL,
         filling(memoryWooShops(), aShopThatAccepts().place),
+        NO_SPLIT,
       ),
     );
 
@@ -2266,6 +2403,7 @@ describe("what the worker writes in the merchant's log when something fails", ()
         { ...connection(), shopUrl: "https://shop.exam\nple.com" },
         MERCHANT_EMAIL,
         filling(memoryWooShops(), async () => ({ ok: false as const, why: "gone", again: false })),
+        NO_SPLIT,
       ),
     );
 
