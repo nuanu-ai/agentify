@@ -12,7 +12,7 @@ import { SIGN_OUT_EVERY_OTHER_DEVICE } from "./control-labels.js";
 import type { PayoutSplits } from "./gateway.js";
 import { CHANGE_ON_ITS_WAY, LIVE_CHANGE_WAITS, WALLET_RULE } from "./payout-wallet.js";
 import { NAME_CANNOT_BE_TAKEN_AWAY, NAME_RULE, SITE_RULE } from "./seller-name.js";
-import { percentOf } from "./shares.js";
+import { type CommissionRate, percentagesOf, percentOf } from "./shares.js";
 import { type FrameView, type MomentView, momentView } from "./views.js";
 import { APPROVAL_GIVEN, APPROVAL_PENDING } from "./words.js";
 
@@ -129,9 +129,8 @@ const SENT_ON: Readonly<Record<Exclude<SurfaceMode, "sandbox">, { chain: string;
 const sameAddress = (one: string, other: string): boolean =>
   one.toLowerCase() === other.toLowerCase();
 
-const commissionOf = (mode: SurfaceMode, rate: PayoutSplits["rate"]): string => {
-  const commission = percentOf(rate.commissionAllocation, rate.totalAllocation);
-  const share = percentOf(rate.totalAllocation - rate.commissionAllocation, rate.totalAllocation);
+const commissionOf = (mode: SurfaceMode, rate: CommissionRate): string => {
+  const { commission, share } = percentagesOf(rate);
   return (
     `Agentify keeps ${commission} of every sale. Buyers pay into a payout contract made for this wallet, which sends ${share} to the wallet and ${commission} to Agentify; nobody, Agentify included, can send the money anywhere else. Saving a wallet here means you agree to this.` +
     (mode === "sandbox" ? " In the sandbox the contract is never deployed and no money moves." : "")

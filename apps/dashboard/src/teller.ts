@@ -11,6 +11,7 @@ import { announcementMessage } from "./announcement-mail.js";
 import type { DashboardConfig } from "./config.js";
 import type { Identity } from "./identity.js";
 import type { Postman } from "./mail.js";
+import type { CommissionRate } from "./shares.js";
 
 export type Teller = (announcement: Announcement) => Promise<AnnouncementAnswer["outcome"]>;
 
@@ -18,12 +19,14 @@ export type Teller = (announcement: Announcement) => Promise<AnnouncementAnswer[
  * Every account is sent its message even after one is refused, because a person
  * who was told has been told; the answer is then `not_handed_over`, which the
  * gateway turns into a refusal saying a message may still have reached
- * somebody.
+ * somebody. The rate is the gateway's network's, which every split it
+ * announces is recorded with.
  */
 export function tellerFor(
   config: DashboardConfig,
   identity: Pick<Identity, "emailsNaming">,
   postman: Postman,
+  rate: CommissionRate,
 ): Teller {
   const base = `${config.publicBaseUrl}${config.basePath}`;
   const screens = { wallet: `${base}/settings`, keys: `${base}/keys` };
@@ -35,7 +38,9 @@ export function tellerFor(
     }
     let refused = 0;
     for (const address of addresses) {
-      if ((await postman(announcementMessage(address, announcement, screens))) !== "accepted") {
+      if (
+        (await postman(announcementMessage(address, announcement, screens, rate))) !== "accepted"
+      ) {
         refused += 1;
       }
     }

@@ -58,6 +58,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
 import { NOT_A_PAYOUT_WALLET } from "./payout-wallet.js";
+import type { CommissionRate } from "./shares.js";
 
 export type Answer<T> =
   | { readonly ok: true; readonly document: T }
@@ -93,7 +94,7 @@ export type RefundCause = "refused" | "deadline_passed" | "merchant_left" | "cha
  */
 export interface PayoutSplits {
   /** The terms every split recorded on this network from now is made with. */
-  readonly rate: { readonly commissionAllocation: number; readonly totalAllocation: number };
+  readonly rate: CommissionRate;
   readonly inForce: RecordedPayoutSplit | null;
   readonly pending: RecordedPayoutSplit | null;
   readonly payout: PayoutTransaction | { readonly tooMany: number } | null;

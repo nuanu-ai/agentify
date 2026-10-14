@@ -18,6 +18,12 @@ export interface SplitTerms {
   readonly totalAllocation: number;
 }
 
+/** Agentify's part of a payout split's total, and the total. */
+export interface CommissionRate {
+  readonly commissionAllocation: number;
+  readonly totalAllocation: number;
+}
+
 /** Each share as a person reads it, with the currency. */
 export interface Shares {
   readonly merchant: string;
@@ -65,6 +71,14 @@ export const sharesOf = (
     commission: said((paid * BigInt(terms.commissionAllocation)) / total, places, price.currency),
   };
 };
+
+/** Agentify's percentage of every sale and the merchant's, such as "0.1%" and "99.9%". */
+export const percentagesOf = (
+  rate: CommissionRate,
+): { readonly commission: string; readonly share: string } => ({
+  commission: percentOf(rate.commissionAllocation, rate.totalAllocation),
+  share: percentOf(rate.totalAllocation - rate.commissionAllocation, rate.totalAllocation),
+});
 
 /**
  * A part of a split's total as a percentage, such as "0.1%". Throws where it
