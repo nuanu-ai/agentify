@@ -99,6 +99,7 @@ import {
   missingFrom,
   modeForCard,
   payoutWalletAt,
+  payToAt,
   policyFor,
   priceCheckOf,
   type Runtime,
@@ -187,10 +188,11 @@ export interface PaidResource {
   /** The seller's name in a discovery catalog. */
   readonly serviceName: string | null;
   /**
-   * Where this card's own merchant is paid. It is read from the card's owner
-   * and nowhere else, or one seller's takings go to another.
+   * Where an agent is asked to pay for this card: its own merchant's recorded
+   * split, read from the card's owner and nowhere else, or one seller's
+   * takings go to another. Null where there is nowhere to pay.
    */
-  readonly payoutWallet: string | null;
+  readonly payTo: string | null;
 }
 
 /** What a purchase attempt came to. */
@@ -446,7 +448,7 @@ export class Gateway {
     }
     // The question the selling word asks of every card later, asked here where
     // somebody can be told what is missing.
-    const missing = missingFrom(merchant, this.runtime.config);
+    const missing = missingFrom(merchant, this.runtime.config, this.runtime.clock());
 
     // A parcel's card asks one more thing of its merchant: the site of their
     // shop, where a buyer takes a parcel that did not arrive. It is checked on
@@ -491,6 +493,7 @@ export class Gateway {
    */
   async catalog(): Promise<{ readonly items: ProjectedCard[] }> {
     const entries = await this.runtime.store.catalogEntries();
+    const at = this.runtime.clock();
     return {
       items: entries
         .filter(
@@ -498,7 +501,7 @@ export class Gateway {
             sellingFor(
               entry.merchant,
               entry.card,
-              sellableBy(entry, this.runtime.config),
+              sellableBy({ ...entry, id: entry.card.merchantId }, this.runtime.config, at),
               entry.integration,
             ) === "open",
         )
@@ -525,6 +528,7 @@ export class Gateway {
       return null;
     }
     const merchant = await this.runtime.store.merchantById(stored.merchantId);
+    const at = this.runtime.clock();
     return {
       stored,
       // The database refuses a card with no owner; if one were ever found, the
@@ -535,16 +539,13 @@ export class Gateway {
           : sellingFor(
               merchant.selling,
               stored,
-              sellableBy(merchant, this.runtime.config),
+              sellableBy(merchant, this.runtime.config, at),
               merchant.integration,
             ),
       serviceName: merchant?.serviceName ?? null,
-      // A pending wallet change is the address once its moment has come, and
-      // not before.
-      payoutWallet:
-        merchant === null
-          ? null
-          : payoutWalletAt(merchant.payoutWallet, this.runtime.clock()).address,
+      // A pending wallet change's split is the one paid once its moment has
+      // come, and not before.
+      payTo: merchant === null ? null : payToAt(merchant, this.runtime.config, at),
     };
   }
 
@@ -578,7 +579,7 @@ export class Gateway {
     }
     return {
       selling: merchant.selling,
-      sellable: sellableBy(merchant, this.runtime.config),
+      sellable: sellableBy(merchant, this.runtime.config, this.runtime.clock()),
       integration: merchant.integration,
     };
   }
@@ -1247,15 +1248,15 @@ export class Gateway {
     // nothing, so a stranger's junk cannot spend the life of somebody else's
     // order; the order stays open until its own deadline.
     //
-    // The payee is this order's merchant's address, read once here at the
-    // instant of verification, and the same string is kept on the order for
-    // the charge, so the money goes where the payer signed for it to go rather
-    // than wherever the merchant's wallet has moved by then.
+    // The payee is this order's merchant's recorded split, read once here at
+    // the instant of verification, and the same string is kept on the order
+    // for the charge, so the money goes where the payer signed for it to go
+    // rather than wherever the merchant's wallet has moved by then.
     const payingMerchant = await this.runtime.store.merchantById(before.merchantId);
     const payTo =
       payingMerchant === null
         ? null
-        : payoutWalletAt(payingMerchant.payoutWallet, this.runtime.clock()).address;
+        : payToAt(payingMerchant, this.runtime.config, this.runtime.clock());
 
     const verified = await this.runtime.facilitator.verify({
       orderId,

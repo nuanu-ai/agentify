@@ -7,7 +7,7 @@
 import type { MerchantSelling, OrderMode, OrderPolicy } from "@agentify/core";
 import { modeOf, readinessOf } from "@agentify/core";
 import type { Card, MerchantFinding } from "@nuanu-ai/agentify-contracts";
-import type { GatewayConfig } from "../config.js";
+import { type GatewayConfig, isSandboxFacilitator } from "../config.js";
 import type { Announcer } from "../ports/announcer.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Facilitator } from "../ports/facilitator.js";
@@ -19,6 +19,7 @@ import type {
   StoredMerchant,
   StoredPayoutWallet,
 } from "../ports/store.js";
+import { payoutSplitFor } from "../split/parameters.js";
 
 export interface Runtime {
   readonly config: GatewayConfig;
@@ -135,30 +136,78 @@ export function payoutWalletAt(wallet: StoredPayoutWallet, at: number): StoredPa
     : wallet;
 }
 
-type MerchantStanding = Pick<StoredMerchant, "payoutWallet" | "serviceName" | "liveApprovedAt">;
+/**
+ * Where a payment for this merchant's sale is asked to go at `at`: the split
+ * recorded for their wallet in force, read from the registry and never
+ * recomputed here, since a split computed from today's constants could be one
+ * whose parameters nobody recorded. In the sandbox alone, a merchant who set
+ * no wallet is offered the split of the configured placeholder, computed for
+ * them and never recorded, because nothing settles there.
+ *
+ * Null where there is nowhere to pay: no wallet outside the sandbox, or a
+ * wallet with no recorded split, which is a defect, said in the log, and read
+ * as no wallet rather than as the wallet itself.
+ */
+export function payToAt(
+  merchant: Pick<StoredMerchant, "id" | "payoutWallet">,
+  config: GatewayConfig,
+  at: number,
+): string | null {
+  const wallet = payoutWalletAt(merchant.payoutWallet, at);
+  if (wallet.address !== null) {
+    if (wallet.split === null) {
+      console.error(
+        `[gateway] ${merchant.id} is paid at ${wallet.address} and no payout split is recorded for it, so nothing of theirs is sold`,
+      );
+    }
+    return wallet.split?.address ?? null;
+  }
+  const placeholder = config.payment.payTo;
+  return isSandboxFacilitator(config.payment.facilitatorUrl) && placeholder !== null
+    ? payoutSplitFor(config.payoutSplit, merchant.id, placeholder).address
+    : null;
+}
+
+type MerchantStanding = Pick<
+  StoredMerchant,
+  "id" | "payoutWallet" | "serviceName" | "liveApprovedAt"
+>;
+
+/** What this merchant lacks at `at`, and where a sale of theirs would be paid. */
+function standingOf(merchant: MerchantStanding, config: GatewayConfig, at: number) {
+  const payTo = payToAt(merchant, config, at);
+  const { missing } = readinessOf(
+    {
+      sellerName: merchant.serviceName,
+      // A wallet whose split is not recorded is no wallet a payment can be
+      // asked for at.
+      payoutWallet: payTo,
+      liveApproval: merchant.liveApprovedAt !== null,
+    },
+    config.surfaceMode,
+  );
+  return { missing, payTo };
+}
 
 /**
- * What this merchant lacks on this deployment. The rule is `readinessOf` in the
- * core, shared with the dashboard. It is asked at every sale as well as at
- * publishing because a merchant's row can change after their cards are
- * published.
+ * What this merchant lacks on this deployment at `at`. The rule is
+ * `readinessOf` in the core, shared with the dashboard. It is asked at every
+ * sale as well as at publishing because a merchant's row can change after
+ * their cards are published.
  */
 export function missingFrom(
   merchant: MerchantStanding,
   config: GatewayConfig,
+  at: number,
 ): readonly MerchantFinding[] {
-  return readinessOf(
-    {
-      sellerName: merchant.serviceName,
-      // A pending change never gives an address where there was none, so
-      // whether there is one is read off the row, not at an instant.
-      payoutWallet: merchant.payoutWallet.address,
-      liveApproval: merchant.liveApprovedAt !== null,
-    },
-    config.surfaceMode,
-  ).missing;
+  return standingOf(merchant, config, at).missing;
 }
 
-export function sellableBy(merchant: MerchantStanding, config: GatewayConfig): boolean {
-  return missingFrom(merchant, config).length === 0;
+/**
+ * Whether a sale of this merchant's could be made at `at`: nothing missing,
+ * and somewhere to ask the payment to go, the sandbox included.
+ */
+export function sellableBy(merchant: MerchantStanding, config: GatewayConfig, at: number): boolean {
+  const { missing, payTo } = standingOf(merchant, config, at);
+  return missing.length === 0 && payTo !== null;
 }

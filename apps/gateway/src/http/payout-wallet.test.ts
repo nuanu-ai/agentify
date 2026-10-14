@@ -744,7 +744,7 @@ describe("the split a payment is checked against", () => {
 
     const bought = await buyOverHttp(harnessed, served, itemId, {
       onOrder: () =>
-        card.fulfillment === "sync" ? { delivered: { access_code: "SESAME" } } : { accepted: true },
+        card.fulfillment === "sync" ? { delivered: { access_code: "SESAME" } } : { accepted: {} },
     });
 
     expect([200, 202], JSON.stringify(bought.body)).toContain(bought.status);
@@ -774,7 +774,7 @@ describe("the split a payment is checked against", () => {
     const async = await buyOverHttp(harnessed, served, asyncItem, {
       onOrder: (order) => {
         handed.push(order);
-        return { accepted: true };
+        return { accepted: {} };
       },
     });
     const merchant = bearer(harnessed.merchant.key);

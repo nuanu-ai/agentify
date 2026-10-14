@@ -123,11 +123,12 @@ export interface StoredOrder {
   /** What the agent presented to pay with, verbatim, until the charge is done. */
   readonly payment: string | null;
   /**
-   * The address the payment was verified against. The charge must go to the
-   * address the payer signed for even if the merchant moves their wallet
-   * between verification and charge, which in the synchronous mode spans the
-   * whole fulfilment. Null until a payment is verified, and on the sandbox,
-   * which settles against no address.
+   * The address the payment was verified against: the merchant's split as
+   * recorded then, or, on an order verified before payments went to splits,
+   * the wallet itself. The charge must go to the address the payer signed for
+   * even if the merchant moves their wallet between verification and charge,
+   * which in the synchronous mode spans the whole fulfilment. Null until a
+   * payment is verified.
    */
   readonly payTo: string | null;
   /**
@@ -389,9 +390,10 @@ export interface CatalogEntry {
   readonly card: StoredCard;
   readonly merchant: MerchantSelling;
   /**
-   * Where the card's merchant is paid, carried because a card whose merchant
-   * has no address cannot be sold where the money is real. It is as the row
-   * holds it: the address paid now is asked of `payoutWalletAt` with the clock.
+   * Where the card's merchant is paid, with the splits recorded for it,
+   * carried because a card whose merchant has no split to be paid at cannot be
+   * sold. It is as the row holds it: the address paid now is asked of
+   * `payoutWalletAt` with the clock.
    */
   readonly payoutWallet: StoredPayoutWallet;
   /**
