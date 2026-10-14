@@ -1,3 +1,4 @@
+import { outcomeFor } from "@agentify/core";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Reminder } from "../ports/queue.js";
@@ -318,6 +319,149 @@ describe("the wait for the charge", () => {
     );
     expect((await state(harnessed, orderId))?.state).toBe("delivered");
     await worker.stop();
+  });
+});
+
+describe("a synchronous purchase on the waits this gateway ships", () => {
+  // The portal gives the handler ten seconds, the charge ten more, and the
+  // agent twenty in all. Those are seconds of real time, so the timers are
+  // faked and moved together with the harness's clock.
+  const STEP_MS = 100;
+
+  /**
+   * Moves the clock and the timers together, so each reminder lands within a
+   * step of its instant. Work already under way, such as an answer just sent,
+   * finishes before the clock moves, or it would read a later instant than the
+   * one it was sent at.
+   */
+  const pass = async (harnessed: Harness, ms: number): Promise<void> => {
+    for (let left = ms; left > 0; left -= STEP_MS) {
+      const step = Math.min(STEP_MS, left);
+      await vi.advanceTimersByTimeAsync(0);
+      harnessed.advance(step);
+      await vi.advanceTimersByTimeAsync(step);
+    }
+  };
+
+  /**
+   * A paid synchronous order in the merchant's hands, with the agent's call
+   * still waiting on it, and the instant that call came back once it has.
+   */
+  const inTheHandlersHands = async () => {
+    open = await harness();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const harnessed = open;
+    const orderId = await bought(harnessed, syncCard);
+    const checkedOutAt = harnessed.now();
+    let answeredAt: number | null = null;
+    const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT").then((answer) => {
+      answeredAt = harnessed.now();
+      return answer;
+    });
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 200)).envelopes).toHaveLength(1);
+    const deliver = () =>
+      harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
+        delivered: { access_code: "SESAME" },
+      });
+    return { harnessed, orderId, buying, deliver, checkedOutAt, answeredAt: () => answeredAt };
+  };
+
+  /** What the agent's purchase call came back with, as the status word it is sent. */
+  const agentHears = async (buying: ReturnType<Harness["gateway"]["payPurchase"]>) => {
+    const answered = await buying;
+    if (answered.step !== "settled") throw new Error(`the agent was told ${answered.step}`);
+    return { status: outcomeFor(answered.order.order), answered };
+  };
+
+  afterEach(async () => {
+    await open?.stop();
+    open = null;
+    vi.useRealTimers();
+  });
+
+  it("takes goods a handler sends in its tenth second, and charges for them", async () => {
+    const { harnessed, buying, deliver } = await inTheHandlersHands();
+
+    await pass(harnessed, 9_900);
+    expect(await deliver()).toStrictEqual({ ok: true, result: "delivered" });
+
+    const { status, answered } = await agentHears(buying);
+    expect(status).toBe("delivered");
+    expect(answered.delivery).toStrictEqual({ access_code: "SESAME" });
+    expect(answered.order.settlement).not.toBeNull();
+    expect(harnessed.facilitator.settles).toHaveLength(1);
+  });
+
+  it("closes the purchase at ten seconds and charges nothing for goods sent after", async () => {
+    // The negative control: the handler's deadline is still a deadline.
+    const { harnessed, orderId, buying, deliver } = await inTheHandlersHands();
+
+    await pass(harnessed, 10_000);
+    expect(await deliver()).toStrictEqual({ ok: true, result: "purchase_already_closed" });
+
+    const { status } = await agentHears(buying);
+    expect(status).toBe("expired");
+    expect((await state(harnessed, orderId))?.closure).toStrictEqual({
+      cause: "deadline_expired",
+      deadline: "sync_response",
+    });
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+  });
+
+  it("counts a charge whose answer comes in its tenth second, and hands the agent its goods", async () => {
+    // The payment layer answers once the transfer is in a block, which on Base
+    // comes every two seconds, so an answer past two seconds is ordinary.
+    const { harnessed, buying, deliver, answeredAt } = await inTheHandlersHands();
+    const release = harnessed.facilitator.holdSettle();
+    const delivering = deliver();
+
+    await pass(harnessed, 9_900);
+    expect(answeredAt(), "the agent was answered before the charge was").toBeNull();
+    release();
+    await delivering;
+
+    const { status, answered } = await agentHears(buying);
+    expect(status).toBe("delivered");
+    expect(answered.delivery).toStrictEqual({ access_code: "SESAME" });
+    expect(answered.order.settlement).not.toBeNull();
+  });
+
+  it("declares a charge silent at ten seconds, and tells the agent so then", async () => {
+    // The negative control: past its wait a charge is a silence, and the agent
+    // hears that rather than waiting on.
+    const { harnessed, buying, deliver, checkedOutAt, answeredAt } = await inTheHandlersHands();
+    const release = harnessed.facilitator.holdSettle();
+    const delivering = deliver();
+
+    await pass(harnessed, 9_999);
+    expect(answeredAt(), "the charge was given up on early").toBeNull();
+    await pass(harnessed, 1);
+
+    const { status } = await agentHears(buying);
+    expect(status).toBe("payment_unresolved");
+    expect(answeredAt()).toBe(checkedOutAt + 10_000);
+    release();
+    await delivering;
+  });
+
+  it("answers the agent within twenty seconds when the handler and the charge each take all of theirs", async () => {
+    const { harnessed, buying, deliver, checkedOutAt, answeredAt } = await inTheHandlersHands();
+    const release = harnessed.facilitator.holdSettle();
+
+    await pass(harnessed, 9_900);
+    const delivering = deliver();
+    await pass(harnessed, 9_999);
+    expect(
+      answeredAt(),
+      "the agent stopped waiting while the charge could still answer",
+    ).toBeNull();
+    await pass(harnessed, 101);
+
+    const { status } = await agentHears(buying);
+    expect(status).toBe("payment_unresolved");
+    expect(answeredAt()).toBeLessThanOrEqual(checkedOutAt + 20_000);
+    release();
+    await delivering;
   });
 });
 

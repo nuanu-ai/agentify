@@ -44,10 +44,10 @@ describe("loadConfig", () => {
     expect(deadlines).toStrictEqual({
       quoteResponseMs: 5_000,
       quoteTtlMs: 30_000,
-      settleResponseMs: 2_000,
+      settleResponseMs: 10_000,
       settleBeforeGoodsMs: 15_000,
-      syncResponseMs: 8_000,
-      syncBudgetMs: 10_000,
+      syncResponseMs: 10_000,
+      syncBudgetMs: 20_000,
       paymentAfterConfirmationMs: 300_000,
       defaultConfirmationResponseMs: 3_600_000,
       defaultAsyncFulfillmentMs: 86_400_000,
@@ -432,14 +432,23 @@ describe("loadConfig", () => {
     // plus the charge, and the portal promises the agent one ceiling. The
     // refusal gives the ceiling, both parts and their sum, so the operator
     // sees which to change.
-    const refused = refusalFor({ SYNC_RESPONSE_MS: "9000", SETTLE_RESPONSE_MS: "2000" });
-    for (const owed of ["synchronous budget", "10000ms", "9000ms", "2000ms", "11000ms"]) {
-      expect(refused, refused).toContain(owed);
+    const belowTheShippedWaits = refusalFor({ SYNC_BUDGET_MS: "19999" });
+    for (const owed of ["synchronous budget", "19999ms", "10000ms", "20000ms"]) {
+      expect(belowTheShippedWaits, belowTheShippedWaits).toContain(owed);
     }
 
+    // Either wait grown past its share overflows the shipped ceiling.
+    const longerAnswer = refusalFor({ SYNC_RESPONSE_MS: "10001" });
+    for (const owed of ["synchronous budget", "20000ms", "10001ms", "10000ms", "20001ms"]) {
+      expect(longerAnswer, longerAnswer).toContain(owed);
+    }
+    expect(refusalFor({ SETTLE_RESPONSE_MS: "10001" })).toContain("20001ms");
+
     // Exactly filling it is allowed: the sum is the worst case, not a target.
+    // The shipped waits do exactly that.
+    expect(() => loadConfig(required)).not.toThrow();
     expect(() =>
-      loadConfig({ ...required, SYNC_RESPONSE_MS: "8000", SETTLE_RESPONSE_MS: "2000" }),
+      loadConfig({ ...required, SYNC_RESPONSE_MS: "12000", SETTLE_RESPONSE_MS: "8000" }),
     ).not.toThrow();
   });
 
@@ -450,17 +459,17 @@ describe("loadConfig", () => {
     // deadline.
     const tooLong = loadConfig({
       ...required,
-      HANDLER_ANSWER_MS: "7000",
+      HANDLER_ANSWER_MS: "9000",
       REDELIVERY_BASE_DELAY_MS: "500",
     });
     const refused = secondAttemptProblem(tooLong, 500) ?? "";
-    for (const owed of ["second attempt", "8000ms", "7000ms", "500ms"]) {
+    for (const owed of ["second attempt", "10000ms", "9000ms", "500ms"]) {
       expect(refused, refused).toContain(owed);
     }
 
     const fits = loadConfig({
       ...required,
-      HANDLER_ANSWER_MS: "6900",
+      HANDLER_ANSWER_MS: "8900",
       REDELIVERY_BASE_DELAY_MS: "500",
     });
     expect(secondAttemptProblem(fits, 500)).toBeNull();
@@ -473,7 +482,7 @@ describe("loadConfig", () => {
     // would fail on the connection instead, in other words.
     const cramped = loadConfig({
       DATABASE_URL: "postgres://agentify:secret@127.0.0.1:1/agentify",
-      HANDLER_ANSWER_MS: "7000",
+      HANDLER_ANSWER_MS: "9000",
       REDELIVERY_BASE_DELAY_MS: "500",
     });
 
