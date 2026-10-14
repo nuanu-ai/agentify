@@ -63,6 +63,8 @@ const recorded = (split: { address: string; salt: string }, merchantId: string):
 
 const S_ROW = recorded(S, "mch_a");
 const S2_ROW = recorded(S2, "mch_b");
+/** S2 as the same merchant's second split, paying the same wallet as S. */
+const S2_OF_THE_SAME_MERCHANT = recorded(S2, "mch_a");
 
 const MERCHANT_ID = handEncoded.payouts.merchant.merchantId;
 const SECOND_WALLET = handEncoded.payouts.merchantOverTwoWallets.merchantWallets[1];
@@ -161,22 +163,22 @@ describe("a merchant's payout of one split", () => {
     expect(paid.data).toBe(
       `0x82ad56cb${word("20")}${word("3")}${word("60")}${word("2c0")}${word("500")}` +
         `${word(ON_CHAIN.factory)}${word("0")}${word("60")}${word("1c4")}${padded(CREATE_S)}` +
-        `${word(S.address)}${word("0")}${word("60")}${word("1a4")}${padded(DISTRIBUTE)}` +
+        `${word(S.address)}${word("1")}${word("60")}${word("1a4")}${padded(DISTRIBUTE)}` +
         `${word(ON_CHAIN.warehouse)}${word("1")}${word("60")}${word("44")}${padded(WITHDRAW_M)}`,
     );
     expect(paid.splits).toStrictEqual([S_ROW]);
   });
 
-  it("lets the withdrawal fail without undoing the creation and the distribution, and lets nothing else fail", () => {
+  it("lets the distribution and the withdrawal fail without undoing the rest, and never the creation", () => {
     // The warehouse's withdraw reverts at a balance of zero and when USDC
-    // refuses the owner, a wallet Circle has blocked; either must still leave
-    // the split distributed, which is what pays the commission. A failed create
-    // or distribute must stop the transaction: the distribute of a split with
-    // no code "succeeds" and pays nobody.
+    // refuses the owner, a wallet Circle has blocked; a distribution reverts
+    // when Circle has blocked the split itself. A failed create must stop the
+    // transaction: the distribute of a split with no code "succeeds" and pays
+    // nobody.
     const flags = callsOf(merchantPayout(TEST_NETWORK, [S_ROW]).data).map(
       ({ allowFailure }) => allowFailure,
     );
-    expect(flags).toStrictEqual([false, false, true]);
+    expect(flags).toStrictEqual([false, true, true]);
   });
 
   it("does not withdraw the commission, which the merchant would pay gas for", () => {
@@ -271,22 +273,40 @@ describe("a merchant's payout over every split that can hold their money", () =>
   });
 
   it("withdraws a wallet two of their splits name only once", () => {
-    const S_AGAIN = recorded(S2, "mch_a");
-    const calls = callsOf(merchantPayout(TEST_NETWORK, [S_ROW, S_AGAIN]).data);
+    const calls = callsOf(merchantPayout(TEST_NETWORK, [S_ROW, S2_OF_THE_SAME_MERCHANT]).data);
 
     expect(calls).toStrictEqual([
       call(ON_CHAIN.factory, false, CREATE_S),
-      call(S.address, false, DISTRIBUTE),
+      call(S.address, true, DISTRIBUTE),
       call(ON_CHAIN.factory, false, CREATE_S2),
-      call(S2.address, false, DISTRIBUTE),
+      call(S2.address, true, DISTRIBUTE),
       call(ON_CHAIN.warehouse, true, WITHDRAW_M),
     ]);
+  });
+
+  it("pays a merchant's other splits when one of them cannot be distributed, since each distribution may fail alone", () => {
+    // Circle can block a split as it can any address, and its distribution
+    // then reverts for good. A merchant whose wallet has changed has every
+    // split that can hold their money in this one transaction, so with the
+    // flag down a blocked old split would revert it on every run and the
+    // split in force would never be paid out by them.
+    const paid = merchantPayout(TEST_NETWORK, [S_ROW, S2_OF_THE_SAME_MERCHANT]);
+
+    expect(paid.data).toBe(
+      `0x82ad56cb${word("20")}${word("5")}` +
+        `${word("a0")}${word("300")}${word("540")}${word("7a0")}${word("9e0")}` +
+        `${word(ON_CHAIN.factory)}${word("0")}${word("60")}${word("1c4")}${padded(CREATE_S)}` +
+        `${word(S.address)}${word("1")}${word("60")}${word("1a4")}${padded(DISTRIBUTE)}` +
+        `${word(ON_CHAIN.factory)}${word("0")}${word("60")}${word("1c4")}${padded(CREATE_S2)}` +
+        `${word(S2.address)}${word("1")}${word("60")}${word("1a4")}${padded(DISTRIBUTE)}` +
+        `${word(ON_CHAIN.warehouse)}${word("1")}${word("60")}${word("44")}${padded(WITHDRAW_M)}`,
+    );
   });
 });
 
 describe("a payout's withdrawals", () => {
   it("withdraw a wallet once whichever spelling each of its splits recorded it in", () => {
-    const lower = { ...recorded(S2, "mch_a"), merchantWallet: MERCHANT.toLowerCase() };
+    const lower = { ...S2_OF_THE_SAME_MERCHANT, merchantWallet: MERCHANT.toLowerCase() };
     const withdrawals = callsOf(merchantPayout(TEST_NETWORK, [S_ROW, lower]).data).filter(
       ({ target }) => target === ON_CHAIN.warehouse,
     );
