@@ -14,6 +14,7 @@ import { loadConfig } from "./config.js";
 import { SIGN_OUT_EVERY_OTHER_DEVICE, STOP_ALL_SELLING } from "./control-labels.js";
 import { identityFor } from "./identity.js";
 import type { Handover, Message } from "./mail.js";
+import type { CommissionRate } from "./shares.js";
 import { tellerFor } from "./teller.js";
 
 const MERCHANT = "mch_the_shop";
@@ -49,6 +50,7 @@ const aWalletChange: Announcement = {
 const telling = async (
   people: readonly (readonly [email: string, merchantId: string])[],
   refuses: ReadonlySet<string> = new Set(),
+  rate: CommissionRate = LIVE,
 ) => {
   const sent: Message[] = [];
   const postman = async (message: Message): Promise<Handover> => {
@@ -61,7 +63,7 @@ const telling = async (
   for (const [email, merchantId] of people) {
     await identity.make(email, merchantId);
   }
-  return { tell: tellerFor(settings, identity, postman, LIVE), sent };
+  return { tell: tellerFor(settings, identity, postman, rate), sent };
 };
 
 /** A share of the payout split's total, formatted from the network's own terms. */
@@ -357,6 +359,31 @@ describe("the payout contract a message names", () => {
     for (const split of [FROM_SPLIT, TO_SPLIT]) {
       expect(sent[0]?.html).toContain(split);
     }
+  });
+
+  it("says the shares of the terms the teller is given, so a rate written into the message would be caught", async () => {
+    // The Base Sepolia experiment's real terms, 97% to the merchant and 3% to
+    // Agentify, with the split made at them.
+    const atThreePercent = { commissionAllocation: 30_000, totalAllocation: 1_000_000 };
+    const toSplit = payoutSplitFor({ ...LIVE, ...atThreePercent }, MERCHANT, TO).address;
+    const { tell, sent } = await telling(
+      [["owner@example.com", MERCHANT]],
+      new Set(),
+      atThreePercent,
+    );
+
+    await tell({
+      kind: "wallet_set",
+      merchant_id: MERCHANT,
+      to: TO,
+      to_split: toSplit,
+      asked_with: { kind: "signed_in", email: "owner@example.com" },
+    } satisfies Announcement);
+
+    const said = naming(sent[0]?.body ?? "", toSplit);
+    expect(said).toContain("pays only this wallet, 97% of every sale, and Agentify, 3%");
+    expect(sent[0]?.body).not.toContain("99.9%");
+    expect(sent[0]?.body).not.toContain("0.1%");
   });
 
   it("names, with a cancel, the contract buyers still pay into", async () => {

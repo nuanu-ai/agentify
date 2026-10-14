@@ -72,12 +72,22 @@ export const whatIsWrongWithTheWallet = (address: string): string | null => {
 };
 
 /**
+ * Why an address cannot be a payout wallet, as the screen tells it: the
+ * gateway's own reasons, with a payout contract told apart by whose it is,
+ * since a share paid into another merchant's becomes that merchant's.
+ */
+export type NotAWallet =
+  | Exclude<NotAPayoutWallet, "payout_split">
+  | "own_payout_split"
+  | "another_merchants_payout_split";
+
+/**
  * What an address is that a merchant's share could never come back from, said
  * on the screen that asked for it. A split pays the wallet written into it for
  * good, so saving one of these would lose the share or hand it to somebody
  * else.
  */
-export const NOT_A_PAYOUT_WALLET: Readonly<Record<NotAPayoutWallet, string>> = {
+export const NOT_A_PAYOUT_WALLET: Readonly<Record<NotAWallet, string>> = {
   zero_address: `This is the zero address, which nobody holds, so a share paid to it is lost. ${NOTHING_WAS_SAVED}`,
   commission_wallet: `This is Agentify's commission wallet, not yours, so your share would go to Agentify. ${NOTHING_WAS_SAVED}`,
   split_factory: `This is the contract that creates payout contracts, not a wallet, so your share could never come back from it. ${NOTHING_WAS_SAVED}`,
@@ -85,7 +95,8 @@ export const NOT_A_PAYOUT_WALLET: Readonly<Record<NotAPayoutWallet, string>> = {
   split_warehouse: `This is the 0xSplits warehouse a payout pays from, not a wallet, so your share could never come back from it. ${NOTHING_WAS_SAVED}`,
   multicall3: `This is Multicall3, the public contract a payout is sent to, not a wallet: anybody could take a share paid to it. ${NOTHING_WAS_SAVED}`,
   usdc: `This is the USDC token contract, not a wallet, so your share could never come back from it. ${NOTHING_WAS_SAVED}`,
-  payout_split: `This is a payout contract, not a wallet: a share paid to it would only come back to it. ${NOTHING_WAS_SAVED}`,
+  own_payout_split: `This is one of your own payout contracts, not a wallet: a share paid to it would be split again, with Agentify's commission taken a second time, on its way to the wallet that contract pays. ${NOTHING_WAS_SAVED}`,
+  another_merchants_payout_split: `This is another merchant's payout contract, not a wallet: a share paid to it would go to that merchant. ${NOTHING_WAS_SAVED}`,
 };
 
 /** The address a screen read from the gateway; null where none is set. */

@@ -34,7 +34,7 @@ function SplitBeside({ split, label }: Readonly<{ split: SplitView; label: strin
         <Address address={split.address} />
       </div>
       <p className="under">
-        Your payout contract. {split.pays}{" "}
+        Your payout contract.{" "}
         {split.explorer === null ? null : (
           <a href={split.explorer} rel="noreferrer">
             See what it holds
@@ -264,7 +264,7 @@ function CopyData({ data }: Readonly<{ data: string }>) {
  * reason.
  */
 function PayoutPanel({ payout }: Readonly<{ payout: PayoutView }>) {
-  if (payout.kind === "too_many") {
+  if (payout.kind !== "send") {
     return (
       <div className="lede">
         <div>
@@ -280,10 +280,8 @@ function PayoutPanel({ payout }: Readonly<{ payout: PayoutView }>) {
         <div>
           <h2>Get your payout</h2>
           <p>
-            Your payout contract keeps buyers' payments until it is paid out. You can get paid out
-            at any time.
+            {payout.lead} <a href="/docs/money#getting-paid-out">How to send it</a>.
           </p>
-          <p>{payout.from}</p>
         </div>
       </div>
       <dl className="payout">
@@ -292,10 +290,7 @@ function PayoutPanel({ payout }: Readonly<{ payout: PayoutView }>) {
           <div className="address">
             <Address address={payout.to} />
           </div>
-          <p className="under">
-            Multicall3, a public contract that runs several calls in one transaction; it is not
-            ours.
-          </p>
+          <p className="under">Multicall3, a public contract, not ours.</p>
         </dd>
         <dt>Amount</dt>
         <dd className="mono">0</dd>
@@ -332,12 +327,7 @@ function PayoutPanel({ payout }: Readonly<{ payout: PayoutView }>) {
       </dl>
       <div className="lede">
         <div>
-          <p>
-            {payout.arrives} Sending it costs only the network fee: the transaction carries no money
-            and cannot touch anything in the wallet that sends it. Your wallet has to let you paste
-            data into a transaction; in MetaMask, turn on Settings → Advanced → Show hex data.
-          </p>
-          <p className="quiet">{payout.withoutEth}</p>
+          <p>{payout.after}</p>
         </div>
       </div>
     </>

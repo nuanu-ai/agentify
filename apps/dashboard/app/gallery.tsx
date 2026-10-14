@@ -271,7 +271,10 @@ const splitsOf = (
     },
     inForce: wallet === null ? null : splitOf(mode, wallet),
     pending: pending === undefined ? null : splitOf(mode, pending),
-    payout: paidOut.length === 0 ? null : merchantPayout(network, paidOut),
+    payout:
+      paidOut.length === 0
+        ? null
+        : merchantPayout(network, paidOut, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE),
   };
 };
 
@@ -1708,11 +1711,26 @@ const SETTINGS: GalleryState[] = [
       screen: "Settings",
       when: "A merchant whose wallet changed many times opens Settings.",
       cause:
-        "More payout contracts can hold the merchant's money than one transaction pays out, so the operator pays them out.",
+        "More payout contracts can hold the merchant's money than one transaction pays out, so they wait for Agentify's own payout, on no set date.",
     },
     settingsView("live", WHO, {
       ...settingsOf({
         payoutSplits: { ...splitsOf("live", PAID_INTO), payout: { tooMany: 23 } },
+      }),
+      liveApproval: true,
+    }),
+  ),
+  settings(
+    {
+      id: "dashboard-settings-payout-unbuilt",
+      screen: "Settings",
+      when: "A merchant opens Settings while a payout contract of theirs is one no payout is built over.",
+      cause:
+        "The builder refuses a split as recorded, such as one paying its share to Multicall3, so no transaction is drawn; the rest of Settings is.",
+    },
+    settingsView("live", WHO, {
+      ...settingsOf({
+        payoutSplits: { ...splitsOf("live", PAID_INTO), payout: "unbuilt" },
       }),
       liveApproval: true,
     }),

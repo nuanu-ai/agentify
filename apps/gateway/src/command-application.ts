@@ -3,7 +3,8 @@
  * up, such as `report-payment`. Its queue writes and does not consume, because
  * a second consumer on the reminders queue would take deadlines away from the
  * gateway that applies them. It never asks the facilitator, since a command
- * records what was learned elsewhere, and it announces nothing.
+ * records what was learned elsewhere, and it announces nothing. A command that
+ * only reads, such as `payout`, opens one with no queue at all.
  */
 
 import { queueOn } from "./adapters/pgboss/queue.js";
@@ -13,6 +14,7 @@ import type { GatewayConfig } from "./config.js";
 import { nobodyAnnounces } from "./ports/announcer.js";
 import { randomIds, systemClock } from "./ports/clock.js";
 import type { Facilitator } from "./ports/facilitator.js";
+import type { Queue } from "./ports/queue.js";
 
 const refusesToAsk: Facilitator = {
   verify() {
@@ -21,6 +23,23 @@ const refusesToAsk: Facilitator = {
   settle() {
     return Promise.reject(new Error("a command does not ask the facilitator"));
   },
+};
+
+const ONLY_READS = "a command that only reads puts nothing on a queue and takes nothing off one";
+
+/** Refuses every call out loud rather than dropping a merchant's work. */
+const noQueue: Queue = {
+  publish: () => Promise.reject(new Error(ONLY_READS)),
+  draw: () => Promise.reject(new Error(ONLY_READS)),
+  finish: () => Promise.reject(new Error(ONLY_READS)),
+  holdsOrder: () => Promise.reject(new Error(ONLY_READS)),
+  remind: () => Promise.reject(new Error(ONLY_READS)),
+  onReminder: () => {
+    throw new Error(ONLY_READS);
+  },
+  everyDay: () => Promise.reject(new Error(ONLY_READS)),
+  start: () => Promise.reject(new Error(ONLY_READS)),
+  stop: () => Promise.resolve(),
 };
 
 export interface CommandApplication {
@@ -57,4 +76,23 @@ export async function openCommandApplication(config: GatewayConfig): Promise<Com
     announcer: nobodyAnnounces,
   });
   return { application, close };
+}
+
+/**
+ * The application for a command that only reads. pg-boss is never started, so
+ * its maintenance and schedules write nothing, and the store connects at its
+ * first query.
+ */
+export function openReadingApplication(config: GatewayConfig): CommandApplication {
+  const { db, pool } = connect(config.databaseUrl);
+  const application = new Gateway({
+    config,
+    store: PostgresStore.over(db, config.payment.network, randomIds),
+    queue: noQueue,
+    facilitator: refusesToAsk,
+    clock: systemClock,
+    ids: randomIds,
+    announcer: nobodyAnnounces,
+  });
+  return { application, close: () => pool.end() };
 }
