@@ -993,4 +993,86 @@ if (databaseUrl === null) {
       ).rejects.toThrow(/cards_integration_known/);
     });
   });
+
+  describe("the migration that adds the registry of payout splits", () => {
+    // The SQL cannot compute a split's address, which needs Keccak-256, so the
+    // rows come from the gateway's start. The migration adds the table and
+    // nothing else: every order keeps the address its payer signed for.
+    const url = databaseUrl;
+    let pool: Pool;
+
+    const run = async (file: string): Promise<void> => {
+      for (const statement of await statementsOf(file)) {
+        await pool.query(statement);
+      }
+    };
+
+    beforeAll(async () => {
+      pool = connect(url).pool;
+    }, 60_000);
+
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    beforeEach(async () => {
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      for (const file of [
+        "0000_init.sql",
+        "0001_payment_claims.sql",
+        "0002_selling.sql",
+        "0003_merchant_tenancy.sql",
+        "0004_merchant_service_name.sql",
+        "0005_merchant_payout_wallet.sql",
+        "0006_order_pay_to_backfill.sql",
+        "0007_cabinet_keys.sql",
+        "0008_key_last_use.sql",
+        "0009_live_approval.sql",
+        "0010_pending_payout_wallet.sql",
+        "0011_merchant_seller_site.sql",
+        "0012_dashboard_keys.sql",
+        "0013_delete_dashboard_keys.sql",
+        "0014_one_integration.sql",
+      ]) {
+        await run(file);
+      }
+    });
+
+    it("writes no row and touches no merchant and no order", async () => {
+      const wallet = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+      const waiting = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+      const at = new Date("2026-10-01T10:00:00.000Z");
+      await pool.query(
+        `insert into merchants (id, name, selling, created_at, updated_at, payout_wallet,
+           pending_payout_wallet, pending_payout_wallet_from)
+         values ('mch_paid', 'Paid', 'open', $1, $1, $2, null, null),
+                ('mch_waiting', 'Waiting', 'open', $1, $1, $2, $3, $4),
+                ('mch_unpaid', 'Unpaid', 'open', $1, $1, null, null, null)`,
+        [at, wallet, waiting, new Date("2026-10-03T10:00:00.000Z")],
+      );
+      await pool.query(
+        `insert into orders (id, state, open, merchant_id, item_id, merchant_item_id, record,
+           created_at, updated_at)
+         values ('ord_verified', 'dispatched', true, 'mch_paid', 'item_1', 'sku-1', $1, $2, $2)`,
+        [JSON.stringify({ payment: "PAYMENT", payTo: wallet, merchantId: "mch_paid" }), at],
+      );
+      const merchantsBefore = (await pool.query("select * from merchants order by id")).rows;
+      const ordersBefore = (await pool.query("select * from orders order by id")).rows;
+
+      await run("0015_payout_splits.sql");
+
+      expect((await pool.query("select * from payout_splits")).rows).toStrictEqual([]);
+      expect((await pool.query("select * from merchants order by id")).rows).toStrictEqual(
+        merchantsBefore,
+      );
+      expect((await pool.query("select * from orders order by id")).rows).toStrictEqual(
+        ordersBefore,
+      );
+      const kept = await pool.query<{ pay_to: string }>(
+        "select record ->> 'payTo' as pay_to from orders where id = 'ord_verified'",
+      );
+      expect(kept.rows[0]?.pay_to).toBe(wallet);
+    });
+  });
 }

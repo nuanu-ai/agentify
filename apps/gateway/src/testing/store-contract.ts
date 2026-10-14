@@ -16,7 +16,16 @@
 import type { Order } from "@agentify/core";
 import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import type { Store, StoredOrder } from "../ports/store.js";
+import type {
+  PayoutWalletWrite,
+  RecordedPayoutSplit,
+  Store,
+  StoredOrder,
+  StoredPayoutWallet,
+} from "../ports/store.js";
+import { payoutSplitNetworkOf } from "../split/networks.js";
+import { type PayoutSplit, payoutSplitFor } from "../split/parameters.js";
+import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "./split-networks.js";
 
 /** The merchant almost everything here belongs to, because a card needs one. */
 const A = "mch_a";
@@ -24,7 +33,66 @@ const A = "mch_a";
 const B = "mch_b";
 
 /** A merchant paid nowhere, with nothing waiting: where every merchant starts. */
-const NO_WALLET = { address: null, pending: null } as const;
+const NO_WALLET = { address: null, split: null, pending: null } as const;
+
+/** The two networks a registry row can name here: the test chain, and Base under a fixture's wallet. */
+const BASE_SEPOLIA = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:84532");
+const BASE = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453");
+
+/** Wallets with letters in them, in the checksummed spelling the caller hands the store. */
+const W1 = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+const W2 = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+const W3 = "0xde3F8C4422A7F8C94bce9Cc2Ec118665108148EF";
+
+/** One merchant's split of one wallet, every parameter as the gateway computes it. */
+const splitOf = (merchantId: string, wallet: string, network = BASE_SEPOLIA): PayoutSplit =>
+  payoutSplitFor(network, merchantId, wallet);
+
+/** A wallet write with nothing waiting: the address and its split. */
+const paidAt = (merchantId: string, wallet: string, network = BASE_SEPOLIA): PayoutWalletWrite => ({
+  address: wallet,
+  split: splitOf(merchantId, wallet, network),
+  pending: null,
+});
+
+/** A wallet write with a replacement waiting until `takesEffectAt`, both with their splits. */
+const waitingFor = (
+  merchantId: string,
+  now: string,
+  next: string,
+  takesEffectAt: number,
+): PayoutWalletWrite => ({
+  address: now,
+  split: splitOf(merchantId, now),
+  pending: { address: next, takesEffectAt, split: splitOf(merchantId, next) },
+});
+
+/** A split as the registry hands it back: as given, and when it was first recorded. */
+const recorded = (split: PayoutSplit, recordedAt: number): RecordedPayoutSplit => ({
+  ...split,
+  recordedAt,
+});
+
+/** What a merchant's wallet reads back as, once `write` landed and its splits were first recorded at the instants given. */
+const readBack = (
+  write: PayoutWalletWrite,
+  at: { readonly address: number; readonly pending?: number },
+): StoredPayoutWallet => ({
+  address: write.address,
+  split: recorded(write.split, at.address),
+  pending:
+    write.pending === null
+      ? null
+      : {
+          address: write.pending.address,
+          takesEffectAt: write.pending.takesEffectAt,
+          split: recorded(write.pending.split, at.pending ?? at.address),
+        },
+});
+
+/** The addresses of a list of splits, in the order the store gave them. */
+const addressesOf = async (splits: Promise<readonly RecordedPayoutSplit[]>): Promise<string[]> =>
+  (await splits).map((split) => split.address);
 
 const card = (merchantItemId: string, title: string): Card => ({
   merchant_item_id: merchantItemId,
@@ -272,24 +340,27 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(entries.find((entry) => entry.card.merchantId === B)?.merchant).toBe("open");
       });
 
-      it("carries where each card's merchant is paid, and nothing where none is set", async () => {
+      it("carries where each card's merchant is paid, with its splits, and nothing where none is set", async () => {
         // Whether a card may be offered turns on this: a catalog read that lost
-        // the address would list cards no live purchase can complete.
+        // the address or its split would list cards no live purchase can
+        // complete.
         const store = await twoMerchants();
         await store.publishCard(A, card("sku-1", "A's room"), 10_000);
         await store.publishCard(B, card("sku-1", "B's room"), 20_000);
-        const paid = {
-          address: "0x0000000000000000000000000000000000000009",
-          // Once its moment passes, a waiting change is the address a sale is
-          // paid at, so it travels too.
-          pending: { address: "0x0000000000000000000000000000000000000008", takesEffectAt: 90_000 },
-        };
+        // Once its moment passes, a waiting change is the address a sale is
+        // paid at, so it travels too, with the split it is paid through.
+        const paid = waitingFor(
+          A,
+          "0x0000000000000000000000000000000000000009",
+          "0x0000000000000000000000000000000000000008",
+          90_000,
+        );
         await store.setPayoutWallet(A, NO_WALLET, paid, 30_000);
 
         const entries = await store.catalogEntries();
 
         expect(entries.find((entry) => entry.card.merchantId === A)?.payoutWallet).toStrictEqual(
-          paid,
+          readBack(paid, { address: 30_000 }),
         );
         expect(entries.find((entry) => entry.card.merchantId === B)?.payoutWallet).toStrictEqual(
           NO_WALLET,
@@ -579,58 +650,87 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         ).toBeNull();
       });
 
-      it("is paid at a wallet only where somebody set one, and at their own", async () => {
+      it("is paid at a wallet only where somebody set one, and at their own, with its split recorded in the same write", async () => {
         // A wrong address here shows up first on a chain, in a payment that
-        // cannot be called back.
+        // cannot be called back. From the moment a wallet is saved a payment
+        // may be asked for at its split, whose parameters exist nowhere else
+        // until its first payout.
         const store = await twoMerchants();
 
         expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(NO_WALLET);
 
         // Checksummed, as the caller hands it over: the store normalizes nothing.
-        const wallet = { address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", pending: null };
+        const wallet = paidAt(A, W1);
         const written = await store.setPayoutWallet(A, NO_WALLET, wallet, 3_000);
         expect(
-          written === null || written === "moved" ? written : written.payoutWallet,
-        ).toStrictEqual(wallet);
-        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(wallet);
+          written === null || written === "moved" ? written : written.merchant.payoutWallet,
+        ).toStrictEqual(readBack(wallet, { address: 3_000 }));
+        expect(written === null || written === "moved" ? written : written.recorded).toStrictEqual([
+          recorded(wallet.split, 3_000),
+        ]);
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(
+          readBack(wallet, { address: 3_000 }),
+        );
         expect((await store.merchantById(B))?.payoutWallet).toStrictEqual(NO_WALLET);
+        // Every address of the row in its checksummed spelling, the one the
+        // lookup by wallet is made with.
+        const row = await store.payoutSplitAt(wallet.split.address);
+        expect(row).toStrictEqual(recorded(wallet.split, 3_000));
+        for (const address of [row?.address, row?.merchantWallet, row?.commissionWallet]) {
+          expect(address).toMatch(/[A-F]/);
+        }
 
-        expect(await store.setPayoutWallet("mch_nobody", NO_WALLET, wallet, 5_000)).toBeNull();
+        expect(
+          await store.setPayoutWallet("mch_nobody", NO_WALLET, paidAt("mch_nobody", W2), 5_000),
+        ).toBeNull();
+        expect(await store.payoutSplitAt(splitOf("mch_nobody", W2).address)).toBeNull();
       });
 
-      it("refuses a second first address written over one that landed after it was read", async () => {
+      it("refuses a second first address written over one that landed after it was read, and records neither its split", async () => {
         // Nothing waits on either row, so only comparing the address itself
-        // tells them apart.
+        // tells them apart. A split recorded by a write that lost its race is
+        // one nobody was told of, and every payout would carry it.
         const store = await twoMerchants();
-        const first = { address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", pending: null };
-        const second = { address: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359", pending: null };
+        const first = paidAt(A, W1);
+        const second = paidAt(A, W2);
         await store.setPayoutWallet(A, NO_WALLET, first, 3_000);
 
         expect(await store.setPayoutWallet(A, NO_WALLET, second, 4_000)).toBe("moved");
-        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(first);
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(
+          readBack(first, { address: 3_000 }),
+        );
+        expect(await store.payoutSplitAt(second.split.address)).toBeNull();
       });
 
-      it("keeps a waiting change beside the wallet paid now, with the moment it takes effect", async () => {
+      it("keeps a waiting change beside the wallet paid now, with the moment it takes effect and its split recorded already", async () => {
         // Until the waiting change takes effect, sales are paid to the current
         // address. Dropping either half, or moving the instant by a millisecond,
         // would pay the new address early or show the merchant the wrong moment.
+        // Nothing writes again when the moment comes, so the split that becomes
+        // the payment address then is recorded now, beside the one paid today.
         const store = await twoMerchants();
-        const now = { address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", pending: null };
+        const now = paidAt(A, W1);
         await store.setPayoutWallet(A, NO_WALLET, now, 3_000);
 
-        const waiting = {
-          address: now.address,
-          pending: {
-            address: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
-            takesEffectAt: Date.parse("2026-09-26T12:00:00.123Z"),
-          },
-        };
-        await store.setPayoutWallet(A, now, waiting, 4_000);
+        const waiting = waitingFor(A, W1, W2, Date.parse("2026-09-26T12:00:00.123Z"));
+        const written = await store.setPayoutWallet(A, now, waiting, 4_000);
 
-        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(waiting);
-        // Cleared again, as a cancel writes it.
+        expect(written === null || written === "moved" ? written : written.recorded).toStrictEqual([
+          recorded(splitOf(A, W2), 4_000),
+        ]);
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(
+          readBack(waiting, { address: 3_000, pending: 4_000 }),
+        );
+        // Cleared again, as a cancel writes it, and the waiting split stays
+        // recorded: a cancel changes which split a payment names, never what
+        // is recorded.
         await store.setPayoutWallet(A, waiting, now, 5_000);
-        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(now);
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(
+          readBack(now, { address: 3_000 }),
+        );
+        expect(await store.payoutSplitAt(splitOf(A, W2).address)).toStrictEqual(
+          recorded(splitOf(A, W2), 4_000),
+        );
       });
 
       it("writes nothing where the wallet moved after it was read, and says so", async () => {
@@ -638,27 +738,250 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // recorded between another's read and write must not be overwritten, or
         // the merchant would be shown a different change from the one announced.
         const store = await twoMerchants();
-        const now = { address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", pending: null };
+        const now = paidAt(A, W1);
         await store.setPayoutWallet(A, NO_WALLET, now, 3_000);
-        const first = {
-          address: now.address,
-          pending: { address: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359", takesEffectAt: 90_000 },
-        };
-        const second = {
-          address: now.address,
-          pending: { address: "0x0000000000000000000000000000000000000007", takesEffectAt: 95_000 },
-        };
+        const first = waitingFor(A, W1, W2, 90_000);
+        const second = waitingFor(A, W1, W3, 95_000);
         await store.setPayoutWallet(A, now, first, 4_000);
 
         // Both were read as `now`; the first has already been written.
         expect(await store.setPayoutWallet(A, now, second, 5_000)).toBe("moved");
-        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(first);
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(
+          readBack(first, { address: 3_000, pending: 4_000 }),
+        );
+        // And the change that lost recorded no split.
+        expect(await store.payoutSplitAt(splitOf(A, W3).address)).toBeNull();
 
         // The same address with another moment is another row: a restarted
         // clock is a change this write never read.
-        const restarted = { ...first, pending: { ...first.pending, takesEffectAt: 99_000 } };
+        const restarted = {
+          address: W1,
+          pending: { address: W2, takesEffectAt: 99_000 },
+        };
         expect(await store.setPayoutWallet(A, restarted, now, 6_000)).toBe("moved");
-        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(first);
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(
+          readBack(first, { address: 3_000, pending: 4_000 }),
+        );
+      });
+    });
+
+    describe("a payout split", () => {
+      it("is recorded once for a merchant and a wallet, at the instant first written, however often the wallet returns", async () => {
+        // No ordinal in the salt, so W1 → W2 → W1 names the first split again:
+        // its parameters are already recorded and stay as recorded, and a
+        // retried write of the same change records nothing a second time.
+        const store = await twoMerchants();
+        await store.setPayoutWallet(A, NO_WALLET, paidAt(A, W1), 3_000);
+        await store.setPayoutWallet(A, paidAt(A, W1), paidAt(A, W2), 4_000);
+        const back = await store.setPayoutWallet(A, paidAt(A, W2), paidAt(A, W1), 5_000);
+
+        expect(back === null || back === "moved" ? back : back.recorded).toStrictEqual([]);
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(
+          readBack(paidAt(A, W1), { address: 3_000 }),
+        );
+        expect(
+          await addressesOf(store.splitsToPayOutOn(BASE_SEPOLIA.network, 6_000)),
+        ).toStrictEqual([splitOf(A, W1).address]);
+        expect(await store.payoutSplitAt(splitOf(A, W2).address)).toStrictEqual(
+          recorded(splitOf(A, W2), 4_000),
+        );
+      });
+
+      it("keeps two merchants with one wallet on two splits", async () => {
+        // One merchant's screen and payout must not show or move another
+        // merchant's sales.
+        const store = await twoMerchants();
+        await store.setPayoutWallet(A, NO_WALLET, paidAt(A, W1), 3_000);
+        await store.setPayoutWallet(B, NO_WALLET, paidAt(B, W1), 4_000);
+
+        const theirs = (await store.merchantById(A))?.payoutWallet.split?.address;
+        const others = (await store.merchantById(B))?.payoutWallet.split?.address;
+        expect(theirs).toBe(splitOf(A, W1).address);
+        expect(others).toBe(splitOf(B, W1).address);
+        expect(theirs).not.toBe(others);
+      });
+
+      it("is found at its address in either spelling, whoever's it is, and nothing is found where none was recorded", async () => {
+        // A merchant pasting any merchant's split as their wallet is refused by
+        // this lookup, and an agent's client may have written it in lower case.
+        const store = await twoMerchants();
+        await store.setPayoutWallet(B, NO_WALLET, paidAt(B, W1), 4_000);
+        const split = splitOf(B, W1);
+
+        expect(await store.payoutSplitAt(split.address.toLowerCase())).toStrictEqual(
+          recorded(split, 4_000),
+        );
+        expect(await store.payoutSplitAt(splitOf(A, W1).address)).toBeNull();
+      });
+
+      it("refuses a wallet given another wallet's or another merchant's split, and writes nothing", async () => {
+        // The registry says which wallet each split pays; a wallet written with
+        // a split that pays somebody else would send a payment where the
+        // merchant was never told.
+        const store = await twoMerchants();
+
+        for (const split of [splitOf(A, W2), splitOf(B, W1)]) {
+          await expect(
+            store.setPayoutWallet(A, NO_WALLET, { address: W1, split, pending: null }, 3_000),
+          ).rejects.toThrow(/split/);
+          expect(await store.payoutSplitAt(split.address)).toBeNull();
+        }
+        await expect(
+          store.setPayoutWallet(
+            A,
+            NO_WALLET,
+            {
+              address: W1,
+              split: splitOf(A, W1),
+              pending: { address: W2, takesEffectAt: 90_000, split: splitOf(A, W3) },
+            },
+            3_000,
+          ),
+        ).rejects.toThrow(/split/);
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(NO_WALLET);
+        expect(await store.payoutSplitAt(splitOf(A, W1).address)).toBeNull();
+      });
+
+      it("refuses a wallet whose split is already recorded under other parameters, and writes nothing", async () => {
+        // The announcement names the split the gateway computed; a write that
+        // kept a different recorded one would leave the merchant told of one
+        // address while buyers pay another.
+        const store = await twoMerchants();
+        await store.setPayoutWallet(A, NO_WALLET, paidAt(A, W1), 3_000);
+        await store.setPayoutWallet(A, paidAt(A, W1), paidAt(A, W2), 4_000);
+        const elsewhere = { ...BASE_SEPOLIA, commissionWallet: W3 };
+
+        await expect(
+          store.setPayoutWallet(
+            A,
+            paidAt(A, W2),
+            { address: W1, split: payoutSplitFor(elsewhere, A, W1), pending: null },
+            5_000,
+          ),
+        ).rejects.toThrow(/recorded/);
+        expect((await store.merchantById(A))?.payoutWallet.address).toBe(W2);
+        expect(await store.payoutSplitAt(payoutSplitFor(elsewhere, A, W1).address)).toBeNull();
+      });
+
+      it("records only the splits not recorded before, and says which", async () => {
+        // The start gives a split to every wallet set before splits were, and a
+        // restart, or a second gateway starting beside it, must record each
+        // one once and keep its first instant.
+        const store = await twoMerchants();
+        await store.setPayoutWallet(A, NO_WALLET, paidAt(A, W1), 3_000);
+
+        const first = await store.recordPayoutSplits([splitOf(A, W1), splitOf(B, W2)], 4_000);
+        const again = await store.recordPayoutSplits([splitOf(A, W1), splitOf(B, W2)], 5_000);
+
+        expect(first).toStrictEqual([recorded(splitOf(B, W2), 4_000)]);
+        expect(again).toStrictEqual([]);
+        expect(await store.payoutSplitAt(splitOf(A, W1).address)).toStrictEqual(
+          recorded(splitOf(A, W1), 3_000),
+        );
+        await expect(
+          store.recordPayoutSplits(
+            [payoutSplitFor({ ...BASE_SEPOLIA, commissionWallet: W3 }, B, W2)],
+            6_000,
+          ),
+        ).rejects.toThrow(/recorded/);
+      });
+
+      it("names every network it holds splits of, and none it does not", async () => {
+        // A database moved from the test channel to the live one would name
+        // Base Sepolia's splits as Base's payment addresses; the start refuses
+        // it on this answer.
+        const store = await twoMerchants();
+        expect(await store.networksWithPayoutSplits()).toStrictEqual([]);
+
+        await store.recordPayoutSplits([splitOf(A, W1)], 3_000);
+        expect(await store.networksWithPayoutSplits()).toStrictEqual([BASE_SEPOLIA.network]);
+
+        await store.recordPayoutSplits([splitOf(B, W1, BASE)], 4_000);
+        expect([...(await store.networksWithPayoutSplits())].sort()).toStrictEqual(
+          [BASE_SEPOLIA.network, BASE.network].sort(),
+        );
+      });
+
+      describe("that can hold money", () => {
+        /**
+         * Merchant A: S1 of W1, which was in force and has an order paid to it;
+         * S2 of W2, which waited and never took effect, with no order; S3 of
+         * W3, in force now; and an order from before splits, paid to the
+         * wallet W0 itself. Merchant B: S4 of W1, in force, with an order.
+         * Merchant C sells on Base and has nothing on Base Sepolia.
+         */
+        const W0 = "0x0000000000000000000000000000000000000009";
+        const C = "mch_c";
+        const paidOrder = (id: string, merchantId: string, payTo: string, createdAt: number) => ({
+          ...anOrder(id, "delivered", { merchantId, createdAt }),
+          payTo,
+        });
+        const theRegistry = async (): Promise<Store> => {
+          const store = await twoMerchants();
+          await store.addMerchant({ id: C, name: "Merchant C" }, 2_500);
+          await store.setPayoutWallet(A, NO_WALLET, paidAt(A, W1), 3_000);
+          // In the spelling an agent's client may have written it back in.
+          await store.addOrder(paidOrder("ord_s1", A, splitOf(A, W1).address.toLowerCase(), 3_100));
+          await store.addOrder(paidOrder("ord_w0", A, W0, 3_200));
+          await store.setPayoutWallet(A, paidAt(A, W1), waitingFor(A, W1, W2, 90_000), 4_000);
+          await store.setPayoutWallet(A, waitingFor(A, W1, W2, 90_000), paidAt(A, W3), 5_000);
+          await store.setPayoutWallet(B, NO_WALLET, paidAt(B, W1), 6_000);
+          await store.addOrder(paidOrder("ord_s4", B, splitOf(B, W1).address, 6_100));
+          await store.setPayoutWallet(C, NO_WALLET, paidAt(C, W2, BASE), 7_000);
+          return store;
+        };
+
+        it("are, for a merchant, the split in force and every one an order of theirs was paid to, and nobody else's", async () => {
+          // A merchant who left W1 still has money in S1 from a late
+          // settlement; the split that only waited holds nothing and is
+          // created by nobody's payout; an order paid to the wallet itself
+          // went to no split at all.
+          const store = await theRegistry();
+
+          expect(
+            await addressesOf(store.splitsToPayOutFor(BASE_SEPOLIA.network, A, 8_000)),
+          ).toStrictEqual([splitOf(A, W1).address, splitOf(A, W3).address]);
+          expect(
+            await addressesOf(store.splitsToPayOutFor(BASE_SEPOLIA.network, B, 8_000)),
+          ).toStrictEqual([splitOf(B, W1).address]);
+          expect(
+            await store.splitsToPayOutFor(BASE_SEPOLIA.network, "mch_nobody", 8_000),
+          ).toStrictEqual([]);
+          expect(await store.splitsToPayOutFor(BASE.network, A, 8_000)).toStrictEqual([]);
+        });
+
+        it("are, for a network, every merchant's, in the order they were recorded, and none of another network", async () => {
+          const store = await theRegistry();
+
+          const all = await store.splitsToPayOutOn(BASE_SEPOLIA.network, 8_000);
+          expect(all).toStrictEqual([
+            recorded(splitOf(A, W1), 3_000),
+            recorded(splitOf(A, W3), 5_000),
+            recorded(splitOf(B, W1), 6_000),
+          ]);
+          expect(await store.splitsToPayOutOn(BASE_SEPOLIA.network, 8_000)).toStrictEqual(all);
+          expect(await addressesOf(store.splitsToPayOutOn(BASE.network, 8_000))).toStrictEqual([
+            splitOf(C, W2, BASE).address,
+          ]);
+        });
+
+        it("include a waiting split once its moment has passed, and not before", async () => {
+          // At its moment the waiting wallet is the one in force with no write
+          // in between, and buyers pay its split from then on.
+          const store = await twoMerchants();
+          await store.setPayoutWallet(A, NO_WALLET, paidAt(A, W1), 3_000);
+          await store.setPayoutWallet(A, paidAt(A, W1), waitingFor(A, W1, W2, 90_000), 4_000);
+
+          expect(
+            await addressesOf(store.splitsToPayOutFor(BASE_SEPOLIA.network, A, 89_999)),
+          ).toStrictEqual([splitOf(A, W1).address]);
+          expect(
+            await addressesOf(store.splitsToPayOutFor(BASE_SEPOLIA.network, A, 90_000)),
+          ).toStrictEqual([splitOf(A, W2).address]);
+          expect(
+            await addressesOf(store.splitsToPayOutOn(BASE_SEPOLIA.network, 90_000)),
+          ).toStrictEqual([splitOf(A, W2).address]);
+        });
       });
     });
 

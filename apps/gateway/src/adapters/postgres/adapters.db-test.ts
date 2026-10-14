@@ -33,8 +33,15 @@ import { setPayoutWallet } from "../../app/merchants.js";
 import type { Runtime } from "../../app/runtime.js";
 import { nobodyAnnounces } from "../../ports/announcer.js";
 import type { OrderChange } from "../../ports/store.js";
+import { payoutSplitNetworkOf } from "../../split/networks.js";
+import { payoutSplitFor } from "../../split/parameters.js";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "../../testing/database.js";
-import { countedIds, testConfig, workUntilStopped } from "../../testing/harness.js";
+import {
+  countedIds,
+  SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
+  testConfig,
+  workUntilStopped,
+} from "../../testing/harness.js";
 import { anOrder, describeStore } from "../../testing/store-contract.js";
 import { ScriptedFacilitator } from "../memory/facilitator.js";
 import { PgBossQueue, streamOf } from "../pgboss/queue.js";
@@ -62,7 +69,7 @@ const QUEUE_SCHEMA = "pgboss_adapters";
  * later run's purchases. A table added to `schema.ts` belongs in this list.
  */
 const EMPTY_EVERY_TABLE =
-  "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchants";
+  "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchants, payout_splits";
 
 /**
  * Terminates one backend, named by its pid, from a connection of its own.
@@ -217,15 +224,22 @@ if (databaseUrl === null) {
 
     // The merchant is written back after each truncate: every card, order and
     // receipt references it by foreign key.
-    beforeEach(async () => {
+    const theMerchantOfThisSuite = async () => {
       await store.addMerchant({ id: A, name: "The merchant of this suite" }, now);
       // Outside the sandbox a card is on sale only if its merchant has a wallet,
       // and this config names a real facilitator.
-      await setPayoutWallet(store, A, "0x0000000000000000000000000000000000000001", now);
+      await setPayoutWallet(
+        store,
+        testConfig().payoutSplit,
+        A,
+        "0x0000000000000000000000000000000000000001",
+        now,
+      );
       // And a name, because a payment request names its seller; without one
       // nothing is on sale.
       await store.setServiceName(A, "The merchant of this suite", now);
-    });
+    };
+    beforeEach(theMerchantOfThisSuite);
 
     afterAll(async () => {
       await gateway.stop();
@@ -1319,6 +1333,128 @@ if (databaseUrl === null) {
         expect(second?.receipted).toBe(0);
         expect(await store.receiptForOrder(orderId)).toStrictEqual(written);
       }, 30_000);
+    });
+
+    describe("the registry of payout splits", () => {
+      const network = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:84532");
+      const W1 = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+      const W2 = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+      const splitOf = (merchantId: string, wallet: string) =>
+        payoutSplitFor(network, merchantId, wallet);
+      /** A's wallet paid now, the one `beforeEach` sets, and its split. */
+      const PAID_NOW = "0x0000000000000000000000000000000000000001";
+
+      // Every case here starts from this suite's merchant alone: the cases
+      // above leave rows behind, and a recorded split can be emptied only by
+      // a truncate.
+      beforeEach(async () => {
+        await pool.query(EMPTY_EVERY_TABLE);
+        await theMerchantOfThisSuite();
+      });
+
+      const rowsOf = async (merchantId: string) =>
+        (
+          await pool.query(
+            "select * from payout_splits where merchant_id = $1 order by recorded_at, address",
+            [merchantId],
+          )
+        ).rows;
+
+      const merchantRow = async (merchantId: string) =>
+        (
+          await pool.query(
+            `select payout_wallet, pending_payout_wallet, pending_payout_wallet_from, updated_at
+             from merchants where id = $1`,
+            [merchantId],
+          )
+        ).rows;
+
+      it("leaves the wallet as it was when its split cannot be written, and writes no split either", async () => {
+        // A wallet saved without its split is a merchant who cannot sell, and
+        // under a later mistake a payment address with no parameters anywhere.
+        await pool.query(
+          `alter table payout_splits add constraint refuse_the_wallet check (merchant_wallet <> '${W1}')`,
+        );
+        try {
+          const before = await merchantRow(A);
+          await expect(
+            store.setPayoutWallet(
+              A,
+              { address: PAID_NOW, pending: null },
+              { address: W1, split: splitOf(A, W1), pending: null },
+              now + 1_000,
+            ),
+          ).rejects.toThrow(/refuse_the_wallet/);
+          expect(await merchantRow(A)).toStrictEqual(before);
+          expect(await store.payoutSplitAt(splitOf(A, W1).address)).toBeNull();
+
+          // Another wallet goes through, both halves of it.
+          await store.setPayoutWallet(
+            A,
+            { address: PAID_NOW, pending: null },
+            { address: W2, split: splitOf(A, W2), pending: null },
+            now + 2_000,
+          );
+          expect((await merchantRow(A))[0]?.payout_wallet).toBe(W2);
+          expect(await store.payoutSplitAt(splitOf(A, W2).address)).not.toBeNull();
+        } finally {
+          await pool.query("alter table payout_splits drop constraint refuse_the_wallet");
+        }
+      });
+
+      it("refuses to change or delete a recorded split, whoever asks", async () => {
+        // The parameters of a split nobody has deployed exist only here; a row
+        // rewritten or removed by hand strands whatever was paid to it.
+        const [before] = await rowsOf(A);
+        expect(before).toBeDefined();
+
+        for (const change of [
+          "update payout_splits set commission_wallet = merchant_wallet",
+          "update payout_splits set recorded_at = now()",
+          "delete from payout_splits",
+          `insert into payout_splits select * from payout_splits
+           on conflict (network, merchant_id, merchant_wallet) do update set salt = excluded.salt`,
+        ]) {
+          await expect(pool.query(change), change).rejects.toThrow(/never changed or deleted/);
+        }
+        expect(await rowsOf(A)).toStrictEqual([before]);
+
+        // Recording the same row again is a no-op, not a change.
+        await pool.query(
+          "insert into payout_splits select * from payout_splits on conflict do nothing",
+        );
+        expect(await rowsOf(A)).toStrictEqual([before]);
+      });
+
+      it("keeps one split for one merchant and wallet on one network, and one row for one address", async () => {
+        // Two rows for one wallet would leave the payment address and the
+        // payout instruction free to name two different contracts; a second
+        // spelling of one address is the same contract.
+        const other = { ...network, commissionWallet: W2 };
+        const second = payoutSplitFor(other, A, PAID_NOW);
+        await expect(store.recordPayoutSplits([second], now)).rejects.toThrow();
+        await expect(
+          pool.query(
+            `insert into payout_splits
+             select address, network, merchant_id, merchant_wallet, $1, merchant_allocation,
+                    commission_allocation, total_allocation, distribution_incentive, owner, salt,
+                    factory, recorded_at
+             from payout_splits where merchant_id = $2`,
+            [W2, A],
+          ),
+        ).rejects.toThrow(/payout_splits_pkey|duplicate key/);
+        await expect(
+          pool.query(
+            `insert into payout_splits
+             select lower(address), network, 'mch_another', merchant_wallet, commission_wallet,
+                    merchant_allocation, commission_allocation, total_allocation,
+                    distribution_incentive, owner, salt, factory, recorded_at
+             from payout_splits where merchant_id = $1`,
+            [A],
+          ),
+        ).rejects.toThrow(/payout_splits_address_unique|duplicate key/);
+        expect(await rowsOf(A)).toHaveLength(1);
+      });
     });
 
     /**

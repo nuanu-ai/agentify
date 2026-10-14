@@ -12,6 +12,9 @@
 import type { Order } from "@agentify/core";
 import { describe, expect, it } from "vitest";
 import type { StoredOrder } from "../../ports/store.js";
+import { payoutSplitNetworkOf } from "../../split/networks.js";
+import { payoutSplitFor } from "../../split/parameters.js";
+import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "../../testing/split-networks.js";
 import { describeStore } from "../../testing/store-contract.js";
 import { MemoryStore } from "./store.js";
 
@@ -93,6 +96,38 @@ describe("MemoryStore, where it is not like the other one", () => {
     }).toThrow();
 
     expect((await store.orderById("ord_1"))?.itemId).toBe("item_1");
+  });
+
+  it("hands out recorded splits that nothing can change in place", async () => {
+    // Postgres refuses any change to a recorded split; a split edited through
+    // a reference this store handed out would let a test pass on what the
+    // database refuses, and a payout built from it would pay another address.
+    const store = new MemoryStore(counted());
+    await store.addMerchant({ id: A, name: "Merchant A" }, 0);
+    const network = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:84532");
+    const wallet = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+    const split = payoutSplitFor(network, A, wallet);
+    await store.setPayoutWallet(
+      A,
+      { address: null, pending: null },
+      { address: wallet, split, pending: null },
+      1_000,
+    );
+
+    const reads = [
+      (await store.merchantById(A))?.payoutWallet.split,
+      await store.payoutSplitAt(split.address),
+      ...(await store.splitsToPayOutFor(network.network, A, 2_000)),
+    ];
+    for (const read of reads) {
+      expect(() => {
+        (read as { commissionWallet: string }).commissionWallet = wallet;
+      }).toThrow();
+    }
+
+    expect((await store.payoutSplitAt(split.address))?.commissionWallet).toBe(
+      network.commissionWallet,
+    );
   });
 
   it("says which merchant a key was refused for", async () => {
