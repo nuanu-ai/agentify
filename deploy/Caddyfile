@@ -13,13 +13,20 @@
 #   AGENTIFY_GATEWAY_UPSTREAM  the gateway's listener             app:3000
 #   AGENTIFY_SCANNER_UPSTREAM  host:port of the scanner process   scanner:3000
 #   AGENTIFY_SURFACE_MODE      what the static pages say           sandbox
+#   AGENTIFY_PUBLIC_ORIGIN     the site's address the docs name    no default
+#   ABUSE_EMAIL, LEGAL_OPERATOR, LEGAL_IDENTITY_CONFIRMED
+#                              what the scanner's pages in the
+#                              documentation say of its operator    no default
+#
+# The last four are given to this process with the values the scanner's own
+# pages are given (compose.yaml), since the documentation names them too.
 #
 # The defaults are the service names on the compose network. Outside Docker,
 # point the roots at the repository:
 #
 #   AGENTIFY_FRONT_PAGE=scanner_front_page \
 #   AGENTIFY_ASSET_ROOT=packages/visual/public \
-#   AGENTIFY_PORTAL_ROOT=apps/docs/.vitepress/dist \
+#   AGENTIFY_PORTAL_ROOT=apps/docs/dist/client \
 #   AGENTIFY_DASHBOARD_UPSTREAM=127.0.0.1:3001 \
 #   AGENTIFY_GATEWAY_UPSTREAM=127.0.0.1:3000 \
 #   AGENTIFY_SCANNER_UPSTREAM=127.0.0.1:3000 \
@@ -145,29 +152,92 @@
 		redir * /dashboard{re.cabinet_moved.1}{?query} 307
 	}
 
-	# The portal. The prefix is stripped because the other side is a directory:
-	# /docs/money must become money.html on disk. The portal must therefore be
-	# built knowing its mount point, or its assets and links point outside /docs:
-	#
-	#   pnpm --dir apps/docs exec vitepress build --base /docs/
+	# The documentation. The prefix is stripped because the other side is a
+	# directory: /docs/money must become money.html on disk, its data
+	# money.data and its Markdown money.md. The documentation must therefore be
+	# built knowing its mount point, or its assets and links point outside
+	# /docs, which `pnpm --filter @agentify/docs build` does.
 	#
 	# Temporary redirect: browsers cache a 301 past the life of the mount point.
 	redir /docs /docs/
+	# The addresses the documentation answered at before, /docs/money.html,
+	# lead to the page's own: /docs/index.html to the front page and
+	# /docs/scanner/index.html to /docs/scanner.
+	@docs_html path_regexp docs_html ^/docs/(.*?)/?(?:index)?\.html$
+	redir @docs_html /docs/{re.docs_html.1}{?query} 308
 	handle_path /docs/* {
 		root * {$AGENTIFY_PORTAL_ROOT:/srv/docs}
 
-		# The portal is built with cleanUrls, so /docs/money is money.html.
-		try_files {path} {path}.html {path}/index.html
-		# AGENTIFY_SURFACE_MODE is set by hand rather than derived (Caddy cannot read
-		# the chain identifier), so the release checks it against the channel before
-		# anything starts and against the rendered pages afterwards. Comment-shaped
-		# delimiters keep the files readable without Caddy; `mime` keeps templating
-		# off stylesheets and scripts.
-		templates {
-			mime text/html
-			between <!--{{ }}-->
+		# A client that prefers Markdown to HTML gets the page's Markdown, as the
+		# scanner answers its own pages: when the Accept header names
+		# text/markdown with a quality above zero (the first expression) and does
+		# not name text/html with one before it (the second). This differs from
+		# the scanner's reading only where the two name different qualities in
+		# the opposite order, such as `text/html;q=0.5, text/markdown`.
+		@docs_markdown {
+			header_regexp Accept `(?i)(?:^|,)\s*text/markdown\s*(?:$|,|;\s*q\s*=\s*(?:1|0*\.\d*[1-9]))`
+			not header_regexp Accept `(?i)(?:^|,)\s*text/html\s*(?:,|;\s*q\s*=\s*(?:1|0*\.\d*[1-9])[^,]*,).*text/markdown`
+			file {path}.md {path}index.md
 		}
-		file_server
+		handle @docs_markdown {
+			rewrite * {file_match.relative}
+			header Content-Type "text/markdown; charset=utf-8"
+			header Cache-Control no-cache
+			header Vary Accept
+			templates {
+				mime text/markdown
+				between <!--{{ }}-->
+			}
+			file_server
+		}
+		# The same Markdown asked for by its own address.
+		@docs_markdown_file path *.md
+		handle @docs_markdown_file {
+			header Content-Type "text/markdown; charset=utf-8"
+			header Cache-Control no-cache
+			templates {
+				mime text/markdown
+				between <!--{{ }}-->
+			}
+			file_server
+		}
+		handle {
+			# The scripts and stylesheets carry a content hash in their names, so
+			# a browser may keep them for a year; the build writes a brotli and a
+			# gzip copy beside each, sent to a browser that accepts one.
+			@docs_assets path /assets/*
+			header @docs_assets Cache-Control "public, max-age=31536000, immutable"
+			# A page's data, which the browser fetches to draw the page without a
+			# reload, named as React Router names it, which also has encode
+			# compress it as text. It and the search's index may be kept five
+			# minutes, so a page fetched ahead once its link came into view is
+			# drawn from that fetch when the link is followed; a browser left to
+			# guess a lifetime from the file's age would keep it hours or not at
+			# all.
+			@docs_data path *.data
+			header @docs_data Content-Type "text/x-script; charset=utf-8"
+			@docs_kept path *.data /search-index.json
+			header @docs_kept Cache-Control "public, max-age=300"
+			# A page is asked again on every visit, so a release reaches a reader
+			# at once, and it differs by the Accept header that chooses Markdown.
+			@docs_pages not path /assets/* *.data *.json
+			header @docs_pages Cache-Control no-cache
+			header @docs_pages +Vary Accept
+
+			try_files {path} {path}.html
+			# AGENTIFY_SURFACE_MODE is set by hand rather than derived (Caddy cannot
+			# read the chain identifier), so the release checks it against the
+			# channel before anything starts and against the rendered pages
+			# afterwards. Comment-shaped delimiters keep the files readable without
+			# Caddy; `mime` keeps templating off stylesheets, scripts and data.
+			templates {
+				mime text/html
+				between <!--{{ }}-->
+			}
+			file_server {
+				precompressed br gzip
+			}
+		}
 	}
 
 	# The portal's own 404 page, status kept. It must be templated like any other

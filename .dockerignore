@@ -10,9 +10,8 @@ node_modules
 **/.local
 
 # Build output, rebuilt inside the image.
-apps/docs/.vitepress/dist
-apps/docs/.vitepress/cache
 **/dist
+**/.react-router
 
 # A developer's own environment and editor leavings.
 .env

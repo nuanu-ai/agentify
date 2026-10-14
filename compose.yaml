@@ -502,6 +502,13 @@ services:
       # checks it against the channel before anything starts and against the
       # rendered pages afterwards.
       AGENTIFY_SURFACE_MODE: "${AGENTIFY_SURFACE_MODE:-sandbox}"
+      # What the scanner's pages in the documentation say of the site and its
+      # operator, filled in when Caddy serves them, from the very values the
+      # scanner is given.
+      AGENTIFY_PUBLIC_ORIGIN: "${AGENTIFY_PUBLIC_ORIGIN:-http://localhost:${AGENTIFY_HOST_PORT:-8080}}"
+      ABUSE_EMAIL: "${ABUSE_EMAIL:-abuse@agentify.ad}"
+      LEGAL_OPERATOR: "${LEGAL_OPERATOR:-Operator identity pending confirmation}"
+      LEGAL_IDENTITY_CONFIRMED: "${LEGAL_IDENTITY_CONFIRMED:-false}"
     volumes:
       # The routing and the shared assets are mounted over the copies baked
       # into the image so that editing either shows up on reload. The

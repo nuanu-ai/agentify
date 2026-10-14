@@ -155,13 +155,19 @@ export function SiteHeader({
 }
 
 /**
- * The menu for a bar without room for its links: the public site's sections,
- * "Sell to agents" first, then who is visiting, which the surface draws in
- * `visitor` as it does for the doors.
+ * The menu for a bar without room for its links: what the surface lists of
+ * its own in `contents`, then the public site's sections, "Sell to agents"
+ * first, then who is visiting, which the surface draws in `visitor` as it
+ * does for the doors.
  */
-export function SiteMenu({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: ReactNode }>) {
+export function SiteMenu({
+  visitor,
+  contents,
+  ...drawn
+}: Drawn & Readonly<{ visitor?: ReactNode; contents?: ReactNode }>) {
   return (
     <HeaderMenu>
+      {contents}
       <nav aria-label="Site sections" className="site-menu-sections">
         {SECTIONS.map((section) => (
           <PlaceLink key={section.path} place={section} {...drawn}>
