@@ -717,10 +717,11 @@ p {
  * at 910px where the doors say who is visiting, which would otherwise take a
  * third line and then run past the edge, and at 760px where they say nothing;
  * at 640px the scanner link goes too, and under 480px only the lockup and the
- * doors fit in the 320px body minimum. There the signed-in address gives way
- * and the way out stays, so the doors keep to one row and the page under them
- * does not move when the address arrives. A page clips what runs past its
- * edge, so a link that did not fit would be cut, not scrolled to.
+ * doors fit in the 320px body minimum, with the gap after the lockup narrowed
+ * so that a menu's button still fits beside them. There the signed-in address
+ * gives way and the way out stays, so the doors keep to one row and the page
+ * under them does not move when the address arrives. A page clips what runs
+ * past its edge, so a link that did not fit would be cut, not scrolled to.
  */
 @media (max-width: 760px) {
   .site-nav a:first-child {
@@ -764,6 +765,10 @@ p {
 }
 
 @media (max-width: 480px) {
+  .site-header-inner {
+    gap: 12px;
+  }
+
   .site-nav {
     display: none;
   }
