@@ -12,7 +12,7 @@
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
-import { type Gateway, payoutSplitFor } from "@agentify/gateway";
+import { type Gateway, merchantPayout, payoutSplitFor } from "@agentify/gateway";
 import {
   buyOverHttp,
   type Harness,
@@ -1971,6 +1971,62 @@ describe("the address a merchant's money arrives at", () => {
     expect(readable(answered.html)).toMatch(/not saved/i);
     expect(answered.html.replaceAll(/<[^>]*>/g, "")).toContain(AS_A_WALLET_SHOWS_IT);
     expect(await paidInto(running)).toBe(AS_A_WALLET_SHOWS_IT);
+  });
+
+  it("shows, once saved, the payout contract recorded for it and the whole transaction that pays it out", async () => {
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    await running.browser.signIn();
+
+    const saved = await running.browser.post("/settings/payout-wallet", {
+      payout_wallet: AS_A_WALLET_SHOWS_IT,
+    });
+    const screen = await running.browser.get("/settings");
+
+    expect(saved.status).toBe(303);
+    const recorded = await running.harnessed.gateway.payoutSplitsOf(running.harnessed.merchant.id);
+    expect(recorded.inForce?.merchantWallet).toBe(AS_A_WALLET_SHOWS_IT);
+    const split = recorded.inForce?.address ?? "";
+    expect(screen.html.replaceAll(/<[^>]*>/g, "")).toContain(split);
+    expect(screen.html).toContain(`href="https://sepolia.basescan.org/address/${split}"`);
+    const data = /<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(screen.html)?.[1];
+    expect(data).toBe(
+      merchantPayout(running.harnessed.runtime.config.payoutSplit, recorded.toPayOut).data,
+    );
+    expect(data).toHaveLength(3_146);
+  });
+
+  it("refuses an address a merchant's share could never come back from, says what it is, and saves nothing", async () => {
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    await running.browser.signIn();
+    const network = running.harnessed.runtime.config.payoutSplit;
+    const ownSplit =
+      (await running.harnessed.gateway.payoutSplitsOf(running.harnessed.merchant.id)).inForce
+        ?.address ?? "";
+    const before = await paidInto(running);
+
+    for (const [address, said] of [
+      [network.commissionWallet, /Agentify's commission wallet/],
+      [network.warehouse.toLowerCase(), /0xSplits warehouse/],
+      [network.multicall3, /Multicall3/],
+      [ownSplit, /a payout contract, not a wallet/],
+      ["0x0000000000000000000000000000000000000000", /the zero address/],
+    ] as const) {
+      const answered = await running.browser.post("/settings/payout-wallet", {
+        payout_wallet: address,
+      });
+
+      expect(answered.status, address).toBe(400);
+      const text = readable(answered.html);
+      expect(text, address).toMatch(said);
+      expect(text, address).toMatch(/not saved/i);
+      // Given back whole under the box, to be read against the wallet.
+      expect(answered.html.replaceAll(/<[^>]*>/g, ""), address).toContain(address);
+      expect(await paidInto(running), address).toBe(before);
+    }
   });
 
   it("refuses an empty box and says what to paste into it", async () => {
@@ -4450,6 +4506,34 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(running.harnessed.announcer.announced).toMatchObject([
       { kind: "wallet_change", to: WAITING, asked_with: { kind: "signed_in", email: OTHER } },
     ]);
+  });
+
+  it("keeps the payout transaction on the contract paid now while a change waits, and moves it once the change applies", async () => {
+    const running = await live();
+    await running.browser.signIn();
+    const merchantId = running.harnessed.merchant.id;
+    const network = running.harnessed.runtime.config.payoutSplit;
+    const paidNowSplit = (await running.harnessed.gateway.payoutSplitsOf(merchantId)).inForce;
+    await aChangeWaits(running);
+    const waitingSplit = (await running.harnessed.gateway.payoutSplitsOf(merchantId)).pending;
+    const dataOn = (screen: Visit) =>
+      /<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(screen.html)?.[1];
+
+    const waiting = await running.browser.get("/settings");
+
+    expect(waitingSplit?.merchantWallet).toBe(WAITING);
+    const shown = waiting.html.replaceAll(/<[^>]*>/g, "");
+    expect(shown.slice(shown.indexOf("Waiting to replace it"))).toContain(waitingSplit?.address);
+    expect(dataOn(waiting)).toBe(
+      merchantPayout(network, paidNowSplit === null ? [] : [paidNowSplit]).data,
+    );
+
+    running.harnessed.advance(48 * 60 * 60 * 1_000);
+    const applied = await running.browser.get("/settings");
+
+    expect(dataOn(applied)).toBe(
+      merchantPayout(network, waitingSplit === null ? [] : [waitingSplit]).data,
+    );
   });
 
   it("shows the address waiting, the moment it takes effect, and a control to cancel it", async () => {
