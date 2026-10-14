@@ -362,6 +362,13 @@ const press = (page: Document, words: string) => {
   button.click();
 };
 
+/** Presses the button that opens the menu at the end of the header's row. */
+const openTheMenu = (page: Document) => {
+  const button = page.querySelector<HTMLElement>(".site-menu > summary");
+  if (button === null) throw new Error("the page draws no menu");
+  button.click();
+};
+
 const askForTheReport = (page: Document) => {
   typeInto(page, "email", WHO);
   tick(page, "site_is_mine");
@@ -603,6 +610,24 @@ const PUBLIC: GalleryState[] = [
     "/methodology",
     "routes/methodology",
   ),
+  at(
+    {
+      id: "scanner-methodology-menu",
+      screen: "Methodology",
+      when: "A signed-in visitor on a phone opens the menu at the end of the header's row.",
+      cause:
+        "The bar has no room for the site's sections beside who is visiting, so the menu holds them.",
+    },
+    {
+      path: "/methodology",
+      loaded: { "routes/methodology": getPublicEditorialPage("/methodology", SITE) },
+      scene: {
+        answers: visitor(true),
+        steps: [{ shows: "How the agent-readiness scan works", does: openTheMenu }],
+        shows: WHO,
+      },
+    },
+  ),
   editorial(
     {
       id: "scanner-privacy",
@@ -773,6 +798,21 @@ const SCANNING: GalleryState[] = [
       cause: "Seven of eighteen checks have a result, one is running, the rest wait.",
     },
     { status: ended("running"), shows: "7 of 18 checks reported" },
+  ),
+  scan(
+    {
+      id: "scanner-scan-menu",
+      screen: "Scan",
+      when: "A signed-in visitor follows a running scan on a phone and opens the menu.",
+      cause:
+        "The scan's top has room for the lockup and the doors alone, so the menu holds the site's sections and who is visiting.",
+    },
+    {
+      status: ended("running"),
+      signedIn: true,
+      steps: [{ shows: "7 of 18 checks reported", does: openTheMenu }],
+      shows: WHO,
+    },
   ),
   scan(
     {

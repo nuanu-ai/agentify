@@ -8,6 +8,7 @@
 }
 
 .brandWrap {
+  position: relative;
   width: min(100%, 700px);
   display: flex;
   flex-wrap: wrap;
@@ -15,11 +16,6 @@
   justify-content: space-between;
   gap: 12px 24px;
   margin-bottom: 30px;
-}
-
-.brandWrap > nav {
-  padding-left: 0;
-  border-left: 0;
 }
 
 .card {

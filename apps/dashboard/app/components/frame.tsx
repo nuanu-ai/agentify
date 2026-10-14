@@ -124,7 +124,7 @@ export function Frame({
             <a className="app-menu-docs" href="/docs/">
               Open the docs →
             </a>
-            <div className="app-menu-account">{signedIn}</div>
+            {signedIn}
           </HeaderMenu>
         }
       />

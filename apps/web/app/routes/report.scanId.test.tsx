@@ -120,7 +120,8 @@ describe("a report's page", () => {
   it("lists all eighteen checks in their groups, the first failure open with its fix and evidence", async () => {
     const page = await drawn();
 
-    expect(page.match(/<details/g)).toHaveLength(18);
+    // Every disclosure but the header's menu is a check.
+    expect(page.match(/<details(?! class="site-menu")/g)).toHaveLength(18);
     expect(page).toMatch(/<details[^>]*open=""[^>]*><summary><span class="mono">06<\/span>/);
     expect(page).toContain(
       "No business-specific structured-data type was found for this scan segment.",

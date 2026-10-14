@@ -341,7 +341,7 @@ describe("a click on a link", () => {
     await page.evaluate(() => {
       (window as Window & { stayed?: boolean }).stayed = true;
     });
-    const link = page.locator("header nav[aria-label=Primary] a", { hasText: "Methodology" });
+    const link = page.locator("header .site-nav a", { hasText: "Methodology" });
 
     await link.click();
     await page.waitForTimeout(80);
@@ -360,7 +360,7 @@ describe("a click on a link", () => {
   it("to a public page is answered from the fetches a hover made, its stylesheets among them", async () => {
     const { page } = await visit("/");
     const before = timesAsked("/methodology.data");
-    const link = page.locator("header nav[aria-label=Primary] a", { hasText: "Methodology" });
+    const link = page.locator("header .site-nav a", { hasText: "Methodology" });
 
     await link.hover();
     await page.waitForTimeout(SLOW_MS + 500);

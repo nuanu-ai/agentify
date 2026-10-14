@@ -1269,139 +1269,34 @@ h2 {
   font-size: 0.875rem;
 }
 
-/* The burger menu. Where there is no room for the sidebar, it ends the site
-   header's row, and the sections, the documentation and who is signed in with
-   the way out open under the header from it, over the page. The header's own
-   address and sign-out give way to it there. */
-.site-menu {
-  display: none;
+/* The menu at the end of the header's row holds, where there is no room for
+   the sidebar, the sections as the sidebar numbers them and the way to the
+   documentation, over who is signed in. */
+.site-menu .app-menu-sections i {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  border: var(--hairline) solid var(--line);
+  border-radius: 7px;
+  color: var(--faint);
+  font: normal 600 0.625rem var(--font-mono);
 }
-
-@media (max-width: 900px) {
-  .app-frame .site-doors .site-visitor {
-    display: none;
-  }
-  .site-menu {
-    display: block;
-  }
-  .site-menu > summary {
-    width: 44px;
-    height: 44px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    border: var(--hairline) solid var(--line);
-    border-radius: 10px;
-    background: var(--surface);
-    color: var(--fg);
-    cursor: pointer;
-    list-style: none;
-  }
-  .site-menu > summary::-webkit-details-marker {
-    display: none;
-  }
-  .site-menu > summary span {
-    width: 18px;
-    height: 2px;
-    border-radius: 1px;
-    background: currentColor;
-    transition:
-      transform 0.2s ease,
-      opacity 0.2s ease;
-  }
-  .site-menu[open] > summary span:nth-child(1) {
-    transform: translateY(6px) rotate(45deg);
-  }
-  .site-menu[open] > summary span:nth-child(2) {
-    opacity: 0;
-  }
-  .site-menu[open] > summary span:nth-child(3) {
-    transform: translateY(-6px) rotate(-45deg);
-  }
-  /* Placed against the header, which is the nearest box with a position. */
-  .site-menu .site-menu-panel {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    left: 0;
-    max-height: calc(100dvh - 69px);
-    overflow-y: auto;
-    padding: 10px 14px 16px;
-    border-bottom: var(--hairline) solid var(--line);
-    background: var(--surface);
-    box-shadow: 0 24px 40px -32px rgb(26 25 23 / 45%);
-  }
-  .site-menu .app-menu-sections {
-    display: grid;
-    gap: 4px;
-  }
-  .site-menu .app-menu-sections a,
-  .site-menu .app-menu-sections span {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    min-height: 44px;
-    padding: 0 12px;
-    border-radius: 10px;
-    color: var(--fg-2);
-    font-size: 0.9375rem;
-    font-weight: 550;
-    text-decoration: none;
-  }
-  .site-menu .app-menu-sections i {
-    width: 23px;
-    height: 23px;
-    display: grid;
-    place-items: center;
-    border: var(--hairline) solid var(--line);
-    border-radius: 7px;
-    color: var(--faint);
-    font: normal 600 0.625rem var(--font-mono);
-  }
-  .site-menu .app-menu-sections [aria-current="page"] {
-    color: var(--accent);
-    background: var(--accent-soft);
-  }
-  .site-menu .app-menu-sections [aria-current="page"] i {
-    color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
-    background: var(--surface);
-  }
-  .site-menu .app-menu-docs {
-    display: flex;
-    align-items: center;
-    min-height: 44px;
-    margin-top: 6px;
-    padding: 0 12px;
-    font-size: 0.875rem;
-    font-weight: 650;
-  }
-  /* Who is signed in, whole, and the way out, under a line of their own. */
-  .site-menu .app-menu-account .site-visitor {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px 16px;
-    margin-top: 10px;
-    padding: 14px 12px 0;
-    border-top: var(--hairline) solid var(--line);
-  }
-  .site-menu .app-menu-account .site-who {
-    min-width: 0;
-    overflow-wrap: anywhere;
-    color: var(--muted);
-    font-size: var(--text-label);
-    text-decoration: none;
-  }
-  .site-menu .app-menu-account .site-sign-out button {
-    min-height: 44px;
-    font-size: 0.875rem;
-    font-weight: 650;
-  }
-  body:has(.site-menu[open]) {
-    overflow: hidden;
-  }
+.site-menu .app-menu-sections [aria-current="page"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.site-menu .app-menu-sections [aria-current="page"] i {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
+  background: var(--surface);
+}
+.site-menu .app-menu-docs {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0 12px;
+  font-size: 0.875rem;
+  font-weight: 650;
 }
