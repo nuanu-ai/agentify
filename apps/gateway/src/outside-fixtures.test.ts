@@ -495,10 +495,13 @@ describe("a purchase from the outside", () => {
         (declared as unknown as { resource: { serviceName?: string } }).resource.serviceName,
       ).toBe("The registered shop");
       expect(declared.extensions?.bazaar).toBeDefined();
-      // And who the agent is told to pay: this merchant, at the address they
-      // set a moment ago, and not the one the gateway itself was configured
-      // with.
-      expect(declared.accepts[0]?.payTo).toBe(theirWallet);
+      // And who the agent is told to pay: this merchant's split of the
+      // wallet they set a moment ago, and not the one the gateway itself was
+      // configured with.
+      const split = (await gateway.store.merchantById(merchantId))?.payoutWallet.split;
+      expect(split?.merchantWallet).toBe(theirWallet);
+      expect(declared.accepts[0]?.payTo).toBe(split?.address);
+      expect(declared.accepts[0]?.payTo).not.toBe(theirWallet);
       expect(declared.accepts[0]?.payTo).not.toBe(PAY_TO);
 
       // And the sale itself, on their key and their worker.

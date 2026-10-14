@@ -258,6 +258,26 @@ describe("buying a parcel", () => {
     );
     expect(handedOver?.ship_to).toStrictEqual(address);
   });
+
+  it("keeps the split the payment was checked against on the order, and charges it the whole payment", async () => {
+    // A parcel is charged before it ships, shipping included, and the charge
+    // goes where the buyer's authorisation names: the merchant's split.
+    const { harnessed, served, itemId } = await started();
+
+    const paid = await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {} },
+    });
+
+    expect(paid.status, JSON.stringify(paid.body)).toBeLessThan(300);
+    const split = (await harnessed.store.merchantById(harnessed.merchant.id))?.payoutWallet.split;
+    expect(split?.merchantWallet).toBe(harnessed.merchant.wallet);
+    const [order] = await harnessed.gateway.orders(harnessed.merchant.id, undefined);
+    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(split?.address);
+    expect(order?.payTo).toBe(split?.address);
+    expect(harnessed.facilitator.settles.at(-1)?.payTo).toBe(split?.address);
+    expect(harnessed.facilitator.settles.at(-1)?.amount).toBe("21.00");
+  });
 });
 
 /** Everything the gateway keeps about one order, as one string to search. */

@@ -11,7 +11,7 @@
  * clock; forty-eight hours pass because a test says so.
  */
 
-import type { Card } from "@nuanu-ai/agentify-contracts";
+import { type Card, PayoutWalletSchema } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { payoutSplitFor } from "../split/parameters.js";
@@ -91,6 +91,10 @@ const at = (instant: number): string => new Date(instant).toISOString();
 /** This merchant's split of this wallet on the gateway's network, as the rule computes it. */
 const splitOf = (harnessed: Harness, wallet: string, merchantId = harnessed.merchant.id) =>
   payoutSplitFor(harnessed.runtime.config.payoutSplit, merchantId, wallet);
+
+/** The split recorded at the address the rule gives this merchant and wallet, or null. */
+const recordedSplitOf = (harnessed: Harness, wallet: string, merchantId = harnessed.merchant.id) =>
+  harnessed.store.payoutSplitAt(splitOf(harnessed, wallet, merchantId).address);
 
 const card: Card = {
   merchant_item_id: "a-room",
@@ -199,17 +203,45 @@ describe("a replacement on the live deployment", () => {
       pending: { payout_wallet: A_WALLET, takes_effect_at: at(asked + THE_WAIT) },
     });
     expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(answered);
-    expect(await payToNow(served, itemId)).toBe(harnessed.merchant.wallet);
+    const paidNow = (await harnessed.store.merchantById(harnessed.merchant.id))?.payoutWallet;
+    expect(paidNow?.split?.merchantWallet).toBe(harnessed.merchant.wallet);
+    expect(await payToNow(served, itemId)).toBe(paidNow?.split?.address);
 
     harnessed.advance(THE_WAIT - 1);
-    expect(await payToNow(served, itemId)).toBe(harnessed.merchant.wallet);
+    expect(await payToNow(served, itemId)).toBe(paidNow?.split?.address);
 
+    // Nothing is written when the moment comes, so the split named from then
+    // on is the one recorded with the change.
     harnessed.advance(1);
-    expect(await payToNow(served, itemId)).toBe(A_WALLET);
+    expect(paidNow?.pending?.split?.merchantWallet).toBe(A_WALLET);
+    expect(await payToNow(served, itemId)).toBe(paidNow?.pending?.split?.address);
     expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual({
       payout_wallet: A_WALLET,
       pending: null,
     });
+  });
+
+  it("answers the merchant's code with the wallets, never their splits, while a change waits", async () => {
+    // `payout_wallet` means where the merchant's share arrives, so a strict
+    // reader of the published package reads it as it always did.
+    const { served, harnessed } = await started();
+    await ask(harnessed, A_WALLET);
+
+    const answered = await served.call("GET", "/v0/payout-wallet", {
+      headers: bearer(harnessed.merchant.key),
+    });
+
+    const document = PayoutWalletSchema.strict().parse(answered.body);
+    expect(document.payout_wallet).toBe(harnessed.merchant.wallet);
+    expect(document.pending?.payout_wallet).toBe(A_WALLET);
+    for (const split of [
+      splitOf(harnessed, harnessed.merchant.wallet),
+      splitOf(harnessed, A_WALLET),
+    ]) {
+      expect(JSON.stringify(answered.body).toLowerCase()).not.toContain(
+        split.address.toLowerCase(),
+      );
+    }
   });
 
   it("is where a payment made once the wait is over is checked and settled", async () => {
@@ -228,8 +260,55 @@ describe("a replacement on the live deployment", () => {
     });
 
     expect(bought.status, JSON.stringify(bought.body)).toBe(200);
-    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(A_WALLET);
-    expect(harnessed.facilitator.settles.at(-1)?.payTo).toBe(A_WALLET);
+    const recorded = await recordedSplitOf(harnessed, A_WALLET);
+    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(recorded?.address);
+    expect(harnessed.facilitator.settles.at(-1)?.payTo).toBe(recorded?.address);
+  });
+
+  it("checks a payment against the split of the wallet in force when it arrives, whatever the challenge named", async () => {
+    // Between the challenge and the payment the waiting wallet's moment can
+    // come; a payment made out to the old split is a different purchase. The
+    // refusal itself is the payment layer's edge (`adapters/x402`); this pins
+    // which split verification carries.
+    const { served, harnessed } = await started();
+    const itemId = await published(served, harnessed.merchant.key);
+    await ask(harnessed, A_WALLET);
+    const challenged = await payToNow(served, itemId);
+    harnessed.advance(THE_WAIT);
+
+    await buyOverHttp(harnessed, served, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+
+    expect(challenged).toBe(splitOf(harnessed, harnessed.merchant.wallet).address);
+    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(
+      (await recordedSplitOf(harnessed, A_WALLET))?.address,
+    );
+  });
+
+  it("charges the split verified before the moment, even when the charge comes after it", async () => {
+    // In the synchronous mode the charge comes after the goods. Sent to the
+    // split that took effect meanwhile, it would be refused after the goods
+    // went out, since the buyer signed for the other.
+    const { served, harnessed } = await started();
+    const itemId = await published(served, harnessed.merchant.key);
+    await ask(harnessed, A_WALLET);
+    harnessed.advance(THE_WAIT - 1_000);
+
+    const bought = await buyOverHttp(harnessed, served, itemId, {
+      onOrder: () => {
+        harnessed.advance(2_000);
+        return { delivered: { access_code: "SESAME" } };
+      },
+    });
+
+    expect(bought.status, JSON.stringify(bought.body)).toBe(200);
+    const signedFor = (await recordedSplitOf(harnessed, harnessed.merchant.wallet))?.address;
+    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(signedFor);
+    expect(harnessed.facilitator.settles.at(-1)?.payTo).toBe(signedFor);
+    expect(await payToNow(served, itemId)).toBe(
+      (await recordedSplitOf(harnessed, A_WALLET))?.address,
+    );
   });
 
   it("is announced before it is recorded, saying what changes and when", async () => {
@@ -259,6 +338,15 @@ describe("a replacement on the live deployment", () => {
         asked_with: SIGNED_IN,
       },
     ]);
+  });
+
+  it("records nothing of a change whose message could not go out, not even its split", async () => {
+    const { harnessed } = await started();
+    harnessed.announcer.answer = "not_handed_over";
+
+    expect(await asking(harnessed, A_WALLET)).toBe("not_announced");
+
+    expect(await recordedSplitOf(harnessed, A_WALLET)).toBeNull();
   });
 
   it("counts the forty-eight hours from the moment every message was handed over", async () => {
@@ -323,6 +411,25 @@ describe("asking again", () => {
     );
   });
 
+  it("keeps every waiting split it recorded and names only the one in force", async () => {
+    // A replacement replaced again, and a cancel, change which split a
+    // payment names, never what is recorded: money a stray transfer sent to
+    // any of them is still somebody's.
+    const { served, harnessed } = await started();
+    const itemId = await published(served, harnessed.merchant.key);
+    const S1 = splitOf(harnessed, harnessed.merchant.wallet).address;
+    await ask(harnessed, A_WALLET);
+    harnessed.advance(HOURS);
+    await ask(harnessed, ANOTHER_WALLET);
+
+    expect(await recordedSplitOf(harnessed, harnessed.merchant.wallet)).not.toBeNull();
+    expect(await recordedSplitOf(harnessed, A_WALLET)).not.toBeNull();
+    expect(await recordedSplitOf(harnessed, ANOTHER_WALLET)).not.toBeNull();
+    expect(await payToNow(served, itemId)).toBe(S1);
+    harnessed.advance(THE_WAIT);
+    expect(await payToNow(served, itemId)).toBe(splitOf(harnessed, ANOTHER_WALLET).address);
+  });
+
   it("for the address paid now cancels the waiting change, and says so", async () => {
     const { served, harnessed } = await started();
     const itemId = await published(served, harnessed.merchant.key);
@@ -342,7 +449,10 @@ describe("asking again", () => {
       asked_with: SIGNED_IN,
     });
     harnessed.advance(THE_WAIT);
-    expect(await payToNow(served, itemId)).toBe(harnessed.merchant.wallet);
+    expect(await payToNow(served, itemId)).toBe(
+      (await recordedSplitOf(harnessed, harnessed.merchant.wallet))?.address,
+    );
+    expect(await recordedSplitOf(harnessed, A_WALLET)).not.toBeNull();
   });
 
   it("cancels even while mail is down, because a cancel moves money nowhere new", async () => {
@@ -450,6 +560,13 @@ describe("two changes for one merchant at once", () => {
     expect((await walletOf(served, harnessed.merchant.key)).pending?.payout_wallet).toBe(
       ANOTHER_WALLET,
     );
+    // The change recorded is the one whose split exists; the losing change's
+    // message went out, but its split was never recorded and nothing names it.
+    expect(await recordedSplitOf(harnessed, ANOTHER_WALLET)).not.toBeNull();
+    expect(await recordedSplitOf(harnessed, A_WALLET)).toBeNull();
+    harnessed.advance(THE_WAIT);
+    const itemId = await published(served, harnessed.merchant.key);
+    expect(await payToNow(served, itemId)).toBe(splitOf(harnessed, ANOTHER_WALLET).address);
   });
 
   it("answers a retry that arrives while the first ask is still announced with the same waiting change", async () => {
