@@ -850,6 +850,60 @@ describe("the site's menu on a phone", () => {
     await context.close();
   });
 
+  it.each(
+    (
+      [
+        [
+          "a scan",
+          `/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`,
+          "7 of 18 checks reported",
+        ],
+        [
+          "a report",
+          "/report/0190f4c5-0000-7000-8000-00000000f002",
+          "Private report access required",
+        ],
+      ] as const
+    ).flatMap(([top, path, drawn]) =>
+      [
+        { width: 740, height: 360 },
+        { width: 568, height: 320 },
+      ].map(
+        (viewport) => [top, `${viewport.width}x${viewport.height}`, viewport, path, drawn] as const,
+      ),
+    ),
+  )(
+    "fits the room under the top of %s in a landscape phone's window of %s, its last item in reach",
+    async (_top, _size, viewport, path, drawn) => {
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      await page.route(`**/api/v1/scans/${SCAN_ID}/status`, (route) =>
+        route.fulfill({ json: RUNNING }),
+      );
+      await page.route("**/api/v2/session", (route) =>
+        route.fulfill({
+          json: { status: "signed_in", email: "ops@agentify.example", operator: true },
+        }),
+      );
+      await page.goto(`${origin}${path}`);
+      await page.getByText(drawn).first().waitFor();
+      await page.locator('.site-visitor[aria-busy="false"]').first().waitFor({ state: "attached" });
+      const panel = page.locator(".site-menu-panel");
+
+      await page.locator(".site-menu > summary").click();
+      await panel.waitFor({ state: "visible" });
+      const room = await panel.boundingBox();
+      const end = (room?.y ?? 0) + (room?.height ?? 0);
+      expect(end).toBeLessThanOrEqual(viewport.height);
+      await page.mouse.move(370, (room?.y ?? 0) + 20);
+      await page.mouse.wheel(0, 600);
+      await page.waitForTimeout(300);
+      const last = await panel.getByRole("button", { name: "Sign out" }).boundingBox();
+      expect((last?.y ?? 0) + (last?.height ?? 0)).toBeLessThanOrEqual(end);
+      await context.close();
+    },
+  );
+
   it.each(VISITORS)(
     "keeps the header's height when %s comes back, and holds who is visiting",
     async (_who, answer) => {
