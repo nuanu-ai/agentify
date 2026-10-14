@@ -242,9 +242,9 @@ function asLogged(thrown: unknown): string {
 
 /**
  * Runs the whole contract against the stores `open` returns. Each must be
- * empty, and must allow two decisions in flight at once: on a pool of one
- * connection the second would wait for the connection rather than the lock and
- * be reported as a locking defect.
+ * empty, opened for Base Sepolia, and must allow two decisions in flight at
+ * once: on a pool of one connection the second would wait for the connection
+ * rather than the lock and be reported as a locking defect.
  */
 export function describeStore(name: string, open: () => Promise<Store>): void {
   describe(name, () => {
@@ -799,6 +799,39 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         );
       });
 
+      it("reads as a wallet's split only the one recorded on the store's own network", async () => {
+        // The factory sits at one address on both chains, so a stray row of
+        // the other network for the same merchant and wallet is a real
+        // contract there; read as the split in force here, it would be the
+        // address a buyer is told to pay, on a chain where it means nothing.
+        const store = await twoMerchants();
+        await store.recordPayoutSplits([splitOf(A, W1, BASE), splitOf(A, W2, BASE)], 2_000);
+
+        const waiting = waitingFor(A, W1, W2, 90_000);
+        await store.setPayoutWallet(A, NO_WALLET, waiting, 3_000);
+
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(
+          readBack(waiting, { address: 3_000 }),
+        );
+        await store.publishCard(A, card("sku-1", "A's room"), 4_000);
+        expect((await store.catalogEntries())[0]?.payoutWallet).toStrictEqual(
+          readBack(waiting, { address: 3_000 }),
+        );
+      });
+
+      it("refuses a wallet written with another network's split, and writes nothing", async () => {
+        // A wallet whose split is not this network's would be read as one with
+        // no split at all, and its merchant could not sell.
+        const store = await twoMerchants();
+
+        await refusedWith(
+          store.setPayoutWallet(A, NO_WALLET, paidAt(A, W1, BASE), 3_000),
+          /network/,
+        );
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(NO_WALLET);
+        expect(await store.networksWithPayoutSplits()).toStrictEqual([]);
+      });
+
       it("keeps two merchants with one wallet on two splits", async () => {
         // One merchant's screen and payout must not show or move another
         // merchant's sales.
@@ -979,7 +1012,11 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           await store.setPayoutWallet(A, waitingFor(A, W1, W2, 90_000), paidAt(A, W3), 5_000);
           await store.setPayoutWallet(B, NO_WALLET, paidAt(B, W1), 6_000);
           await store.addOrder(paidOrder("ord_s4", B, splitOf(B, W1).address, 6_100));
-          await store.setPayoutWallet(C, NO_WALLET, paidAt(C, W2, BASE), 7_000);
+          // Merchant C sold on Base, as a database moved from one channel to
+          // the other holds it: the split is another network's, and an order
+          // was paid to it.
+          await store.recordPayoutSplits([splitOf(C, W2, BASE)], 7_000);
+          await store.addOrder(paidOrder("ord_c", C, splitOf(C, W2, BASE).address, 7_050));
           // An order nobody has paid for yet, which names no address at all.
           await store.addOrder(
             anOrder("ord_unpaid", "quoted", { merchantId: A, createdAt: 7_100 }),
