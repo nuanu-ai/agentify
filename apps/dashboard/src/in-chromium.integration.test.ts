@@ -281,6 +281,46 @@ describe("the sections on a long page", () => {
     await page.context().close();
   });
 
+  it("are in a phone's menu that Escape closes wherever the focus is, so the page scrolls again", async () => {
+    const page = await onTheCards({ width: 390, height: 600 });
+    const burger = page.locator(".app-menu > summary");
+    const panel = page.locator(".app-menu-panel");
+    const pageScrolls = () =>
+      page.evaluate(() => getComputedStyle(document.body).overflowY !== "hidden");
+
+    await burger.click();
+    await panel.waitFor({ state: "visible" });
+    expect(await pageScrolls()).toBe(false);
+    // A browser that does not focus a pressed summary, as Safari does not.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press("Escape");
+
+    await panel.waitFor({ state: "hidden" });
+    expect(await pageScrolls()).toBe(true);
+    expect(await burger.evaluate((element) => element === document.activeElement)).toBe(true);
+    await page.context().close();
+  });
+
+  it("are in a phone's menu that closes when the page moves on, though the page drawn stays", async () => {
+    const page = await onTheCards({ width: 390, height: 600 });
+    await page.goto(`${origin}${BASE}/orders`);
+    await page.waitForLoadState("networkidle");
+    const panel = page.locator(".app-menu-panel");
+
+    await page.locator(".app-menu > summary").click();
+    await panel.waitFor({ state: "visible" });
+    // The orders' filter leads to the same page, which is drawn again in
+    // place rather than anew; the menu is open over it.
+    await page.locator(".filter a", { hasText: "Open" }).focus();
+    await page.keyboard.press("Enter");
+    await page.waitForURL(`${origin}${BASE}/orders?open=true`);
+    await page.waitForLoadState("networkidle");
+
+    expect(await page.locator(".filter .here").textContent()).toBe("Open");
+    expect(await panel.isVisible()).toBe(false);
+    await page.context().close();
+  });
+
   it("keep the chosen one under the header on a laptop, down to the foot of the page", async () => {
     const page = await onTheCards({ width: 1280, height: 600 });
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
