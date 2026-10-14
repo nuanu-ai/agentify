@@ -223,6 +223,15 @@ describe("the pre-release check of the commission wallets", () => {
     ]);
   });
 
+  it("fails a commission wallet on Base Sepolia the RPC does not answer for, where a plain wallet would pass", async () => {
+    const verdicts = await checkOn(BASE_SEPOLIA, {
+      ...SEPOLIA_ENTRY,
+      commissionWallet: named(BASE, "safe"),
+    });
+
+    expect(verdicts.find((verdict) => verdict.check === "commission wallet")?.passed).toBe(false);
+  });
+
   it("fails what the RPC does not answer, taking no silence for a plain wallet or for code", async () => {
     const unanswered = named(BASE_SEPOLIA, "commission");
 
