@@ -30,7 +30,7 @@ import {
   setServiceName,
 } from "./merchants.js";
 
-const aStore = () => new MemoryStore(countedIds());
+const aStore = () => new MemoryStore(NETWORK.network, countedIds());
 
 /** The test chain's payout split, which a wallet set here is recorded with. */
 const NETWORK = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532");
@@ -71,7 +71,7 @@ describe("the name a seeded merchant is listed under", () => {
   });
 
   it("lists a live seed under no name and leaves it off sale", async () => {
-    const store = new MemoryStore(countedIds());
+    const store = new MemoryStore(NETWORK.network, countedIds());
     const seeded = await seedSandboxKey(store, countedIds(), "csk_live_a-key", 0, "live");
 
     expect(seeded).toEqual({ kind: "issued", merchantId: "the_merchant", listedAs: null });
@@ -79,7 +79,7 @@ describe("the name a seeded merchant is listed under", () => {
   });
 
   it("lists a test seed as what it is", async () => {
-    const store = new MemoryStore(countedIds());
+    const store = new MemoryStore(NETWORK.network, countedIds());
     await seedSandboxKey(store, countedIds(), "csk_test_a-key", 0, "test");
 
     expect((await store.merchantById("the_merchant"))?.serviceName).toBe("Agentify test site");

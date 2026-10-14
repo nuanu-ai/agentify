@@ -177,6 +177,9 @@ const SDK_WORKER_POLL_DEADLINE_MS = 50_000;
  */
 const WORKER_POLL_WAIT_CEILING_MS = 40_000;
 
+/** The chain a gateway takes payments on where `PAYMENT_NETWORK` names none. */
+export const DEFAULT_PAYMENT_NETWORK = "eip155:84532";
+
 /**
  * The environment is an external boundary like any request, so it is parsed
  * here and a bad value stops the process at startup rather than at the first
@@ -361,7 +364,7 @@ const environmentSchema = z.object({
   PAYMENT_NETWORK: z
     .string()
     .regex(/^[^:\s]+:[^:\s]+$/, "must be a CAIP-2 chain such as eip155:84532")
-    .default("eip155:84532"),
+    .default(DEFAULT_PAYMENT_NETWORK),
   /**
    * How long a challenge stays payable. The payment authorisation is signed
    * against it, so it belongs to the protocol rather than to the order machine.

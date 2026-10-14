@@ -210,7 +210,7 @@ if (databaseUrl === null) {
       // The queue is made first because the store writes through it: an
       // envelope that must not be lost goes into the same transaction as the
       // order that implies it, as `start.ts` arranges.
-      store = PostgresStore.over(connected.db, countedIds(), queue.envelopes());
+      store = PostgresStore.over(connected.db, "eip155:84532", countedIds(), queue.envelopes());
       facilitator = new ScriptedFacilitator();
 
       const runtime: Runtime = {
@@ -438,9 +438,12 @@ if (databaseUrl === null) {
             return { save: { ...found, paidBy: who }, result: { took: true } };
           });
 
-        const aliceTaking = take(PostgresStore.over(alice.db, countedIds()), "alice");
+        const aliceTaking = take(
+          PostgresStore.over(alice.db, "eip155:84532", countedIds()),
+          "alice",
+        );
         await bobMayStart;
-        const bobTaking = take(PostgresStore.over(bob.db, countedIds()), "bob");
+        const bobTaking = take(PostgresStore.over(bob.db, "eip155:84532", countedIds()), "bob");
         const [first, second] = await Promise.all([aliceTaking, bobTaking]);
 
         const decided = [first, second].map((lookup) => (lookup.found ? lookup.result : null));
@@ -977,8 +980,8 @@ if (databaseUrl === null) {
       const onePool = oneGateway.pool;
       const otherPool = otherGateway.pool;
       try {
-        const one = PostgresStore.over(oneGateway.db, countedIds());
-        const other = PostgresStore.over(otherGateway.db, countedIds());
+        const one = PostgresStore.over(oneGateway.db, "eip155:84532", countedIds());
+        const other = PostgresStore.over(otherGateway.db, "eip155:84532", countedIds());
 
         // The first is held inside the work, so the second arrives while it is
         // genuinely still running rather than after it.
@@ -1060,7 +1063,7 @@ if (databaseUrl === null) {
         if (offered.step !== "pay") throw new Error("no price was offered");
         const orderId = offered.order.order.id;
 
-        const own = PostgresStore.over(owner.db, countedIds());
+        const own = PostgresStore.over(owner.db, "eip155:84532", countedIds());
         // One connection in the pool, so this is the one the transaction will
         // check out and the one terminated inside it.
         const pinned = await backendPid(ownPool);
@@ -1109,7 +1112,7 @@ if (databaseUrl === null) {
       const owner = connect(databaseUrl, { max: 1 });
       const ownPool = owner.pool;
       try {
-        const own = PostgresStore.over(owner.db, countedIds());
+        const own = PostgresStore.over(owner.db, "eip155:84532", countedIds());
         // The pool holds one connection, so this is the one `runAlone` will
         // pin and the one terminated below.
         const pinned = await backendPid(ownPool);
@@ -1145,7 +1148,7 @@ if (databaseUrl === null) {
       const owner = connect(databaseUrl, { max: 1 });
       const ownPool = owner.pool;
       try {
-        const own = PostgresStore.over(owner.db, countedIds());
+        const own = PostgresStore.over(owner.db, "eip155:84532", countedIds());
         const pinned = await backendPid(ownPool);
 
         const failing = own.runAlone("a_failing_terminated_sweep", async () => {
@@ -1169,7 +1172,7 @@ if (databaseUrl === null) {
       const its = connect(databaseUrl, { max: 1 });
       const otherPool = its.pool;
       try {
-        const other = PostgresStore.over(its.db, countedIds());
+        const other = PostgresStore.over(its.db, "eip155:84532", countedIds());
 
         await expect(
           store.runAlone("a_failing_sweep", async () => {
@@ -1219,7 +1222,7 @@ if (databaseUrl === null) {
           },
         });
 
-        const stubborn = PostgresStore.over(held.db, countedIds());
+        const stubborn = PostgresStore.over(held.db, "eip155:84532", countedIds());
         // The run itself is a success and is reported as one. An unlock nobody
         // could complete is not the sweep's failure to hand back to the queue.
         expect(await stubborn.runAlone("a_wedged_sweep", async () => "swept")).toStrictEqual({
@@ -1231,7 +1234,7 @@ if (databaseUrl === null) {
         // asynchronous, so this waits two seconds, well inside the ten the pool
         // takes to reap an idle connection: a window that reached the reaper
         // would pass even if the session were kept.
-        const next = PostgresStore.over(asking.db, countedIds());
+        const next = PostgresStore.over(asking.db, "eip155:84532", countedIds());
         const until = Date.now() + 2_000;
         let free = await next.runAlone("a_wedged_sweep", async () => "free");
         while (!free.ran && Date.now() < until) {
@@ -1491,7 +1494,7 @@ if (databaseUrl === null) {
       const aGatewayOn = (db: Database, table = SPLIT_NETWORKS_WITH_A_FIXTURE_BASE) =>
         new Gateway({
           config: loadConfig({ DATABASE_URL: databaseUrl }, table),
-          store: PostgresStore.over(db, countedIds()),
+          store: PostgresStore.over(db, "eip155:84532", countedIds()),
           queue: new MemoryQueue(),
           facilitator: new ScriptedFacilitator(),
           clock: () => now,
@@ -1607,7 +1610,7 @@ if (databaseUrl === null) {
      */
     describeStore("the store on Postgres", async () => {
       await contract.pool.query(EMPTY_EVERY_TABLE);
-      return PostgresStore.over(contract.db, countedIds());
+      return PostgresStore.over(contract.db, "eip155:84532", countedIds());
     });
   });
 }

@@ -341,7 +341,7 @@ if (databaseUrl === null) {
       const connected = connect(url);
       pool = connected.pool;
       db = connected.db;
-      store = PostgresStore.over(db, countedIds());
+      store = PostgresStore.over(db, "eip155:84532", countedIds());
     }, 60_000);
 
     afterAll(async () => {

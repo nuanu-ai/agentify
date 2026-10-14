@@ -281,9 +281,8 @@ interface PendingPayoutWallet {
  * splits travel with them so a wallet and the split it is paid through are
  * read at one instant, in one read.
  *
- * A database serves one network, and a start refuses one whose registry
- * holds another's splits, so the split here is the merchant's for this
- * wallet without naming the network.
+ * The splits are the ones recorded on the network the store was opened for,
+ * the deployment's, so a row of another network is never read as one.
  */
 export interface StoredPayoutWallet {
   readonly address: string | null;
@@ -477,8 +476,8 @@ export interface Store {
    *
    * A split already recorded is kept as recorded, with its first instant.
    * Refuses, writing nothing, a split that is not this merchant's for the
-   * address it is given with, and one whose merchant, wallet and network are
-   * recorded at another address.
+   * address it is given with on the store's network, and one whose merchant,
+   * wallet and network are recorded at another address.
    *
    * Addresses must already be in the checksummed spelling `payoutWalletFrom`
    * in `app/merchants.ts` produces. A set address cannot be cleared, as the

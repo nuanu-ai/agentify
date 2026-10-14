@@ -198,7 +198,7 @@ export async function startGateway(
     // An envelope that must not be lost is written in the same transaction as
     // its order, so a process that dies mid-flight did both or neither. This
     // works only because the queue and the store share one Postgres.
-    store: PostgresStore.over(db, randomIds, queue.envelopes()),
+    store: PostgresStore.over(db, config.payment.network, randomIds, queue.envelopes()),
     queue,
     facilitator: await paymentLayer(config, edge),
     clock: systemClock,

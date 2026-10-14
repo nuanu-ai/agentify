@@ -8,12 +8,15 @@ import type { PayoutSplit } from "../split/parameters.js";
 
 /**
  * The splits a wallet write records, each once, or a refusal where one is not
- * this merchant's split of the address it is written with: the registry says
- * which wallet each split pays, and a wallet written beside another's split
- * would have buyers pay somewhere the merchant was never told of.
+ * this merchant's split of the address it is written with on the store's
+ * network: the registry says which wallet each split pays, and a wallet
+ * written beside another's split would have buyers pay somewhere the merchant
+ * was never told of, while one written beside another network's split would
+ * be read as a wallet with no split at all.
  */
 export function splitsOfTheWrite(
   merchantId: string,
+  network: string,
   next: PayoutWalletWrite,
 ): readonly PayoutSplit[] {
   const written = [
@@ -26,6 +29,11 @@ export function splitsOfTheWrite(
     if (split.merchantId !== merchantId || split.merchantWallet !== address) {
       throw new Error(
         `the split given for ${merchantId}'s wallet ${address} is ${split.merchantId}'s split of ${split.merchantWallet}, so neither the wallet nor the split was written`,
+      );
+    }
+    if (split.network !== network) {
+      throw new Error(
+        `the split given for ${merchantId}'s wallet ${address} is on the network ${split.network}, and this store reads splits on ${network}, so neither the wallet nor the split was written`,
       );
     }
   }

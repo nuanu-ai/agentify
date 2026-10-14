@@ -70,10 +70,13 @@ afterEach(async () => {
   running = null;
 });
 
-/** A store and its queue, empty, as a database is before a gateway starts on it. */
-const aDatabase = () => {
+/**
+ * A store and its queue, empty, as a database is before a gateway starts on
+ * it, opened for the deployment's network.
+ */
+const aDatabase = (network = "eip155:84532") => {
   const queue = new MemoryQueue();
-  const store = new MemoryStore(countedIds(), () => NOW, queue.envelopes());
+  const store = new MemoryStore(network, countedIds(), () => NOW, queue.envelopes());
   return { store, queue };
 };
 
@@ -322,9 +325,12 @@ describe("a start on a database whose splits belong to another network", () => {
     // Moved from the test channel to the live one, the database would name
     // Base Sepolia's splits, with a test commission wallet inside, as payment
     // addresses on Base, where the same formula gives the same addresses.
-    const database = aDatabase();
+    // Opened by the live gateway, it holds the wallet and its Base Sepolia
+    // split as the test channel wrote them.
+    const database = aDatabase("eip155:8453");
     await aMerchant(database, "mch_one");
-    await paidUnder(database, "mch_one", W);
+    await database.store.recordPayoutSplits([payoutSplitFor(T1_TEST, "mch_one", W)], NOW);
+    await paidBeforeSplits(database, "mch_one", { address: W, pending: null });
 
     const refused = await refusalOf(aGatewayOver(database, T1, LIVE).gateway);
 
@@ -335,7 +341,7 @@ describe("a start on a database whose splits belong to another network", () => {
   it("refuses even where no merchant's wallet in force names the foreign split", async () => {
     // A guard that looked only at the wallets in force on its own network
     // would never see the rows it is there to refuse.
-    const database = aDatabase();
+    const database = aDatabase("eip155:8453");
     await aMerchant(database, "mch_one");
     await database.store.recordPayoutSplits([payoutSplitFor(T1_TEST, "mch_one", OTHER)], NOW);
 
