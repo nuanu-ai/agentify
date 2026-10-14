@@ -1,0 +1,207 @@
+{
+  "about": [
+    "Real answers of the public RPCs of Base (chain 8453, https://mainnet.base.org) and Base Sepolia (chain 84532, https://sepolia.base.org) to read-only JSON-RPC requests, recorded on 2026-10-14: eth_chainId, eth_getCode at each address below, and eth_call of the Safe's getThreshold() (0xe75235b8) and getOwners() (0xa0e67e2b) at three contracts on Base, all at the latest block.",
+    "Every eth_getCode answer that is not empty is cut to its first 32 bytes; the check asks only whether an address holds code. Nothing else is changed.",
+    "On Base: the 0xSplits v2.2 factory, implementation and warehouse, Multicall3 and USDC; Base Sepolia's USDC address, which holds no code there; safe, the Safe that administers the bridged USDbC token on Base (threshold 3 of 6 owners); safeSingleton, the Safe 1.4.1 singleton, which answers getThreshold but not getOwners; feeDisburser, a proxy contract that answers neither; distributor, the Base Sepolia experiment's distributor, which holds no code on Base.",
+    "On Base Sepolia: the same contracts with Base Sepolia's USDC, and commission, the experiment's commission wallet, which holds no code."
+  ],
+  "addresses": {
+    "eip155:8453": {
+      "factory": "0x6B9118074aB15142d7524E8c4ea8f62A3Bdb98f1",
+      "implementation": "0x98254AeDb6B2c30b70483064367f0BA24ca86244",
+      "warehouse": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+      "multicall3": "0xcA11bde05977b3631167028862bE2a173976CA11",
+      "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "baseSepoliaUsdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "safe": "0xd94E416cf2c7167608B2515B7e4102B41efff94f",
+      "safeSingleton": "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762",
+      "feeDisburser": "0x09C7bAD99688a55a2e83644BFAed09e62bDcCcBA",
+      "distributor": "0xF029d915c69C1902bB09A86c801c8226825F265c"
+    },
+    "eip155:84532": {
+      "factory": "0x6B9118074aB15142d7524E8c4ea8f62A3Bdb98f1",
+      "implementation": "0x98254AeDb6B2c30b70483064367f0BA24ca86244",
+      "warehouse": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+      "multicall3": "0xcA11bde05977b3631167028862bE2a173976CA11",
+      "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "commission": "0xd111fcC29f658b2f53ee7BEA09f5Ccd7140Ee960"
+    }
+  },
+  "answers": {
+    "eip155:8453": {
+      "rpc": "https://mainnet.base.org",
+      "exchanges": [
+        {
+          "method": "eth_chainId",
+          "params": [],
+          "result": "0x2105"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x6B9118074aB15142d7524E8c4ea8f62A3Bdb98f1", "latest"],
+          "result": "0x6080604090808252600480361015610015575f80fd5b5f3560e01c9182632556"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x98254AeDb6B2c30b70483064367f0BA24ca86244", "latest"],
+          "result": "0x6080604081815260049182361015610015575f80fd5b5f3560e01c90816301ff"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8", "latest"],
+          "result": "0x60806040526004361015610011575f80fd5b5f3560e01c8062ad800c14611aa7"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0xcA11bde05977b3631167028862bE2a173976CA11", "latest"],
+          "result": "0x6080604052600436106100f35760003560e01c80634d2301cc1161008a578063"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "latest"],
+          "result": "0x60806040526004361061005a5760003560e01c80635c60da1b11610043578063"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x036CbD53842c5426634e7929541eC2318f3dCF7e", "latest"],
+          "result": "0x"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0xd94E416cf2c7167608B2515B7e4102B41efff94f", "latest"],
+          "result": "0x608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa6"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x29fcB43b46531BcA003ddC8FCB67FFE91900C762", "latest"],
+          "result": "0x6080604052600436106101d15760003560e01c8063affed0e0116100f7578063"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x09C7bAD99688a55a2e83644BFAed09e62bDcCcBA", "latest"],
+          "result": "0x60806040526004361061005e5760003560e01c80635c60da1b11610043578063"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0xF029d915c69C1902bB09A86c801c8226825F265c", "latest"],
+          "result": "0x"
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xd94E416cf2c7167608B2515B7e4102B41efff94f",
+              "data": "0xe75235b8"
+            },
+            "latest"
+          ],
+          "result": "0x0000000000000000000000000000000000000000000000000000000000000003"
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xd94E416cf2c7167608B2515B7e4102B41efff94f",
+              "data": "0xa0e67e2b"
+            },
+            "latest"
+          ],
+          "result": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000006000000000000000000000000f9e320f3da12e68af219d9e2a490dd649f6b177c000000000000000000000000b011a32ed8b4f70d9943a2199f539bbecd7b62f70000000000000000000000003dad2200849925bb46d9bf05afa5f7f213f4c18e0000000000000000000000005fbefa105bbd53b43bf537cbc5cd30804dd0c9930000000000000000000000003cd692ece8b6573a2220ae00d0deb98f0dffa9a10000000000000000000000006cd3850756b7894774ab715d136f9dd02837de50"
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762",
+              "data": "0xe75235b8"
+            },
+            "latest"
+          ],
+          "result": "0x0000000000000000000000000000000000000000000000000000000000000001"
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762",
+              "data": "0xa0e67e2b"
+            },
+            "latest"
+          ],
+          "error": {
+            "code": -32003,
+            "message": "EVM error: InvalidFEOpcode"
+          }
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x09C7bAD99688a55a2e83644BFAed09e62bDcCcBA",
+              "data": "0xe75235b8"
+            },
+            "latest"
+          ],
+          "error": {
+            "code": 3,
+            "message": "execution reverted"
+          }
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x09C7bAD99688a55a2e83644BFAed09e62bDcCcBA",
+              "data": "0xa0e67e2b"
+            },
+            "latest"
+          ],
+          "error": {
+            "code": 3,
+            "message": "execution reverted"
+          }
+        }
+      ]
+    },
+    "eip155:84532": {
+      "rpc": "https://sepolia.base.org",
+      "exchanges": [
+        {
+          "method": "eth_chainId",
+          "params": [],
+          "result": "0x14a34"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x6B9118074aB15142d7524E8c4ea8f62A3Bdb98f1", "latest"],
+          "result": "0x6080604090808252600480361015610015575f80fd5b5f3560e01c9182632556"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x98254AeDb6B2c30b70483064367f0BA24ca86244", "latest"],
+          "result": "0x6080604081815260049182361015610015575f80fd5b5f3560e01c90816301ff"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8", "latest"],
+          "result": "0x60806040526004361015610011575f80fd5b5f3560e01c8062ad800c14611aa7"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0xcA11bde05977b3631167028862bE2a173976CA11", "latest"],
+          "result": "0x6080604052600436106100f35760003560e01c80634d2301cc1161008a578063"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x036CbD53842c5426634e7929541eC2318f3dCF7e", "latest"],
+          "result": "0x60806040526004361061005a5760003560e01c80635c60da1b11610043578063"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0xd111fcC29f658b2f53ee7BEA09f5Ccd7140Ee960", "latest"],
+          "result": "0x"
+        }
+      ]
+    }
+  }
+}
