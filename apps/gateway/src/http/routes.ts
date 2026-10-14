@@ -693,10 +693,11 @@ async function answerPurchase(
     // status code is 200 where the purchase is going through or delivered and
     // 409 where it is not.
     case "under_way":
-      // A synchronous purchase that comes back without the goods (typically a
-      // charge that never reported back) is 409, not 200: nothing is working
-      // on it. Where the goods come later, 200 is honest, and `status_url` is
-      // the only place the agent learns where to collect them.
+      // A synchronous purchase that comes back without the goods is 409, not
+      // 200: the agent's wait is over and it holds nothing, typically because
+      // the charge has not reported back yet. Where the goods come later, 200
+      // is honest, and `status_url` is the only place the agent learns where to
+      // collect them.
       return {
         status: attempt.order.order.mode.settle === "after_fulfillment" ? CONFLICT : OK,
         document: agentOrderStatusOf(
