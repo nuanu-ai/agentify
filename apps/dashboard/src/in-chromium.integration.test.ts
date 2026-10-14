@@ -331,6 +331,24 @@ describe("the sections on a long page", () => {
     await page.context().close();
   });
 
+  it("are in a phone's menu that closes once the focus leaves it, so what has the focus is not behind it", async () => {
+    const page = await onTheCards({ width: 390, height: 800 });
+    const menu = page.locator(".site-menu");
+    const open = () => menu.evaluate((details) => (details as HTMLDetailsElement).open);
+
+    await menu.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    await menu.locator(".site-menu-panel").waitFor({ state: "visible" });
+    await page.keyboard.press("Tab");
+    expect(await open()).toBe(true);
+    await menu.getByRole("button", { name: "Sign out" }).focus();
+    await page.keyboard.press("Tab");
+
+    expect(await open()).toBe(false);
+    expect(await page.evaluate(() => document.activeElement?.closest(".site-menu"))).toBeNull();
+    await page.context().close();
+  });
+
   it("are in a phone's menu that closes when the page moves on, though the page drawn stays", async () => {
     const page = await onTheCards({ width: 390, height: 600 });
     await page.goto(`${origin}${BASE}/orders`);
