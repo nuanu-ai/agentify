@@ -186,6 +186,18 @@ const PINS: readonly Pin[] = [
     "which sends {merchant}% of it to the merchant and {agentify}% to Agentify",
   ),
 
+  // --- the commission, in the READMEs an engineer opens first ---------------
+  ...sharesIn(
+    "the shares, in the SDK's README",
+    { page: "packages/sdk/README.md" },
+    "sends {merchant}% to the merchant's wallet and {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the shares, in the repository's README",
+    { page: "README.md" },
+    "which pays {merchant}% to the merchant's wallet and {agentify}% to Agentify",
+  ),
+
   // --- how long we wait for a price, and how long the answer lives ----------
   {
     what: "how long a price the merchant named goes on being good",
