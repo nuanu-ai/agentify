@@ -22,7 +22,8 @@ default is Base Sepolia, so nobody goes live by forgetting a variable. A chain
 on neither list stops the process, because a guess is wrong either way: an
 unlisted testnet read as live writes `test: false` onto orders, and the reverse
 calls real money play money. Adding a chain edits this decision and
-`packages/core/src/deployment/environment.ts`; Ethereum and Polygon mainnet,
+`packages/core/src/deployment/environment.ts`, and a listed chain starts only
+where ADR-0037 names its commission wallet; Ethereum and Polygon mainnet,
 where we do not sell, are absent.
 
 Whether anything settles is a value of `FACILITATOR_URL`, never a flag beside
