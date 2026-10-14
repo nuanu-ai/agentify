@@ -1221,9 +1221,8 @@ html:has(.sell) {
   color: var(--footer-text);
   margin-top: 14px;
 }
-/* The accent itself is too dark to read on the band; its soft tint keeps the hue. */
 .sell .final-cta .eyebrow {
-  color: var(--accent-soft);
+  color: var(--accent-on-dark);
 }
 .sell .final-cta > div:last-child {
   width: 390px;
