@@ -677,7 +677,7 @@ describe("a scan in Chromium", () => {
   });
 });
 
-/** How the dashboard can answer who is visiting: a person, an operator, or not at all. */
+/** How the dashboard can answer who is visiting: a person, an operator, nobody, or not at all. */
 const VISITORS = [
   [
     "a signed-in address",
@@ -697,6 +697,7 @@ const VISITORS = [
       body: { status: "signed_in", email: "ops@agentify.example", operator: true },
     },
   ],
+  ["nobody signed in", { status: 200, body: { status: "signed_out" } }],
   ["no answer", { status: 503, body: {} }],
 ] as const;
 
@@ -904,10 +905,12 @@ describe("the site's menu on a phone", () => {
     },
   );
 
-  it.each(VISITORS)(
-    "keeps the header's height when %s comes back, and holds who is visiting",
-    async (_who, answer) => {
-      const { page, answered } = await onAPhone("/methodology", answer, 390);
+  it.each(
+    VISITORS.flatMap(([who, answer]) => [320, 390].map((width) => [who, width, answer] as const)),
+  )(
+    "keeps the header to one row of the same height when %s comes back at %ipx, and holds who is visiting",
+    async (_who, width, answer) => {
+      const { page, answered } = await onAPhone("/methodology", answer, width);
       await page.locator("h1").first().waitFor();
       await page.evaluate(() => document.fonts.ready);
       const header = page.locator("header.site-header");
@@ -915,6 +918,14 @@ describe("the site's menu on a phone", () => {
 
       await answered();
       expect(await header.boundingBox()).toEqual(before);
+      const middles = await header.evaluate((bar) =>
+        [...bar.querySelectorAll(".brand, .site-doors > a, .site-menu > summary")].map((item) => {
+          const box = item.getBoundingClientRect();
+          return box.top + box.height / 2;
+        }),
+      );
+      expect(middles).toHaveLength(4);
+      expect(Math.max(...middles) - Math.min(...middles)).toBeLessThanOrEqual(1);
 
       await header.locator(".site-menu > summary").click();
       const visitor = header.locator(".site-menu-panel .site-visitor");
@@ -928,6 +939,8 @@ describe("the site's menu on a phone", () => {
         expect(await visitor.getByRole("link", { name: "Admin" }).count()).toBe(
           answer.body.operator ? 1 : 0,
         );
+      } else if (answer.status === 200) {
+        expect(await visitor.isVisible()).toBe(false);
       } else {
         expect(await visitor.getByText("Sign-in unknown").isVisible()).toBe(true);
       }

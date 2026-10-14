@@ -381,3 +381,20 @@ describe("the sections on a long page", () => {
     await page.context().close();
   });
 });
+
+describe("the header on the narrowest page", () => {
+  it("keeps the lockup, the doors and the menu's button on one row", async () => {
+    const page = await onTheCards({ width: 320, height: 600 });
+    await page.evaluate(() => document.fonts.ready);
+
+    const middles = await page.locator("header.site-header").evaluate((bar) =>
+      [...bar.querySelectorAll(".brand, .site-doors > a, .site-menu > summary")].map((item) => {
+        const box = item.getBoundingClientRect();
+        return box.top + box.height / 2;
+      }),
+    );
+    expect(middles).toHaveLength(4);
+    expect(Math.max(...middles) - Math.min(...middles)).toBeLessThanOrEqual(1);
+    await page.context().close();
+  });
+});
