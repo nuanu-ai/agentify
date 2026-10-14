@@ -974,3 +974,41 @@ describe("the journal of recorded splits", () => {
     }
   });
 });
+
+describe("the splits a payout covers", () => {
+  it("names a merchant's split in force, the one waiting, and every one that can hold money, and the operator every merchant's", async () => {
+    // The payout screen pays out what can hold money: the split buyers pay
+    // now and every split a payment was checked against, which still gets
+    // late settlements after the merchant moves on. A split that only waited
+    // holds nothing until it is in force.
+    const { served, harnessed } = await started();
+    const itemId = await published(served, harnessed.merchant.key);
+    const first = splitOf(harnessed, harnessed.merchant.wallet).address;
+    await buyOverHttp(harnessed, served, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    harnessed.advance(1_000);
+    const other = await harnessed.addMerchant("Another shop");
+    harnessed.advance(1_000);
+    await ask(harnessed, A_WALLET);
+
+    const waiting = await harnessed.gateway.payoutSplitsOf(harnessed.merchant.id);
+    expect(waiting.inForce?.address).toBe(first);
+    expect(waiting.pending?.address).toBe(splitOf(harnessed, A_WALLET).address);
+    expect(waiting.toPayOut.map((split) => split.address)).toStrictEqual([first]);
+
+    harnessed.advance(THE_WAIT);
+    const moved = await harnessed.gateway.payoutSplitsOf(harnessed.merchant.id);
+    expect(moved.inForce?.address).toBe(splitOf(harnessed, A_WALLET).address);
+    expect(moved.pending).toBeNull();
+    expect(moved.toPayOut.map((split) => split.address)).toStrictEqual([
+      first,
+      splitOf(harnessed, A_WALLET).address,
+    ]);
+    expect((await harnessed.gateway.splitsToPayOut()).map((split) => split.address)).toStrictEqual([
+      first,
+      splitOf(harnessed, other.wallet, other.id).address,
+      splitOf(harnessed, A_WALLET).address,
+    ]);
+  });
+});
