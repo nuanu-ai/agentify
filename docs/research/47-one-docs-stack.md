@@ -256,3 +256,52 @@ scanner's identity; `coverage score` — the methodology.
    the reader loses.
 5. B is not chosen by this rule. It is the measure of what the move gives and
    takes, and the owner's decision to move stands whatever it shows.
+
+## Amendment, before any measurement
+
+Added on 2026-10-14, after the registration above was committed and before
+anything was built far enough to measure or was measured. It carries the
+product owner's own view of the two documentations, relayed the same day: the
+VitePress portal works fast and well, but its header is odd, with the logo not
+where the rest of the site has it, while the scanner's documentation has the
+look to keep. The target is therefore the portal's speed with the scanner's
+look. The registration above stands; this section adds to it.
+
+Candidate A changes in one respect. Its pages are drawn in the scanner's
+editorial layout, the type, the contents column, the article column and the
+notice box that `apps/web/components/editorial-page.tsx` and its stylesheet
+draw `/methodology` with, under the shared site header, so the logo stands
+where it stands on every other page. The contents column takes the place of
+VitePress's sidebar and outline together: it lists the documentation's pages in
+their groups, with the current page's sections under its name. The warning
+container is drawn as the editorial notice. A table, a code block and a
+diagram, which the scanner's pages do not have, are drawn in the same type and
+palette. To keep moving between pages as quick as VitePress keeps it, A fetches
+the data of every page its contents column links to once the link is on the
+screen, as VitePress fetches a linked page's script, and its links inside the
+text are followed without a page load, as VitePress follows them.
+
+Two measurements are added, taken in Chromium behind 200 ms added to every
+request by the browser's network emulation, with no slowdown of the processor,
+each the median of five runs.
+
+- M10. Moving between two pages: the time from a click on a link in the
+  sidebar, or in A's contents column, to the destination page's heading being
+  in the document with a frame painted after it. Two moves are timed, from
+  Connecting to Agentify to The first test sale and from Money to Orders and
+  fulfillment modes, each once after the pointer has rested on the link for
+  300 ms and once with the click at once, the page having been open for two
+  seconds before either.
+- M11. The first visit: the largest contentful paint of each of the seven
+  pages loaded with an empty cache.
+
+Two predictions are added.
+
+- P10. In each of the four timings of M10, A's time is at most B's plus 50 ms.
+- P11. On every page, A's M11 is at most B's plus 100 ms.
+
+The rule gains one sentence. P10 and P11 are conditions of the migration in
+the sense of its third clause, beside P6 and P7, because moving to the one
+stack must not make the documentation slower to read: a miss of either that
+remains after the spike's own code is fixed must be fixed before the
+migration's pull request is opened, and the results say what fixing it takes.
