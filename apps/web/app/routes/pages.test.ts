@@ -141,6 +141,13 @@ describe("the scanner's pages that moved into the documentation", () => {
     }
   });
 
+  it("keep the query they were asked with", async () => {
+    const answered = await ask("/scanner?from=a-user-agent");
+
+    expect(answered.status).toBe(308);
+    expect(answered.headers.get("location")).toBe("/docs/scanner?from=a-user-agent");
+  });
+
   it("send a client that asks for Markdown on too, where the documentation answers it", async () => {
     const answered = await ask("/scanner", { headers: { accept: "text/markdown" } });
 
