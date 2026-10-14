@@ -5,116 +5,25 @@
  * where the words would otherwise part.
  */
 
-/**
- * The tariff options drawn under "Pricing", each a section of its own. An
- * empty list draws no pricing and no "Pricing" link.
- */
-const TARIFFS_SHOWN = ["t1", "t2", "t3", "t4", "t5", "t6"] as const;
-
-/** Whether each option carries the grey note above it, which is for choosing between them. */
-const TARIFF_NOTES_SHOWN = true;
-
-const TARIFFS = [
-  {
-    id: "t1",
-    note: "Option 1 of 6 · Free, $0 · To hide: remove t1 from TARIFFS_SHOWN in sell.ts.",
-    name: "Free",
-    price: "$0",
-    gist: "Everything Agentify does today.",
-    terms: [
-      "Nothing to pay: no monthly fee and no cut of your sales.",
-      "The buyer pays the network fee for the transfer.",
-    ],
-    includes: [
-      "Catalog connection through WooCommerce or the SDK",
-      "Product cards in the Agentify catalog",
-      "Orders and receipts in your dashboard",
-      "Payments straight to your wallet",
-    ],
-  },
-  {
-    id: "t2",
-    note: "Option 2 of 6 · $0 + 1% of paid orders · To hide: remove t2 from TARIFFS_SHOWN in sell.ts. If you pick it, remove “No Agentify fee on sales” from the “Direct payment” section.",
-    name: "Pay per order",
-    price: "$0 + 1%",
-    per: "of every paid order",
-    gist: "You pay only when agents buy.",
-    terms: ["Free to connect, no monthly fee.", "The buyer pays the network fee for the transfer."],
-    includes: [
-      "Catalog connection through WooCommerce or the SDK",
-      "Product cards in the Agentify catalog",
-      "Orders and receipts in your dashboard",
-      "Payments straight to your wallet",
-    ],
-  },
-  {
-    id: "t3",
-    note: "Option 3 of 6 · Subscription, $29 a month · To hide: remove t3 from TARIFFS_SHOWN in sell.ts.",
-    name: "Subscription",
-    price: "$29 a month",
-    gist: "We get your store ready to list on AI agent marketplaces, then Agentify keeps the sales channel running.",
-    terms: [
-      "Billing starts on day one, with no free month.",
-      "Cancel anytime.",
-      "The buyer pays the network fee for the transfer.",
-    ],
-    includes: [
-      "A review of your store: what keeps AI agents from buying",
-      "Fixes for what the review finds",
-      "A catalog export for AI agents",
-      "Connecting your store to Agentify",
-      "A test purchase by our agent, with a report",
-      "Catalog updates",
-      "Checks that the sales channel is working",
-      "Orders in your dashboard",
-    ],
-  },
-  ...(
-    [
-      ["t4", "4", "$49"],
-      ["t5", "5", "$99"],
-      ["t6", "6", "$149"],
-    ] as const
-  ).map(([id, number, price]) => ({
-    id,
-    note: `Option ${number} of 6 · Getting ready for AI agent marketplaces, ${price} one-time · To hide: remove ${id} from TARIFFS_SHOWN in sell.ts.`,
-    name: "Getting ready for AI agent marketplaces",
-    price,
-    per: "one-time",
-    gist: "Agentify does all the work, up to the first test purchase.",
-    terms: [
-      "You pay once, with no subscription.",
-      "The buyer pays the network fee for the transfer.",
-    ],
-    includes: [
-      "A review of your store: what keeps AI agents from buying",
-      "Fixes for what the review finds",
-      "A catalog export for AI agents",
-      "Connecting your store to Agentify",
-      "A test purchase by our agent, with a report",
-    ],
-  })),
-];
-
 export const SELL_LANDING = {
   head: {
     title: "Agentify — sell products and services to AI agents",
     description:
-      "Publish physical products, digital products, and services for AI agents, take orders, and get paid straight to your wallet.",
+      "Publish physical products, digital products, and services for AI agents, take orders, and get paid out to your own wallet.",
     cardTitle: "Agentify — sell to AI agents",
-    cardDescription: "Catalog, orders, and direct payments for agentic commerce.",
+    cardDescription: "Catalog, orders, and payouts for agentic commerce.",
   },
   hero: {
     eyebrow: "A new sales channel for products and services",
     title: "AI agents find and buy your products",
-    lede: "Connect your catalog of physical products, digital products, and services once. Agentify shows them to AI agents, takes the order, and sends the payment straight to your wallet. You keep your site and your store as they are.",
+    lede: "Connect your catalog of physical products, digital products, and services once. Agentify shows them to AI agents and takes the order. The buyer pays into your own payout contract, which sends 99.9% to your wallet and 0.1% to Agentify. You keep your site and your store as they are.",
     action: "Connect your catalog",
     howItWorks: "How it works",
     facts: ["You connect your catalog", "An agent buys", "You get paid"],
   },
   sale: {
     label:
-      "An AI agent buys a 12 USD bag of specialty coffee through Agentify, and the seller receives 12 USDC",
+      "An AI agent buys a 12 USD bag of specialty coffee through Agentify and pays 12 USDC into the seller's payout contract",
     top: "SELLING TO AI AGENTS THROUGH AGENTIFY",
     status: "PAID",
     agent: {
@@ -125,12 +34,12 @@ export const SELL_LANDING = {
     store: { kind: "YOUR STORE", name: "Product catalog" },
     product: { name: "Specialty coffee, 250 g", price: "12 USD" },
     paid: {
-      kind: "PAID TO YOUR WALLET",
+      kind: "YOUR PAYOUT CONTRACT",
       amount: "+ 12.00 USDC",
-      note: "Priced in USD, paid in USDC",
+      note: "99.9% to your wallet, 0.1% to Agentify",
     },
     path: ["AI agent", "Agentify", "Your store"],
-    end: "Payment to you",
+    end: "Payout to you",
   },
   journey: {
     eyebrow: "How a sale works",
@@ -151,7 +60,7 @@ export const SELL_LANDING = {
       },
       {
         title: "You get paid",
-        text: "The payment goes straight to your wallet. The order and its payment confirmation are saved in your dashboard.",
+        text: "The payment goes into your payout contract, which sends 99.9% to your wallet and 0.1% to Agentify whenever it is paid out, and you can pay it out at any time. The order and its payment confirmation are saved in your dashboard.",
       },
     ],
   },
@@ -221,24 +130,24 @@ export const SELL_LANDING = {
     },
   },
   money: {
-    eyebrow: "Direct payment",
+    eyebrow: "Your own payout contract",
     title: "Agentify never holds your money",
-    lede: "For now, payments are accepted in USDC only. You can set the price in USD or USDC, and the AI agent pays the same amount in USDC, with no currency conversion. Agentify only checks that the payment went through.",
+    lede: "For now, payments are accepted in USDC only. You can set the price in USD or USDC, and the AI agent pays the same amount in USDC, with no currency conversion, into your own payout contract. Nobody owns that contract, so neither Agentify nor anyone else can redirect the money: it keeps it until it is paid out, then sends 99.9% to your wallet and 0.1% to Agentify.",
     notes: [
-      "No Agentify fee on sales",
-      "Each sale is a separate transfer",
+      "0.1% commission, inside the price",
+      "Get paid out at any time",
       "Your wallet keys stay with you",
       "Orders and receipts in your dashboard",
     ],
     map: {
       label:
-        "An AI agent sends 5 USDC straight to the seller's wallet, and Agentify checks the payment",
+        "An AI agent pays 5 USDC into the seller's payout contract, and Agentify checks the payment; a payout sends 99.9% to the seller's wallet and 0.1% to Agentify",
       top: "ORDER PAYMENT",
       status: "CONFIRMED",
       buyer: { kind: "BUYER'S WALLET", name: "AI agent", amount: "− 5.00 USDC" },
       flow: { amount: "5.00 USDC", note: "Agentify checked the payment" },
-      seller: { kind: "YOUR WALLET", name: "Seller", amount: "+ 5.00 USDC" },
-      foot: "Straight from the buyer's wallet to yours",
+      seller: { kind: "YOUR PAYOUT CONTRACT", name: "Seller", amount: "+ 5.00 USDC" },
+      foot: "Paid out on your request: 99.9% to your wallet, 0.1% to Agentify",
     },
   },
   pricing: {
@@ -246,8 +155,25 @@ export const SELL_LANDING = {
     title: "How much Agentify costs",
     action: "Connect your catalog",
     includesTitle: "What you get",
-    notesShown: TARIFF_NOTES_SHOWN,
-    options: TARIFFS.filter((tariff) => (TARIFFS_SHOWN as readonly string[]).includes(tariff.id)),
+    options: [
+      {
+        id: "commission",
+        name: "Pay per order",
+        price: "0.1%",
+        per: "of every paid order",
+        gist: "You pay only when agents buy.",
+        terms: [
+          "Free to connect, no monthly fee.",
+          "Inside your price: the buyer pays your price and nothing on top.",
+        ],
+        includes: [
+          "Catalog connection through WooCommerce or the SDK",
+          "Product cards in the Agentify catalog",
+          "Orders and receipts in your dashboard",
+          "Payouts to your wallet at any time",
+        ],
+      },
+    ],
   },
   dashboard: {
     eyebrow: "Seller dashboard",
@@ -258,22 +184,13 @@ export const SELL_LANDING = {
       ["Orders", "What the agent bought, whether the order is paid, and how it was fulfilled."],
       ["Receipts", "Proof of every payment and a history of completed sales."],
       ["Integrations", "The WooCommerce connection and API keys for the SDK."],
-      ["Plan & billing", "Your access and Agentify charges, kept separate from sales."],
-      ["Settings", "Seller name, payout wallet, and account access."],
+      ["Settings", "Seller name, payout wallet, how to get paid out, and account access."],
     ],
     action: "Sign in to your dashboard",
     window: {
       brand: "Agentify",
       kind: "SELLER DASHBOARD",
-      sections: [
-        "Cards",
-        "Orders",
-        "Receipts",
-        "Integrations",
-        "API keys",
-        "Plan & billing",
-        "Settings",
-      ],
+      sections: ["Cards", "Orders", "Receipts", "Integrations", "API keys", "Settings"],
       help: ["Need help?", "Open the docs →"],
       account: { initial: "M", name: "Account", email: "merchant@example.com" },
       heading: "Product cards",
@@ -310,7 +227,7 @@ export const SELL_LANDING = {
       ],
       [
         "Where is my money held?",
-        "Agentify does not hold it. The payment goes straight from the buyer's wallet to the seller's wallet.",
+        "In your own payout contract, until it is paid out. Nobody owns that contract, so neither Agentify nor anyone else can redirect the money: a payout sends 99.9% to your wallet and 0.1% to Agentify, and you can send one at any time.",
       ],
       [
         "Do I need a password for the dashboard?",

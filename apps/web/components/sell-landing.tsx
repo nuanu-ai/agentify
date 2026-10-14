@@ -245,7 +245,6 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
                 id={`pricing-${tariff.id}`}
                 key={tariff.id}
               >
-                {pricing.notesShown ? <p className="tariff-flag">{tariff.note}</p> : null}
                 <div className="section-head">
                   <p className="eyebrow">{pricing.eyebrow}</p>
                   <h2 id={`pricing-${tariff.id}-title`}>{pricing.title}</h2>
