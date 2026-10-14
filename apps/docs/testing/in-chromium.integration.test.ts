@@ -201,6 +201,17 @@ describe("what Caddy fills in", () => {
   });
 });
 
+describe("the browser observer", () => {
+  it("is named on the test channel as it is sent, by the live site's address", async () => {
+    const { page } = await visit("/docs/scanner");
+    const article = (await page.locator("article").textContent()) ?? "";
+
+    expect(article).toContain("agentify-browser-observer/1.0 (+https://agentify.ad/scanner)");
+    expect(article).not.toContain("agentify-browser-observer/1.0 (+https://test.agentify.ad");
+    await page.context().close();
+  });
+});
+
 describe("a link whose page was fetched ahead", () => {
   it("is followed with nothing more asked of the edge", async () => {
     const { page } = await visit("/docs/money");
