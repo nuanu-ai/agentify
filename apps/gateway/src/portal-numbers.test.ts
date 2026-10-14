@@ -250,6 +250,33 @@ const PINS: readonly Pin[] = [
     "that pays {merchant}% to `payout_wallet` and {agentify}% to Agentify",
   ),
 
+  // --- the commission, on the sellers' landing ------------------------------
+  ...sharesIn(
+    "the shares, on the sellers' landing",
+    { page: "apps/web/content/sell.ts" },
+    "sends {merchant}% to your wallet and {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the shares, in the payment picture read aloud",
+    { page: "apps/web/content/sell.ts" },
+    "sends {merchant}% to the seller's wallet and {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the shares, on the sellers' landing's short labels",
+    { page: "apps/web/content/sell.ts" },
+    "{merchant}% to your wallet, {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the price, on the sellers' landing",
+    { page: "apps/web/content/sell.ts" },
+    'price: "{agentify}%"',
+  ),
+  ...sharesIn(
+    "the rate inside the price, on the sellers' landing",
+    { page: "apps/web/content/sell.ts" },
+    '"{agentify}% commission, inside the price"',
+  ),
+
   // --- how long we wait for a price, and how long the answer lives ----------
   {
     what: "how long a price the merchant named goes on being good",
