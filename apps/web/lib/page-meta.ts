@@ -1,6 +1,7 @@
+import { SITE_PICTURE } from "@agentify/ui";
 import type { MetaDescriptor } from "react-router";
 
-import { type Picture, SITE_PICTURE } from "../content/pictures";
+import type { Picture } from "../content/pictures";
 import type { PublicAppConfig } from "./app-config";
 
 /** What a page says of itself in its head; every part may be left to the site's default. */
