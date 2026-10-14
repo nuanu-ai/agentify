@@ -914,8 +914,16 @@ describe("the site's menu on a phone", () => {
       await page.mouse.move(370, (room?.y ?? 0) + 20);
       await page.mouse.wheel(0, 600);
       await page.waitForTimeout(300);
-      const last = await panel.getByRole("button", { name: "Sign out" }).boundingBox();
-      expect((last?.y ?? 0) + (last?.height ?? 0)).toBeLessThanOrEqual(end);
+      const last = panel.getByRole("button", { name: "Sign out" });
+      const box = await last.boundingBox();
+      expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(end);
+      // Nothing is drawn over it, the consent banner of a first visit included.
+      expect(
+        await last.evaluate((button) => {
+          const { left, top, width, height } = button.getBoundingClientRect();
+          return button.contains(document.elementFromPoint(left + width / 2, top + height / 2));
+        }),
+      ).toBe(true);
       await context.close();
     },
   );
