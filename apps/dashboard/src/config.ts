@@ -157,6 +157,13 @@ export interface DashboardConfig {
    * nothing, and a chain not listed here has no page we vouch for.
    */
   readonly transactionPage: string | null;
+  /**
+   * The page an address on this deployment's chain is looked at on, which the
+   * address is appended to, or null where there is none, as for a transaction.
+   * It is where a merchant sees what waits in their payout split, so a page on
+   * the other chain would show an empty address as nothing owed.
+   */
+  readonly addressPage: string | null;
   readonly basePath: string;
   readonly cookieSecure: boolean;
   readonly databaseUrl: string;
@@ -179,6 +186,12 @@ const NOBODY_READS_THIS = "Agentify <no-reply@localhost>";
 const TRANSACTION_PAGES: Readonly<Record<string, string>> = {
   "eip155:8453": "https://basescan.org/tx/",
   "eip155:84532": "https://sepolia.basescan.org/tx/",
+};
+
+/** Where an address is looked at on each of the same chains. */
+const ADDRESS_PAGES: Readonly<Record<string, string>> = {
+  "eip155:8453": "https://basescan.org/address/",
+  "eip155:84532": "https://sepolia.basescan.org/address/",
 };
 
 export function loadConfig(environment: Record<string, string | undefined>): DashboardConfig {
@@ -253,6 +266,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     surfaceMode,
     transactionPage:
       surfaceMode === "sandbox" ? null : (TRANSACTION_PAGES[values.PAYMENT_NETWORK] ?? null),
+    addressPage: surfaceMode === "sandbox" ? null : (ADDRESS_PAGES[values.PAYMENT_NETWORK] ?? null),
     basePath: values.BASE_PATH,
     cookieSecure: values.COOKIE_SECURE,
     databaseUrl: values.DATABASE_URL,
