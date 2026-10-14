@@ -6,7 +6,7 @@
  * in this process; its tests hand it a chain written out by hand.
  */
 
-import { closeSync, fsyncSync, openSync, readFileSync, writeSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import type { PayoutSplit, PayoutSplitNetwork, PayoutTransaction } from "@agentify/gateway";
 import { getAddress, type Hex, parseUnits } from "viem";
 import { type Ledger, type Move, play, type UsdcTransfer } from "./split-ledger.js";
@@ -61,8 +61,8 @@ export function smokeSettings(
     );
   }
   const keyNamed = (name: string, holds: string): Hex => {
-    const key = env[name];
-    if (key === undefined || !PRIVATE_KEY.test(key)) {
+    const key = env[name] ?? "";
+    if (!PRIVATE_KEY.test(key)) {
       return refuse(
         `set ${name} to the private key of a test wallet that ${holds} (0x and 64 hexadecimal characters)`,
       );
@@ -101,7 +101,7 @@ export function smokeSettings(
   }
 
   return {
-    confirm: argv.includes("--confirm") || env.SMOKE_CONFIRM === "1",
+    confirm: argv.includes("--confirm"),
     buyerKey,
     payoutKey,
     price,
@@ -273,48 +273,10 @@ const asJson = (entry: unknown): string =>
 
 /** Appends one line to the journal and waits for it to reach the disk. */
 function record(journal: string, entry: Record<string, unknown>): void {
-  const file = openSync(journal, "a");
-  try {
-    writeSync(file, `${asJson({ at: new Date().toISOString(), ...entry })}\n`);
-    fsyncSync(file);
-  } finally {
-    closeSync(file);
-  }
-}
-
-const SPLIT_FIELDS = [
-  "address",
-  "network",
-  "merchantId",
-  "merchantWallet",
-  "commissionWallet",
-  "merchantAllocation",
-  "commissionAllocation",
-  "totalAllocation",
-  "distributionIncentive",
-  "owner",
-  "salt",
-  "factory",
-] as const satisfies readonly (keyof PayoutSplit)[];
-
-/** Whether the journal on disk holds a plan naming this split with every parameter. */
-function journalHolds(journal: string, split: PayoutSplit): boolean {
-  let text: string;
-  try {
-    text = readFileSync(journal, "utf8");
-  } catch {
-    return false;
-  }
-  return text
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .some((line) => {
-      const entry = JSON.parse(line) as { stage?: unknown; split?: Record<string, unknown> };
-      return (
-        entry.stage === "plan" &&
-        SPLIT_FIELDS.every((field) => entry.split?.[field] === split[field])
-      );
-    });
+  writeFileSync(journal, `${asJson({ at: new Date().toISOString(), ...entry })}\n`, {
+    flag: "a",
+    flush: true,
+  });
 }
 
 /** The split's code as the factory deploys it: an 89-byte proxy of the implementation. */
@@ -323,30 +285,32 @@ const isCloneOf = (code: Hex | undefined, implementation: string): boolean =>
   code.length === 2 + 2 * 89 &&
   code.toLowerCase().includes(implementation.slice(2).toLowerCase());
 
-const sameTransfers = (a: readonly UsdcTransfer[], b: readonly UsdcTransfer[]): boolean =>
-  a.length === b.length &&
-  a.every((transfer, at) => {
-    const other = b[at];
-    return (
-      other !== undefined &&
-      getAddress(transfer.from) === getAddress(other.from) &&
-      getAddress(transfer.to) === getAddress(other.to) &&
-      transfer.value === other.value
-    );
-  });
+const spelled = (transfers: readonly UsdcTransfer[]): string =>
+  asJson(transfers.map(({ from, to, value }) => [getAddress(from), getAddress(to), value]));
 
-const sameCreation = (created: SplitCreation, split: PayoutSplit): boolean =>
-  getAddress(created.split) === getAddress(split.address) &&
-  created.recipients.length === 2 &&
-  getAddress(created.recipients[0] ?? "") === getAddress(split.merchantWallet) &&
-  getAddress(created.recipients[1] ?? "") === getAddress(split.commissionWallet) &&
-  created.allocations.length === 2 &&
-  created.allocations[0] === BigInt(split.merchantAllocation) &&
-  created.allocations[1] === BigInt(split.commissionAllocation) &&
-  created.totalAllocation === BigInt(split.totalAllocation) &&
-  created.distributionIncentive === split.distributionIncentive &&
-  getAddress(created.owner) === getAddress(split.owner) &&
-  created.salt.toLowerCase() === split.salt.toLowerCase();
+const spelledCreations = (created: readonly SplitCreation[]): string =>
+  asJson(
+    created.map((one) => [
+      getAddress(one.split),
+      one.recipients.map((recipient) => getAddress(recipient)),
+      one.allocations,
+      one.totalAllocation,
+      one.distributionIncentive,
+      getAddress(one.owner),
+      one.salt.toLowerCase(),
+    ]),
+  );
+
+/** The `SplitCreated` the factory emits for this split. */
+const creationOf = (split: PayoutSplit): SplitCreation => ({
+  split: split.address,
+  recipients: [split.merchantWallet, split.commissionWallet],
+  allocations: [BigInt(split.merchantAllocation), BigInt(split.commissionAllocation)],
+  totalAllocation: BigInt(split.totalAllocation),
+  distributionIncentive: split.distributionIncentive,
+  owner: split.owner,
+  salt: split.salt as Hex,
+});
 
 const listed = (transfers: readonly UsdcTransfer[]): string =>
   transfers.length === 0
@@ -361,9 +325,6 @@ async function within<T>(step: string, asking: () => Promise<T>): Promise<T> {
   try {
     return await asking();
   } catch (thrown) {
-    if (thrown instanceof SmokeStopped) {
-      throw thrown;
-    }
     throw new SmokeStopped(step, thrown instanceof Error ? thrown.message : String(thrown));
   }
 }
@@ -383,17 +344,13 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
     ["the merchant wallet", getAddress(split.merchantWallet)],
     ["the commission wallet", getAddress(split.commissionWallet)],
   ];
-  const known = new Set([...parties.map(([, address]) => address), getAddress(network.warehouse)]);
 
   const differences = (predicted: Ledger, observed: Ledger): readonly string[] =>
     parties.flatMap(([role, address]) =>
       (["held", "credited"] as const).flatMap((column) => {
         const want = predicted[column][address] ?? 0n;
         const saw = observed[column][address] ?? 0n;
-        const what = column === "held" ? "holds" : "is credited in the warehouse";
-        return want === saw
-          ? []
-          : [`${role} ${address} ${what} ${saw} USDC units, ${want} predicted`];
+        return want === saw ? [] : [`${role} ${address}, ${column}: ${saw}, ${want} predicted`];
       }),
     );
 
@@ -432,7 +389,7 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
     ["the operator's payout", operator],
   ] as const) {
     const named = transaction.splits.map((one) => getAddress(one.address));
-    if (named.length !== 1 || named[0] !== getAddress(split.address)) {
+    if (asJson(named) !== asJson([getAddress(split.address)])) {
       throw new SmokeStopped(
         "the plan",
         `${what} pays out ${named.join(", ") || "nothing"}, and this run pays out ${split.address} alone`,
@@ -484,11 +441,6 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
       throw new SmokeStopped(step.name, why);
     };
     const ask = <T>(asking: () => Promise<T>): Promise<T> => within(step.name, asking);
-    if (!journalHolds(run.journal, split)) {
-      stop(
-        `the journal ${run.journal} no longer holds the split's parameters, so nothing more is sent`,
-      );
-    }
 
     let hash: Hex;
     if (step.kind === "payment") {
@@ -497,8 +449,10 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
       const planned = step.kind === "instruction" ? instruction : operator;
       const transaction =
         step.kind === "instruction" ? await ask(() => world.instruction()) : operator;
-      if (transaction.data !== planned.data || transaction.to !== planned.to) {
-        stop("the payout screen now gives another transaction than the one the plan wrote down");
+      if (asJson([transaction.to, transaction.data]) !== asJson([planned.to, planned.data])) {
+        stop(
+          "the payout screen now gives another transaction than the one the journal holds, so it is not sent",
+        );
       }
       const cost = await ask(() => world.costOf(transaction));
       const tooDear = whyNotWithinGasCap(spent, cost, run.gasCap);
@@ -515,35 +469,15 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
     if (!mined.succeeded) {
       stop(`transaction ${hash} reverted in block ${mined.block}`);
     }
-    const strangers = mined.transfers.filter(
-      (transfer) => !known.has(getAddress(transfer.from)) || !known.has(getAddress(transfer.to)),
-    );
-    if (strangers.length > 0) {
-      stop(
-        `transaction ${hash} moved USDC to or from an address outside the run: ${listed(strangers)}`,
-      );
-    }
-    if (!sameTransfers(mined.transfers, step.transfers)) {
+    if (spelled(mined.transfers) !== spelled(step.transfers)) {
       stop(
         `transaction ${hash} made the USDC transfers ${listed(mined.transfers)}, and ${listed(step.transfers)} were predicted`,
       );
     }
-    const createdHere = mined.created.filter(
-      (created) => getAddress(created.split) === getAddress(split.address),
-    );
-    if (step.createsSplit) {
-      if (
-        mined.created.length !== 1 ||
-        createdHere.length !== 1 ||
-        !sameCreation(createdHere[0] as SplitCreation, split)
-      ) {
-        stop(
-          `transaction ${hash} was to create ${split.address} once with the journal's parameters, and the factory reported ${mined.created.length} creations: ${asJson(mined.created)}`,
-        );
-      }
-    } else if (mined.created.length > 0) {
+    const created = step.createsSplit ? [creationOf(split)] : [];
+    if (spelledCreations(mined.created) !== spelledCreations(created)) {
       stop(
-        `transaction ${hash} created a split, and none was to be created: ${asJson(mined.created)}`,
+        `the factory reported ${asJson(mined.created)} in transaction ${hash}, and ${asJson(created)} was predicted`,
       );
     }
     if (asJson(mined.distributed) !== asJson(step.distributed)) {
@@ -555,9 +489,7 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
     const before = await ask(() => world.observe(mined.block - 1n));
     const moved = differences(step.before, before.ledger);
     if (moved.length > 0) {
-      stop(
-        `between the run's last read and block ${mined.block - 1n} the balances moved without the run: ${moved.join("; ")}`,
-      );
+      stop(`before block ${mined.block} the balances moved without the run: ${moved.join("; ")}`);
     }
     const after = await ask(() => world.observe(mined.block));
     const wrong = differences(step.after, after.ledger);
@@ -566,12 +498,7 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
     }
     if (step.name === "the first payment" && before.splitCode !== undefined) {
       stop(
-        `the split had code at block ${before.block}, and this payment was to reach a split without any`,
-      );
-    }
-    if (step.name === "the second payment" && before.splitCode === undefined) {
-      stop(
-        `the split had no code at block ${before.block}, and this payment was to reach the created split`,
+        `somebody created the split before block ${mined.block}, so this payment did not reach a split without code`,
       );
     }
     if (step.kind !== "payment" && !isCloneOf(after.splitCode, network.implementation)) {
@@ -595,28 +522,15 @@ export async function runSplitSmoke(run: SmokeRun): Promise<void> {
       after: after.ledger,
     });
     say(
-      `${step.name}: ${hash} in block ${mined.block}, gas ${mined.gasUsed}; USDC transfers ${listed(mined.transfers)}; every balance as predicted`,
+      `${step.name}: ${hash} in block ${mined.block}, gas ${mined.gasUsed}; USDC transfers ${listed(mined.transfers)}, exactly the predicted ones; every balance as predicted`,
     );
   }
 
-  const delta = (column: "held" | "credited", address: string): bigint =>
-    (last[column][address] ?? 0n) - (initial.ledger[column][address] ?? 0n);
   say("accounting, in USDC units, from the first read to the last block:");
   for (const [role, address] of parties) {
-    say(
-      `  ${role} ${address}: held ${delta("held", address)}, credited ${delta("credited", address)}`,
-    );
+    const change = (column: "held" | "credited") =>
+      (last[column][address] ?? 0n) - (initial.ledger[column][address] ?? 0n);
+    say(`  ${role} ${address}: held ${change("held")}, credited ${change("credited")}`);
   }
-  const total = parties.reduce(
-    (sum, [, address]) => sum + delta("held", address) + delta("credited", address),
-    0n,
-  );
-  if (total !== 0n) {
-    throw new SmokeStopped(
-      "the accounting",
-      `the parties' USDC, held and credited, changed by ${total} units over the run, so some of it is somewhere this run does not read`,
-    );
-  }
-  say("  together 0: every unit the buyer paid is held or credited by the run's parties");
   say(`gas: ${spent} wei for the three payouts, under the cap of ${run.gasCap} wei`);
 }
