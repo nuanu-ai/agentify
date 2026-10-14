@@ -25,7 +25,7 @@ const CATALOG_IDENTIFIERS = z.object({
 type CatalogIdentifiers = z.infer<typeof CATALOG_IDENTIFIERS>;
 
 /** Public: it takes no key and costs nothing. */
-export const VALIDATE_ENDPOINT = "https://api.cdp.coinbase.com/platform/v2/x402/validate";
+const VALIDATE_ENDPOINT = "https://api.cdp.coinbase.com/platform/v2/x402/validate";
 
 /** The method a purchase is made with, and so the method a challenge declares. */
 const PURCHASE_METHOD = "POST";
@@ -35,7 +35,7 @@ const PURCHASE_METHOD = "POST";
  * always POST, and asked with GET it only says it was probed the wrong way. The
  * GET is therefore checked at the door directly.
  */
-export const PROBED_METHODS = [PURCHASE_METHOD] as const;
+const PROBED_METHODS = [PURCHASE_METHOD] as const;
 
 export type ValidateAnswer =
   | { readonly kind: "answered"; readonly status: number; readonly body: unknown }

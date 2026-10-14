@@ -1,8 +1,7 @@
 /**
- * The gate every React page behind it is drawn through, run as React Router
- * runs it, with the real sign-in component over its memory store. A page moved
- * under the gate gets all of this by being nested there, so these hold for
- * every such page before the first one with a form exists.
+ * The gate every page behind it is drawn through, run as React Router runs it,
+ * with the real sign-in component over its memory store. A page gets all of
+ * this by being nested under the gate, so these hold for every such page.
  */
 
 import { RouterContextProvider } from "react-router";
@@ -90,7 +89,7 @@ const form = (cookie: string, fields: Record<string, string> | string[][]): Requ
     body: new URLSearchParams(fields).toString(),
   });
 
-describe("the gate in front of the React pages", () => {
+describe("the gate in front of the pages", () => {
   it("sends a visitor with no session to the sign-in, naming the section, before the page runs", async () => {
     const { identity } = await signedInBrowser();
 

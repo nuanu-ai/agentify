@@ -1,0 +1,1430 @@
+/*
+ * The merchant landing's own stylesheet, over the shared tokens and the
+ * scanner's globals. Every rule is under `.sell`, the landing's outermost
+ * element, so none reaches another page once a visit has loaded it.
+ */
+
+/* The header stays on screen, so a jump to a section stops below it. */
+html:has(.sell) {
+  scroll-padding-top: 88px;
+}
+.sell {
+  --gutter: clamp(20px, 5vw, 72px);
+  --wide: 1240px;
+  overflow-x: clip;
+}
+/* The landing's links are the shared base's, accent and underlined under the
+   pointer, where the scanner's own pages take theirs from the block they sit
+   in. Each rule weighs no more than the scanner's plain `a`, so a button's or
+   a block's own colour still wins. */
+:where(.sell) a {
+  color: var(--accent);
+  text-decoration: none;
+}
+:where(.sell) a:where(:hover) {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+.sell .masthead {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 32px;
+  padding: 14px max(var(--gutter), calc((100vw - var(--wide)) / 2));
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
+  background: color-mix(in srgb, var(--bg) 91%, transparent);
+  backdrop-filter: blur(14px);
+}
+.sell .wordmark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--fg);
+  text-decoration: none;
+}
+.sell .wordmark:hover {
+  text-decoration: none;
+  color: var(--fg);
+}
+.sell .wordmark__mark {
+  width: 34px;
+  height: 34px;
+  display: block;
+}
+.sell .wordmark__mark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.sell .wordmark__name {
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+.sell .masthead__links,
+.sell .masthead__nav {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  font-size: 14px;
+}
+.sell .masthead__links {
+  justify-self: center;
+}
+.sell .masthead__links a,
+.sell .masthead__nav > a:not(.button) {
+  color: var(--fg-2);
+}
+.sell .button-compact {
+  min-height: 40px;
+  padding-inline: 16px;
+}
+.sell .masthead__burger {
+  display: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.sell .masthead__burger span {
+  width: 18px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+.sell .masthead__burger[aria-expanded="true"] span:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+.sell .masthead__burger[aria-expanded="true"] span:nth-child(2) {
+  opacity: 0;
+}
+.sell .masthead__burger[aria-expanded="true"] span:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+.sell .site-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  display: grid;
+  padding: 8px max(var(--gutter), calc((100vw - var(--wide)) / 2)) 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  box-shadow: 0 24px 40px -32px rgba(26, 25, 23, 0.45);
+}
+.sell .site-menu[hidden] {
+  display: none;
+}
+.sell .site-menu a:not(.button) {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg);
+  font-size: 17px;
+}
+.sell .site-menu .button {
+  margin-top: 18px;
+}
+.sell .hero {
+  width: min(var(--wide), calc(100% - 2 * var(--gutter)));
+  margin: auto;
+  padding: 88px 0 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.03fr) minmax(420px, 0.97fr);
+  gap: 64px;
+  align-items: center;
+  position: relative;
+}
+.sell .hero:before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: min(640px, 100vw);
+  height: 640px;
+  /* The glow's right edge sits on the window's right edge, never past it. */
+  right: calc((100% - 100vw) / 2);
+  top: -180px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent) 13%, transparent),
+    transparent 66%
+  );
+}
+.sell .hero__title {
+  font-size: clamp(42px, 5.3vw, 72px);
+  line-height: 0.99;
+  letter-spacing: -0.055em;
+  margin-top: 20px;
+}
+.sell .hero__lede {
+  font-size: 18px;
+  line-height: 1.65;
+  color: var(--muted);
+  margin-top: 26px;
+}
+.sell .hero__actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 34px;
+}
+.sell .hero__facts {
+  list-style: none;
+  margin: 38px 0 0;
+  padding: 20px 0 0;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  color: var(--fg-2);
+  font-size: 13px;
+}
+.sell .hero__facts li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.sell .hero__facts span,
+.sell .step {
+  font: 600 11px var(--font-mono);
+  color: var(--accent);
+}
+.sell .commerce-demo {
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: 0 32px 80px -48px rgba(26, 25, 23, 0.55);
+  overflow: hidden;
+}
+.sell .commerce-demo__top {
+  min-height: 48px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font: 600 10px var(--font-mono);
+  letter-spacing: 0.07em;
+}
+.sell .commerce-demo__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--pass-soft);
+  color: var(--pass);
+  letter-spacing: 0;
+}
+.sell .commerce-demo__status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.sell .commerce-demo__scene {
+  padding: 22px;
+  display: grid;
+  grid-template-columns: minmax(0, 0.88fr) 68px minmax(0, 1.12fr);
+  align-items: center;
+  gap: 10px;
+  background:
+    linear-gradient(color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px),
+    var(--bg);
+  background-size: 24px 24px;
+}
+.sell .scene-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 18px 40px -34px rgba(26, 25, 23, 0.7);
+}
+.sell .scene-card--store {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.sell .scene-card__head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.sell .scene-card__head small,
+.sell .scene-card__head b,
+.sell .scene-card--agent small,
+.sell .scene-card--agent b,
+.sell .payment-result small,
+.sell .payment-result strong {
+  display: block;
+}
+.sell .scene-card small,
+.sell .payment-result small {
+  color: var(--faint);
+  font: 600 9px var(--font-mono);
+  letter-spacing: 0.08em;
+}
+.sell .scene-card__head b {
+  margin-top: 2px;
+  font-size: 13px;
+}
+.sell .scene-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sell .scene-icon svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sell .scene-product {
+  margin-top: 15px;
+  padding-top: 14px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  border-top: 1px solid var(--line);
+}
+.sell .scene-product__thumb {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--fg);
+  color: var(--surface);
+}
+.sell .scene-product b,
+.sell .scene-product small,
+.sell .scene-product strong {
+  display: block;
+}
+.sell .scene-product__copy > div {
+  display: grid;
+  gap: 4px;
+}
+.sell .scene-product b {
+  font-size: 12px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.sell .scene-product small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.sell .scene-product strong {
+  color: var(--accent);
+  font: 650 10px var(--font-mono);
+  white-space: nowrap;
+}
+.sell .scene-bridge {
+  min-width: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.sell .scene-bridge b {
+  color: var(--accent);
+  font-size: 10px;
+  letter-spacing: -0.02em;
+}
+.sell .scene-bridge__arrow {
+  color: var(--accent);
+  font-size: 16px;
+  line-height: 1;
+}
+.sell .scene-card--agent {
+  padding: 17px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 150px;
+  text-align: center;
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 42%, var(--surface));
+}
+.sell .agent-face {
+  position: relative;
+  width: 44px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 2px solid var(--fg);
+  border-radius: 13px;
+  background: var(--surface);
+}
+.sell .agent-face::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  width: 2px;
+  height: 7px;
+  background: var(--fg);
+}
+.sell .agent-face::after {
+  content: "";
+  position: absolute;
+  top: -11px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.sell .agent-face span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.sell .scene-card--agent b {
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.25;
+}
+.sell .scene-agent__copy {
+  width: 100%;
+}
+.sell .agent-check {
+  display: inline-block;
+  margin-top: 7px;
+  color: var(--pass);
+  font-size: 10px;
+  font-weight: 650;
+}
+.sell .payment-result {
+  grid-column: 1 / -1;
+  margin-top: 22px;
+  padding: 15px 17px;
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--pass) 34%, var(--line));
+  border-radius: 15px;
+  background: var(--surface);
+  box-shadow: 0 14px 32px -28px rgba(26, 25, 23, 0.7);
+}
+.sell .scene-icon--wallet {
+  width: 42px;
+  height: 42px;
+  background: var(--pass-soft);
+  color: var(--pass);
+}
+.sell .payment-result strong {
+  margin-top: 2px;
+  color: var(--pass);
+  font-size: 19px;
+  letter-spacing: -0.02em;
+}
+.sell .payment-result__note {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.sell .payment-result__check {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--pass);
+  color: white;
+  font-weight: 750;
+}
+.sell .commerce-demo__foot {
+  min-height: 48px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  background: var(--fg);
+  color: var(--footer-text);
+  font-size: 11px;
+}
+.sell .commerce-demo__foot i {
+  color: var(--footer-faint);
+  font-style: normal;
+}
+.sell .commerce-demo__foot b {
+  color: white;
+}
+.sell .connect-tag {
+  display: inline-flex;
+  border-radius: 99px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 5px 9px;
+  font: 600 10px var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.sell .section {
+  width: min(var(--wide), calc(100% - 2 * var(--gutter)));
+  margin: auto;
+  padding: 100px 0;
+}
+.sell .section + .section {
+  border-top: 1px solid var(--line);
+}
+.sell .section-head {
+  width: 100%;
+}
+.sell .section-head h2,
+.sell .code-copy h2,
+.sell .money h2,
+.sell .dashboard-preview h2,
+.sell .final-cta h2 {
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 1.08;
+  margin-top: 14px;
+}
+.sell .section-head > p:last-child,
+.sell .code-copy > p,
+.sell .money__copy > p,
+.sell .dashboard-preview__copy > p {
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--muted);
+  margin-top: 18px;
+}
+.sell .journey-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-top: 42px;
+}
+.sell .journey-grid article {
+  position: relative;
+  padding: 24px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 16px;
+  min-height: 260px;
+}
+.sell .step {
+  position: absolute;
+  right: 20px;
+  top: 20px;
+}
+.sell .journey-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sell .journey-icon svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sell .journey-grid h3 {
+  font-size: 18px;
+  margin-top: 42px;
+}
+.sell .journey-grid p {
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: 10px;
+}
+.sell .code-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(380px, 0.85fr);
+  gap: 56px;
+  align-items: center;
+}
+.sell .card-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 26px;
+  padding: 0;
+  list-style: none;
+}
+.sell .card-fields li {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.sell .card-fields b,
+.sell .card-fields span {
+  display: block;
+}
+.sell .card-fields b {
+  font-size: 13px;
+}
+.sell .card-fields span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.sell .text-link {
+  display: inline-block;
+  margin-top: 24px;
+  font-weight: 650;
+}
+.sell .panel {
+  background: #20211f;
+  color: #f7f5ef;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+}
+.sell .panel__label {
+  padding: 12px 18px;
+  border-bottom: 1px solid #3a3b37;
+  color: #a9aaa5;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.sell .panel pre {
+  margin: 0;
+  padding: 28px;
+  overflow: auto;
+  font: 13px / 1.8 var(--font-mono);
+  color: #bfc0bc;
+}
+.sell .tok-key {
+  color: #fff;
+}
+.sell .tok-call {
+  color: #73d4ca;
+}
+.sell .tok-str {
+  color: #8dd6a7;
+}
+.sell .connect-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-top: 38px;
+}
+.sell .connect-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 26px;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+}
+.sell .connect-card--accent {
+  background: linear-gradient(145deg, var(--surface), var(--accent-soft));
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+}
+.sell .connect-card h3 {
+  font-size: 25px;
+  margin-top: 18px;
+}
+.sell .connect-card p {
+  color: var(--muted);
+  margin-top: 10px;
+}
+.sell .connect-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.sell .connect-card li:before,
+.sell .money__notes span:before {
+  content: "✓";
+  color: var(--pass);
+  font-weight: 700;
+  margin-right: 9px;
+}
+.sell .connect-card .button {
+  align-self: flex-start;
+}
+.sell .money {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 72px;
+  align-items: center;
+}
+.sell .money__notes {
+  display: grid;
+  gap: 10px;
+  margin-top: 26px;
+  font-size: 14px;
+}
+.sell .payment-map {
+  overflow: hidden;
+  border-radius: 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 32px 80px -48px rgba(26, 25, 23, 0.55);
+}
+.sell .payment-map__top {
+  min-height: 48px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font: 600 10px var(--font-mono);
+  letter-spacing: 0.07em;
+}
+.sell .payment-map__body {
+  padding: 28px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  background:
+    linear-gradient(color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px),
+    var(--bg);
+  background-size: 24px 24px;
+}
+.sell .wallet {
+  min-width: 0;
+  min-height: 148px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 24px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 18px 40px -34px rgba(26, 25, 23, 0.7);
+}
+.sell .wallet__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sell .wallet__icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sell .wallet__icon svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sell .wallet small {
+  display: block;
+  font: 10px var(--font-mono);
+  color: var(--muted);
+  letter-spacing: 0.06em;
+}
+.sell .wallet b {
+  display: block;
+  margin-top: 4px;
+  font-size: 17px;
+}
+.sell .wallet__amount {
+  display: block;
+  color: var(--fg-2);
+  font: 650 14px var(--font-mono);
+}
+.sell .wallet--merchant {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: var(--accent-soft);
+}
+.sell .wallet--merchant .wallet__amount {
+  color: var(--pass);
+}
+.sell .payment-flow {
+  min-width: 0;
+  height: 92px;
+  display: grid;
+  place-items: center;
+  position: relative;
+}
+.sell .payment-flow i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+.sell .payment-flow i:after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--accent);
+  border-top: 2px solid var(--accent);
+  transform: rotate(45deg);
+}
+.sell .payment-flow span,
+.sell .payment-flow small {
+  position: relative;
+  z-index: 1;
+  background: var(--surface);
+  padding: 3px 10px;
+  text-align: center;
+}
+.sell .payment-flow span {
+  font: 600 12px var(--font-mono);
+  color: var(--accent);
+}
+.sell .payment-flow small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+.sell .payment-map__foot {
+  padding: 13px 18px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.sell .pricing > .section {
+  border-top: 1px solid var(--line);
+}
+.sell .tariff-flag {
+  margin: 0 0 28px;
+  padding: 10px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.sell .tariff__answer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-top: 38px;
+}
+.sell .tariff__offer,
+.sell .tariff__includes {
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+}
+.sell .tariff__offer h3 {
+  font-size: 25px;
+}
+.sell .tariff__price {
+  margin-top: 14px;
+  font-size: clamp(40px, 5vw, 56px);
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+.sell .tariff__per {
+  margin-top: 4px;
+  font-size: 17px;
+  color: var(--muted);
+}
+.sell .tariff__gist {
+  margin-top: 18px;
+  font-size: 17px;
+  line-height: 1.6;
+}
+.sell .tariff__terms,
+.sell .tariff__includes ul {
+  list-style: none;
+  padding: 0;
+  margin: 18px 0 0;
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+}
+.sell .tariff__terms li:before {
+  content: "·";
+  font-weight: 700;
+  margin-right: 9px;
+}
+.sell .tariff__includes li:before {
+  content: "✓";
+  color: var(--pass);
+  font-weight: 700;
+  margin-right: 9px;
+}
+.sell .tariff__offer .button {
+  margin-top: 26px;
+}
+.sell .tariff__list-title {
+  font-size: 19px;
+  font-weight: 650;
+}
+@media (max-width: 1000px) {
+  .sell .tariff__answer {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 680px) {
+  .sell .tariff__offer,
+  .sell .tariff__includes {
+    padding: 24px;
+  }
+}
+.sell .dashboard-list {
+  list-style: none;
+  margin: 24px 0 28px;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.sell .dashboard-list li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.sell .dashboard-list b {
+  display: block;
+  font-size: 15px;
+}
+.sell .dashboard-list span {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.sell .dashboard-preview {
+  display: grid;
+  grid-template-columns: 0.72fr 1.28fr;
+  gap: 64px;
+  align-items: stretch;
+}
+/* The window on the right repeats the real dashboard: the same sidebar, the same
+   top line and the same table of cards, so the page promises what the dashboard
+   shows. It stretches to the height of the text beside it. */
+.sell .mini-app {
+  display: grid;
+  grid-template-columns: 188px 1fr;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--bg);
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+}
+.sell .mini-app__side {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+.sell .mini-app__brand {
+  padding: 22px 18px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.sell .mini-app__brand b {
+  display: block;
+  font-size: 18px;
+}
+.sell .mini-app__brand small {
+  display: block;
+  margin-top: 6px;
+  font: 600 9px / 1.2 var(--font-mono);
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+.sell .mini-app__nav {
+  list-style: none;
+  margin: 0;
+  padding: 14px 10px;
+  display: grid;
+  gap: 3px;
+}
+.sell .mini-app__nav li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  padding: 0 9px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--fg-2);
+}
+.sell .mini-app__nav i {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: normal 600 9px var(--font-mono);
+  color: var(--faint);
+}
+.sell .mini-app__nav .active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sell .mini-app__nav .active i {
+  color: var(--accent);
+  background: var(--surface);
+}
+.sell .mini-app__help {
+  margin: auto 12px 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  font-size: 11px;
+  color: var(--muted);
+}
+.sell .mini-app__help b {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--accent);
+}
+.sell .mini-app__who {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+}
+.sell .mini-app__who i {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: normal 600 11px var(--font-sans);
+}
+.sell .mini-app__who b {
+  display: block;
+  font-size: 12px;
+  color: var(--fg);
+}
+.sell .mini-app__who span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sell .mini-app__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sell .mini-app__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--line);
+}
+.sell .mini-app__top b {
+  font-size: 22px;
+}
+.sell .mini-app__state,
+.sell .mini-app__on,
+.sell .mini-app__off {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 11px / 1.3 var(--font-mono);
+  color: var(--accent);
+}
+.sell .mini-app__state::before,
+.sell .mini-app__on::before,
+.sell .mini-app__off::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.sell .mini-app__off {
+  color: var(--partial);
+}
+.sell .mini-app__body {
+  flex: 1;
+  padding: 22px 24px;
+}
+.sell .mini-app__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.sell .mini-app__count {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--muted);
+}
+.sell .mini-app__count b {
+  font-family: var(--font-mono);
+  color: var(--fg);
+}
+.sell .mini-app__stop {
+  margin-left: auto;
+  padding: 7px 14px;
+  border: 1px solid var(--fg);
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.sell .mini-app__table {
+  width: 100%;
+  margin-top: 20px;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+  font-size: 13px;
+}
+.sell .mini-app__table th {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-sunken);
+  font: 600 9px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--muted);
+}
+.sell .mini-app__table td {
+  padding: 16px 14px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+  color: var(--fg-2);
+}
+.sell .mini-app__table tr:last-child td {
+  border-bottom: 0;
+}
+.sell .mini-app__table td:nth-child(2) {
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.sell .mini-app__table td b,
+.sell .mini-app__table td small {
+  display: block;
+}
+.sell .mini-app__table td b {
+  font-weight: 550;
+  color: var(--fg);
+}
+.sell .mini-app__table td small {
+  margin-top: 3px;
+  font: 10px var(--font-mono);
+  color: var(--faint);
+}
+.sell .mini-app__note {
+  margin-top: 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+@media (max-width: 1240px) {
+  .sell .mini-app {
+    grid-template-columns: 164px 1fr;
+  }
+  .sell .mini-app__when {
+    display: none;
+  }
+}
+.sell .faq-grid {
+  margin-top: 36px;
+  border-top: 1px solid var(--line);
+}
+.sell .faq details {
+  border-bottom: 1px solid var(--line);
+  padding: 20px 0;
+}
+.sell .faq summary {
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sell .faq details p {
+  color: var(--muted);
+  margin-top: 12px;
+}
+.sell .final-cta {
+  width: min(var(--wide), calc(100% - 2 * var(--gutter)));
+  margin: 0 auto 70px;
+  padding: 54px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 40px;
+  border-radius: 24px;
+  background: var(--fg);
+  color: white;
+}
+.sell .final-cta p:not(.eyebrow) {
+  color: var(--footer-text);
+  margin-top: 14px;
+}
+.sell .final-cta .eyebrow {
+  color: var(--accent-on-dark);
+}
+.sell .final-cta > div:last-child {
+  width: 390px;
+  flex: 0 0 390px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.sell .final-cta .button {
+  width: 100%;
+  padding-inline: 20px;
+  white-space: nowrap;
+}
+.sell .final-cta .button-secondary {
+  color: white;
+  border-color: #595954;
+  background: transparent;
+}
+.sell .colophon {
+  padding: 32px max(var(--gutter), calc((100vw - var(--wide)) / 2));
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 28px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--muted);
+}
+.sell .colophon__links {
+  display: flex;
+  gap: 20px;
+}
+.sell .wordmark--footer .wordmark__mark {
+  width: 30px;
+  height: 30px;
+}
+@media (max-width: 1000px) {
+  .sell .masthead__links {
+    display: none;
+  }
+  .sell .masthead {
+    grid-template-columns: 1fr auto auto;
+    gap: 12px;
+  }
+  .sell .masthead__nav > a:not(.button) {
+    display: none;
+  }
+  .sell .masthead__burger {
+    display: flex;
+  }
+  .sell .hero {
+    grid-template-columns: 1fr;
+    padding-top: 60px;
+  }
+  .sell .journey-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .sell .code-section,
+  .sell .money,
+  .sell .dashboard-preview {
+    grid-template-columns: 1fr;
+  }
+  .sell .final-cta {
+    display: grid;
+  }
+  .sell .final-cta > div:last-child {
+    width: min(100%, 390px);
+  }
+  .sell .colophon {
+    grid-template-columns: 1fr 1fr;
+  }
+  .sell .colophon > p {
+    display: none;
+  }
+}
+@media (max-width: 680px) {
+  .sell .masthead {
+    padding-inline: 18px;
+    gap: 12px;
+  }
+  .sell .masthead__nav {
+    gap: 12px;
+  }
+  .sell .hero,
+  .sell .section,
+  .sell .final-cta {
+    width: calc(100% - 36px);
+  }
+  .sell .hero {
+    padding: 48px 0;
+    gap: 36px;
+  }
+  .sell .hero__title {
+    font-size: 42px;
+  }
+  .sell .hero__actions .button {
+    width: 100%;
+  }
+  .sell .hero__facts {
+    display: grid;
+  }
+  .sell .commerce-demo__scene {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+  .sell .scene-bridge {
+    width: 100%;
+    height: 50px;
+    padding: 8px 12px;
+  }
+  .sell .scene-bridge__arrow {
+    margin-left: auto;
+    transform: rotate(90deg);
+  }
+  .sell .payment-result {
+    margin-top: 16px;
+  }
+  .sell .commerce-demo__foot {
+    gap: 6px;
+    font-size: 9px;
+  }
+  .sell .section {
+    padding: 70px 0;
+  }
+  .sell .journey-grid,
+  .sell .connect-grid {
+    grid-template-columns: 1fr;
+  }
+  .sell .journey-grid article {
+    min-height: 0;
+  }
+  .sell .code-section,
+  .sell .money,
+  .sell .dashboard-preview {
+    gap: 38px;
+  }
+  .sell .panel pre {
+    font-size: 11px;
+    padding: 20px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow-x: hidden;
+  }
+  .sell .payment-map__body {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+  .sell .payment-flow {
+    height: 72px;
+  }
+  .sell .payment-flow i {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    right: auto;
+    width: 2px;
+    height: auto;
+  }
+  .sell .payment-flow i:after {
+    right: -4px;
+    top: auto;
+    bottom: 0;
+    border-top: 0;
+    border-right: 2px solid var(--accent);
+    border-bottom: 2px solid var(--accent);
+  }
+  /* On a phone the mock only takes room: the copy beside it says the same. */
+  .sell .mini-app {
+    display: none;
+  }
+  .sell .final-cta {
+    padding: 30px;
+    display: grid;
+  }
+  .sell .final-cta > div:last-child {
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+  .sell .final-cta h2 {
+    font-size: 32px;
+  }
+  .sell .colophon {
+    grid-template-columns: 1fr;
+    padding-inline: 18px;
+  }
+  .sell .colophon__links {
+    flex-wrap: wrap;
+  }
+  .sell .masthead__nav .button {
+    min-height: 36px;
+    padding-inline: 12px;
+  }
+  .sell .wordmark__name {
+    font-size: 17px;
+  }
+}
+
+/* Text runs the full width of its block: no balanced or "pretty" early
+   line breaks inherited from the shared tokens. */
+.sell h1,
+.sell h2,
+.sell h3,
+.sell p {
+  text-wrap: wrap;
+}

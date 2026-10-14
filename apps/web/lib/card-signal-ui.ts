@@ -1,3 +1,6 @@
+/** Where a card signal stands: offered, waiting on the provider, saved, removed, or failed. */
+export type CardSignalState = "not_started" | "setup_pending" | "attached" | "detached" | "failed";
+
 export const CARD_SIGNAL_DISCLOSURES = [
   "No order is created",
   "Nothing will be charged automatically",

@@ -11,8 +11,8 @@ import { sessionCookiePairs } from "@agentify/scanner-contracts/report-identity"
 import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 
 export async function isOperator(cookieHeader: string | null | undefined): Promise<boolean> {
-  // Only the session cookie is forwarded, and the session is not renewed: a page
-  // drawn on the server cannot pass a renewed cookie on.
+  // Only the session cookie is forwarded, and the session is not renewed: the
+  // answer is a yes or a no, which carries no renewed cookie back to the browser.
   const cookie = sessionCookiePairs(cookieHeader ?? "");
   if (cookie === "") return false;
   try {

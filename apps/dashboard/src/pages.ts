@@ -16,9 +16,11 @@
 
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readdir } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { precompressedFrom } from "@agentify/ui/assets";
 import { createRequestHandler } from "@react-router/express";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import {
@@ -99,15 +101,20 @@ export async function builtPages(): Promise<Pages> {
 /**
  * The pages compiled from source by Vite in middleware mode. `live` serves the
  * browser's modules and reloads them on an edit, for a developer; without it
- * nothing is watched or served to a browser, which is what a test wants.
+ * nothing is watched or served to a browser, which is what a test wants, and
+ * Vite keeps its prebundled dependencies in a temporary folder of this
+ * server's own, removed on close, since servers that start in parallel and
+ * share one race to rename into it.
  */
 export async function pagesFromSource({ live }: { readonly live: boolean }): Promise<Pages> {
   const { createServer } = await import("vite");
+  const cacheDir = live ? undefined : await mkdtemp(join(tmpdir(), "dashboard-vite-"));
   const vite = await createServer({
     root: APP_ROOT,
     configFile: join(APP_ROOT, "vite.config.ts"),
     appType: "custom",
     logLevel: live ? "info" : "silent",
+    ...(cacheDir === undefined ? {} : { cacheDir }),
     server: {
       middlewareMode: true,
       // Live, Vite answers for source files and pushes updates over a socket
@@ -149,7 +156,10 @@ export async function pagesFromSource({ live }: { readonly live: boolean }): Pro
       : null,
     mode: live ? "development" : "production",
     ...(live ? { host: LOOPBACK } : {}),
-    close: () => vite.close(),
+    close: async () => {
+      await vite.close();
+      if (cacheDir !== undefined) await rm(cacheDir, { recursive: true, force: true });
+    },
   };
 }
 
@@ -421,75 +431,5 @@ export function pagesHandler(
       }
       handle(request, response, next);
     })().catch(next);
-  };
-}
-
-const TYPES: Readonly<Record<string, string>> = {
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
-};
-
-/**
- * The encodings a browser accepts, best first. Only the ones the build writes
- * are asked about; one named with `q=0` is refused, as the header's grammar
- * says.
- */
-const accepted = (header: string | undefined): readonly string[] => {
-  const said = (header ?? "").split(",").map((part) => {
-    const [name = "", ...parameters] = part.trim().toLowerCase().split(";");
-    const refused = parameters.some((parameter) => /^\s*q=0(?:\.0*)?\s*$/.test(parameter));
-    return refused ? "" : name.trim();
-  });
-  return ["br", "gzip"].filter((encoding) => said.includes(encoding) || said.includes("*"));
-};
-
-/**
- * The built scripts and styles, which carry a content hash in their names and
- * so may be kept by any cache for a year. Each is sent compressed as the build
- * wrote it where the browser accepts that encoding. Only files listed when the
- * process started are answered, so no path in a request reaches the disk.
- */
-export async function precompressedFrom(directory: string): Promise<RequestHandler> {
-  const names = new Set(await readdir(directory));
-  return (request, response, next) => {
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      next();
-      return;
-    }
-    let name: string;
-    try {
-      name = decodeURIComponent(request.path.slice(1));
-    } catch {
-      name = "";
-    }
-    const type = TYPES[extname(name)];
-    if (!names.has(name) || type === undefined) {
-      response.status(404).type("text/plain").send("No such file.");
-      return;
-    }
-    const encoding = accepted(request.headers["accept-encoding"]).find((each) =>
-      names.has(`${name}.${each === "gzip" ? "gz" : each}`),
-    );
-    // Named under the directory rather than joined to it, so a directory with a
-    // dot in its path, a checkout under a tool's hidden one, is not refused as
-    // a dotfile; and the headers are given to the send, so a send that fails
-    // leaves none of them on the error page.
-    response.sendFile(
-      encoding === undefined ? name : `${name}.${encoding === "gzip" ? "gz" : encoding}`,
-      {
-        root: directory,
-        maxAge: "1y",
-        immutable: true,
-        headers: {
-          "content-type": type,
-          vary: "accept-encoding",
-          ...(encoding === undefined ? {} : { "content-encoding": encoding }),
-        },
-      },
-      (error) => {
-        if (error !== undefined && !response.headersSent) next(error);
-      },
-    );
   };
 }

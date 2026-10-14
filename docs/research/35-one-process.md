@@ -115,8 +115,8 @@ it off the screen as it is left, so a reload, a return to it through Back and
 Forward, or a later visit draws the list, and the secret is copied at a press
 (`apps/dashboard/app/routes/keys.tsx`); without script the secret is selected by
 hand, and the page warns against resending the form. The front page is the
-scanner's, everywhere, and the scanner is still a Next.js application, which
-moves after the dashboard.
+scanner's, everywhere: a React Router application too, in a process and an
+image of its own (`apps/web`).
 
 The whole chain, Postgres included, comes up locally from `docker compose up`
 behind the same route table the channels use (ADR-0005), so a person clicks

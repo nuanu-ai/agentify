@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import Stripe from "stripe";
 import {
@@ -7,7 +7,7 @@ import {
 } from "./stripe-card-signal-config";
 import { localWebhookSignature, verifyLocalWebhookSignature } from "./stripe-card-signal-crypto";
 
-export type SetupReadback = Readonly<{
+type SetupReadback = Readonly<{
   id: string;
   customerId: string;
   clientSecret: string | null;
@@ -24,17 +24,17 @@ export type SetupReadback = Readonly<{
   scanId: string;
 }>;
 
-export type PaymentMethodReadback = Readonly<{
+type PaymentMethodReadback = Readonly<{
   id: string;
   customerId: string | null;
 }>;
 
-export type CustomerReadback = Readonly<{
+type CustomerReadback = Readonly<{
   id: string;
   deleted: boolean;
 }>;
 
-export type CardSignalWebhookEvent = Readonly<{
+type CardSignalWebhookEvent = Readonly<{
   id: string;
   type: string;
   setupIntentId: string | null;
@@ -336,8 +336,4 @@ export function getStripeCardSignalProvider(
   return config.STRIPE_ADAPTER === "stripe"
     ? new StripeProvider(config)
     : new LocalStripeCardSignalProvider(config.webhookSecret);
-}
-
-export function newLocalIdempotencyKey() {
-  return randomUUID();
 }

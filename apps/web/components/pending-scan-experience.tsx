@@ -1,14 +1,12 @@
-"use client";
-
-import { apiErrorEnvelopeSchema, createScanResponseSchema } from "@agentify/scanner-contracts";
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { acceptedScanIn, refusalIn } from "../lib/api-answers";
 import { captureLandingAttribution } from "../lib/attribution-client";
 import { clearPendingScan, type PendingScanRequest, readPendingScan } from "../lib/pending-scan";
 import { Brand } from "./brand";
 import styles from "./pending-scan-experience.module.css";
 import { SiteDoors } from "./site-chrome";
+import { SiteLink } from "./site-link";
 import { TURNSTILE_TOKEN_EVENT, TurnstileChallenge } from "./turnstile-challenge";
 
 type StartState = "starting" | "challenge" | "hard-limit" | "busy" | "error" | "missing";
@@ -46,14 +44,14 @@ export function PendingScanExperience({
         }),
       });
       const payload: unknown = await response.json().catch(() => null);
-      const accepted = createScanResponseSchema.safeParse(payload);
-      if (response.ok && accepted.success) {
+      const accepted = acceptedScanIn(payload);
+      if (response.ok && accepted !== null) {
         clearPendingScan(window.sessionStorage);
         const fragment = new URLSearchParams({
-          access_token: accepted.data.access_token,
+          access_token: accepted.access_token,
         });
         window.location.replace(
-          `/scan/${encodeURIComponent(accepted.data.scan_id)}?segment=${pending.segment}#${fragment.toString()}`,
+          `/scan/${encodeURIComponent(accepted.scan_id)}?segment=${pending.segment}#${fragment.toString()}`,
         );
         return;
       }
@@ -148,36 +146,33 @@ export function PendingScanExperience({
                   Retry scan
                 </button>
               ) : null}
-              <Link className="button button-secondary" href="/">
+              <SiteLink className="button button-secondary" to="/">
                 Enter another website
-              </Link>
+              </SiteLink>
             </div>
           ) : null}
         </div>
       </section>
       <nav aria-label="Scan help" className={styles.helpLinks}>
-        <Link href="/scanner">Scanner identity</Link>
-        <Link href="/methodology">Methodology</Link>
-        <Link href="/privacy">Privacy</Link>
+        <SiteLink to="/scanner">Scanner identity</SiteLink>
+        <SiteLink to="/methodology">Methodology</SiteLink>
+        <SiteLink to="/privacy">Privacy</SiteLink>
       </nav>
     </main>
   );
 }
 
 function readErrorCode(payload: unknown): string | null {
-  const parsed = apiErrorEnvelopeSchema.safeParse(payload);
-  return parsed.success ? parsed.data.error.code : null;
+  return refusalIn(payload)?.code ?? null;
 }
 
 // A refusal says whether the same request could succeed later; an address the
 // scanner refuses never will. An answer that is not a refusal of ours, such as
 // a proxy's error page, says nothing either way, and a retry is left open.
 function readRetryable(payload: unknown): boolean {
-  const parsed = apiErrorEnvelopeSchema.safeParse(payload);
-  return parsed.success ? parsed.data.error.retryable : true;
+  return refusalIn(payload)?.retryable ?? true;
 }
 
 function readErrorMessage(payload: unknown): string | null {
-  const parsed = apiErrorEnvelopeSchema.safeParse(payload);
-  return parsed.success ? parsed.data.error.message : null;
+  return refusalIn(payload)?.message ?? null;
 }

@@ -191,8 +191,6 @@ function runInner({ configPath, containerName, trustedEdge, ports, surfaceMode =
     `${path.join(projectRoot, "packages/visual/public")}:/srv/assets:ro`,
     "-v",
     `${path.join(temporary, "docs")}:/srv/docs:ro`,
-    "-v",
-    `${path.join(temporary, "sell")}:/srv/sell:ro`,
     "-e",
     "AGENTIFY_FRONT_PAGE=scanner_front_page",
     "-e",
@@ -214,9 +212,6 @@ try {
   mkdirSync(path.join(docsRoot, "assets"), { recursive: true });
   writeFileSync(path.join(docsRoot, "index.html"), "<p>documentation fixture</p>");
   writeFileSync(path.join(docsRoot, "guide.html"), "<p>documentation guide</p>");
-  const sellRoot = path.join(temporary, "sell");
-  mkdirSync(sellRoot, { recursive: true });
-  writeFileSync(path.join(sellRoot, "index.html"), "<p>landing fixture</p>");
   writeFileSync(path.join(docsRoot, "404.html"), "<p>documentation missing fixture</p>");
   writeFileSync(path.join(docsRoot, "assets/doc.css"), "body { color: black; }\n");
 
@@ -338,16 +333,11 @@ try {
     assert.equal(moved.status, 307, from);
     assert.equal(moved.headers.get("location"), to, from);
   }
-  // The merchant landing is served at /sell on the test channel, kept out of
-  // search engines, and is the scanner's on the live channel (below).
-  response = await fetch(`${innerBase}/sell`, { redirect: "manual" });
-  assert.equal(response.status, 302);
-  assert.equal(response.headers.get("location"), "/sell/");
-  response = await fetch(`${innerBase}/sell/`);
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get("x-robots-tag"), "noindex");
-  assert.match(await response.text(), /landing fixture/);
-  await expectProxy(innerBase, "/sellers", "scanner");
+  // The merchant landing is the scanner's page at /sell on the test channel,
+  // asked for as the visitor asked; the live channel withholds it (below).
+  for (const requestPath of ["/sell", "/sell/", "/sell.data", "/sellers"]) {
+    await expectProxy(innerBase, requestPath, "scanner");
+  }
 
   response = await fetch(`${innerBase}/docs%2Fguide`);
   assert.equal(response.status, 200);
@@ -396,7 +386,8 @@ try {
     "the old scanner fallback unexpectedly passed the shared browser-asset check",
   );
 
-  // On the live channel the landing is not served: /sell is the scanner's.
+  // On the live channel every address of the landing reaches the scanner as
+  // one it has no page for, and nothing beside them does.
   runInner({
     configPath: sourceCaddyfile,
     containerName: liveName,
@@ -406,8 +397,15 @@ try {
   });
   const liveBase = publishedBase(liveName);
   await waitFor(liveBase);
-  await expectProxy(liveBase, "/sell", "scanner");
-  await expectProxy(liveBase, "/sell/", "scanner");
+  for (const requestPath of ["/sell", "/sell/", "/sell/pricing", "/sell.data"]) {
+    const withheld = await fetch(`${liveBase}${requestPath}`);
+    assert.equal(withheld.status, 200, requestPath);
+    const body = await withheld.json();
+    assert.equal(body.role, "scanner", requestPath);
+    assert.equal(body.path, "/sell-not-on-this-channel", requestPath);
+  }
+  await expectProxy(liveBase, "/sellers", "scanner");
+  await expectProxy(liveBase, "/", "scanner");
 
   console.log(
     "PASS: actual Caddy preserves exact commerce/docs/assets routes, passes /admin to the scanner unmarked, and keeps one trusted scanner client IP",

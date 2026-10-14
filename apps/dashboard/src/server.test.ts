@@ -48,6 +48,7 @@ import type { Handover, Message, Postman } from "./mail.js";
 import type { Pages } from "./pages.js";
 import { buildApp } from "./server.js";
 import { formsIn, formTo, readable, shownMarkIn, waitingButton } from "./testing/html.js";
+import { PAGES_IN_FRONT_OF_THE_GATE } from "./testing/in-front-of-the-gate.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
@@ -616,6 +617,19 @@ describe("the passwordless dashboard door", () => {
 
     expect(form).toMatch(/new to agentify\?/i);
     expect(form).toMatch(/seller dashboard/i);
+  });
+
+  it("leaves a stranger the site header's ways back to the rest of the site, and no one's address", async () => {
+    const { browser } = await started({ base: "/dashboard" });
+
+    const page = (await browser.get("/dashboard/sign-in")).html;
+    const bar = /<header class="site-header">([\s\S]*?)<\/header>/.exec(page)?.[1] ?? "";
+
+    for (const href of ["/", "/scanner", "/methodology", "/docs/", "/dashboard"]) {
+      expect(bar, href).toContain(`href="${href}"`);
+    }
+    expect(bar).not.toContain("site-who");
+    expect(formTo(bar, "post", "/dashboard/sign-out")).toBeUndefined();
   });
 
   it("asks only for an address and answers known and unknown people identically", async () => {
@@ -1388,6 +1402,11 @@ describe("the gate", () => {
       const answer = await visit();
       expect(gate(answer), name).toBe(false);
       expect(answer.status, name).toBeLessThan(500);
+    }
+    for (const page of PAGES_IN_FRONT_OF_THE_GATE) {
+      const answer = await stranger.get(`/dashboard${page}`);
+      expect(gate(answer), page).toBe(false);
+      expect(answer.status, page).toBeLessThan(500);
     }
 
     for (const path of [
@@ -2625,10 +2644,9 @@ describe("the orders screen", () => {
   });
 
   it("says why a refund is owed as it happened, and not always that a window ran out", async () => {
-    // A refund falls due when the merchant refuses an order already paid for,
-    // and the callout used to say the delivery window had run out whatever the
-    // cause: a merchant reconciling it looked
-    // for a deadline that never passed.
+    // A refund falls due when the merchant refuses an order already paid for;
+    // a callout that blamed a passed delivery window whatever the cause would
+    // send a merchant reconciling it looking for a deadline that never passed.
     const { browser, gateway, harnessed } = await started();
     const itemId = await publish(gateway, esimCard);
     await buyOverHttp(harnessed, gateway, itemId, {
@@ -3292,9 +3310,9 @@ describe("the keys screen", () => {
 });
 
 describe("what every screen says about the address", () => {
-  it("carries the signed-in address and a sign-out in the header bar of every working screen", async () => {
-    // The header carries the signed-in address and a sign-out, as the scanner's
-    // does, so the site reads as one product with one session.
+  it("carries the signed-in address and a sign-out in the site header of every working screen", async () => {
+    // The site header carries the signed-in address and a sign-out, as it does
+    // on the scanner, so the site reads as one product with one session.
     const { browser } = await started();
     await browser.signIn();
 
@@ -3302,7 +3320,7 @@ describe("what every screen says about the address", () => {
       const answered = await browser.get(path);
       // A page showing a person's address is never stored by a shared cache.
       expect(answered.headers.get("cache-control"), path).toBe("private, no-store");
-      const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
+      const bar = /<header class="site-header">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
       expect(readable(bar), path).toContain(PERSON);
       expect(formTo(bar, "post", "/sign-out"), path).toBeDefined();
     }
@@ -3429,7 +3447,7 @@ describe("what every screen says about the address", () => {
 
     for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
       const answered = await browser.get(path);
-      const link = /<div class="account">\s*<a [^>]*href="\/settings"[^>]*>([^<]*)<\/a>/.exec(
+      const link = /<a class="site-who" [^>]*href="\/settings"[^>]*>([^<]*)<\/a>/.exec(
         answered.html,
       );
       expect(link?.[1], path).toBe(PERSON);
@@ -3525,7 +3543,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     // Said once, in the bar, as every screen's title is.
     expect(answered.html.match(/<h1\b/g)).toHaveLength(1);
     expect(answered.html).toMatch(/<a [^>]*href="\/cards"[^>]*>Back to the dashboard<\/a>/);
-    const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
+    const bar = /<header class="site-header">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
     expect(readable(bar)).toContain(PERSON);
     expect(formTo(bar, "post", "/sign-out")).toBeDefined();
   });
@@ -3685,9 +3703,9 @@ describe("when something goes wrong that the merchant has to get out of", () => 
   });
 
   it("lets a merchant in whatever the terminator in front of it says about the scheme", async () => {
-    // Taking the expected scheme from `X-Forwarded-Proto` let whatever is in
-    // front decide whether a merchant could sign in: when that header disagreed
-    // with the browser, every form post, sign-in included, was refused. The
+    // A scheme taken from `X-Forwarded-Proto` would let whatever is in front
+    // decide whether a merchant can sign in: where that header disagrees with
+    // the browser, every form post, sign-in included, would be refused. The
     // sign-in is driven here because it must work before any other post can;
     // each case is a shape the header can arrive in, and none may keep a
     // merchant out.

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { ROBOTS_REASONS } from "./browser.js";
 import { checkIdSchema } from "./checks.js";
 import {
   checkStatusSchema,
@@ -22,8 +23,6 @@ export const apiErrorSchema = z
 
 export const apiErrorEnvelopeSchema = z.object({ error: apiErrorSchema }).strict();
 export type ApiErrorEnvelope = z.infer<typeof apiErrorEnvelopeSchema>;
-
-export const CREATE_SCAN_REQUEST_CONTRACT_VERSION = "create-scan-request-v1.1.0" as const;
 
 const EXPLICIT_URL_SCHEME = /^[a-z][a-z\d+.-]*:/i;
 
@@ -80,10 +79,8 @@ export const createScanResponseSchema = z
   .strict();
 export type CreateScanResponse = z.infer<typeof createScanResponseSchema>;
 
-// Why robots.txt kept a check from being assessed: its rules disallow what
-// the check reads, or it could not be read or decided for it. null when
-// robots.txt did not stand in the check's way.
-export const robotsReasonSchema = z.enum(["disallowed", "unassessed"]);
+// null where a check carries one when robots.txt did not stand in its way.
+const robotsReasonSchema = z.enum(ROBOTS_REASONS);
 export type RobotsReason = z.infer<typeof robotsReasonSchema>;
 
 const scanProgressCheckSchema = z
@@ -121,9 +118,7 @@ export const scanStatusResponseSchema = z
   .strict();
 export type ScanStatusResponse = z.infer<typeof scanStatusResponseSchema>;
 
-export const REGISTRATION_REQUEST_CONTRACT_VERSION = "registration-request-v2.0.0" as const;
-
-export const phoneE164Schema = z
+const phoneE164Schema = z
   .string()
   .trim()
   .min(8)
@@ -163,7 +158,6 @@ export const registrationResponseSchema = z.discriminatedUnion("status", [
     })
     .strict(),
 ]);
-export type RegistrationResponse = z.infer<typeof registrationResponseSchema>;
 
 export const contactAccessResponseSchema = z.object({ status: z.literal("verified") }).strict();
 
@@ -272,4 +266,3 @@ export const clientAnalyticsEventRequestSchema = z
     properties: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
   })
   .strict();
-export type ClientAnalyticsEventRequest = z.infer<typeof clientAnalyticsEventRequestSchema>;

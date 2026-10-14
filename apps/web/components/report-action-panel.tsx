@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 
 import { type ResumeIntent, takeResumeIntent } from "../lib/resume-intent";

@@ -1,6 +1,3 @@
-"use client";
-
-import { remediationPromptResponseSchema } from "@agentify/scanner-contracts";
 import { useId, useRef, useState } from "react";
 
 import { type ResumeIntent as GateIntent, rememberResumeIntent } from "../lib/resume-intent";
@@ -8,13 +5,13 @@ import styles from "./copy-remediation-prompt.module.css";
 
 type CopyState = "idle" | "loading" | "copied" | "fallback" | "error" | "gated";
 
-export function gateStatusMessage(intent: GateIntent) {
+function gateStatusMessage(intent: GateIntent) {
   return intent === "download-md"
     ? "Confirm your email in the highlighted form below — the download starts right after verification."
     : "Confirm your email in the highlighted form below — the prompt will be ready on your report.";
 }
 
-export function revealRegistrationGate(targetId: string) {
+function revealRegistrationGate(targetId: string) {
   const target = document.getElementById(targetId);
   if (!target) return false;
   target.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -104,10 +101,15 @@ export function CopyRemediationPrompt({
   async function resolvePrompt(): Promise<string> {
     if (promptUrl) {
       const token = tokenStorageKey ? sessionStorage.getItem(tokenStorageKey) : undefined;
-      const response = await fetch(promptUrl, {
-        cache: "no-store",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
+      // The prompt is fetched only on a press, and the contract that reads it
+      // is loaded with it rather than with the page.
+      const [response, { remediationPromptResponseSchema }] = await Promise.all([
+        fetch(promptUrl, {
+          cache: "no-store",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        }),
+        import("@agentify/scanner-contracts"),
+      ]);
       const payload: unknown = await response.json().catch(() => null);
       const parsed = remediationPromptResponseSchema.safeParse(payload);
       if (response.ok && parsed.success) {

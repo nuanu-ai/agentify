@@ -16,6 +16,7 @@ COPY packages/analytics/package.json packages/analytics/package.json
 COPY packages/observability/package.json packages/observability/package.json
 COPY packages/scanner/package.json packages/scanner/package.json
 COPY packages/remediation/package.json packages/remediation/package.json
+COPY packages/ui/package.json packages/ui/package.json
 COPY packages/visual/package.json packages/visual/package.json
 COPY apps/web/package.json apps/web/package.json
 RUN pnpm install --frozen-lockfile --filter @agentify/web...
@@ -30,6 +31,7 @@ COPY packages/analytics packages/analytics
 COPY packages/observability packages/observability
 COPY packages/scanner packages/scanner
 COPY packages/remediation packages/remediation
+COPY packages/ui packages/ui
 COPY packages/visual packages/visual
 COPY apps/web apps/web
 RUN pnpm --filter @agentify/web build
@@ -39,6 +41,9 @@ FROM builder AS privacy-jobs
 ENV NODE_ENV=production
 CMD ["pnpm", "--filter", "@agentify/web", "privacy:cleanup"]
 
+# The build is the whole process, every package it imports bundled in
+# (apps/web/vite.config.ts), so the image carries the build and nothing
+# installed beside it.
 FROM node:24.21.0-alpine AS runner
 
 ENV NODE_ENV=production \
@@ -47,16 +52,15 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 RUN addgroup --system --gid 1001 nodejs \
-  && adduser --system --uid 1001 --ingroup nodejs nextjs
+  && adduser --system --uid 1001 --ingroup nodejs scanner
 
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
+COPY --from=builder --chown=scanner:nodejs /app/apps/web/package.json /app/apps/web/server.js ./
+COPY --from=builder --chown=scanner:nodejs /app/apps/web/dist ./dist
 COPY deploy/scanner-entrypoint.sh /usr/local/bin/scanner-entrypoint.sh
 
-USER nextjs
+USER scanner
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=5 \
   CMD node -e "fetch('http://127.0.0.1:3000/api/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 ENTRYPOINT ["/bin/sh", "/usr/local/bin/scanner-entrypoint.sh"]
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "server.js"]

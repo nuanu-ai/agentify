@@ -5,6 +5,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { type PendingScanRequest, readPendingScan, savePendingScan } from "../lib/pending-scan";
+import { onSite } from "../testing/on-site";
 import { PendingScanExperience } from "./pending-scan-experience";
 
 const pending = (variant: string): PendingScanRequest => ({
@@ -52,7 +53,7 @@ describe("pending scan acceptance", () => {
 
   it("shows an unretryable missing state when no private request exists", async () => {
     installNetwork(response(errorEnvelope("unused", false), 500));
-    render(<PendingScanExperience turnstileSiteKey={null} />);
+    render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
 
     await screen.findByText("missing");
     expect(screen.queryByRole("button", { name: "Retry scan" })).toBeNull();
@@ -69,7 +70,7 @@ describe("pending scan acceptance", () => {
       savePendingScan(window.sessionStorage, pending(code));
       installNetwork(response(errorEnvelope(code, retryable), 429));
 
-      render(<PendingScanExperience turnstileSiteKey={null} />);
+      render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
 
       await screen.findByText(state);
       const retry = screen.queryByRole("button", { name: "Retry scan" });
@@ -84,7 +85,7 @@ describe("pending scan acceptance", () => {
     savePendingScan(window.sessionStorage, pending("refused"));
     installNetwork(response(errorEnvelope("invalid_url", false), 400));
 
-    render(<PendingScanExperience turnstileSiteKey={null} />);
+    render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
 
     await screen.findByText("public-invalid_url");
     expect(screen.queryByRole("button", { name: "Retry scan" })).toBeNull();
@@ -98,7 +99,7 @@ describe("pending scan acceptance", () => {
     savePendingScan(window.sessionStorage, pending("proxy"));
     installNetwork(new Response("<html>Bad gateway</html>", { status: 502 }));
 
-    render(<PendingScanExperience turnstileSiteKey={null} />);
+    render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
 
     expect(await screen.findByRole("button", { name: "Retry scan" })).toBeTruthy();
   });
@@ -119,7 +120,7 @@ describe("pending scan acceptance", () => {
       ),
     );
 
-    render(<PendingScanExperience turnstileSiteKey={null} />);
+    render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
 
     await waitFor(() => expect(readPendingScan(window.sessionStorage)).toBeNull());
   });

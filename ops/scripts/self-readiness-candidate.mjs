@@ -67,7 +67,7 @@ async function waitForServer() {
       });
       if (response.ok) return;
     } catch {
-      // The standalone server may still be starting.
+      // The built server may still be starting.
     }
     if (server?.exitCode !== null && server?.exitCode !== undefined)
       fail(`candidate server exited early (${server.exitCode})\n${serverOutput}`);
@@ -79,7 +79,7 @@ async function waitForServer() {
 async function startServer() {
   if (process.env.SELF_READINESS_BASE_URL) return;
   const port = new URL(baseUrl).port;
-  server = spawn(process.execPath, ["apps/web/.next/standalone/apps/web/server.js"], {
+  server = spawn(process.execPath, ["apps/web/server.js"], {
     cwd: process.cwd(),
     detached: true,
     env: {
@@ -142,8 +142,10 @@ async function verifyPublicVariants() {
       method: "HEAD",
       headers: { Accept: "text/markdown" },
     });
-    const rsc = await fetchArtifact(`${path}?_rsc=candidate`, {
-      headers: { Accept: "text/x-component", RSC: "1" },
+    // The router asks for a page's data at `<page>.data`, and for `/` at
+    // `/_.data`; that answer is the page's data whatever the client prefers.
+    const data = await fetchArtifact(path === "/" ? "/_.data" : `${path}.data`, {
+      headers: { Accept: "text/markdown" },
     });
 
     if (html.status !== 200 || !/text\/html/i.test(html.headers["content-type"]))
@@ -160,8 +162,10 @@ async function verifyPublicVariants() {
       fail(`${path} returned Markdown for q=0`);
     if (head.body !== "" || !/text\/markdown/i.test(head.headers["content-type"] ?? ""))
       fail(`${path} Markdown HEAD semantics are invalid`);
-    if (/text\/markdown/i.test(rsc.headers["content-type"] ?? ""))
-      fail(`${path} intercepted an RSC request`);
+    if (data.status !== 200 || /text\/markdown/i.test(data.headers["content-type"] ?? ""))
+      fail(
+        `${path} answered its data's address with ${data.status} ${data.headers["content-type"]}`,
+      );
 
     const headings = headingsFromHtml(html.body);
     if (!headings.length) fail(`${path} HTML has no H1/H2 parity anchors`);

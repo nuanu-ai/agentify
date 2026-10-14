@@ -8,6 +8,7 @@
 }
 
 .brandWrap {
+  position: relative;
   width: min(100%, 700px);
   display: flex;
   flex-wrap: wrap;
@@ -15,11 +16,6 @@
   justify-content: space-between;
   gap: 12px 24px;
   margin-bottom: 30px;
-}
-
-.brandWrap > nav {
-  padding-left: 0;
-  border-left: 0;
 }
 
 .card {
@@ -490,7 +486,11 @@
     padding: 28px 16px 60px;
   }
 
+  /* Narrow enough that the doors of a signed-in visitor stay beside the
+     lockup on the narrowest phone, rather than dropping under it once the
+     visitor is known. */
   .brandWrap {
+    column-gap: 12px;
     margin-bottom: 22px;
   }
 

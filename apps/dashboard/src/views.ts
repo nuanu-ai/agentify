@@ -189,7 +189,7 @@ const buyingAddress = (origin: string, entry: MerchantCard): readonly string[] =
   return [first ?? "", ...segments.map((segment) => `/${segment}`)];
 };
 
-export interface CardRow {
+interface CardRow {
   readonly id: string;
   /** Off sale for whatever reason, which the screen draws as a quieter row. */
   readonly off: boolean;
@@ -303,7 +303,7 @@ const sellingNote = (selling: MerchantCardList["selling"]): string => {
 
 // --- orders ------------------------------------------------------------------
 
-export interface OrderRow {
+interface OrderRow {
   readonly id: string;
   readonly needsYou: boolean;
   /** The card's title where the merchant still has the card, its code otherwise. */
@@ -320,7 +320,7 @@ export interface OrderRow {
 }
 
 /** One order that needs the merchant, said in full under the table. */
-export interface OrderCallout {
+interface OrderCallout {
   readonly id: string;
   readonly state: string;
   readonly why: string;
@@ -472,7 +472,7 @@ const transferOf = (transaction: string | undefined, page: string | null): Trans
     : { kind: "text", text: transaction };
 };
 
-export interface ReceiptRow {
+interface ReceiptRow {
   readonly id: string;
   readonly orderId: string;
   readonly needsYou: boolean;

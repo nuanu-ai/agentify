@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * Who is visiting, asked from the browser, for the header and the report form.
  *
@@ -44,7 +42,7 @@ function visitorIn(answer: unknown): Visitor | null {
  */
 let inFlight: Promise<Visitor> | null = null;
 
-export function askWhoIsVisiting(): Promise<Visitor> {
+function askWhoIsVisiting(): Promise<Visitor> {
   inFlight ??= ask().finally(() => {
     inFlight = null;
   });

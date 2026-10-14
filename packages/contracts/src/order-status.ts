@@ -108,5 +108,3 @@ export const ORDER_ENDING_REASONS = Object.freeze([
 ] as const);
 
 export const OrderEndingReasonSchema = z.enum(ORDER_ENDING_REASONS);
-
-export type OrderEndingReason = z.infer<typeof OrderEndingReasonSchema>;

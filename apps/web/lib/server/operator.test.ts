@@ -123,8 +123,8 @@ describe("whether the operator's dashboard opens for a request", () => {
   });
 
   it("asks about the session's cookie alone, and moves nothing", async () => {
-    // A page drawn on the server cannot hand the browser a renewed cookie, so
-    // the question it asks must not move the session's end.
+    // The answer carries no renewed cookie back to the browser, so the
+    // question it asks must not move the session's end.
     const { url, asked } = await sellerDashboard();
     askingAt(url);
 

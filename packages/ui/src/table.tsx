@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export interface TableCell {
+interface TableCell {
   readonly content: ReactNode;
   /** The page's own class for the cell's kind of value, such as an amount. */
   readonly className?: string;

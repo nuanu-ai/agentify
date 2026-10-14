@@ -1,18 +1,17 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // Next compiles this app itself: it keeps the JSX, resolves modules the way
-    // a bundler does and reads the browser's names.
-    "jsx": "preserve",
+    // Vite compiles this app for the browser and for the server: modules
+    // resolve the way a bundler resolves them, and the browser's names and
+    // Vite's own (a stylesheet's classes, `import.meta.env`) are in scope.
+    "jsx": "react-jsx",
     "module": "esnext",
     "moduleResolution": "bundler",
     "lib": ["es2024", "dom", "dom.iterable"],
-    "types": ["node"],
+    "types": ["node", "vite/client"],
     "resolveJsonModule": true,
-    "incremental": true,
-    "noEmit": true,
-    "plugins": [{ "name": "next" }]
+    "noEmit": true
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "dist"]
 }

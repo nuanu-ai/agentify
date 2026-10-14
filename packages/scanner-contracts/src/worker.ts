@@ -3,9 +3,6 @@ import { uuidV7Schema } from "./api.js";
 import { SCAN_RUBRIC_VERSION } from "./checks.js";
 import { segmentSchema } from "./enums.js";
 
-export type { BrowserObservationJobV1 } from "./browser-observation.js";
-export { browserObservationJobV1Schema } from "./browser-observation.js";
-
 export const scanJobV1Schema = z
   .object({
     scan_id: uuidV7Schema,

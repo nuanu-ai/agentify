@@ -3,24 +3,12 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
+import { RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { readPendingScan } from "../lib/pending-scan";
+import { siteRouter } from "../testing/on-site";
 import { UrlScanForm } from "./url-scan-form";
-
-const navigation = vi.hoisted(() => ({
-  prefetched: new Set<string>(),
-  route: null as string | null,
-}));
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    prefetch: (route: string) => navigation.prefetched.add(route),
-    push: (route: string) => {
-      navigation.route = route;
-    },
-  }),
-}));
 
 class MemoryStorage implements Storage {
   readonly values = new Map<string, string>();
@@ -50,6 +38,15 @@ class MemoryStorage implements Storage {
   }
 }
 
+/** The form on the landing a visitor arrived at, and where the router has them now. */
+function landing() {
+  const router = siteRouter(<UrlScanForm cta="Scan" segment="owner" variant="owner-v1" />, {
+    at: "/owner?utm_source=behavior-test",
+  });
+  render(<RouterProvider router={router} />);
+  return { at: () => `${router.state.location.pathname}${router.state.location.search}` };
+}
+
 const originalSessionStorage = Object.getOwnPropertyDescriptor(window, "sessionStorage");
 
 function installStorage(storage: Storage) {
@@ -62,8 +59,6 @@ function installStorage(storage: Storage) {
 describe("landing scan handoff", () => {
   beforeEach(() => {
     Object.assign(globalThis, { React });
-    navigation.prefetched.clear();
-    navigation.route = null;
     installStorage(new MemoryStorage());
     window.history.replaceState({}, "", "/owner?utm_source=behavior-test");
     globalThis.fetch = async () => new Response(null, { status: 201 });
@@ -79,24 +74,24 @@ describe("landing scan handoff", () => {
 
   it("refuses an invalid URL without creating a pending request or changing route", async () => {
     const user = userEvent.setup();
-    render(<UrlScanForm cta="Scan" segment="owner" variant="owner-v1" />);
+    const visit = landing();
 
     await user.type(screen.getByRole("textbox", { name: "Website URL" }), "http://localhost");
     await user.click(screen.getByRole("button", { name: /scan/i }));
 
     expect(readPendingScan(window.sessionStorage)).toBeNull();
-    expect(navigation.route).toBeNull();
+    expect(visit.at()).toBe("/owner?utm_source=behavior-test");
     expect(document.querySelector('[aria-live="polite"]')?.textContent).not.toBe("");
   });
 
-  it("stores a schema-valid request before moving to the private pending route", async () => {
+  it("keeps the request where the pending page reads it, before moving to the private pending route", async () => {
     const user = userEvent.setup();
-    render(<UrlScanForm cta="Scan" segment="owner" variant="owner-v1" />);
+    const visit = landing();
 
     await user.type(screen.getByRole("textbox", { name: "Website URL" }), "example.com");
     await user.click(screen.getByRole("button", { name: /scan/i }));
 
-    await waitFor(() => expect(navigation.route).toBe("/scan/pending?segment=owner"));
+    await waitFor(() => expect(visit.at()).toBe("/scan/pending?segment=owner"));
     expect(readPendingScan(window.sessionStorage)).toMatchObject({
       url: "example.com",
       segment: "owner",
@@ -113,7 +108,7 @@ describe("landing scan handoff", () => {
     };
     installStorage(storage);
     const user = userEvent.setup();
-    render(<UrlScanForm cta="Scan" segment="owner" variant="owner-v1" />);
+    const visit = landing();
 
     const input = screen.getByRole<HTMLInputElement>("textbox", {
       name: "Website URL",
@@ -122,7 +117,7 @@ describe("landing scan handoff", () => {
     await user.click(screen.getByRole("button", { name: /scan/i }));
 
     expect(readPendingScan(storage)).toBeNull();
-    expect(navigation.route).toBeNull();
+    expect(visit.at()).toBe("/owner?utm_source=behavior-test");
     expect(input.disabled).toBe(false);
     expect(document.querySelector('[aria-live="polite"]')?.textContent).not.toBe("");
   });

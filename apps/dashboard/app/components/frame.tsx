@@ -1,16 +1,27 @@
 /**
- * The frame every screen about a merchant's selling is drawn in: the numbered
- * sections in a sidebar, and over the page a bar with the screen's title, the
- * merchant's selling state and who is signed in with the way out.
+ * The frame every screen about a merchant's selling is drawn in: the site
+ * header with who is signed in and the way out, and under it the dashboard's
+ * working area, its numbered sections in a sidebar beside a bar with the
+ * screen's title and the merchant's selling state. Where there is no room for
+ * the sidebar, a menu at the end of the header's row holds the sections, the
+ * documentation and who is signed in with the way out.
  */
 
-import { BrandLockup, Footer, type Section, SectionNav, SignedIn } from "@agentify/ui";
+import {
+  Footer,
+  HeaderMenu,
+  OnItsWay,
+  type Section,
+  SectionNav,
+  SignedIn,
+  SiteHeader,
+} from "@agentify/ui";
 import type { ReactNode } from "react";
-import { useRouteLoaderData } from "react-router";
+import { Link, useRouteLoaderData } from "react-router";
 import type { DashboardDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
 import { useChrome } from "../answer.js";
-import { OnItsWay, useGoingTo } from "./on-its-way.js";
+import { useGoingTo } from "./going-to.js";
 import { SurfaceNote } from "./surface-note.js";
 import { Word } from "./word.js";
 
@@ -46,10 +57,10 @@ function Unnamed({ base }: Readonly<{ base: string }>) {
       <div className="what">
         You cannot publish products until you choose the seller name buyers will see.
       </div>
-      <div className="why">
+      <p className="why">
         A card without a seller name is refused.{" "}
         <a href={`${base}/settings`}>Choose a seller name in Settings</a>.
-      </div>
+      </p>
     </div>
   );
 }
@@ -92,60 +103,53 @@ export function Frame({
     current: key === marked,
     to: `/${key}`,
   }));
+  const signedIn = (
+    <SignedIn who={gate.who} account={`${chrome.base}/settings`} signOut="/sign-out" />
+  );
   return (
-    <div className="page">
+    <div className="page app-frame">
       <title>{`${title} — Agentify`}</title>
       <OnItsWay />
+      <SiteHeader
+        surface="dashboard"
+        link={Link}
+        visitor={signedIn}
+        menu={
+          <HeaderMenu>
+            <SectionNav
+              className="app-menu-sections"
+              label="Dashboard sections"
+              sections={sections}
+            />
+            <a className="app-menu-docs" href="/docs/">
+              Open the docs →
+            </a>
+            {signedIn}
+          </HeaderMenu>
+        }
+      />
       <div className="app-shell">
         <aside className="app-sidebar">
-          <div className="app-sidebar-brand">
-            <BrandLockup home="/" />
-            <span>SELLER DASHBOARD</span>
-          </div>
-          <SectionNav className="tabs" label="Dashboard sections" sections={sections} />
-          <div className="sidebar-help">
-            <span>Need help?</span>
-            <a href="/docs/">Open the docs →</a>
-          </div>
-          {/* A details element, so it opens and closes with no script. Who is
-              signed in and the way out stay in the bar at every width, so the
-              menu does not repeat them. */}
-          <details className="app-menu">
-            <summary aria-label="Menu">
-              <span />
-              <span />
-              <span />
-            </summary>
-            <div className="app-menu-panel">
-              <SectionNav
-                className="app-menu-sections"
-                label="Dashboard sections"
-                sections={sections}
-              />
-              <a className="app-menu-docs" href="/docs/">
-                Open the docs →
-              </a>
+          <div className="app-sidebar-inner">
+            <div className="app-sidebar-name">Seller dashboard</div>
+            <SectionNav className="tabs" label="Dashboard sections" sections={sections} />
+            <div className="sidebar-help">
+              <span>Need help?</span>
+              <a href="/docs/">Open the docs →</a>
             </div>
-          </details>
+          </div>
         </aside>
         <div className="app-workspace">
-          {/* The stack's band heads the workspace rather than the window: a
-              band above the full-height sticky sidebar would push its foot
-              below the first screen. */}
+          {/* The stack's band heads the workspace rather than the window, so
+              the sidebar's sections start right under the site header. */}
           <SurfaceNote surface={chrome.surface} />
-          <header className="top">
+          <div className="top">
             <div className="top-inner">
               <h1 className="top-title">{heading}</h1>
               {frame.selling === undefined ? null : <Word word={frame.selling} />}
-              <SignedIn
-                className="account"
-                who={gate.who}
-                account={`${chrome.base}/settings`}
-                signOut="/sign-out"
-              />
             </div>
-          </header>
-          <main className="app-content">
+          </div>
+          <main className="app-content" id="main">
             {frame.unnamed ? <Unnamed base={chrome.base} /> : null}
             {children}
           </main>

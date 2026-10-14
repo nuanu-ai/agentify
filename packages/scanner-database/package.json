@@ -11,6 +11,10 @@
     "./schema": {
       "types": "./src/schema.ts",
       "default": "./dist/schema.js"
+    },
+    "./fake-postgres": {
+      "types": "./src/testing/fake-postgres.ts",
+      "default": "./src/testing/fake-postgres.ts"
     }
   },
   "scripts": {

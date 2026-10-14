@@ -1,9 +1,8 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { publicSiteSchema } from "../lib/schema";
-import { Brand } from "./brand";
 import styles from "./editorial-page.module.css";
-import { SiteDoors, SiteFooter } from "./site-chrome";
+import { usePublicConfig } from "./public-config";
+import { SiteFooter, SiteHeader } from "./site-chrome";
 import { StructuredData } from "./structured-data";
 
 export type EditorialSection = Readonly<{
@@ -25,25 +24,11 @@ export function EditorialPage({
   structuredData?: boolean;
   title: string;
 }>) {
+  const config = usePublicConfig();
   return (
     <>
-      {structuredData ? <StructuredData schema={publicSiteSchema()} /> : null}
-      <header className={styles.header}>
-        <a className="skip" href="#main">
-          Skip to content
-        </a>
-        <div className="container">
-          <Brand />
-          <div className={styles.headerLinks}>
-            <nav aria-label="Trust pages">
-              <Link href="/scanner">Scanner</Link>
-              <Link href="/methodology">Methodology</Link>
-              <Link href="/privacy">Privacy</Link>
-            </nav>
-            <SiteDoors />
-          </div>
-        </div>
-      </header>
+      {structuredData ? <StructuredData schema={publicSiteSchema(config)} /> : null}
+      <SiteHeader />
       <main className={`${styles.layout} container`} id="main">
         <aside className={styles.desktopToc}>
           <span>On this page</span>

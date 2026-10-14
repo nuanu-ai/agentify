@@ -34,7 +34,7 @@ export interface Gateway {
  * It reads the shape of a parse result rather than using zod's `infer`,
  * because zod is not this package's to import (see `schema.ts`).
  */
-export type DocumentOf<N extends RouteName> = (typeof API_ROUTES)[N]["response"] extends {
+type DocumentOf<N extends RouteName> = (typeof API_ROUTES)[N]["response"] extends {
   document: { safeParse(value: unknown): infer Result };
 }
   ? Result extends { success: true; data: infer Document }
@@ -155,7 +155,7 @@ const quote = (text: string): string =>
     : `${JSON.stringify(text.slice(0, QUOTED_CHARACTERS))} and ${text.length - QUOTED_CHARACTERS} more characters, not shown`;
 
 /** The address of one call: the gateway's base, then the route's own path. */
-export const addressOf = (baseUrl: string, name: RouteName, path: CallOptions["path"]): string =>
+const addressOf = (baseUrl: string, name: RouteName, path: CallOptions["path"]): string =>
   `${baseUrl.replace(/\/+$/, "")}${expandPath(API_ROUTES[name].path, path ?? {})}`;
 
 const failure = (

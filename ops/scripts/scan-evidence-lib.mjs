@@ -1,4 +1,4 @@
-export const TERMINAL_SCAN_STATUSES = new Set(["completed", "partial", "failed"]);
+const TERMINAL_SCAN_STATUSES = new Set(["completed", "partial", "failed"]);
 
 const KNOWN_SCAN_STATUSES = new Set(["accepted", "queued", "running", ...TERMINAL_SCAN_STATUSES]);
 

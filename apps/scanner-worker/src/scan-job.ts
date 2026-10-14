@@ -40,7 +40,7 @@ export interface ScanJobRepository {
   ): Promise<void>;
 }
 
-export type ScanJobMetric = (
+type ScanJobMetric = (
   | { name: "scan_job_started"; value: 1 }
   | { name: "scan_job_terminal"; value: 1; status: string }
   | { name: "scan_job_skipped_terminal"; value: 1 }
@@ -227,7 +227,7 @@ export const processScanJob = async (
   }
 };
 
-export type BossJob<T> = { data: T; retryCount: number };
+type BossJob<T> = { data: T; retryCount: number };
 export interface ScanBoss {
   work<T>(
     name: string,

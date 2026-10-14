@@ -1,4 +1,4 @@
-export type RobotsGroup = {
+type RobotsGroup = {
   agents: string[];
   allow: string[];
   disallow: string[];

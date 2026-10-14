@@ -26,7 +26,6 @@ dist/
 .react-router/
 coverage/
 *.tsbuildinfo
-**/.next/
 output/
 .playwright-cli/
 **/*.log

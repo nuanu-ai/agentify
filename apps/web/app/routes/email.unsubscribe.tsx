@@ -1,0 +1,33 @@
+import type { MetaArgs } from "react-router";
+
+import { AccountActions } from "../../components/account-actions";
+import { EditorialPage } from "../../components/editorial-page";
+import { pageMeta, siteConfigOf } from "../../lib/page-meta";
+
+export const meta = ({ matches }: MetaArgs) =>
+  pageMeta(siteConfigOf(matches), { title: "Email preferences", robots: "noindex, nofollow" });
+
+export default function EmailPreferencesPage() {
+  return (
+    <EditorialPage
+      eyebrow="Privacy control"
+      title="Email preferences"
+      intro="Transactional verification and report emails are separate from optional marketing."
+      sections={[
+        {
+          id: "marketing",
+          title: "Marketing email",
+          content: (
+            <>
+              <p>
+                Sign in with the address your reports were sent to, then unsubscribe here.
+                Transactional security or data-request messages may still be sent when necessary.
+              </p>
+              <AccountActions mode="unsubscribe" />
+            </>
+          ),
+        },
+      ]}
+    />
+  );
+}

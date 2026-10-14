@@ -20,7 +20,7 @@ export interface SchemaIssue {
 }
 
 /** The code a finding travels under when the schema did not name one. */
-export const UNNAMED_FINDING = "invalid";
+const UNNAMED_FINDING = "invalid";
 
 /**
  * A schema's findings, in the shape the publish call answers in, so a local

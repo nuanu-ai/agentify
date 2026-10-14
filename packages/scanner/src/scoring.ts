@@ -4,7 +4,7 @@ import type { ScanScore } from "./model.js";
 
 const ASSESSED = new Set(["pass", "partial", "fail"]);
 
-export const assertRubric = (): void => {
+const assertRubric = (): void => {
   const sum = CHECK_WEIGHTS.reduce((total, weight) => total + weight, 0);
   if (sum !== 100) throw new Error(`rubric_nominal_weight_invalid:${sum}`);
 };

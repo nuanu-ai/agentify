@@ -25,13 +25,14 @@
   --raised: #eeebe4;
   --surface-sunken: #f4f1ea;
 
-  /* Ink, strongest to faintest. --na is for a disabled control or an empty
-     cell. */
+  /* Ink, strongest to faintest. Every ink down to --faint carries small text
+     on the page (4.5:1 on --bg and on --surface); --na is for a disabled
+     control or an empty cell. */
   --fg: #1a1917;
   --fg-strong: #2a2824;
   --fg-2: #4b4842;
   --muted: #6b6862;
-  --faint: #8a8781;
+  --faint: #726f69;
   --na: #b4afa6;
 
   /* --line (1.31:1 on the page) is for rules between cells; it is too faint
@@ -48,12 +49,13 @@
 
   --on-accent: #ffffff;
 
-  /* Verdict colours, named for what they mean rather than their hue.
-     --partial is darker than the design's #b6801f, which fails WCAG AA for
-     small text on paper. The notice pair has had no design review. */
-  --pass: #2e7d53;
+  /* Verdict colours, named for what they mean rather than their hue. --pass
+     and --partial carry small text at 4.5:1 on the page, on a card and on the
+     soft fills, which the design's #b6801f did not. The notice pair has had no
+     design review. */
+  --pass: #2c774f;
   --pass-soft: #e7f1ea;
-  --partial: #9a6811;
+  --partial: #926310;
   --notice-bg: #f8f0df;
   --notice-ink: #76500e;
   --fail: #b4462f;
@@ -61,6 +63,9 @@
   /* Text on the dark footer band. */
   --footer-text: #c9c6bf;
   --footer-faint: #8f8b84;
+  /* The accent where small text sits on a band of --fg: --accent itself reads
+     at 3.1:1 there, this one at 6.8:1. */
+  --accent-on-dark: #4fb0aa;
 
   /* Both family names are needed: the scanner loads the face through
      @fontsource-variable ("Schibsted Grotesk Variable"), every other surface
@@ -139,6 +144,16 @@ body {
 :where(a:hover) {
   color: var(--accent-hover);
   text-decoration: underline;
+}
+
+/* A link inside running text is told from the words around it by an
+   underline as well as its colour, which alone is too close to the text's.
+   Navigation, a header, a footer and a link drawn as a button are not running
+   text and keep their own look; neither is a table cell, which is not among
+   the blocks named here. */
+:where(p, li, dd, blockquote, figcaption) :where(a:not(.button, nav a, header a, footer a)) {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 
 /* Translucent so the ring shows on both paper and a filled control without
@@ -516,6 +531,40 @@ p {
   }
 }
 
+/* The bar that says the next page is on its way. Fixed to the window, so it
+   covers the top edge rather than pushing the page down; a stripe runs along
+   it while it is shown, and stands still for a reader who asked for less
+   motion. */
+.on-its-way {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 100;
+  height: 3px;
+  background:
+    linear-gradient(90deg, transparent, var(--accent), transparent) 0 0 / 40% 100% no-repeat;
+  animation: on-its-way 1.1s ease-in-out infinite;
+}
+
+.on-its-way[hidden] {
+  display: none;
+}
+
+@keyframes on-its-way {
+  from {
+    background-position: -40% 0;
+  }
+  to {
+    background-position: 140% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .on-its-way {
+    animation: none;
+    background: var(--accent);
+  }
+}
+
 /* The brand lockup (mark and name). It is a link home, so the hover rule
    cancels the link underline and colour change. */
 .brand {
@@ -540,6 +589,361 @@ p {
   height: 30px;
   display: block;
   flex: none;
+}
+
+/*
+ * The site header: the lockup, the public site's sections, and the doors to
+ * the documentation, the dashboard and the session. It stays at the top of the
+ * window, translucent over what scrolls under it.
+ */
+.site-header {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  border-bottom: var(--hairline) solid var(--line);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.site-header-inner {
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.site-header-links {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.site-nav {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  font-size: var(--text-small);
+}
+
+/* Written for both surfaces: one colours every link with the accent and the
+   other lets a link take the colour of the block it sits in. */
+.site-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.site-nav a:hover,
+.site-nav a:focus-visible {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.site-doors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 18px;
+  padding-left: 24px;
+  border-left: var(--hairline) solid var(--line);
+  font-size: var(--text-small);
+  font-weight: 500;
+}
+
+.site-doors a {
+  color: var(--fg);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.site-doors a:hover,
+.site-doors a:focus-visible,
+.site-doors a[aria-current] {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* Who is visiting takes no room of its own in the row of doors. */
+.site-visitor {
+  display: contents;
+}
+
+/* The signed-in address: a label, not a door. A long address is cut at the
+   end with its whole self in the title, so the bar never runs off the page. */
+.site-doors .site-who {
+  max-width: 24ch;
+  overflow: hidden;
+  color: var(--muted);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-doors .site-who:hover {
+  color: var(--fg);
+}
+
+.site-unknown {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.site-sign-out {
+  display: inline;
+  margin: 0;
+}
+
+.site-sign-out button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+}
+
+.site-sign-out button:hover,
+.site-sign-out button:focus-visible {
+  color: var(--accent);
+}
+
+/*
+ * The header yields its section links before it yields a door, and its doors
+ * wrap onto a second line before the bar grows, so above 900px it keeps to
+ * 68px. The steps are measured against the current labels ("Sell to agents" is
+ * the widest) and the longest address the doors show: the merchant link goes
+ * at 910px where the doors say who is visiting, which would otherwise take a
+ * third line and then run past the edge, and at 760px where they say nothing;
+ * at 640px the scanner link goes too, and under 480px only the lockup and the
+ * doors fit in the 320px body minimum. There the signed-in address gives way
+ * and the way out stays, so the doors keep to one row and the page under them
+ * does not move when the address arrives. A page clips what runs past its
+ * edge, so a link that did not fit would be cut, not scrolled to.
+ */
+@media (max-width: 760px) {
+  .site-nav a:first-child {
+    display: none;
+  }
+}
+
+@media (max-width: 910px) {
+  .site-header:has(.site-who, .site-unknown) .site-nav a:first-child {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .site-header-inner {
+    min-height: 60px;
+  }
+
+  .site-nav {
+    gap: 14px;
+    font-size: var(--text-label);
+  }
+
+  .site-nav a:nth-child(2) {
+    display: none;
+  }
+
+  .site-header-links {
+    gap: 14px;
+  }
+
+  .site-doors {
+    gap: 4px 12px;
+    padding-left: 14px;
+    font-size: var(--text-label);
+  }
+
+  .site-doors .site-who {
+    max-width: 16ch;
+  }
+}
+
+@media (max-width: 480px) {
+  .site-nav {
+    display: none;
+  }
+
+  .site-doors {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .site-doors .site-who {
+    display: none;
+  }
+}
+
+/*
+ * The header's menu: where the bar has no room for its links, a button ends
+ * its row and opens a panel under the bar with what the bar left out. A page
+ * with a top of its own rather than the header puts its doors and the menu at
+ * the end of its top's row, beside the lockup. The panel is placed against
+ * the nearest box with a position, the sticky header or that top.
+ */
+.site-menu {
+  display: none;
+}
+
+.site-top-end {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.site-top-end > .site-doors {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.site-menu > summary {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: var(--hairline) solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+  list-style: none;
+}
+
+.site-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.site-menu > summary span {
+  width: 18px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.site-menu[open] > summary span:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.site-menu[open] > summary span:nth-child(2) {
+  opacity: 0;
+}
+
+.site-menu[open] > summary span:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+.site-menu-panel {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  right: 0;
+  left: 0;
+  max-height: calc(100dvh - 69px);
+  overflow-y: auto;
+  padding: 10px 14px 16px;
+  border-bottom: var(--hairline) solid var(--line);
+  background: var(--surface);
+  box-shadow: 0 24px 40px -32px rgb(26 25 23 / 45%);
+}
+
+.site-menu-panel nav {
+  display: grid;
+  gap: 4px;
+}
+
+.site-menu-panel nav > a,
+.site-menu-panel nav > span {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: var(--fg-2);
+  font-size: 0.9375rem;
+  font-weight: 550;
+  text-decoration: none;
+}
+
+/* Who is visiting, the address whole, and the ways on, under a line of
+   their own. */
+.site-menu-panel .site-visitor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-top: 10px;
+  padding: 14px 12px 0;
+  border-top: var(--hairline) solid var(--line);
+  font-size: 0.875rem;
+}
+
+.site-menu-panel .site-visitor:empty {
+  display: none;
+}
+
+.site-menu-panel .site-who {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: var(--text-label);
+  text-decoration: none;
+}
+
+.site-menu-panel .site-visitor > a:not(.site-who) {
+  color: var(--fg);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.site-menu-panel .site-sign-out button {
+  min-height: 44px;
+  font-weight: 650;
+}
+
+/*
+ * Where the bar has no room for every section link beside the doors and who
+ * is visiting, it keeps the lockup, the documentation, the dashboard and the
+ * menu, which holds the sections and who is visiting; so it is one row at
+ * every width from 320px up, and nothing in it moves when who is visiting is
+ * known. 910px is where a signed-in address first takes a section link's
+ * place, measured against the current labels and the longest address the
+ * doors show. A menu that holds a surface's own sections rather than the
+ * site's leaves the section links in the bar, and a bar without a menu keeps
+ * the steps above.
+ */
+@media (max-width: 910px) {
+  .site-menu {
+    display: block;
+  }
+
+  .site-header-links:has(> .site-menu .site-menu-sections) > .site-nav {
+    display: none;
+  }
+
+  .site-doors:has(~ .site-menu) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .site-doors:has(~ .site-menu) .site-visitor {
+    display: none;
+  }
+
+  body:has(.site-menu[open]) {
+    overflow: hidden;
+  }
 }
 
 /* The ink band at the foot of a page. `margin-top: auto` holds it against the

@@ -241,7 +241,7 @@ export type PaymentClaim =
  * A wallet change that has been announced to the merchant and has not taken
  * effect yet. Both fields or neither: the table refuses half of one.
  */
-export interface PendingPayoutWallet {
+interface PendingPayoutWallet {
   readonly address: string;
   /** When it replaces the address paid now, counted from the announcement. */
   readonly takesEffectAt: number;

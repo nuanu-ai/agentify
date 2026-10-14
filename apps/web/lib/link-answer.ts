@@ -6,7 +6,7 @@
 
 import { apiErrorEnvelopeSchema } from "@agentify/scanner-contracts";
 
-export const LINK_ANSWER_FALLBACK = "Verification email is temporarily unavailable. Please retry.";
+const LINK_ANSWER_FALLBACK = "Verification email is temporarily unavailable. Please retry.";
 
 export function linkAnswerFailure(payload: unknown): Readonly<{
   message: string;

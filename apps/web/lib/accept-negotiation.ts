@@ -52,14 +52,9 @@ export function prefersMarkdown(acceptHeader: string | null): boolean {
   return markdown.order <= html.order;
 }
 
-export function isReactServerComponentRequest(headers: Headers): boolean {
-  return (
-    headers.get("rsc") === "1" ||
-    headers.has("next-router-state-tree") ||
-    headers.has("next-router-prefetch") ||
-    headers.get("purpose")?.toLowerCase() === "prefetch" ||
-    headers.get("x-middleware-prefetch") === "1"
-  );
+/** A browser fetching ahead of a click, which is answered as a page and never negotiated. */
+export function isPrefetch(headers: Headers): boolean {
+  return headers.get("purpose")?.toLowerCase() === "prefetch";
 }
 
 export function appendVary(current: string | null, value: string): string {

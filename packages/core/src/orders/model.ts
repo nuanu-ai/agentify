@@ -97,8 +97,6 @@ export const OPEN_ORDER_STATES = [
   "delivered_unpaid",
 ] as const;
 
-export type OpenOrderState = (typeof OPEN_ORDER_STATES)[number];
-
 /** The states in which nothing further is owed to anybody. */
 export const CLOSED_ORDER_STATES = [
   "delivered",
@@ -109,8 +107,6 @@ export const CLOSED_ORDER_STATES = [
   "expired",
   "cancelled",
 ] as const;
-
-export type ClosedOrderState = (typeof CLOSED_ORDER_STATES)[number];
 
 export function isOpen(state: OrderState): boolean {
   return (OPEN_ORDER_STATES as readonly OrderState[]).includes(state);

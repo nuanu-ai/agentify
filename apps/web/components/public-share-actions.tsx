@@ -1,8 +1,6 @@
-"use client";
-
-import { sharePreviewResponseSchema } from "@agentify/scanner-contracts";
 import { useEffect, useRef, useState } from "react";
 
+import { sharePreviewIn } from "../lib/api-answers";
 import type { PublicResultPreview } from "./public-result-card";
 import styles from "./public-share-actions.module.css";
 
@@ -190,7 +188,7 @@ export function PublicShareActions({
     <div className={styles.bar}>
       <div className={styles.actions}>
         <button
-          className={`button button-primary ${styles.primaryAction}`}
+          className="button button-primary"
           disabled={busy || !exactPreview}
           onClick={() => void publishAndCopy()}
           type="button"
@@ -283,16 +281,16 @@ export function parseSharePreviewResponse(
   preview: PublicResultPreview;
   existingShare: PublishedShare | null;
 }> | null {
-  const parsed = sharePreviewResponseSchema.safeParse(payload);
-  if (!parsed.success) return null;
+  const parsed = sharePreviewIn(payload);
+  if (parsed === null) return null;
   return {
     preview: {
-      hostLabel: parsed.data.host,
-      level: parsed.data.level,
-      score: parsed.data.score,
+      hostLabel: parsed.host,
+      level: parsed.level,
+      score: parsed.score,
     },
-    existingShare: parsed.data.existing_share
-      ? validatePublishedShare(parsed.data.existing_share, expectedOrigin)
+    existingShare: parsed.existing_share
+      ? validatePublishedShare(parsed.existing_share, expectedOrigin)
       : null,
   };
 }

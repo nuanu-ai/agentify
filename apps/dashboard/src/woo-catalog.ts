@@ -32,7 +32,7 @@ import { type HtmlAsText, plainTextOfHtml } from "./html-text.js";
  * Loose, so the day WooCommerce adds a field it does not refuse a whole
  * merchant's catalogue.
  */
-export const StoreProductSchema = z.looseObject({
+const StoreProductSchema = z.looseObject({
   id: z.number().int(),
   name: z.string(),
   /** Empty on a product with none. */
@@ -145,7 +145,7 @@ export const amountOfCents = (cents: bigint): string =>
 const sentenceOf = (clause: string): string =>
   `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`;
 
-export interface ImportedCard {
+interface ImportedCard {
   /** Also the card's `merchant_item_id`. */
   readonly id: string;
   readonly title: string;
@@ -190,7 +190,7 @@ const WHAT_THE_BUYER_RECEIVES = {
  * the time to ship from the merchant. The import screen says so, because an
  * order not shipped after it reads as a refund owed.
  */
-export const SHIP_WITHIN_SECONDS = 7 * 24 * 60 * 60;
+const SHIP_WITHIN_SECONDS = 7 * 24 * 60 * 60;
 
 /**
  * In the shop's order, so the merchant reads both lists against their own

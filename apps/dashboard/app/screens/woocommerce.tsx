@@ -47,7 +47,7 @@ function NoKeysYetNote({ said, base }: Readonly<{ said: NoKeysYet; base: string 
   return (
     <div className="callout">
       <div className="what">{said.what}</div>
-      <div className="why">{said.why}</div>
+      <p className="why">{said.why}</p>
       {said.waiting ? (
         <div className="connect-actions">
           <a className="button button-secondary" href={`${base}/woocommerce`}>

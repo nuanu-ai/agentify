@@ -63,6 +63,12 @@ describe("opening a seller dashboard", () => {
     expect(html).not.toContain('class="problem"');
   });
 
+  it("offers one way out, the header's", () => {
+    const html = served(() => <MerchantScreen chrome={chrome} view={{ unavailable: false }} />);
+
+    expect(html.match(/<form\b[^>]*action="[^"]*\/sign-out"/g)).toHaveLength(1);
+  });
+
   it("says a press that made nothing failed on our side, and offers the press again", () => {
     const html = served(() => <MerchantScreen chrome={chrome} view={{ unavailable: true }} />);
 

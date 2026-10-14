@@ -170,9 +170,9 @@ export interface Acting {
  * answers only after every announcement is handed to the mail provider, and
  * tests pass a shorter one so as not to wait ten seconds.
  */
-const ANSWER_WITHIN_MS = 10_000;
+export const ANSWER_WITHIN_MS = 10_000;
 
-const lateAnswer = (answerWithinMs: number): Answer<never> => {
+export const lateAnswer = (answerWithinMs: number): Answer<never> => {
   const seconds = Math.max(1, Math.round(answerWithinMs / 1_000));
   return {
     ok: false,
@@ -318,7 +318,7 @@ const ORDERS_NAMED = 5;
  * is drawn on: which orders still wait on the integration being left, and what
  * lets them finish.
  */
-const switchRefused = (to: Integration, waiting: readonly string[]): Answer<never> => {
+export const switchRefused = (to: Integration, waiting: readonly string[]): Answer<never> => {
   const named = waiting.slice(0, ORDERS_NAMED).join(", ");
   const rest = waiting.length - ORDERS_NAMED;
   const which = rest > 0 ? `${named} and ${rest} more` : named;

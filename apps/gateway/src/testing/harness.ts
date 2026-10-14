@@ -254,9 +254,9 @@ const countedName = (() => {
 })();
 
 /** What a merchant's handler does with one order. */
-export type OrderHandler = (order: Order) => HandlerAnswer | Promise<HandlerAnswer>;
+type OrderHandler = (order: Order) => HandlerAnswer | Promise<HandlerAnswer>;
 /** What a merchant's pricing does with one question. */
-export type PriceHandler = (question: {
+type PriceHandler = (question: {
   readonly merchant_item_id: string;
   readonly price_id: string;
 }) => QuoteResponse | Promise<QuoteResponse>;

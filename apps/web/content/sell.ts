@@ -1,0 +1,338 @@
+/**
+ * Every word of the merchant landing at `/sell`, a draft whose prices nobody
+ * has approved: the live channel's edge never lets a visitor reach it
+ * (`deploy/Caddyfile`). A non-breaking space holds "AI agents" on one line
+ * where the words would otherwise part.
+ */
+
+/**
+ * The tariff options drawn under "Pricing", each a section of its own. An
+ * empty list draws no pricing and no "Pricing" link.
+ */
+const TARIFFS_SHOWN = ["t1", "t2", "t3", "t4", "t5", "t6"] as const;
+
+/** Whether each option carries the grey note above it, which is for choosing between them. */
+const TARIFF_NOTES_SHOWN = true;
+
+const TARIFFS = [
+  {
+    id: "t1",
+    note: "Option 1 of 6 · Free, $0 · To hide: remove t1 from TARIFFS_SHOWN in sell.ts.",
+    name: "Free",
+    price: "$0",
+    gist: "Everything Agentify does today.",
+    terms: [
+      "Nothing to pay: no monthly fee and no cut of your sales.",
+      "The buyer pays the network fee for the transfer.",
+    ],
+    includes: [
+      "Catalog connection through WooCommerce or the SDK",
+      "Product cards in the Agentify catalog",
+      "Orders and receipts in your dashboard",
+      "Payments straight to your wallet",
+    ],
+  },
+  {
+    id: "t2",
+    note: "Option 2 of 6 · $0 + 1% of paid orders · To hide: remove t2 from TARIFFS_SHOWN in sell.ts. If you pick it, remove “No Agentify fee on sales” from the “Direct payment” section.",
+    name: "Pay per order",
+    price: "$0 + 1%",
+    per: "of every paid order",
+    gist: "You pay only when agents buy.",
+    terms: ["Free to connect, no monthly fee.", "The buyer pays the network fee for the transfer."],
+    includes: [
+      "Catalog connection through WooCommerce or the SDK",
+      "Product cards in the Agentify catalog",
+      "Orders and receipts in your dashboard",
+      "Payments straight to your wallet",
+    ],
+  },
+  {
+    id: "t3",
+    note: "Option 3 of 6 · Subscription, $29 a month · To hide: remove t3 from TARIFFS_SHOWN in sell.ts.",
+    name: "Subscription",
+    price: "$29 a month",
+    gist: "We get your store ready to list on AI agent marketplaces, then Agentify keeps the sales channel running.",
+    terms: [
+      "Billing starts on day one, with no free month.",
+      "Cancel anytime.",
+      "The buyer pays the network fee for the transfer.",
+    ],
+    includes: [
+      "A review of your store: what keeps AI agents from buying",
+      "Fixes for what the review finds",
+      "A catalog export for AI agents",
+      "Connecting your store to Agentify",
+      "A test purchase by our agent, with a report",
+      "Catalog updates",
+      "Checks that the sales channel is working",
+      "Orders in your dashboard",
+    ],
+  },
+  ...(
+    [
+      ["t4", "4", "$49"],
+      ["t5", "5", "$99"],
+      ["t6", "6", "$149"],
+    ] as const
+  ).map(([id, number, price]) => ({
+    id,
+    note: `Option ${number} of 6 · Getting ready for AI agent marketplaces, ${price} one-time · To hide: remove ${id} from TARIFFS_SHOWN in sell.ts.`,
+    name: "Getting ready for AI agent marketplaces",
+    price,
+    per: "one-time",
+    gist: "Agentify does all the work, up to the first test purchase.",
+    terms: [
+      "You pay once, with no subscription.",
+      "The buyer pays the network fee for the transfer.",
+    ],
+    includes: [
+      "A review of your store: what keeps AI agents from buying",
+      "Fixes for what the review finds",
+      "A catalog export for AI agents",
+      "Connecting your store to Agentify",
+      "A test purchase by our agent, with a report",
+    ],
+  })),
+];
+
+export const SELL_LANDING = {
+  head: {
+    title: "Agentify — sell products and services to AI agents",
+    description:
+      "Publish physical products, digital products, and services for AI agents, take orders, and get paid straight to your wallet.",
+    cardTitle: "Agentify — sell to AI agents",
+    cardDescription: "Catalog, orders, and direct payments for agentic commerce.",
+  },
+  hero: {
+    eyebrow: "A new sales channel for products and services",
+    title: "AI agents find and buy your products",
+    lede: "Connect your catalog of physical products, digital products, and services once. Agentify shows them to AI agents, takes the order, and sends the payment straight to your wallet. You keep your site and your store as they are.",
+    action: "Connect your catalog",
+    howItWorks: "How it works",
+    facts: ["You connect your catalog", "An agent buys", "You get paid"],
+  },
+  sale: {
+    label:
+      "An AI agent buys a 12 USD bag of specialty coffee through Agentify, and the seller receives 12 USDC",
+    top: "SELLING TO AI AGENTS THROUGH AGENTIFY",
+    status: "PAID",
+    agent: {
+      kind: "AI AGENT",
+      wants: "Found a product and wants to buy it",
+      done: "✓ Order created",
+    },
+    store: { kind: "YOUR STORE", name: "Product catalog" },
+    product: { name: "Specialty coffee, 250 g", price: "12 USD" },
+    paid: {
+      kind: "PAID TO YOUR WALLET",
+      amount: "+ 12.00 USDC",
+      note: "Priced in USD, paid in USDC",
+    },
+    path: ["AI agent", "Agentify", "Your store"],
+    end: "Payment to you",
+  },
+  journey: {
+    eyebrow: "How a sale works",
+    title: "From adding a product to getting paid",
+    lede: "All you bring is your catalog. Agentify handles the rest: it turns your products into cards for AI agents, takes orders, and checks payments.",
+    steps: [
+      {
+        title: "Bring your products to Agentify",
+        text: "Connect your catalog through the SDK, or import supported products from WooCommerce with the experimental test connector.",
+      },
+      {
+        title: "Agentify publishes cards",
+        text: "The description, price, and purchase terms go into a card that AI agents can read, and the card is published in the Agentify catalog.",
+      },
+      {
+        title: "An AI agent buys the product",
+        text: "The agent finds the card, picks the product, and pays for the order. Agentify checks the payment and passes the order to you.",
+      },
+      {
+        title: "You get paid",
+        text: "The payment goes straight to your wallet. The order and its payment confirmation are saved in your dashboard.",
+      },
+    ],
+  },
+  card: {
+    eyebrow: "What a product card contains",
+    title: "AI agents see the purchase terms up front",
+    lede: "Before buying, an AI agent gets four answers from the card:",
+    fields: [
+      ["What is for sale", "Title and description"],
+      ["How much it costs", "The product price"],
+      ["What the buyer provides", "For example, an email or shipping destination"],
+      ["How the order is fulfilled", "Immediately, later, after confirmation, or by shipment"],
+    ],
+    after: "With the SDK, you set these fields in code, as in the example.",
+    link: "See every card field in the docs →",
+    codeLabel: "example card for developers",
+    /** The example as it is highlighted: a pair is a token and its kind, a string plain text. */
+    code: [
+      ["await", "key"],
+      " agentify.catalog.",
+      ["publish", "call"],
+      "({\n  merchant_item_id:\n    ",
+      ["'coffee-pickup-250g'", "str"],
+      ",\n  title: ",
+      ["'Specialty coffee, 250 g'", "str"],
+      ",\n  description:\n    ",
+      ["'Fresh coffee; pickup in 24h'", "str"],
+      ",\n  price: ",
+      ["'12.00 USD'", "str"],
+      ",\n  params: {\n    pickup_name: {\n      type: ",
+      ["'string'", "str"],
+      ",\n      required: ",
+      ["true", "key"],
+      "\n    }\n  },\n  result: {\n    pickup_code: ",
+      ["'string'", "str"],
+      ",\n    ready_at: ",
+      ["'string'", "str"],
+      "\n  },\n  fulfillment: ",
+      ["'async'", "str"],
+      "\n})",
+    ] as readonly (string | readonly [string, "key" | "call" | "str"])[],
+  },
+  connect: {
+    eyebrow: "Two ways to connect",
+    title: "Start with what your business already has",
+    woo: {
+      tag: "No new storefront",
+      title: "A WooCommerce store",
+      text: "Connect your store, import supported products, and manage their cards from the dashboard. Agentify never gets your store password. The connector is experimental, works in test mode only, and currently supports a limited set of WooCommerce product configurations.",
+      points: [
+        "Product cards imported from your store",
+        "Orders created in your store",
+        "Importing again updates your cards",
+      ],
+      action: "Create an account",
+    },
+    sdk: {
+      tag: "For your own platform",
+      title: "SDK integration",
+      text: "Your developer publishes cards from code and runs an SDK module that handles the orders. The module fetches new orders itself, so your server does not need to accept incoming requests.",
+      points: [
+        "You control the cards and fulfillment",
+        "A key on every order prevents duplicate fulfillment",
+        "API keys in your dashboard",
+      ],
+      action: "How to connect the SDK",
+    },
+  },
+  money: {
+    eyebrow: "Direct payment",
+    title: "Agentify never holds your money",
+    lede: "For now, payments are accepted in USDC only. You can set the price in USD or USDC, and the AI agent pays the same amount in USDC, with no currency conversion. Agentify only checks that the payment went through.",
+    notes: [
+      "No Agentify fee on sales",
+      "Each sale is a separate transfer",
+      "Your wallet keys stay with you",
+      "Orders and receipts in your dashboard",
+    ],
+    map: {
+      label:
+        "An AI agent sends 5 USDC straight to the seller's wallet, and Agentify checks the payment",
+      top: "ORDER PAYMENT",
+      status: "CONFIRMED",
+      buyer: { kind: "BUYER'S WALLET", name: "AI agent", amount: "− 5.00 USDC" },
+      flow: { amount: "5.00 USDC", note: "Agentify checked the payment" },
+      seller: { kind: "YOUR WALLET", name: "Seller", amount: "+ 5.00 USDC" },
+      foot: "Straight from the buyer's wallet to yours",
+    },
+  },
+  pricing: {
+    eyebrow: "Pricing",
+    title: "How much Agentify costs",
+    action: "Connect your catalog",
+    includesTitle: "What you get",
+    notesShown: TARIFF_NOTES_SHOWN,
+    options: TARIFFS.filter((tariff) => (TARIFFS_SHOWN as readonly string[]).includes(tariff.id)),
+  },
+  dashboard: {
+    eyebrow: "Seller dashboard",
+    title: "All your sales to AI agents in one dashboard",
+    lede: "Agentify ties together your catalog, purchases, and payments. The dashboard shows what happens to each product, from publishing its card to fulfilling the order.",
+    parts: [
+      ["Product cards", "Title, price, and availability. You can pause any card."],
+      ["Orders", "What the agent bought, whether the order is paid, and how it was fulfilled."],
+      ["Receipts", "Proof of every payment and a history of completed sales."],
+      ["Integrations", "The WooCommerce connection and API keys for the SDK."],
+      ["Plan & billing", "Your access and Agentify charges, kept separate from sales."],
+      ["Settings", "Seller name, payout wallet, and account access."],
+    ],
+    action: "Sign in to your dashboard",
+    window: {
+      brand: "Agentify",
+      kind: "SELLER DASHBOARD",
+      sections: [
+        "Cards",
+        "Orders",
+        "Receipts",
+        "Integrations",
+        "API keys",
+        "Plan & billing",
+        "Settings",
+      ],
+      help: ["Need help?", "Open the docs →"],
+      account: { initial: "M", name: "Account", email: "merchant@example.com" },
+      heading: "Product cards",
+      state: "sales enabled",
+      counts: [
+        ["Published", "2"],
+        ["Paused by you", "1"],
+      ],
+      stop: "Pause all sales",
+      columns: ["Product", "Price", "Fulfillment", "State"],
+      rows: [
+        ["Monthly service access", "access-monthly", "5.00 USD", "immediate", "sales enabled"],
+        ["Specialty coffee", "coffee-250g", "12.00 USD", "shipped", "sales enabled"],
+        ["30-minute consultation", "consult-30", "30.00 USD", "after you confirm", "sales paused"],
+      ],
+      note: "A pause takes the card off sale. Orders you have already accepted still have to be fulfilled.",
+    },
+  },
+  questions: {
+    eyebrow: "FAQ",
+    title: "What to know before you connect",
+    answers: [
+      [
+        "Do I need to rebuild my site?",
+        "No. Agentify works next to your current site or store, through the SDK or a WooCommerce connection.",
+      ],
+      [
+        "What products can I connect?",
+        "Physical products, digital products, and services can all be connected. Each card tells the agent what it is buying, what information the order needs, and whether fulfillment is immediate, later, confirmed by you, or shipped.",
+      ],
+      [
+        "Can I set a price in another currency?",
+        "Not yet. Agentify accepts prices in USD or USDC only and does not convert currencies. If you work in EUR, GBP, or another currency, you set the USD or USDC price yourself.",
+      ],
+      [
+        "Where is my money held?",
+        "Agentify does not hold it. The payment goes straight from the buyer's wallet to the seller's wallet.",
+      ],
+      [
+        "Do I need a password for the dashboard?",
+        "No. Enter your email, and we'll send you a one-time sign-in link. Open it and confirm the sign-in. The first time, Agentify creates your dashboard and asks for a seller name. After that, the link opens your existing dashboard.",
+      ],
+    ],
+  },
+  closing: {
+    eyebrow: "Your next sales channel",
+    title: "Get your catalog ready for AI agents to buy",
+    text: "Create an account, choose a seller name, and connect your first product.",
+  },
+  links: {
+    howItWorks: "How it works",
+    integrations: "Integrations",
+    payments: "Payments",
+    pricing: "Pricing",
+    documentation: "Documentation",
+    signIn: "Sign in",
+    signUp: "Sign up",
+  },
+  footer: { line: "Sales infrastructure for AI agents.", copyright: "© 2026 Agentify" },
+};
+
+export type SellLanding = typeof SELL_LANDING;
