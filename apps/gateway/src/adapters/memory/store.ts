@@ -777,16 +777,13 @@ function toRecord(
   return fresh;
 }
 
-/** In the order recorded, the address settling a tie by its characters, as Postgres sorts them. */
+/**
+ * In the order recorded, the address settling a tie by its characters, as
+ * Postgres sorts them. Two splits of one network never share an address.
+ */
 function splitsInOrder(splits: readonly RecordedPayoutSplit[]): readonly RecordedPayoutSplit[] {
-  return [...splits].sort((one, other) =>
-    one.recordedAt !== other.recordedAt
-      ? one.recordedAt - other.recordedAt
-      : one.address < other.address
-        ? -1
-        : one.address > other.address
-          ? 1
-          : 0,
+  return [...splits].sort(
+    (one, other) => one.recordedAt - other.recordedAt || (one.address < other.address ? -1 : 1),
   );
 }
 
