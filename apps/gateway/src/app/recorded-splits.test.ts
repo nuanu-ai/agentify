@@ -622,6 +622,24 @@ describe("a start on a registry holding a split of a wallet the wallet rule refu
     expect(refused).toMatch(/\bmulticall3\b/);
   });
 
+  it("refuses where that wallet is waiting to take effect", async () => {
+    // At its moment the waiting split becomes the payment address with no
+    // write in between.
+    const database = aDatabase();
+    await aMerchant(database, "mch_refused");
+    const split = await recordedFor(database, "mch_refused");
+    await paidUnder(database, "mch_refused", W);
+    await paidWithoutASplit(database, "mch_refused", {
+      address: W,
+      pending: { address: T1_TEST.multicall3, takesEffectAt: NOW + 3_600_000 },
+    });
+
+    const refused = await refusalOf(aGatewayOver(database).gateway);
+
+    expect(refused).toContain("mch_refused");
+    expect(refused).toContain(split.address);
+  });
+
   it("refuses where that wallet is no longer in force but an order was paid to its split", async () => {
     const database = aDatabase();
     await aMerchant(database, "mch_refused");
