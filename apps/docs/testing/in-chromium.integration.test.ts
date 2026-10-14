@@ -639,8 +639,8 @@ describe("measuring a visit", () => {
     await page.context().close();
   });
 
-  it("records nothing after a visitor kept optional measuring off, a move included", async () => {
-    const { page } = await visit("/docs/money", undefined, false, false);
+  it("records nothing and loads nothing to measure after a visitor kept optional measuring off, a move included", async () => {
+    const { page, asked } = await visit("/docs/money", undefined, false, false);
     const sent = await measured(page.context());
 
     await page.getByRole("button", { name: "Essential only" }).click();
@@ -652,6 +652,7 @@ describe("measuring a visit", () => {
     await page.waitForTimeout(1_000);
 
     expect(sent).toEqual([]);
+    expect(asked.filter((path) => /page-view|module-/.test(path))).toEqual([]);
     await page.context().close();
   });
 
