@@ -1,6 +1,6 @@
 /**
  * The operator's payout: Agentify is paid only when somebody sends it, and
- * the command that prints it holds no key and sends nothing, so what it
+ * the command that prints it signs nothing and sends nothing, so what it
  * prints must be exactly the transactions the builder makes from the splits
  * as recorded, and nothing where the gateway would refuse those splits.
  *

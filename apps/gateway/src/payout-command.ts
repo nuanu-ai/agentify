@@ -2,13 +2,15 @@
  * Prints the operator's payout: the transactions that pay out every payout
  * split of this gateway's network that can hold money, each merchant's share
  * to their wallet and the commission last, for a person to send from a wallet
- * of their own. It sends nothing, holds no key, writes nothing and takes no
+ * of their own. It sends nothing, signs nothing, writes nothing and takes no
  * work off the queue, so Agentify is paid only when somebody sends what it
  * prints.
  *
  * Nothing is printed where the gateway would refuse to start on the registry,
  * since a transaction built from splits the code disagrees with may pay out
- * another contract than the one buyers paid.
+ * another contract than the one buyers paid, nor where the builder refuses a
+ * split, which it does where a share would be withdrawn to an address no
+ * wallet may be.
  */
 
 import type { Gateway } from "./app/gateway.js";
@@ -20,8 +22,17 @@ const USAGE = [
   "",
   "Prints the transactions that pay out every payout split of this network that",
   "can hold money, Agentify's commission included, for a person to send from a",
-  "wallet of their own. It sends nothing, holds no key and writes nothing.",
+  "wallet of their own. It sends nothing, signs nothing and writes nothing.",
 ].join("\n");
+
+/**
+ * The chains a gateway takes payments on, by the names a wallet lists them
+ * under: the same transaction sent on another chain pays nothing out.
+ */
+const CHAIN_NAMES: Readonly<Record<string, string>> = {
+  "eip155:84532": "Base Sepolia",
+  "eip155:8453": "Base",
+};
 
 export async function runPayout(
   argv: readonly string[],
@@ -52,17 +63,26 @@ export async function runPayout(
     throw thrown;
   }
 
+  const name = CHAIN_NAMES[network.network] ?? network.network;
+  const chain = `${name} (${network.network})`;
   const splits = await application.splitsToPayOut();
   if (splits.length === 0) {
-    say(`No payout split on ${network.network} can hold money, so there is nothing to pay out.`);
+    say(`No payout split on ${chain} can hold money, so there is nothing to pay out.`);
     return 0;
   }
 
-  const parts = operatorPayouts(network, splits, payoutSplitNetworks);
+  let parts: ReturnType<typeof operatorPayouts>;
+  try {
+    parts = operatorPayouts(network, splits, payoutSplitNetworks);
+  } catch (refused) {
+    // The builder is pure and throws only to refuse.
+    say(`No payout is printed: ${refused instanceof Error ? refused.message : String(refused)}.`);
+    return 1;
+  }
   say(
-    `Payout splits on ${network.network} that can hold money: ${splits.length}.` +
-      " Send every transaction below on that chain from a wallet of your own, which pays the gas;" +
-      " this command sends nothing and holds no key.",
+    `Payout splits on ${chain} that can hold money: ${splits.length}.` +
+      ` Send every transaction below on ${name} only, from a wallet of your own, which pays the gas;` +
+      " this command sends nothing and signs nothing.",
   );
   parts.forEach((part, at) => {
     say("");
