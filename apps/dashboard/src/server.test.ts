@@ -1997,6 +1997,38 @@ describe("the wallet a merchant's share is paid out to", () => {
     expect(data).toHaveLength(3_146);
   });
 
+  it("pays out, beside the contract of the wallet saved now, the earlier contract a sale was paid into, each to its own wallet", async () => {
+    // A sale paid into the earlier wallet's contract waits there after the
+    // change, and pays that wallet, not the new one.
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    const { harnessed } = running;
+    const earlier = (await harnessed.gateway.payoutSplitsOf(harnessed.merchant.id)).inForce;
+    const itemId = await publish(running.gateway, roomCard);
+    await buyOverHttp(harnessed, running.gateway, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    await running.browser.signIn();
+
+    await running.browser.post("/settings/payout-wallet", { payout_wallet: AS_A_WALLET_SHOWS_IT });
+    const screen = await running.browser.get("/settings");
+
+    const { inForce: now, toPayOut } = await harnessed.gateway.payoutSplitsOf(
+      harnessed.merchant.id,
+    );
+    expect(now?.merchantWallet).toBe(AS_A_WALLET_SHOWS_IT);
+    expect(toPayOut.map((split) => split.address).sort()).toStrictEqual(
+      [earlier?.address, now?.address].sort(),
+    );
+    expect(/<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(screen.html)?.[1]).toBe(
+      merchantPayout(harnessed.runtime.config.payoutSplit, toPayOut).data,
+    );
+    const shown = readable(screen.html.replaceAll(/<\/?span[^>]*>/g, ""));
+    expect(shown).toContain(`${earlier?.address} pays ${harnessed.merchant.wallet}`);
+    expect(shown).toContain(`${now?.address} pays ${AS_A_WALLET_SHOWS_IT}`);
+  });
+
   it("refuses an address a merchant's share could never come back from, says what it is, and saves nothing", async () => {
     const running = await started({
       dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
