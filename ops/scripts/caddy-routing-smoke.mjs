@@ -174,7 +174,14 @@ async function expectSingleForwardedClient(baseUrl, spoofed) {
   assert.equal(body.forwardedFor.includes(","), false, body.forwardedFor);
 }
 
-function runInner({ configPath, containerName, trustedEdge, ports, surfaceMode = "test" }) {
+function runInner({
+  configPath,
+  containerName,
+  trustedEdge,
+  ports,
+  surfaceMode = "test",
+  identityConfirmed = "false",
+}) {
   docker(
     "run",
     "-d",
@@ -201,6 +208,8 @@ function runInner({ configPath, containerName, trustedEdge, ports, surfaceMode =
     "-e",
     "ABUSE_EMAIL=abuse@smoke.example",
     "-e",
+    `LEGAL_IDENTITY_CONFIRMED=${identityConfirmed}`,
+    "-e",
     `AGENTIFY_TRUSTED_EDGE_CIDR=${trustedEdge}/32`,
     "-e",
     `AGENTIFY_SCANNER_UPSTREAM=host.docker.internal:${ports.scanner}`,
@@ -225,6 +234,11 @@ try {
     "# Documentation guide\n\nWrite to <!--{{env `ABUSE_EMAIL` | html}}-->.\n",
   );
   writeFileSync(path.join(docsRoot, "guide.data"), '[{"_1":2},"loaderData"]\n');
+  writeFileSync(path.join(docsRoot, "_.data"), '[{"_1":2},"loaderData"]\n');
+  writeFileSync(
+    path.join(docsRoot, "index.md"),
+    '# Documentation fixture\n\n<!--{{if ne (env `LEGAL_IDENTITY_CONFIRMED`) "true"}}-->\n> Identity not published.\n<!--{{end}}-->\n',
+  );
   writeFileSync(path.join(docsRoot, "404.html"), "<p>documentation missing fixture</p>");
   writeFileSync(path.join(docsRoot, "assets/doc.css"), "body { color: black; }\n");
   writeFileSync(
@@ -332,6 +346,15 @@ try {
     headers: { accept: "text/html, text/markdown" },
   });
   assert.match(response.headers.get("content-type") ?? "", /^text\/html(?:;|$)/);
+  // The front page's Markdown, with a part kept off a channel whose
+  // operator's identity is published, and the front page's data.
+  response = await fetch(`${innerBase}/docs/`, { headers: { accept: "text/markdown" } });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/markdown(?:;|$)/);
+  assert.match(await response.text(), /Identity not published\./);
+  response = await fetch(`${innerBase}/docs/_.data`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/x-script(?:;|$)/);
   // An address the documentation answered at before leads to the page's own.
   response = await fetch(`${innerBase}/docs/guide.html?from=a-link`, { redirect: "manual" });
   assert.equal(response.status, 308);
@@ -442,6 +465,7 @@ try {
     trustedEdge: edgeAddress,
     ports,
     surfaceMode: "live",
+    identityConfirmed: "true",
   });
   const liveBase = publishedBase(liveName);
   await waitFor(liveBase);
@@ -452,6 +476,10 @@ try {
     assert.equal(body.role, "scanner", requestPath);
     assert.equal(body.path, "/sell-not-on-this-channel", requestPath);
   }
+  // On a channel whose operator's identity is published, the part kept off it is gone.
+  const liveFront = await fetch(`${liveBase}/docs/`, { headers: { accept: "text/markdown" } });
+  assert.equal(liveFront.status, 200);
+  assert.doesNotMatch(await liveFront.text(), /Identity not published/);
   await expectProxy(liveBase, "/sellers", "scanner");
   await expectProxy(liveBase, "/", "scanner");
 
