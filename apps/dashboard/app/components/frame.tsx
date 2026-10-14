@@ -7,8 +7,16 @@
  * documentation and who is signed in with the way out.
  */
 
-import { Footer, OnItsWay, type Section, SectionNav, SignedIn, SiteHeader } from "@agentify/ui";
-import { type KeyboardEvent, type ReactNode, useRef } from "react";
+import {
+  Footer,
+  HeaderMenu,
+  OnItsWay,
+  type Section,
+  SectionNav,
+  SignedIn,
+  SiteHeader,
+} from "@agentify/ui";
+import type { ReactNode } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { DashboardDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
@@ -54,40 +62,6 @@ function Unnamed({ base }: Readonly<{ base: string }>) {
         <a href={`${base}/settings`}>Choose a seller name in Settings</a>.
       </p>
     </div>
-  );
-}
-
-/**
- * A details element, so it opens and closes with no script; Escape closes it
- * too and hands the focus back to the button that opened it, which a details
- * element does not do on its own.
- */
-function Menu({
-  sections,
-  account,
-}: Readonly<{ sections: readonly Section[]; account: ReactNode }>) {
-  const menu = useRef<HTMLDetailsElement>(null);
-  const closeOnEscape = (event: KeyboardEvent<HTMLDetailsElement>) => {
-    const details = menu.current;
-    if (event.key !== "Escape" || details === null || !details.open) return;
-    details.open = false;
-    details.querySelector("summary")?.focus();
-  };
-  return (
-    <details className="app-menu" ref={menu} onKeyDown={closeOnEscape}>
-      <summary aria-label="Menu">
-        <span />
-        <span />
-        <span />
-      </summary>
-      <div className="app-menu-panel">
-        <SectionNav className="app-menu-sections" label="Dashboard sections" sections={sections} />
-        <a className="app-menu-docs" href="/docs/">
-          Open the docs →
-        </a>
-        <div className="app-menu-account">{account}</div>
-      </div>
-    </details>
   );
 }
 
@@ -140,7 +114,19 @@ export function Frame({
         surface="dashboard"
         link={Link}
         visitor={signedIn}
-        menu={<Menu sections={sections} account={signedIn} />}
+        menu={
+          <HeaderMenu>
+            <SectionNav
+              className="app-menu-sections"
+              label="Dashboard sections"
+              sections={sections}
+            />
+            <a className="app-menu-docs" href="/docs/">
+              Open the docs →
+            </a>
+            {signedIn}
+          </HeaderMenu>
+        }
       />
       <div className="app-shell">
         <aside className="app-sidebar">

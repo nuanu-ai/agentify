@@ -48,6 +48,7 @@ import type { Handover, Message, Postman } from "./mail.js";
 import type { Pages } from "./pages.js";
 import { buildApp } from "./server.js";
 import { formsIn, formTo, readable, shownMarkIn, waitingButton } from "./testing/html.js";
+import { PAGES_IN_FRONT_OF_THE_GATE } from "./testing/in-front-of-the-gate.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
@@ -1401,6 +1402,11 @@ describe("the gate", () => {
       const answer = await visit();
       expect(gate(answer), name).toBe(false);
       expect(answer.status, name).toBeLessThan(500);
+    }
+    for (const page of PAGES_IN_FRONT_OF_THE_GATE) {
+      const answer = await stranger.get(`/dashboard${page}`);
+      expect(gate(answer), page).toBe(false);
+      expect(answer.status, page).toBeLessThan(500);
     }
 
     for (const path of [

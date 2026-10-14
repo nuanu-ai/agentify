@@ -341,7 +341,7 @@ describe("a click on a link", () => {
     await page.evaluate(() => {
       (window as Window & { stayed?: boolean }).stayed = true;
     });
-    const link = page.locator("header nav[aria-label=Primary] a", { hasText: "Methodology" });
+    const link = page.locator("header .site-nav a", { hasText: "Methodology" });
 
     await link.click();
     await page.waitForTimeout(80);
@@ -360,7 +360,7 @@ describe("a click on a link", () => {
   it("to a public page is answered from the fetches a hover made, its stylesheets among them", async () => {
     const { page } = await visit("/");
     const before = timesAsked("/methodology.data");
-    const link = page.locator("header nav[aria-label=Primary] a", { hasText: "Methodology" });
+    const link = page.locator("header .site-nav a", { hasText: "Methodology" });
 
     await link.hover();
     await page.waitForTimeout(SLOW_MS + 500);
@@ -435,6 +435,13 @@ const FINISHED = {
   },
 };
 
+const FAILED = {
+  ...RUNNING,
+  status: "failed",
+  progress: { completed: 18, total: 18 },
+  checks: checksAt("unavailable"),
+};
+
 /**
  * A browser with nothing kept whose API is answered here: the scan is
  * accepted, its status is each of `statuses` in turn and the last one from
@@ -474,17 +481,17 @@ const answered = async (...statuses: readonly object[]) => {
 };
 
 type CardFrame = Readonly<{
-  complete: boolean;
-  result: boolean;
+  badge: string;
+  heading: string | null;
   reading: boolean;
   stepsDone: boolean;
 }>;
 
 /**
- * Has the page note, at every frame it draws, what the scan's card shows: a
- * badge that says the scan is complete, the result's heading, the words that
- * say the scan's state is still being read, and a list of the scan's steps
- * with every one of them done. Only a change is noted.
+ * Has the page note, at every frame it draws, what the scan's card shows: the
+ * badge's word, the heading under it, the words that say the scan's state is
+ * still being read, and a list of the scan's steps with every one of them
+ * done. Only a change is noted.
  */
 const watchCardFrames = (page: Page) =>
   page.addInitScript(() => {
@@ -494,8 +501,8 @@ const watchCardFrames = (page: Page) =>
       const card = document.querySelector("main section");
       if (card !== null) {
         const frame = {
-          complete: card.querySelector("header")?.textContent?.includes("complete") === true,
-          result: card.querySelector("h1")?.textContent === "Readable",
+          badge: card.querySelector("header [class*=badge]")?.textContent?.trim() ?? "",
+          heading: card.querySelector("h1")?.textContent ?? null,
           reading: card.textContent?.includes("Reading the scan state") === true,
           stepsDone:
             card.querySelector("ol") !== null &&
@@ -544,7 +551,9 @@ describe("a scan in Chromium", () => {
     await page.getByLabel("Email").waitFor();
 
     const frames = await cardFrames(page);
-    expect(frames.filter((frame) => frame.complete && !frame.result)).toEqual([]);
+    expect(
+      frames.filter((frame) => frame.badge === "complete" && frame.heading !== "Readable"),
+    ).toEqual([]);
     expect(complaints).toEqual([]);
     await page.context().close();
   });
@@ -560,32 +569,81 @@ describe("a scan in Chromium", () => {
     await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
     await page.getByLabel("Email").waitFor();
 
-    const waiting = (await cardFrames(page)).filter((frame) => frame.complete && !frame.result);
+    const waiting = (await cardFrames(page)).filter(
+      (frame) => frame.badge === "complete" && frame.heading !== "Readable",
+    );
     expect(waiting.length).toBeGreaterThan(0);
     for (const frame of waiting) {
-      expect(frame).toEqual({ complete: true, result: false, reading: false, stepsDone: true });
+      expect(frame).toEqual({ badge: "complete", heading: null, reading: false, stepsDone: true });
     }
     await page.context().close();
   });
 
-  it("reloads, rather than failing, where the result's script was replaced by a newer deployment, and then draws the result", async () => {
-    const { page } = await answered(FINISHED);
-    let refused = false;
-    await page.route("**/assets/scan-teaser-*.js", (route) => {
-      if (refused) return route.continue();
-      refused = true;
-      return route.fulfill({ status: 404, body: "" });
+  it("keeps the progress it showed, its open details too, when the scan completes before the result's script is here", async () => {
+    const { page } = await answered(RUNNING, FINISHED);
+    let release = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
     });
+    await page.route("**/assets/scan-teaser-*.js", async (route) => {
+      await released;
+      await route.continue();
+    });
+
     await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
-    await page.waitForLoadState("networkidle");
+    await page.getByText("7 of 18 checks reported").waitFor();
+    await page.getByText("Live check details").click();
+    // A mark only the list drawn while the scan ran carries.
+    await page.locator("main section ol").evaluate((list) => list.setAttribute("data-seen", ""));
+    await page.locator("main section header", { hasText: "complete" }).waitFor();
 
+    expect(await page.locator("main section ol[data-seen]").count()).toBe(1);
+    expect(await page.locator("main section details[open]").count()).toBe(1);
+    release();
     await page.getByLabel("Email").waitFor();
-
-    expect(refused).toBe(true);
-    expect(await page.locator("h1").first().textContent()).toBe("Readable");
-    expect(await page.getByText("Something went wrong").count()).toBe(0);
     await page.context().close();
   });
+
+  it("says why a scan ended without a result in the frame its badge first says so", async () => {
+    const { page } = await answered(FAILED);
+    await page.route("**/assets/scan-failed-*.js", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await route.continue();
+    });
+    await watchCardFrames(page);
+
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    await page.getByText("No reliable diagnostic was produced").waitFor();
+
+    const frames = await cardFrames(page);
+    expect(frames.filter((frame) => frame.badge === "fail" && frame.heading === null)).toEqual([]);
+    await page.context().close();
+  });
+
+  it.each([
+    ["opened after it ended", [FINISHED]],
+    ["watched running", [RUNNING, FINISHED]],
+  ])(
+    "draws the result of a scan %s, rather than failing, where the result's script was replaced by a newer deployment",
+    async (_scan, statuses) => {
+      const { page } = await answered(...statuses);
+      let refused = false;
+      await page.route("**/assets/scan-teaser-*.js", (route) => {
+        if (refused) return route.continue();
+        refused = true;
+        return route.fulfill({ status: 404, body: "" });
+      });
+      await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+      await page.waitForLoadState("networkidle");
+
+      await page.getByLabel("Email").waitFor();
+
+      expect(refused).toBe(true);
+      expect(await page.locator("h1").first().textContent()).toBe("Readable");
+      expect(await page.getByText("Something went wrong").count()).toBe(0);
+      await page.context().close();
+    },
+  );
 
   it("reloads only once where the result's script cannot be fetched at all, and then says something failed", async () => {
     const { page } = await answered(FINISHED);
@@ -619,54 +677,164 @@ describe("a scan in Chromium", () => {
   });
 });
 
-describe("the doors on a phone", () => {
-  it.each([
-    [
-      "a scan",
-      `/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`,
-      "main section",
-      "7 of 18 checks reported",
-    ],
-    [
-      "a report",
-      "/report/0190f4c5-0000-7000-8000-00000000f002",
-      "h1",
-      "Private report access required",
-    ],
-  ])(
-    "keep their row when the signed-in address arrives, so %s does not move",
-    async (_page, path, under, drawn) => {
-      // The narrowest page the site is drawn for.
-      const context = await browser.newContext({ viewport: { width: 320, height: 640 } });
-      const page = await context.newPage();
-      let release = () => {};
-      const released = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      await page.route(`**/api/v1/scans/${SCAN_ID}/status`, (route) =>
-        route.fulfill({ json: RUNNING }),
-      );
-      await page.route("**/api/v2/session", async (route) => {
-        await released;
-        await route.fulfill({
-          json: {
-            status: "signed_in",
-            email: "accounts-payable@an-example-company.com",
-            operator: false,
-          },
-        });
-      });
+/** How the dashboard can answer who is visiting: a person, an operator, or not at all. */
+const VISITORS = [
+  [
+    "a signed-in address",
+    {
+      status: 200,
+      body: {
+        status: "signed_in",
+        email: "accounts-payable@an-example-company.com",
+        operator: false,
+      },
+    },
+  ],
+  [
+    "an operator",
+    {
+      status: 200,
+      body: { status: "signed_in", email: "ops@agentify.example", operator: true },
+    },
+  ],
+  ["no answer", { status: 503, body: {} }],
+] as const;
 
-      // The session's answer is held until the page under the doors is drawn.
-      await page.goto(`${origin}${path}`);
+/**
+ * A phone-sized browser on `path` whose question of who is visiting is held
+ * until `release`, and answered then with `answer`; the scan's status is the
+ * running one.
+ */
+const onAPhone = async (
+  path: string,
+  answer: Readonly<{ status: number; body: object }>,
+  width = 320,
+) => {
+  const context = await browser.newContext({ viewport: { width, height: 640 } });
+  const page = await context.newPage();
+  let release = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(`**/api/v1/scans/${SCAN_ID}/status`, (route) =>
+    route.fulfill({ json: RUNNING }),
+  );
+  await page.route("**/api/v2/session", async (route) => {
+    await released;
+    await route.fulfill({ status: answer.status, json: answer.body });
+  });
+  await page.goto(`${origin}${path}`);
+  const answered = async () => {
+    release();
+    await page.locator('.site-visitor[aria-busy="false"]').first().waitFor({ state: "attached" });
+  };
+  return { page, answered };
+};
+
+describe("the doors on a phone", () => {
+  it.each(
+    VISITORS.flatMap(([who, answer]) => [
+      [
+        who,
+        "a scan",
+        answer,
+        `/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`,
+        "main section",
+        "7 of 18 checks reported",
+      ],
+      [
+        who,
+        "a report",
+        answer,
+        "/report/0190f4c5-0000-7000-8000-00000000f002",
+        "h1",
+        "Private report access required",
+      ],
+    ]),
+  )(
+    "keep their row when %s comes back, so %s does not move, on the narrowest page",
+    async (_who, _page, answer, path, under, drawn) => {
+      const { page, answered } = await onAPhone(path, answer);
       await page.getByText(drawn).first().waitFor();
       await page.evaluate(() => document.fonts.ready);
       const before = await page.locator(under).first().boundingBox();
-      release();
-      await page.getByRole("button", { name: "Sign out" }).waitFor();
+
+      await answered();
 
       expect(await page.locator(under).first().boundingBox()).toEqual(before);
-      await context.close();
+      await page.context().close();
+    },
+  );
+});
+
+describe("the site's menu on a phone", () => {
+  it("holds the site's sections, Sell to agents first, closes on Escape, and closes once a link in it is followed, fetched ahead as the bar's are", async () => {
+    const { page, complaints } = await visit("/methodology");
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.evaluate(() => {
+      (window as Window & { stayed?: boolean }).stayed = true;
+    });
+    const burger = page.locator("header .site-menu > summary");
+    const panel = page.locator("header .site-menu-panel");
+
+    expect(await panel.isVisible()).toBe(false);
+    await burger.click();
+    await panel.waitFor({ state: "visible" });
+    expect(await panel.locator("nav a").allTextContents()).toEqual([
+      "Sell to agents",
+      "Scanner",
+      "Methodology",
+      "Privacy",
+    ]);
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press("Escape");
+    await panel.waitFor({ state: "hidden" });
+    expect(await burger.evaluate((element) => element === document.activeElement)).toBe(true);
+
+    await burger.click();
+    const privacy = panel.getByRole("link", { name: "Privacy" });
+    const before = timesAsked("/privacy.data");
+    await privacy.hover();
+    await page.waitForTimeout(600);
+    await privacy.click();
+    await page.waitForURL(`${origin}/privacy`);
+    await page.locator("h1", { hasText: "Privacy" }).first().waitFor();
+
+    expect(await panel.isVisible()).toBe(false);
+    expect(timesAsked("/privacy.data") - before).toBe(1);
+    expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+
+  it.each(VISITORS)(
+    "keeps the header's height when %s comes back, and holds who is visiting",
+    async (_who, answer) => {
+      const { page, answered } = await onAPhone("/methodology", answer, 390);
+      await page.locator("h1").first().waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      const header = page.locator("header.site-header");
+      const before = await header.boundingBox();
+
+      await answered();
+      expect(await header.boundingBox()).toEqual(before);
+
+      await header.locator(".site-menu > summary").click();
+      const visitor = header.locator(".site-menu-panel .site-visitor");
+      if ("email" in answer.body) {
+        const address = visitor.getByRole("link", { name: answer.body.email });
+        expect(await address.getAttribute("href")).toBe("/dashboard/settings");
+        expect(
+          await address.evaluate((element) => element.scrollWidth <= element.clientWidth),
+        ).toBe(true);
+        expect(await visitor.getByRole("button", { name: "Sign out" }).isVisible()).toBe(true);
+        expect(await visitor.getByRole("link", { name: "Admin" }).count()).toBe(
+          answer.body.operator ? 1 : 0,
+        );
+      } else {
+        expect(await visitor.getByText("Sign-in unknown").isVisible()).toBe(true);
+      }
+      await page.context().close();
     },
   );
 });

@@ -1,4 +1,4 @@
-import { type ComponentType, createElement, lazy, useState } from "react";
+import { type ComponentType, createElement, lazy, useEffect, useState } from "react";
 
 const RELOADED = "agentify:reloaded-for-a-part";
 
@@ -17,7 +17,7 @@ const RELOADED = "agentify:reloaded-for-a-part";
  */
 export function lazyPart<Props extends object>(
   load: () => Promise<ComponentType<Props>>,
-): ComponentType<Props> & { preload: () => void } {
+): ComponentType<Props> & Fetchable {
   let loaded: ComponentType<Props> | null = null;
   let loading: Promise<ComponentType<Props>> | null = null;
   const loadOnce = () => {
@@ -49,10 +49,41 @@ export function lazyPart<Props extends object>(
     return createElement(Drawn, props);
   }
   return Object.assign(Part, {
-    preload: () => {
-      loadOnce().catch(() => {});
-    },
+    isHere: () => loaded !== null,
+    preload: () =>
+      loadOnce().then(
+        () => {},
+        () => {},
+      ),
   });
+}
+
+/** What a page asks of a part before it draws it. */
+type Fetchable = Readonly<{
+  /** Whether the part's script is here, so it is drawn with no fallback. */
+  isHere: () => boolean;
+  /** Fetches the part's script, settling once it is here or has failed. */
+  preload: () => Promise<void>;
+}>;
+
+/**
+ * Whether `part` can be drawn now with no fallback, its script fetched while
+ * it is `wanted`. A fetch that failed counts as done, so the part is drawn and
+ * asks for its script again, as a part that cannot be fetched does.
+ */
+export function useHere(part: Fetchable, wanted: boolean): boolean {
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!wanted || settled || part.isHere()) return;
+    let current = true;
+    void part.preload().then(() => {
+      if (current) setSettled(true);
+    });
+    return () => {
+      current = false;
+    };
+  }, [part, settled, wanted]);
+  return settled || part.isHere();
 }
 
 /** Marks a reload for this address and says whether it may happen: once, where storage works. */

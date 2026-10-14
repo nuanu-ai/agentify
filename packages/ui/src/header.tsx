@@ -13,6 +13,7 @@
 import type { ComponentType, ReactNode } from "react";
 import { Form, Link } from "react-router";
 import { BrandMark } from "./mark.js";
+import { HeaderMenu } from "./menu.js";
 
 /** The surfaces that draw the site header, each a process of its own. */
 export type Surface = "scanner" | "dashboard";
@@ -151,6 +152,26 @@ export function SiteHeader({
         </div>
       </div>
     </header>
+  );
+}
+
+/**
+ * The menu for a bar without room for its links: the public site's sections,
+ * "Sell to agents" first, then who is visiting, which the surface draws in
+ * `visitor` as it does for the doors.
+ */
+export function SiteMenu({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: ReactNode }>) {
+  return (
+    <HeaderMenu>
+      <nav aria-label="Primary" className="site-menu-sections">
+        {SECTIONS.map((section) => (
+          <PlaceLink key={section.path} place={section} {...drawn}>
+            {section.label}
+          </PlaceLink>
+        ))}
+      </nav>
+      {visitor}
+    </HeaderMenu>
   );
 }
 
