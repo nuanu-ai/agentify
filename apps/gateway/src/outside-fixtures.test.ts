@@ -38,16 +38,15 @@ const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
 /** A whole gateway and a socket to talk to it over, built from nothing. */
 async function aGatewayOnAPort() {
   const ids = () => randomUUID();
-  const queue = new MemoryQueue();
-  // The queue is made first because the store publishes through it: an envelope
-  // that must not be lost is written together with the order.
-  const store = new MemoryStore(ids, () => Date.now(), queue.envelopes());
-  const facilitator = new ScriptedFacilitator();
-
   const config = loadConfig({
     DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
     PAY_TO_ADDRESS: PAY_TO,
   });
+  const queue = new MemoryQueue();
+  // The queue is made first because the store publishes through it: an envelope
+  // that must not be lost is written together with the order.
+  const store = new MemoryStore(config.payment.network, ids, () => Date.now(), queue.envelopes());
+  const facilitator = new ScriptedFacilitator();
 
   // The calls below carry only the key; the door turns it into the merchant.
   // Without the name or the payout address the first publish would be refused.

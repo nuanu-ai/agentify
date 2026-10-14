@@ -135,7 +135,7 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
   });
   // The store writes an order's envelopes through the queue in the same step as
   // the order, and a test that replaces `queue.stage` replaces the store's too.
-  const store = new MemoryStore(countedIds(), () => now, queue.envelopes());
+  const store = new MemoryStore(config.payment.network, countedIds(), () => now, queue.envelopes());
   const facilitator = new ScriptedFacilitator();
   const announcer = new RecordingAnnouncer();
   const ids = countedIds();

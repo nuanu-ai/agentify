@@ -104,11 +104,19 @@ export class MemoryStore implements Store {
   /** The tail of the queue of decisions waiting on each order. */
   readonly #locks = new Map<string, Promise<unknown>>();
   readonly #running = new Set<string>();
+  /** The network whose split of a wallet this store reads as the one it is paid through. */
+  readonly #network: string;
   readonly #ids: Ids;
   readonly #now: Clock;
   readonly #envelopes: Envelopes;
 
-  constructor(ids: Ids, now: Clock = () => Date.now(), envelopes: Envelopes = noEnvelopes) {
+  constructor(
+    network: string,
+    ids: Ids,
+    now: Clock = () => Date.now(),
+    envelopes: Envelopes = noEnvelopes,
+  ) {
+    this.#network = network;
     this.#ids = ids;
     this.#now = now;
     this.#envelopes = envelopes;
@@ -188,7 +196,7 @@ export class MemoryStore implements Store {
     next: PayoutWalletWrite,
     at: number,
   ): Promise<WalletWritten | "moved" | null> {
-    const splits = splitsOfTheWrite(id, next);
+    const splits = splitsOfTheWrite(id, this.#network, next);
     const row = this.#merchants.get(id);
     if (row === undefined) {
       return null;
@@ -283,15 +291,14 @@ export class MemoryStore implements Store {
     return recorded;
   }
 
-  /**
-   * The split recorded for this merchant's wallet, or null. A database serves
-   * one network, so the first recorded is the one; Postgres reads it the same
-   * way.
-   */
+  /** The split recorded for this merchant's wallet on this store's network, or null. */
   #splitOf(merchantId: string, wallet: string): RecordedPayoutSplit | null {
     return (
       this.#splits.find(
-        (split) => split.merchantId === merchantId && split.merchantWallet === wallet,
+        (split) =>
+          split.network === this.#network &&
+          split.merchantId === merchantId &&
+          split.merchantWallet === wallet,
       ) ?? null
     );
   }
@@ -770,16 +777,13 @@ function toRecord(
   return fresh;
 }
 
-/** In the order recorded, the address settling a tie by its characters, as Postgres sorts them. */
+/**
+ * In the order recorded, the address settling a tie by its characters, as
+ * Postgres sorts them. Two splits of one network never share an address.
+ */
 function splitsInOrder(splits: readonly RecordedPayoutSplit[]): readonly RecordedPayoutSplit[] {
-  return [...splits].sort((one, other) =>
-    one.recordedAt !== other.recordedAt
-      ? one.recordedAt - other.recordedAt
-      : one.address < other.address
-        ? -1
-        : one.address > other.address
-          ? 1
-          : 0,
+  return [...splits].sort(
+    (one, other) => one.recordedAt - other.recordedAt || (one.address < other.address ? -1 : 1),
   );
 }
 

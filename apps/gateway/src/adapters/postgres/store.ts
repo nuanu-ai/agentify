@@ -107,19 +107,29 @@ export type Database = NodePgDatabase & { readonly $client: Pool };
 
 export class PostgresStore implements Store {
   readonly #db: Database;
+  /** The network whose split of a wallet this store reads as the one it is paid through. */
+  readonly #network: string;
   readonly #ids: Ids;
   readonly #envelopes: Envelopes;
 
   /**
    * The only way to make a store: database failures leave it stripped of the
-   * values bound to the statement (`database-failure.ts`).
+   * values bound to the statement (`database-failure.ts`). `network` is the
+   * deployment's: a wallet's split is the one recorded on it, and a row of
+   * another network is never read as one.
    */
-  static over(db: Database, ids: Ids, envelopes: Envelopes = noEnvelopes): PostgresStore {
-    return failingWithoutValues(new PostgresStore(db, ids, envelopes), "the store");
+  static over(
+    db: Database,
+    network: string,
+    ids: Ids,
+    envelopes: Envelopes = noEnvelopes,
+  ): PostgresStore {
+    return failingWithoutValues(new PostgresStore(db, network, ids, envelopes), "the store");
   }
 
-  private constructor(db: Database, ids: Ids, envelopes: Envelopes) {
+  private constructor(db: Database, network: string, ids: Ids, envelopes: Envelopes) {
     this.#db = db;
+    this.#network = network;
     this.#ids = ids;
     this.#envelopes = envelopes;
   }
@@ -160,8 +170,8 @@ export class PostgresStore implements Store {
     const rows = await on
       .select({
         ...MERCHANT_COLUMNS,
-        split: splitRecordedFor(merchants.payoutWallet),
-        pendingSplit: splitRecordedFor(merchants.pendingPayoutWallet),
+        split: splitRecordedFor(this.#network, merchants.payoutWallet),
+        pendingSplit: splitRecordedFor(this.#network, merchants.pendingPayoutWallet),
       })
       .from(merchants)
       .where(where)
@@ -223,7 +233,7 @@ export class PostgresStore implements Store {
     next: PayoutWalletWrite,
     at: number,
   ): Promise<WalletWritten | "moved" | null> {
-    const splits = splitsOfTheWrite(id, next);
+    const splits = splitsOfTheWrite(id, this.#network, next);
     // The wallet and its splits in one transaction: a split that cannot be
     // written leaves the wallet as it was, and a wallet that moved records no
     // split.
@@ -535,8 +545,8 @@ export class PostgresStore implements Store {
         payoutWallet: merchants.payoutWallet,
         pendingPayoutWallet: merchants.pendingPayoutWallet,
         pendingPayoutWalletFrom: merchants.pendingPayoutWalletFrom,
-        split: splitRecordedFor(merchants.payoutWallet),
-        pendingSplit: splitRecordedFor(merchants.pendingPayoutWallet),
+        split: splitRecordedFor(this.#network, merchants.payoutWallet),
+        pendingSplit: splitRecordedFor(this.#network, merchants.pendingPayoutWallet),
         serviceName: merchants.serviceName,
         sellerSite: merchants.sellerSite,
         liveApprovedAt: merchants.liveApprovedAt,
@@ -1082,18 +1092,18 @@ interface SplitAsJson {
 }
 
 /**
- * The split recorded for the merchant's wallet in this column, as one JSON
- * value, or null. A database serves one network, and the start refuses one
- * holding another's splits, so the first recorded is the one; the memory
- * store reads it the same way.
+ * The split recorded on this network for the merchant's wallet in this
+ * column, as one JSON value, or null. The primary key makes it at most one
+ * row.
  */
 const splitRecordedFor = (
+  network: string,
   wallet: typeof merchants.payoutWallet | typeof merchants.pendingPayoutWallet,
 ) =>
   sql<SplitAsJson | null>`(
     select row_to_json(recorded) from ${payoutSplits} as recorded
-    where recorded.merchant_id = ${merchants.id} and recorded.merchant_wallet = ${wallet}
-    order by recorded.recorded_at limit 1)`;
+    where recorded.network = ${network} and recorded.merchant_id = ${merchants.id}
+      and recorded.merchant_wallet = ${wallet})`;
 
 function splitColumnsOf(json: SplitAsJson): typeof payoutSplits.$inferSelect {
   return {

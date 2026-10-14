@@ -181,7 +181,12 @@ export async function bootGateway(
     // that must not be lost is written where the order is. It is `stage` rather
     // than `publish` because the store needs the two halves apart: take it
     // before the order is written, make it visible after.
-    const store = new MemoryStore(randomIds, systemClock, queue.envelopes());
+    const store = new MemoryStore(
+      config.payment.network,
+      randomIds,
+      systemClock,
+      queue.envelopes(),
+    );
 
     const runtime: Runtime = {
       config,

@@ -70,10 +70,13 @@ afterEach(async () => {
   running = null;
 });
 
-/** A store and its queue, empty, as a database is before a gateway starts on it. */
-const aDatabase = () => {
+/**
+ * A store and its queue, empty, as a database is before a gateway starts on
+ * it, opened for the deployment's network.
+ */
+const aDatabase = (network = "eip155:84532") => {
   const queue = new MemoryQueue();
-  const store = new MemoryStore(countedIds(), () => NOW, queue.envelopes());
+  const store = new MemoryStore(network, countedIds(), () => NOW, queue.envelopes());
   return { store, queue };
 };
 
@@ -225,6 +228,22 @@ describe("a start where the code's payout split changed since the registry was w
     },
   );
 
+  it("refuses where the code's new commission wallet is a merchant's own wallet, for which it can make no split", async () => {
+    // The split of a wallet that is the commission wallet would pay one
+    // wallet twice, so the code makes none, and the recorded one is not what
+    // it makes.
+    const database = aDatabase();
+    // The distributor's address, in the spelling a wallet is written in.
+    const theirs = payoutSplitNetworkOf(T1, "eip155:8453").commissionWallet;
+    expect(theirs.toLowerCase()).toBe(DISTRIBUTOR.toLowerCase());
+    await aMerchant(database, "mch_one");
+    await paidUnder(database, "mch_one", theirs);
+
+    expect(
+      await refusalOf(aGatewayOver(database, editedTo({ commissionWallet: theirs })).gateway),
+    ).toMatch(/commission wallet or the rate/);
+  });
+
   it("refuses where a waiting wallet's split disagrees, too", async () => {
     // At its moment the waiting split becomes the payment address with no
     // write in between.
@@ -306,9 +325,12 @@ describe("a start on a database whose splits belong to another network", () => {
     // Moved from the test channel to the live one, the database would name
     // Base Sepolia's splits, with a test commission wallet inside, as payment
     // addresses on Base, where the same formula gives the same addresses.
-    const database = aDatabase();
+    // Opened by the live gateway, it holds the wallet and its Base Sepolia
+    // split as the test channel wrote them.
+    const database = aDatabase("eip155:8453");
     await aMerchant(database, "mch_one");
-    await paidUnder(database, "mch_one", W);
+    await database.store.recordPayoutSplits([payoutSplitFor(T1_TEST, "mch_one", W)], NOW);
+    await paidBeforeSplits(database, "mch_one", { address: W, pending: null });
 
     const refused = await refusalOf(aGatewayOver(database, T1, LIVE).gateway);
 
@@ -319,7 +341,7 @@ describe("a start on a database whose splits belong to another network", () => {
   it("refuses even where no merchant's wallet in force names the foreign split", async () => {
     // A guard that looked only at the wallets in force on its own network
     // would never see the rows it is there to refuse.
-    const database = aDatabase();
+    const database = aDatabase("eip155:8453");
     await aMerchant(database, "mch_one");
     await database.store.recordPayoutSplits([payoutSplitFor(T1_TEST, "mch_one", OTHER)], NOW);
 
@@ -389,6 +411,23 @@ describe("a start that finds wallets set before splits were", () => {
       JSON.parse(line[1] ?? ""),
     );
     expect(lines).toStrictEqual(expected.map((split) => ({ ...split, recordedAt: NOW })));
+  });
+
+  it("refuses to start on a wallet no split can be made for, naming its merchant, and records nothing", async () => {
+    // A wallet set before splits that is the network's commission wallet
+    // would make a split paying one wallet twice, which no factory creates.
+    const database = await asBeforeSplits();
+    await aMerchant(database, "mch_paid_to_us");
+    await paidBeforeSplits(database, "mch_paid_to_us", {
+      address: T1_TEST.commissionWallet,
+      pending: null,
+    });
+
+    const refused = await refusalOf(aGatewayOver(database).gateway);
+
+    expect(refused).toContain("mch_paid_to_us");
+    expect(refused).toContain(T1_TEST.commissionWallet);
+    expect(await database.store.networksWithPayoutSplits()).toStrictEqual([]);
   });
 
   it("records nothing on a second start, and writes nothing to the journal", async () => {

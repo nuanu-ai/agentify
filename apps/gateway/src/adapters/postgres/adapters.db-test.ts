@@ -210,7 +210,7 @@ if (databaseUrl === null) {
       // The queue is made first because the store writes through it: an
       // envelope that must not be lost goes into the same transaction as the
       // order that implies it, as `start.ts` arranges.
-      store = PostgresStore.over(connected.db, countedIds(), queue.envelopes());
+      store = PostgresStore.over(connected.db, "eip155:84532", countedIds(), queue.envelopes());
       facilitator = new ScriptedFacilitator();
 
       const runtime: Runtime = {
@@ -438,9 +438,12 @@ if (databaseUrl === null) {
             return { save: { ...found, paidBy: who }, result: { took: true } };
           });
 
-        const aliceTaking = take(PostgresStore.over(alice.db, countedIds()), "alice");
+        const aliceTaking = take(
+          PostgresStore.over(alice.db, "eip155:84532", countedIds()),
+          "alice",
+        );
         await bobMayStart;
-        const bobTaking = take(PostgresStore.over(bob.db, countedIds()), "bob");
+        const bobTaking = take(PostgresStore.over(bob.db, "eip155:84532", countedIds()), "bob");
         const [first, second] = await Promise.all([aliceTaking, bobTaking]);
 
         const decided = [first, second].map((lookup) => (lookup.found ? lookup.result : null));
@@ -977,8 +980,8 @@ if (databaseUrl === null) {
       const onePool = oneGateway.pool;
       const otherPool = otherGateway.pool;
       try {
-        const one = PostgresStore.over(oneGateway.db, countedIds());
-        const other = PostgresStore.over(otherGateway.db, countedIds());
+        const one = PostgresStore.over(oneGateway.db, "eip155:84532", countedIds());
+        const other = PostgresStore.over(otherGateway.db, "eip155:84532", countedIds());
 
         // The first is held inside the work, so the second arrives while it is
         // genuinely still running rather than after it.
@@ -1060,7 +1063,7 @@ if (databaseUrl === null) {
         if (offered.step !== "pay") throw new Error("no price was offered");
         const orderId = offered.order.order.id;
 
-        const own = PostgresStore.over(owner.db, countedIds());
+        const own = PostgresStore.over(owner.db, "eip155:84532", countedIds());
         // One connection in the pool, so this is the one the transaction will
         // check out and the one terminated inside it.
         const pinned = await backendPid(ownPool);
@@ -1109,7 +1112,7 @@ if (databaseUrl === null) {
       const owner = connect(databaseUrl, { max: 1 });
       const ownPool = owner.pool;
       try {
-        const own = PostgresStore.over(owner.db, countedIds());
+        const own = PostgresStore.over(owner.db, "eip155:84532", countedIds());
         // The pool holds one connection, so this is the one `runAlone` will
         // pin and the one terminated below.
         const pinned = await backendPid(ownPool);
@@ -1145,7 +1148,7 @@ if (databaseUrl === null) {
       const owner = connect(databaseUrl, { max: 1 });
       const ownPool = owner.pool;
       try {
-        const own = PostgresStore.over(owner.db, countedIds());
+        const own = PostgresStore.over(owner.db, "eip155:84532", countedIds());
         const pinned = await backendPid(ownPool);
 
         const failing = own.runAlone("a_failing_terminated_sweep", async () => {
@@ -1169,7 +1172,7 @@ if (databaseUrl === null) {
       const its = connect(databaseUrl, { max: 1 });
       const otherPool = its.pool;
       try {
-        const other = PostgresStore.over(its.db, countedIds());
+        const other = PostgresStore.over(its.db, "eip155:84532", countedIds());
 
         await expect(
           store.runAlone("a_failing_sweep", async () => {
@@ -1219,7 +1222,7 @@ if (databaseUrl === null) {
           },
         });
 
-        const stubborn = PostgresStore.over(held.db, countedIds());
+        const stubborn = PostgresStore.over(held.db, "eip155:84532", countedIds());
         // The run itself is a success and is reported as one. An unlock nobody
         // could complete is not the sweep's failure to hand back to the queue.
         expect(await stubborn.runAlone("a_wedged_sweep", async () => "swept")).toStrictEqual({
@@ -1231,7 +1234,7 @@ if (databaseUrl === null) {
         // asynchronous, so this waits two seconds, well inside the ten the pool
         // takes to reap an idle connection: a window that reached the reaper
         // would pass even if the session were kept.
-        const next = PostgresStore.over(asking.db, countedIds());
+        const next = PostgresStore.over(asking.db, "eip155:84532", countedIds());
         const until = Date.now() + 2_000;
         let free = await next.runAlone("a_wedged_sweep", async () => "free");
         while (!free.ran && Date.now() < until) {
@@ -1356,6 +1359,20 @@ if (databaseUrl === null) {
         await theMerchantOfThisSuite();
       });
 
+      /**
+       * The error a call was refused with. An error and not just a rejection:
+       * `rejects.toThrow` passes on a rejection with nothing in it.
+       */
+      const refusal = async (work: Promise<unknown>): Promise<Error> => {
+        try {
+          await work;
+        } catch (thrown) {
+          expect(thrown).toBeInstanceOf(Error);
+          return thrown as Error;
+        }
+        throw new Error("nothing was refused, and being refused is what this is about");
+      };
+
       const rowsOf = async (merchantId: string) =>
         (
           await pool.query(
@@ -1381,14 +1398,15 @@ if (databaseUrl === null) {
         );
         try {
           const before = await merchantRow(A);
-          await expect(
+          const refused = await refusal(
             store.setPayoutWallet(
               A,
               { address: PAID_NOW, pending: null },
               { address: W1, split: splitOf(A, W1), pending: null },
               now + 1_000,
             ),
-          ).rejects.toThrow(/refuse_the_wallet/);
+          );
+          expect(refused.message).toMatch(/refuse_the_wallet/);
           expect(await merchantRow(A)).toStrictEqual(before);
           expect(await store.payoutSplitAt(splitOf(A, W1).address)).toBeNull();
 
@@ -1419,7 +1437,9 @@ if (databaseUrl === null) {
           `insert into payout_splits select * from payout_splits
            on conflict (network, merchant_id, merchant_wallet) do update set salt = excluded.salt`,
         ]) {
-          await expect(pool.query(change), change).rejects.toThrow(/never changed or deleted/);
+          expect((await refusal(pool.query(change))).message, change).toMatch(
+            /never changed or deleted/,
+          );
         }
         expect(await rowsOf(A)).toStrictEqual([before]);
 
@@ -1436,8 +1456,10 @@ if (databaseUrl === null) {
         // spelling of one address is the same contract.
         const other = { ...network, commissionWallet: W2 };
         const second = payoutSplitFor(other, A, PAID_NOW);
-        await expect(store.recordPayoutSplits([second], now)).rejects.toThrow();
-        await expect(
+        expect((await refusal(store.recordPayoutSplits([second], now))).message).toMatch(
+          /recorded/,
+        );
+        const anotherCommission = await refusal(
           pool.query(
             `insert into payout_splits
              select address, network, merchant_id, merchant_wallet, $1, merchant_allocation,
@@ -1446,8 +1468,12 @@ if (databaseUrl === null) {
              from payout_splits where merchant_id = $2`,
             [W2, A],
           ),
-        ).rejects.toThrow(/payout_splits_pkey|duplicate key/);
-        await expect(
+        );
+        expect(anotherCommission).toMatchObject({
+          code: "23505",
+          constraint: "payout_splits_pkey",
+        });
+        const anotherSpelling = await refusal(
           pool.query(
             `insert into payout_splits
              select lower(address), network, 'mch_another', merchant_wallet, commission_wallet,
@@ -1456,7 +1482,11 @@ if (databaseUrl === null) {
              from payout_splits where merchant_id = $1`,
             [A],
           ),
-        ).rejects.toThrow(/payout_splits_address_unique|duplicate key/);
+        );
+        expect(anotherSpelling).toMatchObject({
+          code: "23505",
+          constraint: "payout_splits_address_unique",
+        });
         expect(await rowsOf(A)).toHaveLength(1);
       });
 
@@ -1464,7 +1494,7 @@ if (databaseUrl === null) {
       const aGatewayOn = (db: Database, table = SPLIT_NETWORKS_WITH_A_FIXTURE_BASE) =>
         new Gateway({
           config: loadConfig({ DATABASE_URL: databaseUrl }, table),
-          store: PostgresStore.over(db, countedIds()),
+          store: PostgresStore.over(db, "eip155:84532", countedIds()),
           queue: new MemoryQueue(),
           facilitator: new ScriptedFacilitator(),
           clock: () => now,
@@ -1580,7 +1610,7 @@ if (databaseUrl === null) {
      */
     describeStore("the store on Postgres", async () => {
       await contract.pool.query(EMPTY_EVERY_TABLE);
-      return PostgresStore.over(contract.db, countedIds());
+      return PostgresStore.over(contract.db, "eip155:84532", countedIds());
     });
   });
 }

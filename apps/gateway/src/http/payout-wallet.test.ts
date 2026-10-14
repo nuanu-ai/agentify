@@ -773,6 +773,19 @@ describe("a merchant whose wallet has no recorded split", () => {
     expect(problems.map((problem) => problem.code)).toContain("no_payout_wallet");
   });
 
+  it("says nothing of a missing split for a merchant whose split is recorded", async () => {
+    // The line is how an operator finds the defect; written for every
+    // merchant, it would bury the one it is about.
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
+
+    const logged = await loggedWhile(async () => {
+      expect((await served.call("GET", `/x402/${itemId}/purchase`)).status).toBe(402);
+    });
+
+    expect(logged).not.toMatch(/no payout split is recorded/);
+  });
+
   it("sells nothing in the sandbox either, rather than at a split nothing recorded", async () => {
     // The placeholder stands in for a merchant with no wallet, never for a
     // merchant whose wallet lost its split.
