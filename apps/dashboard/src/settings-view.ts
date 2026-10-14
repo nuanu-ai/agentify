@@ -133,7 +133,7 @@ const sameAddress = (one: string, other: string): boolean =>
 const commissionOf = (mode: SurfaceMode, rate: CommissionRate): string => {
   const { commission, share } = percentagesOf(rate);
   return (
-    `Agentify keeps ${commission} of every sale, a refunded one included. Buyers pay into a payout contract made for this wallet: it pays ${share} to the wallet and ${commission} to Agentify, and nobody can change that. Saving a wallet here is your agreement.` +
+    `Agentify keeps ${commission} of every sale, a refunded one included. Buyers pay into a payout contract made for this wallet: it pays ${share} to the wallet and ${commission} to Agentify, and nobody can change that. The money waits in the contract until somebody pays it out: you, at any time, or Agentify, on no set date. Saving a wallet here is your agreement.` +
     (mode === "sandbox" ? " In the sandbox nothing is deployed and no money moves." : "")
   );
 };
