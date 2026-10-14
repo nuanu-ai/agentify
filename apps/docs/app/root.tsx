@@ -11,6 +11,9 @@
  * navigation asks for the address without it, and the prefetch is wasted.
  */
 
+// The faces are written into the page's one stylesheet rather than linked
+// apart: a second stylesheet holds the first paint for a round trip of its own.
+import "@agentify/visual/public/styles/fonts.css";
 import "@agentify/visual/tokens.css";
 import "@agentify/visual/editorial.css";
 import "./docs.css";
@@ -34,8 +37,6 @@ import { SERVED_CLASS, servedPart, servedTemplate } from "./served.js";
 
 export const links = () => [
   { rel: "icon", href: "/assets/agentify-mark-heavy.svg", type: "image/svg+xml" },
-  // Served beside the documentation on the shared origin, as for the dashboard.
-  { rel: "stylesheet", href: "/styles/fonts.css" },
 ];
 
 export const meta = () => [{ title: "Agentify documentation" }];
