@@ -500,15 +500,12 @@ describe("a split smoke run", () => {
     ]);
   });
 
-  it("stops at the operator's payout, naming the address, when a unit of USDC reaches anybody but the run's five", async () => {
-    const effects = withEffect(4, () => ({
-      after: ledger([30_000n, 1n, 19_978n, 120_015n], [0n, 1n, 1n, 1n]),
-      transfers: [
-        transfer(WAREHOUSE, MERCHANT, 0n),
-        transfer(WAREHOUSE, COMMISSION, 18n),
-        transfer(WAREHOUSE, STRANGER, 1n),
-      ],
-      distributed: [0n],
+  it("stops at the operator's payout, naming the address, when USDC reaches anybody but the run's five, every balance of the run's own as predicted", async () => {
+    // As a bundle that also withdrew some other wallet's credit would: the
+    // warehouse pays a stranger out of a credit that is none of the run's.
+    const effects = withEffect(4, (operator) => ({
+      ...operator,
+      transfers: [...operator.transfers, transfer(WAREHOUSE, STRANGER, 1n)],
     }));
 
     const stopped = await stoppedAt(run(scriptedChain({ effects }), aJournal()));
