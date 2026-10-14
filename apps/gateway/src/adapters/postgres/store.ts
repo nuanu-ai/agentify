@@ -1146,6 +1146,13 @@ function recordedSplitOf(row: typeof payoutSplits.$inferSelect): RecordedPayoutS
 }
 
 /**
+ * How many splits one statement records. A statement carries at most 65,535
+ * values and a row is thirteen, so a start over five thousand wallets without
+ * splits, sent as one statement, would be refused on every attempt.
+ */
+const SPLITS_PER_STATEMENT = 1_000;
+
+/**
  * Records the splits with no row yet, inside the caller's transaction, and
  * returns those it recorded. A split already recorded under its merchant,
  * wallet and network is left as it is, provided it is recorded at the same
@@ -1156,14 +1163,17 @@ async function recordWithin(
   splits: readonly PayoutSplit[],
   at: number,
 ): Promise<RecordedPayoutSplit[]> {
-  if (splits.length === 0) {
-    return [];
+  const inserted: (typeof payoutSplits.$inferSelect)[] = [];
+  for (let from = 0; from < splits.length; from += SPLITS_PER_STATEMENT) {
+    const chunk = splits.slice(from, from + SPLITS_PER_STATEMENT);
+    inserted.push(
+      ...(await tx
+        .insert(payoutSplits)
+        .values(chunk.map((split) => ({ ...split, recordedAt: new Date(at) })))
+        .onConflictDoNothing()
+        .returning()),
+    );
   }
-  const inserted = await tx
-    .insert(payoutSplits)
-    .values(splits.map((split) => ({ ...split, recordedAt: new Date(at) })))
-    .onConflictDoNothing()
-    .returning();
   const written = new Set(inserted.map((row) => row.address));
   for (const split of splits) {
     if (written.has(split.address)) {

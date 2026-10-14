@@ -15,8 +15,9 @@ import type { Runtime } from "./runtime.js";
 
 /**
  * The gateway does not start on this registry: it disagrees with the
- * network's payout split in the code, or holds a wallet no split can be made
- * for. The message says what, and on which network.
+ * network's payout split in the code, holds a wallet no split can be made
+ * for, or the splits it lacks could not be recorded. The message says what,
+ * and on which network.
  */
 export class RefusedToStart extends Error {
   override readonly name = "RefusedToStart";
@@ -166,7 +167,14 @@ export async function recordSplitsOfWalletsSetBefore(runtime: Runtime): Promise<
       missing.push(made);
     }
   }
-  const recorded = await runtime.store.recordPayoutSplits(missing, runtime.clock());
+  const recorded = await runtime.store
+    .recordPayoutSplits(missing, runtime.clock())
+    .catch((thrown: unknown) => {
+      throw new RefusedToStart(
+        `recording the payout splits of ${missing.length} wallet${missing.length === 1 ? "" : "s"} set without one failed (${thrown instanceof Error ? thrown.message : String(thrown)}), so the gateway does not start`,
+        { cause: thrown },
+      );
+    });
   if (recorded.length > 0) {
     console.log(
       `[gateway] recorded ${recorded.length} payout split${recorded.length === 1 ? "" : "s"} of wallets set before their splits were`,
