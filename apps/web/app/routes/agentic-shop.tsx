@@ -266,9 +266,10 @@ export default function AgenticShopPage() {
                 <span>Keep test and live distinct.</span>
               </h2>
               <p>
-                Buyers pay in USDC and the money goes straight to the wallet in your dashboard.
-                There is no payout from us and no settlement period. Test publication stays open
-                while live waits for approval.
+                Buyers pay in USDC into your own payout contract, which nobody owns and nobody can
+                redirect. It sends 99.9% to the wallet in your dashboard and 0.1% to Agentify when
+                it is paid out, and you can pay it out yourself at any time. Test publication stays
+                open while live waits for approval.
               </p>
               <div className={styles.settlementLinks}>
                 <a className={styles.textLink} href="/dashboard/sign-in">
@@ -287,7 +288,7 @@ export default function AgenticShopPage() {
             <div
               className={styles.paymentDiagram}
               role="group"
-              aria-label="Live payment path: the customer's agent, the gateway, your payout wallet."
+              aria-label="Live payment path: the customer's agent, the gateway, your payout contract, your payout wallet."
             >
               <div className={styles.paymentLabel}>LIVE ONLY AFTER OPERATOR APPROVAL</div>
               <div className={styles.paymentRow}>
@@ -308,6 +309,14 @@ export default function AgenticShopPage() {
               </div>
               <div className={styles.paymentRow}>
                 <span className={styles.nodeIcon}>03</span>
+                <div>
+                  <strong>Your payout contract</strong>
+                  <span>Keeps it until it is paid out: 99.9% to your wallet, 0.1% to Agentify</span>
+                </div>
+                <span aria-hidden="true">↓</span>
+              </div>
+              <div className={styles.paymentRow}>
+                <span className={styles.nodeIcon}>04</span>
                 <div>
                   <strong>Your payout wallet</strong>
                   <span>The address set in your dashboard</span>

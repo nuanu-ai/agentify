@@ -12,12 +12,18 @@
  * paragraphs cannot disagree. A route description in the contract's route
  * table that names one of these numbers is held the same way, read from the
  * description itself.
+ *
+ * The commission is held to the payout split the configuration names. It is
+ * published beyond the portal as well, so a page outside it that names the
+ * rate, a doc comment or a README among them, is read from its own file in
+ * the same way.
  */
 
 import { readFileSync } from "node:fs";
-import { API_ROUTES } from "@nuanu-ai/agentify-contracts";
+import { API_ROUTES, PayoutWalletSchema } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
+import type { PayoutSplitNetwork } from "./split/networks.js";
 
 const repoRoot = new URL("../../../", import.meta.url);
 
@@ -25,8 +31,12 @@ const repoRoot = new URL("../../../", import.meta.url);
  * A page with its line wrapping collapsed, so that a pin can quote a sentence
  * the portal wraps across two lines.
  */
-const pageText = (file: string): string =>
-  readFileSync(new URL(file, repoRoot), "utf8").replace(/\s+/g, " ");
+const pageText = (file: string): string => {
+  const text = readFileSync(new URL(file, repoRoot), "utf8");
+  // A doc comment wraps its sentence across lines that each open on an asterisk.
+  const prose = /\.tsx?$/.test(file) ? text.replace(/\n[ \t]*\*(?!\/)[ \t]?/g, "\n") : text;
+  return prose.replace(/\s+/g, " ");
+};
 
 /** The numbers the portal spells out, as it spells them. */
 const NUMBER_WORDS: Record<string, number> = {
@@ -41,16 +51,29 @@ const NUMBER_WORDS: Record<string, number> = {
 const PERIOD_MS: Record<string, number> = { hour: 3_600_000, day: 86_400_000 };
 
 /** What kind of quantity the captured word is. */
-type Reads = "seconds" | "count" | "period";
+type Reads = "seconds" | "count" | "period" | "percent";
+
+/** A percentage as the pages write it: digits, and a decimal part where there is one. */
+const PERCENT = /^\d+(?:\.\d+)?$/;
 
 /**
  * The number a captured word stands for, in the unit the configuration keeps.
  * A word it cannot read (say "8" for "eight") throws rather than skips, or the
  * pin would pass on a page saying anything at all. Case is forgiven, because a
- * sentence that opens on its number capitalises it.
+ * sentence that opens on its number capitalises it. A percentage is read in
+ * parts of a million, the unit a split's allocations add up to.
  */
 function quantityOf(written: string, reads: Reads): number {
   const word = written.toLowerCase();
+
+  if (reads === "percent") {
+    if (!PERCENT.test(word)) {
+      throw new Error(
+        `the page now writes the percentage as "${written}", which this test cannot read; write it in digits, as "0.1"`,
+      );
+    }
+    return Math.round(Number(word) * 10_000);
+  }
 
   if (reads === "period") {
     const ms = PERIOD_MS[word];
@@ -100,7 +123,177 @@ const config = loadConfig({
 });
 const { deadlines, redelivery } = config;
 
+/** Agentify's share of every payment on one network, in parts of a million. */
+const commissionOf = (split: PayoutSplitNetwork): number =>
+  (split.commissionAllocation * 1_000_000) / split.totalAllocation;
+
+const commission = commissionOf(config.payoutSplit);
+const merchantShare = 1_000_000 - commission;
+
+/** Where a sentence is published, as a pin names it. */
+type Where = Pick<Pin, "page" | "text">;
+
+const NUMBER = String.raw`\d+(?:\.\d+)?`;
+const literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * One pin for each share a sentence names, written as the page writes it with
+ * `{merchant}` and `{agentify}` where the two percentages stand. A pin holds
+ * one of them and matches the other as any number, so it still quotes the
+ * whole sentence.
+ */
+function sharesIn(what: string, where: Where, sentence: string): Pin[] {
+  const pieces = sentence.split(/\{(merchant|agentify)\}/);
+  const shareAt = pieces.flatMap((_, at) => (at % 2 === 1 ? [at] : []));
+  return shareAt.map((held) => {
+    const whose = pieces[held] === "merchant" ? "merchant" : "agentify";
+    const source = pieces
+      .map((piece, at) => (at % 2 === 0 ? literal(piece) : at === held ? `(${NUMBER})` : NUMBER))
+      .join("");
+    return {
+      what: `${what}: ${whose === "merchant" ? "the merchant's share" : "Agentify's share"}`,
+      ...where,
+      anchor: new RegExp(source),
+      reads: "percent",
+      is: whose === "merchant" ? merchantShare : commission,
+    };
+  });
+}
+
 const PINS: readonly Pin[] = [
+  // --- the commission, where merchant code reads about it -------------------
+  ...sharesIn(
+    "the shares, where merchant code reads the wallet",
+    {
+      page: "API_ROUTES.get_payout_wallet.description",
+      text: API_ROUTES.get_payout_wallet.description,
+    },
+    "then sends {merchant}% of the accumulated balance to this wallet and {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the shares, in the wallet's own description",
+    { page: "PayoutWalletSchema.description", text: PayoutWalletSchema.description },
+    "then sends {merchant}% of the accumulated balance to payout_wallet and {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the shares, where an editor shows the wallet's type",
+    { page: "packages/contracts/src/merchant.ts" },
+    "and then sends {merchant}% of it to this wallet and {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the shares, where a refund owed is described to merchant code",
+    { page: "packages/contracts/src/events.ts" },
+    "which sends {merchant}% of it to the merchant and {agentify}% to Agentify",
+  ),
+
+  // --- the commission, in the READMEs an engineer opens first ---------------
+  ...sharesIn(
+    "the shares, in the SDK's README",
+    { page: "packages/sdk/README.md" },
+    "sends {merchant}% to the merchant's wallet and {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the shares, in the repository's README",
+    { page: "README.md" },
+    "which pays {merchant}% to the merchant's wallet and {agentify}% to Agentify",
+  ),
+
+  // --- what Agentify takes, and what reaches the merchant -------------------
+  ...sharesIn(
+    "how a payout divides what came in",
+    { page: "apps/docs/money.md" },
+    "then sends {merchant}% to your wallet and {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the rate, where the page says what we take",
+    { page: "apps/docs/money.md" },
+    "We take {agentify}% of every payment",
+  ),
+  ...sharesIn(
+    "the rate inside the price",
+    { page: "apps/docs/money.md" },
+    "your payout contract sends {merchant}% of it to you and {agentify}% to us",
+  ),
+  ...sharesIn(
+    "the share a payout gives after rounding",
+    { page: "apps/docs/money.md" },
+    "a payout gives you about {merchant}% of what came in",
+  ),
+  ...sharesIn(
+    "the commission a refund of the whole price leaves with us",
+    { page: "apps/docs/money.md" },
+    "although your payout contract pays you {merchant}% of it: the {agentify}% commission stays with Agentify",
+  ),
+  ...sharesIn(
+    "the shares, where the owner decides whether to connect",
+    { page: "apps/docs/index.md" },
+    "then sends {merchant}% to your wallet and {agentify}% to us",
+  ),
+  ...sharesIn(
+    "the rate inside the price, where the owner decides whether to connect",
+    { page: "apps/docs/index.md" },
+    "Our {agentify}% is inside your price",
+  ),
+  ...sharesIn(
+    "the rate, in the short answer about cost",
+    { page: "apps/docs/faq.md" },
+    "We take {agentify}% of every payment",
+  ),
+  ...sharesIn(
+    "the shares, in the short answer about cost",
+    { page: "apps/docs/faq.md" },
+    "your payout contract sends {merchant}% of it to your wallet and {agentify}% to us",
+  ),
+  ...sharesIn(
+    "the shares, where the engineer reads the wallet back",
+    { page: "apps/docs/quickstart.md" },
+    "that pays {merchant}% to `payout_wallet` and {agentify}% to Agentify",
+  ),
+
+  // --- the commission, on the sellers' landing ------------------------------
+  ...sharesIn(
+    "the shares, on the sellers' landing",
+    { page: "apps/web/content/sell.ts" },
+    "sends {merchant}% to your wallet and {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the shares, in the payment picture read aloud",
+    { page: "apps/web/content/sell.ts" },
+    "sends {merchant}% to the seller's wallet and {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the shares, on the sellers' landing's short labels",
+    { page: "apps/web/content/sell.ts" },
+    "{merchant}% to your wallet, {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the price, on the sellers' landing",
+    { page: "apps/web/content/sell.ts" },
+    'price: "{agentify}%"',
+  ),
+  ...sharesIn(
+    "the rate inside the price, on the sellers' landing",
+    { page: "apps/web/content/sell.ts" },
+    '"{agentify}% commission, inside the price"',
+  ),
+
+  // --- the commission, on the scanner's pages -------------------------------
+  ...sharesIn(
+    "the shares, on the scanner's page about selling to agents",
+    { page: "apps/web/app/routes/agentic-shop.tsx" },
+    "It sends {merchant}% to the wallet in your dashboard and {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the shares, in that page's payment path",
+    { page: "apps/web/app/routes/agentic-shop.tsx" },
+    "{merchant}% to your wallet, {agentify}% to Agentify",
+  ),
+  ...sharesIn(
+    "the shares, in the text for language models",
+    { page: "apps/web/lib/llms.ts" },
+    "which sends {merchant}% to the merchant's wallet and {agentify}% to Agentify",
+  ),
+
   // --- how long we wait for a price, and how long the answer lives ----------
   {
     what: "how long a price the merchant named goes on being good",
@@ -341,6 +534,12 @@ describe("every number the portal names is the number this gateway ships", () =>
     });
   }
 
+  it("takes one commission on every network the code names, so that a page can name one", () => {
+    for (const split of Object.values(config.payoutSplitNetworks)) {
+      expect(commissionOf(split), split.network).toBe(commission);
+    }
+  });
+
   it("grows the pause between attempts, which is the one claim carrying no number", () => {
     // failures.md: "we repeat the delivery, after a pause that grows with each
     // attempt". The configuration accepts a factor of one, a flat retry that
@@ -504,6 +703,8 @@ describe("the pin itself", () => {
       ["the delivery deadline a card leaves out", deadlines.defaultAsyncFulfillmentMs],
       ["the confirmation deadline a card leaves out", deadlines.defaultConfirmationResponseMs],
       ["how many times an order is sent again", redelivery.maxAttempts],
+      ["Agentify's share of every payment", commission],
+      ["the merchant's share of every payment", merchantShare],
     ] as const) {
       expect(pinned, `nothing above holds the portal to ${what}`).toContain(value);
     }

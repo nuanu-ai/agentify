@@ -37,10 +37,10 @@ in the [card reference](/cards).
 
 ### What does it cost?
 
-We take no percentage of the payments: the money goes from the buyer's wallet
-straight to yours, past us. We earn on the tools and on a subscription. The
-price of the subscription and what it covers we name before you connect — that,
-and the rest of the money, is on [Money](/money).
+We take 0.1% of every payment, and it is inside your price: the buyer pays the
+price on your card, and your payout contract sends 99.9% of it to your wallet
+and 0.1% to us. There is no subscription and no monthly fee. How the shares are
+rounded and how you get paid out is on [Money](/money#what-we-take).
 
 ### Do you write the product cards, or do I?
 
@@ -62,12 +62,14 @@ described in the [card reference](/cards).
 
 The SDK carries the order to your handler, and your integration fulfills it
 through your API; a connected WooCommerce shop gets the order as a paid order
-in the shop. Delivery by a message is not available. The payment arrives as its own transfer into your
-wallet, before your delivery or after it depending on the product:
-[Money](/money). Orders are visible in the dashboard, which also holds your cards
-and the switch that stops selling. A receipt is written when the goods are
-delivered, so an order paid for but not yet delivered appears under Orders and
-not Receipts. Matching those records to wallet transfers remains yours to do.
+in the shop. Delivery by a message is not available. The buyer's payment goes
+into your payout contract, before your delivery or after it depending on the
+product, and your share reaches your wallet with the next payout:
+[Money](/money). Orders are visible in the dashboard, which also holds your
+cards and the switch that stops selling. A receipt is written when the goods
+are delivered, so an order paid for but not yet delivered appears under Orders
+and not Receipts. Matching those records to the payouts in your wallet remains
+yours to do.
 
 ### Can I pause the selling?
 
@@ -83,12 +85,13 @@ of how an order can end is in [How an order can end](/orders).
 Leaving is designed, and nothing on our surface does it yet — during the pilot
 it is arranged with us. The cards come out of the catalogues, the orders nobody
 paid for close, and the money for anything paid for and not delivered you send
-back to the buyers yourself, from your own wallet: that is where it arrived.
-Neither your money nor your goods are left with us — they always went past us
-anyway. One thing does remain: the key to your API, if we were the ones writing
-and running the handler. Revoke it, and our side can no longer reach yours. The
-obligation to refund, and what is still unchosen in its mechanics, is described
-on [Money](/money).
+back to the buyers yourself, the whole price, from your own wallet. Neither
+your money nor your goods are left with us: what is still in your payout
+contract can be paid out at any time, and only to your wallet and to us. One
+thing does remain: the key to your API, if we were the ones writing and running
+the handler. Revoke it, and our side can no longer reach yours. The obligation
+to refund, and what is still unchosen in its mechanics, is described on
+[Money](/money).
 
 ### The buyer is unhappy — who settles the dispute?
 
