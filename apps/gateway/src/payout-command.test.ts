@@ -57,9 +57,10 @@ afterEach(async () => {
   running = null;
 });
 
-const aDatabase = () => {
+/** An empty store and its queue, opened for the network a gateway over it takes payments on. */
+const aDatabase = (network = T1_TEST.network) => {
   const queue = new MemoryQueue();
-  const store = new MemoryStore(T1_TEST.network, countedIds(), () => NOW, queue.envelopes());
+  const store = new MemoryStore(network, countedIds(), () => NOW, queue.envelopes());
   return { store, queue };
 };
 
@@ -238,7 +239,7 @@ describe("the chain it names", () => {
   });
 
   it("is Base in words on Base", async () => {
-    const gateway = aGatewayOver(aDatabase(), T1, {
+    const gateway = aGatewayOver(aDatabase("eip155:8453"), T1, {
       PAYMENT_NETWORK: "eip155:8453",
       FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
       CDP_API_KEY_ID: "key-id",
