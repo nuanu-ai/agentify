@@ -855,10 +855,13 @@ describe("the site's menu on a phone", () => {
     const burger = page.locator("header .site-menu > summary");
     const panel = page.locator("header .site-menu-panel");
     const scrolled = () => page.evaluate(() => window.scrollY);
-    await page.evaluate(() => window.scrollTo(0, 300));
+    // The scanner scrolls smoothly, so a plain scrollTo is still running when
+    // the finger comes down, and its animation wins over the finger.
+    await page.evaluate(() => window.scrollTo({ top: 300, behavior: "instant" }));
     await dragUp(page, { x: 100, y: 450 }, 200);
+    // A finger's scroll reaches the page's script a frame or more after it lifts.
+    await expect.poll(scrolled).toBeGreaterThan(300);
     const before = await scrolled();
-    expect(before).toBeGreaterThan(300);
 
     await burger.tap();
     await panel.waitFor({ state: "visible" });
@@ -879,7 +882,7 @@ describe("the site's menu on a phone", () => {
     await burger.tap();
     await panel.waitFor({ state: "hidden" });
     await dragUp(page, under, 200);
-    expect(await scrolled()).toBeGreaterThan(before);
+    await expect.poll(scrolled).toBeGreaterThan(before);
     await context.close();
   });
 
