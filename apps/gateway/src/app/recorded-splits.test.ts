@@ -323,6 +323,29 @@ describe("a start where the code no longer derives a recorded split from its own
   });
 });
 
+describe("a refusal to start on a laptop's sandbox", () => {
+  // No split there holds money, and a recorded row cannot be deleted, so the
+  // refusal names the way out: the sandbox's database can go.
+  const disagreeing = async (environment: Record<string, string>) => {
+    const database = aDatabase();
+    await aMerchant(database, "mch_one");
+    await paidUnder(database, "mch_one", W);
+    return refusalOf(
+      aGatewayOver(database, editedTo({ commissionWallet: DISTRIBUTOR }), environment).gateway,
+    );
+  };
+
+  it("says the sandbox's database can be dropped", async () => {
+    expect(await disagreeing({ FACILITATOR_URL: "sandbox:scripted" })).toContain(
+      "docker compose down -v",
+    );
+  });
+
+  it("offers no such way out on the test channel, whose splits hold test money", async () => {
+    expect(await disagreeing({})).not.toContain("docker compose down -v");
+  });
+});
+
 describe("a start on a database whose splits belong to another network", () => {
   it("refuses, naming both networks", async () => {
     // Moved from the test channel to the live one, the database would name
