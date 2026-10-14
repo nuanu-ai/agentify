@@ -215,6 +215,18 @@ async function refusalOf(work: Promise<unknown>): Promise<unknown> {
 }
 
 /**
+ * That a call was refused with an error whose words say `why`. An error and
+ * not just a rejection: `rejects.toThrow` passes on a rejection with nothing
+ * in it, which is what a refusal built by a function that returns nothing
+ * comes to.
+ */
+async function refusedWith(work: Promise<unknown>, why: RegExp): Promise<void> {
+  const thrown = await refusalOf(work);
+  expect(thrown).toBeInstanceOf(Error);
+  expect((thrown as Error).message).toMatch(why);
+}
+
+/**
  * Everything `console.error` would print for a thrown value, causes included:
  * a secret carried in a cause would pass a test that read only the top message.
  */
@@ -821,12 +833,13 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         const store = await twoMerchants();
 
         for (const split of [splitOf(A, W2), splitOf(B, W1)]) {
-          await expect(
+          await refusedWith(
             store.setPayoutWallet(A, NO_WALLET, { address: W1, split, pending: null }, 3_000),
-          ).rejects.toThrow(/split/);
+            /split/,
+          );
           expect(await store.payoutSplitAt(split.address)).toBeNull();
         }
-        await expect(
+        await refusedWith(
           store.setPayoutWallet(
             A,
             NO_WALLET,
@@ -837,7 +850,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             },
             3_000,
           ),
-        ).rejects.toThrow(/split/);
+          /split/,
+        );
         expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(NO_WALLET);
         expect(await store.payoutSplitAt(splitOf(A, W1).address)).toBeNull();
       });
@@ -851,14 +865,15 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.setPayoutWallet(A, paidAt(A, W1), paidAt(A, W2), 4_000);
         const elsewhere = { ...BASE_SEPOLIA, commissionWallet: W3 };
 
-        await expect(
+        await refusedWith(
           store.setPayoutWallet(
             A,
             paidAt(A, W2),
             { address: W1, split: payoutSplitFor(elsewhere, A, W1), pending: null },
             5_000,
           ),
-        ).rejects.toThrow(/recorded/);
+          /recorded/,
+        );
         expect((await store.merchantById(A))?.payoutWallet.address).toBe(W2);
         expect(await store.payoutSplitAt(payoutSplitFor(elsewhere, A, W1).address)).toBeNull();
       });
@@ -878,12 +893,49 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.payoutSplitAt(splitOf(A, W1).address)).toStrictEqual(
           recorded(splitOf(A, W1), 3_000),
         );
-        await expect(
+        await refusedWith(
           store.recordPayoutSplits(
             [payoutSplitFor({ ...BASE_SEPOLIA, commissionWallet: W3 }, B, W2)],
             6_000,
           ),
-        ).rejects.toThrow(/recorded/);
+          /recorded/,
+        );
+      });
+
+      it("records a merchant's wallet's split on each network apart", async () => {
+        // The chain id is in the salt, so one merchant and wallet have two
+        // splits on two networks, and recording one is no reason to refuse
+        // the other.
+        const store = await twoMerchants();
+
+        const written = await store.recordPayoutSplits(
+          [splitOf(A, W1), splitOf(A, W1, BASE)],
+          3_000,
+        );
+
+        expect(written).toStrictEqual([
+          recorded(splitOf(A, W1), 3_000),
+          recorded(splitOf(A, W1, BASE), 3_000),
+        ]);
+      });
+
+      it("refuses a split at an address recorded for another merchant or wallet, in either spelling, and writes nothing", async () => {
+        // An address names one contract; recorded twice, it would be two sets
+        // of parameters for money only one of them can pay out.
+        const store = await twoMerchants();
+        const held = splitOf(A, W1);
+        await store.recordPayoutSplits([held], 3_000);
+
+        for (const forged of [
+          { ...splitOf(B, W2), address: held.address },
+          { ...splitOf(A, W2), address: held.address },
+          { ...splitOf(B, W2), address: held.address.toLowerCase() },
+        ]) {
+          await refusedWith(store.recordPayoutSplits([forged], 4_000), /recorded/);
+        }
+        expect(await store.payoutSplitAt(held.address)).toStrictEqual(recorded(held, 3_000));
+        expect(await store.payoutSplitAt(splitOf(B, W2).address)).toBeNull();
+        expect(await store.splitsToPayOutOn(BASE_SEPOLIA.network, 5_000)).toStrictEqual([]);
       });
 
       it("names every network it holds splits of, and none it does not", async () => {
@@ -928,6 +980,14 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           await store.setPayoutWallet(B, NO_WALLET, paidAt(B, W1), 6_000);
           await store.addOrder(paidOrder("ord_s4", B, splitOf(B, W1).address, 6_100));
           await store.setPayoutWallet(C, NO_WALLET, paidAt(C, W2, BASE), 7_000);
+          // An order nobody has paid for yet, which names no address at all.
+          await store.addOrder(
+            anOrder("ord_unpaid", "quoted", { merchantId: A, createdAt: 7_100 }),
+          );
+          // A split whose merchant is gone, as one forgotten on the test
+          // channel leaves it: nothing of theirs is in force, nothing was
+          // paid to it.
+          await store.recordPayoutSplits([splitOf("mch_gone", W1)], 7_200);
           return store;
         };
 
@@ -962,6 +1022,43 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           expect(await store.splitsToPayOutOn(BASE_SEPOLIA.network, 8_000)).toStrictEqual(all);
           expect(await addressesOf(store.splitsToPayOutOn(BASE.network, 8_000))).toStrictEqual([
             splitOf(C, W2, BASE).address,
+          ]);
+        });
+
+        it("are in the order they were recorded however they were written, the address settling a tie", async () => {
+          // An operator's payout is built in parts of twenty in this order, so
+          // two reads of one registry must give the same parts.
+          const store = await twoMerchants();
+          await store.addMerchant({ id: "mch_c", name: "Merchant C" }, 2_500);
+          await store.addMerchant({ id: "mch_d", name: "Merchant D" }, 2_600);
+          const tied = [splitOf("mch_c", W1), splitOf("mch_d", W1)];
+          const [first, second] = [...tied].sort((one, other) =>
+            one.address < other.address ? -1 : 1,
+          );
+          if (first === undefined || second === undefined) throw new Error("two splits tie");
+          await store.setPayoutWallet(A, NO_WALLET, paidAt(A, W1), 5_000);
+          await store.setPayoutWallet(B, NO_WALLET, paidAt(B, W1), 4_000);
+          // The later address written first, at one instant with the other.
+          await store.setPayoutWallet(
+            second.merchantId,
+            NO_WALLET,
+            paidAt(second.merchantId, W1),
+            6_000,
+          );
+          await store.setPayoutWallet(
+            first.merchantId,
+            NO_WALLET,
+            paidAt(first.merchantId, W1),
+            6_000,
+          );
+
+          expect(
+            await addressesOf(store.splitsToPayOutOn(BASE_SEPOLIA.network, 7_000)),
+          ).toStrictEqual([
+            splitOf(B, W1).address,
+            splitOf(A, W1).address,
+            first.address,
+            second.address,
           ]);
         });
 

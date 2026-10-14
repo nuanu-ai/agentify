@@ -184,7 +184,7 @@ describe("the wallet a merchant is paid at", () => {
 
     await expect(
       setPayoutWallet(store, NETWORK, "mch_1", "0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed", 3_000),
-    ).rejects.toThrow();
+    ).rejects.toBeInstanceOf(Error);
 
     expect((await store.merchantById("mch_1"))?.payoutWallet.address).toBe(A_WALLET);
   });
@@ -192,8 +192,11 @@ describe("the wallet a merchant is paid at", () => {
   it("refuses something that is not an address at all", async () => {
     const store = await seller();
 
-    await expect(setPayoutWallet(store, NETWORK, "mch_1", "0x1234", 2_000)).rejects.toThrow();
-    await expect(setPayoutWallet(store, NETWORK, "mch_1", "", 2_000)).rejects.toThrow();
+    for (const notAnAddress of ["0x1234", ""]) {
+      await expect(
+        setPayoutWallet(store, NETWORK, "mch_1", notAnAddress, 2_000),
+      ).rejects.toBeInstanceOf(Error);
+    }
     expect((await store.merchantById("mch_1"))?.payoutWallet.address).toBeNull();
   });
 

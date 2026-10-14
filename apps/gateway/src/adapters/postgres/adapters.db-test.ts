@@ -1356,6 +1356,20 @@ if (databaseUrl === null) {
         await theMerchantOfThisSuite();
       });
 
+      /**
+       * The error a call was refused with. An error and not just a rejection:
+       * `rejects.toThrow` passes on a rejection with nothing in it.
+       */
+      const refusal = async (work: Promise<unknown>): Promise<Error> => {
+        try {
+          await work;
+        } catch (thrown) {
+          expect(thrown).toBeInstanceOf(Error);
+          return thrown as Error;
+        }
+        throw new Error("nothing was refused, and being refused is what this is about");
+      };
+
       const rowsOf = async (merchantId: string) =>
         (
           await pool.query(
@@ -1381,14 +1395,15 @@ if (databaseUrl === null) {
         );
         try {
           const before = await merchantRow(A);
-          await expect(
+          const refused = await refusal(
             store.setPayoutWallet(
               A,
               { address: PAID_NOW, pending: null },
               { address: W1, split: splitOf(A, W1), pending: null },
               now + 1_000,
             ),
-          ).rejects.toThrow(/refuse_the_wallet/);
+          );
+          expect(refused.message).toMatch(/refuse_the_wallet/);
           expect(await merchantRow(A)).toStrictEqual(before);
           expect(await store.payoutSplitAt(splitOf(A, W1).address)).toBeNull();
 
@@ -1419,7 +1434,9 @@ if (databaseUrl === null) {
           `insert into payout_splits select * from payout_splits
            on conflict (network, merchant_id, merchant_wallet) do update set salt = excluded.salt`,
         ]) {
-          await expect(pool.query(change), change).rejects.toThrow(/never changed or deleted/);
+          expect((await refusal(pool.query(change))).message, change).toMatch(
+            /never changed or deleted/,
+          );
         }
         expect(await rowsOf(A)).toStrictEqual([before]);
 
@@ -1436,8 +1453,10 @@ if (databaseUrl === null) {
         // spelling of one address is the same contract.
         const other = { ...network, commissionWallet: W2 };
         const second = payoutSplitFor(other, A, PAID_NOW);
-        await expect(store.recordPayoutSplits([second], now)).rejects.toThrow();
-        await expect(
+        expect((await refusal(store.recordPayoutSplits([second], now))).message).toMatch(
+          /recorded/,
+        );
+        const anotherCommission = await refusal(
           pool.query(
             `insert into payout_splits
              select address, network, merchant_id, merchant_wallet, $1, merchant_allocation,
@@ -1446,8 +1465,12 @@ if (databaseUrl === null) {
              from payout_splits where merchant_id = $2`,
             [W2, A],
           ),
-        ).rejects.toThrow(/payout_splits_pkey|duplicate key/);
-        await expect(
+        );
+        expect(anotherCommission).toMatchObject({
+          code: "23505",
+          constraint: "payout_splits_pkey",
+        });
+        const anotherSpelling = await refusal(
           pool.query(
             `insert into payout_splits
              select lower(address), network, 'mch_another', merchant_wallet, commission_wallet,
@@ -1456,7 +1479,11 @@ if (databaseUrl === null) {
              from payout_splits where merchant_id = $1`,
             [A],
           ),
-        ).rejects.toThrow(/payout_splits_address_unique|duplicate key/);
+        );
+        expect(anotherSpelling).toMatchObject({
+          code: "23505",
+          constraint: "payout_splits_address_unique",
+        });
         expect(await rowsOf(A)).toHaveLength(1);
       });
 
