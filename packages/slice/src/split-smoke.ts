@@ -396,12 +396,17 @@ async function main(): Promise<void> {
             merchantPayout(
               booted.config.payoutSplit,
               (await booted.gateway.payoutSplitsOf(merchantId)).toPayOut,
+              booted.config.payoutSplitNetworks,
             ),
           operator: async () => {
             const theirs = (await booted.gateway.splitsToPayOut()).filter(
               (one) => one.merchantId === merchantId,
             );
-            const [only, ...more] = operatorPayouts(booted.config.payoutSplit, theirs);
+            const [only, ...more] = operatorPayouts(
+              booted.config.payoutSplit,
+              theirs,
+              booted.config.payoutSplitNetworks,
+            );
             if (only === undefined || more.length > 0) {
               throw new Error(
                 `the operator's payout of ${merchantId} is ${more.length + 1} transactions`,
