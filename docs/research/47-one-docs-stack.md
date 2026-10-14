@@ -305,3 +305,281 @@ the sense of its third clause, beside P6 and P7, because moving to the one
 stack must not make the documentation slower to read: a miss of either that
 remains after the spike's own code is fixed must be fixed before the
 migration's pull request is opened, and the results say what fixing it takes.
+
+## Results
+
+Taken on 2026-10-14 on the branch `spike/docs-one-stack`, which holds the
+prototype and is deleted once these results reach `main`. The prototype is
+`apps/docs-rr`; the measuring script, the stand-in for Caddy and the scanner's
+two pages as the scanner draws them on the live channel are kept beside this
+note in `47-one-docs-stack/`, and what the script printed is in
+`47-one-docs-stack/results/`.
+
+### What was built and how it was measured
+
+A is React Router 8.4.0 in framework mode with `ssr: false`, every page and
+the search index named in `prerender`, compiled by Vite 7.3.6 with React
+19.2.7. One route draws every page from the Markdown its address names; its
+loader runs only at build time and hands the page its HTML, its sections and
+its neighbours. The build's last step lifts the prerendered files out of the
+`docs/` directory React Router writes them under, so the directory Caddy's
+block strips the prefix into answers `/docs/money` from `money/index.html`,
+`/docs/money.data` from `money.data` and `/docs/assets/…` from `assets/`, with
+the block's `try_files` as it stands. The Markdown pipeline is markdown-it
+15.0.2 with markdown-it-container 4.0.0, Shiki 4.5.0 and, at build time only,
+Mermaid 11.17.2 drawn by Playwright 1.61.1's Chromium with the site's face
+loaded; the search is MiniSearch 7.2.0. The shared header needed one change,
+the documentation added to `@agentify/ui`'s surfaces. The application is about
+1,050 lines of TypeScript and 500 of stylesheet, where VitePress's config and
+theme are 530 lines; the pipeline itself is about 360 of those lines.
+
+Both sites were built for `/docs/` and served on this Mac by `serve.mjs`, which
+answers as the `/docs` block of the Caddyfile does, fills the surface marker's
+templates as the test channel does, compresses with gzip as Caddy's `encode`
+would and sends `Last-Modified` and `ETag` and no `Cache-Control`, as Caddy's
+file server does. Chromium is Playwright's. Sizes are each file compressed by
+brotli at its highest quality; times are medians of five runs behind 200 ms
+added to every request by Chromium's network emulation, with no slowdown of
+the processor. Before the measurement the instrument was run once with one
+sample of each figure, to find its own faults; that run's figures are not used.
+Its sizes came within 0.1% of the measurement's, its moves within 7 ms and its
+paints within 28 ms.
+
+Every comparison carries a negative control, so that an instrument blind to
+differences cannot pass. Comparing B's Money with A's Common questions the same
+way the pages are compared finds 18 differences, the methodology's section
+titles looked for on the scanner identity page find 7 missing, and a query no
+page answers hits nothing on either site.
+
+### The table
+
+"First visit" is the HTML, the scripts and the stylesheets of a cold load in
+brotli, the scripts counted as registered: every script the browser asked for
+until the network rested. The largest paint is M11.
+
+| Page | Script, A / B | Stylesheets, A / B | HTML, A / B | First visit, A / B | Largest paint, A / B |
+| --- | --- | --- | --- | --- | --- |
+| Connecting to Agentify | 90.9 / 246.1 KB | 4.7 / 18.0 KB | 6.0 / 5.3 KB | 101.5 / 269.5 KB | 440 / 440 ms |
+| Money | 90.9 / 242.4 KB | 4.7 / 18.0 KB | 6.7 / 5.8 KB | 102.3 / 266.3 KB | 440 / 440 ms |
+| Common questions | 90.9 / 242.9 KB | 4.7 / 18.0 KB | 6.1 / 5.3 KB | 101.6 / 266.2 KB | 440 / 452 ms |
+| The first test sale | 90.9 / 234.9 KB | 4.7 / 18.0 KB | 16.7 / 13.3 KB | 112.3 / 266.2 KB | 444 / 452 ms |
+| The product card | 90.9 / 234.0 KB | 4.7 / 18.0 KB | 18.5 / 14.3 KB | 114.0 / 266.3 KB | 448 / 460 ms |
+| Orders and fulfillment modes | 90.9 / 616.8 KB | 4.7 / 18.0 KB | 28.0 / 16.6 KB | 123.5 / 651.4 KB | 448 / 472 ms |
+| What can go wrong | 90.9 / 242.1 KB | 4.7 / 18.0 KB | 7.2 / 6.2 KB | 102.8 / 266.3 KB | 436 / 452 ms |
+| About agentify-scanner | 90.9 KB / no page | 4.7 KB / no page | 4.2 KB / no page | 99.7 KB / no page | not measured |
+| Methodology | 90.9 KB / no page | 4.7 KB / no page | 4.5 KB / no page | 100.0 KB / no page | not measured |
+
+Moving between two pages, M10, from the click to the destination's heading on
+screen:
+
+| Move | A, after a rest | A, at once | B, after a rest | B, at once |
+| --- | --- | --- | --- | --- |
+| Connecting to Agentify to The first test sale | 44.3 ms | 41.9 ms | 57.0 ms | 56.1 ms |
+| Money to Orders and fulfillment modes | 46.3 ms | 46.0 ms | 57.0 ms | 55.9 ms |
+
+The clean build, M4, took a median of 2.1 s for A (5.2, 2.0 and 2.1 s) and
+7.5 s for B (17.9, 7.5 and 5.8 s); drawing A's three diagrams took 1.0, 0.45
+and 0.44 s of A's builds, and A built in 1.6 s with the diagrams already drawn.
+All three `mermaid` fences are inline SVG in A's orders page, which asks for
+0 KB of script beyond the lightest page, where B's asks for 382.8 KB more (M5).
+The search, M6 and M7: A's index is 27.9 KB and opening its search fetches
+5.9 KB of script, against B's 24.5 KB and 19.0 KB; A's index holds two more
+pages than B's. Both sites put the right page in the first three results for
+all ten queries, and for every query the first three results of the two sites
+are the same addresses in the same order. Both scanner queries hit on A. M8
+found no difference on any of the nine pages: on the seven merchant pages the
+headings with their levels, texts and anchors, the 9 tables, the 22 code
+blocks, the 6 included examples, the 3 diagrams and the 199 links of B are all
+in A, and every paragraph and list item of each page is the same text in both,
+which was compared though not registered; on the scanner's two pages every
+title, anchor, paragraph, list item and notice of the scanner's own pages is
+there.
+
+On both channels' templates A's notice was right after a move as well as on
+load: the test channel's words once, the live channel's empty marker, and no
+error in the page.
+
+### The predictions
+
+P1 holds: 90.9 KB on every page against 100 KB. P2 holds: on the six pages
+without a diagram A's script is 143 to 155 KB under B's rather than at most
+30 KB over it, and on the orders page it is 15% of B's. P3 holds: 4.7 KB
+against 18.0 KB. P4 holds: A's HTML is 1.13 to 1.29 times B's on the six pages
+and 1.69 times on the orders page, against 2.5; A's first visit is 0.38 to 0.43
+of B's on the six pages and 0.19 on the orders page. P5 holds: 2.1 s against
+B's 7.5 s and the 60 s limit, of which the diagrams took at most 1.0 s against
+15 s. P6 holds. P7 holds: ten of ten queries on both, the two scanner queries,
+an index 1.14 times B's against 1.25, and 5.9 KB of search script against
+19.0 KB. P8 holds. P9 holds: the eight tests pass, 122 tests in 8 files, with
+nothing under `apps/docs` edited; with the prototype in the tree `pnpm check`
+exits 0 with no diagnostic in the prototype's files, `pnpm typecheck` exits 0,
+`pnpm test` exits 0 with 4,108 tests in 264 files and the operational tests,
+and `pnpm deadcode` and `./scripts/check-decisions.sh` pass. P10 holds: A is
+quicker than B in all four timings, by 10 to 14 ms. P11 holds: A's largest
+paint is the same as B's or up to 24 ms earlier on every page.
+
+### The rule's outcome
+
+P8 and P9 hold, so markdown-it is the pipeline of the migration, and remark
+and rehype are not built. P1 holds, so the documentation hydrates as every
+other surface does. P6, P7, P10 and P11, the conditions of the migration, hold.
+P2 to P5 hold, so the rule leaves no cost of theirs for the migration to name.
+B is not chosen.
+
+### What was found while building
+
+Two defects of the prototype's own code were found in Chromium while it was
+built, before the instrument existed, and fixed before anything was measured;
+both are traps the migration inherits.
+
+React writes an element's raw HTML again whenever it is handed a new object
+for it, whatever the string inside. The notice that names the channel is raw
+HTML that Caddy fills at request time, so the first move to another page
+replaced the filled notice with the built one, whose templates are inert in a
+browser, and the page showed the test channel's words and the sandbox's "every
+payment it accepts is pretend" together. The prototype reads the notice back
+from the page before React draws over it and hands React one object for the
+life of the page. A test must hold this, in a browser, through Caddy's
+templates, after a move.
+
+React Router prefetches a page's data under an address with `?_routes=` when
+any route on the page opts out of revalidation, while a prerendered site's
+navigation asks for the address without it, so every prefetch was fetched and
+thrown away and every click waited a whole round trip. The prototype's root
+route gives up its `shouldRevalidate`, which costs nothing because a
+prerendered page's data file carries every route's data anyway. A test must
+hold that a click on a prefetched link asks the network for nothing.
+
+On the test channel the notice cannot stand above the header, where VitePress
+places it: the header's `backdrop-filter` makes it the containing block of the
+fixed skip link, which then shows its lowest 10 px at the top of the window,
+over the notice. The
+prototype places the notice under the header, as the dashboard does.
+
+### What the figures do not say
+
+B's script is not VitePress's own weight. Of its 194 KB on an ordinary page,
+140 KB is VitePress's `app` chunk, which the mermaid plugin fills with the
+diagram library's core on every page, and VitePress's framework and theme are
+54 KB together. A VitePress site that drew its diagrams at build time would, I
+estimate without having measured it, send 60 to 70 KB of script to A's 91 KB,
+so the difference in the table is the diagrams being drawn at build, which
+either stack can do, and not React Router being lighter: React and React Router
+are 86 KB of A's 91. The same probably holds for the build time, a share of
+which in B is bundling the diagram library; that share was not measured.
+
+The times are a local server over plain HTTP/1.1 with no TLS, and the 200 ms is
+added to each request rather than to each connection, so a real first visit
+costs more round trips than this, on both alike. Both move in about 50 ms
+because both had fetched the destination before the click: A fetches the data
+of every page its contents column shows, 36 to 66 KB on a first visit, and B
+the scripts of the pages its sidebar shows, 38 to 52 KB, counted in its
+script above. A reader on a metered connection pays that on both. A's HTML is
+larger as built, 321 KB for the orders page against 72 KB, because a hydrated
+page carries its content a second time as the data it hydrates with and
+because the inline diagrams are 26 to 31 KB each; compressed, the difference is
+the 11 KB in the table. Brotli was the registered unit; Caddy's portal block
+sends zstd or gzip today, and serving the precompressed brotli files is a
+setting of the block, not of the stack.
+
+The image build was not tried: Docker is not run on this machine. Playwright
+does not support Alpine, the image the portal stage builds on today, so the
+diagrams cannot be drawn there as they were drawn here.
+
+### What a reader loses
+
+Most of what VitePress gives a reader is in A: navigation without a reload,
+links prefetched before the click, the search with the same ranking, the
+copy button and language label on code, the heading anchors, the previous and
+next page, the page for a missing address, and scroll restored on Back. These
+are not:
+
+- The outline does not mark the section being read as the page scrolls; A
+  lists the current page's sections, as VitePress's outline does, but statically.
+- The search shows the headings a result sits under, without VitePress's
+  detailed view with an excerpt and the matched words marked, and it does not
+  keep the query when the page is reloaded.
+- On a phone, VitePress's sidebar slides in from a button and its outline is a
+  menu in a bar of its own; A folds the contents into one row above the page,
+  and there is no "return to top".
+- `/docs/money.html` answers today, because VitePress writes `money.html`, and
+  does not in A, which writes `money/index.html`. Nothing in the repository
+  links to such an address; a link outside it would break.
+
+Moving the scanner's two pages takes away more than moving the merchant pages
+does, because today they are pages of the scanner:
+
+- The scanner answers `/methodology` and `/scanner` as Markdown to a client
+  that asks for it, and lists them in `llms.txt`; static HTML under `/docs`
+  answers nothing as Markdown unless the build writes a Markdown copy and
+  Caddy chooses it by the `Accept` header.
+- Their text is drawn from the scanner's environment: the site's address in
+  both user agents, the operator's name, the abuse address and the notice that
+  the legal identity is not yet published. A built page carries the live
+  channel's values on every channel, so the test channel's page names the live
+  site's user agent, and confirming the legal identity becomes an edit to the
+  Markdown rather than a setting.
+- The methodology's eighteen checks are a list written out in Markdown, where
+  the scanner draws them from its check definitions.
+- The scanner's editorial pages carry the site's structured data, a canonical
+  address and their own description, and the consented analytics record a view
+  of them; the prototype's pages carry a title and the documentation's
+  description only.
+
+### What the migration's pull request must contain
+
+1. VitePress replaced by the React Router application in `apps/docs` itself,
+   the Markdown and the examples staying where the eight tests read them, and
+   `vitepress`, its mermaid plugin and Vue removed with the theme and the
+   config. The two tests that hold the theme's palette and the build hook's
+   wording to their originals are deleted with the copies they guard, and
+   `scripts/check-portal-render.mjs` reads the new build and finds the
+   notice where the new layout puts it.
+2. The editorial layout's styles moved where both the scanner's remaining
+   editorial pages, privacy and terms, and the documentation draw from them,
+   rather than the copy the prototype keeps.
+3. A decision on the diagrams in the image. Either the portal stage moves to an
+   image Chromium runs on, or the drawn SVGs are kept in the repository under
+   the hash of their source, the build reads them and fails on a fence with no
+   drawing, `pnpm test` checks that every fence has one, and a command draws a
+   changed diagram. The second keeps the image as small as it is and the build
+   free of a browser, and is what I would choose.
+4. The scanner's pages moved: `/scanner` and `/methodology` answered by a
+   redirect to `/docs/scanner` and `/docs/scanner/methodology` so the
+   address in both user agents keeps answering; the shared header's Scanner
+   and Methodology links, the scanner's footer, its sitemap, `llms.txt`, its
+   structured data and its tests pointed at the new addresses; and the
+   scanner's routes and text for the two pages deleted.
+5. A test holding the methodology's list to the scanner's check definitions,
+   and one holding the identity page's user agents and limits to the scanner's
+   own values, since the Markdown is now a copy of what the code says; and a
+   choice between the live channel's values on every channel and Caddy's
+   templates for them.
+6. The Caddy block given a text type for `.data` files, since Caddy's `encode`
+   compresses only types it knows as text and the orders page's data is 146 KB
+   as built (what type Caddy's file server gives `.data` today I don't know);
+   a year's immutable cache for `/docs/assets/`, which carry a content hash and
+   are sent today without a lifetime; and, if wanted, the precompressed brotli
+   files.
+7. The speed budget of `@agentify/ui/budget` applied to the documentation, at
+   the dashboard's 100 KB.
+8. A browser test through the Caddy templates that the notice shows one
+   channel's words after a move, that a click on a prefetched link asks the
+   network for nothing, and that the search finds a page.
+
+### Risks
+
+The two traps above are the framework's behaviour rather than the
+prototype's, and both fail silently: a page that shows every channel's notice
+after a move, and prefetches that cost bandwidth and save no time. They are
+held only by browser tests.
+
+The documentation's correctness now depends on one more copy step done by
+code the repository owns: about 360 lines that make markdown-it mean what
+VitePress means. Parity was measured on today's pages; a VitePress feature a
+writer reaches for later, such as a code group, line highlighting or a custom
+container kind, does nothing until it is written, and the writers' guide in
+`apps/docs/WRITING.md` should say which syntax the pipeline understands.
+
+The scanner's pages leave the process that knows the scanner's facts, and
+until the tests of item 5 exist they can drift from what the scanner does.
