@@ -250,11 +250,26 @@ describe("a payout the gateway would refuse to start with", () => {
   });
 });
 
+describe("a registry it could not read", () => {
+  it("is not called a refusal, so the command says its outcome is unknown", async () => {
+    // Worded as the start's refusal, a database that did not answer would
+    // read as splits that disagree with the code.
+    const database = aDatabase();
+    database.store.networksWithPayoutSplits = async () => {
+      throw new Error("the database did not answer");
+    };
+    const gateway = aGatewayOver(database);
+
+    await expect(printedBy(gateway)).rejects.toThrow("the database did not answer");
+  });
+});
+
 describe("what it is asked", () => {
   it("prints how to run it for help, and refuses anything else it is handed", async () => {
     const gateway = aGatewayOver(aDatabase());
 
     expect((await printedBy(gateway, ["--help"])).code).toBe(0);
+    expect((await printedBy(gateway, ["-h"])).code).toBe(0);
     const refused = await printedBy(gateway, ["send"]);
     expect(refused.code).toBe(2);
     expect(refused.lines.join("\n")).toMatch(/^Usage:/);
