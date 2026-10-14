@@ -847,12 +847,6 @@ describe("the site's menu on a phone", () => {
       hasTouch: true,
     });
     const page = await context.newPage();
-    // A visitor who has answered the consent banner, so the finger lands on
-    // the page whatever height the runner's fonts give the banner.
-    await page.addInitScript(([key, choice]) => localStorage.setItem(key, choice), [
-      CONSENT_STORAGE_KEY,
-      JSON.stringify(SAVED_CONSENT),
-    ] as const);
     await page.route("**/api/v2/session", (route) =>
       route.fulfill({ json: { status: "signed_out" } }),
     );
@@ -861,9 +855,13 @@ describe("the site's menu on a phone", () => {
     const burger = page.locator("header .site-menu > summary");
     const panel = page.locator("header .site-menu-panel");
     const scrolled = () => page.evaluate(() => window.scrollY);
-    await page.evaluate(() => window.scrollTo(0, 300));
+    // The scanner scrolls smoothly, so a plain scrollTo is still running when
+    // the finger comes down, and its animation wins over the finger.
+    await page.evaluate(() => window.scrollTo({ top: 300, behavior: "instant" }));
+    await dragUp(page, { x: 100, y: 450 }, 200);
+    // A finger's scroll reaches the page's script a frame or more after it lifts.
+    await expect.poll(scrolled).toBeGreaterThan(300);
     const before = await scrolled();
-    expect(before).toBe(300);
 
     await burger.tap();
     await panel.waitFor({ state: "visible" });
@@ -883,9 +881,6 @@ describe("the site's menu on a phone", () => {
 
     await burger.tap();
     await panel.waitFor({ state: "hidden" });
-    // The same finger scrolls the page once the menu is closed, so its standing
-    // still above is the menu's doing. A finger's scroll reaches the page's
-    // script a frame or more after it lifts.
     await dragUp(page, under, 200);
     await expect.poll(scrolled).toBeGreaterThan(before);
     await context.close();
