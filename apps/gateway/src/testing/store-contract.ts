@@ -961,6 +961,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
         for (const forged of [
           { ...splitOf(B, W2), address: held.address },
+          { ...splitOf(B, W1), address: held.address },
           { ...splitOf(A, W2), address: held.address },
           { ...splitOf(B, W2), address: held.address.toLowerCase() },
         ]) {
@@ -1066,36 +1067,37 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           // An operator's payout is built in parts of twenty in this order, so
           // two reads of one registry must give the same parts.
           const store = await twoMerchants();
-          await store.addMerchant({ id: "mch_c", name: "Merchant C" }, 2_500);
-          await store.addMerchant({ id: "mch_d", name: "Merchant D" }, 2_600);
-          const tied = [splitOf("mch_c", W1), splitOf("mch_d", W1)];
-          const [first, second] = [...tied].sort((one, other) =>
-            one.address < other.address ? -1 : 1,
-          );
-          if (first === undefined || second === undefined) throw new Error("two splits tie");
+          const tied = ["mch_c", "mch_d", "mch_e"];
+          for (const [index, merchantId] of tied.entries()) {
+            await store.addMerchant({ id: merchantId, name: merchantId }, 2_500 + index);
+          }
+          const byAddress = tied
+            .map((merchantId) => splitOf(merchantId, W1))
+            .sort((one, other) => (one.address < other.address ? -1 : 1));
+          const [lowest, middle, highest] = byAddress;
+          if (lowest === undefined || middle === undefined || highest === undefined) {
+            throw new Error("three splits tie");
+          }
           await store.setPayoutWallet(A, NO_WALLET, paidAt(A, W1), 5_000);
           await store.setPayoutWallet(B, NO_WALLET, paidAt(B, W1), 4_000);
-          // The later address written first, at one instant with the other.
-          await store.setPayoutWallet(
-            second.merchantId,
-            NO_WALLET,
-            paidAt(second.merchantId, W1),
-            6_000,
-          );
-          await store.setPayoutWallet(
-            first.merchantId,
-            NO_WALLET,
-            paidAt(first.merchantId, W1),
-            6_000,
-          );
+          // Three at one instant, written neither in their order nor against it.
+          for (const split of [middle, highest, lowest]) {
+            await store.setPayoutWallet(
+              split.merchantId,
+              NO_WALLET,
+              paidAt(split.merchantId, W1),
+              6_000,
+            );
+          }
 
           expect(
             await addressesOf(store.splitsToPayOutOn(BASE_SEPOLIA.network, 7_000)),
           ).toStrictEqual([
             splitOf(B, W1).address,
             splitOf(A, W1).address,
-            first.address,
-            second.address,
+            lowest.address,
+            middle.address,
+            highest.address,
           ]);
         });
 
