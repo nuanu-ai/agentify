@@ -387,9 +387,10 @@ td.control {
   text-align: right;
 }
 
-/* Where the orders' words wrap, their filter is the list's own control, on a
-   row of its own right above the list, rather than beside the words. */
-@media (max-width: 900px) {
+/* On a phone and a tablet, where the frame has no sidebar, the orders' filter
+   is the list's own control, on a row of its own right above the list, rather
+   than beside the words. */
+@media (max-width: 910px) {
   .lede:has(> .filter) {
     flex-direction: column;
     align-items: stretch;
