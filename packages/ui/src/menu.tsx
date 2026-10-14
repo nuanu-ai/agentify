@@ -39,22 +39,29 @@ function Menu({ children }: Readonly<{ children: ReactNode }>) {
   // the drawn page knows where it opens: under the sticky header, at the
   // header's foot; under a page's own top, wherever that top ends. It is
   // measured as the menu opens, before the panel is first painted, which the
-  // details element's own toggle event comes too late for.
+  // details element's own toggle event comes too late for, and again as the
+  // window changes size. A menu the bar has stopped showing, the window having
+  // grown too wide for it, is closed rather than measured: left open, it would
+  // come back with the window's scroll held and its button perhaps out of view.
   useEffect(() => {
     const details = menu.current;
     if (details === null) return;
-    const fitToRoom = () => {
+    const fitOrClose = () => {
       const panel = details.lastElementChild;
       if (!details.open || panel === null) return;
+      if (details.getClientRects().length === 0) {
+        details.open = false;
+        return;
+      }
       details.style.setProperty("--site-menu-top", `${panel.getBoundingClientRect().top}px`);
     };
-    fitToRoom();
-    const opening = new MutationObserver(fitToRoom);
+    fitOrClose();
+    const opening = new MutationObserver(fitOrClose);
     opening.observe(details, { attributeFilter: ["open"] });
-    window.addEventListener("resize", fitToRoom);
+    window.addEventListener("resize", fitOrClose);
     return () => {
       opening.disconnect();
-      window.removeEventListener("resize", fitToRoom);
+      window.removeEventListener("resize", fitOrClose);
     };
   }, []);
 
