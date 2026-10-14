@@ -7,6 +7,7 @@
  * environment.
  */
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { type Environment, fillTemplates } from "../testing/caddy-templates.js";
 import { CHANNELS } from "../testing/edge.js";
@@ -55,5 +56,33 @@ describe("the values a deployment decides", () => {
 
   it("are not read where nobody filled them, so the build's templates stay for Caddy", () => {
     expect(siteValuesIn(servedTemplate())).toBeNull();
+  });
+});
+
+/** One service's environment as compose.yaml writes it, each variable with its expression. */
+const environmentOf = (service: string): ReadonlyMap<string, string> => {
+  const compose = readFileSync(new URL("../../../compose.yaml", import.meta.url), "utf8");
+  const block = new RegExp(`^  ${service}:\\n([\\s\\S]*?)(?=^  [\\w-]+:\\n|^\\S)`, "m").exec(
+    compose,
+  )?.[1];
+  const environment = /^ {4}environment:\n((?: {6}.*\n|\s*\n)+)/m.exec(block ?? "")?.[1] ?? "";
+  return new Map(
+    [...environment.matchAll(/^ {6}([A-Z_]+): (.+)$/gm)].map(([, name = "", value = ""]) => [
+      name,
+      value,
+    ]),
+  );
+};
+
+describe("what Caddy fills the documentation with", () => {
+  it("is what the scanner is given, so its own pages and the documentation's say the same", () => {
+    const caddy = environmentOf("web");
+    const scanner = environmentOf("scanner");
+
+    expect(caddy.get("AGENTIFY_PUBLIC_ORIGIN")).toBe(scanner.get("APP_BASE_URL"));
+    for (const name of ["ABUSE_EMAIL", "LEGAL_OPERATOR", "LEGAL_IDENTITY_CONFIRMED"]) {
+      expect(caddy.get(name), name).toBe(scanner.get(name));
+    }
+    expect(scanner.size).toBeGreaterThan(10);
   });
 });
