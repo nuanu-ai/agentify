@@ -641,6 +641,66 @@ describe("a wallet that moves while a sale is in flight", () => {
   });
 });
 
+describe("an address that cannot be a payout wallet", () => {
+  /** A merchant's split and the network's contracts, which a merchant's share could never come back from. */
+  const notWallets = async (harnessed: Harness) => {
+    const network = harnessed.runtime.config.payoutSplit;
+    const other = await harnessed.addMerchant("Another shop");
+    return [
+      [
+        "the merchant's own split",
+        await recordedSplit(harnessed, harnessed.merchant.id, harnessed.merchant.wallet),
+        "payout_split",
+      ],
+      [
+        "another merchant's split",
+        await recordedSplit(harnessed, other.id, other.wallet),
+        "payout_split",
+      ],
+      ["Agentify's commission wallet", network.commissionWallet, "commission_wallet"],
+      ["the warehouse, in lower case", network.warehouse.toLowerCase(), "split_warehouse"],
+      ["Multicall3", network.multicall3, "multicall3"],
+    ] as const;
+  };
+
+  it("is refused, saying what it is, and nothing is written", async () => {
+    // A split as a wallet pays the commission twice and needs two payouts, and
+    // a payout contract as a wallet hands the merchant's share to whoever
+    // calls it next. A merchant pasting the payout contract the screen showed
+    // them is the likely way it happens.
+    const { served, harnessed } = await started();
+    const before = await payoutWallet(served, harnessed.merchant.key);
+
+    for (const [what, address, is] of await notWallets(harnessed)) {
+      expect(await setPayoutWallet(harnessed, harnessed.merchant.id, address), what).toStrictEqual({
+        refused: "not_a_payout_wallet",
+        is,
+      });
+      expect(
+        await harnessed.store.payoutSplitAt(
+          payoutSplitFor(harnessed.runtime.config.payoutSplit, harnessed.merchant.id, address)
+            .address,
+        ),
+        what,
+      ).toBeNull();
+    }
+    expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual(before);
+  });
+
+  it("is refused as a first wallet too", async () => {
+    const { served, harnessed } = await started();
+    const { merchantId, key } = await fresh(harnessed);
+
+    for (const [what, address, is] of await notWallets(harnessed)) {
+      expect(await setPayoutWallet(harnessed, merchantId, address), what).toStrictEqual({
+        refused: "not_a_payout_wallet",
+        is,
+      });
+    }
+    expect(await payoutWallet(served, key)).toStrictEqual({ payout_wallet: null, pending: null });
+  });
+});
+
 describe("the wallet document a merchant's code reads", () => {
   it("answers with the wallet, never the split, in the shape it always had", async () => {
     // `payout_wallet` now means where the merchant's share arrives. Code that

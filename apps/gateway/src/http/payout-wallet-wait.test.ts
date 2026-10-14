@@ -80,8 +80,8 @@ const ask = async (
   merchantId = harnessed.merchant.id,
 ): Promise<WalletAnswer> => {
   const answered = await asking(harnessed, wallet, merchantId);
-  if (typeof answered === "string") {
-    throw new Error(`the change was refused: ${answered}`);
+  if (typeof answered === "string" || "refused" in answered) {
+    throw new Error(`the change was refused: ${JSON.stringify(answered)}`);
   }
   return answered;
 };
@@ -813,5 +813,63 @@ describe("a new key issued from a session in the dashboard", () => {
         asked_with: SIGNED_IN,
       },
     ]);
+  });
+});
+
+describe("an address that cannot be a payout wallet, on the live deployment", () => {
+  /** What a merchant could paste from the payout screen, or the commission's own wallets. */
+  const notWallets = (harnessed: Harness) => {
+    const network = harnessed.runtime.config.payoutSplit;
+    const networks = Object.values(harnessed.runtime.config.payoutSplitNetworks);
+    return [
+      ["Multicall3", network.multicall3, "multicall3"],
+      ["the warehouse, in lower case", network.warehouse.toLowerCase(), "split_warehouse"],
+      ...networks.map(
+        (each) =>
+          [
+            `${each.network}'s commission wallet`,
+            each.commissionWallet,
+            "commission_wallet",
+          ] as const,
+      ),
+      [
+        "the merchant's own split",
+        splitOf(harnessed, harnessed.merchant.wallet).address,
+        "payout_split",
+      ],
+    ] as const;
+  };
+
+  it("is refused as a replacement before any message goes out, and nothing is recorded", async () => {
+    // Announced, a replacement pointing at Multicall3 would apply in two days
+    // and every withdrawal of the merchant's share would land where anyone
+    // takes it with one call.
+    const { served, harnessed } = await started();
+    const before = await walletOf(served, harnessed.merchant.key);
+
+    for (const [what, address, is] of notWallets(harnessed)) {
+      expect(await asking(harnessed, address), what).toStrictEqual({
+        refused: "not_a_payout_wallet",
+        is,
+      });
+    }
+
+    expect(harnessed.announcer.announced).toStrictEqual([]);
+    expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(before);
+  });
+
+  it("is refused as a first wallet before anything is written or announced", async () => {
+    const { harnessed } = await started();
+    const merchantId = await harnessed.gateway.registerMerchant();
+
+    for (const [what, address, is] of notWallets(harnessed)) {
+      expect(await asking(harnessed, address, merchantId), what).toStrictEqual({
+        refused: "not_a_payout_wallet",
+        is,
+      });
+    }
+
+    expect(harnessed.announcer.announced).toStrictEqual([]);
+    expect((await harnessed.gateway.payoutWallet(merchantId)).payout_wallet).toBeNull();
   });
 });
