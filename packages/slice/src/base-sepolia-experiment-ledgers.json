@@ -1,0 +1,908 @@
+{
+  "about": [
+    "Real data from Base Sepolia (chain 84532), read through https://sepolia.base.org on 2026-10-14 with read-only calls, for every transaction of the payout split experiment of 2026-10-09 (the same eighteen, in the same order, as apps/gateway/src/split/base-sepolia-experiment.json).",
+    "For each transaction: its receipt's status, the USDC Transfer logs it emitted (from, to, value) and the amount of each SplitDistributed it emitted; and the parties' balances at the block before it and at its own block, read with eth_call: the USDC each holds (held) and the USDC the 0xSplits warehouse credits each (credited, warehouse balanceOf(owner, uint256(USDC))).",
+    "The parties are named in parties; warehouse in a transfer is the 0xSplits warehouse 0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8. No experiment transaction shared a block with another, so each pair of reads brackets one transaction."
+  ],
+  "parties": {
+    "buyer": "0x334bD2f4c4be711E0be7533f0d78040B5f071981",
+    "merchant": "0xde3F8C4422A7F8C94bce9Cc2Ec118665108148EF",
+    "commission": "0xd111fcC29f658b2f53ee7BEA09f5Ccd7140Ee960",
+    "distributor": "0xF029d915c69C1902bB09A86c801c8226825F265c",
+    "S": "0xa7Dcb5354F2a7e28761A23881D54bC0b31479c57",
+    "S2": "0x32F48d0Cf68942E60134670833dfdE7d0fbA865E",
+    "warehouse": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8"
+  },
+  "transactions": [
+    {
+      "hash": "0xcd9a34c8da4eeadd3140c5412a541fc0cc5b2240ad6aaba68bf1361430e96bda",
+      "block": 47889027,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "buyer",
+          "to": "S",
+          "value": "1000000"
+        }
+      ],
+      "distributed": [],
+      "before": {
+        "held": {
+          "buyer": "20000000",
+          "merchant": "0",
+          "commission": "0",
+          "distributor": "0",
+          "S": "0",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "0",
+          "commission": "0",
+          "distributor": "0",
+          "S": "0",
+          "S2": "0"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "19000000",
+          "merchant": "0",
+          "commission": "0",
+          "distributor": "0",
+          "S": "1000000",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "0",
+          "commission": "0",
+          "distributor": "0",
+          "S": "0",
+          "S2": "0"
+        }
+      }
+    },
+    {
+      "hash": "0x0920a3e2cf447668bd0c3084def3a65463b2cadd72c1a69be7343fcbe0b59427",
+      "block": 47889049,
+      "status": "success",
+      "transfers": [],
+      "distributed": [],
+      "before": {
+        "held": {
+          "buyer": "19000000",
+          "merchant": "0",
+          "commission": "0",
+          "distributor": "0",
+          "S": "1000000",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "0",
+          "commission": "0",
+          "distributor": "0",
+          "S": "0",
+          "S2": "0"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "19000000",
+          "merchant": "0",
+          "commission": "0",
+          "distributor": "0",
+          "S": "1000000",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "0",
+          "commission": "0",
+          "distributor": "0",
+          "S": "0",
+          "S2": "0"
+        }
+      }
+    },
+    {
+      "hash": "0xfe0fc82713d310fa67e8da3fa952f5dbde69787b339b69818f88f3c089ad7946",
+      "block": 47889050,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "S",
+          "to": "warehouse",
+          "value": "999999"
+        }
+      ],
+      "distributed": [
+        {
+          "split": "S",
+          "amount": "999999"
+        }
+      ],
+      "before": {
+        "held": {
+          "buyer": "19000000",
+          "merchant": "0",
+          "commission": "0",
+          "distributor": "0",
+          "S": "1000000",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "0",
+          "commission": "0",
+          "distributor": "0",
+          "S": "0",
+          "S2": "0"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "19000000",
+          "merchant": "0",
+          "commission": "0",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "969999",
+          "commission": "29999",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      }
+    },
+    {
+      "hash": "0xd88bad409f322342486ffa2e4d1014080b779a0c2393dc2bbd2dd2151f1af538",
+      "block": 47889074,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "warehouse",
+          "to": "merchant",
+          "value": "969998"
+        }
+      ],
+      "distributed": [],
+      "before": {
+        "held": {
+          "buyer": "19000000",
+          "merchant": "0",
+          "commission": "0",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "969999",
+          "commission": "29999",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "19000000",
+          "merchant": "969998",
+          "commission": "0",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "29999",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      }
+    },
+    {
+      "hash": "0xd22ed364902646e1c4b8139a0706715422e052a6bc67e4db737435eb0dfa3d53",
+      "block": 47889076,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "warehouse",
+          "to": "commission",
+          "value": "29998"
+        }
+      ],
+      "distributed": [],
+      "before": {
+        "held": {
+          "buyer": "19000000",
+          "merchant": "969998",
+          "commission": "0",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "29999",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "19000000",
+          "merchant": "969998",
+          "commission": "29998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      }
+    },
+    {
+      "hash": "0x9bcff0b17ce2728bf4122fd89245b0a61e25a05a32ac69db7f42129b307c80b7",
+      "block": 47889091,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "buyer",
+          "to": "S",
+          "value": "1000000"
+        }
+      ],
+      "distributed": [],
+      "before": {
+        "held": {
+          "buyer": "19000000",
+          "merchant": "969998",
+          "commission": "29998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "18000000",
+          "merchant": "969998",
+          "commission": "29998",
+          "distributor": "0",
+          "S": "1000001",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      }
+    },
+    {
+      "hash": "0xaa76ada64c7ce3a9431565542eb2d8be3441ab0e22b5293b1acfc614c2313e57",
+      "block": 47889095,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "S",
+          "to": "warehouse",
+          "value": "1000000"
+        }
+      ],
+      "distributed": [
+        {
+          "split": "S",
+          "amount": "1000000"
+        }
+      ],
+      "before": {
+        "held": {
+          "buyer": "18000000",
+          "merchant": "969998",
+          "commission": "29998",
+          "distributor": "0",
+          "S": "1000001",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "18000000",
+          "merchant": "969998",
+          "commission": "29998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "970001",
+          "commission": "30001",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      }
+    },
+    {
+      "hash": "0x16ae19d2482219556ad33b1d9471eeae83e4285f2b543bb799ab9204861c2196",
+      "block": 47889097,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "warehouse",
+          "to": "merchant",
+          "value": "970000"
+        }
+      ],
+      "distributed": [],
+      "before": {
+        "held": {
+          "buyer": "18000000",
+          "merchant": "969998",
+          "commission": "29998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "970001",
+          "commission": "30001",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "18000000",
+          "merchant": "1939998",
+          "commission": "29998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "30001",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      }
+    },
+    {
+      "hash": "0x613ffcc866cd1eed41bcf36291a1eec944cf11eb85ac3464a4c0dda3f0886f20",
+      "block": 47889099,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "warehouse",
+          "to": "commission",
+          "value": "30000"
+        }
+      ],
+      "distributed": [],
+      "before": {
+        "held": {
+          "buyer": "18000000",
+          "merchant": "1939998",
+          "commission": "29998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "30001",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "18000000",
+          "merchant": "1939998",
+          "commission": "59998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      }
+    },
+    {
+      "hash": "0x435459a2de40afeaa75f4268478a5adc9064a3e97eecca0d8ace01917ed46c91",
+      "block": 47889453,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "buyer",
+          "to": "S2",
+          "value": "1000000"
+        }
+      ],
+      "distributed": [],
+      "before": {
+        "held": {
+          "buyer": "18000000",
+          "merchant": "1939998",
+          "commission": "59998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "17000000",
+          "merchant": "1939998",
+          "commission": "59998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1000000"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      }
+    },
+    {
+      "hash": "0x80003e1fa5ff9df61f44252aa02a0d2ebda22f8f420d2143e1a3b5e8998dbfb7",
+      "block": 47889467,
+      "status": "success",
+      "transfers": [],
+      "distributed": [],
+      "before": {
+        "held": {
+          "buyer": "17000000",
+          "merchant": "1939998",
+          "commission": "59998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1000000"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "17000000",
+          "merchant": "1939998",
+          "commission": "59998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1000000"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      }
+    },
+    {
+      "hash": "0xa02c96d452912448055119439806724c2bc12fdc80c7e607c45aa3f6c9814d43",
+      "block": 47889469,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "S2",
+          "to": "warehouse",
+          "value": "999999"
+        }
+      ],
+      "distributed": [
+        {
+          "split": "S2",
+          "amount": "999999"
+        }
+      ],
+      "before": {
+        "held": {
+          "buyer": "17000000",
+          "merchant": "1939998",
+          "commission": "59998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1000000"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "0"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "17000000",
+          "merchant": "1939998",
+          "commission": "59998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "970000",
+          "commission": "30000",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        }
+      }
+    },
+    {
+      "hash": "0x7c6e58ac8c72c521246fc41e22bed3e283737d6078278357d31946d38c972428",
+      "block": 47889471,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "warehouse",
+          "to": "merchant",
+          "value": "969999"
+        }
+      ],
+      "distributed": [],
+      "before": {
+        "held": {
+          "buyer": "17000000",
+          "merchant": "1939998",
+          "commission": "59998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "970000",
+          "commission": "30000",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "17000000",
+          "merchant": "2909997",
+          "commission": "59998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "30000",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        }
+      }
+    },
+    {
+      "hash": "0x388e8134f16cf9ab08e67c46e1f8dfe8016bf07dd173430ce8717b1fa913f172",
+      "block": 47889473,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "warehouse",
+          "to": "commission",
+          "value": "29999"
+        }
+      ],
+      "distributed": [],
+      "before": {
+        "held": {
+          "buyer": "17000000",
+          "merchant": "2909997",
+          "commission": "59998",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "30000",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "17000000",
+          "merchant": "2909997",
+          "commission": "89997",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        }
+      }
+    },
+    {
+      "hash": "0x211c2b6628ae101d8e949700aa4025ac734c94666ef43775c879aca0507b97cc",
+      "block": 47889497,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "buyer",
+          "to": "S2",
+          "value": "1000000"
+        }
+      ],
+      "distributed": [],
+      "before": {
+        "held": {
+          "buyer": "17000000",
+          "merchant": "2909997",
+          "commission": "89997",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "16000000",
+          "merchant": "2909997",
+          "commission": "89997",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1000001"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        }
+      }
+    },
+    {
+      "hash": "0x126c8d49d1e80341424320a8a4881b6b58d118d9afe187bbbb787d3c2d6d2ef3",
+      "block": 47889536,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "S2",
+          "to": "warehouse",
+          "value": "1000000"
+        }
+      ],
+      "distributed": [
+        {
+          "split": "S2",
+          "amount": "1000000"
+        }
+      ],
+      "before": {
+        "held": {
+          "buyer": "16000000",
+          "merchant": "2909997",
+          "commission": "89997",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1000001"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "16000000",
+          "merchant": "2909997",
+          "commission": "89997",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "970001",
+          "commission": "30001",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        }
+      }
+    },
+    {
+      "hash": "0x8ebb8898fce369599fa86279811b87e617577ff59af40d64afa3e80263e28341",
+      "block": 47889538,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "warehouse",
+          "to": "merchant",
+          "value": "970000"
+        }
+      ],
+      "distributed": [],
+      "before": {
+        "held": {
+          "buyer": "16000000",
+          "merchant": "2909997",
+          "commission": "89997",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "970001",
+          "commission": "30001",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "16000000",
+          "merchant": "3879997",
+          "commission": "89997",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "30001",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        }
+      }
+    },
+    {
+      "hash": "0xc550d5e27ceec9b0dc3383d0ff98c09b039b809036b6df75dafe0bd308d3ff7f",
+      "block": 47889540,
+      "status": "success",
+      "transfers": [
+        {
+          "from": "warehouse",
+          "to": "commission",
+          "value": "30000"
+        }
+      ],
+      "distributed": [],
+      "before": {
+        "held": {
+          "buyer": "16000000",
+          "merchant": "3879997",
+          "commission": "89997",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "30001",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        }
+      },
+      "after": {
+        "held": {
+          "buyer": "16000000",
+          "merchant": "3879997",
+          "commission": "119997",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        },
+        "credited": {
+          "buyer": "0",
+          "merchant": "1",
+          "commission": "1",
+          "distributor": "0",
+          "S": "1",
+          "S2": "1"
+        }
+      }
+    }
+  ]
+}
