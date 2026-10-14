@@ -1583,6 +1583,40 @@ if (databaseUrl === null) {
         ).toStrictEqual(first);
       });
 
+      it("refuses to start on a recorded split of a wallet the wallet rule refuses, naming its merchant, and records none for one found without", async () => {
+        // A split of Multicall3 recorded before the start held wallets to the
+        // rule would be paid out to it; a wallet found without a split gets
+        // none and its merchant cannot sell until they set another.
+        await store.addMerchant({ id: "mch_recorded", name: "Recorded" }, now);
+        await store.addMerchant({ id: "mch_found", name: "Found" }, now);
+        await pool.query("update merchants set payout_wallet = $1 where id = 'mch_found'", [
+          network.multicall3,
+        ]);
+        const logged = await loggedWhile(() => aGatewayOn(contract.db).start());
+        expect(logged).toMatch(/mch_found\b.*\bmulticall3\b/);
+        expect(await rowsOf("mch_found")).toStrictEqual([]);
+
+        await pool.query(
+          `insert into payout_splits values ($1, $2, 'mch_recorded', $3, $4, $5, $6, $7, 0, $8, $9, $10, now())`,
+          ((split) => [
+            split.address,
+            split.network,
+            split.merchantWallet,
+            split.commissionWallet,
+            split.merchantAllocation,
+            split.commissionAllocation,
+            split.totalAllocation,
+            split.owner,
+            split.salt,
+            split.factory,
+          ])(splitOf("mch_recorded", network.multicall3)),
+        );
+        await pool.query("update merchants set payout_wallet = $1 where id = 'mch_recorded'", [
+          network.multicall3,
+        ]);
+        await expect(aGatewayOn(contract.db).start()).rejects.toThrow(/mch_recorded/);
+      });
+
       describe("on a deployment of another network than the test chain", () => {
         const base = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453");
         const MERCHANT = "mch_on_base";

@@ -231,6 +231,29 @@ describe("a payout the gateway would refuse to start with", () => {
     expect(lines.join("\n")).toMatch(/no longer what this code makes/);
   });
 
+  it("is not printed where a recorded split pays a wallet the wallet rule refuses, and the refusal names its merchant", async () => {
+    // Such a row was recorded before wallets found at a start were held to
+    // the rule; paid out, the merchant's share would go where it could never
+    // come back from.
+    const database = aDatabase();
+    await database.store.addMerchant({ id: "mch_refused", name: "mch_refused" }, NOW);
+    await database.store.recordPayoutSplits(
+      [payoutSplitFor(T1_TEST, "mch_refused", T1_TEST.multicall3)],
+      NOW,
+    );
+    await database.store.writeWalletAsBeforeSplits("mch_refused", {
+      address: T1_TEST.multicall3,
+      pending: null,
+    });
+    const gateway = aGatewayOver(database);
+
+    const { code, lines } = await printedBy(gateway);
+
+    expect(code).toBe(1);
+    expect(partsIn(lines)).toStrictEqual([]);
+    expect(lines.join("\n")).toContain("mch_refused");
+  });
+
   it("is not printed on a database whose splits belong to another network", async () => {
     // A gateway pointed at the wrong chain would otherwise print nothing to
     // pay out, or another chain's splits as this one's.

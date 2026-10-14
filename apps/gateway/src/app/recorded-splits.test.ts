@@ -28,6 +28,7 @@ import { DISTRIBUTOR } from "../split/fixture.js";
 import { type PayoutSplitNetworks, payoutSplitNetworkOf } from "../split/networks.js";
 import { type PayoutSplit, payoutSplitFor, splitParametersOf } from "../split/parameters.js";
 import { countedIds, loggedWhile, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "../testing/harness.js";
+import { anOrder } from "../testing/store-contract.js";
 import { describeWalletSpelling } from "../testing/wallet-spelling.js";
 import { Gateway } from "./gateway.js";
 import { setServiceName } from "./merchants.js";
@@ -92,6 +93,7 @@ const aGatewayOver = (
     table,
   );
   const facilitator = new ScriptedFacilitator();
+  const announcer = new RecordingAnnouncer();
   const gateway = new Gateway({
     config,
     store: database.store,
@@ -99,10 +101,10 @@ const aGatewayOver = (
     facilitator,
     clock: () => NOW,
     ids: countedIds(),
-    announcer: new RecordingAnnouncer(),
+    announcer,
   });
   running = gateway;
-  return { gateway, facilitator, config };
+  return { gateway, facilitator, config, announcer };
 };
 
 /** A merchant with a name, ready to sell but for where they are paid. */
@@ -441,20 +443,18 @@ describe("a start that finds wallets set before splits were", () => {
     expect(lines).toStrictEqual(expected.map((split) => ({ ...split, recordedAt: NOW })));
   });
 
-  it("refuses to start on a wallet no split can be made for, naming its merchant, and records nothing", async () => {
-    // A wallet set before splits that is the network's commission wallet
-    // would make a split paying one wallet twice, which no factory creates.
+  it("refuses to start on a wallet that is no address at all, naming its merchant, and records nothing", async () => {
+    // Capitals that disagree with the checksum mean a character is wrong;
+    // no split can be made for it, and no rule can say what it is.
     const database = await asBeforeSplits();
-    await aMerchant(database, "mch_paid_to_us");
-    await paidBeforeSplits(database, "mch_paid_to_us", {
-      address: T1_TEST.commissionWallet,
-      pending: null,
-    });
+    const misspelt = "0x5AAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+    await aMerchant(database, "mch_misspelt");
+    await paidBeforeSplits(database, "mch_misspelt", { address: misspelt, pending: null });
 
     const refused = await refusalOf(aGatewayOver(database).gateway);
 
-    expect(refused).toContain("mch_paid_to_us");
-    expect(refused).toContain(T1_TEST.commissionWallet);
+    expect(refused).toContain("mch_misspelt");
+    expect(refused).toContain(misspelt);
     expect(await database.store.networksWithPayoutSplits()).toStrictEqual([]);
   });
 
@@ -482,6 +482,131 @@ describe("a start that finds wallets set before splits were", () => {
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
     await gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
     expect(facilitator.verifies.at(-1)?.payTo).toBe(split);
+  });
+});
+
+describe("a start that finds a wallet set before splits that the wallet rule refuses", () => {
+  // Paid into a split, the merchant's share would go to an address it could
+  // never come back from. Before splits the payment went to that address
+  // itself; the release is the moment to stop it.
+  const otherMerchantsSplit = async (database: ReturnType<typeof aDatabase>) => {
+    await aMerchant(database, "mch_other");
+    return (await paidUnder(database, "mch_other", OTHER)).address;
+  };
+
+  it.each([
+    ["the commission wallet", "commission_wallet", async () => T1_TEST.commissionWallet],
+    ["Multicall3", "multicall3", async () => T1_TEST.multicall3],
+    ["the network's USDC", "usdc", async () => T1_TEST.usdc],
+    ["another merchant's split", "payout_split", otherMerchantsSplit],
+  ] as const)(
+    "records no split for %s, says so naming the merchant and the kind, and starts",
+    async (_what, kind, walletIn) => {
+      const database = aDatabase();
+      const wallet = await walletIn(database);
+      await aMerchant(database, "mch_refused");
+      await paidBeforeSplits(database, "mch_refused", { address: wallet, pending: null });
+      const stored = await database.store.publishCard("mch_refused", card, NOW);
+      const { gateway } = aGatewayOver(database);
+
+      const logged = await loggedWhile(() => gateway.start());
+
+      expect(logged).toMatch(new RegExp(`mch_refused\\b.*\\b${kind}\\b`));
+      expect((await database.store.merchantById("mch_refused"))?.payoutWallet.split).toBeNull();
+      expect((await gateway.paidResource(stored.id))?.payTo).toBeNull();
+    },
+  );
+
+  it("records the split of the wallet in force and none for a waiting one the rule refuses", async () => {
+    const database = aDatabase();
+    await aMerchant(database, "mch_waiting");
+    await paidBeforeSplits(database, "mch_waiting", {
+      address: W,
+      pending: { address: T1_TEST.multicall3, takesEffectAt: NOW + 3_600_000 },
+    });
+
+    const logged = await loggedWhile(() => aGatewayOver(database).gateway.start());
+
+    const wallet = (await database.store.merchantById("mch_waiting"))?.payoutWallet;
+    expect(wallet?.split?.address).toBe(payoutSplitFor(T1_TEST, "mch_waiting", W).address);
+    expect(wallet?.pending?.split).toBeNull();
+    expect(logged).toMatch(/mch_waiting\b.*\bmulticall3\b/);
+  });
+
+  it("lets the merchant sell once they set a wallet the rule takes", async () => {
+    const database = aDatabase();
+    await aMerchant(database, "mch_refused");
+    await paidBeforeSplits(database, "mch_refused", { address: T1_TEST.multicall3, pending: null });
+    const stored = await database.store.publishCard("mch_refused", card, NOW);
+    const { gateway } = aGatewayOver(database);
+    await gateway.start();
+
+    await gateway.setPayoutWallet("mch_refused", P, { kind: "signed_in", email: "o@example.com" });
+
+    expect((await gateway.paidResource(stored.id))?.payTo).toBe(
+      payoutSplitFor(T1_TEST, "mch_refused", P).address,
+    );
+  });
+
+  it("on the live deployment, sets the wallet they choose over it at once, as a first wallet is set", async () => {
+    // Nothing was paid to the refused wallet, so a replacement waits on
+    // nothing; held for forty-eight hours, the merchant could not sell.
+    const database = aDatabase("eip155:8453");
+    const base = payoutSplitNetworkOf(T1, "eip155:8453");
+    await aMerchant(database, "mch_refused");
+    await paidBeforeSplits(database, "mch_refused", { address: base.multicall3, pending: null });
+    const { gateway, announcer } = aGatewayOver(database, T1, LIVE);
+    await gateway.start();
+
+    const answered = await gateway.setPayoutWallet("mch_refused", P, {
+      kind: "signed_in",
+      email: "o@example.com",
+    });
+
+    expect(answered).toStrictEqual({ payout_wallet: P, pending: null });
+    expect(announcer.announced.map((one) => one.kind)).toStrictEqual(["wallet_set"]);
+    expect((await database.store.merchantById("mch_refused"))?.payoutWallet.split?.address).toBe(
+      payoutSplitFor(base, "mch_refused", P).address,
+    );
+  });
+});
+
+describe("a start on a registry holding a split of a wallet the wallet rule refuses", () => {
+  // Such a row was recorded by a start that did not yet hold the wallets it
+  // found to the rule. Paid out, the merchant's share would go where it could
+  // never come back from, so no payout may name it.
+  const recordedFor = async (database: ReturnType<typeof aDatabase>, merchantId: string) => {
+    const split = payoutSplitFor(T1_TEST, merchantId, T1_TEST.multicall3);
+    await database.store.recordPayoutSplits([split], NOW - 60_000);
+    return split;
+  };
+
+  it("refuses, naming the merchant and the kind, where that wallet is in force", async () => {
+    const database = aDatabase();
+    await aMerchant(database, "mch_refused");
+    await recordedFor(database, "mch_refused");
+    await paidBeforeSplits(database, "mch_refused", { address: T1_TEST.multicall3, pending: null });
+
+    const refused = await refusalOf(aGatewayOver(database).gateway);
+
+    expect(refused).toContain("mch_refused");
+    expect(refused).toMatch(/\bmulticall3\b/);
+  });
+
+  it("refuses where that wallet is no longer in force but an order was paid to its split", async () => {
+    const database = aDatabase();
+    await aMerchant(database, "mch_refused");
+    const split = await recordedFor(database, "mch_refused");
+    await paidUnder(database, "mch_refused", W);
+    await database.store.addOrder({
+      ...anOrder("ord_paid_there", "delivered", { merchantId: "mch_refused", createdAt: NOW }),
+      payTo: split.address,
+    });
+
+    const refused = await refusalOf(aGatewayOver(database).gateway);
+
+    expect(refused).toContain("mch_refused");
+    expect(refused).toContain(split.address);
   });
 });
 
