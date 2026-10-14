@@ -8,18 +8,19 @@
  * `packages/core`, not the sandbox's. Left alone, every test outside the
  * mutated package would import unmutated code and kill nothing.
  *
- * So this takes the unit project's settings and adds an alias for every
- * workspace package, built from its `exports` map, pointing into the sandbox.
- * The settings are imported by name: merging the default export would bring
- * the workspace's own alias, which points at the real checkout, and vite takes
- * the first match. A package is a directory under `packages/` or `apps/` that
- * holds a `package.json`, as in `scripts/mutate.mjs`.
+ * So this takes the unit project's settings, and the assets the scanner
+ * compiles, and adds an alias for every workspace package, built from its
+ * `exports` map, pointing into the sandbox. The settings are imported by name:
+ * merging the default export would bring the workspace's own alias, which
+ * points at the real checkout, and vite takes the first match. A package is a
+ * directory under `packages/` or `apps/` that holds a `package.json`, as in
+ * `scripts/mutate.mjs`.
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { defineConfig, mergeConfig } from "vitest/config";
-import { unitTests } from "../vitest.config.js";
+import { scannerAssets, unitTests } from "../vitest.config.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const packageDir = process.env.AGENTIFY_MUTATION_PACKAGE_DIR;
@@ -93,7 +94,7 @@ const scannerTarget = defineConfig({
 });
 
 export default mergeConfig(
-  defineConfig({ test: unitTests }),
+  defineConfig({ assetsInclude: scannerAssets, test: unitTests }),
   defineConfig({
     ...(family === "scanner" ? scannerTarget : {}),
     resolve: { alias },

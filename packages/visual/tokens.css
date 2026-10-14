@@ -63,6 +63,9 @@
   /* Text on the dark footer band. */
   --footer-text: #c9c6bf;
   --footer-faint: #8f8b84;
+  /* The accent where small text sits on a band of --fg: --accent itself reads
+     at 3.1:1 there, this one at 6.8:1. */
+  --accent-on-dark: #4fb0aa;
 
   /* Both family names are needed: the scanner loads the face through
      @fontsource-variable ("Schibsted Grotesk Variable"), every other surface

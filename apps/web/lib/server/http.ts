@@ -68,6 +68,16 @@ export function logUnhandledRequestError(
   });
 }
 
+/**
+ * The line for a failure no request is waiting on, such as a database
+ * connection closed while idle or the queue's own upkeep failing. It names the
+ * failure by its type and code alone, for the reason above: a driver's error
+ * carries the connection's settings and a server's message can quote a value.
+ */
+export function logBackgroundFailure(event: string, error: unknown): void {
+  logger.error(event, { error_type: safeErrorType(error), error_code: safeErrorCode(error) });
+}
+
 export function errorResponse(
   request: Request,
   status: number,

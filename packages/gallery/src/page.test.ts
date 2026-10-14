@@ -33,7 +33,7 @@ const surface = (states: readonly DrawnState[], css = ""): DrawnSurface => ({
 });
 
 describe("a stylesheet's files in the published page", () => {
-  it("embeds a file the stylesheet points at, wherever the surface's Vite wrote it from", async () => {
+  it("carries inside itself every file a screen's stylesheet points at, wherever the file lives", async () => {
     const folder = await mkdtemp(join(tmpdir(), "gallery-"));
     await writeFile(join(folder, "face.woff2"), "a face");
     const find = finderIn("/dashboard/", [folder]);

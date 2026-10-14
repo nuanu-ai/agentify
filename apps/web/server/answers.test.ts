@@ -5,7 +5,7 @@
  * it does not have, and the line a failure leaves in the log.
  */
 
-import { request } from "node:http";
+import { type IncomingHttpHeaders, request } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ask, testScanner } from "../testing/scanner";
 
@@ -21,6 +21,41 @@ const SECURITY_HEADERS = {
 };
 
 const NOBODY_KEEPS = "private, no-cache, no-store, max-age=0, must-revalidate";
+
+/**
+ * One request with its path and method exactly as written, which `fetch`
+ * would tidy first (`/./` and `%2e` taken out, repeated slashes kept) or
+ * refuse to send (TRACE).
+ */
+const sent = async (
+  path: string,
+  method = "GET",
+): Promise<Readonly<{ status: number; headers: IncomingHttpHeaders; body: string }>> => {
+  const { origin } = await testScanner();
+  return new Promise((resolve, reject) => {
+    request(`${origin}/`, { path, method, agent: false }, (answered) => {
+      let body = "";
+      answered.setEncoding("utf8");
+      answered.on("data", (chunk: string) => {
+        body += chunk;
+      });
+      answered.on("end", () =>
+        resolve({ status: answered.statusCode ?? 0, headers: answered.headers, body }),
+      );
+    })
+      .on("error", reject)
+      .end();
+  });
+};
+
+/** The lines the process logs as errors from here on, for a test to read. */
+const errorLines = (): string[] => {
+  const lines: string[] = [];
+  vi.spyOn(console, "error").mockImplementation((line: unknown) => {
+    lines.push(String(line));
+  });
+  return lines;
+};
 
 /** The text of the first element of this kind on a page, or null. */
 const textOf = (tag: "title" | "h1", html: string): string | null =>
@@ -56,8 +91,11 @@ describe("a scan and a report", () => {
     ["/scan/0190f4c5-0000-7000-8000-000000000000", "no-referrer"],
     ["/scan/pending.data", "no-referrer"],
     ["/report/0190f4c5-0000-7000-8000-000000000000", "strict-origin"],
+    ["/sc%61n/0190f4c5-0000-7000-8000-000000000000", "no-referrer"],
+    ["/%73can/pending.data", "no-referrer"],
+    ["/rep%6Frt/0190f4c5-0000-7000-8000-000000000000", "strict-origin"],
   ])(
-    "are kept by nobody, leave no address behind and are indexed by no crawler: %s",
+    "are kept by nobody, leave no address behind and are indexed by no crawler, however the address is spelled: %s",
     async (path, referrer) => {
       const answered = await ask(path);
 
@@ -66,6 +104,14 @@ describe("a scan and a report", () => {
       expect(answered.headers.get("x-robots-tag")).toBe("noindex, nofollow");
     },
   );
+
+  it("are not where a slash is written encoded, which the router reads as no step of the path", async () => {
+    const answered = await ask("/scan%2F0190f4c5-0000-7000-8000-000000000000");
+
+    expect(answered.status).toBe(404);
+    expect(answered.headers.get("referrer-policy")).toBeNull();
+    expect(answered.headers.get("x-robots-tag")).toBeNull();
+  });
 
   it("are a place of their own, so the public page about the scanner is not one of them", async () => {
     const answered = await ask("/scanner");
@@ -104,6 +150,19 @@ describe("a public page", () => {
       expect(body).not.toContain("<html");
     },
   );
+
+  it("is kept and offered as Markdown the same way where its address is percent-encoded", async () => {
+    const page = await ask("/m%65thodology", { headers: { accept: "text/html" } });
+    const markdown = await ask("/m%65thodology", { headers: { accept: "text/markdown" } });
+    const data = await ask("/m%65thodology.data");
+
+    expect(page.status).toBe(200);
+    expect(page.headers.get("cache-control")).toBe("public, max-age=0, s-maxage=3600");
+    expect(page.headers.get("content-language")).toBe("en-US");
+    expect(page.headers.get("vary")).toMatch(/\baccept\b/i);
+    expect(markdown.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
+    expect(data.headers.get("cache-control")).toBe("public, max-age=10");
+  });
 
   it("answers a HEAD for its Markdown with the Markdown's headers and no body", async () => {
     const answered = await ask("/methodology", {
@@ -161,6 +220,9 @@ describe("an address the scanner has no page for", () => {
     ["posted to", "/no-such-page", "POST"],
     ["under the API", "/api/no-such-route", "GET"],
     ["spelled in another case", "/METHODOLOGY", "GET"],
+    ["asked for its options", "/no-such-page", "OPTIONS"],
+    ["asked for its options under the API", "/api/v1/nothing-here", "OPTIONS"],
+    ["asked with a method of WebDAV's", "/no-such-page", "PROPFIND"],
   ])("is the site's page that says so, with status 404, when %s", async (_how, path, method) => {
     const answered = await ask(path, { method });
     const html = await answered.text();
@@ -209,6 +271,60 @@ describe("an address the scanner has no page for", () => {
   );
 });
 
+describe("an API route's data asked for through a path with dot segments", () => {
+  it.each([
+    ["/api/./health.data", "GET"],
+    ["/api/health/%2e/live.data", "GET"],
+    ["/api/v1/%2E/consent.data", "POST"],
+    ["/api/v1/nothing/../consent.data", "POST"],
+  ])(
+    "is a 404 that leaves no line in the log, as the same path without them is: %s %s",
+    async (path, method) => {
+      const lines = errorLines();
+
+      const answered = await sent(path, method);
+
+      expect(answered.status).toBe(404);
+      expect(answered.headers["cache-control"]).toBe(NOBODY_KEEPS);
+      expect(lines).toEqual([]);
+    },
+  );
+
+  it("leaves a page's data what it is through the same kind of path", async () => {
+    const answered = await sent("/api/../methodology.data");
+
+    expect(answered.status).toBe(200);
+    expect(answered.headers["cache-control"]).toBe("public, max-age=10");
+  });
+});
+
+describe("a method no address of the scanner's takes", () => {
+  it.each(["/methodology", "/api/health/live", "/no-such-page"])(
+    "is refused with 405, kept by nobody, and leaves no line in the log: TRACE %s",
+    async (path) => {
+      const lines = errorLines();
+
+      const answered = await sent(path, "TRACE");
+
+      expect(answered.status).toBe(405);
+      expect(answered.headers["cache-control"]).toBe(NOBODY_KEEPS);
+      expect(lines).toEqual([]);
+    },
+  );
+});
+
+describe("the server as a whole, asked for its options with `*`", () => {
+  it("is told there is no such address, and leaves no line in the log", async () => {
+    const lines = errorLines();
+
+    const answered = await sent("*", "OPTIONS");
+
+    expect(answered.status).toBe(404);
+    expect(answered.headers["cache-control"]).toBe(NOBODY_KEEPS);
+    expect(lines).toEqual([]);
+  });
+});
+
 describe("a page asked with a method it does not take", () => {
   it.each(["PUT", "DELETE", "OPTIONS"])(
     "is refused with 405 naming the methods it takes: %s",
@@ -235,22 +351,6 @@ describe("an address with a trailing slash", () => {
   });
 });
 
-/** Where the scanner sends a path as written, slashes and all, which `fetch` would tidy first. */
-const sentFrom = async (path: string): Promise<{ status: number; location?: string }> => {
-  const { origin } = await testScanner();
-  return new Promise((resolve, reject) => {
-    request(`${origin}/`, { path, agent: false }, (answered) => {
-      answered.resume();
-      resolve({
-        status: answered.statusCode ?? 0,
-        ...(answered.headers.location === undefined ? {} : { location: answered.headers.location }),
-      });
-    })
-      .on("error", reject)
-      .end();
-  });
-};
-
 describe("an address written with repeated slashes", () => {
   it.each([
     ["//elsewhere.example/", "/elsewhere.example/"],
@@ -260,10 +360,10 @@ describe("an address written with repeated slashes", () => {
   ])(
     "is sent to the same address on this site with one slash at each step: %s",
     async (path, to) => {
-      const answered = await sentFrom(path);
+      const answered = await sent(path);
 
       expect(answered.status).toBe(308);
-      expect(answered.location).toBe(to);
+      expect(answered.headers.location).toBe(to);
     },
   );
 });

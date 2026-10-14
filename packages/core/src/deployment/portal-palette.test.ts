@@ -20,7 +20,8 @@ const read = (relative: string): string => readFileSync(new URL(relative, import
  * `:root:not(…)` cannot answer for it.
  */
 const rootDeclarations = (stylesheet: string, whose: string): Map<string, string> => {
-  const body = /^:root\s*\{([^}]*)\}/m.exec(stylesheet)?.[1];
+  const uncommented = stylesheet.replace(/\/\*[\s\S]*?\*\//g, "");
+  const body = /^:root\s*\{([^}]*)\}/m.exec(uncommented)?.[1];
   if (body === undefined) throw new Error(`${whose} has no :root block to read`);
   const declarations = new Map<string, string>();
   for (const [, name = "", value = ""] of body.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)) {

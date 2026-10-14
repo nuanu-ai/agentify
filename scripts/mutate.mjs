@@ -50,10 +50,11 @@
  *   short. The price is that the state machine's transition table, built at
  *   load time, goes unmutated.
  * - Tracked production `.ts` and `.tsx` files are mutated: `apps/web` has its
- *   roots under `app`, `components`, `content` and `lib`, the other packages
- *   under `src`. Repeated `--file` narrows that scope and refuses an untracked
- *   or out-of-package path. `preflight.mjs` in core is left out: its test runs
- *   it as a child process, which never sees a mutant switched on here.
+ *   roots under `app`, `components`, `content`, `lib` and `server`, the other
+ *   packages under `src`. Repeated `--file` narrows that scope and refuses an
+ *   untracked or out-of-package path. `preflight.mjs` in core is left out: its
+ *   test runs it as a child process, which never sees a mutant switched on
+ *   here.
  */
 
 import { execFileSync } from "node:child_process";
@@ -152,7 +153,7 @@ const selectedFiles = requestedFiles.length
       const relative = path.posix.relative(packageDir, repositoryPath);
       const inProductionRoot =
         packageDir === "apps/web"
-          ? ["app", "components", "content", "lib"].includes(relative.split("/")[0])
+          ? ["app", "components", "content", "lib", "server"].includes(relative.split("/")[0])
           : relative.startsWith("src/");
       return inProductionRoot && isProductionTypeScript(relative);
     });

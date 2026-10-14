@@ -1,9 +1,12 @@
 /**
  * The scanner as a test asks it, over HTTP: the whole process compiled from
  * source by Vite in middleware mode, once per test file, on an ephemeral
- * loopback port. Nothing is built or written to disk and nothing is watched,
- * and the workspace's packages are read from their source rather than their
- * build, so `pnpm test` runs the source as it stands with no build step.
+ * loopback port. Nothing is built and nothing is watched, and the workspace's
+ * packages are read from their source rather than their build, so `pnpm test`
+ * runs the source as it stands with no build step. What it writes to disk is
+ * Vite's prebundled dependencies, in a temporary folder of this file's own
+ * that is removed once its tests end, and the route types React Router
+ * rewrites under `.react-router` whenever a server starts.
  */
 
 import { createServer } from "node:http";

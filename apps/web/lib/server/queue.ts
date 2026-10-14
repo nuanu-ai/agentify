@@ -8,13 +8,20 @@ import { and, eq, sql } from "drizzle-orm";
 import { fromDrizzle, PgBoss } from "pg-boss";
 
 import { getServerConfig } from "./config";
+import { logBackgroundFailure } from "./http";
 
 const globalQueue = globalThis as typeof globalThis & {
   agentifyWebQueue?: Promise<PgBoss>;
 };
 
+/**
+ * The process's scan queue, started on first use. The callers that ask while
+ * a start runs share it; a start that failed is forgotten, so the next caller
+ * tries again rather than being refused until the process restarts.
+ */
 export function getScanQueue(): Promise<PgBoss> {
-  globalQueue.agentifyWebQueue ??= (async () => {
+  if (globalQueue.agentifyWebQueue !== undefined) return globalQueue.agentifyWebQueue;
+  const starting = (async () => {
     // The one `pgboss` schema the gateway's queue uses too
     // (apps/scanner-worker/src/queue-schema.test.ts).
     const boss = new PgBoss({
@@ -24,15 +31,28 @@ export function getScanQueue(): Promise<PgBoss> {
       supervise: false,
       schedule: false,
     });
-    await boss.start();
-    await boss.createQueue("scan-v1", {
-      retryLimit: 1,
-      retryDelay: 1,
-      expireInSeconds: 60,
-    });
-    return boss;
+    // A dropped connection and a failure of the queue's own upkeep arrive as
+    // `error` events, which with no listener end the process.
+    boss.on("error", (failed) => logBackgroundFailure("web_queue_failed", failed));
+    try {
+      await boss.start();
+      await boss.createQueue("scan-v1", {
+        retryLimit: 1,
+        retryDelay: 1,
+        expireInSeconds: 60,
+      });
+      return boss;
+    } catch (failed) {
+      // What the start left running would otherwise stay, once per try.
+      await boss.stop({ graceful: false }).catch(() => undefined);
+      throw failed;
+    }
   })();
-  return globalQueue.agentifyWebQueue;
+  globalQueue.agentifyWebQueue = starting;
+  starting.catch(() => {
+    globalQueue.agentifyWebQueue = undefined;
+  });
+  return starting;
 }
 
 export async function stopScanQueue(): Promise<void> {

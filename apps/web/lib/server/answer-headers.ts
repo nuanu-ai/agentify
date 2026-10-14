@@ -63,6 +63,20 @@ export function pageOf(pathname: string): Readonly<{ page: string; data: boolean
   return { page: pathname, data: false };
 }
 
+/**
+ * The page a request is about as the router matches it: each segment of its
+ * path decoded, a slash inside one kept encoded, so `/sc%61n/<id>` is a scan.
+ * The process answers a path that cannot be decoded before a route is asked.
+ */
+const placeOf = (request: Request): Readonly<{ page: string; data: boolean }> => {
+  const { page, data } = pageOf(new URL(request.url).pathname);
+  const decoded = page
+    .split("/")
+    .map((segment) => decodeURIComponent(segment).replaceAll("/", "%2F"))
+    .join("/");
+  return { page: decoded, data };
+};
+
 const isPublicPage = (page: string): page is PublicPagePath =>
   (PUBLIC_PAGE_PATHS as readonly string[]).includes(page);
 
@@ -74,7 +88,7 @@ const reads = (request: Request): boolean => request.method === "GET" || request
  * answered with the headers alone by the router, as every answer is.
  */
 export function markdownAnswer(request: Request): Response | null {
-  const { page, data } = pageOf(new URL(request.url).pathname);
+  const { page, data } = placeOf(request);
   if (data || !reads(request) || !isPublicPage(page) || isPrefetch(request.headers)) return null;
   if (!prefersMarkdown(request.headers.get("accept"))) return null;
   return new Response(getPublicPageMarkdown(page), {
@@ -89,7 +103,7 @@ export function markdownAnswer(request: Request): Response | null {
 
 /** `response` with the headers its address calls for, over whatever its route set. */
 export function withPlaceHeaders(request: Request, response: Response): Response {
-  const { page, data } = pageOf(new URL(request.url).pathname);
+  const { page, data } = placeOf(request);
   const set: Record<string, string> = {};
   for (const [place, headers] of PRIVATE_PLACES) {
     if (page === place || page.startsWith(`${place}/`)) Object.assign(set, headers);

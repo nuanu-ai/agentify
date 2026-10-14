@@ -135,7 +135,7 @@ const fits = async (mode: "lazy" | "initial", limit: number): Promise<boolean> =
   return !failures.some((failure) => failure.startsWith("routes/home "));
 };
 
-describe("a page's first visit", () => {
+describe("a page's first visit, as the speed budget weighs it", () => {
   it("is its own scripts and what they import, not the route table, where routes are discovered as they are needed", async () => {
     expect(await fits("lazy", weight(...PAGE))).toBe(true);
     expect(await fits("lazy", weight(...PAGE) - 1)).toBe(false);
