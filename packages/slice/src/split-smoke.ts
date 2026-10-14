@@ -215,10 +215,10 @@ function baseSepoliaWorld(options: {
       const estimated = await client.estimateGas(request);
       const fees = await client.estimateFeesPerGas();
       const l1Fee = await estimateL1Fee(client, { ...request, chain: baseSepolia });
-      // Multicall3 lets a call that runs out of gas fail alone while the
-      // transaction succeeds, so a limit cut to the estimate could mine a
-      // payout whose distribution never happened; a quarter more keeps
-      // every call fed.
+      // A payout given too little gas reverts whole: Multicall3 still has to
+      // return its results after the last call, which costs more than the
+      // gas a failing call leaves behind. The quarter more only covers state
+      // that moves between the estimate and the block.
       return {
         gas: (estimated * 5n) / 4n,
         maxFeePerGas: fees.maxFeePerGas,
