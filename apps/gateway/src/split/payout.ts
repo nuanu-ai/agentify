@@ -174,7 +174,7 @@ const NO_WALLET: Readonly<Record<NotAPayoutWallet, string>> = {
   split_factory: "the split factory",
   split_implementation: "the split implementation",
   split_warehouse: "the 0xSplits warehouse",
-  multicall3: "Multicall3, whose next caller would take it",
+  multicall3: "Multicall3",
   usdc: "a network's USDC",
   payout_split: "a payout split",
 };
@@ -208,7 +208,7 @@ function refuseUnlessPayable(
     const is = whyNotAPayoutWallet(wallet, { networks: everyNetwork, splits: [] });
     if (is !== null) {
       throw new Error(
-        `the split ${split.address} would have its merchant's share withdrawn to ${wallet}, which is ${NO_WALLET[is]} and no merchant's wallet, so no payout is built over it`,
+        `the split ${split.address} would have its merchant's share withdrawn to ${wallet}, which is ${NO_WALLET[is]}, not a merchant's wallet, so no payout is built over it`,
       );
     }
     const derived = splitAddress({
