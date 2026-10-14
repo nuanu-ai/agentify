@@ -16,7 +16,7 @@ export const SELL_LANDING = {
   hero: {
     eyebrow: "A new sales channel for products and services",
     title: "AI agents find and buy your products",
-    lede: "Connect your catalog of physical products, digital products, and services once. Agentify shows them to AI agents and takes the order. The buyer pays into your own payout contract, which sends 99.9% to your wallet and 0.1% to Agentify. You keep your site and your store as they are.",
+    lede: "Connect your catalog of physical products, digital products, and services once. Agentify shows them to AI agents and takes the order. The buyer pays into your own payout contract, which sends 99.9% to your wallet and 0.1% to Agentify when it is paid out. You keep your site and your store as they are.",
     action: "Connect your catalog",
     howItWorks: "How it works",
     facts: ["You connect your catalog", "An agent buys", "You get paid"],
@@ -147,7 +147,7 @@ export const SELL_LANDING = {
       buyer: { kind: "BUYER'S WALLET", name: "AI agent", amount: "− 5.00 USDC" },
       flow: { amount: "5.00 USDC", note: "Agentify checked the payment" },
       seller: { kind: "YOUR PAYOUT CONTRACT", name: "Seller", amount: "+ 5.00 USDC" },
-      foot: "Paid out on your request: 99.9% to your wallet, 0.1% to Agentify",
+      foot: "When it is paid out: 99.9% to your wallet, 0.1% to Agentify",
     },
   },
   pricing: {
