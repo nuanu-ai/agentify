@@ -10,9 +10,10 @@ import { useLocation } from "react-router";
  * A details element, so it opens and closes before the page's script runs and
  * what it holds is out of the tab order while it is closed. Once the script
  * runs, Escape closes it wherever the focus is and hands the focus back to its
- * button, which a details element does not do on its own. It is drawn anew,
- * closed, on every move to a page, the same page included, since such a move
- * leaves the header where it was.
+ * button, and the focus moving on to the page behind it closes it, neither of
+ * which a details element does on its own. It is drawn anew, closed, on every
+ * move to a page, the same page included, since such a move leaves the header
+ * where it was.
  */
 export function HeaderMenu({ children }: Readonly<{ children: ReactNode }>) {
   return <Menu key={useLocation().key}>{children}</Menu>;
@@ -58,7 +59,17 @@ function Menu({ children }: Readonly<{ children: ReactNode }>) {
   }, []);
 
   return (
-    <details className="site-menu" ref={menu}>
+    <details
+      className="site-menu"
+      ref={menu}
+      onBlur={(event) => {
+        // The focus leaving the window, or landing on nothing, leaves it open.
+        const next = event.relatedTarget;
+        if (next instanceof Node && !event.currentTarget.contains(next)) {
+          event.currentTarget.open = false;
+        }
+      }}
+    >
       <summary aria-label="Menu">
         <span />
         <span />
