@@ -351,6 +351,24 @@ describe("the sections on a long page", () => {
     await page.context().close();
   });
 
+  it.each([900, 905, 910, 911])(
+    "are in the sidebar or in the header's menu at %ipx, never both, and who is signed in is in sight",
+    async (width) => {
+      const page = await onTheCards({ width, height: 800 });
+      const burger = page.locator(".site-menu > summary");
+      const inSidebar = await page.locator(".app-sidebar nav.tabs").isVisible();
+      const inMenu = await burger.isVisible();
+
+      expect(inSidebar).not.toBe(inMenu);
+      if (inMenu) await burger.click();
+      expect(await page.getByText(PERSON).filter({ visible: true }).count()).toBe(1);
+      expect(
+        await page.getByRole("button", { name: "Sign out" }).filter({ visible: true }).count(),
+      ).toBe(1);
+      await page.context().close();
+    },
+  );
+
   it("stay whole under the header on a laptop, down to the foot of the page", async () => {
     // A window taller than the sidebar's words and the foot together.
     const page = await onTheCards({ width: 1280, height: 700 });
