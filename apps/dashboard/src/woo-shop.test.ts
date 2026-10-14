@@ -1050,6 +1050,7 @@ describe("the protected product check", () => {
       email: "merchant@example.com",
       price: read.product.price,
       download: { id: read.product.downloadId, name: read.product.fileName },
+      paidInto: null,
     });
 
     expect(made).toMatchObject({ ok: true, id: "13", orderKey: "wc_order_13" });

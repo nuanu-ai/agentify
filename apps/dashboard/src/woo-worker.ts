@@ -34,6 +34,7 @@ import {
   createTheParcelInTheShop,
   inspectProductInTheShop,
   type OrderMade,
+  type PaidIntoSplit,
   type ParcelMade,
   type ParcelSold,
   type ProductInspection,
@@ -88,19 +89,44 @@ export interface Filling {
 }
 
 /**
+ * One paid order drawn off the stream, filled from the shop with the split
+ * its payment was checked against, read as the merchant. Null where that
+ * cannot be read, as where the shop does not answer: a shop order made
+ * without it would say no commission was taken.
+ */
+export const filledAsPaid = async (
+  gateway: Pick<GatewayClient, "paidInto">,
+  order: Order,
+  connection: WooConnection,
+  orderEmail: string,
+  parts: Filling,
+): Promise<HandlerAnswer | null> => {
+  const paid = await gateway.paidInto(order.id);
+  if (!paid.ok) {
+    console.error(
+      `[dashboard] where the payment for ${order.id} went could not be read, so the shop is not asked yet: ${paid.why}`,
+    );
+    return null;
+  }
+  return await fillFromTheShop(order, connection, orderEmail, parts, paid.document);
+};
+
+/**
  * Null is not a failure to decide: the shop did not answer, nothing about the
  * sale is settled, and a refusal would close for good something that might go
- * through a minute later.
+ * through a minute later. `paidInto` is the split the order's payment was
+ * checked against, which the shop's order names.
  */
 export const fillFromTheShop = async (
   order: Order,
   connection: WooConnection,
   orderEmail: string,
   parts: Filling,
+  paidInto: PaidIntoSplit | null,
 ): Promise<HandlerAnswer | null> => {
   // Only a parcel's order carries where it goes.
   if (order.ship_to !== undefined) {
-    return await fillParcelFromTheShop(order, connection, orderEmail, parts);
+    return await fillParcelFromTheShop(order, connection, orderEmail, parts, paidInto);
   }
   const place = parts.placeOrder ?? createTheOrderInTheShop;
   const known = await parts.shops.knownOrder(order.id);
@@ -253,6 +279,7 @@ export const fillFromTheShop = async (
     email: orderEmail,
     price: { amount: order.price.amount, currency: order.price.currency },
     download: { id: eligible.downloadId, name: eligible.fileName },
+    paidInto,
   });
 
   if (made.ok) {
@@ -321,6 +348,7 @@ const fillParcelFromTheShop = async (
   connection: WooConnection,
   orderEmail: string,
   parts: Filling,
+  paidInto: PaidIntoSplit | null,
 ): Promise<HandlerAnswer | null> => {
   const known = await parts.shops.knownOrder(order.id);
   if (known?.kind === "placed_parcel") return { accepted: {} };
@@ -446,6 +474,7 @@ const fillParcelFromTheShop = async (
     goods: product.price.amount,
     rate,
     address: address.data,
+    paidInto,
   });
   if (made.ok) {
     const bound = await parts.shops.recordOrder(
@@ -593,7 +622,7 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
     if (envelope.kind !== "order") {
       continue;
     }
-    const answer = await fillFromTheShop(envelope.payload, connection, person.email, parts);
+    const answer = await filledAsPaid(gateway, envelope.payload, connection, person.email, parts);
     if (answer === null) {
       continue;
     }
