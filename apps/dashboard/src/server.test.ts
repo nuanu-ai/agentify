@@ -2076,7 +2076,7 @@ describe("the wallet a merchant's share is paid out to", () => {
       [network.commissionWallet, /Agentify's commission wallet/],
       [network.warehouse.toLowerCase(), /0xSplits warehouse/],
       [network.multicall3, /Multicall3/],
-      [ownSplit, /a payout contract, not a wallet/],
+      [ownSplit, /one of your own payout contracts, not a wallet/],
       ["0x0000000000000000000000000000000000000000", /the zero address/],
     ] as const) {
       const answered = await running.browser.post("/settings/payout-wallet", {
@@ -2091,6 +2091,46 @@ describe("the wallet a merchant's share is paid out to", () => {
       expect(answered.html.replaceAll(/<[^>]*>/g, ""), address).toContain(address);
       expect(await paidInto(running), address).toBe(before);
     }
+  });
+
+  it("tells a payout contract of the merchant's own, an earlier wallet's too, from another merchant's, which pays that merchant", async () => {
+    // The gateway refuses every recorded split alike. The words differ because
+    // a share paid into another merchant's contract becomes that merchant's,
+    // and one paid into the merchant's own comes back to them split again.
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    const { harnessed } = running;
+    const network = harnessed.runtime.config.payoutSplit;
+    const earlier = (await harnessed.gateway.payoutSplitsOf(harnessed.merchant.id)).inForce;
+    const other = await harnessed.gateway.registerMerchant();
+    await setPayoutWallet(
+      harnessed.runtime.store,
+      network,
+      other,
+      "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+      harnessed.runtime.clock(),
+    );
+    const theirs = (await harnessed.gateway.payoutSplitsOf(other)).inForce;
+    await running.browser.signIn();
+    // The test channel applies a change at once, so the first wallet's
+    // contract is now neither in force nor paid into.
+    await running.browser.post("/settings/payout-wallet", { payout_wallet: AS_A_WALLET_SHOWS_IT });
+    const said = async (address: string | undefined): Promise<string> =>
+      readable(
+        (await running.browser.post("/settings/payout-wallet", { payout_wallet: address ?? "" }))
+          .html,
+      );
+
+    const ofAnEarlierWallet = await said(earlier?.address);
+    const ofAnotherMerchant = await said(theirs?.address);
+
+    expect(ofAnEarlierWallet).toMatch(/one of your own payout contracts, not a wallet/);
+    expect(ofAnEarlierWallet).not.toMatch(/another merchant/);
+    expect(ofAnotherMerchant).toMatch(/another merchant's payout contract, not a wallet/);
+    expect(ofAnotherMerchant).toMatch(/go to that merchant/);
+    expect(ofAnotherMerchant).not.toMatch(/your own/);
+    expect(await paidInto(running)).toBe(AS_A_WALLET_SHOWS_IT);
   });
 
   it("draws the rest of Settings, and no transaction, where the payout cannot be built", async () => {
