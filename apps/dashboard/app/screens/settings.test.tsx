@@ -351,7 +351,7 @@ describe("the commission, before a merchant saves their first wallet", () => {
 });
 
 describe("the payout contract buyers pay into", () => {
-  const W = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+  const W = SHAPED;
 
   it("is shown whole beside the saved wallet, with a link to it on the test channel's explorer", () => {
     const split = splitOf("test", W).address;
