@@ -12,7 +12,7 @@
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
-import { type Gateway, merchantPayout, payoutSplitFor } from "@agentify/gateway";
+import { type Gateway, merchantPayout, payoutSplitFor, setPayoutWallet } from "@agentify/gateway";
 import {
   buyOverHttp,
   type Harness,
@@ -30,6 +30,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type DashboardConfig, loadConfig } from "./config.js";
+import { SIGN_OUT_EVERY_OTHER_DEVICE } from "./control-labels.js";
 import { DRAWN_FOR } from "./drawn-for.js";
 import {
   type Acting,
@@ -2067,6 +2068,37 @@ describe("the wallet a merchant's share is paid out to", () => {
       expect(answered.html.replaceAll(/<[^>]*>/g, ""), address).toContain(address);
       expect(await paidInto(running), address).toBe(before);
     }
+  });
+
+  it("draws the rest of Settings, and no transaction, where the payout cannot be built", async () => {
+    // A wallet saved before the rule existed, written straight into the store:
+    // its split pays Multicall3, a payout over it would hand the share to
+    // whoever calls Multicall3 next, and the builder refuses it. The merchant
+    // still needs the page, the control that signs every other device out and
+    // the box that replaces the wallet among it.
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    const { harnessed } = running;
+    const network = harnessed.runtime.config.payoutSplit;
+    await setPayoutWallet(
+      harnessed.runtime.store,
+      network,
+      harnessed.merchant.id,
+      network.multicall3,
+      harnessed.runtime.clock(),
+    );
+    await running.browser.signIn();
+
+    const screen = await running.browser.get("/settings");
+
+    expect(screen.status).toBe(200);
+    expect(screen.html).not.toContain("<textarea");
+    const text = readable(screen.html);
+    expect(text).toMatch(/get your payout/i);
+    expect(text).toMatch(/could not build/i);
+    expect(text).toContain(SIGN_OUT_EVERY_OTHER_DEVICE);
+    expect(screen.html).toContain('name="payout_wallet"');
   });
 
   it("refuses an empty box and says what to paste into it", async () => {
