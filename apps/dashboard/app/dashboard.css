@@ -856,8 +856,14 @@ h2 {
   list-style: none;
 }
 
+/* Each contract over the wallet it pays, so neither address runs into the other. */
+.pays li > .address {
+  display: block;
+  margin-top: 0;
+}
+
 .pays li + li {
-  margin-top: 8px;
+  margin-top: 12px;
 }
 
 @media (max-width: 560px) {
