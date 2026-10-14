@@ -326,11 +326,12 @@ const AT_THREE_PERCENT = { commissionAllocation: 30_000, totalAllocation: 1_000_
 
 describe("the commission, before a merchant saves their first wallet", () => {
   // Saving the wallet on a screen that names the commission is the merchant's
-  // consent to it, so it is said above the box, before anything is saved, and
-  // it covers a sale given back: the merchant refunds the whole price and the
-  // commission stays.
+  // consent to it, so it is said above the box, before anything is saved. It
+  // covers a sale given back, since the merchant refunds the whole price and
+  // the commission stays, and it says the contract pays nothing out by itself:
+  // the payout panel that says so is drawn only once a wallet is saved.
   for (const mode of ["test", "live"] as const) {
-    it(`names on ${mode} the rate, a refunded sale included, how it is taken, and that saving agrees to it, above the form`, () => {
+    it(`names on ${mode} the rate, a refunded sale included, how it is taken, that the money waits for a payout, and that saving agrees to it, above the form`, () => {
       const network = networkOf(mode);
       const html = walletPanel({ mode, wallet: null });
       const beforeTheForm = readable(html.slice(0, html.indexOf("<form")));
@@ -346,6 +347,9 @@ describe("the commission, before a merchant saves their first wallet", () => {
       expect(beforeTheForm).toMatch(/buyers pay into a payout contract made for this wallet/i);
       expect(beforeTheForm).toContain(
         `it pays ${share} to the wallet and ${commission} to Agentify, and nobody can change that`,
+      );
+      expect(beforeTheForm).toMatch(
+        /the money waits in the contract until somebody pays it out: you, at any time, or Agentify, on no set date/i,
       );
       expect(beforeTheForm).toMatch(/saving a wallet here is your agreement/i);
       expect(html.indexOf('name="payout_wallet"')).toBeGreaterThan(html.indexOf("<form"));
