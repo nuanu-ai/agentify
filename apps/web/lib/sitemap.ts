@@ -1,3 +1,4 @@
+import { DOCS_PAGES, docsAddress } from "@agentify/ui/docs";
 import { PUBLIC_PAGE_METADATA, PUBLIC_PAGE_PATHS } from "../content/public-page-metadata";
 import { getPublicAppConfig } from "./app-config";
 
@@ -7,26 +8,26 @@ type Entry = Readonly<{ path: string; lastModified?: string; priority: number }>
 const SELL_TO_AGENTS: Entry = { path: "/agentic-shop", lastModified: "2026-09-09", priority: 0.9 };
 
 /**
- * The scanner's own pages in the documentation's Scanner section. Their text
- * is the documentation's Markdown, which changes without this file, so they
- * name no date rather than one that could be wrong.
+ * Every page of the documentation, the scanner's own among them, in the order
+ * its contents list them. Their text is the documentation's Markdown, which
+ * changes without this file, so they name no date rather than one that could
+ * be wrong.
  */
-const SCANNER_SECTION: readonly Entry[] = [
-  { path: "/docs/scanner/methodology", priority: 0.8 },
-  { path: "/docs/scanner", priority: 0.8 },
-];
+const DOCUMENTATION: readonly Entry[] = DOCS_PAGES.map((page) => ({
+  path: docsAddress(page.path),
+  priority: 0.8,
+}));
 
 /**
  * The pages a crawler is invited to list, as a sitemap: every public page,
- * the one about selling to agents, then the scanner's section of the
- * documentation.
+ * the one about selling to agents, then every page of the documentation.
  */
 export function buildSitemap(): string {
   const { baseUrl } = getPublicAppConfig();
   const entries: Entry[] = [
     ...PUBLIC_PAGE_PATHS.map((path) => ({ path, ...PUBLIC_PAGE_METADATA[path] })),
     SELL_TO_AGENTS,
-    ...SCANNER_SECTION,
+    ...DOCUMENTATION,
   ];
   const urls = entries.map(
     ({ path, lastModified, priority }) =>

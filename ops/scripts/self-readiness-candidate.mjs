@@ -4,13 +4,20 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 const canonicalOrigin = "https://agentify.ad";
 const publicPaths = ["/", "/store", "/local", "/privacy", "/terms"];
-// The scanner's own pages in the documentation, which the scanner names but
-// does not serve.
+// Every page of the documentation, in the order its contents list them, which
+// the scanner names but does not serve.
 const sitemapPaths = [
   ...publicPaths,
   "/agentic-shop",
-  "/docs/scanner/methodology",
+  "/docs/",
+  "/docs/money",
+  "/docs/faq",
+  "/docs/quickstart",
+  "/docs/cards",
+  "/docs/orders",
+  "/docs/failures",
   "/docs/scanner",
+  "/docs/scanner/methodology",
 ];
 const requiredPasses = [1, 2, 3, 4, 5, 6, 7, 8, 12, 13, 14];
 

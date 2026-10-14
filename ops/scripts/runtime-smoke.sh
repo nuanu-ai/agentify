@@ -73,11 +73,11 @@ for token in OAI-SearchBot ChatGPT-User GPTBot ClaudeBot Claude-User PerplexityB
 done
 
 sitemap="$(curl --silent --show-error --fail --max-time 20 "$WEB_BASE_URL/sitemap.xml")"
-[[ "$(grep -o '<loc>' <<<"$sitemap" | wc -l | tr -d ' ')" == "8" ]] || {
-  echo "sitemap.xml does not contain eight canonical URLs" >&2
+[[ "$(grep -o '<loc>' <<<"$sitemap" | wc -l | tr -d ' ')" == "15" ]] || {
+  echo "sitemap.xml does not contain fifteen canonical URLs" >&2
   exit 1
 }
-for path in / /store /local /privacy /terms /agentic-shop /docs/scanner/methodology /docs/scanner; do
+for path in / /store /local /privacy /terms /agentic-shop /docs/ /docs/money /docs/faq /docs/quickstart /docs/cards /docs/orders /docs/failures /docs/scanner /docs/scanner/methodology; do
   grep -q "<loc>https://agentify.ad$path</loc>" <<<"$sitemap" || {
     echo "sitemap.xml is missing $path" >&2
     exit 1
