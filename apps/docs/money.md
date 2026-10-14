@@ -13,9 +13,11 @@ The buyer — a program, buying on behalf of a person — pays into your payout
 contract: a contract on Base made for your wallet, which keeps the money until
 it is paid out and then sends 99.9% to your wallet and 0.1% to Agentify.
 Nobody owns it. Neither Agentify nor anybody else can change whom it pays or
-in what shares, or send the money anywhere else, so a payout can only ever
-pay you and us, in those shares. We check each payment and set it going, and
-no account of ours holds your money at any point.
+in what shares, so a payout can only ever pay you and us, in those shares. We
+check each payment and set it going, and no account of ours holds your money
+at any point. USDC itself is issued by Circle, which can freeze USDC at any
+address, your payout contract and the shared 0xSplits warehouse it pays
+through included, for as long as the money waits there.
 
 You can get paid out at any time. The Settings screen of your dashboard shows
 your payout contract and the one transaction that pays it out. You send it
@@ -26,7 +28,7 @@ same transaction. The transaction carries no money
 of its own and costs only that fee. If you do not send it, your share arrives
 when Agentify collects its own, because collecting it pays out every payout
 contract, yours included; there is no fixed day for that. Until somebody pays
-it out, the money waits in the contract and goes nowhere else.
+it out, the money waits in the contract.
 
 A payout pays out everything that came in since the one before, so the sales
 between two payouts reach your wallet as one transfer, and that transfer comes

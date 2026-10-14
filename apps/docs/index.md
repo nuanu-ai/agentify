@@ -26,8 +26,8 @@ sorting out by hand.
 
 The buyer pays into a payout contract made for your wallet, which keeps the
 money until it is paid out and then sends 99.9% to your wallet and 0.1% to us.
-Nobody, Agentify included, can send that money anywhere else, and you can have
-it paid out at any time. Our 0.1% is inside your price, and there is no
+Nobody, Agentify included, can change whom it pays, and you can have it paid
+out at any time. Our 0.1% is inside your price, and there is no
 subscription and no monthly fee. The moment the buyer is charged is not the
 same for every product: for some it comes after you have delivered, for others
 at the moment of purchase. That, and the rest of what there is to say about
