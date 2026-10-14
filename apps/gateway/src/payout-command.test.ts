@@ -133,7 +133,7 @@ const partsIn = (lines: readonly string[]) => {
 };
 
 describe("the operator's payout, printed", () => {
-  it("prints the transaction that pays out every split that can hold money, whole, for a person to send", async () => {
+  it("prints the transaction that pays out every split recorded, whole, for a person to send", async () => {
     const database = aDatabase();
     await aMerchantPaidAt(database, "mch_a", walletNumber(1));
     await aMerchantPaidAt(database, "mch_b", walletNumber(2));
@@ -201,7 +201,7 @@ describe("the operator's payout, printed", () => {
     expect(lines).toContain("Payout 2 of 2");
   });
 
-  it("says there is nothing to pay out where no split can hold money, and prints no transaction", async () => {
+  it("says there is nothing to pay out where no split is recorded, and prints no transaction", async () => {
     const database = aDatabase();
     const gateway = aGatewayOver(database);
 

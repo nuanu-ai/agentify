@@ -1,7 +1,7 @@
 /**
  * Prints the operator's payout: the transactions that pay out every payout
- * split of this gateway's network that can hold money, each merchant's share
- * to their wallet and the commission last, for a person to send from a wallet
+ * split recorded on this gateway's network, since any of them may hold money,
+ * each merchant's share to their wallet and the commission last, for a person to send from a wallet
  * of their own. It sends nothing, signs nothing, writes nothing and takes no
  * work off the queue, so Agentify is paid only when somebody sends what it
  * prints.
@@ -20,9 +20,9 @@ import { operatorPayouts } from "./split/payout.js";
 const USAGE = [
   "Usage: pnpm --filter @agentify/gateway payout",
   "",
-  "Prints the transactions that pay out every payout split of this network that",
-  "can hold money, Agentify's commission included, for a person to send from a",
-  "wallet of their own. It sends nothing, signs nothing and writes nothing.",
+  "Prints the transactions that pay out every payout split recorded on this",
+  "network, Agentify's commission included, for a person to send from a wallet",
+  "of their own. It sends nothing, signs nothing and writes nothing.",
 ].join("\n");
 
 /**
@@ -67,7 +67,7 @@ export async function runPayout(
   const chain = `${name} (${network.network})`;
   const splits = await application.splitsToPayOut();
   if (splits.length === 0) {
-    say(`No payout split on ${chain} can hold money, so there is nothing to pay out.`);
+    say(`No payout split is recorded on ${chain}, so there is nothing to pay out.`);
     return 0;
   }
 
@@ -80,7 +80,7 @@ export async function runPayout(
     return 1;
   }
   say(
-    `Payout splits on ${chain} that can hold money: ${splits.length}.` +
+    `Payout splits recorded on ${chain}: ${splits.length}.` +
       ` Send every transaction below on ${name} only, from a wallet of your own, which pays the gas;` +
       " this command sends nothing and signs nothing.",
   );
