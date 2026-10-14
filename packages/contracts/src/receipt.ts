@@ -69,8 +69,9 @@ export const ReceiptSchema = z.strictObject({
    * merchant's payout contract — so a receipt can be matched to its payment on
    * the chain by more than its time. It is not a transfer into the merchant's
    * wallet, which receives one transfer per payout from the 0xSplits
-   * warehouse, covering every sale paid in since the payout before. Absent when
-   * the payment layer did not report one.
+   * warehouse, the shared contract a payout contract pays its shares through,
+   * covering every sale paid in since the payout before. Absent when the
+   * payment layer did not report one.
    */
   transaction: z.string().regex(/\S/, "a transaction names the transfer").optional(),
 
