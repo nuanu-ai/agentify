@@ -54,9 +54,15 @@ describe("a link into the documentation", () => {
     for (const page of pages.values()) {
       for (const [, href = ""] of page.html.matchAll(/<a [^>]*href="([^"]*)"/g)) {
         const [address = "", anchor] = href.split("#");
+        // A page links off the site, to the dashboard by its whole address,
+        // and to nothing else on the origin outside the documentation.
+        if (address.startsWith("/dashboard/") || /^[a-z]+:/.test(address)) continue;
         const target =
           address === "" ? page.path : address.startsWith("/docs") ? pathOf(address) : null;
-        if (target === null) continue;
+        if (target === null) {
+          broken.push(`${page.path} links to ${href}, which is outside the documentation`);
+          continue;
+        }
         if (!pages.has(target)) broken.push(`${page.path} links to ${href}, which is no page`);
         else if (anchor !== undefined && !anchorsOf(target).has(anchor)) {
           broken.push(`${page.path} links to ${href}, which ${target} has no heading for`);
