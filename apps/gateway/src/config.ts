@@ -10,6 +10,12 @@ import {
   surfaceModeOf,
 } from "@agentify/core";
 import { z } from "zod";
+import {
+  PAYOUT_SPLIT_NETWORKS,
+  type PayoutSplitNetwork,
+  type PayoutSplitNetworks,
+  payoutSplitNetworkOf,
+} from "./split/networks.js";
 
 /**
  * Re-exported from the core rather than defined here: the dashboard tests for
@@ -448,6 +454,18 @@ export interface GatewayConfig {
    * otherwise.
    */
   readonly surfaceMode: SurfaceMode;
+  /**
+   * The payout split of the network payments are taken on: the commission
+   * wallet and rate every new split here names, and the contracts a payout
+   * calls. The sandbox has Base Sepolia's, the chain it describes.
+   */
+  readonly payoutSplit: PayoutSplitNetwork;
+  /**
+   * Every network's payout split, of which `payoutSplit` is one, for the
+   * rules that look past this network: no merchant's wallet may be another
+   * network's commission wallet or token either.
+   */
+  readonly payoutSplitNetworks: PayoutSplitNetworks;
 }
 
 /**
@@ -499,8 +517,15 @@ export function secondAttemptProblem(config: GatewayConfig, reminderPollMs: numb
 /**
  * Names every configuration problem at once rather than the first, so the
  * whole list is learned in one restart.
+ *
+ * The payout split table is the one in the code. Only a test hands another,
+ * to run a network the code has no commission wallet for yet; nothing in the
+ * environment reaches it.
  */
-export function loadConfig(environment: Record<string, string | undefined>): GatewayConfig {
+export function loadConfig(
+  environment: Record<string, string | undefined>,
+  payoutSplitNetworks: PayoutSplitNetworks = PAYOUT_SPLIT_NETWORKS,
+): GatewayConfig {
   const parsed = environmentSchema.safeParse(environment);
 
   if (!parsed.success) {
@@ -586,6 +611,18 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
     problems.push(thrown instanceof Error ? thrown.message : String(thrown));
   }
 
+  // Every payment is asked for at a split paying the network's commission
+  // wallet, so a written chain the code names none for cannot sell at all.
+  if (chainEnvironment !== null) {
+    try {
+      payoutSplitNetworkOf(payoutSplitNetworks, network);
+    } catch (thrown) {
+      problems.push(
+        `PAYMENT_NETWORK: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
+      );
+    }
+  }
+
   // The prefix says which environment a key belongs to; it is not a check that
   // seeding is allowed here. The release refuses any seeded key on a deployed
   // channel, whatever its prefix.
@@ -629,8 +666,8 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
     );
   }
 
-  // Past the throw above the chain is a known one, so it is read again rather
-  // than carried down as a nullable.
+  // Past the throw above the chain is a known one with a payout split, so both
+  // are read again rather than carried down as nullables.
   const derivedEnvironment = environmentOf(network);
 
   return {
@@ -663,5 +700,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
     },
     environment: derivedEnvironment,
     surfaceMode: surfaceModeOf(network, environmentValues.FACILITATOR_URL),
+    payoutSplit: payoutSplitNetworkOf(payoutSplitNetworks, network),
+    payoutSplitNetworks,
   };
 }

@@ -28,6 +28,7 @@ import {
   MemoryQueue,
   MemoryStore,
   nobodyAnnounces,
+  type PayoutSplitNetworks,
   type Runtime,
   randomIds,
   SEEDED_MERCHANT,
@@ -83,9 +84,14 @@ export interface Booted {
  * The environment the gateway is booted with. The two the harness always sets
  * are the database URL (never connected to — the store is in memory) and the
  * key to seed the merchant with; a caller adds the payment settings the smoke
- * needs.
+ * needs. `networks` is the payout split table to read them against, the
+ * code's own unless a test hands the one with a fixture's Base entry; pass
+ * `bootGateway` the same.
  */
-export function sliceEnv(overrides: Record<string, string> = {}): Record<string, string> {
+export function sliceEnv(
+  overrides: Record<string, string> = {},
+  networks?: PayoutSplitNetworks,
+): Record<string, string> {
   const settings = {
     DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
     PAY_TO_ADDRESS: SLICE_PAY_TO,
@@ -108,7 +114,7 @@ export function sliceEnv(overrides: Record<string, string> = {}): Record<string,
   // than the default being copied here where the two could drift.
   return {
     ...settings,
-    SANDBOX_MERCHANT_KEY: sliceMerchantKeyFor(loadConfig(settings).environment),
+    SANDBOX_MERCHANT_KEY: sliceMerchantKeyFor(loadConfig(settings, networks).environment),
   };
 }
 
@@ -139,10 +145,14 @@ export function sliceEnv(overrides: Record<string, string> = {}): Record<string,
  * the socket is open before anything else can fail, every failure after it
  * closes the socket and stops the gateway if it had started — a boot that
  * threw hands the caller no `stop()`, so nothing else would.
+ *
+ * `networks` is the payout split table, the code's own unless a test hands
+ * another, as for {@link sliceEnv}.
  */
 export async function bootGateway(
   makeFacilitator: (config: GatewayConfig) => Facilitator,
   env: Record<string, string> = sliceEnv(),
+  networks?: PayoutSplitNetworks,
 ): Promise<Booted> {
   if (Object.hasOwn(env, "PUBLIC_BASE_URL")) {
     throw new Error(
@@ -162,7 +172,7 @@ export async function bootGateway(
 
   let started: Gateway | null = null;
   try {
-    const config = loadConfig({ ...env, PUBLIC_BASE_URL: baseUrl });
+    const config = loadConfig({ ...env, PUBLIC_BASE_URL: baseUrl }, networks);
     const queue = new MemoryQueue({
       attempts: config.reminderAttempts,
       retryDelayMs: config.reminderRetryDelayMs,

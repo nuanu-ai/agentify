@@ -7,11 +7,20 @@ import {
 } from "./config.js";
 import { nobodyAnnounces } from "./ports/announcer.js";
 import { startGateway } from "./start.js";
+import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "./testing/split-networks.js";
 
 const database = "postgres://agentify:secret@localhost:5432/agentify";
 
 /** The one variable that has no sensible default and must always be given. */
 const required = { DATABASE_URL: database };
+
+/**
+ * `loadConfig` on the table with a fixture's Base entry, for the tests about a
+ * live chain: the code's own table refuses Base until it has a commission
+ * wallet there.
+ */
+const loadOnBase = (environment: Record<string, string | undefined>) =>
+  loadConfig(environment, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE);
 
 /**
  * What the gateway said when it refused to start on this environment. Refusals
@@ -119,7 +128,7 @@ describe("loadConfig", () => {
       cdpApiKeySecret: null,
     });
 
-    const live = loadConfig({
+    const live = loadOnBase({
       ...required,
       FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
       PAYMENT_NETWORK: "eip155:8453",
@@ -193,7 +202,7 @@ describe("loadConfig", () => {
 
     it("still refuses Coinbase's facilitator with a credential set to nothing", () => {
       expect(() =>
-        loadConfig({
+        loadOnBase({
           ...required,
           PAYMENT_NETWORK: "eip155:8453",
           FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
@@ -552,7 +561,7 @@ describe("a seeded key belongs to this environment", () => {
     // Catches a laptop's `.env` seeding a live gateway with a key written down
     // in a repository.
     expect(() =>
-      loadConfig({
+      loadOnBase({
         ...required,
         PAYMENT_NETWORK: "eip155:8453",
         FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
@@ -577,7 +586,7 @@ describe("the environment is derived from the chain", () => {
 
   it("reads Base mainnet as a live environment", () => {
     expect(
-      loadConfig({
+      loadOnBase({
         ...required,
         PAYMENT_NETWORK: "eip155:8453",
         FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
@@ -626,20 +635,20 @@ describe("a live chain is allowed exactly one facilitator", () => {
   };
 
   it("starts on Coinbase's canonical facilitator with both credentials", () => {
-    expect(() => loadConfig(live)).not.toThrow();
+    expect(() => loadOnBase(live)).not.toThrow();
   });
 
   it("refuses the scripted facilitator, which takes payments that never happened", () => {
     const { CDP_API_KEY_ID, CDP_API_KEY_SECRET, ...noCredentials } = live;
     expect(() =>
-      loadConfig({ ...noCredentials, FACILITATOR_URL: SANDBOX_FACILITATOR }),
+      loadOnBase({ ...noCredentials, FACILITATOR_URL: SANDBOX_FACILITATOR }),
     ).toThrowError(/eip155:8453.*sandbox:scripted/s);
   });
 
   it("refuses the public x402 facilitator", () => {
     const { CDP_API_KEY_ID, CDP_API_KEY_SECRET, ...noCredentials } = live;
     expect(() =>
-      loadConfig({ ...noCredentials, FACILITATOR_URL: "https://x402.org/facilitator" }),
+      loadOnBase({ ...noCredentials, FACILITATOR_URL: "https://x402.org/facilitator" }),
     ).toThrowError(/eip155:8453.*x402\.org/s);
   });
 
@@ -648,17 +657,17 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // `.env` with only the network changed would otherwise start live, issue
     // csk_live_ keys and settle in the wrong place.
     const { FACILITATOR_URL, CDP_API_KEY_ID, CDP_API_KEY_SECRET, ...unnamed } = live;
-    expect(() => loadConfig(unnamed)).toThrowError(/eip155:8453.*FACILITATOR_URL/s);
+    expect(() => loadOnBase(unnamed)).toThrowError(/eip155:8453.*FACILITATOR_URL/s);
   });
 
   it("refuses Coinbase's facilitator without credentials", () => {
     const { CDP_API_KEY_ID, CDP_API_KEY_SECRET, ...noCredentials } = live;
-    expect(() => loadConfig(noCredentials)).toThrowError(/CDP_API_KEY_ID and CDP_API_KEY_SECRET/);
+    expect(() => loadOnBase(noCredentials)).toThrowError(/CDP_API_KEY_ID and CDP_API_KEY_SECRET/);
   });
 
   it("refuses Coinbase's facilitator over http, which puts a bearer token on the wire in the clear", () => {
     expect(() =>
-      loadConfig({ ...live, FACILITATOR_URL: "http://api.cdp.coinbase.com/platform/v2/x402" }),
+      loadOnBase({ ...live, FACILITATOR_URL: "http://api.cdp.coinbase.com/platform/v2/x402" }),
     ).toThrowError(/https:/);
   });
 
@@ -667,7 +676,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // anything. Refusing it would be an operator with a correct configuration
     // being told it is wrong.
     expect(() =>
-      loadConfig({ ...live, FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402/" }),
+      loadOnBase({ ...live, FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402/" }),
     ).not.toThrow();
   });
 
@@ -675,7 +684,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // Starts healthy, issues csk_live_ keys, and fails at the first buyer: the
     // gateway builds /verify and /settle under whatever base it was given.
     expect(() =>
-      loadConfig({ ...live, FACILITATOR_URL: "https://api.cdp.coinbase.com/wrong" }),
+      loadOnBase({ ...live, FACILITATOR_URL: "https://api.cdp.coinbase.com/wrong" }),
     ).toThrowError(/https:\/\/api\.cdp\.coinbase\.com\/platform\/v2\/x402/);
   });
 
@@ -684,7 +693,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // built, so every verify and settle would throw on a gateway that came up
     // healthy, and that refusal would print the password into the log.
     expect(() =>
-      loadConfig({
+      loadOnBase({
         ...live,
         FACILITATOR_URL: "https://someone:secret@api.cdp.coinbase.com/platform/v2/x402",
       }),
@@ -695,7 +704,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // Nothing listens on that port: the gateway would start, issue keys, and
     // find out at the first buyer.
     expect(() =>
-      loadConfig({
+      loadOnBase({
         ...live,
         FACILITATOR_URL: "https://api.cdp.coinbase.com:8443/platform/v2/x402",
       }),
@@ -707,7 +716,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // is the canonical endpoint spelled in full. Refusing it would be an
     // operator with a correct live configuration told it is wrong.
     expect(() =>
-      loadConfig({
+      loadOnBase({
         ...live,
         FACILITATOR_URL: "https://api.cdp.coinbase.com:443/platform/v2/x402",
       }),
@@ -718,7 +727,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // The laptop requires exactly that pairing, and it is what makes
     // `docker compose up` sell with no network, no wallet and no faucet.
     expect(() =>
-      loadConfig({
+      loadOnBase({
         ...required,
         PAYMENT_NETWORK: "eip155:84532",
         FACILITATOR_URL: SANDBOX_FACILITATOR,
