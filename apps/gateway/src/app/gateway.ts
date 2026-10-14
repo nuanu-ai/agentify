@@ -894,7 +894,7 @@ export class Gateway {
       return await this.#recordWallet(merchantId, read, alone);
     }
 
-    const paidNow = now.address === null ? null : now.split;
+    const paidNow = now.split;
     if (paidNow === null) {
       // The first address replaces nothing, so it waits on nothing and a
       // message that cannot be sent refuses nothing; the message is how the
