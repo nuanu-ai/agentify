@@ -92,6 +92,15 @@ export function problemsWith(channel, resolved) {
       problems.push(`app: ${name} must not be blank`);
     }
   }
+  if (app.GOOGLE_CLIENT_SECRET) {
+    for (const name of ["AUTH_SECRET", "REPORT_IDENTITY_SECRET", "MAIL_API_KEY"]) {
+      if (app[name] === app.GOOGLE_CLIENT_SECRET) {
+        problems.push(
+          `app: GOOGLE_CLIENT_SECRET is also its ${name}, and one credential opens one door`,
+        );
+      }
+    }
+  }
   for (const [service, definition] of Object.entries(resolved.services ?? {})) {
     if (service === "app") continue;
     for (const name of googleNames) {

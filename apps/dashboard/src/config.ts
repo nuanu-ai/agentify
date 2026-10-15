@@ -258,6 +258,17 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
   }
 
   if (
+    values.GOOGLE_CLIENT_SECRET !== undefined &&
+    [values.AUTH_SECRET, values.REPORT_IDENTITY_SECRET, values.MAIL_API_KEY].includes(
+      values.GOOGLE_CLIENT_SECRET,
+    )
+  ) {
+    problems.push(
+      "GOOGLE_CLIENT_SECRET must differ from AUTH_SECRET, REPORT_IDENTITY_SECRET and MAIL_API_KEY",
+    );
+  }
+
+  if (
     values.REPORT_IDENTITY_SECRET !== undefined &&
     [values.AUTH_SECRET, values.MAIL_API_KEY].includes(values.REPORT_IDENTITY_SECRET)
   ) {
