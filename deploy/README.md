@@ -610,6 +610,55 @@ rest in a warning, so `stack.sh` refuses such a file and names the key. The firs
 the file and refuses, before it stops anything, if a variable is missing, the
 preflight disagrees or the scanner refuses the configuration at its own start.
 
+## Google sign-in
+
+Google sign-in is optional. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
+together in the channel's root-owned environment file. The application alone
+receives them. Leaving both absent or empty keeps sign-in by email link and
+hides the Google button. A missing partner or a whitespace-only value is
+refused by the release preflight before activation switches the running
+release. Deployed channels require their HTTPS public origin and
+`AGENTIFY_COOKIE_SECURE=true`.
+
+In [Google Auth Platform](https://console.cloud.google.com/auth/overview),
+configure Branding with Agentify's name, support contact, home page, privacy
+policy and terms. The public pages are `https://agentify.ad/`,
+`https://agentify.ad/privacy` and `https://agentify.ad/terms`; confirm that the
+published policy describes the sign-in data before enabling it. Choose an
+External audience for merchants outside the project's Google Workspace
+organization. Add the acceptance accounts as test users when Google's
+Audience settings require it, and complete the applicable publishing and
+brand verification steps before opening access to merchants. See Google's
+[consent configuration](https://developers.google.com/workspace/guides/configure-oauth-consent)
+and [OAuth policies](https://developers.google.com/identity/protocols/oauth2/policies).
+
+Create an OAuth client of type **Web application** under Clients. Use separate
+clients for local development, TEST and PRODUCTION so a test credential does
+not authorize a production redirect. Register the exact authorized redirect
+URI for that client:
+
+| Environment | Authorized redirect URI |
+| --- | --- |
+| Dashboard run directly with its defaults | `http://localhost:3001/sign-in/google/callback` |
+| Local Compose | `http://localhost:8080/dashboard/sign-in/google/callback` |
+| TEST | `https://test.agentify.ad/dashboard/sign-in/google/callback` |
+| PRODUCTION | `https://agentify.ad/dashboard/sign-in/google/callback` |
+
+The path is `PUBLIC_BASE_URL` + `BASE_PATH` + `/sign-in/google/callback`, with
+no trailing slash. Update the registered URI if the local port, origin or
+base path changes. This server redirect flow needs no browser JavaScript
+origin entry. Store the client secret outside the repository; do not paste
+it into a command or diagnostic output. Google's
+[web-server setup](https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred)
+explains client creation and redirect matching.
+
+Enabling configuration is not live acceptance. On TEST, finish a Google
+redirect in a browser with a permitted Gmail or verified Workspace account,
+confirm that an existing email-link account retains the same account and
+merchant, and check sign-out and an intelligible return after cancellation.
+The email-link route must still work. These checks require the channel's
+Google client and real acceptance accounts; offline tests do not prove them.
+
 ## Who opens /admin
 
 The operator's dashboard at `/admin` opens for a session whose account carries

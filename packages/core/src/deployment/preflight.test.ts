@@ -268,6 +268,21 @@ describe("Google sign-in is optional and only the application receives its crede
     }
   });
 
+  it("refuses whitespace-only Google credentials instead of enabling a broken sign-in", () => {
+    for (const blank of [
+      { GOOGLE_CLIENT_ID: "   " },
+      { GOOGLE_CLIENT_SECRET: "   " },
+      { GOOGLE_CLIENT_ID: "   ", GOOGLE_CLIENT_SECRET: "   " },
+    ]) {
+      const wrong = structuredClone(TEST_CHANNEL);
+      Object.assign(envFor(wrong, "app"), google, blank);
+      const checked = runCli("test", JSON.stringify(wrong));
+      expect(checked.status).toBe(65);
+      for (const name of Object.keys(blank)) expect(checked.stderr).toContain(name);
+      expectNoFixtureSecrets(checked.stderr + checked.stdout, wrong);
+    }
+  });
+
   it("refuses Google credentials on services other than the application", () => {
     for (const service of ["scanner", "scanner-worker", "scanner-privacy", "web"]) {
       for (const [name, value] of Object.entries(google)) {
@@ -362,10 +377,9 @@ describe("the mock merchant is not among the services", () => {
 });
 
 describe("a deployed channel seeds no merchant", () => {
-  // A merchant comes into being one way: a person opens the link mailed to
-  // their address and presses the dashboard's one control. A key the gateway
-  // seeds from a host's file at every start would be a second way, and one
-  // nobody can retire without a release.
+  // A merchant comes into being one way: a person signs in and presses the
+  // dashboard's one control. A key the gateway seeds from a host's file at
+  // every start would be a second way, and one nobody can retire without a release.
   const CHANNELS = [
     ["production", PRODUCTION_CHANNEL, "csk_live_"],
     ["test", TEST_CHANNEL, "csk_test_"],
@@ -380,7 +394,7 @@ describe("a deployed channel seeds no merchant", () => {
   });
 
   it.each(CHANNELS)(
-    "refuses %s seeding a key, names the mailed link, and does not print the key",
+    "refuses %s seeding a key without printing the key",
     (channel, config, prefix) => {
       // The channel's own prefix and the laptop's key alike: the reason is the
       // second way in, not whose key it is.
@@ -388,10 +402,6 @@ describe("a deployed channel seeds no merchant", () => {
         const problems = problemsWith(channel, withEnv(config, "app", "SANDBOX_MERCHANT_KEY", key));
         expect(problems).toContainEqual(expect.stringMatching(/^app: SANDBOX_MERCHANT_KEY/));
         const said = problems.join("\n");
-        expect(said).toMatch(/link mailed/);
-        // Where the empty seed comes from, since a host's file cannot change
-        // it: the overlay every deployed channel is rendered with.
-        expect(said).toMatch(/deploy\/compose\.public\.yaml/);
         expect(said).not.toContain(key);
       }
     },

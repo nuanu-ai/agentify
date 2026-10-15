@@ -78,6 +78,29 @@ export function problemsWith(channel, resolved) {
   const web = envOf(resolved, "web");
   const scanner = envOf(resolved, "scanner");
 
+  // Google sign-in is optional, but its credentials must arrive together. The
+  // candidate must fail here before activation stops the running application.
+  const googleNames = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"];
+  const googleSupplied = googleNames.map((name) => (app[name] ?? "") !== "");
+  if (googleSupplied[0] !== googleSupplied[1]) {
+    problems.push(
+      "app: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must both be set or both be absent",
+    );
+  }
+  for (const name of googleNames) {
+    if (typeof app[name] === "string" && app[name] !== "" && app[name].trim() === "") {
+      problems.push(`app: ${name} must not be blank`);
+    }
+  }
+  for (const [service, definition] of Object.entries(resolved.services ?? {})) {
+    if (service === "app") continue;
+    for (const name of googleNames) {
+      if ((definition?.environment?.[name] ?? "") !== "") {
+        problems.push(`${service}: ${name} is handed to a service that is not the application`);
+      }
+    }
+  }
+
   const equal = (where, name, given, expected) => {
     if (given !== expected) {
       problems.push(
@@ -197,17 +220,17 @@ export function problemsWith(channel, resolved) {
     }
   }
 
-  // A merchant comes into being only when a person opens the link mailed to
-  // their address and presses the dashboard's one control. A seeded key would
-  // be a second way, written back into the database at every start, so only the
+  // A merchant comes into being only when a person signs in and presses the
+  // dashboard's one control. A seeded key would be a second way, written back
+  // into the database at every start, so only the
   // laptop's stack seeds one. deploy/compose.public.yaml empties the seed
   // whatever a host's file says, so a value here means a file rendered after it
   // put a key back. The value is never repeated, since it opens a merchant.
   if ((app.SANDBOX_MERCHANT_KEY ?? "") !== "") {
     problems.push(
       "app: SANDBOX_MERCHANT_KEY is set, and a deployed channel seeds no merchant: a " +
-        "merchant comes into being only when a person opens the link mailed to their address " +
-        "and presses the dashboard's one control. deploy/compose.public.yaml gives it nothing, so " +
+        "merchant comes into being only when a person signs in and presses the dashboard's " +
+        "one control. deploy/compose.public.yaml gives it nothing, so " +
         "a compose file rendered after it has put a key back",
     );
   }
