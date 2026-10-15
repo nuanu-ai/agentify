@@ -813,6 +813,9 @@ if (databaseUrl === null) {
       .rows[0]?.count as number;
   }
 
+  /** The owner's yes on the link's page to telling the tracker. */
+  const TELLING = { tellTracker: true } as const;
+
   describe("the registration a consented link leaves for the tracker, on PostgreSQL", () => {
     beforeEach(async () => {
       await emptyEverything();
@@ -825,7 +828,7 @@ if (databaseUrl === null) {
       await identity.requestLink("person@example.com", "default", CLICK);
       const pressedAt = Date.now();
 
-      const opened = await identity.openLink(tokenIn(messages[0] as Message));
+      const opened = await identity.openLink(tokenIn(messages[0] as Message), TELLING);
 
       if (opened.status !== "opened") throw new Error("the consented link did not open");
       expect(opened.person).toMatchObject({ email: "person@example.com", confirmed: true });
@@ -854,10 +857,53 @@ if (databaseUrl === null) {
       const messages: Message[] = [];
       await reportingOn(messages).requestLink("person@example.com", "default", CLICK);
 
-      const opened = await identityOn(messages).openLink(tokenIn(messages[0] as Message));
+      const opened = await identityOn(messages).openLink(tokenIn(messages[0] as Message), TELLING);
 
       expect(opened).toMatchObject({ status: "opened", person: { confirmed: true } });
       expect(await registrations()).toStrictEqual([]);
+    });
+
+    it("writes no registration, and still signs in, when the owner presses without telling the tracker", async () => {
+      for (const choice of [undefined, { tellTracker: false }]) {
+        await emptyEverything();
+        await migrateEverything();
+        const messages: Message[] = [];
+        const identity = reportingOn(messages);
+        await identity.requestLink("person@example.com", "default", CLICK);
+
+        const opened = await identity.openLink(tokenIn(messages[0] as Message), choice);
+
+        expect(opened, JSON.stringify(choice)).toMatchObject({
+          status: "opened",
+          person: { email: "person@example.com", confirmed: true },
+        });
+        expect(await registrations(), JSON.stringify(choice)).toStrictEqual([]);
+      }
+    });
+
+    it("says on the link's page whether its press would tell the tracker, and only where it would", async () => {
+      const messages: Message[] = [];
+      const identity = reportingOn(messages);
+      const landing = async (at: number) =>
+        await identity.landingOf(tokenIn(messages[at] as Message));
+
+      await identity.requestLink("person@example.com", "default", CLICK);
+      await identity.requestLink("plain@example.com", "default");
+      await identity.make("seeded@example.com", MERCHANT);
+      await identity.requestLink("seeded@example.com", "default", CLICK);
+
+      expect(await landing(0)).toStrictEqual({ email: "person@example.com", tellsTracker: true });
+      expect(await landing(1)).toStrictEqual({ email: "plain@example.com", tellsTracker: false });
+      expect(await landing(2)).toStrictEqual({ email: "seeded@example.com", tellsTracker: true });
+      expect(await identityOn([]).landingOf(tokenIn(messages[0] as Message))).toStrictEqual({
+        email: "person@example.com",
+        tellsTracker: false,
+      });
+
+      await identity.openLink(tokenIn(messages[1] as Message));
+      await rewindLinkSends();
+      await identity.requestLink("plain@example.com", "default", CLICK);
+      expect(await landing(3)).toStrictEqual({ email: "plain@example.com", tellsTracker: false });
     });
 
     it("leaves no registration when the link was asked for without a click", async () => {
@@ -865,7 +911,9 @@ if (databaseUrl === null) {
       const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default");
 
-      await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
+      await expect(
+        identity.openLink(tokenIn(messages[0] as Message), TELLING),
+      ).resolves.toMatchObject({
         status: "opened",
       });
 
@@ -877,11 +925,13 @@ if (databaseUrl === null) {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default");
-      await identity.openLink(tokenIn(messages[0] as Message));
+      await identity.openLink(tokenIn(messages[0] as Message), TELLING);
       await rewindLinkSends();
       await identity.requestLink("person@example.com", "default", CLICK);
 
-      await expect(identity.openLink(tokenIn(messages[1] as Message))).resolves.toMatchObject({
+      await expect(
+        identity.openLink(tokenIn(messages[1] as Message), TELLING),
+      ).resolves.toMatchObject({
         status: "opened",
       });
 
@@ -896,7 +946,9 @@ if (databaseUrl === null) {
       if (made === null) throw new Error("the account was not made");
       await identity.requestLink("person@example.com", "default", CLICK);
 
-      await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
+      await expect(
+        identity.openLink(tokenIn(messages[0] as Message), TELLING),
+      ).resolves.toMatchObject({
         status: "opened",
         person: { id: made.id, confirmed: true, merchant: { id: MERCHANT } },
       });
@@ -911,21 +963,26 @@ if (databaseUrl === null) {
       await identity.requestLink("person@example.com", "default", CLICK);
       const token = tokenIn(messages[0] as Message);
 
-      expect(await identity.addressOfLink(token)).toBe("person@example.com");
-      await expect(identity.openLink("short")).resolves.toStrictEqual({ status: "refused" });
-      await expect(identity.openLink("A".repeat(32))).resolves.toStrictEqual({
+      expect(await identity.landingOf(token)).toStrictEqual({
+        email: "person@example.com",
+        tellsTracker: true,
+      });
+      await expect(identity.openLink("short", TELLING)).resolves.toStrictEqual({
+        status: "refused",
+      });
+      await expect(identity.openLink("A".repeat(32), TELLING)).resolves.toStrictEqual({
         status: "refused",
       });
       await pool.query(
         "update dashboard_verifications set expires_at = now() - interval '1 second'",
       );
-      await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
+      await expect(identity.openLink(token, TELLING)).resolves.toStrictEqual({ status: "refused" });
       expect(await countIn("dashboard_accounts")).toBe(0);
       expect(await registrations()).toStrictEqual([]);
 
       await pool.query("update dashboard_verifications set expires_at = now() + interval '1 hour'");
-      await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
-      await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
+      await expect(identity.openLink(token, TELLING)).resolves.toMatchObject({ status: "opened" });
+      await expect(identity.openLink(token, TELLING)).resolves.toStrictEqual({ status: "refused" });
       expect(await countIn("dashboard_registration_postbacks")).toBe(1);
     });
 
@@ -939,7 +996,9 @@ if (databaseUrl === null) {
         request: REQUEST,
       });
 
-      await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
+      await expect(
+        identity.openLink(tokenIn(messages[0] as Message), TELLING),
+      ).resolves.toMatchObject({
         status: "opened",
       });
 
@@ -969,7 +1028,7 @@ if (databaseUrl === null) {
           for each row execute function fail_dashboard_insert()
         `);
 
-        await expect(identity.openLink(token)).rejects.toThrow();
+        await expect(identity.openLink(token, TELLING)).rejects.toThrow();
 
         expect(await countIn("dashboard_accounts")).toBe(0);
         expect(await countIn("dashboard_sessions")).toBe(0);
@@ -977,7 +1036,9 @@ if (databaseUrl === null) {
         expect(await countIn("dashboard_verifications")).toBe(1);
         await pool.query(`drop trigger fail_dashboard_insert on ${table}`);
         await pool.query("drop function fail_dashboard_insert()");
-        await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
+        await expect(identity.openLink(token, TELLING)).resolves.toMatchObject({
+          status: "opened",
+        });
         expect(await registrations()).toMatchObject([{ click_id: CLICK.id }]);
       },
     );
@@ -1001,7 +1062,10 @@ if (databaseUrl === null) {
       const token = tokenIn(messages[0] as Message);
       await slowAccountInserts();
 
-      const [first, second] = await Promise.all([one.openLink(token), two.openLink(token)]);
+      const [first, second] = await Promise.all([
+        one.openLink(token, TELLING),
+        two.openLink(token, TELLING),
+      ]);
 
       expect([first.status, second.status].sort()).toStrictEqual(["opened", "refused"]);
       expect(await countIn("dashboard_accounts")).toBe(1);
@@ -1019,8 +1083,8 @@ if (databaseUrl === null) {
       await slowAccountInserts();
 
       const [first, second] = await Promise.all([
-        one.openLink(tokenIn(messages[0] as Message)),
-        two.openLink(tokenIn(messages[1] as Message)),
+        one.openLink(tokenIn(messages[0] as Message), TELLING),
+        two.openLink(tokenIn(messages[1] as Message), TELLING),
       ]);
 
       if (first.status !== "opened" || second.status !== "opened") {
@@ -1038,7 +1102,7 @@ if (databaseUrl === null) {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default", CLICK);
-      const opened = await identity.openLink(tokenIn(messages[0] as Message));
+      const opened = await identity.openLink(tokenIn(messages[0] as Message), TELLING);
       if (opened.status !== "opened") throw new Error("the consented link did not open");
       const before = await registrations();
 
@@ -1054,9 +1118,9 @@ if (databaseUrl === null) {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default", CLICK);
-      await identity.openLink(tokenIn(messages[0] as Message));
+      await identity.openLink(tokenIn(messages[0] as Message), TELLING);
       await identity.requestLink("bystander@example.com", "default", ANOTHER_CLICK);
-      const bystander = await identity.openLink(tokenIn(messages[1] as Message));
+      const bystander = await identity.openLink(tokenIn(messages[1] as Message), TELLING);
       if (bystander.status !== "opened") throw new Error("the bystander's link did not open");
       expect(await countIn("dashboard_registration_postbacks")).toBe(2);
 
@@ -1082,7 +1146,9 @@ if (databaseUrl === null) {
         JSON.stringify({ email: "person@example.com", destination: "settings", request: null }),
       ]);
 
-      await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
+      await expect(
+        identity.openLink(tokenIn(messages[0] as Message), TELLING),
+      ).resolves.toMatchObject({
         status: "opened",
         destination: "settings",
       });
@@ -1112,7 +1178,10 @@ if (databaseUrl === null) {
       ]) {
         await pool.query("update dashboard_verifications set value = $1", [JSON.stringify(claim)]);
 
-        await expect(identity.openLink(token), JSON.stringify(claim)).resolves.toStrictEqual({
+        await expect(
+          identity.openLink(token, TELLING),
+          JSON.stringify(claim),
+        ).resolves.toStrictEqual({
           status: "refused",
         });
         expect(await countIn("dashboard_verifications")).toBe(1);
@@ -1139,7 +1208,7 @@ if (databaseUrl === null) {
       const planted = await registrations();
       await identity.requestLink("person@example.com", "default", CLICK);
 
-      await expect(identity.openLink(tokenIn(messages[0] as Message))).rejects.toThrow();
+      await expect(identity.openLink(tokenIn(messages[0] as Message), TELLING)).rejects.toThrow();
 
       expect(await identity.byId(made.id)).toMatchObject({ confirmed: false });
       expect(await countIn("dashboard_sessions")).toBe(0);

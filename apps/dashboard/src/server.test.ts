@@ -1073,12 +1073,16 @@ const seenOn = (html: string) => ({
   forms: formsIn(html).map((form) => ({ ...form, fields: [...form.fields] })),
 });
 
-/** The latest mailed link, pressed in the browser given. */
+/**
+ * The latest mailed link, pressed in the browser given with the owner's yes to
+ * telling the tracker, so a test that finds nothing recorded finds it for a
+ * reason of its own.
+ */
 const openLatest = async (running: Running, browser: Browser = running.browser): Promise<Visit> => {
   const action = actionIn(running.mails.at(-1));
   return await browser
     .from(running.url)
-    .post(action.pathname, { token: action.searchParams.get("token") ?? "" });
+    .post(action.pathname, { token: action.searchParams.get("token") ?? "", report: "yes" });
 };
 
 const registrationsIn = (running: Running): Record<string, unknown>[] =>
@@ -1179,6 +1183,47 @@ describe("the box that tells the ad tracker an ad's visitor signed up", () => {
     const consentedAt = new Date(registration?.consentedAt as Date).getTime();
     expect(consentedAt).toBeGreaterThanOrEqual(before);
     expect(consentedAt).toBeLessThanOrEqual(after);
+  });
+
+  it("records the registration only for a press that says yes once, and signs in whatever it says", async () => {
+    // The box ticked when the link was asked for is the permission to keep the
+    // click; the owner's yes at the press is the consent to tell the tracker.
+    const running = await started({ dashboard: REPORTING });
+    const presses = [
+      "",
+      "report=no",
+      "report=",
+      "report=YES",
+      "report=on",
+      "report=yes&report=yes",
+    ];
+
+    for (const [at, press] of presses.entries()) {
+      const email = `ad-visitor-${at}@example.com`;
+      const visitor = await running.another();
+      await visitor.post("/sign-in", { email, clickid: CLICK, ads_consent: "yes" });
+      const action = actionIn(running.mails.at(-1));
+      const token = action.searchParams.get("token") ?? "";
+      const opened = await visitor
+        .from(running.url)
+        .postRaw(
+          action.pathname,
+          "application/x-www-form-urlencoded",
+          [`token=${token}`, press].filter((part) => part !== "").join("&"),
+        );
+
+      expect(opened.status, press).toBe(303);
+      expect((await running.identity.byEmail(email))?.confirmed, press).toBe(true);
+    }
+    expect(registrationsIn(running)).toStrictEqual([]);
+
+    await running.browser.post("/sign-in", {
+      email: FRESH.email,
+      clickid: CLICK,
+      ads_consent: "yes",
+    });
+    expect((await openLatest(running)).status).toBe(303);
+    expect(registrationsIn(running)).toMatchObject([{ clickId: CLICK, state: "pending" }]);
   });
 
   it("leaves no registration when the box was left unticked", async () => {
