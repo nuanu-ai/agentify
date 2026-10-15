@@ -20,13 +20,13 @@ const build = (await builtPages()).build as ServerBuild;
 const first = firstVisitScripts(build, manifest, "routes/settings");
 
 const byFile = new Map(Object.values(manifest).map((chunk) => [chunk.file, chunk]));
-const loadedBy = (file: string): Set<string> => {
+const loadedBy = (file: string, later = true): Set<string> => {
   const seen = new Set<string>();
   const visit = (at: string): void => {
     if (seen.has(at)) return;
     seen.add(at);
     const chunk = byFile.get(at);
-    for (const key of [...(chunk?.imports ?? []), ...(chunk?.dynamicImports ?? [])]) {
+    for (const key of [...(chunk?.imports ?? []), ...(later ? (chunk?.dynamicImports ?? []) : [])]) {
       const imported = manifest[key];
       if (imported?.file.endsWith(".js")) visit(imported.file);
     }
@@ -47,6 +47,14 @@ for (const key of targets) {
   if (target !== undefined) for (const file of loadedBy(target.file)) reachedByClick.add(file);
 }
 const files = [...reachedByClick].filter((file) => !first.has(file));
+const atOnce = new Set<string>();
+for (const key of targets) {
+  const target = manifest[key];
+  if (target !== undefined) for (const file of loadedBy(target.file, false)) atOnce.add(file);
+}
+const atOnceFiles = [...atOnce].filter((file) => !first.has(file));
+const atOnceBytes = (await Promise.all(atOnceFiles.map(brotli))).reduce((a, b) => a + b, 0);
+console.log(`M1, at once: the click itself loads ${atOnceFiles.length} scripts, ${kb(atOnceBytes)} brotli; the rest below is loaded later only if the code asks for it`);
 const sizes = await Promise.all(files.map(async (file) => [file, await brotli(file), await raw(file)] as const));
 const total = sizes.reduce((sum, [, size]) => sum + size, 0);
 const rawTotal = sizes.reduce((sum, [, , size]) => sum + size, 0);
@@ -54,7 +62,7 @@ const styles = new Set(
   files.flatMap((file) => (byFile.get(file) as { css?: readonly string[] } | undefined)?.css ?? []),
 );
 const styleBytes = (await Promise.all([...styles].map(brotli))).reduce((a, b) => a + b, 0);
-console.log(`M1: the click can load ${files.length} scripts, ${kb(total)} brotli, ${kb(rawTotal)} uncompressed; and ${styles.size} stylesheets, ${kb(styleBytes)} brotli`);
+console.log(`M1, at most: the click can load ${files.length} scripts, ${kb(total)} brotli, ${kb(rawTotal)} uncompressed; and ${styles.size} stylesheets, ${kb(styleBytes)} brotli`);
 for (const [file, size, rawSize] of sizes.sort((a, b) => b[1] - a[1])) {
   console.log(`  ${kb(size).padStart(9)}  ${kb(rawSize).padStart(9)}  ${file}`);
 }

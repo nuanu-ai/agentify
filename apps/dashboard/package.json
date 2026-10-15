@@ -25,7 +25,6 @@
     "@agentify/scanner-contracts": "workspace:*",
     "@agentify/ui": "workspace:*",
     "@agentify/visual": "workspace:*",
-    "@base-org/account": "2.5.13",
     "@coinbase/cdp-core": "0.0.127",
     "@coinbase/cdp-hooks": "0.0.127",
     "@coinbase/cdp-react": "0.0.127",

@@ -1,0 +1,126 @@
+installed for 0: none
+===== probe 0
+M3: built with the configuration unchanged
+[dashboard]        95.1 of 100.0 KB  routes/woocommerce-import
+[dashboard]        95.1 of 100.0 KB  routes/woocommerce-switch
+[dashboard]        95.1 of 100.0 KB  routes/woocommerce-disconnect
+[dashboard]        95.1 of 100.0 KB  routes/woocommerce-connect
+[dashboard]        95.0 of 100.0 KB  routes/woocommerce
+[dashboard]        94.5 of 100.0 KB  routes/settings-sign-out-others   later up to 0.1 KB more
+[dashboard]        94.5 of 100.0 KB  routes/settings-site   later up to 0.1 KB more
+[dashboard]        94.5 of 100.0 KB  routes/settings-payout-wallet-cancel   later up to 0.1 KB more
+[dashboard]        94.4 of 100.0 KB  routes/settings   later up to 0.1 KB more
+[dashboard]        94.4 of 100.0 KB  routes/settings-payout-wallet   later up to 0.1 KB more
+[dashboard]        93.3 of 100.0 KB  routes/receipts
+[dashboard]        93.2 of 100.0 KB  routes/keys
+[dashboard]        93.1 of 100.0 KB  routes/sign-in
+[dashboard]        92.7 of 100.0 KB  routes/cards
+[dashboard]        92.6 of 100.0 KB  routes/choose-name
+[dashboard]        92.5 of 100.0 KB  routes/orders
+[dashboard]        92.5 of 100.0 KB  routes/integrations
+[dashboard]        92.5 of 100.0 KB  routes/merchant
+[dashboard]        91.9 of 100.0 KB  routes/no-such-page
+[dashboard]        91.8 of 100.0 KB  routes/keys-disable
+[dashboard]        91.7 of 100.0 KB  routes/start
+[dashboard]        91.5 of 100.0 KB  routes/sign-out
+[dashboard] every page keeps to its limit of script on its first visit, and all 40 files are hashed and kept for a year
+settings, first visit: 94.4 KB
+M1, at once: the click itself loads 1 scripts, 0.1 KB brotli; the rest below is loaded later only if the code asks for it
+M1, at most: the click can load 1 scripts, 0.1 KB brotli, 0.0 KB uncompressed; and 0 stylesheets, 0.0 KB brotli
+     0.1 KB     0.0 KB  assets/wallet-probe-DcDV2U4X.js
+  hosts named in that code: 
+installed for b: @base-org/account@2.5.13
+===== probe b
+M3: built with the configuration unchanged
+[dashboard]        95.1 of 100.0 KB  routes/woocommerce-import
+[dashboard]        95.1 of 100.0 KB  routes/woocommerce-switch
+[dashboard]        95.1 of 100.0 KB  routes/woocommerce-disconnect
+[dashboard]        95.1 of 100.0 KB  routes/woocommerce-connect
+[dashboard]        95.0 of 100.0 KB  routes/woocommerce
+[dashboard]        94.6 of 100.0 KB  routes/settings-site   later up to 160.8 KB more
+[dashboard]        94.6 of 100.0 KB  routes/settings-sign-out-others   later up to 160.8 KB more
+[dashboard]        94.6 of 100.0 KB  routes/settings-payout-wallet-cancel   later up to 160.8 KB more
+[dashboard]        94.5 of 100.0 KB  routes/settings   later up to 160.8 KB more
+[dashboard]        94.5 of 100.0 KB  routes/settings-payout-wallet   later up to 160.8 KB more
+[dashboard]        93.4 of 100.0 KB  routes/receipts
+[dashboard]        93.2 of 100.0 KB  routes/keys
+[dashboard]        93.1 of 100.0 KB  routes/sign-in
+[dashboard]        92.7 of 100.0 KB  routes/cards
+[dashboard]        92.6 of 100.0 KB  routes/choose-name
+[dashboard]        92.6 of 100.0 KB  routes/orders
+[dashboard]        92.5 of 100.0 KB  routes/integrations
+[dashboard]        92.5 of 100.0 KB  routes/merchant
+[dashboard]        91.9 of 100.0 KB  routes/no-such-page
+[dashboard]        91.8 of 100.0 KB  routes/keys-disable
+[dashboard]        91.7 of 100.0 KB  routes/start
+[dashboard]        91.5 of 100.0 KB  routes/sign-out
+[dashboard] every page keeps to its limit of script on its first visit, and all 41 files are hashed and kept for a year
+settings, first visit: 94.5 KB
+M1, at once: the click itself loads 1 scripts, 159.7 KB brotli; the rest below is loaded later only if the code asks for it
+M1, at most: the click can load 2 scripts, 160.8 KB brotli, 550.3 KB uncompressed; and 0 stylesheets, 0.0 KB brotli
+   159.7 KB   547.6 KB  assets/wallet-probe-C9hjECIT.js
+     1.1 KB     2.6 KB  assets/ccip-Bq_5IHm6.js
+  hosts named in that code: 11155111.rpc.thirdweb.com, 4byte.sourcify.dev, 56.rpc.thirdweb.com, abitype.dev, analytics-service-dev.cbhq.net, analytics-service-internal-dev.cbhq.net, analytics-service-internal.cbhq.net, api-optimistic.etherscan.io, api-sepolia.basescan.org, api-sepolia.etherscan.io, api.arbiscan.io, api.avax.network, api.basescan.org, api.bscscan.com, api.etherscan.io, api.snowtrace.io, arb1.arbitrum.io, arbiscan.io, arweave.net, as.coinbase.com, basescan.org, bscscan.com, cca-lite.coinbase.com, docs.base.org, docs.cloud.coinbase.com, docs.soliditylang.org, eth.merkle.io, etherscan.io, explorer.zora.energy, ipfs.io, keys.coinbase.com, mainnet.base.org, mainnet.optimism.io, optimism-sepolia.blockscout.com, optimistic.etherscan.io, oxlib.sh, polygon.drpc.org, polygonscan.com, rpc.wallet.coinbase.com, rpc.zora.energy, sepolia.base.org, sepolia.basescan.org, sepolia.etherscan.io, sepolia.optimism.io, snowtrace.io, viem.sh
+installed for c: @coinbase/cdp-core@0.0.127
+===== probe c
+M3: built with the configuration unchanged
+[dashboard]        95.2 of 100.0 KB  routes/woocommerce-import
+[dashboard]        95.2 of 100.0 KB  routes/woocommerce-switch
+[dashboard]        95.2 of 100.0 KB  routes/woocommerce-disconnect
+[dashboard]        95.2 of 100.0 KB  routes/woocommerce-connect
+[dashboard]        95.1 of 100.0 KB  routes/woocommerce
+[dashboard]        94.7 of 100.0 KB  routes/settings-site   later up to 86.4 KB more
+[dashboard]        94.7 of 100.0 KB  routes/settings-payout-wallet-cancel   later up to 86.4 KB more
+[dashboard]        94.7 of 100.0 KB  routes/settings-sign-out-others   later up to 86.4 KB more
+[dashboard]        94.6 of 100.0 KB  routes/settings   later up to 86.4 KB more
+[dashboard]        94.6 of 100.0 KB  routes/settings-payout-wallet   later up to 86.4 KB more
+[dashboard]        93.5 of 100.0 KB  routes/receipts
+[dashboard]        93.4 of 100.0 KB  routes/keys
+[dashboard]        93.3 of 100.0 KB  routes/sign-in
+[dashboard]        92.9 of 100.0 KB  routes/cards
+[dashboard]        92.8 of 100.0 KB  routes/choose-name
+[dashboard]        92.7 of 100.0 KB  routes/orders
+[dashboard]        92.7 of 100.0 KB  routes/integrations
+[dashboard]        92.6 of 100.0 KB  routes/merchant
+[dashboard]        92.1 of 100.0 KB  routes/no-such-page
+[dashboard]        91.9 of 100.0 KB  routes/keys-disable
+[dashboard]        91.8 of 100.0 KB  routes/start
+[dashboard]        91.6 of 100.0 KB  routes/sign-out
+[dashboard] every page keeps to its limit of script on its first visit, and all 40 files are hashed and kept for a year
+settings, first visit: 94.6 KB
+M1, at once: the click itself loads 1 scripts, 86.4 KB brotli; the rest below is loaded later only if the code asks for it
+M1, at most: the click can load 1 scripts, 86.4 KB brotli, 350.8 KB uncompressed; and 0 stylesheets, 0.0 KB brotli
+    86.4 KB   350.8 KB  assets/wallet-probe-CAFt7hIf.js
+  hosts named in that code: api.cdp.coinbase.com, cca-lite.coinbase.com, docs.cdp.coinbase.com, github.com
+installed for r: @coinbase/cdp-core@0.0.127 @coinbase/cdp-hooks@0.0.127 @coinbase/cdp-react@0.0.127
+===== probe r
+M3: built with the configuration unchanged
+[dashboard]        95.4 of 100.0 KB  routes/woocommerce-import
+[dashboard]        95.4 of 100.0 KB  routes/woocommerce-switch
+[dashboard]        95.4 of 100.0 KB  routes/woocommerce-disconnect
+[dashboard]        95.4 of 100.0 KB  routes/woocommerce-connect
+[dashboard]        95.3 of 100.0 KB  routes/woocommerce
+[dashboard]        94.9 of 100.0 KB  routes/settings-sign-out-others   later up to 203.7 KB more
+[dashboard]        94.9 of 100.0 KB  routes/settings-site   later up to 203.7 KB more
+[dashboard]        94.9 of 100.0 KB  routes/settings-payout-wallet-cancel   later up to 203.7 KB more
+[dashboard]        94.8 of 100.0 KB  routes/settings   later up to 203.7 KB more
+[dashboard]        94.8 of 100.0 KB  routes/settings-payout-wallet   later up to 203.7 KB more
+[dashboard]        93.7 of 100.0 KB  routes/receipts
+[dashboard]        93.6 of 100.0 KB  routes/keys
+[dashboard]        93.4 of 100.0 KB  routes/sign-in
+[dashboard]        93.0 of 100.0 KB  routes/cards
+[dashboard]        92.9 of 100.0 KB  routes/choose-name
+[dashboard]        92.9 of 100.0 KB  routes/orders
+[dashboard]        92.9 of 100.0 KB  routes/integrations
+[dashboard]        92.8 of 100.0 KB  routes/merchant
+[dashboard]        92.2 of 100.0 KB  routes/no-such-page
+[dashboard]        92.1 of 100.0 KB  routes/keys-disable
+[dashboard]        92.0 of 100.0 KB  routes/start
+[dashboard]        91.8 of 100.0 KB  routes/sign-out
+[dashboard] every page keeps to its limit of script on its first visit, and all 43 files are hashed and kept for a year
+settings, first visit: 94.8 KB
+M1, at once: the click itself loads 1 scripts, 203.6 KB brotli; the rest below is loaded later only if the code asks for it
+M1, at most: the click can load 2 scripts, 203.7 KB brotli, 987.7 KB uncompressed; and 1 stylesheets, 5.1 KB brotli
+   203.6 KB   987.6 KB  assets/wallet-probe-CmPttnpV.js
+     0.1 KB     0.1 KB  assets/cdp-react_false-B8cr6JNH.js
+  hosts named in that code: abitype.dev, api-sepolia.basescan.org, api.basescan.org, api.cdp.coinbase.com, basescan.org, cca-lite.coinbase.com, docs.cdp.coinbase.com, docs.soliditylang.org, github.com, mainnet.base.org, oxlib.sh, sepolia.base.org, sepolia.basescan.org, viem.sh
