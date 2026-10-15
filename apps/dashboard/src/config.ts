@@ -322,6 +322,13 @@ function registrationPostbackOf(
       `REGISTRATION_POSTBACK_ENABLED is true and REGISTRATION_POSTBACK_KEY is ${key === undefined ? "not set" : `shorter than ${SHORTEST_POSTBACK_KEY} characters`},` +
         " so the tracker would turn every report away",
     );
+  } else if (key !== key.trim()) {
+    // A request strips a header value's ends, so the tracker would be sent
+    // another key than this one.
+    problems.push(
+      "REGISTRATION_POSTBACK_KEY begins or ends with whitespace, so the tracker would turn" +
+        " every report away",
+    );
   }
 
   if (surfaceMode === "test") {
