@@ -47,6 +47,7 @@ export function PublicResultCard({
             <small>/100</small>
           </strong>
         </div>
+        {/* biome-ignore lint/a11y/useSemanticElements: the custom meter draws diagnostic thresholds alongside its fill; its value and bounds are exposed here */}
         <div
           aria-label={`Diagnostic score ${score} out of 100`}
           aria-valuemax={100}

@@ -39,6 +39,7 @@ export function Field({ label, hint, error, id, autoFocus, ...input }: FieldProp
       <input
         {...input}
         ref={typed}
+        // biome-ignore lint/a11y/noAutofocus: a refused submission returns focus to its invalid field; callers may also request initial focus
         autoFocus={autoFocus === true || error !== undefined}
         className="field-input"
         id={box}

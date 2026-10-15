@@ -145,8 +145,8 @@ export function ScanExperience({
   useEffect(() => {
     if (!underway) return;
     setWatchedItRun(true);
-    ScanTeaser.preload();
-    if (browserObservationsEnabled) BrowserObservations.preload();
+    void ScanTeaser.preload();
+    if (browserObservationsEnabled) void BrowserObservations.preload();
   }, [browserObservationsEnabled, underway]);
 
   const phases = useMemo(() => buildPhases(data, segment), [data, segment]);

@@ -374,7 +374,8 @@ input {
 }
 
 /* The label over a box, at the weight the scanner gives one. */
-label {
+label,
+.issue-title {
   font-size: 0.8125rem;
   font-weight: 600;
 }
@@ -667,9 +668,10 @@ h2 {
   padding: 20px 0 32px;
 }
 
-.issue label {
+.issue label,
+.issue .issue-title {
   display: block;
-  margin-bottom: 8px;
+  margin: 0 0 8px;
 }
 
 /* Under about 240px of box the two stack, low enough for a half-width settings

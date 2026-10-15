@@ -139,7 +139,7 @@ export default function SearchPanel({ onClose }: Close) {
       const { id } = results[active];
       focusWithin(id);
       onClose(false);
-      navigate(inside(id));
+      void navigate(inside(id));
     } else return;
     event.preventDefault();
   };
@@ -164,7 +164,8 @@ export default function SearchPanel({ onClose }: Close) {
   };
 
   return (
-    <div className="search-backdrop" onClick={() => onClose(true)}>
+    // biome-ignore lint/a11y/noStaticElementInteractions: clicking outside is a pointer shortcut; Escape inside the dialog closes it from the keyboard
+    <div className="search-backdrop" role="presentation" onClick={() => onClose(true)}>
       <div
         className="search-panel"
         role="dialog"
@@ -175,6 +176,7 @@ export default function SearchPanel({ onClose }: Close) {
         onKeyDown={onPanelKey}
       >
         <input
+          // biome-ignore lint/a11y/noAutofocus: the reader opened search, and the combobox owns keyboard navigation within its dialog
           autoFocus
           type="search"
           role="combobox"
@@ -195,9 +197,15 @@ export default function SearchPanel({ onClose }: Close) {
           onFocus={(event) => event.target.select()}
           onKeyDown={onInputKey}
         />
-        <ul className="search-results" id="search-results" role="listbox" aria-label="Results">
+        <div className="search-results" id="search-results" role="listbox" aria-label="Results">
           {results.map((hit, at) => (
-            <li key={hit.id} id={`search-result-${at}`} role="option" aria-selected={at === active}>
+            <div
+              key={hit.id}
+              id={`search-result-${at}`}
+              role="option"
+              tabIndex={-1}
+              aria-selected={at === active}
+            >
               <Link
                 to={inside(hit.id)}
                 onClick={() => {
@@ -212,9 +220,9 @@ export default function SearchPanel({ onClose }: Close) {
                 <span className="search-title">{hit.title}</span>
                 <span className="search-excerpt">{excerptOf(hit.text, hit.terms)}</span>
               </Link>
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
         <p className="search-none" role="status">
           {loaded === null
             ? "Loading the index…"

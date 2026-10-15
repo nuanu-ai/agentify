@@ -285,9 +285,8 @@ export default function AgenticShopPage() {
                 </a>
               </div>
             </div>
-            <div
+            <section
               className={styles.paymentDiagram}
-              role="group"
               aria-label="Live payment path: the customer's agent, the gateway, your payout contract, your payout wallet."
             >
               <div className={styles.paymentLabel}>LIVE ONLY AFTER OPERATOR APPROVAL</div>
@@ -328,7 +327,7 @@ export default function AgenticShopPage() {
                 live, and live publication also needs the operator’s approval. Opening a dashboard
                 grants none of them.
               </p>
-            </div>
+            </section>
           </div>
         </section>
 

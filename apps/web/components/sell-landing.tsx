@@ -42,7 +42,7 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
               ))}
             </ul>
           </div>
-          <div aria-label={sale.label} className="commerce-demo">
+          <section aria-label={sale.label} className="commerce-demo">
             <div className="commerce-demo__top">
               <span>{sale.top}</span>
               <span className="commerce-demo__status">
@@ -111,7 +111,7 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
               ))}
               <b>{sale.end}</b>
             </div>
-          </div>
+          </section>
         </section>
 
         <section className="section" id="how">
@@ -215,7 +215,7 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
               ))}
             </div>
           </div>
-          <div aria-label={money.map.label} className="payment-map">
+          <section aria-label={money.map.label} className="payment-map">
             <div className="payment-map__top">
               <span>{money.map.top}</span>
               <span className="commerce-demo__status">
@@ -233,7 +233,7 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
               <Wallet merchant side={money.map.seller} />
             </div>
             <div className="payment-map__foot">{money.map.foot}</div>
-          </div>
+          </section>
         </section>
 
         {pricing.options.length > 0 ? (

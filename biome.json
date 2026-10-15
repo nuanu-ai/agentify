@@ -52,7 +52,7 @@
     "rules": {
       "preset": "recommended",
       "a11y": {
-        "preset": "none"
+        "preset": "recommended"
       },
       "complexity": {
         "preset": "recommended"
@@ -87,7 +87,8 @@
         "noExplicitAny": "error"
       },
       "nursery": {
-        "preset": "none"
+        "preset": "none",
+        "noFloatingPromises": "error"
       }
     }
   },

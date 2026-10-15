@@ -99,7 +99,7 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
 
 function ExampleSurface({ segmentPhase }: Readonly<{ segmentPhase: string }>) {
   return (
-    <div aria-label="Example of scanner phases" className={styles.surface}>
+    <section aria-label="Example of scanner phases" className={styles.surface}>
       <div className={styles.surfaceHeader}>
         <span>Example · example.com</span>
         <StatusBadge status="running" />
@@ -111,7 +111,7 @@ function ExampleSurface({ segmentPhase }: Readonly<{ segmentPhase: string }>) {
         <SurfaceRow label={segmentPhase} status="running" />
         <SurfaceRow label="Diagnostic report" status="pending" />
       </div>
-    </div>
+    </section>
   );
 }
 

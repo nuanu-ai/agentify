@@ -33,7 +33,7 @@ describe("a part fetched ahead", () => {
       asked += 1;
       return asked === 1 ? Promise.reject(new Error("not fetched")) : Promise.resolve(Shown);
     });
-    Part.preload();
+    void Part.preload();
     await settled();
 
     render(
@@ -49,7 +49,7 @@ describe("a part fetched ahead", () => {
 
   it("is drawn the first time it is asked for, with no fallback before it", async () => {
     const Part = lazyPart(() => Promise.resolve(Shown));
-    Part.preload();
+    void Part.preload();
     await settled();
     let fellBack = false;
     function Fallback() {

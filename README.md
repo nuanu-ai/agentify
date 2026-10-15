@@ -275,8 +275,9 @@ pnpm test           # offline, free, no network
 pnpm check:decisions
 ```
 
-That is the gate before a push. CI runs the same five on every push and pull
-request, and beyond them the database suite, the build of every package and of
+That is the gate before a push. CI runs the same five checks on every push and pull
+request, using `biome ci .` for formatting and lint diagnostics annotated in GitHub,
+and beyond them the database suite, the build of every package and of
 the portal, and the scanner's integration tests; the workflow is
 `.github/workflows/ci.yml`. A green run publishes nothing and deploys nothing.
 

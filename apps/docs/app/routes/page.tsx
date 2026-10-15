@@ -87,7 +87,7 @@ function usePressesInside() {
     if (link.origin !== window.location.origin || !/^\/docs(\/|$)/.test(link.pathname)) return;
     if (link.pathname === window.location.pathname && link.hash !== "") return;
     event.preventDefault();
-    navigate(`${link.pathname.replace(/^\/docs/, "") || "/"}${link.search}${link.hash}`);
+    void navigate(`${link.pathname.replace(/^\/docs/, "") || "/"}${link.search}${link.hash}`);
   };
 }
 
@@ -134,6 +134,8 @@ export default function DocPage() {
         />
       ) : null}
       <div className="eyebrow">{page.group}</div>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: delegates clicks from the article's native buttons and links, including keyboard activation */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: native buttons and links already turn their keyboard activation into a click */}
       <div
         className="doc"
         onClick={pressInside}
