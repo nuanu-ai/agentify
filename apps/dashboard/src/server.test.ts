@@ -1394,6 +1394,25 @@ describe("the box that tells the ad tracker an ad's visitor signed up", () => {
     expect(registrationsIn(running)).toStrictEqual([]);
   });
 
+  it("keeps the click, and never the consent, on the way back from a link the mail could not send", async () => {
+    const running = await started({ dashboard: REPORTING, mailTakes: "refused" });
+
+    const refused = await running.browser.post("/sign-in", {
+      email: FRESH.email,
+      clickid: CLICK,
+      ads_consent: "yes",
+    });
+
+    expect(refused.status).toBe(503);
+    const back = formTo(refused.html, "get", "/sign-in");
+    expect([...(back?.fields ?? [])]).toStrictEqual([["clickid", CLICK]]);
+    const offered = await running.browser.get(
+      `/sign-in?${new URLSearchParams([...(back?.fields ?? [])])}`,
+    );
+    expect(consentBoxIn(offered.html)).toStrictEqual({ ticked: false });
+    expect(formTo(offered.html, "post", "/sign-in")?.fields.get("clickid")).toBe(CLICK);
+  });
+
   it("records the registration when the link is opened in a browser that never asked for it", async () => {
     // Nothing about the consent rides in a cookie: it travels with the link.
     const running = await started({ dashboard: REPORTING });
