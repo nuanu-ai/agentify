@@ -876,6 +876,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     expect(box().getAttribute("aria-invalid")).toBeNull();
     expect(box().getAttribute("aria-describedby")).toBeNull();
     expect(screen.getByText(refused).hidden).toBe(true);
+    expect(document.getElementById("payout_wallet-refused")?.hidden).toBe(true);
   });
 
   it("links to where the merchant manages the wallet and to how Coinbase recovers it", () => {
