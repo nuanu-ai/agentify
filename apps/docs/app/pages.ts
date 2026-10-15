@@ -24,13 +24,46 @@ type PageSource = Readonly<{
 }>;
 
 const SOURCES: Readonly<Record<string, PageSource>> = {
-  "/": { file: "index.md" },
-  "/money": { file: "money.md" },
-  "/faq": { file: "faq.md" },
-  "/quickstart": { file: "quickstart.md" },
-  "/cards": { file: "cards.md" },
-  "/orders": { file: "orders.md" },
-  "/failures": { file: "failures.md" },
+  "/": {
+    file: "index.md",
+    description:
+      "Learn how to sell through Agentify, what your business needs to connect, and how the SDK and experimental WooCommerce connector fit.",
+  },
+  "/money": {
+    file: "money.md",
+    title: "Merchant payments, USDC and payouts",
+    description:
+      "Understand USDC payments, your payout contract, Agentify's commission, payment timing, receipts and refunds for merchant orders.",
+  },
+  "/faq": {
+    file: "faq.md",
+    title: "Questions about selling to AI agents",
+    description:
+      "Answers for business owners and engineers about connecting to Agentify, costs, product cards, payments, orders and integration limits.",
+  },
+  "/quickstart": {
+    file: "quickstart.md",
+    title: "SDK quickstart: your first test sale",
+    description:
+      "Set up your merchant account, publish a product card with the Agentify SDK, fulfill an order and verify a purchase in the test channel.",
+  },
+  "/cards": {
+    file: "cards.md",
+    title: "Product cards: fields, prices and publishing",
+    description:
+      "Define and publish Agentify product cards: product descriptions, prices, buyer inputs, delivery results, fulfillment modes and updates.",
+  },
+  "/orders": {
+    file: "orders.md",
+    description:
+      "Handle synchronous and asynchronous Agentify orders, and test parcel fulfillment. Understand order states, deadlines and duplicate handling.",
+  },
+  "/failures": {
+    file: "failures.md",
+    title: "Order failures and recovery",
+    description:
+      "Handle price-check failures, unavailable goods, crashed handlers, delivery timeouts and repeated orders in an Agentify integration.",
+  },
   "/scanner": {
     file: "scanner/index.md",
     title: "Scanner identity",
@@ -40,7 +73,7 @@ const SOURCES: Readonly<Record<string, PageSource>> = {
   },
   "/scanner/methodology": {
     file: "scanner/methodology.md",
-    title: "Methodology",
+    title: "Scanner methodology and diagnostic limits",
     description: "How the Agentify public-HTTP agent-readiness diagnostic works and its limits.",
     site: true,
   },

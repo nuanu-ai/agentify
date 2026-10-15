@@ -48,6 +48,15 @@ export const RULES = {
     found(/@docs_markdown \{[^}]*not header_regexp Accept `([^`]+)`/, "when HTML comes first"),
   ),
   formerAddress: goRegExp(found(/@docs_html path_regexp docs_html (\S+)/, "which addresses move")),
+  slashAddress: goRegExp(
+    found(/@docs_page_slash path_regexp docs_page_slash (\S+)/, "which page slashes move"),
+  ),
+  slashReserved: found(
+    /@docs_page_exists\s*\{\s*not path ([^\n]+)/,
+    "which generated pages have no slash alias",
+  )
+    .trim()
+    .split(/\s+/),
   assetsKept: found(/header @docs_assets Cache-Control "([^"]+)"/, "how long assets are kept"),
   dataType: found(/header @docs_data Content-Type "([^"]+)"/, "what type a page's data is"),
   dataKept: found(/header @docs_kept Cache-Control "([^"]+)"/, "how long a page's data is kept"),
@@ -177,6 +186,15 @@ export async function standEdge({
       return;
     }
     const inside = path.slice("/docs".length);
+    const slash = RULES.slashAddress.exec(inside);
+    if (
+      slash !== null &&
+      !RULES.slashReserved.includes(inside) &&
+      (await fileAt(join(BUILT, `${slash[1]}.html`))) !== null
+    ) {
+      response.writeHead(308, { location: `/docs/${slash[1]}${url.search}` }).end();
+      return;
+    }
     const markdown = {
       "content-type": TYPES[".md"] ?? "",
       "cache-control": RULES.pagesKept,

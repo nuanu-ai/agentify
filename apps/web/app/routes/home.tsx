@@ -11,6 +11,8 @@ export const meta = ({ matches }: MetaArgs) =>
   pageMeta(siteConfigOf(matches), {
     title: "What your website shows to AI agents, and how to sell to them",
     titleAlone: true,
+    description:
+      "Check what your public website exposes to AI agents, see diagnostic findings, and learn how selling through Agentify works.",
     canonical: "/",
   });
 

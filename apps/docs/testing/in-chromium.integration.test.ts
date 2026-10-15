@@ -242,10 +242,29 @@ describe("a page of the documentation in Chromium", () => {
     }
   });
 
-  it("draws every diagram of the orders page as a picture, running no diagram code", async () => {
+  it("draws every diagram of the orders page as a named, described picture, running no diagram code", async () => {
     const { page, asked } = await visit("/docs/orders");
 
     expect(await page.locator("figure.diagram svg").count()).toBe(3);
+    for (const diagram of await page.locator("figure.diagram svg").all()) {
+      const accessible = await diagram.evaluate((element) => {
+        const texts = (attribute: string, tag: string) => {
+          const ids = element.getAttribute(attribute)?.trim().split(/\s+/) ?? [];
+          return ids.map(
+            (id) => element.querySelector(`${tag}[id="${id}"]`)?.textContent?.trim() ?? "",
+          );
+        };
+        return {
+          name: texts("aria-labelledby", "title"),
+          description: texts("aria-describedby", "desc"),
+        };
+      });
+      for (const [kind, texts] of Object.entries(accessible)) {
+        expect(texts.length, kind).toBeGreaterThan(0);
+        expect(texts.every(Boolean), kind).toBe(true);
+      }
+      expect(accessible.description.join(" ")).not.toBe(accessible.name.join(" "));
+    }
     expect(asked.filter((path) => /mermaid/i.test(path))).toEqual([]);
     await page.context().close();
   });
@@ -595,6 +614,39 @@ describe("an address the documentation answered at before", () => {
     expect(answered?.status()).toBe(404);
     expect(await page.locator("h1").textContent()).toContain("There is no such page");
     await context.close();
+  });
+});
+
+describe("the documentation's canonical addresses", () => {
+  it.each(DOCS_PAGES.filter((page) => page.path !== "/"))(
+    "permanently redirects a trailing slash on $path, keeping the query",
+    async (page) => {
+      const address = docsAddress(page.path);
+      const query = "?source=a%2Bb&count=2";
+      const answered = await fetch(`${edge.origin}${address}/${query}`, { redirect: "manual" });
+
+      expect(answered.status).toBe(308);
+      expect(answered.headers.get("location")).toBe(`${address}${query}`);
+      const canonical = await fetch(`${edge.origin}${answered.headers.get("location")}`);
+      expect(canonical.status).toBe(200);
+    },
+  );
+
+  it("keeps the documentation root and refuses a missing page instead of redirecting it", async () => {
+    const root = await fetch(`${edge.origin}/docs/`, { redirect: "manual" });
+    expect(root.status).toBe(200);
+    expect(root.headers.get("location")).toBeNull();
+
+    for (const path of [
+      "/docs/no-such-page/",
+      "/docs/assets/no-such-file/",
+      "/docs/index/",
+      "/docs/404/",
+    ]) {
+      const missing = await fetch(`${edge.origin}${path}`, { redirect: "manual" });
+      expect(missing.status).toBe(404);
+      expect(missing.headers.get("location")).toBeNull();
+    }
   });
 });
 
