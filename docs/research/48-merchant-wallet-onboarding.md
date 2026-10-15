@@ -479,6 +479,12 @@ yet to pay the fee with [inferred: it cannot pay, and that payout arrives with
 the operator's]. If the fee cannot be paid in USDC, this comes back to the
 product owner as one choice, not a set of combinations.
 
+As built on 2026-10-15, the settings page loads 95.4 KB of script on its first
+visit, 1.5 KB more than before, for the two buttons and their words; no other
+page changed by more than the budget check's rounding; and a press can fetch
+161.1 KB more, Coinbase Wallet's code with the dashboard's requests to it, as
+the budget check prints beside the page.
+
 ## What is not known
 
 The research left these open, each of which a live run or Coinbase can
