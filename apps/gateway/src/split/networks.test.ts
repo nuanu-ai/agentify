@@ -12,7 +12,6 @@ import { checksummedAddressOf } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { loadConfig, SANDBOX_FACILITATOR } from "../config.js";
 import { PaymentEdge } from "../http/x402.js";
-import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "../testing/split-networks.js";
 import { COMMISSION, DISTRIBUTOR, IMPLEMENTATION, inputOf, MERCHANT, ON_CHAIN } from "./fixture.js";
 import {
   PAYOUT_SPLIT_NETWORKS,
@@ -46,27 +45,17 @@ const addressesOf = (entry: PayoutSplitNetwork): readonly string[] => [
 
 const TEST_CHANNEL = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532");
 
-/**
- * Every entry a gateway runs on: the code's own, and the Base entry that tests
- * starting a live gateway put in place of the code's.
- */
-const EVERY_ENTRY: readonly PayoutSplitNetwork[] = [
-  ...entriesOf(PAYOUT_SPLIT_NETWORKS),
-  payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453"),
-];
-
 /** The token a gateway on this network asks a buyer for, as its payment library names it. */
 const tokenOn = (network: string): string => {
-  const config =
-    network === "eip155:8453"
-      ? loadConfig(LIVE, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE)
-      : loadConfig({ DATABASE_URL, PAYMENT_NETWORK: network });
+  const config = loadConfig(
+    network === "eip155:8453" ? LIVE : { DATABASE_URL, PAYMENT_NETWORK: network },
+  );
   return new PaymentEdge(config.payment, config.publicBaseUrl, 300).token().asset;
 };
 
 describe("the payout split table in the code", () => {
   it("names on every network the contracts the experiment called and the token payments there are asked in", () => {
-    for (const entry of EVERY_ENTRY) {
+    for (const entry of entriesOf(PAYOUT_SPLIT_NETWORKS)) {
       expect(entry.factory.toLowerCase(), entry.network).toBe(ON_CHAIN.factory);
       expect(entry.implementation, entry.network).toBe(IMPLEMENTATION);
       expect(entry.warehouse.toLowerCase(), entry.network).toBe(ON_CHAIN.warehouse);
@@ -81,13 +70,11 @@ describe("the payout split table in the code", () => {
   });
 
   it("writes every address in the checksummed spelling, whose capitals catch a mistyped character", () => {
-    for (const table of [PAYOUT_SPLIT_NETWORKS, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE]) {
-      for (const entry of entriesOf(table)) {
-        for (const address of addressesOf(entry)) {
-          expect(checksummedAddressOf(address.toLowerCase()), `${entry.network} ${address}`).toBe(
-            address,
-          );
-        }
+    for (const entry of entriesOf(PAYOUT_SPLIT_NETWORKS)) {
+      for (const address of addressesOf(entry)) {
+        expect(checksummedAddressOf(address.toLowerCase()), `${entry.network} ${address}`).toBe(
+          address,
+        );
       }
     }
   });
@@ -101,22 +88,29 @@ describe("the payout split table in the code", () => {
   });
 
   it("keeps every commission wallet apart from every contract and from every other network's", () => {
-    for (const table of [PAYOUT_SPLIT_NETWORKS, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE]) {
-      const entries = entriesOf(table);
-      const contracts = new Set(
-        entries.flatMap((entry) =>
-          addressesOf(entry)
-            .slice(1)
-            .map((a) => a.toLowerCase()),
-        ),
-      );
-      const wallets = entries.map((entry) => entry.commissionWallet.toLowerCase());
-      expect(new Set(wallets).size, "two networks share a commission wallet").toBe(wallets.length);
-      for (const wallet of wallets) {
-        expect(wallet).not.toBe("0x0000000000000000000000000000000000000000");
-        expect(contracts.has(wallet), wallet).toBe(false);
-      }
+    const entries = entriesOf(PAYOUT_SPLIT_NETWORKS);
+    const contracts = new Set(
+      entries.flatMap((entry) =>
+        addressesOf(entry)
+          .slice(1)
+          .map((a) => a.toLowerCase()),
+      ),
+    );
+    const wallets = entries.map((entry) => entry.commissionWallet.toLowerCase());
+    expect(wallets).toHaveLength(2);
+    expect(new Set(wallets).size, "two networks share a commission wallet").toBe(wallets.length);
+    for (const wallet of wallets) {
+      expect(wallet).not.toBe("0x0000000000000000000000000000000000000000");
+      expect(contracts.has(wallet), wallet).toBe(false);
     }
+  });
+
+  it("pays Base's commission to the product owner's Safe", () => {
+    // Read on Base on 2026-10-15: a Safe 1.5.0 proxy whose threshold is 1 and
+    // whose one owner is the product owner's hardware wallet.
+    expect(payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:8453").commissionWallet).toBe(
+      "0xf44Ac5860c13fDa0577305121f00cBa4d0B96541",
+    );
   });
 
   it("pays every network's commission to a wallet chosen for it, none of the experiment's", () => {
@@ -127,16 +121,13 @@ describe("the payout split table in the code", () => {
   });
 
   it("files every entry under the network it describes", () => {
-    for (const table of [PAYOUT_SPLIT_NETWORKS, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE]) {
-      for (const [network, entry] of Object.entries(table)) {
-        expect(entry.network).toBe(network);
-      }
+    for (const [network, entry] of Object.entries(PAYOUT_SPLIT_NETWORKS)) {
+      expect(entry.network).toBe(network);
     }
   });
 
   it("refuses a network it names no commission wallet for, rather than lending it another's", () => {
     for (const network of [
-      "eip155:8453",
       "eip155:11155111",
       "eip155:80002",
       "eip155:1",
@@ -163,11 +154,22 @@ describe("the table a gateway runs on", () => {
     );
   });
 
-  it("is the one handed in beside the environment, for this network", () => {
-    const config = loadConfig(LIVE, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE);
-    expect(config.payoutSplitNetworks).toBe(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE);
-    expect(config.payoutSplit).toBe(
-      payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453"),
+  it("is Base's on Base", () => {
+    expect(loadConfig(LIVE).payoutSplit).toBe(
+      payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:8453"),
     );
+  });
+
+  it("is the one handed in beside the environment, for a test whose constants must differ from the code's", () => {
+    const handed: PayoutSplitNetworks = {
+      ...PAYOUT_SPLIT_NETWORKS,
+      "eip155:8453": {
+        ...payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:8453"),
+        commissionWallet: DISTRIBUTOR,
+      },
+    };
+    const config = loadConfig(LIVE, handed);
+    expect(config.payoutSplitNetworks).toBe(handed);
+    expect(config.payoutSplit.commissionWallet).toBe(DISTRIBUTOR);
   });
 });
