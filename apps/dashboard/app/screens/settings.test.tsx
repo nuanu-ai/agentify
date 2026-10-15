@@ -41,6 +41,8 @@ import { PayoutWalletPanel, SettingsScreen } from "./settings.js";
  */
 const coinbase = vi.hoisted(() => ({
   opened: true,
+  /** The first request is never answered, as when Coinbase's window vanished without saying so. */
+  silentOnce: false,
   account: "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed",
   declines: undefined as string | undefined,
   breaks: undefined as string | undefined,
@@ -52,6 +54,10 @@ vi.mock("../wallet/coinbase.js", async () => {
   const requests = await import("../wallet/requests.js");
   const wallet: Wallet = {
     async request({ method, params }) {
+      if (coinbase.silentOnce) {
+        coinbase.silentOnce = false;
+        return new Promise(() => undefined);
+      }
       if (method === coinbase.declines) throw { code: 4001, message: "User rejected the request." };
       if (method === coinbase.breaks) throw { code: -32603, message: "insufficient funds for gas" };
       if (method === "eth_requestAccounts") return [coinbase.account];
@@ -209,6 +215,7 @@ afterEach(() => {
   cleanup();
   Object.assign(coinbase, {
     opened: true,
+    silentOnce: false,
     declines: undefined,
     breaks: undefined,
     chain: "0x2105",
@@ -766,6 +773,19 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     expect(screen.getByText(WALLET_WORDS.connectFailed("the page could not open it"))).toBeTruthy();
   });
 
+  it("takes a second press while the first is still unanswered, as when Coinbase's window vanished without a word", async () => {
+    coinbase.silentOnce = true;
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    await act(async () => {
+      fireEvent.click(button());
+    });
+
+    await press(button());
+
+    expect(box().value).toBe(CHECKSUMMED);
+    expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy();
+  });
+
   it("links to where the merchant manages the wallet and to how Coinbase recovers it", () => {
     render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
 
@@ -846,6 +866,19 @@ describe("sending the payout from a Coinbase Wallet", () => {
     await press();
 
     expect(screen.getByText(WALLET_WORDS.payoutFailed("insufficient funds for gas"))).toBeTruthy();
+  });
+
+  it("takes a second press while the first is still unanswered, and sends once", async () => {
+    coinbase.silentOnce = true;
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    await act(async () => {
+      fireEvent.click(button());
+    });
+
+    await press();
+
+    expect(coinbase.sent).toHaveLength(1);
+    expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy();
   });
 
   it("is not offered where there is no transaction to send", () => {
