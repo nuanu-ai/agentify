@@ -259,8 +259,9 @@ def channel_state(config):
     state = STATES / config["channel"]
     # Nothing here is secret (revision names, checkouts of the public
     # repository, public digests), so a person on the host can read it.
-    state.mkdir(parents=True, exist_ok=True)
-    for directory in (state.parent, state):
+    checkouts = state / "checkouts"
+    checkouts.mkdir(parents=True, exist_ok=True)
+    for directory in (state.parent, state, checkouts):
         directory.chmod(0o755)
     return state
 
@@ -302,7 +303,6 @@ def activate(config, state, name, revision, mirror, leaving):
             raise Refusal(f"{revision} does not move forward from {running}, which this host runs")
     path = state / "checkouts" / revision
     if not path.exists():
-        path.parent.mkdir(exist_ok=True)
         git("-C", mirror, "worktree", "prune")
         # The postgres image reads its init scripts from this tree as its own
         # user, so the files are readable by everyone, whatever the umask.
