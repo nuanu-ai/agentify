@@ -447,6 +447,37 @@ if (databaseUrl === null) {
       expect((received[1]?.at ?? 0) - (received[0]?.at ?? 0)).toBeGreaterThanOrEqual(1_100);
     });
 
+    it("holds the next post back 1.1 seconds even when a post's outcome could not be recorded", async () => {
+      // The rollback leaves the row pending, so the next turn, from any
+      // process, posts it again; the lock must not let that post begin sooner.
+      await registered(CLICK);
+      await pool.query(`
+        create function fail_registration_update() returns trigger language plpgsql as $$
+        begin raise exception 'injected update failure'; end $$
+      `);
+      await pool.query(`
+        create trigger fail_registration_update before update on dashboard_registration_postbacks
+        for each row execute function fail_registration_update()
+      `);
+      const { post, received } = tracker(200, 200);
+      try {
+        await expect(
+          reportOnce({ pool, target: TARGET, fetch: post, now, wait }),
+        ).rejects.toThrow();
+      } finally {
+        await pool.query(
+          "drop trigger fail_registration_update on dashboard_registration_postbacks",
+        );
+        await pool.query("drop function fail_registration_update()");
+      }
+
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
+
+      expect(received).toHaveLength(2);
+      expect((received[1]?.at ?? 0) - (received[0]?.at ?? 0)).toBeGreaterThanOrEqual(1_100);
+      expect((await onlyRow()).state).toBe("delivered");
+    });
+
     it("posts the report that has waited longest first", async () => {
       const later = await registered(CLICKS[0]);
       const sooner = await registered(CLICKS[1]);
