@@ -200,6 +200,16 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
           </div>
         </div>
       </div>
+      <div className="panel-messages">
+        <button
+          type="button"
+          onClick={() => {
+            void import("../wallet-probe.js").then((probe) => probe.connect());
+          }}
+        >
+          Probe
+        </button>
+      </div>
       <PostForm document action="/settings/payout-wallet" className="issue">
         {(pressed) => (
           <>
