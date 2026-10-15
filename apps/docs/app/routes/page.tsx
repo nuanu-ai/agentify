@@ -87,7 +87,7 @@ function usePressesInside() {
     if (link.origin !== window.location.origin || !/^\/docs(\/|$)/.test(link.pathname)) return;
     if (link.pathname === window.location.pathname && link.hash !== "") return;
     event.preventDefault();
-    navigate(`${link.pathname.replace(/^\/docs/, "") || "/"}${link.search}${link.hash}`);
+    void navigate(`${link.pathname.replace(/^\/docs/, "") || "/"}${link.search}${link.hash}`);
   };
 }
 

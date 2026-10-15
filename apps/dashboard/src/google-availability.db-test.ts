@@ -156,7 +156,7 @@ if (databaseUrl === null) {
       expect((await identity.whoIs(cookie))?.person.id).toBe(signedIn.person.id);
       const duplicates: GoogleFinishResult[] = [];
       for (let repeat = 0; repeat < 9; repeat++) {
-        track(finish(flow).then((result) => duplicates.push(result)));
+        void track(finish(flow).then((result) => duplicates.push(result)));
       }
       await expect
         .poll(() => duplicates.length === 9 || (pool.totalCount === 10 && pool.idleCount === 0))
@@ -164,12 +164,12 @@ if (databaseUrl === null) {
 
       let sessionPerson: string | undefined;
       let emailStatus: string | undefined;
-      track(
+      void track(
         identity.whoIs(cookie).then((session) => {
           sessionPerson = session?.person.id;
         }),
       );
-      track(
+      void track(
         identity.requestLink("alternative@example.com", "default").then((result) => {
           emailStatus = result.status;
         }),
@@ -207,7 +207,7 @@ if (databaseUrl === null) {
         const flow = await start();
         provider.hold(stall);
         let finished: GoogleFinishResult | undefined;
-        track(
+        void track(
           finish(flow).then((result) => {
             finished = result;
           }),

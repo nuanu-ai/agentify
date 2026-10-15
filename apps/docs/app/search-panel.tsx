@@ -139,7 +139,7 @@ export default function SearchPanel({ onClose }: Close) {
       const { id } = results[active];
       focusWithin(id);
       onClose(false);
-      navigate(inside(id));
+      void navigate(inside(id));
     } else return;
     event.preventDefault();
   };
