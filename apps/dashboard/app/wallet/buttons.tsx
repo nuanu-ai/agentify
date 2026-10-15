@@ -55,18 +55,19 @@ function useScriptRuns(): boolean {
  * The status of the latest press. A button is never held disabled while
  * Coinbase Wallet answers, because its window can vanish without answering,
  * as when a phone closes its tab, and a held button would then stay held; a
- * second press is taken, and an earlier one that answers late is not shown.
+ * second press is taken, and an earlier one that answers late does nothing.
  */
-function useLatestPress(): [string, () => (said: string) => void] {
+function useLatestPress(): [
+  string,
+  () => Readonly<{ latest: () => boolean; say: (said: string) => void }>,
+] {
   const [said, setSaid] = useState("");
-  const latest = useRef(0);
+  const counted = useRef(0);
   const press = () => {
-    latest.current += 1;
-    const mine = latest.current;
+    counted.current += 1;
+    const mine = counted.current;
     setSaid(WALLET_WORDS.waiting);
-    return (answer: string) => {
-      if (mine === latest.current) setSaid(answer);
-    };
+    return { latest: () => mine === counted.current, say: setSaid };
   };
   return [said, press];
 }
@@ -77,10 +78,11 @@ export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; bo
   const [said, press] = useLatestPress();
   if (!runs) return null;
   const ask = async () => {
-    const answer = press();
+    const pressed = press();
     const asked = await coinbase()
       .then(({ askAddress, coinbaseWallet }) => askAddress(coinbaseWallet(chainId)))
       .catch(() => NOT_OPENED);
+    if (!pressed.latest()) return;
     if (asked.kind === "address") {
       const field = document.getElementById(box);
       if (field instanceof HTMLInputElement) {
@@ -88,7 +90,7 @@ export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; bo
         field.focus();
       }
     }
-    answer(
+    pressed.say(
       asked.kind === "address"
         ? WALLET_WORDS.addressInTheBox
         : asked.kind === "cancelled"
@@ -135,13 +137,14 @@ export function CoinbasePayout({
   const [said, press] = useLatestPress();
   if (!runs) return null;
   const send = async () => {
-    const answer = press();
+    const pressed = press();
     const sent = await coinbase()
       .then(({ sendPayout, coinbaseWallet }) =>
         sendPayout(coinbaseWallet(chainId), chainId, payout),
       )
       .catch(() => NOT_OPENED);
-    answer(
+    if (!pressed.latest()) return;
+    pressed.say(
       sent.kind === "sent"
         ? WALLET_WORDS.payoutSent
         : sent.kind === "cancelled"
