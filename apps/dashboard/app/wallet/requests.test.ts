@@ -1,10 +1,12 @@
 /**
  * What the dashboard asks a merchant's wallet, against a wallet that answers
- * as Coinbase Wallet's provider does: accounts on request, a chain it is
- * switched to, and a batch of calls it sends only on the chain it is on. The
- * promises are to the merchant: the box gets their wallet's address and
- * nothing else, the payout sent is the one the screen shows, on the channel's
- * chain, and a closed window reads as a closed window.
+ * as Coinbase Wallet's provider does: it opens its window for an account and
+ * then remembers that account in the page, answering later requests from
+ * memory until it is disconnected; it is switched to a chain and sends a batch
+ * of calls only on the chain it is on. The promises are to the merchant: the
+ * box gets the address of the wallet they chose in the window and nothing
+ * else, the payout sent is the one the screen shows, on the channel's chain,
+ * and a closed window reads as a closed window.
  */
 
 import { describe, expect, it } from "vitest";
@@ -25,25 +27,37 @@ interface Sent {
 }
 
 /**
- * A wallet as Coinbase Wallet's provider behaves: it starts on Base, keeps the
+ * A wallet as Coinbase Wallet's provider behaves. Each window it opens answers
+ * with the next of `windows`, and the account it answered is then remembered
+ * in the page, as the provider keeps it in the page's storage, and returned
+ * without a window until `disconnect`. It starts on `startsOn`, keeps the
  * batches it sent, and refuses a batch for a chain it is not on.
  */
 const wallet = ({
-  accounts = [CHECKSUMMED.toLowerCase()],
+  windows = [[CHECKSUMMED.toLowerCase()]],
+  startsOn = "0x2105",
   declines,
   breaks,
 }: {
-  readonly accounts?: unknown;
+  readonly windows?: readonly unknown[];
+  readonly startsOn?: string;
   readonly declines?: "eth_requestAccounts" | "wallet_sendCalls";
   readonly breaks?: string;
 } = {}) => {
-  let chain = "0x2105";
+  let chain = startsOn;
+  let remembered: unknown = null;
+  let opened = 0;
   const sent: Sent[] = [];
   const answering: Wallet = {
     async request({ method, params }) {
       if (method === declines) throw DECLINED;
       if (method === breaks) throw { code: -32603, message: "Something went wrong at Coinbase" };
-      if (method === "eth_requestAccounts") return accounts;
+      if (method === "eth_requestAccounts") {
+        if (remembered !== null) return remembered;
+        remembered = windows[Math.min(opened, windows.length - 1)];
+        opened += 1;
+        return remembered;
+      }
       if (method === "wallet_switchEthereumChain") {
         chain = (params?.[0] as { chainId: string } | undefined)?.chainId ?? chain;
         return null;
@@ -57,8 +71,11 @@ const wallet = ({
       }
       throw { code: 4200, message: `Unsupported method ${method}` };
     },
+    async disconnect() {
+      remembered = null;
+    },
   };
-  return { answering, sent };
+  return { answering, sent, remembered: () => remembered };
 };
 
 describe("asking the merchant's wallet for its address", () => {
@@ -68,6 +85,23 @@ describe("asking the merchant's wallet for its address", () => {
     expect(await askAddress(answering)).toEqual({ kind: "address", address: CHECKSUMMED });
   });
 
+  it("asks the wallet's window on every press, never taking an account an earlier press left in the page", async () => {
+    const other = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+    const { answering } = wallet({ windows: [[CHECKSUMMED.toLowerCase()], [other.toLowerCase()]] });
+
+    await askAddress(answering);
+
+    expect(await askAddress(answering)).toEqual({ kind: "address", address: other });
+  });
+
+  it("leaves no account remembered in the page once it has the address", async () => {
+    const { answering, remembered } = wallet();
+
+    await askAddress(answering);
+
+    expect(remembered()).toBeNull();
+  });
+
   it("reads a closed window as the merchant changing their mind, not as a failure", async () => {
     const { answering } = wallet({ declines: "eth_requestAccounts" });
 
@@ -75,7 +109,7 @@ describe("asking the merchant's wallet for its address", () => {
   });
 
   it("refuses an answer that is not an address rather than put it in the box", async () => {
-    const { answering } = wallet({ accounts: ["not an address"] });
+    const { answering } = wallet({ windows: [["not an address"]] });
 
     const asked = await askAddress(answering);
 
@@ -83,9 +117,18 @@ describe("asking the merchant's wallet for its address", () => {
   });
 
   it("refuses an answer that names no account", async () => {
-    const { answering } = wallet({ accounts: [] });
+    const { answering } = wallet({ windows: [[]] });
 
     expect((await askAddress(answering)).kind).toBe("failed");
+  });
+
+  it("refuses an address whose capitals disagree with its checksum, in words of its own", async () => {
+    const { answering } = wallet({ windows: [["0x5AAeb6053f3e94c9b9a09f33669435e7ef1beaed"]] });
+
+    expect(await askAddress(answering)).toEqual({
+      kind: "failed",
+      reason: "the wallet answered with no address",
+    });
   });
 
   it("passes on the wallet's own words when it fails for a reason of its own", async () => {
@@ -115,11 +158,19 @@ describe("sending the payout through the merchant's wallet", () => {
   });
 
   it("sends it on Base for the live channel, never on the chain the wallet happened to be on", async () => {
-    const { answering, sent } = wallet();
+    const { answering, sent } = wallet({ startsOn: "0x14a34" });
 
     await sendPayout(answering, 8453, payout);
 
     expect(sent.map((batch) => batch.chainId)).toEqual(["0x2105"]);
+  });
+
+  it("leaves no account remembered in the page once the payout is sent", async () => {
+    const { answering, remembered } = wallet();
+
+    await sendPayout(answering, 84532, payout);
+
+    expect(remembered()).toBeNull();
   });
 
   it("asks for the payout to happen whole or not at all", async () => {
