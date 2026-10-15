@@ -21,6 +21,59 @@ const given = (environment: Record<string, string> = {}): Record<string, string>
   ...environment,
 });
 
+describe("Google sign-in configuration", () => {
+  const google = {
+    GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com",
+    GOOGLE_CLIENT_SECRET: "a-synthetic-google-client-secret",
+  };
+
+  it("keeps email sign-in available when Google is not configured", () => {
+    expect(loadConfig(given()).google).toBeNull();
+    expect(loadConfig(given({ GOOGLE_CLIENT_ID: "", GOOGLE_CLIENT_SECRET: "" })).google).toBeNull();
+  });
+
+  it("accepts complete credentials for local development and secure public sites", () => {
+    expect(loadConfig(given(google)).google).toEqual({
+      clientId: google.GOOGLE_CLIENT_ID,
+      clientSecret: google.GOOGLE_CLIENT_SECRET,
+    });
+    expect(
+      loadConfig(given({ ...google, PUBLIC_BASE_URL: "https://test.agentify.ad", COOKIE_SECURE: "true" }))
+        .google,
+    ).not.toBeNull();
+  });
+
+  it("refuses either missing credential and never prints the credential supplied", () => {
+    for (const missing of ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"] as const) {
+      const incomplete = { ...google, [missing]: "" };
+      let said = "";
+      try {
+        loadConfig(given(incomplete));
+      } catch (error) {
+        said = String(error);
+      }
+      expect(said).toContain(missing);
+      expect(said).not.toContain(google.GOOGLE_CLIENT_ID);
+      expect(said).not.toContain(google.GOOGLE_CLIENT_SECRET);
+    }
+  });
+
+  it("refuses whitespace credentials rather than offering a sign-in that cannot work", () => {
+    for (const name of ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]) {
+      expect(() => loadConfig(given({ ...google, [name]: " " }))).toThrow(name);
+    }
+  });
+
+  it("requires HTTPS and secure cookies for Google on a public site", () => {
+    expect(() =>
+      loadConfig(given({ ...google, PUBLIC_BASE_URL: "http://test.agentify.ad", COOKIE_SECURE: "true" })),
+    ).toThrow(/PUBLIC_BASE_URL/);
+    expect(() => loadConfig(given({ ...google, PUBLIC_BASE_URL: "https://test.agentify.ad" }))).toThrow(
+      /COOKIE_SECURE/,
+    );
+  });
+});
+
 describe("what the dashboard will not start without", () => {
   it("starts the private report listener only with its own complete secret", () => {
     expect(loadConfig(given()).reportIdentitySecret).toBeNull();
