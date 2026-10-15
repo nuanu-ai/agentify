@@ -1,10 +1,10 @@
+import { PrivacyChoicesButton } from "@agentify/consent";
 import type { ScanStatusResponse, Segment } from "@agentify/scanner-contracts";
 import { type CSSProperties, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { scanStatusIn } from "../lib/api-answers";
 import type { ScanFixture } from "../lib/scan-fixtures";
 import { Brand } from "./brand";
 import { lazyPart, useHere } from "./lazy-part";
-import { PrivacyChoicesButton } from "./privacy-choices-button";
 import styles from "./scan-experience.module.css";
 import { ScanFailed } from "./scan-failed";
 import { SiteDoors } from "./site-chrome";
@@ -227,8 +227,8 @@ export function ScanExperience({
         </div>
       ) : null}
       <nav aria-label="Scan help" className={styles.helpLinks}>
-        <SiteLink to="/scanner">Scanner identity</SiteLink>
-        <SiteLink to="/methodology">Methodology</SiteLink>
+        <a href="/docs/scanner">Scanner identity</a>
+        <a href="/docs/scanner/methodology">Methodology</a>
         <SiteLink to="/privacy">Privacy</SiteLink>
         <PrivacyChoicesButton className={styles.helpAction} />
       </nav>

@@ -30,6 +30,8 @@ describe("StructuredData", () => {
       contactPoint: {
         "@type": "ContactPoint",
         email: "abuse@agentify.ad",
+        // The page about the scanner, which is the documentation's.
+        url: "https://agentify.ad/docs/scanner",
       },
     });
     expect(parsed.nodes.some((node) => node["@type"] === "WebSite")).toBe(true);

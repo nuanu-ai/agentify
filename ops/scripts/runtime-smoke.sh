@@ -73,11 +73,14 @@ for token in OAI-SearchBot ChatGPT-User GPTBot ClaudeBot Claude-User PerplexityB
 done
 
 sitemap="$(curl --silent --show-error --fail --max-time 20 "$WEB_BASE_URL/sitemap.xml")"
-[[ "$(grep -o '<loc>' <<<"$sitemap" | wc -l | tr -d ' ')" == "8" ]] || {
-  echo "sitemap.xml does not contain eight canonical URLs" >&2
+# The scanner's public pages, then every page of the documentation, read from
+# the list the documentation's contents are drawn from.
+sitemap_paths=(/ /store /local /privacy /terms /agentic-shop $(node --input-type=module --eval 'import { DOCS_PAGES, docsAddress } from "./packages/ui/src/docs.ts"; for (const page of DOCS_PAGES) console.log(docsAddress(page.path));'))
+[[ "$(grep -o '<loc>' <<<"$sitemap" | wc -l | tr -d ' ')" == "${#sitemap_paths[@]}" ]] || {
+  echo "sitemap.xml does not contain ${#sitemap_paths[@]} canonical URLs" >&2
   exit 1
 }
-for path in / /store /local /methodology /scanner /privacy /terms /agentic-shop; do
+for path in "${sitemap_paths[@]}"; do
   grep -q "<loc>https://agentify.ad$path</loc>" <<<"$sitemap" || {
     echo "sitemap.xml is missing $path" >&2
     exit 1

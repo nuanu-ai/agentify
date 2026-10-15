@@ -57,6 +57,9 @@ services:
     environment:
       AGENTIFY_SITE_ADDRESS: ":8080"
       AGENTIFY_TRUSTED_EDGE_CIDR: "172.30.80.2/32"
+      # The documentation's page views go where the scanner's pages' go.
+      POSTHOG_DESTINATION_ENV: "${POSTHOG_DESTINATION_ENV:-production}"
+      META_DESTINATION_ENV: "${META_DESTINATION_ENV:-production}"
     networks:
       default:
       agentify-ingress:

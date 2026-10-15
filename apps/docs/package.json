@@ -3,21 +3,39 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Agentify seller documentation",
+  "description": "The documentation at /docs: the merchant pages and the scanner's, drawn from Markdown by React Router into static files that Caddy serves",
   "scripts": {
-    "docs:dev": "vitepress dev",
-    "docs:build": "vitepress build",
-    "docs:preview": "vitepress preview"
+    "build": "react-router build && tsx scripts/precompress.ts",
+    "budget": "tsx scripts/budget.ts",
+    "dev": "react-router dev",
+    "diagrams": "tsx scripts/draw-diagrams.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agentify/analytics": "workspace:*",
+    "@agentify/consent": "workspace:*",
+    "@agentify/core": "workspace:*",
+    "@agentify/ui": "workspace:*",
+    "@agentify/visual": "workspace:*",
+    "minisearch": "7.2.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-router": "8.4.0"
   },
   "devDependencies": {
-    "mermaid": "^11.17.2",
-    "vitepress": "^1.6.4",
-    "vitepress-plugin-mermaid": "^2.0.17",
-    "vue": "^3.5.41"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
+    "@agentify/gallery": "workspace:*",
+    "@react-router/dev": "8.4.0",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "markdown-it": "15.0.2",
+    "markdown-it-container": "4.0.0",
+    "mermaid": "11.17.2",
+    "playwright": "1.61.1",
+    "shiki": "4.5.0",
+    "tsx": "4.23.12",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vitest": "4.1.11"
   }
 }

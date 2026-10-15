@@ -87,6 +87,12 @@ export default {
         "app/gallery.tsx",
       ],
     },
+    "apps/docs": {
+      entry: [
+        // Drawn into the screens gallery by `packages/gallery`.
+        "app/gallery.tsx",
+      ],
+    },
     "packages/core": {
       // The types of `preflight.mjs`, which a deploy script runs as it is;
       // its readers import the function from the `.mjs` beside it.

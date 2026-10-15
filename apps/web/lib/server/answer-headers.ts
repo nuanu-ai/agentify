@@ -53,7 +53,7 @@ export const UNKEPT_PAGE_CACHE = "private, no-cache, no-store, max-age=0, must-r
 
 /**
  * The page a request is about, and whether it asks for the page's data rather
- * than the page: React Router asks for `/methodology` as `/methodology.data`,
+ * than the page: React Router asks for `/privacy` as `/privacy.data`,
  * and for `/` as `/_.data`.
  */
 export function pageOf(pathname: string): Readonly<{ page: string; data: boolean }> {

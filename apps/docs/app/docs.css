@@ -1,0 +1,521 @@
+/*
+ * What the documentation draws inside the editorial layout of
+ * @agentify/visual/editorial.css: its contents in groups with the search
+ * above them, the search's panel, and the parts of a page the scanner's pages
+ * do not have — smaller headings, code, tables, boxes and diagrams — in the
+ * same type and palette. Where the column folds away, a bar under the site
+ * header holds the search and the page's sections, and the header's menu the
+ * pages.
+ *
+ * The page does not scroll smoothly: a move to another page scrolls to its
+ * top, and an animation from the old page's offset over the new one would
+ * show both.
+ */
+
+html {
+  overflow-x: clip;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+/* --- the layout -------------------------------------------------------- */
+
+/* Code and tables want a wider column than the scanner's prose. */
+.editorial.docs {
+  --editorial-measure: 720px;
+}
+
+/* The column scrolls on its own where it is taller than the window, and
+   ends above the consent banner while that asks. */
+.docs-aside {
+  max-height: calc(100vh - 120px - var(--consent-banner-height, 0px));
+  overflow-y: auto;
+  gap: 24px;
+}
+
+.docs-contents {
+  display: grid;
+  gap: 24px;
+}
+
+.docs-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.docs-group > .editorial-label {
+  margin-bottom: 2px;
+}
+
+.docs-contents a {
+  color: var(--fg-2);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.docs-contents a:hover,
+.docs-contents a:focus-visible,
+.docs-contents a[aria-current] {
+  color: var(--accent-hover);
+}
+
+.docs-contents a[aria-current="page"] {
+  font-weight: 600;
+}
+
+.docs-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 4px;
+  border-left: var(--hairline) solid var(--line);
+  padding-left: 12px;
+}
+
+.docs-sections a {
+  margin-left: -13px;
+  border-left: 2px solid transparent;
+  padding-left: 11px;
+  font-size: 0.8125rem;
+}
+
+/* The section being read, as the page scrolls. */
+.docs-sections a[aria-current="location"] {
+  border-left-color: var(--accent);
+  font-weight: 600;
+}
+
+/* --- search ------------------------------------------------------------ */
+
+.docs-search-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  border: var(--hairline) solid var(--line-strong);
+  border-radius: var(--radius-control);
+  padding: 0 12px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.875rem;
+  text-align: left;
+}
+
+.docs-search-button kbd {
+  border: var(--hairline) solid var(--line);
+  border-radius: 6px;
+  padding: 0 6px;
+  font: 0.75rem / 1.6 var(--font-mono);
+}
+
+/* Over the consent banner, which is not reached past the search, and under
+   the consent's own preferences. */
+.search-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 10vh 16px 16px;
+  background: rgb(26 25 23 / 32%);
+}
+
+.search-panel {
+  width: min(640px, 100%);
+  max-height: 75vh;
+  display: flex;
+  flex-direction: column;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+}
+
+.search-panel input {
+  border: 0;
+  border-bottom: var(--hairline) solid var(--line);
+  padding: 16px 20px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 1rem;
+  outline: none;
+}
+
+.search-results {
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.search-results a {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: var(--radius-control);
+  padding: 10px 12px;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.search-results a:hover,
+.search-results a:focus-visible,
+.search-results [aria-selected="true"] a {
+  background: var(--accent-soft);
+}
+
+.search-path {
+  color: var(--muted);
+  font: 0.75rem / 1.4 var(--font-mono);
+}
+
+.search-title {
+  font-weight: 600;
+}
+
+.search-excerpt {
+  color: var(--fg-2);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.search-excerpt mark {
+  border-radius: 3px;
+  padding: 0 2px;
+  background: var(--notice-bg);
+  color: var(--notice-ink);
+}
+
+.search-none {
+  margin: 0;
+  padding: 16px 20px;
+  color: var(--muted);
+}
+
+/* Kept on the page while it says nothing, so what it says next is read out. */
+.search-none:empty {
+  padding: 0;
+}
+
+.search-reload {
+  align-self: flex-start;
+  margin: 0 20px 20px;
+}
+
+/* --- the article ------------------------------------------------------- */
+
+.doc h3 {
+  scroll-margin-top: 96px;
+  margin: 32px 0 10px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.doc ul,
+.doc ol {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding-left: 22px;
+}
+
+.header-anchor {
+  margin-left: 6px;
+  color: var(--muted);
+  opacity: 0;
+  text-decoration: none;
+}
+
+.header-anchor::before {
+  content: "#";
+}
+
+.doc :is(h1, h2, h3):hover .header-anchor,
+.header-anchor:focus-visible {
+  opacity: 1;
+}
+
+.doc .custom-block-title {
+  margin-bottom: 8px;
+  color: var(--notice-ink);
+  font: 600 0.75rem / 1.5 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Code: a block on the card surface, its language and a copy button above it. */
+.doc div[class^="language-"] {
+  position: relative;
+  margin: 20px 0;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.doc pre {
+  margin: 0;
+  overflow-x: auto;
+  padding: 20px;
+  font: 0.8125rem / 1.7 var(--font-mono);
+}
+
+.doc pre code {
+  border-radius: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  overflow-wrap: normal;
+}
+
+.doc .lang {
+  position: absolute;
+  top: 8px;
+  right: 44px;
+  color: var(--muted);
+  font: 0.6875rem / 1.4 var(--font-mono);
+}
+
+.doc .copy {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 28px;
+  height: 24px;
+  border: var(--hairline) solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.doc .copy::before {
+  content: "⧉";
+  color: var(--muted);
+}
+
+.doc .copy.copied::before {
+  content: "✓";
+  color: var(--accent);
+}
+
+/* A table wider than the column scrolls inside itself, not the page. */
+.doc table {
+  display: block;
+  max-width: 100%;
+  margin: 20px 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: var(--text-small);
+  line-height: 1.55;
+}
+
+.doc th,
+.doc td {
+  border: var(--hairline) solid var(--line);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc th {
+  background: var(--surface-sunken);
+  font-weight: 600;
+}
+
+/* A link in a cell is told from the words beside it by more than its colour,
+   as a link in a paragraph is by the shared language. */
+.doc :is(th, td) a {
+  text-decoration: underline;
+}
+
+/* A word in a cell keeps whole; the table scrolls instead. */
+.doc :is(th, td) code {
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+
+.doc figure.diagram {
+  margin: 24px 0;
+  overflow-x: auto;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  background: var(--surface);
+}
+
+.doc figure.diagram svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+/* --- the pages before and after ---------------------------------------- */
+
+.docs-turn {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 56px;
+  border-top: var(--hairline) solid var(--line);
+  padding-top: 24px;
+}
+
+.docs-turn a {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+  color: var(--accent-hover);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.docs-turn a[rel="next"] {
+  grid-column: 2;
+  text-align: right;
+}
+
+.docs-turn a span {
+  color: var(--muted);
+  font: 400 0.6875rem / 1.4 var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* --- the phone's bar and the header's menu ----------------------------- */
+
+.docs-bar {
+  display: none;
+}
+
+/* The pages in the header's menu, where the page has no column for them. */
+.docs-menu .docs-contents {
+  gap: 14px;
+  margin-bottom: 10px;
+  border-bottom: var(--hairline) solid var(--line);
+  padding: 4px 0 14px;
+}
+
+.docs-menu .docs-group {
+  gap: 0;
+}
+
+.docs-menu .docs-group > .editorial-label {
+  padding: 6px 12px 2px;
+}
+
+.docs-menu .docs-contents a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  border-radius: 10px;
+  padding: 0 12px;
+  font-size: 0.9375rem;
+  font-weight: 550;
+}
+
+.docs-menu .docs-contents a[aria-current="page"] {
+  background: var(--accent-soft);
+}
+
+@media (min-width: 911px) {
+  .docs-menu {
+    display: none;
+  }
+}
+
+@media (max-width: 910px) {
+  /* A heading a link scrolls to stands clear of the header and the bar. */
+  .doc :is(h1, h2, h3) {
+    scroll-margin-top: 144px;
+  }
+
+  /* Under the site header, which keeps 68px to itself here and 60px on a
+     phone, with its rule under it. */
+  .docs-bar {
+    position: sticky;
+    z-index: 10;
+    top: 69px;
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    margin: -8px 0 28px;
+    padding: 8px 0;
+    background: var(--bg);
+  }
+
+  .docs-bar .docs-search-button {
+    min-height: 44px;
+    gap: 12px;
+  }
+
+  /* The sections open across the whole bar, under it. */
+  .docs-bar .editorial-outline {
+    flex: 1;
+    margin: 0;
+  }
+
+  .docs-bar .editorial-outline summary {
+    min-height: 44px;
+  }
+
+  .docs-outline nav {
+    position: absolute;
+    z-index: 1;
+    top: calc(100% + 6px);
+    right: 0;
+    left: 0;
+    max-height: calc(100dvh - 160px - var(--consent-banner-height, 0px));
+    overflow-y: auto;
+    border: var(--hairline) solid var(--line);
+    border-radius: var(--radius-control);
+    background: var(--surface);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .docs-outline a {
+    color: var(--fg-2);
+  }
+
+  .docs-outline a[aria-current="location"] {
+    color: var(--accent-hover);
+    font-weight: 600;
+  }
+
+  .docs-outline .docs-to-top {
+    border-bottom: var(--hairline) solid var(--line-soft);
+    padding-bottom: 12px;
+    color: var(--accent-hover);
+  }
+}
+
+@media (max-width: 760px) {
+  .docs-turn {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-turn a[rel="next"] {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .docs-bar {
+    top: 61px;
+  }
+
+  .doc :is(h1, h2, h3) {
+    scroll-margin-top: 136px;
+  }
+}

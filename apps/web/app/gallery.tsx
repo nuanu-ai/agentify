@@ -592,44 +592,6 @@ const PUBLIC: GalleryState[] = [
   ),
   editorial(
     {
-      id: "scanner-scanner-identity",
-      screen: "Scanner identity",
-      when: "A site owner looks up the scanner that read their site, from its user agent or a link.",
-      cause: "The page names the scanner, what it reads and how to keep it out.",
-    },
-    "/scanner",
-    "routes/scanner",
-  ),
-  editorial(
-    {
-      id: "scanner-methodology",
-      screen: "Methodology",
-      when: "Somebody wants to know how the diagnostic is scored and where it stops.",
-      cause: "The page sets out the checks, the score and their limits.",
-    },
-    "/methodology",
-    "routes/methodology",
-  ),
-  at(
-    {
-      id: "scanner-methodology-menu",
-      screen: "Methodology",
-      when: "A signed-in visitor on a phone opens the menu at the end of the header's row.",
-      cause:
-        "The bar has no room for the site's sections beside who is visiting, so the menu holds them.",
-    },
-    {
-      path: "/methodology",
-      loaded: { "routes/methodology": getPublicEditorialPage("/methodology", SITE) },
-      scene: {
-        answers: visitor(true),
-        steps: [{ shows: "How the agent-readiness scan works", does: openTheMenu }],
-        shows: WHO,
-      },
-    },
-  ),
-  editorial(
-    {
       id: "scanner-privacy",
       screen: "Privacy",
       when: "Somebody opens the privacy notice from any page's footer.",
@@ -637,6 +599,24 @@ const PUBLIC: GalleryState[] = [
     },
     "/privacy",
     "routes/privacy",
+  ),
+  at(
+    {
+      id: "scanner-privacy-menu",
+      screen: "Privacy",
+      when: "A signed-in visitor on a phone opens the menu at the end of the header's row.",
+      cause:
+        "The bar has no room for the site's sections beside who is visiting, so the menu holds them.",
+    },
+    {
+      path: "/privacy",
+      loaded: { "routes/privacy": getPublicEditorialPage("/privacy", SITE) },
+      scene: {
+        answers: visitor(true),
+        steps: [{ shows: "Privacy and data controls", does: openTheMenu }],
+        shows: WHO,
+      },
+    },
   ),
   editorial(
     {

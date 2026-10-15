@@ -22,7 +22,7 @@ afterEach(cleanup);
 
 /** The pages the browser has been told of, with the page that says there is none. */
 const PAGES = [
-  ["routes/methodology", "methodology"],
+  ["routes/terms", "terms"],
   ["routes/scan", "scan/:id"],
   ["routes/report", "report/:scanId"],
   ["routes/not-found", "*"],
@@ -70,7 +70,7 @@ const onTheFrontPage = () => {
         path: "/",
         element: (
           <>
-            <SiteLink to="/methodology">Methodology</SiteLink>
+            <SiteLink to="/terms">Terms</SiteLink>
             <SiteLink to="/privacy">Privacy</SiteLink>
             <SiteLink to="/scan/0190f4c5-0000-7000-8000-000000000000">Your scan</SiteLink>
             <SiteLink to="/report/0190f4c5-0000-7000-8000-000000000000">Your report</SiteLink>
@@ -124,20 +124,20 @@ describe("a link while the pointer rests on it", () => {
   it("has the browser fetch a public page's data and stylesheets ahead of the click", async () => {
     onTheFrontPage();
 
-    await restOn("Methodology");
+    await restOn("Terms");
 
-    expect(fetchedAhead().some((href) => href?.startsWith("/methodology.data"))).toBe(true);
-    expect(stylesAhead()).toEqual(["/assets/routes/methodology.css"]);
+    expect(fetchedAhead().some((href) => href?.startsWith("/terms.data"))).toBe(true);
+    expect(stylesAhead()).toEqual(["/assets/routes/terms.css"]);
   });
 
   it("fetches no stylesheet the window already has", async () => {
     onTheFrontPage();
     const drawn = document.createElement("link");
     drawn.rel = "stylesheet";
-    drawn.href = "/assets/routes/methodology.css";
+    drawn.href = "/assets/routes/terms.css";
     document.head.append(drawn);
     try {
-      await restOn("Methodology");
+      await restOn("Terms");
 
       expect(stylesAhead()).toEqual([]);
     } finally {
@@ -149,10 +149,10 @@ describe("a link while the pointer rests on it", () => {
     onTheFrontPage();
 
     act(() => {
-      fireEvent.mouseEnter(screen.getByText("Methodology"));
+      fireEvent.mouseEnter(screen.getByText("Terms"));
     });
     await aMoment(20);
-    leave("Methodology");
+    leave("Terms");
     await aMoment(200);
 
     expect(stylesAhead()).toEqual([]);
@@ -160,14 +160,14 @@ describe("a link while the pointer rests on it", () => {
 
   it("asks what the build says of the page each time the pointer rests on it", async () => {
     const manifest = onTheFrontPage();
-    await restOn("Methodology");
-    leave("Methodology");
-    const methodology = manifest.routes["routes/methodology"];
-    if (methodology !== undefined) methodology.css = ["/assets/routes/methodology-told-later.css"];
+    await restOn("Terms");
+    leave("Terms");
+    const terms = manifest.routes["routes/terms"];
+    if (terms !== undefined) terms.css = ["/assets/routes/terms-told-later.css"];
 
-    await restOn("Methodology");
+    await restOn("Terms");
 
-    expect(stylesAhead()).toContain("/assets/routes/methodology-told-later.css");
+    expect(stylesAhead()).toContain("/assets/routes/terms-told-later.css");
   });
 
   it("fetches no stylesheet for a page the browser has not been told of yet", async () => {

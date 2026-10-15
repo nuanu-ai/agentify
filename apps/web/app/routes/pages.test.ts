@@ -125,37 +125,57 @@ describe("the owner landing's old address", () => {
   });
 });
 
-describe("the methodology", () => {
-  it("is the trust page about how the scan works, under the site header the front page carries", async () => {
-    const { html, links } = await page("/methodology");
-    const header = html.match(/<header class="site-header">[\s\S]*?<\/header>/)?.[0] ?? "";
+describe("the scanner's pages that moved into the documentation", () => {
+  it.each([
+    ["/methodology", "/docs/scanner/methodology"],
+    ["/scanner", "/docs/scanner"],
+  ])("send %s on to %s, permanently and kept by nobody", async (path, moved) => {
+    for (const method of ["GET", "HEAD", "POST"]) {
+      const answered = await ask(path, { method });
 
-    expect(html).toContain("How the agent-readiness scan works");
-    for (const href of ["/agentic-shop", "/scanner", "/privacy", "/docs/", "/dashboard/sign-in"]) {
-      expect(header, href).toContain(`href="${href}"`);
+      expect(answered.status, method).toBe(308);
+      expect(answered.headers.get("location"), method).toBe(moved);
+      expect(answered.headers.get("cache-control"), method).toBe(
+        "private, no-cache, no-store, max-age=0, must-revalidate",
+      );
     }
-    expect(links).toContain("/docs/");
   });
 
-  it("carries its title after the site's name and its own address", async () => {
-    const head = await page("/methodology");
+  it("keep the query they were asked with", async () => {
+    const answered = await ask("/scanner?from=a-user-agent");
 
-    expect(head.title).toBe("Methodology · Agentify");
-    expect(head.meta("description")).toBe(
-      "How the Agentify public-HTTP agent-readiness diagnostic works and its limits.",
-    );
-    expect(head.canonical).toBe("https://agentify.ad/methodology");
+    expect(answered.status).toBe(308);
+    expect(answered.headers.get("location")).toBe("/docs/scanner?from=a-user-agent");
+  });
+
+  it("send a client that asks for Markdown on too, where the documentation answers it", async () => {
+    const answered = await ask("/scanner", { headers: { accept: "text/markdown" } });
+
+    expect(answered.status).toBe(308);
+    expect(answered.headers.get("location")).toBe("/docs/scanner");
+  });
+});
+
+describe("a trust page's header", () => {
+  it("leads to the site's sections, the scanner's in the documentation, and the doors", async () => {
+    const { html } = await page("/privacy");
+    const header = html.match(/<header class="site-header">[\s\S]*?<\/header>/)?.[0] ?? "";
+
+    for (const href of [
+      "/agentic-shop",
+      "/docs/scanner",
+      "/docs/scanner/methodology",
+      "/privacy",
+      "/docs/",
+      "/dashboard/sign-in",
+    ]) {
+      expect(header, href).toContain(`href="${href}"`);
+    }
   });
 });
 
 describe("the trust pages", () => {
   it.each([
-    [
-      "/scanner",
-      "About agentify-scanner",
-      "Scanner identity · Agentify",
-      "Identity, behavior, safety limits, retention, and opt-out details for agentify-scanner.",
-    ],
     [
       "/privacy",
       "Privacy and data controls",
@@ -180,16 +200,15 @@ describe("the trust pages", () => {
     },
   );
 
-  it("name the contacts and the scanner's address this deployment is configured with", async () => {
+  it("name the contacts this deployment is configured with", async () => {
     vi.stubEnv("APP_BASE_URL", "https://test.agentify.ad");
     vi.stubEnv("PRIVACY_EMAIL", "privacy@test.agentify.ad");
     vi.stubEnv("ABUSE_EMAIL", "abuse@test.agentify.ad");
 
-    const scanner = await page("/scanner");
+    const terms = await page("/terms");
     const privacy = await page("/privacy");
 
-    expect(scanner.html).toContain("agentify-scanner/1.0 (+https://test.agentify.ad/scanner)");
-    expect(scanner.links).toContain("mailto:abuse@test.agentify.ad");
+    expect(terms.links).toContain("mailto:abuse@test.agentify.ad");
     expect(privacy.links).toContain("mailto:privacy@test.agentify.ad");
     expect(privacy.links).not.toContain("mailto:privacy@agentify.ad");
   });
@@ -197,26 +216,19 @@ describe("the trust pages", () => {
   it("asks every crawler to index the terms and follow them, and no other trust page", async () => {
     expect((await page("/terms")).meta("robots")).toBe("index, follow");
     expect((await page("/privacy")).meta("robots")).toBeUndefined();
-    expect((await page("/scanner")).meta("robots")).toBeUndefined();
   });
 });
 
 describe("every page", () => {
-  it.each([
-    "/",
-    "/store",
-    "/local",
-    "/methodology",
-    "/scanner",
-    "/privacy",
-    "/terms",
-    "/no-such-page",
-  ])("is drawn with the consent banner up until the visitor chooses: %s", async (path) => {
-    const answered = await ask(path);
-    const html = await answered.text();
+  it.each(["/", "/store", "/local", "/privacy", "/terms", "/no-such-page"])(
+    "is drawn with the consent banner up until the visitor chooses: %s",
+    async (path) => {
+      const answered = await ask(path);
+      const html = await answered.text();
 
-    expect(html).toContain('aria-label="Privacy choices"');
-    expect(html).toContain("Allow optional analytics");
-    expect(html).toContain('<html lang="en-US">');
-  });
+      expect(html).toContain('aria-label="Privacy choices"');
+      expect(html).toContain("Allow optional analytics");
+      expect(html).toContain('<html lang="en-US">');
+    },
+  );
 });

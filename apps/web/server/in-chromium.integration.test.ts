@@ -103,9 +103,9 @@ beforeAll(async () => {
     if (path.includes(".data") || /\.css(?:$|[?#])/.test(path)) {
       asked.push(path.split(/[?#]/)[0] ?? path);
     }
-    // The methodology's data arrives late, as over a slow link, so what the
-    // page shows before it arrives can be seen.
-    if (path.startsWith("/methodology.data")) {
+    // The privacy notice's data arrives late, as over a slow link, so what
+    // the page shows before it arrives can be seen.
+    if (path.startsWith("/privacy.data")) {
       setTimeout(() => app(request, response), SLOW_MS);
       return;
     }
@@ -176,8 +176,6 @@ describe("a page in Chromium", () => {
     "/",
     "/store",
     "/local",
-    "/methodology",
-    "/scanner",
     "/privacy",
     "/terms",
     "/agentic-shop",
@@ -205,7 +203,7 @@ describe("a page in Chromium", () => {
 describe("a page's first visit in Chromium", () => {
   it.each([
     ["/", "routes/home"],
-    ["/methodology", "routes/methodology"],
+    ["/privacy", "routes/privacy"],
     ["/agentic-shop", "routes/agentic-shop"],
     ["/sell", "routes/sell"],
     ["/no-such-page", "routes/not-found"],
@@ -345,7 +343,7 @@ describe("a click on a link", () => {
     await page.evaluate(() => {
       (window as Window & { stayed?: boolean }).stayed = true;
     });
-    const link = page.locator("header .site-nav a", { hasText: "Methodology" });
+    const link = page.locator("header .site-nav a", { hasText: "Privacy" });
 
     await link.click();
     await page.waitForTimeout(80);
@@ -354,8 +352,8 @@ describe("a click on a link", () => {
     await page.waitForTimeout(300);
     expect(await page.locator(".on-its-way").isVisible()).toBe(true);
 
-    await page.waitForURL(`${origin}/methodology`);
-    await page.locator("h1", { hasText: "How the agent-readiness scan works" }).waitFor();
+    await page.waitForURL(`${origin}/privacy`);
+    await page.locator("h1", { hasText: "Privacy and data controls" }).waitFor();
     expect(await page.locator(".on-its-way").isVisible()).toBe(false);
     expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
     await page.context().close();
@@ -363,18 +361,18 @@ describe("a click on a link", () => {
 
   it("to a public page is answered from the fetches a hover made, its stylesheets among them", async () => {
     const { page } = await visit("/");
-    const before = timesAsked("/methodology.data");
-    const link = page.locator("header .site-nav a", { hasText: "Methodology" });
+    const before = timesAsked("/privacy.data");
+    const link = page.locator("header .site-nav a", { hasText: "Privacy" });
 
     await link.hover();
     await page.waitForTimeout(SLOW_MS + 500);
     await page.mouse.move(1, 1);
     const askedBeforeTheClick = asked.length;
     await link.click();
-    await page.waitForURL(`${origin}/methodology`);
-    await page.locator("h1", { hasText: "How the agent-readiness scan works" }).waitFor();
+    await page.waitForURL(`${origin}/privacy`);
+    await page.locator("h1", { hasText: "Privacy and data controls" }).waitFor();
 
-    expect(timesAsked("/methodology.data") - before).toBe(1);
+    expect(timesAsked("/privacy.data") - before).toBe(1);
     expect(asked.slice(askedBeforeTheClick)).toEqual([]);
     await page.context().close();
   });
@@ -385,7 +383,7 @@ describe("the consent banner", () => {
     ["Allow optional analytics", true],
     ["Essential only", false],
   ])("takes %s and goes, without a reload", async (button, measured) => {
-    const { page } = await visit("/methodology", { consentSaved: true });
+    const { page } = await visit("/terms", { consentSaved: true });
     await page.evaluate(() => {
       (window as Window & { stayed?: boolean }).stayed = true;
     });
@@ -807,7 +805,7 @@ const IN_THE_BAR = [
 
 describe("the site's menu on a phone", () => {
   it("holds the site's sections, Sell to agents first, closes on Escape, and closes once a link in it is followed, fetched ahead as the bar's are", async () => {
-    const { page, complaints } = await visit("/methodology");
+    const { page, complaints } = await visit("/terms");
     await page.setViewportSize({ width: 390, height: 800 });
     await page.evaluate(() => {
       (window as Window & { stayed?: boolean }).stayed = true;
@@ -825,16 +823,16 @@ describe("the site's menu on a phone", () => {
     expect(await burger.evaluate((element) => element === document.activeElement)).toBe(true);
 
     await burger.click();
-    const privacy = panel.getByRole("link", { name: "Privacy" });
-    const before = timesAsked("/privacy.data");
-    await privacy.hover();
+    const sell = panel.getByRole("link", { name: "Sell to agents" });
+    const before = timesAsked("/agentic-shop.data");
+    await sell.hover();
     await page.waitForTimeout(600);
-    await privacy.click();
-    await page.waitForURL(`${origin}/privacy`);
-    await page.locator("h1", { hasText: "Privacy" }).first().waitFor();
+    await sell.click();
+    await page.waitForURL(`${origin}/agentic-shop`);
+    await page.locator("h1").first().waitFor();
 
     expect(await panel.isVisible()).toBe(false);
-    expect(timesAsked("/privacy.data") - before).toBe(1);
+    expect(timesAsked("/agentic-shop.data") - before).toBe(1);
     expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
     expect(complaints).toEqual([]);
     await page.context().close();
@@ -850,7 +848,7 @@ describe("the site's menu on a phone", () => {
     await page.route("**/api/v2/session", (route) =>
       route.fulfill({ json: { status: "signed_out" } }),
     );
-    await page.goto(`${origin}/methodology`);
+    await page.goto(`${origin}/terms`);
     await page.waitForLoadState("networkidle");
     const burger = page.locator("header .site-menu > summary");
     const panel = page.locator("header .site-menu-panel");
@@ -984,7 +982,7 @@ describe("the site's menu on a phone", () => {
   });
 
   it("left open while the window is too wide to show it, is closed when the window narrows again, so the page is not held", async () => {
-    const { page, complaints } = await visit("/methodology");
+    const { page, complaints } = await visit("/terms");
     await page.setViewportSize({ width: 900, height: 700 });
     const menu = page.locator("header .site-menu");
     const scrolled = () => page.evaluate(() => window.scrollY);
@@ -1009,7 +1007,7 @@ describe("the site's menu on a phone", () => {
   });
 
   it("closes once the focus leaves it, so what has the focus is not behind it", async () => {
-    const { page, complaints } = await visit("/methodology");
+    const { page, complaints } = await visit("/terms");
     await page.setViewportSize({ width: 390, height: 800 });
     const menu = page.locator("header .site-menu");
     const open = () => menu.evaluate((details) => (details as HTMLDetailsElement).open);
@@ -1035,7 +1033,7 @@ describe("the site's menu on a phone", () => {
   )(
     "keeps the header to one row of the same height when %s comes back at %ipx, with the sections that fit, and holds who is visiting and every section in its menu",
     async (_who, width, answer, shown) => {
-      const { page, answered } = await onAPhone("/methodology", answer, width);
+      const { page, answered } = await onAPhone("/terms", answer, width);
       await page.locator("h1").first().waitFor();
       await page.evaluate(() => document.fonts.ready);
       const header = page.locator("header.site-header");

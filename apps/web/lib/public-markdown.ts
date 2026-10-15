@@ -18,10 +18,6 @@ function absoluteHref(href: string, baseUrl: string): string {
 
 function nodeToMarkdown(node: Exclude<RichText, string>[number], baseUrl: string): string {
   switch (node.kind) {
-    case "code":
-      return `\`${node.value.replaceAll("`", "\\`")}\``;
-    case "strong":
-      return `**${node.value}**`;
     case "link":
       return `[${node.value}](${absoluteHref(node.href ?? "", baseUrl)})`;
     case "text":
@@ -81,7 +77,7 @@ function renderLanding(config: LandingConfig): string {
     "",
     `**${LANDING_SHARED_CONTENT.reportLabel} · ${LANDING_SHARED_CONTENT.reportHeading}**`,
     "",
-    `[${LANDING_SHARED_CONTENT.reportMethodologyLink}](${new URL("/methodology", app.baseUrl).toString()})`,
+    `[${LANDING_SHARED_CONTENT.reportMethodologyLink}](${new URL("/docs/scanner/methodology", app.baseUrl).toString()})`,
     "",
   );
   for (const check of LANDING_EXAMPLE_CHECKS) output.push(`- ${check.name} — ${check.status}`);
@@ -98,8 +94,6 @@ export function getPublicPageMarkdown(path: PublicPagePath): string {
       return renderLanding(LANDINGS.store);
     case "/local":
       return renderLanding(LANDINGS.local);
-    case "/methodology":
-    case "/scanner":
     case "/privacy":
     case "/terms":
       return renderEditorial(path);

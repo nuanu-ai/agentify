@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 
 /**
- * Checks that the portal's examples reached the built pages.
+ * Checks that the portal's examples reached the built pages, and that every
+ * built page carries what Caddy fills in where Caddy can find it.
  *
  * `packages/contracts/src/portal-fixtures.test.ts` holds each example to its
- * schema and to the pages that name it. No test can see whether VitePress
+ * schema and to the pages that name it. No test can see whether the build
  * turned `<<< @/examples/…` into the file's content or printed the line as
- * text: a snippet syntax changed by an upgrade would leave the suite green
- * while every example vanished from the site.
+ * text: a pipeline that stopped understanding the include would leave the
+ * suite green while every example vanished from the site.
  *
- * Run it after `pnpm run docs:build` in `apps/docs/`. The built HTML, with tags
+ * Run it after `pnpm --filter @agentify/docs build`. The built HTML, with tags
  * removed and entities decoded, must contain the example's whole text.
  * Whitespace is collapsed on both sides because the highlighter lays the JSON
  * out in spans.
@@ -22,7 +23,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const PORTAL = join(ROOT, "apps", "docs");
 const EXAMPLES = join(PORTAL, "examples");
-const DIST = join(PORTAL, ".vitepress", "dist");
+const DIST = join(PORTAL, "dist", "client");
 
 /** The house style for writers; the site does not build it. */
 const NOT_A_PAGE = "WRITING.md";
@@ -79,7 +80,7 @@ let built;
 try {
   built = builtPages(DIST);
 } catch {
-  die(`no built portal at ${DIST}; run "pnpm run docs:build" in apps/docs/ first`);
+  die(`no built portal at ${DIST}; run "pnpm --filter @agentify/docs build" first`);
 }
 
 /** Which pages name each example, and the built page each of those became. */
@@ -134,7 +135,7 @@ for (const file of files) {
 
     complaints.push(
       printedAsText
-        ? `${html} printed the include line as text instead of the file: VitePress no longer understands "<<<", and every example on the site is gone`
+        ? `${html} printed the include line as text instead of the file: the build no longer understands "<<<", and every example on the site is gone`
         : `${html} does not show apps/docs/examples/${file}; the page was built without it`,
     );
   }
@@ -152,8 +153,8 @@ if (complaints.length > 0) {
 const unmarked = builtPages(DIST).filter((page) => {
   const html = readFileSync(join(DIST, page), "utf8");
   const marker = html.indexOf('data-agentify-surface="');
-  const app = html.indexOf('<div id="app"');
-  return marker === -1 || app === -1 || marker > app;
+  const main = html.indexOf('id="main"');
+  return marker === -1 || main === -1 || marker > main;
 });
 
 if (unmarked.length > 0) {
@@ -161,6 +162,17 @@ if (unmarked.length > 0) {
     "these built pages carry no surface marker above the page, so a reader is told nothing " +
       `about which stack they are reading:\n  ${unmarked.join("\n  ")}`,
   );
+}
+
+// Caddy finds a template only by its comment-shaped delimiters. One written
+// as `&lt;!--{{`, as React writes an attribute, would reach the reader
+// unfilled, a channel's address shown as the template that names it.
+const escaped = builtPages(DIST).filter((page) =>
+  readFileSync(join(DIST, page), "utf8").includes("&lt;!--{{"),
+);
+
+if (escaped.length > 0) {
+  die(`these built pages carry a template Caddy cannot find:\n  ${escaped.join("\n  ")}`);
 }
 
 console.log(`\n${files.length} example(s) reached the pages that include them.`);

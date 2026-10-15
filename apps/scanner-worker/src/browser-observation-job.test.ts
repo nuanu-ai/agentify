@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import {
   BROWSER_OBSERVATION_IDS,
   BROWSER_OBSERVATION_VERSION,
@@ -146,6 +147,13 @@ describe("browser observation job", () => {
     expect(input.policy.methods).toEqual(["GET", "HEAD"]);
     expect(input.policy.use_proxy).toBe(false);
     expect(input.limits.max_pages).toBe(3);
+  });
+
+  it("asks the observer to present the user agent the documentation's page about the scanner names", () => {
+    const page = readFileSync(new URL("../../docs/scanner/index.md", import.meta.url), "utf8");
+    const named = /`(agentify-browser-observer\/1\.0[^`]*)`/.exec(page.replace(/\s+/g, " "))?.[1];
+
+    expect(buildBrowserObservationInput(observation, config).policy.user_agent).toBe(named);
   });
 
   it("keeps private-suffix tenants in separate site boundaries", () => {

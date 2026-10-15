@@ -12,6 +12,7 @@
       "!**/dist",
       "!.claude",
       "!apps/gateway/drizzle",
+      "!apps/docs/diagrams",
       "!packages/scanner-database/migrations",
       "!pnpm-lock.yaml"
     ]

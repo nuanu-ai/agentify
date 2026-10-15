@@ -244,12 +244,12 @@ its own.
 | `apps/gateway` | The payment edge, the order runner and the queue. Ports in `src/ports`, their implementations in `src/adapters`. |
 | `apps/dashboard` | The merchant's screens: sign-in, cards, orders, receipts, integrations, keys, settings and the WooCommerce connector, and the identity route the scanner calls. React Router pages under `app/`, server-rendered in the application's process and built by `pnpm --filter @agentify/dashboard build`; their server half is in `src/` (`docs/research/35-one-process.md`). |
 | `packages/ui` | `@agentify/ui`: the React components every surface draws with, the site header among them, thin wrappers over the classes of `packages/visual`. |
-| `apps/docs` | The merchant documentation, a VitePress site served at `/docs`. Its JSON examples are test fixtures (see below). |
+| `apps/docs` | The documentation at `/docs`: the merchant pages and the scanner's, written in Markdown and drawn by React Router into static files at build time (`pnpm --filter @agentify/docs build`), which Caddy serves. Its JSON examples are test fixtures (see below); `WRITING.md` says how it is written and which Markdown it understands. |
 | `packages/contracts` | `@nuanu-ai/agentify-contracts`: every shape that crosses a boundary, as zod schemas, and the route table both sides import instead of transcribing. |
 | `packages/core` | The order state machine: pure logic, zero IO, zero runtime dependencies. |
 | `packages/sdk` | `@nuanu-ai/agentify`: what a merchant integrates against. Its runtime tree is the contracts package and zod, and nothing else. |
 | `packages/slice` | A mock merchant and a buyer, driving the offline gate, the `buy` and `smoke` commands, and the stand. |
-| `packages/visual` | `@agentify/visual`: one stylesheet — the tokens, the base element rules and the shared primitives every surface on the origin is drawn with — and under `public/`, the mark and the faces Caddy serves at `/assets` and `/styles`. No build step and no JavaScript. |
+| `packages/visual` | `@agentify/visual`: the stylesheet of tokens, base element rules and shared primitives every surface on the origin is drawn with, the editorial layout the reading pages share, and under `public/`, the mark and the faces Caddy serves at `/assets` and `/styles`. No build step and no JavaScript. |
 | `packages/scanner-contracts`, `packages/scanner-database`, `packages/scanner` | The scanner's private contracts, storage and evaluation engine. |
 | `packages/analytics`, `packages/observability`, `packages/remediation` | The scanner's remaining packages, kept separate from the engine. |
 | `deploy/` | Every Dockerfile, the Compose overlays for test and production, the Caddy route table, and the release: `agentify-release`, the activation script and the one Compose command line per channel. `deploy/README.md` is the release runbook. |

@@ -29,23 +29,6 @@ a[data-going] {
   opacity: 0.6;
 }
 
-/* While the fixed consent banner is up it sets its height here
-   (components/consent-banner.tsx), so a page that fits the window can still
-   scroll its last control out from under the bar. */
-:root {
-  --consent-banner-height: 0px;
-}
-
-body {
-  padding-bottom: var(--consent-banner-height);
-}
-
-/* The header's menu stops above the bar as well, so its last item is never
-   under it. */
-.site-menu {
-  --site-menu-foot: var(--consent-banner-height);
-}
-
 /*
  * The scanner's links are navigation and editorial rows that take their colour
  * and underline from the block they sit in. The shared base's accent with an

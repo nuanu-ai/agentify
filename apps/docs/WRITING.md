@@ -133,3 +133,56 @@ defect was "the code enters the conversation only on the first path"):
 3. **A technical writer's pass** — who each page speaks to, what kind of page
    it is, the vocabulary, tables against prose, links against repetition.
 4. **The humanisation filter** — machine rhythm is rewritten, not softened.
+
+## What the build understands
+
+The pages are Markdown, drawn into HTML when the documentation is built by
+markdown-it, the parser VitePress is built on, so a table, inline HTML and a
+line break come out as markdown-it writes them. A few things plain Markdown
+does not have are understood because the pages use them, and nothing else is.
+
+A heading's anchor is made from its words the way VitePress makes it, so a link
+into a page keeps its target; a heading that begins with a digit gets an anchor
+that begins with an underscore (`_1-make-the-merchant-account-ready`). A heading
+can name its anchor itself with `{#id}` at its end, which the scanner's pages
+do so their old anchors keep working.
+
+A box is written as a container: `::: warning <title>` up to a line of `:::`.
+The kinds are `tip`, `info`, `warning`, `danger` and `note`; each but `note`
+prints its kind where it is given no title.
+
+An example payload is not written into a page but included from its file with
+a line of its own, `<<< @/examples/card/access-monthly.json`, where `@/` is this
+directory. The page then shows the very file the contracts tests validate. An
+include always shows the whole file: a region (`#name`) or options (`{2,4}`)
+after the path stop the build.
+
+A diagram is a `mermaid` code block. The build does not draw it: it shows the
+drawing kept in `diagrams/` under the hash of the diagram's source, and stops
+when there is none. After writing or changing a diagram, run
+`pnpm --filter @agentify/docs diagrams`, which draws what is missing in
+Chromium and deletes what no page uses, and commit the drawings with the page.
+
+What a deployment decides is not written into a page but named: `{{origin}}`
+for the site's address, `{{abuse-email}}` and `{{operator}}` for the scanner's
+contacts. Caddy fills each in when it serves the page, as it fills the notice
+that names the channel, so the test channel's pages name the test site. A name
+works in text, in inline code and in a link's address, and not in a code
+block. A part of a page shown only while the operator's legal identity is not
+published goes inside `:::: unless identity-confirmed` up to a line of `::::`.
+A name the build does not know stops it.
+
+A link to another page is written from the documentation's root, `/orders` or
+`/orders#telling-a-repeat-apart`, and is followed without a reload; a link that
+starts with `http` opens apart; inline HTML is passed through as written.
+
+Everything else VitePress can do is not understood: code groups, highlighted
+lines, imported regions of a file, emoji shortcodes, front matter and Vue
+components either print as written or are dropped. Such a feature is written
+into `app/markdown.server.ts` before a page uses it, with a test.
+
+Each page is listed in `DOCS_GROUPS` in `packages/ui/src/docs.ts`, which the
+contents, the header's menu and the scanner's `llms.txt` read, and given its
+file in `app/pages.ts`. A
+client that prefers Markdown is answered with the page's Markdown as the build
+writes it out: examples included, boxes as quotations and links whole.

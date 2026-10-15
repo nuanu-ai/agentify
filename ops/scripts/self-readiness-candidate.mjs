@@ -1,10 +1,17 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { setTimeout as sleep } from "node:timers/promises";
+import { DOCS_PAGES, docsAddress } from "../../packages/ui/src/docs.ts";
 
 const canonicalOrigin = "https://agentify.ad";
-const publicPaths = ["/", "/store", "/local", "/methodology", "/scanner", "/privacy", "/terms"];
-const sitemapPaths = [...publicPaths, "/agentic-shop"];
+const publicPaths = ["/", "/store", "/local", "/privacy", "/terms"];
+// Every page of the documentation, in the order its contents list them, which
+// the scanner names but does not serve.
+const sitemapPaths = [
+  ...publicPaths,
+  "/agentic-shop",
+  ...DOCS_PAGES.map((page) => docsAddress(page.path)),
+];
 const requiredPasses = [1, 2, 3, 4, 5, 6, 7, 8, 12, 13, 14];
 
 const baseUrl =

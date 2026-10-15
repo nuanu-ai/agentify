@@ -13,8 +13,10 @@ import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "@fontsource/ibm-plex-mono/600.css";
 import "@agentify/visual/tokens.css";
+import "@agentify/visual/consent.css";
 import "./globals.css";
 
+import { ConsentBanner, KeptChoiceScript } from "@agentify/consent";
 import { OnItsWay } from "@agentify/ui";
 import type { ReactNode } from "react";
 import {
@@ -30,7 +32,6 @@ import {
   useRouteLoaderData,
 } from "react-router";
 import { AnalyticsRuntime } from "../components/analytics-runtime";
-import { ConsentBanner } from "../components/consent-banner";
 import { NotFoundPage } from "../components/not-found-page";
 import { PublicConfigProvider } from "../components/public-config";
 import { SystemMessagePage } from "../components/system-message-page";
@@ -78,6 +79,10 @@ export const meta = ({ loaderData, error }: MetaArgs<typeof loader>) =>
  */
 export function SiteBody({ children }: Readonly<{ children: ReactNode }>) {
   const site = useRouteLoaderData<typeof loader>("root");
+  // The operator's dashboard is measured by nobody, so nobody is asked on it.
+  // Its data exists only where it was drawn: to everybody it refuses, /admin is
+  // the site's missing page, and asks as every missing page does.
+  const operator = useRouteLoaderData("routes/admin") !== undefined;
   return site === undefined ? (
     children
   ) : (
@@ -85,7 +90,7 @@ export function SiteBody({ children }: Readonly<{ children: ReactNode }>) {
       <OnItsWay />
       {children}
       <AnalyticsRuntime config={site.analytics} />
-      <ConsentBanner />
+      {operator ? null : <ConsentBanner brand={DISPLAY_BRAND} />}
     </PublicConfigProvider>
   );
 }
@@ -98,6 +103,7 @@ export function Layout({ children }: Readonly<{ children: ReactNode }>) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
+        <KeptChoiceScript />
       </head>
       <body>
         <SiteBody>{children}</SiteBody>

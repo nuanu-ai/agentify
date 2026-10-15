@@ -170,8 +170,16 @@ jobs:
       # choice without a reload.
       - run: pnpm scanner:test:browser
 
-  # The portal keeps a separate gate because its rendered examples are a
-  # distinct release promise. It installs from the same workspace lockfile.
+      # Builds the documentation and checks, in the same Chromium and through
+      # a stand-in for the Caddyfile's /docs block, that the channel's notice
+      # outlives a move between pages, that a click on a fetched link asks for
+      # nothing more, that the search and the outline work, that a phone
+      # reaches the pages and the sections, and that old addresses lead on.
+      - run: pnpm docs:test:browser
+
+  # The documentation keeps a separate gate because its rendered examples are a
+  # distinct release promise. It installs from the same workspace lockfile,
+  # and keeps the speed budget of its pages against the build it makes.
   portal:
     name: portal
     needs: secret_scan
@@ -189,6 +197,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm build:portal
+
+      - run: pnpm --filter @agentify/docs budget
 
   # Every screen state the gallery draws, at a phone's, a tablet's and a
   # desktop's width: nothing on a page reaches past the window, and axe finds

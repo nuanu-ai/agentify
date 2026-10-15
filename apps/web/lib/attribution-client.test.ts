@@ -1,3 +1,4 @@
+import { CONSENT_POLICY_VERSION } from "@agentify/analytics/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { captureLandingAttribution } from "./attribution-client";
@@ -6,7 +7,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 /** The stored choice of a visitor who allowed product analytics. */
 const measured = JSON.stringify({
-  policyVersion: "test-policy",
+  policyVersion: CONSENT_POLICY_VERSION,
   capturedAt: "2026-10-10T00:00:00.000Z",
   source: "banner",
   categories: { essential_processing: true, product_analytics: true },

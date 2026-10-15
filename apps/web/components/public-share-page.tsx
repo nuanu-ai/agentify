@@ -1,5 +1,5 @@
+import { PrivacyChoicesButton } from "@agentify/consent";
 import { Brand } from "./brand";
-import { PrivacyChoicesButton } from "./privacy-choices-button";
 import { PublicResultCard, type PublicResultPreview } from "./public-result-card";
 import styles from "./public-share-page.module.css";
 import { SiteLink } from "./site-link";
@@ -23,7 +23,7 @@ export function PublicSharePage({ preview }: Readonly<{ preview: PublicResultPre
       </main>
       <footer className={styles.footer}>
         <nav aria-label="Public result information">
-          <SiteLink to="/methodology">Methodology</SiteLink>
+          <a href="/docs/scanner/methodology">Methodology</a>
           <SiteLink to="/privacy">Privacy</SiteLink>
           <PrivacyChoicesButton />
         </nav>

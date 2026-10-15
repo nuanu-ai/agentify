@@ -6,11 +6,14 @@
  * it.
  */
 
-import { type ConsentSnapshot, POSTHOG_BROWSER_OPTIONS } from "@agentify/analytics/browser";
+import type { ConsentSnapshot } from "@agentify/analytics/browser";
+import {
+  type BrowserAnalyticsConfig,
+  metaPixelOf,
+  posthogOf,
+} from "@agentify/consent/destinations";
 import type { AnalyticsEventName, Segment } from "@agentify/scanner-contracts";
-import type { PostHog } from "posthog-js";
 
-import type { BrowserAnalyticsConfig } from "../components/analytics-runtime";
 import {
   createClientOwnedEventId,
   dispatchConsentedBrowserEvent,
@@ -95,8 +98,6 @@ export async function deliver(
   }
 }
 
-let posthogPromise: Promise<PostHog> | undefined;
-
 async function sendPosthog(
   config: BrowserAnalyticsConfig,
   name: ClientEventName,
@@ -104,52 +105,13 @@ async function sendPosthog(
   segment: Segment,
   landingVariant: string,
 ) {
-  const { key, host, destinationEnvironment } = config.posthog;
-  if (!key || !host || destinationEnvironment !== config.runtimeEnvironment) return;
-  posthogPromise ??= import("posthog-js").then(({ default: posthog }) => {
-    posthog.init(key, { api_host: host, ...POSTHOG_BROWSER_OPTIONS });
-    return posthog;
-  });
-  const posthog = await posthogPromise;
-  posthog.capture(name, {
+  const posthog = await posthogOf(config);
+  posthog?.capture(name, {
     $insert_id: eventId,
     $process_person_profile: false,
     segment,
     landing_variant: landingVariant,
   });
-}
-
-type MetaWindow = Window & {
-  fbq?: ((...args: unknown[]) => void) & {
-    callMethod?: (...args: unknown[]) => void;
-    queue?: unknown[][];
-    loaded?: boolean;
-    version?: string;
-  };
-  _fbq?: (...args: unknown[]) => void;
-};
-
-function ensureMetaPixel(config: BrowserAnalyticsConfig): MetaWindow["fbq"] | undefined {
-  const { pixelId, destinationEnvironment } = config.meta;
-  if (!pixelId || destinationEnvironment !== config.runtimeEnvironment) return undefined;
-  const target = window as MetaWindow;
-  if (!target.fbq) {
-    const fbq = ((...args: unknown[]) => {
-      if (fbq.callMethod) fbq.callMethod(...args);
-      else fbq.queue?.push(args);
-    }) as NonNullable<MetaWindow["fbq"]>;
-    fbq.queue = [];
-    fbq.loaded = true;
-    fbq.version = "2.0";
-    target.fbq = fbq;
-    target._fbq = fbq;
-    const script = document.createElement("script");
-    script.async = true;
-    script.src = "https://connect.facebook.net/en_US/fbevents.js";
-    document.head.appendChild(script);
-    fbq("init", pixelId);
-  }
-  return target.fbq;
 }
 
 async function sendMetaPixel(
@@ -159,7 +121,7 @@ async function sendMetaPixel(
   segment: Segment,
   landingVariant: string,
 ) {
-  const fbq = ensureMetaPixel(config);
+  const fbq = metaPixelOf(config);
   if (!fbq) return;
   fbq(
     name === "landing_view" || name === "results_viewed" ? "track" : "trackCustom",

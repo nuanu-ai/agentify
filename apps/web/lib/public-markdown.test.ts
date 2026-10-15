@@ -21,12 +21,11 @@ describe("public Markdown variants", () => {
     }
   });
 
-  it("keeps the methodology rubric and merchant route in the agent variant", () => {
+  it("keeps the merchant route and the way to the methodology in the agent variant", () => {
     process.env.APP_BASE_URL = "https://agentify.ad";
-    const methodology = getPublicPageMarkdown("/methodology");
     const front = getPublicPageMarkdown("/");
 
-    expect(methodology.match(/^- `#\d+`/gm)).toHaveLength(18);
     expect(front).toContain("](https://agentify.ad/agentic-shop)");
+    expect(front).toContain("](https://agentify.ad/docs/scanner/methodology)");
   });
 });

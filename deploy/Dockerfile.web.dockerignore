@@ -1,0 +1,48 @@
+# The context of deploy/Dockerfile.web, Caddy with the documentation built
+# inside it; each image reads the ignore file beside its Dockerfile.
+#
+# The image installs from the lockfile; a host's node_modules would be the
+# largest thing in the context and the wrong platform's binaries.
+node_modules
+**/node_modules
+
+.git
+.github
+.claude
+.local
+**/.local
+
+# Build output, rebuilt inside the image.
+**/dist
+**/.react-router
+
+# A developer's own environment and editor leavings.
+.env
+.env.*
+**/.env
+**/.env.*
+**/*.log
+.DS_Store
+
+# Scanner sources have their own Dockerfile-specific contexts. Keep them out
+# of this image, except the consent's rules, which the documentation's consent
+# banner and page views read from the analytics package's source, with the
+# contracts that package names.
+/apps/web
+/apps/scanner-worker
+/apps/browser-observer-actor
+/packages/scanner-database
+/packages/scanner
+/packages/observability
+/packages/remediation
+/ops
+/fixtures
+/.env.scanner.example
+/.actor
+/.actorignore
+
+# Private working material never belongs in an image context.
+/06-design/reference
+/research
+/01-research
+/02-meetings

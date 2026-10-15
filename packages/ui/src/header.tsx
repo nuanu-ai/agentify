@@ -15,8 +15,8 @@ import { Form, Link } from "react-router";
 import { BrandMark } from "./mark.js";
 import { HeaderMenu } from "./menu.js";
 
-/** The surfaces that draw the site header, each a process of its own. */
-export type Surface = "scanner" | "dashboard";
+/** The surfaces that draw the site header, each served apart from the others on the origin. */
+export type Surface = "scanner" | "dashboard" | "docs";
 
 /**
  * How a surface links to a page of its own: `to` is the page's path inside
@@ -26,23 +26,21 @@ type OwnLink = ComponentType<
   Readonly<{ to: string; className?: string; "aria-current"?: "true"; children: ReactNode }>
 >;
 
-type Owner = Surface | "docs";
-
 /** Where on the origin each process answers. */
-const MOUNTED_AT: Readonly<Record<Owner, string>> = {
+const MOUNTED_AT: Readonly<Record<Surface, string>> = {
   scanner: "",
   dashboard: "/dashboard",
   docs: "/docs",
 };
 
-type Place = Readonly<{ owner: Owner; path: string }>;
+type Place = Readonly<{ owner: Surface; path: string }>;
 
 const HOME: Place = { owner: "scanner", path: "/" };
 
 const SECTIONS: readonly (Place & Readonly<{ label: string }>)[] = [
   { owner: "scanner", path: "/agentic-shop", label: "Sell to agents" },
-  { owner: "scanner", path: "/scanner", label: "Scanner" },
-  { owner: "scanner", path: "/methodology", label: "Methodology" },
+  { owner: "docs", path: "/scanner", label: "Scanner" },
+  { owner: "docs", path: "/scanner/methodology", label: "Methodology" },
   { owner: "scanner", path: "/privacy", label: "Privacy" },
 ];
 
@@ -56,6 +54,7 @@ const DOCS: Place = { owner: "docs", path: "/" };
 const DASHBOARD: Readonly<Record<Surface, Place>> = {
   scanner: { owner: "dashboard", path: "/sign-in" },
   dashboard: { owner: "dashboard", path: "/" },
+  docs: { owner: "dashboard", path: "/sign-in" },
 };
 
 /** What every part of the header needs to draw a link: who draws it, and how it links home. */
@@ -104,7 +103,7 @@ export function BrandLockup({ home = "/" }: Readonly<{ home?: string }>) {
 export function SiteDoors({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: ReactNode }>) {
   return (
     <nav aria-label="Docs, dashboard and your session" className="site-doors">
-      <PlaceLink place={DOCS} {...drawn}>
+      <PlaceLink place={DOCS} current={drawn.surface === "docs"} {...drawn}>
         Docs
       </PlaceLink>
       <PlaceLink
@@ -156,13 +155,19 @@ export function SiteHeader({
 }
 
 /**
- * The menu for a bar without room for its links: the public site's sections,
- * "Sell to agents" first, then who is visiting, which the surface draws in
- * `visitor` as it does for the doors.
+ * The menu for a bar without room for its links: what the surface lists of
+ * its own in `contents`, then the public site's sections, "Sell to agents"
+ * first, then who is visiting, which the surface draws in `visitor` as it
+ * does for the doors.
  */
-export function SiteMenu({ visitor, ...drawn }: Drawn & Readonly<{ visitor?: ReactNode }>) {
+export function SiteMenu({
+  visitor,
+  contents,
+  ...drawn
+}: Drawn & Readonly<{ visitor?: ReactNode; contents?: ReactNode }>) {
   return (
     <HeaderMenu>
+      {contents}
       <nav aria-label="Site sections" className="site-menu-sections">
         {SECTIONS.map((section) => (
           <PlaceLink key={section.path} place={section} {...drawn}>

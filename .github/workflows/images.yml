@@ -70,8 +70,8 @@ jobs:
           fetch-depth: 0
       - run: ./scripts/scan-secrets.sh . "$GITHUB_SHA"
 
-  # The build context is the repository root. app, scanner and scanner-worker
-  # read the .dockerignore beside their Dockerfile; web reads the root one.
+  # The build context is the repository root. Each image reads the
+  # .dockerignore beside its Dockerfile.
   build:
     name: build ${{ matrix.image }}
     needs: secret_scan

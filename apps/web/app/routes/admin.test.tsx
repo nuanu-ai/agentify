@@ -18,6 +18,7 @@ import { ask } from "../../testing/scanner";
 
 const SESSION = "agentify.session_token";
 const HEADING = "Agentify operating dashboard";
+const BANNER = 'aria-label="Privacy choices"';
 let sellerDashboard: Server;
 let sellerDashboardAt = "";
 
@@ -72,8 +73,8 @@ const textOf = (tag: "title" | "h1", html: string): string | null =>
 
 /**
  * Asserts that `/admin` is the page for an address the site does not have, for
- * this visitor: as a page, a HEAD, a client navigation and a post to either,
- * none of them carrying the dashboard.
+ * this visitor: as a page, consent banner and all, a HEAD, a client navigation
+ * and a post to either, none of them carrying the dashboard.
  */
 async function expectTheMissingPage(headers: Record<string, string>): Promise<void> {
   const missing = await (await ask("/nimda", { headers })).text();
@@ -83,6 +84,9 @@ async function expectTheMissingPage(headers: Record<string, string>): Promise<vo
   expect(answered.status).toBe(404);
   expect(textOf("title", html)).toBe(textOf("title", missing));
   expect(textOf("h1", html)).toBe(textOf("h1", missing));
+  // Every missing page asks how the visit may be measured, so this one does too.
+  expect(missing).toContain(BANNER);
+  expect(html).toContain(BANNER);
   expect((await ask("/admin", { method: "HEAD", headers })).status).toBe(404);
   const navigated = await ask("/admin.data", { headers });
   expect(navigated.status).toBe(404);

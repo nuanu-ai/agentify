@@ -1,6 +1,6 @@
+import "@agentify/visual/editorial.css";
 import type { ReactNode } from "react";
 import { publicSiteSchema } from "../lib/schema";
-import styles from "./editorial-page.module.css";
 import { usePublicConfig } from "./public-config";
 import { SiteFooter, SiteHeader } from "./site-chrome";
 import { StructuredData } from "./structured-data";
@@ -29,8 +29,8 @@ export function EditorialPage({
     <>
       {structuredData ? <StructuredData schema={publicSiteSchema(config)} /> : null}
       <SiteHeader />
-      <main className={`${styles.layout} container`} id="main">
-        <aside className={styles.desktopToc}>
+      <main className="editorial container" id="main">
+        <aside className="editorial-contents">
           <span>On this page</span>
           {sections.map((section) => (
             <a href={`#${section.id}`} key={section.id}>
@@ -38,11 +38,11 @@ export function EditorialPage({
             </a>
           ))}
         </aside>
-        <article className={styles.article}>
+        <article className="editorial-article">
           <div className="eyebrow">{eyebrow}</div>
           <h1>{title}</h1>
           <p>{intro}</p>
-          <details className={styles.mobileToc}>
+          <details className="editorial-outline">
             <summary>On this page</summary>
             <nav aria-label="On this page">
               {sections.map((section) => (
@@ -66,9 +66,9 @@ export function EditorialPage({
 }
 
 export function ProseList({ children }: Readonly<{ children: ReactNode }>) {
-  return <ul className={styles.proseList}>{children}</ul>;
+  return <ul className="editorial-list">{children}</ul>;
 }
 
 export function Notice({ children }: Readonly<{ children: ReactNode }>) {
-  return <div className={styles.notice}>{children}</div>;
+  return <div className="editorial-notice">{children}</div>;
 }
