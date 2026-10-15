@@ -406,6 +406,31 @@ describe("the search", () => {
     await page.context().close();
   });
 
+  it("keeps both Tab directions inside failed search and returns to its opener on Escape", async () => {
+    const { page } = await visit("/docs/");
+    await page.route("**/docs/search-index.json", (route) =>
+      route.fulfill({ status: 503, body: "" }),
+    );
+    const opener = page.locator(".docs-aside .docs-search-button");
+    await opener.focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "Search the documentation" });
+    const reload = dialog.getByRole("button", { name: "Reload the page" });
+    await reload.waitFor();
+
+    for (const key of ["Tab", "Shift+Tab"]) {
+      await page.keyboard.press(key);
+      expect(await reload.evaluate((element) => element === document.activeElement)).toBe(true);
+    }
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "detached" });
+    await page.waitForFunction(() =>
+      document.activeElement?.classList.contains("docs-search-button"),
+    );
+    expect(await opener.evaluate((element) => element === document.activeElement)).toBe(true);
+    await page.context().close();
+  });
+
   it("says when nothing matches, where a screen reader reads it out", async () => {
     const { page } = await visit("/docs/");
     await page.keyboard.press("/");
