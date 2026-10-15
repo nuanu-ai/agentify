@@ -204,6 +204,16 @@
 			file_server
 		}
 		handle {
+			# Only a page with a prerendered HTML file has a canonical address;
+			# missing paths keep their 404, and the documentation root keeps its slash.
+			@docs_page_slash path_regexp docs_page_slash ^/(.+)/$
+			route @docs_page_slash {
+				@docs_page_exists {
+					not path /index/ /404/
+					file {re.docs_page_slash.1}.html
+				}
+				redir @docs_page_exists /docs/{re.docs_page_slash.1}{?query} 308
+			}
 			# The scripts and stylesheets carry a content hash in their names, so
 			# a browser may keep them for a year; the build writes a brotli and a
 			# gzip copy beside each, sent to a browser that accepts one.

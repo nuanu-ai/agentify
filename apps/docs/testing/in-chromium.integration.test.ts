@@ -598,6 +598,39 @@ describe("an address the documentation answered at before", () => {
   });
 });
 
+describe("the documentation's canonical addresses", () => {
+  it.each(DOCS_PAGES.filter((page) => page.path !== "/"))(
+    "permanently redirects a trailing slash on $path, keeping the query",
+    async (page) => {
+      const address = docsAddress(page.path);
+      const query = "?source=a%2Bb&count=2";
+      const answered = await fetch(`${edge.origin}${address}/${query}`, { redirect: "manual" });
+
+      expect(answered.status).toBe(308);
+      expect(answered.headers.get("location")).toBe(`${address}${query}`);
+      const canonical = await fetch(`${edge.origin}${answered.headers.get("location")}`);
+      expect(canonical.status).toBe(200);
+    },
+  );
+
+  it("keeps the documentation root and refuses a missing page instead of redirecting it", async () => {
+    const root = await fetch(`${edge.origin}/docs/`, { redirect: "manual" });
+    expect(root.status).toBe(200);
+    expect(root.headers.get("location")).toBeNull();
+
+    for (const path of [
+      "/docs/no-such-page/",
+      "/docs/assets/no-such-file/",
+      "/docs/index/",
+      "/docs/404/",
+    ]) {
+      const missing = await fetch(`${edge.origin}${path}`, { redirect: "manual" });
+      expect(missing.status).toBe(404);
+      expect(missing.headers.get("location")).toBeNull();
+    }
+  });
+});
+
 describe("a client that prefers Markdown", () => {
   it.each(DOCS_PAGES.map((page) => docsAddress(page.path)))(
     "is given the page's Markdown, filled for the channel: %s",
