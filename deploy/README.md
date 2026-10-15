@@ -113,6 +113,14 @@ succeeded.
 
 ## Releasing to production
 
+The code that takes a commission names a commission wallet on each network it
+sells on, on Base the product owner's Safe. Before an `app-v*` tag of it goes
+to production, `COMMISSION_SAFE_OWNERS=<the Safe's owners> pnpm
+commission-wallet` passes on both networks, and nothing sells on the live
+channel until the check on Base itself has passed
+(`docs/research/47-commission-in-the-product.md`, «Кошелёк комиссии в Base»
+and «Проверка в основной сети до выпуска на живой канал»).
+
 A production release starts from `main`. Every change a merchant can see in
 the published packages carries a Changeset (`pnpm changeset` on the branch
 that makes it). When a release is due, one pull request prepares the versions:
@@ -398,6 +406,22 @@ restores each dump into a scratch database, and only when all are whole swaps
 them in, in one transaction. The databases it replaced stay beside them as
 `<database>_replaced_<time>` until the next verified release drops them, so a
 restore made by mistake can still be undone by hand until then.
+
+Last, the restore copies into each restored database every payout split the
+database it replaced recorded and it lacks (`deploy/carry-payout-splits`):
+until a split's first payout its row is the only record of how to create it,
+and a split recorded after the restore point may already hold buyers' money.
+Rows are never changed once written, so the copy loses nothing. A restore
+point older than the registry has no table to take them, so they stay in the
+replaced database, and a copy that fails says so and exits non-zero after the
+restore has finished. Either way the next verified release copies them before
+it drops that database, and keeps the database, saying so, while it cannot. A
+copy counts only when every address the replaced database holds is in the
+current one afterwards: a row whose insert did nothing, because the current
+database holds another row for the same merchant and wallet, keeps the
+replaced database and is named. A release of a revision older than this copy
+drops a replaced database without it, so release such a revision only once no
+`<database>_replaced_<time>` holds payout splits.
 
 A bad dump or a failure before the swap leaves the databases as they were and
 the record as the restore found it, so it holds no release back, and the

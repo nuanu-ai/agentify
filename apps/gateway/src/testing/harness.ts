@@ -51,6 +51,7 @@ export const countedIds = (): Ids => {
   };
 };
 
+/** A configuration as `loadConfig` reads it, on the code's own payout split table. */
 export const testConfig = (overrides: Record<string, string> = {}): GatewayConfig =>
   loadConfig({
     DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
@@ -126,7 +127,7 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
   });
   // The store writes an order's envelopes through the queue in the same step as
   // the order, and a test that replaces `queue.stage` replaces the store's too.
-  const store = new MemoryStore(countedIds(), () => now, queue.envelopes());
+  const store = new MemoryStore(config.payment.network, countedIds(), () => now, queue.envelopes());
   const facilitator = new ScriptedFacilitator();
   const announcer = new RecordingAnnouncer();
   const ids = countedIds();
@@ -158,7 +159,7 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
     // One wallet per merchant, or a gateway paying every sale to one address
     // would pass a test about whose it is.
     const wallet = aSeededWallet();
-    await setPayoutWallet(store, made.id, wallet, now);
+    await setPayoutWallet(store, config.payoutSplit, made.id, wallet, now);
     // A live gateway sells only for approved merchants. Approval is granted
     // here rather than defaulted, so merchants made any other way stay
     // unapproved.

@@ -9,7 +9,7 @@
  * in-memory harness.
  */
 
-import type { Gateway } from "@agentify/gateway";
+import { type Gateway, payoutSplitFor, SPLITS_PER_PAYOUT } from "@agentify/gateway";
 import { type Harness, harness, type Served, serve, workOnce } from "@agentify/gateway/testing";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
@@ -223,7 +223,16 @@ describe("a wallet change the gateway would not record", () => {
     harnessed.store.setPayoutWallet = async (id, expected, next, when) => {
       if (!overtaken) {
         overtaken = true;
-        await writing(id, expected, { address: ANOTHER_WALLET, pending: null }, when);
+        await writing(
+          id,
+          expected,
+          {
+            address: ANOTHER_WALLET,
+            split: payoutSplitFor(harnessed.runtime.config.payoutSplit, id, ANOTHER_WALLET),
+            pending: null,
+          },
+          when,
+        );
       }
       return await writing(id, expected, next, when);
     };
@@ -330,5 +339,164 @@ describe("who asks", () => {
 
     expect(disabled.ok).toBe(true);
     expect(disabled.ok ? disabled.document.disabled_at : null).not.toBeNull();
+  });
+});
+
+describe("where an order's payment went", () => {
+  // The order documents never name the address a payment went to, so the
+  // screens and the shop's order lines ask in-process for the split an order
+  // was paid into, as the registry recorded it.
+
+  /** An order quoted and not paid yet. */
+  const aQuotedOrder = async (harnessed: Harness): Promise<string> => {
+    const published = await harnessed.gateway.publishCard(harnessed.merchant.id, AN_ESIM);
+    if (!published.ok) throw new Error(`the card was refused: ${JSON.stringify(published)}`);
+    const offered = await harnessed.gateway.beginPurchase(published.id, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    return offered.order.order.id;
+  };
+
+  const splitInForce = async (harnessed: Harness) =>
+    (await harnessed.store.merchantById(harnessed.merchant.id))?.payoutWallet.split ?? null;
+
+  it("names the split an order's payment was checked against, and none for one paid to the wallet itself", async () => {
+    const harnessed = await started();
+    const intoTheSplit = await aPaidOrder(harnessed, harnessed.merchant.id);
+    // As a gateway of the release before splits kept it: the wallet itself.
+    const intoTheWallet = await aQuotedOrder(harnessed);
+    await harnessed.gateway.runner.presentVerifiedPayment(
+      intoTheWallet,
+      "alice",
+      "PAY-A",
+      harnessed.merchant.wallet,
+      harnessed.now(),
+    );
+    const split = await splitInForce(harnessed);
+    expect(split).not.toBeNull();
+    const client = asTheOwner(harnessed);
+
+    expect(await client.paidInto(intoTheSplit)).toStrictEqual({ ok: true, document: split });
+    expect(await client.paidInto(intoTheWallet)).toStrictEqual({ ok: true, document: null });
+    expect(await client.paidIntoSplits()).toStrictEqual({
+      ok: true,
+      document: { [intoTheSplit]: split },
+    });
+  });
+
+  it("names the split the payment went to after the merchant moved their wallet, not the one in force now", async () => {
+    const harnessed = await started();
+    const before = await splitInForce(harnessed);
+    const orderId = await aPaidOrder(harnessed, harnessed.merchant.id);
+    const client = asTheOwner(harnessed);
+    expect((await client.setPayoutWallet(A_WALLET)).ok).toBe(true);
+    const after = await splitInForce(harnessed);
+    expect(after?.address).not.toBe(before?.address);
+
+    expect(await client.paidInto(orderId)).toStrictEqual({ ok: true, document: before });
+    expect(await client.paidIntoSplits()).toStrictEqual({
+      ok: true,
+      document: { [orderId]: before },
+    });
+  });
+
+  it("counts no share for an order whose charge did not go through", async () => {
+    // Its payment was checked against the split, so the shop's line names it,
+    // but no money reached the split, and a share of it would be a share of
+    // nothing.
+    const harnessed = await started();
+    harnessed.facilitator.willSettle({ settled: false, reason: "refused in the script" });
+    const orderId = await aPaidOrder(harnessed, harnessed.merchant.id);
+    const client = asTheOwner(harnessed);
+
+    expect(await client.paidInto(orderId)).toStrictEqual({
+      ok: true,
+      document: await splitInForce(harnessed),
+    });
+    expect(await client.paidIntoSplits()).toStrictEqual({ ok: true, document: {} });
+  });
+
+  it("names no split for an order not paid yet", async () => {
+    const harnessed = await started();
+    const quoted = await aQuotedOrder(harnessed);
+
+    expect(await asTheOwner(harnessed).paidInto(quoted)).toStrictEqual({
+      ok: true,
+      document: null,
+    });
+    expect(await asTheOwner(harnessed).paidIntoSplits()).toStrictEqual({ ok: true, document: {} });
+  });
+
+  it("answers for another merchant's order as one that is not there", async () => {
+    const harnessed = await started();
+    const other = await harnessed.addMerchant();
+    const theirs = await aPaidOrder(harnessed, other.id);
+
+    expect(await asTheOwner(harnessed).paidInto(theirs)).toStrictEqual({
+      ok: false,
+      status: 404,
+      code: "no_such_order",
+      why: "there is no such order",
+    });
+    expect(await asTheOwner(harnessed).paidIntoSplits()).toStrictEqual({ ok: true, document: {} });
+  });
+});
+
+describe("the payout a merchant is shown", () => {
+  /** Saves a new wallet, as the test channel applies it at once, and sells once into its split. */
+  const paidInto = async (harnessed: Harness, wallet: string): Promise<void> => {
+    expect((await asTheOwner(harnessed).setPayoutWallet(wallet)).ok).toBe(true);
+    const published = await harnessed.gateway.publishCard(harnessed.merchant.id, AN_ESIM);
+    if (!published.ok) throw new Error(`the card was refused: ${JSON.stringify(published)}`);
+    const offered = await harnessed.gateway.beginPurchase(published.id, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    // A payment of its own each time: a payment presented twice is a replay.
+    await harnessed.gateway.payPurchase(offered.order.order.id, `PAY-${wallet}`, `PAY-${wallet}`);
+  };
+
+  /** The nth wallet, all digits so it is its own checksum. */
+  const walletNumber = (n: number): string => `0x${(1_000 + n).toString().padStart(40, "0")}`;
+
+  it("pays out every split that can hold the merchant's money in one transaction, up to the most one carries", async () => {
+    const harnessed = await started();
+    // The wallet the merchant started with was never paid into, so its split
+    // holds nothing; each of these holds one sale.
+    for (let n = 1; n <= SPLITS_PER_PAYOUT; n += 1) {
+      await paidInto(harnessed, walletNumber(n));
+    }
+
+    const read = await asTheOwner(harnessed).payoutSplits();
+
+    const payout = read.ok ? read.document.payout : null;
+    expect(
+      typeof payout === "object" && payout !== null && "splits" in payout ? payout.splits : [],
+    ).toHaveLength(SPLITS_PER_PAYOUT);
+  });
+
+  it("says how many there are, and builds no transaction, past the most one carries", async () => {
+    const harnessed = await started();
+    for (let n = 1; n <= SPLITS_PER_PAYOUT + 1; n += 1) {
+      await paidInto(harnessed, walletNumber(n));
+    }
+
+    const read = await asTheOwner(harnessed).payoutSplits();
+
+    expect(read.ok ? read.document.payout : null).toStrictEqual({
+      tooMany: SPLITS_PER_PAYOUT + 1,
+    });
+  });
+
+  it("has no payout, and no split, for a merchant with no wallet", async () => {
+    const harnessed = await started();
+    const none = await harnessed.gateway.registerMerchant();
+
+    const read = await gatewayFor(harnessed.gateway, {
+      merchantId: none,
+      email: OWNER,
+    }).payoutSplits();
+
+    expect(read).toMatchObject({
+      ok: true,
+      document: { inForce: null, pending: null, payout: null },
+    });
   });
 });

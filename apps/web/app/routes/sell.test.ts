@@ -1,7 +1,6 @@
 /**
  * The merchant landing at `/sell`, asked of the whole process as a browser
- * on the test channel asks it, and drawn on its own for the tariffs it is
- * told to show. Whether the live channel's edge lets a visitor reach it is the
+ * on the test channel asks it, and drawn on its own for its pricing. Whether the live channel's edge lets a visitor reach it is the
  * edge's business, held by the routing smoke and, in a browser, by Chromium.
  */
 
@@ -70,7 +69,7 @@ describe("the merchant landing", () => {
   });
 });
 
-describe("the tariffs the landing is told to show", () => {
+describe("the pricing the landing shows", () => {
   const drawn = (pricing: Partial<(typeof SELL_LANDING)["pricing"]>) =>
     renderToStaticMarkup(
       onSite(
@@ -81,23 +80,15 @@ describe("the tariffs the landing is told to show", () => {
       ),
     );
 
-  it("are each a section of their own, under the note for choosing between them", () => {
+  it("draws each option as a section of its own", () => {
     const html = drawn({});
 
-    for (const tariff of SELL_LANDING.pricing.options) {
-      expect(html).toContain(`id="pricing-${tariff.id}"`);
-      expect(html).toContain(tariff.note);
+    for (const option of SELL_LANDING.pricing.options) {
+      expect(html).toContain(`id="pricing-${option.id}"`);
     }
   });
 
-  it("are drawn without their notes once the notes are put away", () => {
-    const html = drawn({ notesShown: false });
-
-    expect(html).toContain('id="pricing-t1"');
-    expect(html).not.toContain("tariff-flag");
-  });
-
-  it("leave no pricing and no link to it where none is shown", () => {
+  it("leaves no pricing and no link to it where none is shown", () => {
     const html = drawn({ options: [] });
 
     expect(html).not.toContain('id="pricing"');

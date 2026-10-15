@@ -12,6 +12,8 @@
 import type { Order } from "@agentify/core";
 import { describe, expect, it } from "vitest";
 import type { StoredOrder } from "../../ports/store.js";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../../split/networks.js";
+import { payoutSplitFor } from "../../split/parameters.js";
 import { describeStore } from "../../testing/store-contract.js";
 import { MemoryStore } from "./store.js";
 
@@ -76,14 +78,14 @@ const order = (id: string, state: Order["state"]): StoredOrder => ({
   openDeliveryId: null,
 });
 
-describeStore("the store in memory", async () => new MemoryStore(counted()));
+describeStore("the store in memory", async () => new MemoryStore("eip155:84532", counted()));
 
 describe("MemoryStore, where it is not like the other one", () => {
   it("keeps what it was given, whatever the caller does with its copy afterwards", async () => {
     // If this store honoured an edit to a returned object, code that edits what
     // it read would work here and silently do nothing against Postgres, which
     // builds every object afresh from a row.
-    const store = new MemoryStore(counted());
+    const store = new MemoryStore("eip155:84532", counted());
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
     await store.addOrder(order("ord_1", "created"));
 
@@ -95,12 +97,44 @@ describe("MemoryStore, where it is not like the other one", () => {
     expect((await store.orderById("ord_1"))?.itemId).toBe("item_1");
   });
 
+  it("hands out recorded splits that nothing can change in place", async () => {
+    // Postgres refuses any change to a recorded split; a split edited through
+    // a reference this store handed out would let a test pass on what the
+    // database refuses, and a payout built from it would pay another address.
+    const store = new MemoryStore("eip155:84532", counted());
+    await store.addMerchant({ id: A, name: "Merchant A" }, 0);
+    const network = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532");
+    const wallet = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+    const split = payoutSplitFor(network, A, wallet);
+    await store.setPayoutWallet(
+      A,
+      { address: null, pending: null },
+      { address: wallet, split, pending: null },
+      1_000,
+    );
+
+    const reads = [
+      (await store.merchantById(A))?.payoutWallet.split,
+      await store.payoutSplitAt(split.address),
+      ...(await store.splitsToPayOutFor(network.network, A, 2_000)),
+    ];
+    for (const read of reads) {
+      expect(() => {
+        (read as { commissionWallet: string }).commissionWallet = wallet;
+      }).toThrow();
+    }
+
+    expect((await store.payoutSplitAt(split.address))?.commissionWallet).toBe(
+      network.commissionWallet,
+    );
+  });
+
   it("says which merchant a key was refused for", async () => {
     // The shared suite can only check that the key is refused: under Postgres
     // the refusal is the driver's foreign-key error, whose message happens to
     // contain the identifier. Here the guard is this adapter's own, and whoever
     // runs the seed needs to know which merchant is missing.
-    const store = new MemoryStore(counted());
+    const store = new MemoryStore("eip155:84532", counted());
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
 
     await expect(
@@ -124,7 +158,7 @@ describe("MemoryStore writes that go with an order", () => {
     // that is not written down.
     let seenState: string | undefined;
     let store!: MemoryStore;
-    store = new MemoryStore(counted(), undefined, {
+    store = new MemoryStore("eip155:84532", counted(), undefined, {
       async stage(_merchantId, envelope) {
         expect(envelope.id).toBe("env_1");
         return () => {
@@ -173,7 +207,7 @@ describe("MemoryStore writes that go with an order", () => {
     // All or nothing without a transaction: the write that can refuse is taken
     // first, so a refusal leaves no receipt, no envelope and the order where it
     // was.
-    const store = new MemoryStore(counted(), undefined, {
+    const store = new MemoryStore("eip155:84532", counted(), undefined, {
       async stage() {
         throw new Error("the stream would not take it");
       },

@@ -39,7 +39,7 @@ if (databaseUrl === null) {
   });
 } else {
   const connected = connect(databaseUrl);
-  const store = PostgresStore.over(connected.db, randomIds);
+  const store = PostgresStore.over(connected.db, "eip155:8453", randomIds);
   const directory = new PostgresApprovalDirectory(connected.pool);
 
   afterAll(async () => {

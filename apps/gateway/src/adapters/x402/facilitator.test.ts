@@ -13,6 +13,8 @@ import {
 import { describe, expect, it } from "vitest";
 import { PaymentEdge } from "../../http/x402.js";
 import type { Charge } from "../../ports/facilitator.js";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../../split/networks.js";
+import { payoutSplitFor } from "../../split/parameters.js";
 import { X402Facilitator } from "./facilitator.js";
 
 /** The address the merchant behind these charges is paid at. */
@@ -228,6 +230,67 @@ describe("verifying a payment", () => {
     ).toMatchObject({
       verified: false,
       message: "the payment was made out to a different address from the one asked for",
+    });
+  });
+
+  describe("against the order's payout split", () => {
+    const network = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532");
+    const LEFT = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+    const NOW = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+    const leftSplit = payoutSplitFor(network, "mch_a", LEFT).address;
+    const nowSplit = payoutSplitFor(network, "mch_a", NOW).address;
+    const paidTo = (payTo: string): string =>
+      encodePaymentSignatureHeader({
+        x402Version: 2,
+        accepted: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", payTo),
+        payload: { signature: "0xsigned" },
+      });
+    const against = (payment: string, payTo: string): Charge => ({ ...charge(payment), payTo });
+
+    it("refuses a payment made out to the merchant's wallet itself, as a challenge from before splits would name it", async () => {
+      // Agents and catalogs keep challenges; paying one issued before the
+      // split must cost nothing and must not be charged.
+      const client = new Answering();
+
+      const answered = await new X402Facilitator(client, edge).verify(
+        against(paidTo(NOW), nowSplit),
+      );
+
+      expect(answered).toStrictEqual({
+        verified: false,
+        reason: "price_stale",
+        message: "the payment was made out to a different address from the one asked for",
+      });
+      expect(client.asked).toStrictEqual([]);
+    });
+
+    it("refuses a payment made out to a split the merchant has since left, before the facilitator is asked", async () => {
+      // Between the challenge and the payment the split can change; a
+      // payment to the old one is a different purchase and costs the buyer
+      // nothing.
+      const client = new Answering();
+
+      const answered = await new X402Facilitator(client, edge).verify(
+        against(paidTo(leftSplit), nowSplit),
+      );
+
+      expect(answered).toMatchObject({
+        verified: false,
+        reason: "price_stale",
+        message: "the payment was made out to a different address from the one asked for",
+      });
+      expect(client.asked).toStrictEqual([]);
+    });
+
+    it("takes the order's split in either spelling an agent writes it, and asks about our own", async () => {
+      const client = new Answering();
+
+      const answered = await new X402Facilitator(client, edge).verify(
+        against(paidTo(nowSplit.toLowerCase()), nowSplit),
+      );
+
+      expect(answered).toStrictEqual({ verified: true, payer: "0xpayer" });
+      expect(client.asked[0]?.requirements.payTo).toBe(nowSplit);
     });
   });
 

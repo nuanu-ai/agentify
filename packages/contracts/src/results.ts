@@ -95,7 +95,7 @@ export const ProblemSchema = z
      */
     code: z.string().regex(/\S/, "a finding carries a code").meta({
       description:
-        'What kind of finding it is, for the program that reads it. The set is open: a finding about a field of what was sent carries the name the check gave it. Four are promised, always with an empty path, and each says the merchant rather than the card is missing something, so no edit to the card clears it: "no_seller_name" (no name set for buyers to read), "no_payout_wallet" (no wallet set for the sales to be paid into, asked for wherever a payment settles), "no_operator_approval" (the operator has not admitted this merchant to the live catalog, which only the operator can change) and "no_seller_site" (no site set for the merchant\'s shop, asked for on a parcel\'s card alone, because a parcel that does not arrive is a question its buyer takes there).',
+        'What kind of finding it is, for the program that reads it. The set is open: a finding about a field of what was sent carries the name the check gave it. Four are promised, always with an empty path, and each says the merchant rather than the card is missing something, so no edit to the card clears it: "no_seller_name" (no name set for buyers to read), "no_payout_wallet" (no wallet set for the merchant\'s share of sales to arrive at, asked for wherever a payment settles), "no_operator_approval" (the operator has not admitted this merchant to the live catalog, which only the operator can change) and "no_seller_site" (no site set for the merchant\'s shop, asked for on a parcel\'s card alone, because a parcel that does not arrive is a question its buyer takes there).',
     }),
 
     /** The same finding in words, for the person who has to fix the card. */
@@ -147,12 +147,12 @@ export const CARD_REJECTED = "card_rejected";
  * the card, each with an empty path, and none cleared by editing the card.
  *
  * `no_seller_name`: no name for buyers to read, set with `POST /v0/seller-name`
- * or in the dashboard. `no_payout_wallet`: no wallet for sales to be paid
- * into, set only in the dashboard's Settings, since no key of the merchant's
- * code may say where the money goes. `no_operator_approval`: the operator has
- * not admitted the merchant to the live catalog, which only the operator can
- * change. `no_seller_site`: on a parcel's card only, no site for the
- * merchant's shop, set where the name is.
+ * or in the dashboard. `no_payout_wallet`: no wallet for the merchant's
+ * share of sales to arrive at, set only in the dashboard's Settings, since no
+ * key of the merchant's code may say where the money goes.
+ * `no_operator_approval`: the operator has not admitted the merchant to the
+ * live catalog, which only the operator can change. `no_seller_site`: on a
+ * parcel's card only, no site for the merchant's shop, set where the name is.
  */
 export const MERCHANT_FINDINGS = Object.freeze({
   NO_SELLER_NAME: "no_seller_name",

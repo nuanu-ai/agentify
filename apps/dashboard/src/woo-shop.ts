@@ -19,6 +19,7 @@ import {
   type ShipToLocality,
 } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
+import { percentOf, type SplitTerms, sharesOf } from "./shares.js";
 import {
   decimalOfMinorUnits,
   productIdFromMerchantItem,
@@ -447,6 +448,13 @@ export const inspectProductInTheShop = async (
   };
 };
 
+/**
+ * The payout split a sale's payment was checked against, as recorded: where
+ * the money went, and the shares it divides it in. Null on a sale paid to the
+ * merchant's wallet itself, before payments went to splits.
+ */
+export type PaidIntoSplit = SplitTerms & { readonly address: string };
+
 export interface SoldItem {
   /** Goes onto the shop's order as the thread between the two. */
   readonly orderId: string;
@@ -456,7 +464,32 @@ export interface SoldItem {
   /** What the buyer actually paid, which is what the shop's order records. */
   readonly price: Money;
   readonly download: { readonly id: string; readonly name: string };
+  readonly paidInto: PaidIntoSplit | null;
 }
+
+/**
+ * The shop order's metadata: our order identifier, and for a payment into a
+ * split two lines the merchant reads beside the order, the commission on what
+ * was paid and the split it went to. No key begins with an underscore, which
+ * WooCommerce hides. The answer check reads only the identifier, so the lines
+ * neither break nor weaken it.
+ */
+const metadataOf = (
+  orderId: string,
+  paid: Money,
+  into: PaidIntoSplit | null,
+): readonly { readonly key: string; readonly value: string }[] => [
+  { key: "agentify_order_id", value: orderId },
+  ...(into === null
+    ? []
+    : [
+        {
+          key: "agentify_commission",
+          value: `${sharesOf(paid, into).commission} (${percentOf(into.commissionAllocation, into.totalAllocation)})`,
+        },
+        { key: "agentify_payout_contract", value: into.address },
+      ]),
+];
 
 export type OrderMade =
   | {
@@ -766,7 +799,7 @@ export const createTheOrderInTheShop = async (
     set_paid: true,
     currency: sold.price.currency,
     billing: { email: sold.email },
-    meta_data: [{ key: "agentify_order_id", value: sold.orderId }],
+    meta_data: metadataOf(sold.orderId, sold.price, sold.paidInto),
     line_items: [
       {
         product_id: productId,
@@ -937,6 +970,7 @@ export interface ParcelSold {
   readonly rate: ShippingRate;
   /** Read into the order and not kept anywhere of ours. */
   readonly address: ShipTo;
+  readonly paidInto: PaidIntoSplit | null;
 }
 
 export type ParcelMade =
@@ -1013,7 +1047,9 @@ export const createTheParcelInTheShop = async (
     currency: sold.paid.currency,
     billing: { email: sold.email },
     shipping,
-    meta_data: [{ key: "agentify_order_id", value: sold.orderId }],
+    // On what was paid, the goods and the shipping together: the split took
+    // the whole of it.
+    meta_data: metadataOf(sold.orderId, sold.paid, sold.paidInto),
     line_items: [{ product_id: productId, quantity: 1, subtotal: sold.goods, total: sold.goods }],
     shipping_lines: [
       {

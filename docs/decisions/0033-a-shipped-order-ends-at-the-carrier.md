@@ -34,9 +34,9 @@ already recorded, and a different one is refused, because a recorded shipment
 cannot be changed; the merchant deduplicates shipping on the order identifier.
 The order's internal state is then `delivered`, and it reads `shipped` to the
 agent, to the merchant and on the receipt: the parcel is with the carrier and
-the money with the merchant, and that is the last word Agentify has about it.
-The agent's status carries the shipment beside a `delivered` that stays `null`,
-because nothing reached the agent.
+the money in the merchant's split (ADR-0037), and that is the last word
+Agentify has about it. The agent's status carries the shipment beside a
+`delivered` that stays `null`, because nothing reached the agent.
 
 The discovery listing's example purchase ships to Agentify's own office, a real
 place and nobody's home. `ship` and `shipped` join the storefront's open

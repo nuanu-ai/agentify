@@ -51,11 +51,18 @@ describe("a price in the token's own units", () => {
 });
 
 /**
- * The seller's payout address. It differs from the gateway's own wherever both
- * are in play, so a challenge that used the wrong one shows. Mixed case, the
- * form the store hands the edge.
+ * The address the seller is paid at: their payout split, as recorded and
+ * handed to the edge. It differs from the gateway's own wherever both are in
+ * play, so a challenge that used the wrong one shows. Mixed case, the form the
+ * store hands the edge.
  */
-const SELLERS_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+const SELLERS_SPLIT = "0xEf9b422C5c07D99dB578ADF48Db2441b3049F410";
+
+/**
+ * A wallet itself, as the address on an order verified before payments went to
+ * splits, whose charge still goes where it was signed for.
+ */
+const A_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 
 describe("what an agent is asked to pay", () => {
   /** A gateway with an address of its own configured, and a facilitator that settles for real. */
@@ -77,7 +84,7 @@ describe("what an agent is asked to pay", () => {
     const asked = edge(null).requirementsFor(
       { amount: "80.00", currency: "USD" },
       "ord_1",
-      SELLERS_WALLET,
+      SELLERS_SPLIT,
     );
 
     expect(asked).toStrictEqual({
@@ -85,25 +92,29 @@ describe("what an agent is asked to pay", () => {
       network: "eip155:84532",
       asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       amount: "80000000",
-      payTo: SELLERS_WALLET,
+      payTo: SELLERS_SPLIT,
       maxTimeoutSeconds: 300,
       extra: { name: "USDC", version: "2", order_id: "ord_1" },
     });
   });
 
-  it("pays the seller rather than the address this gateway is configured with", () => {
+  it("asks to be paid at the address it is given and nowhere else", () => {
     // The configured address is the operator's; naming it would invite an
-    // agent to pay the operator for somebody else's product.
+    // agent to pay the operator for somebody else's product. The address is
+    // the order's own at verification and at the charge, so the edge maps it
+    // through nothing: a split as recorded, or the wallet an order from before
+    // splits was signed for.
     const ours = "0x0000000000000000000000000000000000000001";
 
-    const asked = edge(ours).requirementsFor(
-      { amount: "80.00", currency: "USD" },
-      "ord_1",
-      SELLERS_WALLET,
-    );
-
-    expect(asked.payTo).toBe(SELLERS_WALLET);
-    expect(asked.payTo).not.toBe(ours);
+    for (const given of [SELLERS_SPLIT, A_WALLET]) {
+      const asked = edge(ours).requirementsFor(
+        { amount: "80.00", currency: "USD" },
+        "ord_1",
+        given,
+      );
+      expect(asked.payTo).toBe(given);
+      expect(asked.payTo).not.toBe(ours);
+    }
   });
 
   it("says nothing about an order when there is no order behind the price", () => {
@@ -112,7 +123,7 @@ describe("what an agent is asked to pay", () => {
     const asked = edge(null).requirementsFor(
       { amount: "80.00", currency: "USD" },
       null,
-      SELLERS_WALLET,
+      SELLERS_SPLIT,
     );
     expect(asked.extra).toStrictEqual({ name: "USDC", version: "2" });
   });
@@ -127,37 +138,28 @@ describe("what an agent is asked to pay", () => {
     ).toThrowError(/nowhere to send the money/);
   });
 
-  it("stands it in for a seller with none in the sandbox, where no money moves", () => {
-    // No money moves in the sandbox, but a challenge still has to name an
-    // address.
+  it("will not ask for money with no address in any mode, the sandbox included", () => {
+    // The sandbox's placeholder is a split computed for the merchant before
+    // the edge is asked, never the configured address itself: a challenge
+    // naming it would show a sale paid somewhere no split stands.
     const ours = "0x0000000000000000000000000000000000000001";
 
-    expect(
-      edge(ours, SANDBOX_FACILITATOR).requirementsFor(
-        { amount: "1.00", currency: "USD" },
-        null,
-        null,
-      ).payTo,
-    ).toBe(ours);
-  });
-
-  it("will not ask for money with nowhere at all to send it", () => {
-    // The sandbox with no address configured either; the refusal names the
-    // variable to set.
-    expect(() =>
-      edge(null, SANDBOX_FACILITATOR).requirementsFor(
-        { amount: "1.00", currency: "USD" },
-        null,
-        null,
-      ),
-    ).toThrowError(/no payment address is configured/);
+    for (const configured of [ours, null]) {
+      expect(() =>
+        edge(configured, SANDBOX_FACILITATOR).requirementsFor(
+          { amount: "1.00", currency: "USD" },
+          null,
+          null,
+        ),
+      ).toThrowError(/nowhere to send the money/);
+    }
   });
 
   it("will not invent an exchange rate for a currency it cannot charge in", () => {
     // Nobody has decided where a rate would come from, and a charge based on one
     // we made up would be the clearest possible claim beyond the evidence.
     expect(() =>
-      edge(null).requirementsFor({ amount: "80.00", currency: "EUR" }, "ord_1", SELLERS_WALLET),
+      edge(null).requirementsFor({ amount: "80.00", currency: "EUR" }, "ord_1", SELLERS_SPLIT),
     ).toThrowError(/will not invent a rate/);
   });
 });
@@ -436,7 +438,7 @@ describe("the discovery declaration a challenge carries", () => {
         itemId: "itm_4d21bb",
         card,
         serviceName: listed.serviceName,
-        payoutWallet: SELLERS_WALLET,
+        payTo: SELLERS_SPLIT,
       }),
     );
 
@@ -486,7 +488,7 @@ describe("the discovery declaration a challenge carries", () => {
           itemId: "itm_4d21bb",
           card: wide,
           serviceName: "n".repeat(32),
-          payoutWallet: SELLERS_WALLET,
+          payTo: SELLERS_SPLIT,
         },
         "POST",
       ),
@@ -541,7 +543,7 @@ describe("the discovery declaration a challenge carries", () => {
             itemId: "itm_4d21bb",
             card: parsed,
             serviceName: "A seller",
-            payoutWallet: SELLERS_WALLET,
+            payTo: SELLERS_SPLIT,
           }),
         ),
       );
@@ -558,7 +560,7 @@ describe("the discovery declaration a challenge carries", () => {
         itemId: "itm_4d21bb",
         card,
         serviceName: null,
-        payoutWallet: SELLERS_WALLET,
+        payTo: SELLERS_SPLIT,
       }),
     );
 
@@ -595,7 +597,7 @@ describe("a parcel's challenge", () => {
     itemId: "itm_parcel",
     card: parcel,
     serviceName: null,
-    payoutWallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    payTo: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
   };
 
   it("says the listed price is the goods alone before any address is named", () => {
@@ -703,7 +705,7 @@ describe("the shape a live validation once accepted", () => {
         itemId: "itm_1",
         card,
         serviceName: "Freeland",
-        payoutWallet: SELLERS_WALLET,
+        payTo: SELLERS_SPLIT,
       }),
     );
     const declared = decoded.extensions?.bazaar as DiscoveryExtension | undefined;

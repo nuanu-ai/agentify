@@ -76,11 +76,17 @@ import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
 import type {
   Integration,
   IntegrationSwitch,
+  PayoutWalletRead,
+  PayoutWalletWrite,
+  RecordedPayoutSplit,
   StoredCard,
   StoredKey,
   StoredOrder,
   StoredPayoutWallet,
 } from "../ports/store.js";
+import { isSameAddress } from "../split/address.js";
+import { type PayoutSplit, payoutSplitFor } from "../split/parameters.js";
+import type { NotAPayoutWallet } from "../split/wallet-rule.js";
 import { orderCallResponseOf } from "./answers.js";
 import {
   issueKey,
@@ -90,12 +96,19 @@ import {
   setSellerSite,
   setServiceName,
 } from "./merchants.js";
+import {
+  journal,
+  recordMissingSplits,
+  refuseUnlessTheSplitsAgree,
+  whyTheRuleRefuses,
+} from "./recorded-splits.js";
 import { OrderRunner, SWEEP_EFFECTS } from "./runner.js";
 import {
   cardAsHeld,
   missingFrom,
   modeForCard,
   payoutWalletAt,
+  payToAt,
   policyFor,
   priceCheckOf,
   type Runtime,
@@ -136,13 +149,17 @@ const ANNOUNCEMENT_ANSWER_MS = 20_000;
  * or telling failed or did not finish in time — though some may have gone
  * out. `raced`: another write landed between reading the wallet and writing
  * it, on a change nothing had announced; `raced_after_announcing`: the same,
- * after this change's own message went out.
+ * after this change's own message went out. `not_a_payout_wallet`: the
+ * address is one a merchant's share could never come back from, and `is`
+ * says what it is; it is refused before the wallet is read and before
+ * anything is written or announced, and the dashboard words it.
  */
 export type WalletChangeRefusal =
   | "nobody_to_tell"
   | "not_announced"
   | "raced"
-  | "raced_after_announcing";
+  | "raced_after_announcing"
+  | { readonly refused: "not_a_payout_wallet"; readonly is: NotAPayoutWallet };
 
 /**
  * Who a call comes from: a key, as the door resolved it, or a dashboard
@@ -184,10 +201,11 @@ export interface PaidResource {
   /** The seller's name in a discovery catalog. */
   readonly serviceName: string | null;
   /**
-   * Where this card's own merchant is paid. It is read from the card's owner
-   * and nowhere else, or one seller's takings go to another.
+   * Where an agent is asked to pay for this card: its own merchant's recorded
+   * split, read from the card's owner and nowhere else, or one seller's
+   * takings go to another. Null where there is nowhere to pay.
    */
-  readonly payoutWallet: string | null;
+  readonly payTo: string | null;
 }
 
 /** What a purchase attempt came to. */
@@ -329,10 +347,16 @@ export class Gateway {
   }
 
   /**
-   * Starts the queue and points its reminders at the order machine; each
-   * reminder becomes one event and nothing more.
+   * Checks the registry of payout splits against this network's payout split
+   * in the code, and refuses to start where they disagree, before anything is
+   * written or any work is taken; then records the split of every wallet that
+   * has none. Only then starts the queue and points its reminders at
+   * the order machine; each reminder becomes one event and nothing more.
    */
   async start(): Promise<void> {
+    await refuseUnlessTheSplitsAgree(this.runtime);
+    await recordMissingSplits(this.runtime);
+
     this.runtime.queue.onReminder(async (reminder) => {
       try {
         await this.#onReminder(reminder);
@@ -443,7 +467,7 @@ export class Gateway {
     }
     // The question the selling word asks of every card later, asked here where
     // somebody can be told what is missing.
-    const missing = missingFrom(merchant, this.runtime.config);
+    const missing = missingFrom(merchant, this.runtime.config, this.runtime.clock());
 
     // A parcel's card asks one more thing of its merchant: the site of their
     // shop, where a buyer takes a parcel that did not arrive. It is checked on
@@ -488,6 +512,7 @@ export class Gateway {
    */
   async catalog(): Promise<{ readonly items: ProjectedCard[] }> {
     const entries = await this.runtime.store.catalogEntries();
+    const at = this.runtime.clock();
     return {
       items: entries
         .filter(
@@ -495,7 +520,7 @@ export class Gateway {
             sellingFor(
               entry.merchant,
               entry.card,
-              sellableBy(entry, this.runtime.config),
+              sellableBy({ ...entry, id: entry.card.merchantId }, this.runtime.config, at),
               entry.integration,
             ) === "open",
         )
@@ -522,6 +547,7 @@ export class Gateway {
       return null;
     }
     const merchant = await this.runtime.store.merchantById(stored.merchantId);
+    const at = this.runtime.clock();
     return {
       stored,
       // The database refuses a card with no owner; if one were ever found, the
@@ -532,16 +558,13 @@ export class Gateway {
           : sellingFor(
               merchant.selling,
               stored,
-              sellableBy(merchant, this.runtime.config),
+              sellableBy(merchant, this.runtime.config, at),
               merchant.integration,
             ),
       serviceName: merchant?.serviceName ?? null,
-      // A pending wallet change is the address once its moment has come, and
-      // not before.
-      payoutWallet:
-        merchant === null
-          ? null
-          : payoutWalletAt(merchant.payoutWallet, this.runtime.clock()).address,
+      // A pending wallet change's split is the one paid once its moment has
+      // come, and not before.
+      payTo: merchant === null ? null : payToAt(merchant, this.runtime.config, at),
     };
   }
 
@@ -575,7 +598,7 @@ export class Gateway {
     }
     return {
       selling: merchant.selling,
-      sellable: sellableBy(merchant, this.runtime.config),
+      sellable: sellableBy(merchant, this.runtime.config, this.runtime.clock()),
       integration: merchant.integration,
     };
   }
@@ -768,6 +791,47 @@ export class Gateway {
   }
 
   /**
+   * This merchant's payout splits on this network, for their payout screen:
+   * the split of the wallet in force now, the split of a wallet waiting (null
+   * where none waits), and every split that can hold money, which their
+   * payout transaction covers: the one in force and each one a payment of
+   * theirs was checked against, in the order they were recorded. Only their
+   * own; the dashboard calls it in-process, and no route answers with it.
+   */
+  async payoutSplitsOf(merchantId: string): Promise<{
+    readonly inForce: RecordedPayoutSplit | null;
+    readonly pending: RecordedPayoutSplit | null;
+    readonly toPayOut: readonly RecordedPayoutSplit[];
+  }> {
+    const merchant = await this.runtime.store.merchantById(merchantId);
+    if (merchant === null) {
+      throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
+    }
+    const at = this.runtime.clock();
+    const now = payoutWalletAt(merchant.payoutWallet, at);
+    return {
+      inForce: now.split,
+      pending: now.pending?.split ?? null,
+      toPayOut: await this.runtime.store.splitsToPayOutFor(
+        this.runtime.config.payoutSplit.network,
+        merchantId,
+        at,
+      ),
+    };
+  }
+
+  /**
+   * Every split recorded on this network, every merchant's, for the
+   * operator's payout command, in the order they were recorded: any of them
+   * may hold money, and a payout of one that holds nothing costs only gas.
+   * Across merchants on purpose, so nothing reachable from a request may call
+   * it.
+   */
+  async splitsToPayOut(): Promise<readonly RecordedPayoutSplit[]> {
+    return this.runtime.store.payoutSplitsOn(this.runtime.config.payoutSplit.network);
+  }
+
+  /**
    * Sets where this merchant's sales are paid, or asks for a change of it to
    * wait, and returns the wallet as it then stands or why it was refused. Only
    * a dashboard session reaches it, in-process; no route at the door calls it,
@@ -785,10 +849,20 @@ export class Gateway {
    *
    * Asking for the pending address again is a retry and sends nothing; asking
    * for the current address while a change is pending cancels it, written at
-   * once and announced afterwards. No lock is held across the announcement:
+   * once and announced afterwards. An address is the same in either spelling.
+   * A wallet in force with no recorded split is paid nothing, so the wallet set
+   * over it replaces nothing and is set as a first one is. A replacement is
+   * announced from the split recorded for the wallet in force, the one buyers
+   * pay into until it applies. No lock is held across the announcement:
    * the write is conditional on the row still holding what was read, so a
    * change recorded in between turns this one away as `raced`. The answer is
    * read off the written row, never echoed.
+   *
+   * On every path, live or not, an address a merchant's share could never
+   * come back from is refused first, before any message goes out: any
+   * merchant's split, a commission wallet, a contract a payout calls, a
+   * network's token, or the zero address. Every address written is recorded
+   * with its split in the same write.
    */
   async setPayoutWallet(
     merchantId: string,
@@ -799,44 +873,56 @@ export class Gateway {
     // The dashboard holds the same rule on the way in, so a throw from here is
     // a caller that skipped it.
     const address = payoutWalletFrom(wallet);
+    const is = await whyTheRuleRefuses(this.runtime, address);
+    if (is !== null) {
+      return { refused: "not_a_payout_wallet", is };
+    }
     const merchant = await this.runtime.store.merchantById(merchantId);
     if (merchant === null) {
       throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
     const read = merchant.payoutWallet;
     const now = payoutWalletAt(read, this.runtime.clock());
+    // Every address written goes with its split, computed by this network's
+    // payout split and recorded in the same write as the wallet.
+    const splitOf = (wallet: string): PayoutSplit =>
+      payoutSplitFor(this.runtime.config.payoutSplit, merchantId, wallet);
+    const alone = { address, split: splitOf(address), pending: null };
 
     if (!this.#announces()) {
-      return await this.#recordWallet(merchantId, read, { address, pending: null });
+      return await this.#recordWallet(merchantId, read, alone);
     }
 
-    if (now.address === null) {
+    const paidNow = now.split;
+    if (paidNow === null) {
       // The first address replaces nothing, so it waits on nothing and a
       // message that cannot be sent refuses nothing; the message is how the
       // owner hears of a session that is not theirs setting it.
-      const set = await this.#recordWallet(merchantId, read, { address, pending: null });
+      const set = await this.#recordWallet(merchantId, read, alone);
       if (typeof set !== "string") {
         this.#announceAfterwards({
           kind: "wallet_set",
           merchant_id: merchantId,
           to: address,
+          to_split: alone.split.address,
           asked_with: askedWith,
         });
       }
       return set;
     }
 
-    if (address === now.address) {
+    if (isSameAddress(address, paidNow.merchantWallet)) {
       if (now.pending === null) {
         return payoutWalletAnswer(now);
       }
       const cancelled = now.pending.address;
-      const written = await this.#recordWallet(merchantId, read, { address, pending: null });
+      const written = await this.#recordWallet(merchantId, read, alone);
       if (typeof written !== "string") {
         this.#announceAfterwards({
           kind: "wallet_change_cancelled",
           merchant_id: merchantId,
           kept: address,
+          kept_split: alone.split.address,
           cancelled,
           asked_with: askedWith,
         });
@@ -844,15 +930,20 @@ export class Gateway {
       return written;
     }
 
-    if (now.pending?.address === address) {
+    if (now.pending !== null && isSameAddress(now.pending.address, address)) {
       return payoutWalletAnswer(now);
     }
 
+    // The splits the message names are the ones the write records, or finds
+    // recorded as these, or it refuses: the merchant is never told of an
+    // address buyers will not pay.
     const told = await this.#announce({
       kind: "wallet_change",
       merchant_id: merchantId,
-      from: now.address,
+      from: paidNow.merchantWallet,
+      from_split: paidNow.address,
       to: address,
+      to_split: alone.split.address,
       not_before: asTimestamp(this.runtime.clock() + WALLET_CHANGE_WAITS_MS),
       asked_with: askedWith,
     });
@@ -863,10 +954,24 @@ export class Gateway {
     // Counted from now, after every message was handed over, so the change
     // takes effect no earlier than the moment any message named.
     const recorded = await this.#recordWallet(merchantId, read, {
-      address: now.address,
-      pending: { address, takesEffectAt: this.runtime.clock() + WALLET_CHANGE_WAITS_MS },
+      address: paidNow.merchantWallet,
+      split: paidNow,
+      pending: {
+        address,
+        takesEffectAt: this.runtime.clock() + WALLET_CHANGE_WAITS_MS,
+        split: alone.split,
+      },
     });
     return recorded === "raced" ? "raced_after_announcing" : recorded;
+  }
+
+  /**
+   * Refuses, in words, where the registry of payout splits disagrees with this
+   * network's payout split in the code (`RefusedToStart`). `start` asks it
+   * first; a command that reads the registry asks it alone, starting nothing.
+   */
+  async refuseUnlessTheSplitsAgree(): Promise<void> {
+    await refuseUnlessTheSplitsAgree(this.runtime);
   }
 
   /** Whether this deployment waits on and announces a change: the live one alone. */
@@ -881,8 +986,8 @@ export class Gateway {
    */
   async #recordWallet(
     merchantId: string,
-    read: StoredPayoutWallet,
-    next: StoredPayoutWallet & { readonly address: string },
+    read: PayoutWalletRead,
+    next: PayoutWalletWrite,
   ): Promise<PayoutWallet | "raced"> {
     const written = await this.runtime.store.setPayoutWallet(
       merchantId,
@@ -894,7 +999,10 @@ export class Gateway {
       throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
     if (written !== "moved") {
-      return payoutWalletAnswer(payoutWalletAt(written.payoutWallet, this.runtime.clock()));
+      journal(written.recorded);
+      return payoutWalletAnswer(
+        payoutWalletAt(written.merchant.payoutWallet, this.runtime.clock()),
+      );
     }
     // Another write landed in between. If it wrote exactly what this call
     // asked for, it was a retry after a dropped connection, and the answer is
@@ -1232,15 +1340,15 @@ export class Gateway {
     // nothing, so a stranger's junk cannot spend the life of somebody else's
     // order; the order stays open until its own deadline.
     //
-    // The payee is this order's merchant's address, read once here at the
-    // instant of verification, and the same string is kept on the order for
-    // the charge, so the money goes where the payer signed for it to go rather
-    // than wherever the merchant's wallet has moved by then.
+    // The payee is this order's merchant's recorded split, read once here at
+    // the instant of verification, and the same string is kept on the order
+    // for the charge, so the money goes where the payer signed for it to go
+    // rather than wherever the merchant's wallet has moved by then.
     const payingMerchant = await this.runtime.store.merchantById(before.merchantId);
     const payTo =
       payingMerchant === null
         ? null
-        : payoutWalletAt(payingMerchant.payoutWallet, this.runtime.clock()).address;
+        : payToAt(payingMerchant, this.runtime.config, this.runtime.clock());
 
     const verified = await this.runtime.facilitator.verify({
       orderId,
@@ -2363,10 +2471,11 @@ const MERCHANT_PROBLEMS: Readonly<Record<MerchantFinding, Problem>> = {
     path: [],
     code: MERCHANT_FINDINGS.NO_PAYOUT_WALLET,
     message:
-      "this merchant has not set a wallet to be paid at, so the money from sales of this card" +
-      " would have nowhere to go — a buyer's agent pays the merchant's own address directly and" +
-      " nothing of it is held here; a person signed in to the merchant's dashboard sets one on its" +
-      " Settings screen, and then this card can be published again",
+      "this merchant has not set a wallet for their share of sales, so the money from sales of" +
+      " this card would have nowhere to go — a buyer's agent pays into a payout contract made for" +
+      " the merchant's wallet, which sends the merchant's share there, and nothing of it is held" +
+      " here; a person signed in to the merchant's dashboard sets one on its Settings screen, and" +
+      " then this card can be published again",
   },
   no_operator_approval: {
     path: [],

@@ -36,5 +36,9 @@ output/
 # Python bytecode caches (the deployment scripts and their tests)
 __pycache__/
 
+# Written by the split smoke where it runs: the parameters of every split a run
+# paid, for a payout of whatever a run left there.
+split-smoke.jsonl
+
 # Written by deploy/activate.sh on a host: the images that checkout runs.
 deploy/images.env*
