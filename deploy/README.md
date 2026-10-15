@@ -644,6 +644,12 @@ refused by the release preflight before activation switches the running
 release. Deployed channels require their HTTPS public origin and
 `AGENTIFY_COOKIE_SECURE=true`.
 
+Use separate Google Cloud projects for TEST and PRODUCTION under the
+`nuanu.ai` organization, as required by
+[Google's environment-isolation policy](https://developers.google.com/identity/protocols/oauth2/policies#use-separate-projects-for-testing-and-production).
+The organization owns the projects; the External audience lets merchants
+outside that organization sign in.
+
 In [Google Auth Platform](https://console.cloud.google.com/auth/overview),
 configure Branding with Agentify's name, support contact, home page, privacy
 policy and terms. The public pages are `https://agentify.ad/`,
@@ -656,10 +662,9 @@ brand verification steps before opening access to merchants. See Google's
 [consent configuration](https://developers.google.com/workspace/guides/configure-oauth-consent)
 and [OAuth policies](https://developers.google.com/identity/protocols/oauth2/policies).
 
-Create an OAuth client of type **Web application** under Clients. Use separate
-clients for local development, TEST and PRODUCTION so a test credential does
-not authorize a production redirect. Register the exact authorized redirect
-URI for that client:
+Create an OAuth client of type **Web application** under Clients in each
+channel's project. Keep local development clients outside the production
+project. Register the exact authorized redirect URI for that client:
 
 | Environment | Authorized redirect URI |
 | --- | --- |
