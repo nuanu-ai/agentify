@@ -71,6 +71,17 @@ export interface ServedForm {
   readonly action: string;
   /** Each input that carries a name, with the value it was served with. */
   readonly fields: ReadonlyMap<string, string>;
+  /**
+   * Each button that submits the form, with the name and value it adds to what
+   * is sent when it is the one pressed.
+   */
+  readonly presses: readonly ServedPress[];
+}
+
+export interface ServedPress {
+  readonly name: string | undefined;
+  readonly value: string | undefined;
+  readonly label: string;
 }
 
 /**
@@ -87,10 +98,18 @@ export const formsIn = (html: string): ServedForm[] =>
       const name = attribute(input, "name");
       if (name !== undefined) fields.set(name, attribute(input, "value") ?? "");
     }
+    const presses = [...inside.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)]
+      .filter(([, tag = ""]) => (attribute(tag, "type") ?? "submit").toLowerCase() === "submit")
+      .map(([, tag = "", label = ""]) => ({
+        name: attribute(tag, "name"),
+        value: attribute(tag, "value"),
+        label: readable(label),
+      }));
     return {
       method: (attribute(written, "method") ?? "get").toLowerCase(),
       action: attribute(written, "action") ?? "",
       fields,
+      presses,
     };
   });
 

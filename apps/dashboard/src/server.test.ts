@@ -1398,6 +1398,101 @@ describe("the box that tells the ad tracker an ad's visitor signed up", () => {
   });
 });
 
+/** Where a page's links lead. */
+const linksIn = (html: string): string[] =>
+  [...html.matchAll(/<a\b[^>]*\bhref="([^"]*)"/gi)].map(([, href = ""]) => href);
+
+/** The latest mailed link's page, as its address asks for it. */
+const landingOfLatest = async (running: Running, browser: Browser): Promise<Visit> => {
+  const action = actionIn(running.mails.at(-1));
+  return await browser.get(`${action.pathname}${action.search}`);
+};
+
+/** The button a person presses on a page, with everything its form carries. */
+const press = async (browser: Browser, html: string, value: string | undefined) => {
+  const form = formTo(html, "post", "/sign-in/open");
+  const pressed = form?.presses.find((one) => one.value === value);
+  if (form === undefined || pressed === undefined) throw new Error("the page has no such button");
+  return await browser.post(form.action, {
+    ...Object.fromEntries(form.fields),
+    ...(pressed.name === undefined ? {} : { [pressed.name]: pressed.value ?? "" }),
+  });
+};
+
+describe("the link's page, where the address's owner confirms telling the tracker", () => {
+  it("says what pressing tells AI Samurai, leads to the privacy page and offers to sign in without it, writing nothing", async () => {
+    const running = await started({ dashboard: REPORTING });
+    await running.browser.post("/sign-in", {
+      email: FRESH.email,
+      clickid: CLICK,
+      ads_consent: "yes",
+    });
+
+    const landing = await landingOfLatest(running, await running.another());
+
+    expect(landing.status).toBe(200);
+    expect(readable(landing.html)).toContain(ADS_CONSENT.confirmation);
+    expect(linksIn(landing.html)).toContain("/privacy#processors");
+    const form = formTo(landing.html, "post", "/sign-in/open");
+    expect(form?.fields.has("report")).toBe(false);
+    expect(form?.presses.map(({ name, value }) => ({ name, value }))).toStrictEqual([
+      { name: "report", value: "yes" },
+      { name: "report", value: "no" },
+    ]);
+    expect(await running.identity.byEmail(FRESH.email)).toBeNull();
+    expect(registrationsIn(running)).toStrictEqual([]);
+  });
+
+  it("records the registration when the owner presses yes, and none when they sign in without telling, signing in either way", async () => {
+    const running = await started({ dashboard: REPORTING });
+
+    for (const [email, answer] of [
+      ["says-yes@example.com", "yes"],
+      ["says-no@example.com", "no"],
+    ] as const) {
+      const owner = await running.another();
+      await owner.post("/sign-in", { email, clickid: CLICK, ads_consent: "yes" });
+      const landing = await landingOfLatest(running, owner);
+
+      const opened = await press(owner, landing.html, answer);
+
+      expect(opened.status, answer).toBe(303);
+      expect((await running.identity.byEmail(email))?.confirmed, answer).toBe(true);
+    }
+    const yes = await running.identity.byEmail("says-yes@example.com");
+    expect(registrationsIn(running)).toMatchObject([{ accountId: yes?.id, clickId: CLICK }]);
+    expect(registrationsIn(running)).toHaveLength(1);
+  });
+
+  it("draws today's page, asking nothing, for a link that would tell the tracker nothing", async () => {
+    // Asked for without a click, with the box left unticked, or for an address
+    // already verified: no press of these reports anything.
+    const running = await started({ dashboard: REPORTING });
+    const pages: string[] = [];
+    const ask = async (form: Record<string, string>) => {
+      rewindLinkSends(running.rows);
+      await running.browser.post("/sign-in", { email: FRESH.email, ...form });
+      const action = actionIn(running.mails.at(-1));
+      const landing = await landingOfLatest(running, await running.another());
+      pages.push(landing.html.replaceAll(action.searchParams.get("token") ?? "", "TOKEN"));
+    };
+
+    await ask({});
+    await ask({ clickid: CLICK });
+    await openLatest(running);
+    await ask({ clickid: CLICK, ads_consent: "yes" });
+
+    const [today, ...others] = pages.map(seenOn);
+    for (const other of others) expect(other).toStrictEqual(today);
+    const form = formTo(pages[0] ?? "", "post", "/sign-in/open");
+    expect(form?.presses.map(({ name, value }) => ({ name, value }))).toStrictEqual([
+      { name: undefined, value: undefined },
+    ]);
+    expect(readable(pages[0] ?? "")).not.toContain(ADS_CONSENT.confirmation);
+    expect(linksIn(pages[0] ?? "")).not.toContain("/privacy#processors");
+  });
+});
+
 describe("what the React pages take from a stranger", () => {
   it("reads a body that is not a form as a form with nothing in it", async () => {
     // A program can post anything; the pages answer it as the empty form it
