@@ -743,6 +743,45 @@ describe("measuring a visit", () => {
   });
 
   it.each([
+    ["the contents column on a wide screen", { width: 1440, height: 760 }, false],
+    ["the page's sections on a phone", { width: 390, height: 844 }, true],
+  ])("keeps the end of %s clear of the banner that asks", async (_what, viewport, phone) => {
+    const { page } = await visit("/docs/orders", viewport, phone, false);
+    const banner = page.getByRole("complementary", { name: "Privacy choices" });
+    await page.waitForFunction(
+      () =>
+        getComputedStyle(document.documentElement).getPropertyValue("--consent-banner-height") !==
+        "0px",
+    );
+    // Read further down, where the column and the bar stay in place as the page scrolls.
+    await page.evaluate(() => window.scrollTo({ top: 1200, behavior: "instant" }));
+    if (phone) await page.locator(".docs-bar").getByText("On this page").click();
+    const list = page.locator(phone ? ".docs-bar .docs-outline nav" : ".docs-aside");
+    await list.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    const last = await list.locator("a").last().boundingBox();
+    const asking = await banner.boundingBox();
+
+    expect((last?.y ?? 0) + (last?.height ?? 0)).toBeLessThanOrEqual(asking?.y ?? 0);
+    await page.context().close();
+  });
+
+  it("lays the search over the banner that asks, which cannot be reached past it", async () => {
+    const { page } = await visit("/docs/orders", { width: 390, height: 844 }, true, false);
+    const asking = await page.getByRole("complementary", { name: "Privacy choices" }).boundingBox();
+    await page.locator(".docs-bar .docs-search-button").click();
+    await page.getByRole("combobox").waitFor();
+
+    const above = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x, y)?.closest(".search-backdrop") !== null,
+      [(asking?.x ?? 0) + 20, (asking?.y ?? 0) + 20] as const,
+    );
+    expect(above).toBe(true);
+    await page.context().close();
+  });
+
+  it.each([
     ["the scanner's", "/privacy", "the documentation", "/docs/money"],
     ["the documentation's", "/docs/money", "the scanner's", "/privacy"],
   ])("holds a choice made on %s pages on %s pages", async (_where, from, _there, to) => {
