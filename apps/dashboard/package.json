@@ -25,6 +25,7 @@
     "@agentify/scanner-contracts": "workspace:*",
     "@agentify/ui": "workspace:*",
     "@agentify/visual": "workspace:*",
+    "@base-org/account": "2.5.13",
     "@nuanu-ai/agentify-contracts": "workspace:*",
     "@react-router/express": "8.4.0",
     "@react-router/node": "8.4.0",
@@ -36,6 +37,7 @@
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-router": "8.4.0",
+    "viem": "2.47.0",
     "zod": "4.4.3"
   },
   "devDependencies": {

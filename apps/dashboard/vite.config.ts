@@ -21,6 +21,10 @@ export default defineConfig({
     // load later; nothing serves it.
     manifest: true,
     rollupOptions: {
+      // Coinbase Wallet's package can compress its payment links with
+      // brotli-wasm, which the dashboard never calls; the bundler drops that
+      // code but would still copy the megabyte of WebAssembly beside it.
+      external: ["brotli-wasm"],
       output: {
         manualChunks(id) {
           return /\/packages\/ui\/|\/app\/components\//.test(id) ? "components" : undefined;

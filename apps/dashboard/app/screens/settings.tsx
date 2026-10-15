@@ -4,6 +4,7 @@ import { Form } from "react-router";
 import type { PayoutView, SettingsView, SplitView, WalletView } from "../../src/settings-view.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
+import { CoinbaseAddress, CoinbasePayout } from "../wallet/buttons.js";
 
 /**
  * An address whole, never with the middle elided: first-few, dots, last-few is
@@ -200,6 +201,9 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
           </div>
         </div>
       </div>
+      {wallet.chain === null ? null : (
+        <CoinbaseAddress chainId={wallet.chain} box="payout_wallet" />
+      )}
       <PostForm document action="/settings/payout-wallet" className="issue">
         {(pressed) => (
           <>
@@ -224,7 +228,7 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
       </PostForm>
       <div className="panel-messages">
         {problem === null || typed === "" ? null : (
-          <p className="address">
+          <p className="address" id="payout_wallet-refused">
             <Address address={typed} />
           </p>
         )}
@@ -284,6 +288,9 @@ function PayoutPanel({ payout }: Readonly<{ payout: PayoutView }>) {
           </p>
         </div>
       </div>
+      {payout.chain === null ? null : (
+        <CoinbasePayout chainId={payout.chain} payout={{ to: payout.to, data: payout.data }} />
+      )}
       <dl className="payout">
         <dt>To</dt>
         <dd>

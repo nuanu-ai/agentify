@@ -230,6 +230,13 @@ const ADDRESSES: Readonly<Record<SurfaceMode, string | null>> = {
   sandbox: null,
 };
 
+/** The chain a merchant's wallet works on, as each channel's configuration names it. */
+const WALLET_CHAINS: Readonly<Record<SurfaceMode, number | null>> = {
+  live: 8453,
+  test: 84532,
+  sandbox: null,
+};
+
 /** The example addresses from the checksum's own specification. */
 const PAID_INTO = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 const ASKED_FOR = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
@@ -482,6 +489,7 @@ const settingsOf = (more: Partial<Settings> = {}, mode: SurfaceMode = "live"): S
   payoutWallet: PayoutWalletSchema.parse({ payout_wallet: PAID_INTO, pending: null }),
   payoutSplits: splitsOf(mode, PAID_INTO),
   addressPage: ADDRESSES[mode],
+  walletChain: WALLET_CHAINS[mode],
   ...more,
 });
 
@@ -1757,6 +1765,7 @@ const SETTINGS: GalleryState[] = [
       payoutWallet: PayoutWalletSchema.parse({ payout_wallet: null, pending: null }),
       payoutSplits: splitsOf("test", null),
       addressPage: ADDRESSES.test,
+      walletChain: WALLET_CHAINS.test,
     }),
     { mode: "test" },
   ),
