@@ -339,7 +339,7 @@ describe("who an agent is told to pay", () => {
     const golden = handEncoded.splits.find(
       (split) =>
         split.network === "eip155:84532" &&
-        split.commissionWallet === "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+        split.commissionWallet === "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5",
     );
     if (golden === undefined) {
       throw new Error(
