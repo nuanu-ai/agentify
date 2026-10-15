@@ -86,6 +86,7 @@ export function ConsentPreferencesPanel(props: {
   onClose: () => void;
 }) {
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: clicking outside is a pointer shortcut; Escape and Cancel close the dialog from the keyboard
     <div className="consent-backdrop" role="presentation" onMouseDown={props.onClose}>
       <section
         aria-describedby="consent-description"

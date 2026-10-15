@@ -44,7 +44,7 @@ function Metric({ label, value, note }: Readonly<{ label: string; value: string;
 function DailyBars({ rows }: Readonly<{ rows: OperatorDailyFunnel[] }>) {
   const max = Math.max(1, ...rows.map((row) => row.landingViews));
   return (
-    <div className={styles.bars} aria-label="Daily traffic and scan volume">
+    <section className={styles.bars} aria-label="Daily traffic and scan volume">
       {rows.map((row) => (
         <div className={styles.barColumn} key={row.day} title={row.day}>
           <div className={styles.barTrack}>
@@ -62,7 +62,7 @@ function DailyBars({ rows }: Readonly<{ rows: OperatorDailyFunnel[] }>) {
           <span>{row.day.slice(8)}</span>
         </div>
       ))}
-    </div>
+    </section>
   );
 }
 
@@ -256,10 +256,10 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
           </div>
           <p>Hostnames only · no submitted query strings</p>
         </div>
-        <div
+        <section
           aria-label="Recently checked sites table"
           className={styles.tableWrap}
-          role="region"
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: the overflowing table must be reachable for keyboard scrolling
           tabIndex={0}
         >
           <table>
@@ -294,7 +294,7 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
               ))}
             </tbody>
           </table>
-        </div>
+        </section>
       </section>
     </>
   );

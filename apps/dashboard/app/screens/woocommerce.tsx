@@ -65,7 +65,9 @@ function WayBack({ leaving }: Readonly<{ leaving: string | null }>) {
       {(pending) => (
         <>
           <div>
-            <label>You sell through a WooCommerce shop, and none is connected</label>
+            <p className="issue-title">
+              You sell through a WooCommerce shop, and none is connected
+            </p>
             <p className="quiet">
               Nothing sells until a shop is connected. To sell through your own code instead, switch
               back: the cards your code published come back, with selling stopped until you start it
@@ -184,7 +186,7 @@ function Connection({
           {(pending) => (
             <>
               <div>
-                <label>You sell through your own code</label>
+                <p className="issue-title">You sell through your own code</p>
                 <p className="quiet">
                   This shop is connected, but its cards are off sale and nothing can be imported
                   while you sell through your own code. Selling through the shop takes the cards
@@ -208,7 +210,7 @@ function Connection({
         {(pending) => (
           <>
             <div>
-              <label>Import the catalog</label>
+              <p className="issue-title">Import the catalog</p>
               <p className="quiet">
                 Reads up to {connection.productsAtMost} products and publishes only the product
                 configuration currently supported by this connector, described above. Other products
@@ -251,7 +253,7 @@ function Connection({
         {(pending) => (
           <>
             <div>
-              <label>Disconnect</label>
+              <p className="issue-title">Disconnect</p>
               <p className="quiet">
                 Deletes the keys your shop gave us and switches you back to selling through your own
                 code: the shop's cards go off sale, and the cards your code published come back,

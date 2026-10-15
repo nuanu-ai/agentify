@@ -134,6 +134,8 @@ export default function DocPage() {
         />
       ) : null}
       <div className="eyebrow">{page.group}</div>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: delegates clicks from the article's native buttons and links, including keyboard activation */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: native buttons and links already turn their keyboard activation into a click */}
       <div
         className="doc"
         onClick={pressInside}

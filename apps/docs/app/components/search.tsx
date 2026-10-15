@@ -9,7 +9,8 @@ export type Close = Readonly<{ onClose: (restoreFocus: boolean) => void }>;
  */
 export function SearchUnavailable({ onClose }: Close) {
   return (
-    <div className="search-backdrop" onClick={() => onClose(true)}>
+    // biome-ignore lint/a11y/noStaticElementInteractions: clicking outside is a pointer shortcut; Escape inside the dialog closes it from the keyboard
+    <div className="search-backdrop" role="presentation" onClick={() => onClose(true)}>
       <div
         className="search-panel"
         role="dialog"
@@ -25,6 +26,7 @@ export function SearchUnavailable({ onClose }: Close) {
           was opened. Reload the page to search it.
         </p>
         <button
+          // biome-ignore lint/a11y/noAutofocus: the reader opened this dialog, so its only action takes focus
           autoFocus
           type="button"
           className="button button-secondary search-reload"

@@ -112,6 +112,7 @@ export function KeysScreen({ view }: Readonly<{ view: KeysView }>) {
                 name="label"
                 type="text"
                 autoComplete="off"
+                // biome-ignore lint/a11y/noAutofocus: only the explicit new-key action asks this field to take focus
                 autoFocus={view.startNew}
                 required
               />

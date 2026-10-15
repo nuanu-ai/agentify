@@ -24,6 +24,7 @@ export function Outline({
     <details className="editorial-outline docs-outline" ref={outline}>
       <summary>On this page</summary>
       <nav aria-label="On this page">
+        {/* biome-ignore lint/a11y/useValidAnchor: the fragment works without script; the handler folds the outline and scrolls to the page's top */}
         <a href="#main" className="docs-to-top" onClick={toTop}>
           Return to top
         </a>

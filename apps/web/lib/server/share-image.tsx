@@ -167,7 +167,13 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
               justifyContent: "center",
             }}
           >
-            <svg width="280" height="280" viewBox="0 0 280 280" style={{ position: "absolute" }}>
+            <svg
+              aria-hidden="true"
+              width="280"
+              height="280"
+              viewBox="0 0 280 280"
+              style={{ position: "absolute" }}
+            >
               <circle cx="140" cy="140" r="120" fill="none" stroke={INK.line} strokeWidth="20" />
               <circle
                 cx="140"
