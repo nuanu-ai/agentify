@@ -32,7 +32,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ADS_CONSENT } from "./ads-consent.js";
 import { type DashboardConfig, loadConfig } from "./config.js";
 import { SIGN_OUT_EVERY_OTHER_DEVICE } from "./control-labels.js";
-import type { ConsentedClick, DashboardDestination } from "./dashboard-entry.js";
 import { DRAWN_FOR } from "./drawn-for.js";
 import {
   type Acting,
@@ -1470,24 +1469,49 @@ describe("the box that tells the ad tracker an ad's visitor signed up", () => {
 
 describe("the box and the Google button on the sign-in page", () => {
   const GOOGLE = { GOOGLE_CLIENT_ID: "offline-client", GOOGLE_CLIENT_SECRET: "offline-secret" };
-  const GOOGLE_PAGE = "https://accounts.google.com/o/oauth2/v2/auth?state=held";
 
-  /** The clicks the Google start was handed, one per press. */
-  const startsWith = (handed: (ConsentedClick | undefined)[]) => (real: Identity) => ({
-    ...real,
-    googleEnabled: true,
-    async startGoogle(_destination: DashboardDestination, click?: ConsentedClick) {
-      handed.push(click);
-      return { status: "redirect" as const, location: GOOGLE_PAGE, setCookies: [] };
-    },
-  });
+  /** Google's code exchange is answered in the process; every other request goes out. */
+  const exchangingWithGoogle = () => {
+    const google = googleExchange();
+    const nativeFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", ((input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return url === "https://oauth2.googleapis.com/token"
+        ? google.fetch(input, init)
+        : nativeFetch(input, init);
+    }) satisfies typeof fetch);
+    return google;
+  };
+
+  /**
+   * A Google sign-in pressed with this form, in a browser of its own, by the
+   * Google account of this address; with everything the browser was sent along
+   * the way, its addresses and cookies, for looking for the click in.
+   */
+  const signInWithGoogle = async (
+    running: Running,
+    google: ReturnType<typeof googleExchange>,
+    press: Record<string, string>,
+    email: string,
+  ) => {
+    const browser = await running.another();
+    const sent = await browser.from(running.url).post("/sign-in/google", press);
+    const returned = await browser.get(
+      `/sign-in/google/callback?${google.authorize(sent.to ?? "", { sub: email, email })}`,
+    );
+    const seen = [sent.to, returned.to, ...sent.headers.getSetCookie()]
+      .concat(returned.headers.getSetCookie())
+      .map((line) => decodeURIComponent(line ?? ""))
+      .join("\n");
+    return { sent, returned, seen };
+  };
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   it("offers one box, which goes with the Google press as it goes with the email press", async () => {
-    const { browser } = await started({ dashboard: REPORTING, identity: startsWith([]) });
+    const { browser } = await started({ dashboard: { ...REPORTING, ...GOOGLE } });
 
     const page = await browser.get(`/sign-in?clickid=${CLICK}&destination=settings`);
 
@@ -1500,55 +1524,78 @@ describe("the box and the Google button on the sign-in page", () => {
     expect(consentBoxIn(page.html)).toStrictEqual({ ticked: false });
   });
 
-  it("hands the Google start the click of a ticked box, and none for an unticked box or a click it cannot read", async () => {
-    const handed: (ConsentedClick | undefined)[] = [];
-    const running = await started({ dashboard: REPORTING, identity: startsWith(handed) });
+  it("takes a ticked box's click through Google to one registration, and none for an unticked box or a click it cannot read, in no cookie and no address the browser is sent to", async () => {
+    const google = exchangingWithGoogle();
+    const running = await started({ dashboard: { ...REPORTING, ...GOOGLE } });
+    const page = await running.browser.get(`/sign-in?clickid=${CLICK}&destination=settings`);
+    const form = Object.fromEntries(formTo(page.html, "post", "/sign-in/google")?.fields ?? []);
     const before = Date.now();
 
-    const sent = await running.browser.post("/sign-in/google", {
-      clickid: CLICK,
-      ads_consent: "yes",
-    });
+    const ticked = await signInWithGoogle(
+      running,
+      google,
+      { ...form, ads_consent: "yes" },
+      "ticked@gmail.com",
+    );
     const after = Date.now();
-    const notConsented: Record<string, string>[] = [
-      { clickid: CLICK },
-      { clickid: CLICK, ads_consent: "no" },
-      { clickid: "too-short", ads_consent: "yes" },
-      { ads_consent: "yes" },
-    ];
-    for (const form of notConsented) await running.browser.post("/sign-in/google", form);
+    const unticked = await signInWithGoogle(running, google, form, "unticked@gmail.com");
+    const unreadable = await signInWithGoogle(
+      running,
+      google,
+      { ...form, clickid: "too-short", ads_consent: "yes" },
+      "unreadable@gmail.com",
+    );
 
-    expect(sent.status).toBe(303);
-    expect(sent.to).toBe(GOOGLE_PAGE);
-    const [ticked, ...rest] = handed;
-    expect(ticked).toMatchObject({ id: CLICK, wording: ADS_CONSENT.version });
-    const consentedAt = new Date(ticked?.consentedAt ?? "").getTime();
+    for (const flow of [ticked, unticked, unreadable]) {
+      expect(flow.sent.status).toBe(303);
+      expect(flow.returned.status).toBe(303);
+      expect(flow.returned.to).toBe("/merchant");
+      expect(flow.seen).not.toContain(CLICK);
+    }
+    const person = await running.identity.byEmail("ticked@gmail.com");
+    const [registration, ...more] = registrationsIn(running);
+    expect(more).toStrictEqual([]);
+    expect(registration).toMatchObject({
+      accountId: person?.id,
+      clickId: CLICK,
+      consentWording: ADS_CONSENT.version,
+      state: "pending",
+    });
+    const consentedAt = new Date(registration?.consentedAt as Date).getTime();
     expect(consentedAt).toBeGreaterThanOrEqual(before);
     expect(consentedAt).toBeLessThanOrEqual(after);
-    expect(rest).toStrictEqual([undefined, undefined, undefined, undefined]);
+    expect((await running.identity.byEmail("unticked@gmail.com"))?.confirmed).toBe(true);
+    expect((await running.identity.byEmail("unreadable@gmail.com"))?.confirmed).toBe(true);
   });
 
-  it("draws the Google page as it is and hands the start no click while the report is switched off", async () => {
-    const handed: (ConsentedClick | undefined)[] = [];
-    const running = await started({ identity: startsWith(handed) });
+  it("draws the Google page as it is and records nothing while the report is switched off, even for a ticked box", async () => {
+    const google = exchangingWithGoogle();
+    const running = await started({ dashboard: GOOGLE });
 
     const today = await running.browser.get("/sign-in");
     const offered = await running.browser.get(`/sign-in?clickid=${CLICK}`);
-    await running.browser.post("/sign-in/google", { clickid: CLICK, ads_consent: "yes" });
+    const flow = await signInWithGoogle(
+      running,
+      google,
+      { clickid: CLICK, ads_consent: "yes" },
+      "person@gmail.com",
+    );
 
     expect(seenOn(offered.html)).toStrictEqual(seenOn(today.html));
     expect(consentBoxIn(offered.html)).toBeUndefined();
-    expect(handed).toStrictEqual([undefined]);
+    expect(flow.returned.status).toBe(303);
+    expect((await running.identity.byEmail("person@gmail.com"))?.confirmed).toBe(true);
+    expect(registrationsIn(running)).toStrictEqual([]);
   });
 
   it("draws the Google page as it is for a visitor with no click, or one it cannot read", async () => {
-    const off = await started({ identity: startsWith([]) });
+    const off = await started({ dashboard: GOOGLE });
     const today = seenOn((await off.browser.get("/sign-in")).html);
     await off.browser.close();
     await off.identity.close();
     await off.gateway.close();
     await off.harnessed.stop();
-    const { browser } = await started({ dashboard: REPORTING, identity: startsWith([]) });
+    const { browser } = await started({ dashboard: { ...REPORTING, ...GOOGLE } });
 
     for (const query of ["", "?clickid=too-short", `?clickid=${CLICK}&clickid=${ANOTHER_CLICK}`]) {
       expect(seenOn((await browser.get(`/sign-in${query}`)).html), query).toStrictEqual(today);
@@ -1580,41 +1627,6 @@ describe("the box and the Google button on the sign-in page", () => {
     expect(again?.fields.get("clickid")).toBe(CLICK);
     expect(again?.fields.get("destination")).toBe("settings");
     expect(consentBoxIn(unticked.html)).toStrictEqual({ ticked: false });
-  });
-
-  it("takes a ticked box's click through Google to one registration, in no cookie and no address the browser is sent to", async () => {
-    const google = googleExchange();
-    const nativeFetch = globalThis.fetch;
-    vi.stubGlobal("fetch", ((input, init) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      return url === "https://oauth2.googleapis.com/token"
-        ? google.fetch(input, init)
-        : nativeFetch(input, init);
-    }) satisfies typeof fetch);
-    const running = await started({ dashboard: { ...REPORTING, ...GOOGLE } });
-    const page = await running.browser.get(`/sign-in?clickid=${CLICK}&destination=settings`);
-    const form = formTo(page.html, "post", "/sign-in/google");
-
-    const sent = await running.browser.from(running.url).post("/sign-in/google", {
-      ...Object.fromEntries(form?.fields ?? []),
-      ads_consent: "yes",
-    });
-    const returned = await running.browser.get(
-      `/sign-in/google/callback?${google.authorize(sent.to ?? "")}`,
-    );
-
-    expect(sent.status).toBe(303);
-    expect(returned.status).toBe(303);
-    expect(returned.to).toBe("/merchant");
-    const seen = [sent.to, returned.to, ...sent.headers.getSetCookie()]
-      .concat(returned.headers.getSetCookie())
-      .map((line) => decodeURIComponent(line ?? ""))
-      .join("\n");
-    expect(seen).not.toContain(CLICK);
-    const person = await running.identity.byEmail("person@gmail.com");
-    expect(registrationsIn(running)).toMatchObject([
-      { accountId: person?.id, clickId: CLICK, state: "pending" },
-    ]);
   });
 });
 
