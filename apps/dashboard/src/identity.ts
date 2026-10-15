@@ -42,6 +42,7 @@ import {
   type Person,
   type UnattachedPerson,
 } from "./dashboard-entry.js";
+import { boundedGoogleExchange } from "./google-exchange.js";
 import { type Message, type Postman, postmanFor } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
 import { reportLinkMessage } from "./report-mail.js";
@@ -303,6 +304,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         },
       },
       plugins: [
+        ...(config.google === null ? [] : [boundedGoogleExchange()]),
         magicLink({
           expiresIn: LINK_TTL_SECONDS,
           storeToken: "hashed",
@@ -729,10 +731,20 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         }
         return await drizzle(parts.pool).transaction(async (tx) => {
           const state = proof.get("state");
-          if (state !== null)
-            await tx.execute(
-              sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-google-state:${state}`}, 0))`,
+          if (state !== null) {
+            // A replay must not occupy another connection while its owner waits for Google.
+            const lock = await tx.execute<{ acquired: boolean }>(
+              sql`select pg_try_advisory_xact_lock(hashtextextended(${`dashboard-google-state:${state}`}, 0)) as acquired`,
             );
+            if (lock.rows[0]?.acquired !== true)
+              return {
+                status: "refused",
+                reason: "invalid",
+                email: null,
+                destination: "default",
+                setCookies: [],
+              };
+          }
           return await finishGoogleWith(
             authFor(drizzleAdapter(tx, { provider: "pg", schema }), true),
             proof,
