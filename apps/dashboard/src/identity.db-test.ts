@@ -1405,6 +1405,140 @@ if (databaseUrl === null) {
       },
     );
   });
+
+  describe("the registration a consented Google sign-in leaves for the tracker, on PostgreSQL", () => {
+    beforeEach(async () => {
+      await emptyEverything();
+      await migrateEverything();
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    /** Google and the report both switched on, the report posting to a laptop's receiver. */
+    function reportingGoogle(messages: Message[] = []) {
+      const google = googleExchange();
+      vi.stubGlobal("fetch", google.fetch);
+      const identity = identityFor(
+        {
+          ...config({
+            REGISTRATION_POSTBACK_ENABLED: "true",
+            REGISTRATION_POSTBACK_KEY: ["qa", "synthetic", "postback", "key"].join("-"),
+            REGISTRATION_POSTBACK_URL: "http://127.0.0.1:4010/postback",
+          }),
+          google: { clientId: "offline-client", clientSecret: "offline-secret" },
+        },
+        {
+          pool,
+          postman: async (message) => {
+            messages.push(message);
+            return "accepted";
+          },
+        },
+      );
+      const start = async (
+        click?: typeof CLICK | typeof ANOTHER_CLICK,
+        profile: Partial<GoogleProfile> = {},
+      ) => {
+        const began = await identity.startGoogle("settings", click);
+        if (began.status !== "redirect") throw new Error("Google must start");
+        return {
+          query: google.authorize(began.location, profile),
+          cookie: cookieHeader(began.setCookies),
+        };
+      };
+      return { identity, start };
+    }
+
+    it("leaves one pending registration with the click when a consented Google sign-in makes a new address's account", async () => {
+      const { identity, start } = reportingGoogle();
+      const flow = await start(CLICK);
+      const before = Date.now();
+
+      const opened = await identity.finishGoogle(flow.query, flow.cookie);
+
+      if (opened.status !== "opened") throw new Error("the consented Google sign-in did not open");
+      const stored = await registrations();
+      expect(stored).toStrictEqual([
+        {
+          account_id: opened.person.id,
+          click_id: CLICK.id,
+          consented_at: new Date(CLICK.consentedAt),
+          consent_wording: CLICK.wording,
+          state: "pending",
+          attempts: 0,
+          next_attempt_at: expect.any(Date),
+          last_outcome: null,
+          created_at: expect.any(Date),
+          settled_at: null,
+        },
+      ]);
+      const due = new Date(stored[0]?.next_attempt_at as Date).getTime();
+      expect(due).toBeGreaterThanOrEqual(before);
+      expect(due).toBeLessThanOrEqual(Date.now());
+    });
+
+    it("writes no registration when Google links an address a mailed link already verified", async () => {
+      const messages: Message[] = [];
+      const { identity, start } = reportingGoogle(messages);
+      await identity.requestLink("person@gmail.com", "default");
+      expect(await identity.openLink(tokenIn(messages[0] as Message))).toMatchObject({
+        status: "opened",
+      });
+      const flow = await start(CLICK);
+
+      expect(await identity.finishGoogle(flow.query, flow.cookie)).toMatchObject({
+        status: "opened",
+      });
+
+      expect(await countIn("dashboard_credentials")).toBe(1);
+      expect(await registrations()).toStrictEqual([]);
+    });
+
+    it("makes one account and one registration when two consented Google callbacks for one new person race", async () => {
+      const { identity, start } = reportingGoogle();
+      const first = await start(CLICK);
+      const second = await start(ANOTHER_CLICK);
+
+      const opened = await Promise.all([
+        identity.finishGoogle(first.query, first.cookie),
+        identity.finishGoogle(second.query, second.cookie),
+      ]);
+
+      expect(opened.map((one) => one.status)).toStrictEqual(["opened", "opened"]);
+      expect(await countIn("dashboard_accounts")).toBe(1);
+      const stored = await registrations();
+      expect(stored).toHaveLength(1);
+      expect([CLICK.id, ANOTHER_CLICK.id]).toContain(stored[0]?.click_id);
+    });
+
+    it("rolls the Google person, binding and session back when the registration cannot be written", async () => {
+      const { identity, start } = reportingGoogle();
+      const flow = await start(CLICK);
+      await pool.query(
+        `create function fail_registration() returns trigger language plpgsql as $$ begin raise exception 'injected registration failure'; end $$`,
+      );
+      await pool.query(
+        "create trigger fail_registration before insert on dashboard_registration_postbacks for each row execute function fail_registration()",
+      );
+
+      expect(await identity.finishGoogle(flow.query, flow.cookie)).toMatchObject({
+        status: "refused",
+        reason: "unavailable",
+        setCookies: [],
+      });
+
+      for (const table of [
+        "dashboard_accounts",
+        "dashboard_credentials",
+        "dashboard_sessions",
+        "dashboard_registration_postbacks",
+      ]) {
+        expect(await countIn(table), table).toBe(0);
+      }
+    });
+  });
 }
 
 function cookieHeader(setCookies: readonly string[]): string {

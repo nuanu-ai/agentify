@@ -143,7 +143,15 @@ export interface DashboardIdentity {
   readonly cookieNames: readonly string[];
   readonly googleEnabled: boolean;
 
-  startGoogle(destination: DashboardDestination): Promise<GoogleStartResult>;
+  /**
+   * A click is handed only where the box was ticked on the press that starts
+   * the sign-in, which is the consent; the same person finishes it in the same
+   * browser, Google vouching for the address.
+   */
+  startGoogle(
+    destination: DashboardDestination,
+    click?: ConsentedClick,
+  ): Promise<GoogleStartResult>;
   finishGoogle(query: URLSearchParams, cookie: string | undefined): Promise<GoogleFinishResult>;
 
   requestLink(
