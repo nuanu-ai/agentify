@@ -475,6 +475,73 @@ describe("the search", () => {
   });
 });
 
+describe("copying a code example", () => {
+  it("copies the displayed code and announces success after the browser accepts it", async () => {
+    const { page, complaints } = await visit(
+      "/docs/quickstart",
+      undefined,
+      false,
+      true,
+      (context) =>
+        context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: edge.origin }),
+    );
+    const copy = page.getByRole("button", { name: "Copy the code", exact: true }).first();
+    const block = copy.locator("..");
+    const code = await block.locator("pre").textContent();
+    await copy.focus();
+    await page.keyboard.press("Enter");
+
+    await block
+      .getByRole("status")
+      .filter({ hasText: /copied/i })
+      .waitFor();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(code);
+    expect(await copy.evaluate((element) => element === document.activeElement)).toBe(true);
+    expect(await copy.evaluate((element) => getComputedStyle(element, "::before").content)).toBe(
+      '"✓"',
+    );
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+
+  it("reports clipboard denial without claiming a successful copy and can recover", async () => {
+    const { page, complaints } = await visit("/docs/quickstart");
+    const session = await page.context().newCDPSession(page);
+    const { targetInfo } = await session.send("Target.getTargetInfo");
+    const permission = {
+      permission: { name: "clipboard-write" },
+      origin: edge.origin,
+      browserContextId: targetInfo.browserContextId,
+    };
+    await session.send("Browser.setPermission", { ...permission, setting: "denied" });
+    const copy = page.getByRole("button", { name: "Copy the code", exact: true }).first();
+    const block = copy.locator("..");
+    await copy.click();
+
+    expect(
+      await copy.evaluate((element) => getComputedStyle(element, "::before").content),
+    ).not.toBe('"✓"');
+    await block
+      .getByRole("status")
+      .filter({ hasText: /copy.*(failed|could not|couldn't)/i })
+      .waitFor();
+    expect(await block.getByRole("status").isVisible()).toBe(true);
+    expect(
+      await copy.evaluate((element) => getComputedStyle(element, "::before").content),
+    ).not.toBe('"✓"');
+    expect(complaints).toEqual([]);
+
+    await session.send("Browser.setPermission", { ...permission, setting: "granted" });
+    await copy.click();
+    await block
+      .getByRole("status")
+      .filter({ hasText: /copied/i })
+      .waitFor();
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+});
+
 describe("a move between pages", () => {
   it("lands at the new page's top at once and gives its heading the focus", async () => {
     const { page } = await visit("/docs/money");

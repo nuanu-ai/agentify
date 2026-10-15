@@ -306,6 +306,12 @@ input {
   color: var(--accent);
 }
 
+.doc .copy-status:not(.sr-only) {
+  display: block;
+  padding: 0 20px 16px;
+  font-size: 0.875rem;
+}
+
 /* A table wider than the column scrolls inside itself, not the page. */
 .doc table {
   display: block;

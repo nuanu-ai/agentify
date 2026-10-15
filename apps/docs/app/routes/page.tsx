@@ -70,15 +70,38 @@ export const meta = ({ loaderData, matches }: MetaArgs<typeof loader>) =>
  */
 function usePressesInside() {
   const navigate = useNavigate();
-  return (event: MouseEvent<HTMLElement>) => {
+  const resets = useRef(new WeakMap<Element, ReturnType<typeof setTimeout>>());
+  return async (event: MouseEvent<HTMLElement>) => {
     if (!(event.target instanceof Element)) return;
     const copy = event.target.closest("button.copy");
-    if (copy !== null) {
-      void navigator.clipboard.writeText(
-        copy.parentElement?.querySelector("pre")?.textContent ?? "",
-      );
-      copy.classList.add("copied");
-      setTimeout(() => copy.classList.remove("copied"), 2000);
+    if (copy instanceof HTMLButtonElement) {
+      if (copy.getAttribute("aria-busy") === "true") return;
+      const status = copy.parentElement?.querySelector<HTMLElement>(".copy-status");
+      clearTimeout(resets.current.get(copy));
+      copy.classList.remove("copied");
+      copy.setAttribute("aria-busy", "true");
+      if (status) {
+        status.classList.add("sr-only");
+        status.textContent = "";
+      }
+      try {
+        await navigator.clipboard.writeText(
+          copy.parentElement?.querySelector("pre")?.textContent ?? "",
+        );
+        copy.classList.add("copied");
+        if (status) status.textContent = "Code copied.";
+        resets.current.set(
+          copy,
+          setTimeout(() => copy.classList.remove("copied"), 2000),
+        );
+      } catch {
+        if (status) {
+          status.classList.remove("sr-only");
+          status.textContent = "Copy failed. Select the code and copy it manually.";
+        }
+      } finally {
+        copy.removeAttribute("aria-busy");
+      }
       return;
     }
     const link = event.target.closest("a");
