@@ -144,3 +144,55 @@ against its immediate predecessor and compare common-command variation.
 If variation exceeds the work removed, report the elapsed-time effect as
 inconclusive. Do not combine a reduction in work with a claim of the same
 reduction in total waiting time.
+
+## Follow-up matched results
+
+Step 3 is `3e207de2352e5a9bcebe30b53057dfe690988637`; step 4 is
+`8b9187d3fa21e770ba1395705c83c97cb28b4f19`. Each is measured with
+`workflow_dispatch` on its own temporary tag. All 23 jobs across the three
+runs pass. The temporary tags are removed after completion.
+
+| Variant | Run | Total elapsed | Static checks | Offline tests | Gate | Browser |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Follow-up control | [38761224943](https://github.com/nuanu-ai/agentify/actions/runs/38761224943) | 4:37 | 4:13 including tests | Within checks | 3:46 | 4:20 |
+| Step 3: separate offline tests | [38761233306](https://github.com/nuanu-ai/agentify/actions/runs/38761233306) | 4:46 | 1:37 | 3:16 | 4:11 | 4:09 |
+| Step 4: reuse the web build | [38762138955](https://github.com/nuanu-ai/agentify/actions/runs/38762138955) | 4:10 | 1:31 | 2:41 | 3:37 | 3:52 |
+
+Step 3 passes all eight jobs, but its total elapsed time increases by nine
+seconds in this pair. It does not demonstrate a workflow speedup. The tests
+run independently of static checks, leaving the gate and browser jobs to
+determine completion. In the control the browser job finishes last; after
+step 3 the gate finishes last.
+
+Both runs wait four seconds before their first job. Control jobs start three
+seconds after the secret scan finishes. Step 3's tests, static checks, and
+browser start after two seconds, while its gate starts after 20 seconds.
+The unchanged database-test command also varies from 103 to 130 seconds.
+These delays and duration differences matter more to total elapsed time than
+the now shorter source-check path.
+
+Step 4's browser job is 17 seconds shorter than step 3's, with its
+documentation phase decreasing from 72 to 56 seconds. The same documentation
+integration file runs after its own application build, using the web output
+already built and tested in the preceding step. The browser job determines
+completion in this run.
+
+The full workflow is 36 seconds shorter than step 3 and 27 seconds shorter
+than the follow-up control in this sample. Step 4 also has shorter unchanged
+jobs: the gate decreases from 251 to 217 seconds and offline tests from 196
+to 161 seconds. Its first job starts after four seconds, and subsequent jobs
+start three or four seconds after the secret scan. The repeated web build
+is removed, but the effect on total elapsed time remains inconclusive under
+the predeclared variation rule; the whole 36-second difference cannot be
+attributed to that removal.
+
+The browser logs show the same passing counts before and after step 4:
+7 actor tests, 32 dashboard tests, 95 web tests, and 57 documentation tests.
+The documentation's Vitest execution is effectively unchanged at 49.36 and
+49.41 seconds; the shorter phase omits the repeated application build.
+
+Independent static review confirms the new test job preserves the offline
+suite and its setup, and that browser suites leave the web build available.
+The one-off workflow comparison preserves all unrelated commands and job
+settings. Actionlint has no new diagnostics, and decision checks and
+`git diff --check` pass.
