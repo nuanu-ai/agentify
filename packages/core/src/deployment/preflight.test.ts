@@ -38,6 +38,7 @@ const expectNoFixtureSecrets = (stderr: string, resolved: ResolvedCompose): void
     resolved.services.app.environment?.CDP_API_KEY_ID,
     resolved.services.app.environment?.CDP_API_KEY_SECRET,
     resolved.services.app.environment?.AUTH_SECRET,
+    resolved.services.app.environment?.GOOGLE_CLIENT_SECRET,
   ];
   for (const value of values) {
     if (value !== undefined && value !== "") {
@@ -225,6 +226,73 @@ describe("a channel that is what it claims to be", () => {
     // below would be reading something that is not the channel.
     expect(problemsWith("production", TEST_CHANNEL).length).toBeGreaterThan(0);
     expect(problemsWith("test", PRODUCTION_CHANNEL).length).toBeGreaterThan(0);
+  });
+});
+
+describe("Google sign-in is optional and only the application receives its credentials", () => {
+  const google = {
+    GOOGLE_CLIENT_ID: "synthetic-google-client.apps.googleusercontent.com",
+    GOOGLE_CLIENT_SECRET: "synthetic-google-client-secret",
+  };
+
+  it.each([
+    ["production", PRODUCTION_CHANNEL],
+    ["test", TEST_CHANNEL],
+  ] as const)("accepts %s with Google disabled or with both credentials", (channel, config) => {
+    for (const credentials of [{}, { GOOGLE_CLIENT_ID: "", GOOGLE_CLIENT_SECRET: "" }, google]) {
+      const next = structuredClone(config);
+      Object.assign(envFor(next, "app"), credentials);
+      expect(problemsWith(channel, next)).toEqual([]);
+    }
+  });
+
+  it.each(["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"])(
+    "refuses Google when %s alone is supplied, without printing the credential",
+    (name) => {
+      const supplied = google[name as keyof typeof google];
+      const wrong = withEnv(TEST_CHANNEL, "app", name, supplied);
+      const checked = runCli("test", JSON.stringify(wrong));
+      expect(checked.status).toBe(65);
+      expect(checked.stderr).toMatch(/GOOGLE_CLIENT_ID.*GOOGLE_CLIENT_SECRET/);
+      expect(checked.stdout + checked.stderr).not.toContain(supplied);
+    },
+  );
+
+  it("treats an empty credential as absent when its partner is set", () => {
+    for (const missing of Object.keys(google)) {
+      const wrong = structuredClone(TEST_CHANNEL);
+      Object.assign(envFor(wrong, "app"), google, { [missing]: "" });
+      expect(problemsWith("test", wrong)).toContainEqual(
+        expect.stringMatching(/GOOGLE_CLIENT_ID.*GOOGLE_CLIENT_SECRET/),
+      );
+    }
+  });
+
+  it("refuses Google credentials on services other than the application", () => {
+    for (const service of ["scanner", "scanner-worker", "scanner-privacy", "web"]) {
+      for (const [name, value] of Object.entries(google)) {
+        const wrong = withEnv(TEST_CHANNEL, service, name, value);
+        const checked = runCli("test", JSON.stringify(wrong));
+        expect(checked.status).toBe(65);
+        expect(checked.stderr).toContain(`${service}: ${name}`);
+        expect(checked.stdout + checked.stderr).not.toContain(value);
+      }
+    }
+  });
+
+  it("refuses Google on an HTTP channel origin or without secure session cookies", () => {
+    const enabled = structuredClone(TEST_CHANNEL);
+    Object.assign(envFor(enabled, "app"), google);
+    for (const [name, value] of [
+      ["PUBLIC_BASE_URL", "http://test.agentify.ad"],
+      ["COOKIE_SECURE", "false"],
+    ]) {
+      const wrong = withEnv(enabled, "app", name, value);
+      const checked = runCli("test", JSON.stringify(wrong));
+      expect(checked.status).toBe(65);
+      expect(checked.stderr).toContain(name);
+      expectNoFixtureSecrets(checked.stderr + checked.stdout, wrong);
+    }
   });
 });
 
