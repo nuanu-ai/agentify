@@ -226,12 +226,13 @@ services:
       MAIL_FROM: "${MAIL_FROM:-Agentify <no-reply@localhost>}"
       # Off unless the host's file turns it on. On, the dashboard tells the ad
       # tracker once that a person its ad sent signed up, for each who ticked the
-      # box on the sign-in page, with the tracker's key of at least sixteen
-      # characters. It refuses to start with the switch on and no such key, and
-      # on the test channel at all. Off, the key is not read, so it may wait in
-      # the file ahead of the switch. A laptop that tries it runs the application
-      # outside this file and names its own receiver in REGISTRATION_POSTBACK_URL,
-      # which no deployment is handed.
+      # box on the sign-in page and confirmed it on the link's page, with the
+      # tracker's key of at least sixteen characters and no space at either end.
+      # It refuses to start with the switch on and no such key, and on the test
+      # channel at all. Off, the key is not read, so it may wait in the file
+      # ahead of the switch. A laptop that tries it runs the application outside
+      # this file and names its own receiver in REGISTRATION_POSTBACK_URL, which
+      # no deployment is handed.
       REGISTRATION_POSTBACK_ENABLED: "${REGISTRATION_POSTBACK_ENABLED:-false}"
       REGISTRATION_POSTBACK_KEY: "${REGISTRATION_POSTBACK_KEY:-}"
       # Off because a Secure cookie is never sent back over plain http, so nobody
