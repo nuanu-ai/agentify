@@ -12,11 +12,12 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ADS_CONSENT } from "../../src/ads-consent.js";
 import type { LinkAnswer } from "../../src/page-services.js";
 import { formTo, readable, waitingButton } from "../../src/testing/html.js";
 import type { Chrome } from "../answer.js";
@@ -92,6 +93,31 @@ describe("what a page says about the stack it belongs to", () => {
     // No banner element either: an empty styled one is a band across a live
     // page.
     expect(html).not.toContain('class="stack-note"');
+  });
+});
+
+describe("the box a visitor an ad sent is offered", () => {
+  it("is named by its sentence, so a screen reader reads it out and pressing the words ticks it", () => {
+    const { getByLabelText, getByText } = render(
+      routed(() => (
+        <AskScreen
+          chrome={chromeIn("live")}
+          view={{
+            screen: "ask",
+            destination: "default",
+            click: { id: "qa_click_0123456789abcdef", consented: false },
+          }}
+        />
+      )),
+    );
+
+    const box = getByLabelText(ADS_CONSENT.sentence) as HTMLInputElement;
+    expect(box.type).toBe("checkbox");
+    expect(box.checked).toBe(false);
+
+    fireEvent.click(getByText(ADS_CONSENT.sentence));
+
+    expect(box.checked).toBe(true);
   });
 });
 
