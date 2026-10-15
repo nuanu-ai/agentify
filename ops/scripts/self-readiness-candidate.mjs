@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { setTimeout as sleep } from "node:timers/promises";
+import { DOCS_PAGES, docsAddress } from "../../packages/ui/src/docs.ts";
 
 const canonicalOrigin = "https://agentify.ad";
 const publicPaths = ["/", "/store", "/local", "/privacy", "/terms"];
@@ -9,15 +10,7 @@ const publicPaths = ["/", "/store", "/local", "/privacy", "/terms"];
 const sitemapPaths = [
   ...publicPaths,
   "/agentic-shop",
-  "/docs/",
-  "/docs/money",
-  "/docs/faq",
-  "/docs/quickstart",
-  "/docs/cards",
-  "/docs/orders",
-  "/docs/failures",
-  "/docs/scanner",
-  "/docs/scanner/methodology",
+  ...DOCS_PAGES.map((page) => docsAddress(page.path)),
 ];
 const requiredPasses = [1, 2, 3, 4, 5, 6, 7, 8, 12, 13, 14];
 
