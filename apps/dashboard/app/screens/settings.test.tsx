@@ -19,17 +19,64 @@ import {
   type RecordedPayoutSplit,
 } from "@agentify/gateway";
 import { checksummedAddressOf, PayoutWalletSchema } from "@nuanu-ai/agentify-contracts";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../../src/config.js";
 import type { PayoutSplits } from "../../src/gateway.js";
 import { type SettingsPress, settingsView } from "../../src/settings-view.js";
 import { readable } from "../../src/testing/html.js";
 import { TEST_AUTH_SECRET } from "../../src/testing/secrets.js";
+import { WALLET_WORDS } from "../components/coinbase-wallet.js";
+import type { Wallet } from "../wallet/requests.js";
 import { PayoutWalletPanel, SettingsScreen } from "./settings.js";
+
+/**
+ * Coinbase Wallet as the page meets it, standing in for Coinbase's window: it
+ * names its account, is switched to a chain, keeps the batches it sent and
+ * refuses one for a chain it is not on. `opened` is false where the module
+ * that brings Coinbase Wallet cannot be opened at all.
+ */
+const coinbase = vi.hoisted(() => ({
+  opened: true,
+  account: "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed",
+  declines: undefined as string | undefined,
+  breaks: undefined as string | undefined,
+  chain: "0x2105",
+  sent: [] as Readonly<{ chainId: string; calls: readonly unknown[] }>[],
+}));
+
+vi.mock("../wallet/coinbase.js", async () => {
+  const requests = await import("../wallet/requests.js");
+  const wallet: Wallet = {
+    async request({ method, params }) {
+      if (method === coinbase.declines) throw { code: 4001, message: "User rejected the request." };
+      if (method === coinbase.breaks) throw { code: -32603, message: "insufficient funds for gas" };
+      if (method === "eth_requestAccounts") return [coinbase.account];
+      if (method === "wallet_switchEthereumChain") {
+        coinbase.chain =
+          (params?.[0] as { chainId: string } | undefined)?.chainId ?? coinbase.chain;
+        return null;
+      }
+      if (method === "wallet_sendCalls") {
+        const batch = params?.[0] as { chainId: string; calls: readonly unknown[] };
+        if (batch.chainId !== coinbase.chain) throw { code: 4901, message: "Chain mismatch" };
+        coinbase.sent.push(batch);
+        return { id: "0x00b47c4" };
+      }
+      throw { code: 4200, message: `Unsupported method ${method}` };
+    },
+  };
+  return {
+    ...requests,
+    coinbaseWallet: () => {
+      if (!coinbase.opened) throw new Error("Failed to fetch dynamically imported module");
+      return wallet;
+    },
+  };
+});
 
 /** Of the right shape, and obviously not a real address. */
 const SHAPED = "0x0123456789abcdef0123456789abcdef01234567";
@@ -158,7 +205,16 @@ const asCopied = (html: string): string => html.replaceAll(/<[^>]*>/g, "");
 /** The text a person reads, with each address whole as it copies off the page. */
 const shownText = (html: string): string => readable(html.replaceAll(/<\/?span[^>]*>/g, ""));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  Object.assign(coinbase, {
+    opened: true,
+    declines: undefined,
+    breaks: undefined,
+    chain: "0x2105",
+    sent: [],
+  });
+});
 
 describe("the payout wallet on the settings screen", () => {
   it("shows a saved address whole, so a merchant can check it against their wallet", () => {
@@ -532,7 +588,8 @@ describe("the payout instruction", () => {
     expect(held).toBe(
       merchantPayout(networkOf("test"), [splitOf("test", W)], PAYOUT_SPLIT_NETWORKS).data,
     );
-    expect(screen.getByRole("status").textContent).toBe("Copied.");
+    const row = screen.getByText("Copy the data").closest("p") as HTMLElement;
+    expect(within(row).getByRole("status").textContent).toBe("Copied.");
     Reflect.deleteProperty(navigator, "clipboard");
   });
 
@@ -638,5 +695,164 @@ describe("the payout instruction", () => {
     expect(text).toMatch(/You are paid when Agentify next pays out every contract, on no set date/);
     expect(html).not.toContain(MULTICALL3);
     expect(html).not.toContain("<textarea");
+  });
+});
+
+describe("creating or connecting a Coinbase Wallet from the settings", () => {
+  const CHECKSUMMED = checksummedAddressOf(coinbase.account);
+  const button = () => screen.getByRole("button", { name: WALLET_WORDS.connect });
+  const box = () => screen.getByLabelText("Payout wallet address") as HTMLInputElement;
+  const press = async (control: HTMLElement) => {
+    await act(async () => {
+      fireEvent.click(control);
+    });
+  };
+
+  it("is offered only once the page's script runs, so a page without script shows no button that does nothing", () => {
+    expect(walletPanel({ mode: "test" })).not.toContain(WALLET_WORDS.connect);
+
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+
+    expect(button()).toBeTruthy();
+  });
+
+  it("is offered on the live channel as on the test channel", () => {
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
+
+    expect(button()).toBeTruthy();
+  });
+
+  it("is not offered in the sandbox, where no wallet is ever paid", () => {
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "sandbox" }).wallet} />));
+
+    expect(screen.queryByRole("button", { name: WALLET_WORDS.connect })).toBeNull();
+  });
+
+  it("puts the wallet's address into the box in a wallet's spelling, and saves nothing until the merchant presses Save", async () => {
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    let submitted = false;
+    box().form?.addEventListener("submit", () => {
+      submitted = true;
+    });
+
+    await press(button());
+
+    expect(box().value).toBe(CHECKSUMMED);
+    expect(submitted).toBe(false);
+    expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy();
+  });
+
+  it("leaves the box as the merchant left it when they close Coinbase's window", async () => {
+    coinbase.declines = "eth_requestAccounts";
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    fireEvent.change(box(), { target: { value: "0x1234" } });
+
+    await press(button());
+
+    expect(box().value).toBe("0x1234");
+    expect(screen.getByText(WALLET_WORDS.connectClosed)).toBeTruthy();
+  });
+
+  it("keeps the box for an address typed by hand when Coinbase Wallet cannot be opened", async () => {
+    coinbase.opened = false;
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+
+    await press(button());
+
+    expect(box().value).toBe("");
+    expect(screen.getByText(WALLET_WORDS.connectFailed("the page could not open it"))).toBeTruthy();
+  });
+
+  it("links to where the merchant manages the wallet and to how Coinbase recovers it", () => {
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+
+    const links = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
+    expect(links).toContain(WALLET_WORDS.manageAt);
+    expect(links).toContain(WALLET_WORDS.recoveryAt);
+  });
+});
+
+describe("sending the payout from a Coinbase Wallet", () => {
+  const W = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+  const button = () => screen.getByRole("button", { name: WALLET_WORDS.payOut });
+  const press = async () => {
+    await act(async () => {
+      fireEvent.click(button());
+    });
+  };
+
+  it("is offered only once the page's script runs, beside the transaction it sends", () => {
+    expect(settingsPage({ mode: "test", wallet: W })).not.toContain(WALLET_WORDS.payOut);
+
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+
+    expect(button()).toBeTruthy();
+  });
+
+  it("sends the transaction the screen shows, whole and carrying no money, on Base Sepolia for the test channel", async () => {
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+
+    await press();
+
+    expect(coinbase.sent).toEqual([
+      expect.objectContaining({
+        chainId: "0x14a34",
+        calls: [
+          {
+            to: "0xcA11bde05977b3631167028862bE2a173976CA11",
+            value: "0x0",
+            data: merchantPayout(networkOf("test"), [splitOf("test", W)], PAYOUT_SPLIT_NETWORKS)
+              .data,
+          },
+        ],
+      }),
+    ]);
+  });
+
+  it("sends it on Base for the live channel", async () => {
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
+
+    await press();
+
+    expect(coinbase.sent.map((batch) => batch.chainId)).toEqual(["0x2105"]);
+  });
+
+  it("says the wallet sent it, not that the money has arrived", async () => {
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+
+    await press();
+
+    expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy();
+  });
+
+  it("sends nothing and says so when the merchant closes Coinbase's window", async () => {
+    coinbase.declines = "wallet_sendCalls";
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+
+    await press();
+
+    expect(coinbase.sent).toEqual([]);
+    expect(screen.getByText(WALLET_WORDS.payoutClosed)).toBeTruthy();
+  });
+
+  it("says, when the wallet does not send it, that the payout then arrives with Agentify's", async () => {
+    coinbase.breaks = "wallet_sendCalls";
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+
+    await press();
+
+    expect(screen.getByText(WALLET_WORDS.payoutFailed("insufficient funds for gas"))).toBeTruthy();
+  });
+
+  it("is not offered where there is no transaction to send", () => {
+    render(
+      routed(() => (
+        <SettingsScreen
+          view={viewOf({ mode: "test", wallet: W, splits: splitsFor("test", W, { tooMany: 21 }) })}
+        />
+      )),
+    );
+
+    expect(screen.queryByRole("button", { name: WALLET_WORDS.payOut })).toBeNull();
   });
 });
