@@ -229,6 +229,157 @@ describe("where the dashboard's two messages go", () => {
   });
 });
 
+describe("telling the ad tracker that somebody it sent signed up", () => {
+  const KEY = ["qa", "synthetic", "postback", "key"].join("-");
+  const RECEIVER = "http://127.0.0.1:4010/postback";
+  const SWITCHED_ON = { REGISTRATION_POSTBACK_ENABLED: "true", REGISTRATION_POSTBACK_KEY: KEY };
+  const ON_TEST = { FACILITATOR_URL: "https://x402.org/facilitator" };
+  const ON_LIVE = {
+    PAYMENT_NETWORK: "eip155:8453",
+    FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+  };
+
+  const thrownBy = (environment: Record<string, string>): string => {
+    try {
+      loadConfig(given(environment));
+      return "";
+    } catch (error) {
+      return String(error);
+    }
+  };
+
+  it("tells it nothing unless a deployment switches the report on", () => {
+    expect(loadConfig(given()).registrationPostback).toBeNull();
+    expect(
+      loadConfig(given({ REGISTRATION_POSTBACK_ENABLED: "false" })).registrationPostback,
+    ).toBeNull();
+  });
+
+  it("starts with the key and a receiver written ahead of the switch, and still tells it nothing", () => {
+    // One environment file serves every service on a host, so a key placed
+    // before the day the switch is turned on must not take the process down,
+    // whatever shape it has.
+    for (const surface of [{}, ON_TEST, ON_LIVE]) {
+      const config = loadConfig(
+        given({
+          ...surface,
+          REGISTRATION_POSTBACK_KEY: "short",
+          REGISTRATION_POSTBACK_URL: "not an address",
+        }),
+      );
+      expect(config.registrationPostback).toBeNull();
+    }
+  });
+
+  it("refuses to start switched on without a key of at least sixteen characters", () => {
+    for (const key of [undefined, "", "fifteen-chars-x"]) {
+      const environment: Record<string, string> = {
+        REGISTRATION_POSTBACK_ENABLED: "true",
+        REGISTRATION_POSTBACK_URL: RECEIVER,
+        ...(key === undefined ? {} : { REGISTRATION_POSTBACK_KEY: key }),
+      };
+      expect(() => loadConfig(given(environment)), String(key)).toThrow(
+        /REGISTRATION_POSTBACK_KEY/,
+      );
+    }
+    expect(
+      loadConfig(
+        given({
+          REGISTRATION_POSTBACK_ENABLED: "true",
+          REGISTRATION_POSTBACK_URL: RECEIVER,
+          REGISTRATION_POSTBACK_KEY: "sixteen-chars-xx",
+        }),
+      ).registrationPostback?.key,
+    ).toBe("sixteen-chars-xx");
+  });
+
+  it("refuses to start switched on the test channel, which never reports a registration", () => {
+    expect(() => loadConfig(given({ ...ON_TEST, ...SWITCHED_ON }))).toThrow(
+      /REGISTRATION_POSTBACK_ENABLED/,
+    );
+    expect(() =>
+      loadConfig(given({ ...ON_TEST, ...SWITCHED_ON, REGISTRATION_POSTBACK_URL: RECEIVER })),
+    ).toThrow(/REGISTRATION_POSTBACK_ENABLED/);
+  });
+
+  it("posts on the live channel to the tracker's own address and nowhere else", () => {
+    expect(loadConfig(given({ ...ON_LIVE, ...SWITCHED_ON })).registrationPostback).toStrictEqual({
+      endpoint: "https://aisamuraihub.com/postback",
+      key: KEY,
+    });
+    // A receiver beside the live switch is a laptop's line copied onto a
+    // server, and would send real registrations somewhere else.
+    expect(() =>
+      loadConfig(given({ ...ON_LIVE, ...SWITCHED_ON, REGISTRATION_POSTBACK_URL: RECEIVER })),
+    ).toThrow(/REGISTRATION_POSTBACK_URL/);
+  });
+
+  it("posts on a laptop only to a receiver of its own, never to the tracker", () => {
+    expect(
+      loadConfig(given({ ...SWITCHED_ON, REGISTRATION_POSTBACK_URL: RECEIVER }))
+        .registrationPostback,
+    ).toStrictEqual({ endpoint: RECEIVER, key: KEY });
+    // Another registrable domain that merely ends in the same letters is not
+    // the tracker.
+    expect(
+      loadConfig(
+        given({ ...SWITCHED_ON, REGISTRATION_POSTBACK_URL: "https://notaisamuraihub.com/hook" }),
+      ).registrationPostback?.endpoint,
+    ).toBe("https://notaisamuraihub.com/hook");
+
+    expect(() => loadConfig(given(SWITCHED_ON))).toThrow(/REGISTRATION_POSTBACK_URL/);
+    for (const elsewhere of [
+      "ftp://127.0.0.1/postback",
+      "127.0.0.1:4010/postback",
+      "https://aisamuraihub.com/postback",
+      "https://AISAMURAIHUB.COM/postback",
+      "https://www.aisamuraihub.com/postback",
+      "http://aisamuraihub.com./postback",
+      "https://somebody@aisamuraihub.com/postback",
+    ]) {
+      expect(
+        () => loadConfig(given({ ...SWITCHED_ON, REGISTRATION_POSTBACK_URL: elsewhere })),
+        elsewhere,
+      ).toThrow(/REGISTRATION_POSTBACK_URL/);
+    }
+  });
+
+  it("refuses a switch that is neither true nor false", () => {
+    expect(() => loadConfig(given({ REGISTRATION_POSTBACK_ENABLED: "yes" }))).toThrow(
+      /REGISTRATION_POSTBACK_ENABLED/,
+    );
+  });
+
+  it("names every problem with the report at once, beside the mail's", () => {
+    const said = thrownBy({
+      REGISTRATION_POSTBACK_ENABLED: "true",
+      MAIL_API_KEY: "re_a_real_looking_key",
+    });
+
+    expect(said).toContain("REGISTRATION_POSTBACK_KEY");
+    expect(said).toContain("REGISTRATION_POSTBACK_URL");
+    expect(said).toContain("MAIL_API_KEY");
+  });
+
+  it("does not put the tracker's key or a receiver's address into the sentence it throws", () => {
+    const receiver = "http://qa-receiver.invalid:4010/hook";
+    const refusals = [
+      thrownBy({ ...ON_TEST, ...SWITCHED_ON }),
+      thrownBy({ ...ON_LIVE, ...SWITCHED_ON, REGISTRATION_POSTBACK_URL: receiver }),
+      thrownBy({ ...SWITCHED_ON, REGISTRATION_POSTBACK_URL: "https://aisamuraihub.com/x" }),
+      thrownBy({ ...SWITCHED_ON, REGISTRATION_POSTBACK_KEY: "fifteen-chars-x" }),
+    ];
+
+    for (const said of refusals) {
+      expect(said).toMatch(/REGISTRATION_POSTBACK_/);
+      expect(said).not.toContain(KEY);
+      expect(said).not.toContain("fifteen-chars-x");
+      expect(said).not.toContain(receiver);
+      expect(said).not.toContain("aisamuraihub.com/x");
+    }
+  });
+});
+
 describe("what the configuration says about itself", () => {
   it("does not put the database password into the sentence it throws", () => {
     // A startup failure goes to a log, so it names the variable and never the
