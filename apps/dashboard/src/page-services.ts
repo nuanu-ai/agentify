@@ -723,18 +723,27 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       async landing(cookie, query) {
         const named = once(query.getAll("token"));
         const token = typeof named === "string" ? named : "";
-        const email = token === "" ? null : await identity.addressOfLink(token);
-        if (email === null) {
+        const link = token === "" ? null : await identity.landingOf(token);
+        if (link === null) {
           return await refuseLink(cookie);
         }
-        return { kind: "view", view: { screen: "open", token, email }, headers: LINK_HEADERS };
+        return {
+          kind: "view",
+          view: { screen: "open", token, email: link.email },
+          headers: LINK_HEADERS,
+        };
       },
 
+      // Only the yes the page's own button sends, named once, tells the
+      // tracker; anything else signs in and tells it nothing.
       async open(cookie, form) {
         const named = once(form.getAll("token"));
         const token = typeof named === "string" ? named : "";
+        const tellTracker = once(form.getAll("report")) === "yes";
         const opened =
-          token === "" ? { status: "refused" as const } : await identity.openLink(token);
+          token === ""
+            ? { status: "refused" as const }
+            : await identity.openLink(token, { tellTracker });
         if (opened.status === "refused") {
           return await refuseLink(cookie);
         }

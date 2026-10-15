@@ -40,10 +40,12 @@ export const dashboardDestinationIn = (value: unknown): DashboardDestination =>
 export type LinkDestination = DashboardDestination | Readonly<{ report: string }>;
 
 /**
- * A partner network's click identifier that the person agreed, on the sign-in
- * form, to have reported back once the link makes their account. `consentedAt`
- * is the moment as `Date.prototype.toISOString` writes it, and `wording` names
- * the version of the sentence they agreed to, at most 64 characters. A request
+ * A partner network's click identifier that the person asking for a link
+ * agreed, on the sign-in form, to have kept with it; it is reported only if the
+ * address's owner confirms when pressing the link and the press makes their
+ * account. `consentedAt` is the moment of the tick as
+ * `Date.prototype.toISOString` writes it, and `wording` names the version of
+ * the sentences agreed to, at most 64 characters. A request
  * carrying a click that does not have exactly this form throws, and nothing is
  * sent or counted: the page checks the identifier before passing it.
  */
@@ -65,6 +67,18 @@ export type LinkRequestResult =
   | Readonly<{ status: "accepted"; retryAt: Date }>
   | Readonly<{ status: "cooldown"; wall: LinkWall; retryAt: Date }>
   | Readonly<{ status: "unavailable" }>;
+
+/**
+ * What the page a link lands on draws: the address the link signs in, and
+ * whether pressing it would tell the ad tracker of a registration, which the
+ * page then asks the address's owner to confirm. That is so only where
+ * reporting is switched on, the link was asked for with a consented click, and
+ * the address has no verified account yet.
+ */
+export type LinkLanding = Readonly<{ email: string; tellsTracker: boolean }>;
+
+/** The address's owner's answer on the link's page. */
+export type OwnersChoice = Readonly<{ tellTracker: boolean }>;
 
 export type DashboardLinkResult =
   | Readonly<{
@@ -118,8 +132,13 @@ export interface DashboardIdentity {
    * Read without spending the link; null for a link that no longer opens
    * anything.
    */
-  addressOfLink(token: string): Promise<string | null>;
-  openLink(token: string): Promise<DashboardLinkResult>;
+  landingOf(token: string): Promise<LinkLanding | null>;
+  /**
+   * A registration is reported only where the owner said yes on the link's
+   * page; without the choice, or with a no, the press signs in and reports
+   * nothing, whatever the link was asked for with.
+   */
+  openLink(token: string, owner?: OwnersChoice): Promise<DashboardLinkResult>;
 
   whoIs(cookieHeader: string | undefined, reading?: SessionReading): Promise<LiveSession | null>;
   signOut(cookieHeader: string | undefined): Promise<number>;

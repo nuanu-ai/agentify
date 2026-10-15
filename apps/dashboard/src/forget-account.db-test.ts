@@ -109,7 +109,10 @@ if (databaseUrl === null) {
   const signIn = async (email: string, click?: typeof CLICK): Promise<Person> => {
     const asked = await identity.requestLink(email, "default", click);
     if (asked.status !== "accepted") throw new Error(`the link was ${asked.status}`);
-    const opened = await identity.openLink(tokenIn(messages.at(-1)));
+    // The owner says yes on the link's page wherever a click came with it.
+    const opened = await identity.openLink(tokenIn(messages.at(-1)), {
+      tellTracker: click !== undefined,
+    });
     if (opened.status !== "opened") throw new Error("the link did not open");
     return opened.person;
   };

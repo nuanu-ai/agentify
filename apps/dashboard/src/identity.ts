@@ -38,6 +38,7 @@ import {
   type LinkWall,
   type LiveSession,
   type MerchantPerson,
+  type OwnersChoice,
   type Person,
   type UnattachedPerson,
 } from "./dashboard-entry.js";
@@ -277,6 +278,22 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const cookies = getCookies(optionsFor(rootDatabase));
   const sessionCookie = cookies.sessionToken.name;
 
+  /**
+   * The click a press of this link would report: only where reporting is
+   * switched on, the link was asked for with a consented click, and the press
+   * makes the address's first verified account. A click asked for while
+   * reporting was on goes unreported once it is off.
+   */
+  const clickToReport = async (
+    context: Awaited<typeof auth.$context>,
+    claim: LinkClaim,
+  ): Promise<ConsentedClick | undefined> =>
+    reporting &&
+    claim.click !== undefined &&
+    (await context.internalAdapter.findUserByEmail(claim.email))?.user.emailVerified !== true
+      ? claim.click
+      : undefined;
+
   // The memory adapter is for deterministic tests and local work. Queueing its
   // transaction copies gives it all-or-nothing behaviour; PostgreSQL remains
   // the authority for concurrent row locking.
@@ -345,6 +362,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const openWith = async (
     bound: typeof auth,
     token: string,
+    owner: OwnersChoice | undefined,
     { lockEmail, register }: OpeningTransaction,
   ): Promise<DashboardLinkResult> => {
     if (!RAW_TOKEN.test(token)) return { status: "refused" };
@@ -362,13 +380,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     // Whether this press makes the address's first verified account has to be
     // read before the component verifies it. Under the address's lock, a second
     // press waits here and then finds the account the first one verified.
-    // Switched off, a click asked for while reporting was on is kept no longer.
     const registering =
-      reporting &&
-      claim.click !== undefined &&
-      (await context.internalAdapter.findUserByEmail(claim.email))?.user.emailVerified !== true
-        ? claim.click
-        : undefined;
+      owner?.tellTracker === true ? await clickToReport(context, claim) : undefined;
 
     const verify = async () =>
       await bound.api.magicLinkVerify({
@@ -600,22 +613,28 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       }
     },
 
-    async addressOfLink(token) {
+    async landingOf(token) {
       if (!RAW_TOKEN.test(token)) return null;
-      const stored = await (await contextOf()).adapter.findOne<StoredVerification>({
+      const context = await contextOf();
+      const stored = await context.adapter.findOne<StoredVerification>({
         model: "verification",
         where: [{ field: "identifier", value: tokenHash(token) }],
       });
       if (stored === null || new Date(stored.expiresAt).getTime() <= Date.now()) return null;
-      return claimFrom(stored.value)?.email ?? null;
+      const claim = claimFrom(stored.value);
+      if (claim === null) return null;
+      return {
+        email: claim.email,
+        tellsTracker: (await clickToReport(context, claim)) !== undefined,
+      };
     },
 
-    async openLink(token) {
+    async openLink(token, owner) {
       try {
         if (parts.pool === undefined) {
           return await inMemoryTransaction(
             async (bound, rows) =>
-              await openWith(bound, token, {
+              await openWith(bound, token, owner, {
                 register: async (registration) => registerInMemory(rows, registration),
               }),
           );
@@ -623,7 +642,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         const db = drizzle(parts.pool);
         return await db.transaction(async (tx) => {
           const bound = authFor(drizzleAdapter(tx, { provider: "pg", schema }));
-          return await openWith(bound, token, {
+          return await openWith(bound, token, owner, {
             lockEmail: async (email) => await lockEmail(tx, email),
             register: async (registration) => {
               await tx.insert(registrationPostbacks).values(registration);
