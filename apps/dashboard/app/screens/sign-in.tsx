@@ -7,7 +7,7 @@
 
 import { Button, Field } from "@agentify/ui";
 import { useEffect, useState } from "react";
-import { Form, useNavigation } from "react-router";
+import { Form, useFormAction, useNavigation } from "react-router";
 import { ADS_CONSENT } from "../../src/ads-consent.js";
 import type { DashboardDestination } from "../../src/dashboard-entry.js";
 import type {
@@ -52,11 +52,71 @@ const ConsentBox = ({ click }: Readonly<{ click: OfferedClick | undefined }>) =>
 /** The press is on its way while React Router sends a form here. */
 const usePressed = (): boolean => useNavigation().state === "submitting";
 
-export function AskScreen({
-  chrome,
-  view,
-}: Readonly<{ chrome: Chrome; view: Extract<SignInView, { screen: "ask" }> }>) {
+type AskView = Extract<SignInView, { screen: "ask" }>;
+
+const AddressField = ({ view }: Readonly<{ view: AskView }>) => (
+  <Field
+    label="Email address"
+    id="email"
+    name="email"
+    type="email"
+    autoComplete="email"
+    autoCapitalize="off"
+    spellCheck={false}
+    autoFocus
+    required
+    defaultValue={view.email ?? ""}
+    {...(view.problem === undefined ? {} : { error: view.problem })}
+  />
+);
+
+const GoogleButton = (sends: Readonly<{ formAction?: string; formNoValidate?: boolean }>) => (
+  <button className={styles.google} type="submit" {...sends}>
+    <img src={googleButton} alt="Sign in with Google" width="180" height="40" />
+  </button>
+);
+
+const SignInNotes = () => (
+  <>
+    <p className="quiet">
+      Each email sign-in link opens once and expires an hour after it is sent, so there is nothing
+      to keep and no password to remember.
+    </p>
+    <p className="quiet">
+      New to Agentify? Sign in here. Once you are signed in, one button opens your seller dashboard.
+    </p>
+  </>
+);
+
+export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: AskView }>) {
   const pressed = usePressed();
+  const toGoogle = useFormAction("/sign-in/google");
+  if (view.click !== undefined && view.googleEnabled) {
+    // One box goes with both ways in, and a box belongs to one form, so the
+    // Google button sends this form elsewhere. The email button comes first
+    // because Enter in the address presses a form's first button. Every press
+    // goes as a whole page: Google's answer moves the browser to Google, and
+    // React Router cannot send one button's press whole and another's in place.
+    return (
+      <GatePage chrome={chrome} title="Sign in">
+        <Form className="gate-card" method="post" action="/sign-in" reloadDocument>
+          <h1>Sign in</h1>
+          {view.reason === undefined ? null : <p>{view.reason}</p>}
+          <p>Enter your email address and we will send you a sign-in link.</p>
+          <AddressField view={view} />
+          <Destination destination={view.destination} />
+          <Click click={view.click} />
+          <ConsentBox click={view.click} />
+          <Button>Send me a sign-in link</Button>
+          <p>Or sign in with Google.</p>
+          <div className={styles.second}>
+            <GoogleButton formAction={toGoogle} formNoValidate />
+          </div>
+          <SignInNotes />
+        </Form>
+      </GatePage>
+    );
+  }
   return (
     <GatePage chrome={chrome} title="Sign in">
       <div className="gate-card">
@@ -66,9 +126,7 @@ export function AskScreen({
           <>
             <Form method="post" action="/sign-in/google" reloadDocument>
               <Destination destination={view.destination} />
-              <button className={styles.google} type="submit">
-                <img src={googleButton} alt="Sign in with Google" width="180" height="40" />
-              </button>
+              <GoogleButton />
             </Form>
             <p>Or enter your email address and we will send you a sign-in link.</p>
           </>
@@ -76,32 +134,13 @@ export function AskScreen({
           <p>Enter your email address and we will send you a sign-in link.</p>
         )}
         <Form method="post" action="/sign-in">
-          <Field
-            label="Email address"
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            autoCapitalize="off"
-            spellCheck={false}
-            autoFocus
-            required
-            defaultValue={view.email ?? ""}
-            {...(view.problem === undefined ? {} : { error: view.problem })}
-          />
+          <AddressField view={view} />
           <Destination destination={view.destination} />
           <Click click={view.click} />
           <ConsentBox click={view.click} />
           <Button pending={pressed}>Send me a sign-in link</Button>
         </Form>
-        <p className="quiet">
-          Each email sign-in link opens once and expires an hour after it is sent, so there is
-          nothing to keep and no password to remember.
-        </p>
-        <p className="quiet">
-          New to Agentify? Sign in here. Once you are signed in, one button opens your seller
-          dashboard.
-        </p>
+        <SignInNotes />
       </div>
     </GatePage>
   );

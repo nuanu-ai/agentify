@@ -630,6 +630,25 @@ const SIGNING_IN: GalleryState[] = [
       },
     },
   ),
+  at(
+    {
+      id: "dashboard-sign-in-from-an-ad-google",
+      screen: "Sign in",
+      when: "Somebody presses the button on a paid ad's landing page, on a channel configured for Google sign-in.",
+      cause:
+        "The address carries the ad tracker's click identifier and the report to the tracker is switched on, so the one box is offered, unticked, and goes with whichever way in is pressed.",
+    },
+    {
+      path: "/sign-in?clickid=qa_click_0123456789abcdef",
+      mode: "live",
+      loaded: {
+        "routes/sign-in": {
+          ...askViewOf(new URLSearchParams(), true),
+          click: { id: "qa_click_0123456789abcdef", consented: false },
+        },
+      },
+    },
+  ),
   signIn(
     {
       id: "dashboard-sign-in-google",

@@ -1576,12 +1576,9 @@ describe("the box and the Google button on the sign-in page", () => {
 
     expect(ticked.status).toBe(503);
     expect(consentBoxIn(ticked.html)).toStrictEqual({ ticked: true });
-    expect(formTo(ticked.html, "post", "/sign-in")?.fields).toMatchObject(
-      new Map([
-        ["clickid", CLICK],
-        ["destination", "settings"],
-      ]),
-    );
+    const again = formTo(ticked.html, "post", "/sign-in");
+    expect(again?.fields.get("clickid")).toBe(CLICK);
+    expect(again?.fields.get("destination")).toBe("settings");
     expect(consentBoxIn(unticked.html)).toStrictEqual({ ticked: false });
   });
 

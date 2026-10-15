@@ -126,9 +126,9 @@ export type SignInView =
 
 /**
  * The ad click a visitor arrived with, which the sign-in forms carry from page
- * to page, and whether they ticked the box that lets the click be kept with
- * the link, for the address's owner to confirm at the press. Present only
- * where the report is switched on.
+ * to page, and whether they ticked the box: kept with a link, the click waits
+ * for the address's owner to confirm at the press; kept with a Google sign-in,
+ * the tick is the consent. Present only where the report is switched on.
  */
 export type OfferedClick = Readonly<{ id: string; consented: boolean }>;
 
@@ -812,7 +812,8 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
 
       async googleStart(form) {
         const destination = dashboardDestinationIn(once(form.getAll("destination")));
-        const started = await identity.startGoogle(destination);
+        const offered = offeredIn(form);
+        const started = await identity.startGoogle(destination, consentedClickOf(offered.click));
         if (started.status === "redirect") {
           return {
             kind: "redirect",
@@ -825,7 +826,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           kind: "view",
           status: 503,
           headers: LINK_HEADERS,
-          view: googleRefusalView(identity.googleEnabled, "unavailable", destination),
+          view: {
+            ...googleRefusalView(identity.googleEnabled, "unavailable", destination),
+            ...offered,
+          },
         };
       },
 
