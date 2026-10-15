@@ -1,67 +1,67 @@
 {
-  "taken": "2026-10-14T16:09:58.846Z",
+  "taken": "2026-10-14T18:17:16.245Z",
   "latencyMs": 200,
   "runs": 5,
   "sizes": {
     "A": [
       {
         "page": "/",
-        "jsKB": 92.4,
-        "jsWithoutPrefetchKB": 92.4,
-        "cssKB": 4.8,
-        "htmlKB": 6.3,
-        "htmlRawKB": 33.5,
-        "totalKB": 103.5,
-        "prefetchedDataKB": 67.1,
+        "jsKB": 95.3,
+        "jsWithoutPrefetchKB": 95.3,
+        "cssKB": 5.3,
+        "htmlKB": 6.7,
+        "htmlRawKB": 35,
+        "totalKB": 107.3,
+        "prefetchedDataKB": 67.8,
         "fontKB": 89.1,
         "files": [
           {
             "file": "apps/docs/dist/client/index.html",
             "kind": "html",
             "prefetch": false,
-            "brotli": 6471
+            "brotli": 6907
           },
           {
-            "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+            "file": "apps/docs/dist/client/assets/manifest-f75fc580.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 368
+            "brotli": 365
           },
           {
-            "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+            "file": "apps/docs/dist/client/assets/entry.client-Bop0h3SP.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 125
+            "brotli": 126
           },
           {
-            "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+            "file": "apps/docs/dist/client/assets/framework-BPR9BTrJ.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 88204
+            "brotli": 88197
           },
           {
-            "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+            "file": "apps/docs/dist/client/assets/root-DPatL4s2.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 726
+            "brotli": 805
           },
           {
-            "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+            "file": "apps/docs/dist/client/assets/components-CLiqhwAn.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 4340
+            "brotli": 7194
           },
           {
-            "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+            "file": "apps/docs/dist/client/assets/page-BMLVLgkF.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 853
+            "brotli": 918
           },
           {
-            "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+            "file": "apps/docs/dist/client/assets/root-Cu91Ja_C.css",
             "kind": "css",
             "prefetch": false,
-            "brotli": 4945
+            "brotli": 5399
           },
           {
             "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
@@ -91,116 +91,116 @@
             "file": "apps/docs/dist/client/_.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3928
+            "brotli": 4019
           },
           {
             "file": "apps/docs/dist/client/money.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4471
+            "brotli": 4552
           },
           {
             "file": "apps/docs/dist/client/faq.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3854
+            "brotli": 3938
           },
           {
             "file": "apps/docs/dist/client/quickstart.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 12368
+            "brotli": 12466
           },
           {
             "file": "apps/docs/dist/client/cards.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 13450
+            "brotli": 13512
           },
           {
             "file": "apps/docs/dist/client/orders.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 21165
+            "brotli": 21235
           },
           {
             "file": "apps/docs/dist/client/failures.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4870
+            "brotli": 4969
           },
           {
             "file": "apps/docs/dist/client/scanner.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 2220
+            "brotli": 2303
           },
           {
             "file": "apps/docs/dist/client/scanner/methodology.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 2365
+            "brotli": 2452
           }
         ]
       },
       {
         "page": "/money",
-        "jsKB": 92.4,
-        "jsWithoutPrefetchKB": 92.4,
-        "cssKB": 4.8,
-        "htmlKB": 7,
-        "htmlRawKB": 39,
-        "totalKB": 104.2,
-        "prefetchedDataKB": 67.1,
+        "jsKB": 95.3,
+        "jsWithoutPrefetchKB": 95.3,
+        "cssKB": 5.3,
+        "htmlKB": 7.4,
+        "htmlRawKB": 40.5,
+        "totalKB": 108,
+        "prefetchedDataKB": 65.4,
         "fontKB": 89.1,
         "files": [
           {
             "file": "apps/docs/dist/client/money.html",
             "kind": "html",
             "prefetch": false,
-            "brotli": 7187
+            "brotli": 7603
           },
           {
-            "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+            "file": "apps/docs/dist/client/assets/manifest-f75fc580.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 368
+            "brotli": 365
           },
           {
-            "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+            "file": "apps/docs/dist/client/assets/entry.client-Bop0h3SP.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 125
+            "brotli": 126
           },
           {
-            "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+            "file": "apps/docs/dist/client/assets/framework-BPR9BTrJ.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 88204
+            "brotli": 88197
           },
           {
-            "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+            "file": "apps/docs/dist/client/assets/root-DPatL4s2.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 726
+            "brotli": 805
           },
           {
-            "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+            "file": "apps/docs/dist/client/assets/components-CLiqhwAn.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 4340
+            "brotli": 7194
           },
           {
-            "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+            "file": "apps/docs/dist/client/assets/page-BMLVLgkF.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 853
+            "brotli": 918
           },
           {
-            "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+            "file": "apps/docs/dist/client/assets/root-Cu91Ja_C.css",
             "kind": "css",
             "prefetch": false,
-            "brotli": 4945
+            "brotli": 5399
           },
           {
             "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
@@ -230,116 +230,110 @@
             "file": "apps/docs/dist/client/_.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3928
+            "brotli": 4019
           },
           {
             "file": "apps/docs/dist/client/money.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4471
+            "brotli": 4552
           },
           {
             "file": "apps/docs/dist/client/faq.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3854
+            "brotli": 3938
           },
           {
             "file": "apps/docs/dist/client/quickstart.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 12368
+            "brotli": 12466
           },
           {
             "file": "apps/docs/dist/client/cards.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 13450
+            "brotli": 13512
           },
           {
             "file": "apps/docs/dist/client/orders.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 21165
+            "brotli": 21235
           },
           {
             "file": "apps/docs/dist/client/failures.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4870
+            "brotli": 4969
           },
           {
             "file": "apps/docs/dist/client/scanner.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 2220
-          },
-          {
-            "file": "apps/docs/dist/client/scanner/methodology.data",
-            "kind": "data",
-            "prefetch": true,
-            "brotli": 2365
+            "brotli": 2303
           }
         ]
       },
       {
         "page": "/faq",
-        "jsKB": 92.4,
-        "jsWithoutPrefetchKB": 92.4,
-        "cssKB": 4.8,
-        "htmlKB": 6.4,
-        "htmlRawKB": 37.4,
-        "totalKB": 103.6,
-        "prefetchedDataKB": 67.1,
+        "jsKB": 95.3,
+        "jsWithoutPrefetchKB": 95.3,
+        "cssKB": 5.3,
+        "htmlKB": 6.8,
+        "htmlRawKB": 38.9,
+        "totalKB": 107.4,
+        "prefetchedDataKB": 67.8,
         "fontKB": 89.1,
         "files": [
           {
             "file": "apps/docs/dist/client/faq.html",
             "kind": "html",
             "prefetch": false,
-            "brotli": 6523
+            "brotli": 6982
           },
           {
-            "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+            "file": "apps/docs/dist/client/assets/manifest-f75fc580.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 368
+            "brotli": 365
           },
           {
-            "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+            "file": "apps/docs/dist/client/assets/entry.client-Bop0h3SP.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 125
+            "brotli": 126
           },
           {
-            "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+            "file": "apps/docs/dist/client/assets/framework-BPR9BTrJ.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 88204
+            "brotli": 88197
           },
           {
-            "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+            "file": "apps/docs/dist/client/assets/root-DPatL4s2.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 726
+            "brotli": 805
           },
           {
-            "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+            "file": "apps/docs/dist/client/assets/components-CLiqhwAn.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 4340
+            "brotli": 7194
           },
           {
-            "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+            "file": "apps/docs/dist/client/assets/page-BMLVLgkF.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 853
+            "brotli": 918
           },
           {
-            "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+            "file": "apps/docs/dist/client/assets/root-Cu91Ja_C.css",
             "kind": "css",
             "prefetch": false,
-            "brotli": 4945
+            "brotli": 5399
           },
           {
             "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
@@ -369,116 +363,116 @@
             "file": "apps/docs/dist/client/_.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3928
+            "brotli": 4019
           },
           {
             "file": "apps/docs/dist/client/money.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4471
+            "brotli": 4552
           },
           {
             "file": "apps/docs/dist/client/faq.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3854
+            "brotli": 3938
           },
           {
             "file": "apps/docs/dist/client/quickstart.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 12368
+            "brotli": 12466
           },
           {
             "file": "apps/docs/dist/client/cards.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 13450
+            "brotli": 13512
           },
           {
             "file": "apps/docs/dist/client/orders.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 21165
+            "brotli": 21235
           },
           {
             "file": "apps/docs/dist/client/failures.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4870
+            "brotli": 4969
           },
           {
             "file": "apps/docs/dist/client/scanner.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 2220
+            "brotli": 2303
           },
           {
             "file": "apps/docs/dist/client/scanner/methodology.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 2365
+            "brotli": 2452
           }
         ]
       },
       {
         "page": "/quickstart",
-        "jsKB": 92.4,
-        "jsWithoutPrefetchKB": 92.4,
-        "cssKB": 4.8,
-        "htmlKB": 17.1,
-        "htmlRawKB": 120.9,
-        "totalKB": 114.3,
-        "prefetchedDataKB": 62.6,
+        "jsKB": 95.3,
+        "jsWithoutPrefetchKB": 95.3,
+        "cssKB": 5.3,
+        "htmlKB": 17.5,
+        "htmlRawKB": 122.4,
+        "totalKB": 118.1,
+        "prefetchedDataKB": 63.2,
         "fontKB": 89.1,
         "files": [
           {
             "file": "apps/docs/dist/client/quickstart.html",
             "kind": "html",
             "prefetch": false,
-            "brotli": 17463
+            "brotli": 17924
           },
           {
-            "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+            "file": "apps/docs/dist/client/assets/manifest-f75fc580.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 368
+            "brotli": 365
           },
           {
-            "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+            "file": "apps/docs/dist/client/assets/entry.client-Bop0h3SP.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 125
+            "brotli": 126
           },
           {
-            "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+            "file": "apps/docs/dist/client/assets/framework-BPR9BTrJ.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 88204
+            "brotli": 88197
           },
           {
-            "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+            "file": "apps/docs/dist/client/assets/root-DPatL4s2.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 726
+            "brotli": 805
           },
           {
-            "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+            "file": "apps/docs/dist/client/assets/components-CLiqhwAn.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 4340
+            "brotli": 7194
           },
           {
-            "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+            "file": "apps/docs/dist/client/assets/page-BMLVLgkF.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 853
+            "brotli": 918
           },
           {
-            "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+            "file": "apps/docs/dist/client/assets/root-Cu91Ja_C.css",
             "kind": "css",
             "prefetch": false,
-            "brotli": 4945
+            "brotli": 5399
           },
           {
             "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
@@ -508,104 +502,104 @@
             "file": "apps/docs/dist/client/_.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3928
+            "brotli": 4019
           },
           {
             "file": "apps/docs/dist/client/money.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4471
+            "brotli": 4552
           },
           {
             "file": "apps/docs/dist/client/faq.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3854
+            "brotli": 3938
           },
           {
             "file": "apps/docs/dist/client/quickstart.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 12368
+            "brotli": 12466
           },
           {
             "file": "apps/docs/dist/client/cards.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 13450
+            "brotli": 13512
           },
           {
             "file": "apps/docs/dist/client/orders.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 21165
+            "brotli": 21235
           },
           {
             "file": "apps/docs/dist/client/failures.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4870
+            "brotli": 4969
           }
         ]
       },
       {
         "page": "/cards",
-        "jsKB": 92.4,
-        "jsWithoutPrefetchKB": 92.4,
-        "cssKB": 4.8,
-        "htmlKB": 18.8,
-        "htmlRawKB": 140.8,
-        "totalKB": 116,
-        "prefetchedDataKB": 37.2,
+        "jsKB": 95.3,
+        "jsWithoutPrefetchKB": 95.3,
+        "cssKB": 5.3,
+        "htmlKB": 19.2,
+        "htmlRawKB": 142.4,
+        "totalKB": 119.8,
+        "prefetchedDataKB": 37.6,
         "fontKB": 89.1,
         "files": [
           {
             "file": "apps/docs/dist/client/cards.html",
             "kind": "html",
             "prefetch": false,
-            "brotli": 19261
+            "brotli": 19692
           },
           {
-            "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+            "file": "apps/docs/dist/client/assets/manifest-f75fc580.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 368
+            "brotli": 365
           },
           {
-            "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+            "file": "apps/docs/dist/client/assets/entry.client-Bop0h3SP.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 125
+            "brotli": 126
           },
           {
-            "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+            "file": "apps/docs/dist/client/assets/framework-BPR9BTrJ.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 88204
+            "brotli": 88197
           },
           {
-            "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+            "file": "apps/docs/dist/client/assets/root-DPatL4s2.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 726
+            "brotli": 805
           },
           {
-            "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+            "file": "apps/docs/dist/client/assets/components-CLiqhwAn.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 4340
+            "brotli": 7194
           },
           {
-            "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+            "file": "apps/docs/dist/client/assets/page-BMLVLgkF.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 853
+            "brotli": 918
           },
           {
-            "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+            "file": "apps/docs/dist/client/assets/root-Cu91Ja_C.css",
             "kind": "css",
             "prefetch": false,
-            "brotli": 4945
+            "brotli": 5399
           },
           {
             "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
@@ -635,92 +629,92 @@
             "file": "apps/docs/dist/client/_.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3928
+            "brotli": 4019
           },
           {
             "file": "apps/docs/dist/client/money.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4471
+            "brotli": 4552
           },
           {
             "file": "apps/docs/dist/client/faq.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3854
+            "brotli": 3938
           },
           {
             "file": "apps/docs/dist/client/quickstart.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 12368
+            "brotli": 12466
           },
           {
             "file": "apps/docs/dist/client/cards.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 13450
+            "brotli": 13512
           }
         ]
       },
       {
         "page": "/orders",
-        "jsKB": 92.4,
-        "jsWithoutPrefetchKB": 92.4,
-        "cssKB": 4.8,
-        "htmlKB": 28.3,
-        "htmlRawKB": 323.8,
-        "totalKB": 125.5,
-        "prefetchedDataKB": 57.8,
+        "jsKB": 95.3,
+        "jsWithoutPrefetchKB": 95.3,
+        "cssKB": 5.3,
+        "htmlKB": 28.7,
+        "htmlRawKB": 325.3,
+        "totalKB": 129.3,
+        "prefetchedDataKB": 58.3,
         "fontKB": 89.1,
         "files": [
           {
             "file": "apps/docs/dist/client/orders.html",
             "kind": "html",
             "prefetch": false,
-            "brotli": 28985
+            "brotli": 29426
           },
           {
-            "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+            "file": "apps/docs/dist/client/assets/manifest-f75fc580.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 368
+            "brotli": 365
           },
           {
-            "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+            "file": "apps/docs/dist/client/assets/entry.client-Bop0h3SP.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 125
+            "brotli": 126
           },
           {
-            "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+            "file": "apps/docs/dist/client/assets/framework-BPR9BTrJ.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 88204
+            "brotli": 88197
           },
           {
-            "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+            "file": "apps/docs/dist/client/assets/root-DPatL4s2.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 726
+            "brotli": 805
           },
           {
-            "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+            "file": "apps/docs/dist/client/assets/components-CLiqhwAn.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 4340
+            "brotli": 7194
           },
           {
-            "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+            "file": "apps/docs/dist/client/assets/page-BMLVLgkF.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 853
+            "brotli": 918
           },
           {
-            "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+            "file": "apps/docs/dist/client/assets/root-Cu91Ja_C.css",
             "kind": "css",
             "prefetch": false,
-            "brotli": 4945
+            "brotli": 5399
           },
           {
             "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
@@ -750,98 +744,98 @@
             "file": "apps/docs/dist/client/_.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3928
+            "brotli": 4019
           },
           {
             "file": "apps/docs/dist/client/money.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4471
+            "brotli": 4552
           },
           {
             "file": "apps/docs/dist/client/faq.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3854
+            "brotli": 3938
           },
           {
             "file": "apps/docs/dist/client/quickstart.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 12368
+            "brotli": 12466
           },
           {
             "file": "apps/docs/dist/client/cards.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 13450
+            "brotli": 13512
           },
           {
             "file": "apps/docs/dist/client/orders.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 21165
+            "brotli": 21235
           }
         ]
       },
       {
         "page": "/failures",
-        "jsKB": 92.4,
-        "jsWithoutPrefetchKB": 92.4,
-        "cssKB": 4.8,
-        "htmlKB": 7.5,
-        "htmlRawKB": 42.8,
-        "totalKB": 104.7,
-        "prefetchedDataKB": 62.6,
+        "jsKB": 95.3,
+        "jsWithoutPrefetchKB": 95.3,
+        "cssKB": 5.3,
+        "htmlKB": 7.9,
+        "htmlRawKB": 44.4,
+        "totalKB": 108.5,
+        "prefetchedDataKB": 63.2,
         "fontKB": 89.1,
         "files": [
           {
             "file": "apps/docs/dist/client/failures.html",
             "kind": "html",
             "prefetch": false,
-            "brotli": 7693
+            "brotli": 8129
           },
           {
-            "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+            "file": "apps/docs/dist/client/assets/manifest-f75fc580.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 368
+            "brotli": 365
           },
           {
-            "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+            "file": "apps/docs/dist/client/assets/entry.client-Bop0h3SP.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 125
+            "brotli": 126
           },
           {
-            "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+            "file": "apps/docs/dist/client/assets/framework-BPR9BTrJ.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 88204
+            "brotli": 88197
           },
           {
-            "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+            "file": "apps/docs/dist/client/assets/root-DPatL4s2.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 726
+            "brotli": 805
           },
           {
-            "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+            "file": "apps/docs/dist/client/assets/components-CLiqhwAn.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 4340
+            "brotli": 7194
           },
           {
-            "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+            "file": "apps/docs/dist/client/assets/page-BMLVLgkF.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 853
+            "brotli": 918
           },
           {
-            "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+            "file": "apps/docs/dist/client/assets/root-Cu91Ja_C.css",
             "kind": "css",
             "prefetch": false,
-            "brotli": 4945
+            "brotli": 5399
           },
           {
             "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
@@ -871,104 +865,104 @@
             "file": "apps/docs/dist/client/_.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3928
+            "brotli": 4019
           },
           {
             "file": "apps/docs/dist/client/money.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4471
+            "brotli": 4552
           },
           {
             "file": "apps/docs/dist/client/faq.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3854
+            "brotli": 3938
           },
           {
             "file": "apps/docs/dist/client/quickstart.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 12368
+            "brotli": 12466
           },
           {
             "file": "apps/docs/dist/client/cards.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 13450
+            "brotli": 13512
           },
           {
             "file": "apps/docs/dist/client/orders.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 21165
+            "brotli": 21235
           },
           {
             "file": "apps/docs/dist/client/failures.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4870
+            "brotli": 4969
           }
         ]
       },
       {
         "page": "/scanner",
-        "jsKB": 92.4,
-        "jsWithoutPrefetchKB": 92.4,
-        "cssKB": 4.8,
-        "htmlKB": 4.8,
-        "htmlRawKB": 24.7,
-        "totalKB": 102,
-        "prefetchedDataKB": 67.1,
+        "jsKB": 95.3,
+        "jsWithoutPrefetchKB": 95.3,
+        "cssKB": 5.3,
+        "htmlKB": 5.3,
+        "htmlRawKB": 26.2,
+        "totalKB": 105.8,
+        "prefetchedDataKB": 67.8,
         "fontKB": 89.1,
         "files": [
           {
             "file": "apps/docs/dist/client/scanner.html",
             "kind": "html",
             "prefetch": false,
-            "brotli": 4936
+            "brotli": 5376
           },
           {
-            "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+            "file": "apps/docs/dist/client/assets/manifest-f75fc580.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 368
+            "brotli": 365
           },
           {
-            "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+            "file": "apps/docs/dist/client/assets/entry.client-Bop0h3SP.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 125
+            "brotli": 126
           },
           {
-            "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+            "file": "apps/docs/dist/client/assets/framework-BPR9BTrJ.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 88204
+            "brotli": 88197
           },
           {
-            "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+            "file": "apps/docs/dist/client/assets/root-DPatL4s2.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 726
+            "brotli": 805
           },
           {
-            "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+            "file": "apps/docs/dist/client/assets/components-CLiqhwAn.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 4340
+            "brotli": 7194
           },
           {
-            "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+            "file": "apps/docs/dist/client/assets/page-BMLVLgkF.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 853
+            "brotli": 918
           },
           {
-            "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+            "file": "apps/docs/dist/client/assets/root-Cu91Ja_C.css",
             "kind": "css",
             "prefetch": false,
-            "brotli": 4945
+            "brotli": 5399
           },
           {
             "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
@@ -998,116 +992,116 @@
             "file": "apps/docs/dist/client/_.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3928
+            "brotli": 4019
           },
           {
             "file": "apps/docs/dist/client/money.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4471
+            "brotli": 4552
           },
           {
             "file": "apps/docs/dist/client/faq.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3854
+            "brotli": 3938
           },
           {
             "file": "apps/docs/dist/client/quickstart.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 12368
+            "brotli": 12466
           },
           {
             "file": "apps/docs/dist/client/cards.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 13450
+            "brotli": 13512
           },
           {
             "file": "apps/docs/dist/client/orders.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 21165
+            "brotli": 21235
           },
           {
             "file": "apps/docs/dist/client/failures.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4870
+            "brotli": 4969
           },
           {
             "file": "apps/docs/dist/client/scanner.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 2220
+            "brotli": 2303
           },
           {
             "file": "apps/docs/dist/client/scanner/methodology.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 2365
+            "brotli": 2452
           }
         ]
       },
       {
         "page": "/scanner/methodology",
-        "jsKB": 92.4,
-        "jsWithoutPrefetchKB": 92.4,
-        "cssKB": 4.8,
-        "htmlKB": 5.1,
-        "htmlRawKB": 26.5,
-        "totalKB": 102.3,
-        "prefetchedDataKB": 67.1,
+        "jsKB": 95.3,
+        "jsWithoutPrefetchKB": 95.3,
+        "cssKB": 5.3,
+        "htmlKB": 5.5,
+        "htmlRawKB": 28,
+        "totalKB": 106.1,
+        "prefetchedDataKB": 67.8,
         "fontKB": 89.1,
         "files": [
           {
             "file": "apps/docs/dist/client/scanner/methodology.html",
             "kind": "html",
             "prefetch": false,
-            "brotli": 5176
+            "brotli": 5593
           },
           {
-            "file": "apps/docs/dist/client/assets/manifest-60d35ea4.js",
+            "file": "apps/docs/dist/client/assets/manifest-f75fc580.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 368
+            "brotli": 365
           },
           {
-            "file": "apps/docs/dist/client/assets/entry.client-CJdtzDk6.js",
+            "file": "apps/docs/dist/client/assets/entry.client-Bop0h3SP.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 125
+            "brotli": 126
           },
           {
-            "file": "apps/docs/dist/client/assets/framework-CFM4g_XA.js",
+            "file": "apps/docs/dist/client/assets/framework-BPR9BTrJ.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 88204
+            "brotli": 88197
           },
           {
-            "file": "apps/docs/dist/client/assets/root-CL3RjcHB.js",
+            "file": "apps/docs/dist/client/assets/root-DPatL4s2.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 726
+            "brotli": 805
           },
           {
-            "file": "apps/docs/dist/client/assets/components-BHwtqmgg.js",
+            "file": "apps/docs/dist/client/assets/components-CLiqhwAn.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 4340
+            "brotli": 7194
           },
           {
-            "file": "apps/docs/dist/client/assets/page-BlUvghe0.js",
+            "file": "apps/docs/dist/client/assets/page-BMLVLgkF.js",
             "kind": "js",
             "prefetch": false,
-            "brotli": 853
+            "brotli": 918
           },
           {
-            "file": "apps/docs/dist/client/assets/root-Dx6zKFKd.css",
+            "file": "apps/docs/dist/client/assets/root-Cu91Ja_C.css",
             "kind": "css",
             "prefetch": false,
-            "brotli": 4945
+            "brotli": 5399
           },
           {
             "file": "packages/visual/public/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
@@ -1137,55 +1131,55 @@
             "file": "apps/docs/dist/client/_.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3928
+            "brotli": 4019
           },
           {
             "file": "apps/docs/dist/client/money.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4471
+            "brotli": 4552
           },
           {
             "file": "apps/docs/dist/client/faq.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 3854
+            "brotli": 3938
           },
           {
             "file": "apps/docs/dist/client/quickstart.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 12368
+            "brotli": 12466
           },
           {
             "file": "apps/docs/dist/client/cards.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 13450
+            "brotli": 13512
           },
           {
             "file": "apps/docs/dist/client/orders.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 21165
+            "brotli": 21235
           },
           {
             "file": "apps/docs/dist/client/failures.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 4870
+            "brotli": 4969
           },
           {
             "file": "apps/docs/dist/client/scanner.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 2220
+            "brotli": 2303
           },
           {
             "file": "apps/docs/dist/client/scanner/methodology.data",
             "kind": "data",
             "prefetch": true,
-            "brotli": 2365
+            "brotli": 2452
           }
         ]
       }
@@ -2315,11 +2309,11 @@
   "search": {
     "A": {
       "indexKB": 67.2,
-      "codeKB": 6.2,
+      "codeKB": 6.6,
       "fetchedOnOpening": [
         {
-          "file": "apps/docs/dist/client/assets/search-panel-BYnFDd1h.js",
-          "brotliKB": 6.2
+          "file": "apps/docs/dist/client/assets/search-panel-BJPfhPRp.js",
+          "brotliKB": 6.6
         },
         {
           "file": "apps/docs/dist/client/search-index.json",
@@ -2569,7 +2563,7 @@
         "code": [0, 0],
         "examples": [0, 0],
         "diagrams": [0, 0],
-        "links": [15, 15]
+        "links": [15, 14]
       },
       "differences": {
         "headings": [],
@@ -2577,9 +2571,9 @@
         "code": [],
         "examples": [],
         "diagrams": [],
-        "links": []
+        "links": ["#connecting-to-agentify"]
       },
-      "differenceCount": 0,
+      "differenceCount": 1,
       "proseOnlyInB": [],
       "proseOnlyInA": []
     },
@@ -2591,7 +2585,7 @@
         "code": [0, 0],
         "examples": [0, 0],
         "diagrams": [0, 0],
-        "links": [14, 14]
+        "links": [14, 13]
       },
       "differences": {
         "headings": [],
@@ -2599,9 +2593,9 @@
         "code": [],
         "examples": [],
         "diagrams": [],
-        "links": []
+        "links": ["#money"]
       },
-      "differenceCount": 0,
+      "differenceCount": 1,
       "proseOnlyInB": [],
       "proseOnlyInA": []
     },
@@ -2613,7 +2607,7 @@
         "code": [0, 0],
         "examples": [0, 0],
         "diagrams": [0, 0],
-        "links": [34, 34]
+        "links": [34, 33]
       },
       "differences": {
         "headings": [],
@@ -2621,9 +2615,9 @@
         "code": [],
         "examples": [],
         "diagrams": [],
-        "links": []
+        "links": ["#common-questions"]
       },
-      "differenceCount": 0,
+      "differenceCount": 1,
       "proseOnlyInB": [],
       "proseOnlyInA": []
     },
@@ -2635,7 +2629,7 @@
         "code": [10, 10],
         "examples": [0, 0],
         "diagrams": [0, 0],
-        "links": [33, 33]
+        "links": [33, 32]
       },
       "differences": {
         "headings": [],
@@ -2643,9 +2637,9 @@
         "code": [],
         "examples": [],
         "diagrams": [],
-        "links": []
+        "links": ["#the-first-test-sale"]
       },
-      "differenceCount": 0,
+      "differenceCount": 1,
       "proseOnlyInB": [
         "A synchronous card carries no such field: how long to wait for a synchronous answer is set by us, as one number for everybody, and it is eight seconds. The clock starts when the payment checked out, so they are the eight seconds your handler has, less the trip the order makes to reach you and the trip your answer makes coming back: the price question is asked and answered on the call before the payment, and the check itself runs before the eight begin. They are not the agent's whole wait: the charge executes after your answer, and the ten seconds we promise the agent for a synchronous purchase cover your answer and that charge together. The ten start where your eight do, when the payment checked out, so the check sits on top of them rather than inside — the agent waits for the check, and then for the ten. Both numbers are ours to set rather than the card's, and both are what the system you are connecting to runs with (Time ran out)."
       ],
@@ -2661,7 +2655,7 @@
         "code": [8, 8],
         "examples": [6, 6],
         "diagrams": [0, 0],
-        "links": [39, 39]
+        "links": [39, 38]
       },
       "differences": {
         "headings": [],
@@ -2669,9 +2663,9 @@
         "code": [],
         "examples": [],
         "diagrams": [],
-        "links": []
+        "links": ["#the-product-card"]
       },
-      "differenceCount": 0,
+      "differenceCount": 1,
       "proseOnlyInB": [
         "A synchronous card has no such field, because how long to wait for a synchronous answer is set by us, the same for every product: eight seconds. That one runs from the moment the payment checked out rather than from the moment the agent first asked, so the price question and the payment check are behind it rather than inside it. The confirmation mode has a deadline of its own — an hour, where the card names none — and it arrives together with the mode.",
         "How long a delivery deadline may be, and whether an asynchronous card ought to be required to name one at all, rather than fall to a default the buying program is never shown."
@@ -2689,7 +2683,7 @@
         "code": [4, 4],
         "examples": [0, 0],
         "diagrams": [3, 3],
-        "links": [40, 40]
+        "links": [40, 39]
       },
       "differences": {
         "headings": [],
@@ -2697,9 +2691,9 @@
         "code": [],
         "examples": [],
         "diagrams": [],
-        "links": []
+        "links": ["#orders-and-fulfillment-modes"]
       },
-      "differenceCount": 0,
+      "differenceCount": 1,
       "proseOnlyInB": [
         "The numbers are ours to set rather than the card's, and the ones below are what the system you are connecting to runs with. A price holds for thirty seconds. A synchronous answer has eight seconds. An asynchronous card can carry one deadline of yours, on the delivery, counted from the moment the buyer was charged; name it and the agent sees it before it buys, leave it out and a day applies that the agent is never shown (The product card). The confirmation mode has a deadline of its own — an hour, where the card names none — and it arrives together with the mode.",
         "The eight seconds run from the moment the payment checked out rather than from the moment the agent first asked, so asking your price — which happens on the call before the payment — and checking the payment itself are behind them rather than inside them. They are not the whole of the agent's wait: executing the charge comes after your answer, on a clock of its own, and the two together fit inside the ten seconds we promise the agent for a synchronous purchase. Those ten start where your eight do, at the moment the payment checked out, so the check is on top of them and not inside: what the agent waits for is the check, and then the ten.",
@@ -2719,7 +2713,7 @@
         "code": [0, 0],
         "examples": [0, 0],
         "diagrams": [0, 0],
-        "links": [24, 24]
+        "links": [24, 23]
       },
       "differences": {
         "headings": [],
@@ -2727,9 +2721,9 @@
         "code": [],
         "examples": [],
         "diagrams": [],
-        "links": []
+        "links": ["#what-can-go-wrong"]
       },
-      "differenceCount": 0,
+      "differenceCount": 1,
       "proseOnlyInB": [
         "Say an asynchronous card of yours names no delivery deadline, so the day we hold it to is the one running. The day passes with no confirmation of a delivery from you — the order is marked as needing a refund, and the money for it is already with you. Name a deadline of your own and the agent sees it before it buys; leave it out and that day applies with no deadline shown to the agent at all (The product card). How long to wait for a synchronous answer is set by us and no card carries it: eight seconds, counted from the moment the payment checked out (Time ran out)."
       ],
@@ -2771,29 +2765,29 @@
         "from": "/",
         "to": "/quickstart",
         "rest": "after a 300 ms rest",
-        "medianMs": 54.2,
-        "samples": [56.8, 51.9, 53, 54.2, 64.8]
+        "medianMs": 64.9,
+        "samples": [45.4, 67.2, 54.6, 65.7, 64.9]
       },
       {
         "from": "/",
         "to": "/quickstart",
         "rest": "at once",
-        "medianMs": 52.6,
-        "samples": [52.6, 53, 52.9, 51, 52.2]
+        "medianMs": 57.5,
+        "samples": [60.2, 56.9, 55.4, 60.9, 57.5]
       },
       {
         "from": "/money",
         "to": "/orders",
         "rest": "after a 300 ms rest",
-        "medianMs": 66.7,
-        "samples": [56.3, 52.4, 71.7, 70.2, 66.7]
+        "medianMs": 63,
+        "samples": [48, 51.2, 63, 71.1, 68.2]
       },
       {
         "from": "/money",
         "to": "/orders",
         "rest": "at once",
-        "medianMs": 71,
-        "samples": [71, 56.7, 71, 70.8, 74.1]
+        "medianMs": 59.9,
+        "samples": [58.6, 60.9, 59.9, 58.5, 62.8]
       }
     ],
     "B": [
@@ -2801,29 +2795,29 @@
         "from": "/",
         "to": "/quickstart",
         "rest": "after a 300 ms rest",
-        "medianMs": 60,
-        "samples": [55.4, 60.8, 52.4, 65.3, 60]
+        "medianMs": 63.4,
+        "samples": [63.4, 66.1, 52.6, 61.7, 65.2]
       },
       {
         "from": "/",
         "to": "/quickstart",
         "rest": "at once",
-        "medianMs": 55.3,
-        "samples": [60.2, 53.4, 55.4, 55.3, 53.1]
+        "medianMs": 54.1,
+        "samples": [54.1, 60.2, 55.2, 53.8, 52.8]
       },
       {
         "from": "/money",
         "to": "/orders",
         "rest": "after a 300 ms rest",
-        "medianMs": 65.9,
-        "samples": [66.3, 55.7, 53.2, 65.9, 69.8]
+        "medianMs": 64.6,
+        "samples": [65.7, 64.6, 66.7, 57.6, 64.3]
       },
       {
         "from": "/money",
         "to": "/orders",
         "rest": "at once",
-        "medianMs": 55.4,
-        "samples": [56.2, 57.3, 54.9, 55.4, 55]
+        "medianMs": 57.6,
+        "samples": [58.4, 57.8, 56.2, 56.5, 57.6]
       }
     ]
   },
@@ -2831,75 +2825,75 @@
     "A": [
       {
         "page": "/",
-        "lcpMs": 448,
-        "fcpMs": 448
+        "lcpMs": 468,
+        "fcpMs": 468
       },
       {
         "page": "/money",
-        "lcpMs": 452,
-        "fcpMs": 452
+        "lcpMs": 472,
+        "fcpMs": 472
       },
       {
         "page": "/faq",
-        "lcpMs": 456,
-        "fcpMs": 456
+        "lcpMs": 468,
+        "fcpMs": 468
       },
       {
         "page": "/quickstart",
-        "lcpMs": 460,
-        "fcpMs": 460
+        "lcpMs": 476,
+        "fcpMs": 476
       },
       {
         "page": "/cards",
-        "lcpMs": 452,
-        "fcpMs": 452
+        "lcpMs": 476,
+        "fcpMs": 476
       },
       {
         "page": "/orders",
-        "lcpMs": 456,
-        "fcpMs": 456
+        "lcpMs": 484,
+        "fcpMs": 484
       },
       {
         "page": "/failures",
-        "lcpMs": 444,
-        "fcpMs": 444
+        "lcpMs": 464,
+        "fcpMs": 464
       }
     ],
     "B": [
       {
         "page": "/",
-        "lcpMs": 448,
-        "fcpMs": 448
+        "lcpMs": 468,
+        "fcpMs": 468
       },
       {
         "page": "/money",
-        "lcpMs": 452,
-        "fcpMs": 452
+        "lcpMs": 464,
+        "fcpMs": 464
       },
       {
         "page": "/faq",
-        "lcpMs": 456,
-        "fcpMs": 456
+        "lcpMs": 472,
+        "fcpMs": 472
       },
       {
         "page": "/quickstart",
-        "lcpMs": 456,
-        "fcpMs": 456
+        "lcpMs": 472,
+        "fcpMs": 472
       },
       {
         "page": "/cards",
-        "lcpMs": 468,
-        "fcpMs": 468
+        "lcpMs": 476,
+        "fcpMs": 476
       },
       {
         "page": "/orders",
-        "lcpMs": 468,
-        "fcpMs": 468
+        "lcpMs": 476,
+        "fcpMs": 476
       },
       {
         "page": "/failures",
-        "lcpMs": 448,
-        "fcpMs": 448
+        "lcpMs": 468,
+        "fcpMs": 468
       }
     ]
   },

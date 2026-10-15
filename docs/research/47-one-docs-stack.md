@@ -591,32 +591,42 @@ the instrument above pointed at the migrated `apps/docs` and at the same
 VitePress build as B, served the same way except that A is served by the
 browser tests' stand-in for Caddy's block, `apps/docs/testing/edge.ts`, which
 fills the site's values as well as the notice. The instrument's own selectors
-were changed to the migrated layout's; nothing else in it was. What it printed
-is `47-one-docs-stack/results/migration-browser.json`, with B's directory
-written as the address it was built at and the servers' ports left out.
+were changed to the migrated layout's, and it counts the orders page's inline
+diagrams in the page's body, because the head now carries a script of its
+own; nothing else in it was changed. What it printed is
+`47-one-docs-stack/results/migration-browser.json`, with B's directory written
+as the address it was built at and the servers' ports left out.
 
-Every page loads 92.4 KB of script on a first visit against B's 234 to
-617 KB, and 4.8 KB of stylesheet against 18.0 KB; the first visit in total is
-102 to 126 KB against 266 to 651 KB. The pages' HTML in brotli is 4.8 to
-28.3 KB against B's 5.3 to 16.6 KB. Moving between two pages took 52.6 to
-71.0 ms against B's 55.3 to 65.9 ms, the largest difference 15.6 ms; the
-largest paint of a cold load was 444 to 460 ms against 448 to 468 ms. All
-three diagrams are inline, the orders page asks for no script beyond the
-lightest, and the notice is the channel's own on load and after a move on
-both channels.
+The documentation carries the consent banner the scanner's pages carry, so a
+first visit is measured as a visitor's first, with the banner up. The banner's
+code and styles are counted in it; the code that measures a visit is loaded
+only once the visitor allows measuring, and is not.
+
+Every page loads 95.3 KB of script on a first visit against B's 234 to
+617 KB, and 5.3 KB of stylesheet against 18.0 KB; the first visit in total is
+106 to 129 KB against 266 to 651 KB. The pages' HTML in brotli is 5.3 to
+28.7 KB against B's 5.3 to 16.6 KB. Moving between two pages took 57.5 to
+64.9 ms against B's 54.1 to 64.6 ms, the largest difference 3.4 ms; the
+largest paint of a cold load was 464 to 484 ms against 464 to 476 ms, no page
+more than 8 ms apart from B's. All three diagrams are inline, the orders page
+asks for no script beyond the lightest, and the notice is the channel's own on
+load and after a move on both channels.
 
 The search hits every registered query and both of the scanner's, with the
 same first three results as B for every query. Its index is 67.2 KB against
 B's 24.5 KB, where the prototype's was 27.9 KB: the index now keeps each
 section's text, so that a result can show the words it was found by with the
 match marked, which VitePress does by fetching the result's page. Opening the
-search for the first time therefore fetches 73.4 KB against B's 43.5 KB,
-while every page carries 142 KB or more less script than B's.
+search for the first time therefore fetches 73.8 KB against B's 43.5 KB,
+while every page carries 139 KB or more less script than B's. That a page's
+title and introduction are found at the page's own address, and that every
+section's result names its page above it as B's do, is held by the index's
+own tests rather than by this measurement.
 
 A first measurement on the branch found the largest paint 180 to 200 ms
 later than B's: the faces were linked as a second stylesheet from the shared
 origin, and over HTTP/1.1, where a browser opens six connections to a host,
 that stylesheet waited behind the page's scripts for a connection. The faces
 are now written into the documentation's own stylesheet, and the paints above
-are the second measurement's. Over HTTP/2, which the deployed channels speak,
-the six connections do not apply.
+were measured after that. Over HTTP/2, which the deployed channels speak, the
+six connections do not apply.
