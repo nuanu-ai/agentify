@@ -676,6 +676,16 @@ if (databaseUrl === null) {
         [failed],
       );
       const young = await registered(CLICKS[2], 23 * HOUR);
+      // Final already, and older than a day: not the loop's to touch.
+      const delivered = await registered("qa_click_3123456789abcdef", 30 * HOUR);
+      const deliveredAt = new Date(clock - 29 * HOUR);
+      await pool.query(
+        `update dashboard_registration_postbacks
+            set state = 'delivered', click_id = null, next_attempt_at = null, attempts = 1,
+                last_outcome = 'http_200', settled_at = $2
+          where account_id = $1`,
+        [delivered, deliveredAt],
+      );
       const { post, received } = tracker();
 
       const running = startRegistrationReports({
@@ -688,7 +698,9 @@ if (databaseUrl === null) {
       });
       try {
         await eventually(async () =>
-          (await rows()).every((row) => row.account_id === young || row.state === "given_up"),
+          (await rows())
+            .filter((row) => row.account_id === unasked || row.account_id === failed)
+            .every((row) => row.state === "given_up"),
         );
         // Room for a post, had the loop been going to make one.
         await sleep(100);
@@ -712,6 +724,15 @@ if (databaseUrl === null) {
         attempts: 3,
         next_attempt_at: null,
         last_outcome: "http_503",
+      });
+      expect(byAccount.get(delivered)).toStrictEqual({
+        account_id: delivered,
+        click_id: null,
+        state: "delivered",
+        attempts: 1,
+        next_attempt_at: null,
+        last_outcome: "http_200",
+        settled_at: deliveredAt,
       });
       // Untouched: nobody was asked about it.
       expect(byAccount.get(young)).toMatchObject({
