@@ -119,6 +119,25 @@ describe("the box a visitor an ad sent is offered", () => {
 
     expect(box.checked).toBe(true);
   });
+
+  it("leads, from beside the box, to the privacy page's section naming the tracker", () => {
+    const { getByLabelText } = render(
+      routed(() => (
+        <AskScreen
+          chrome={chromeIn("live")}
+          view={{
+            screen: "ask",
+            destination: "default",
+            click: { id: "qa_click_0123456789abcdef", consented: false },
+          }}
+        />
+      )),
+    );
+
+    const box = getByLabelText(ADS_CONSENT.sentence) as HTMLInputElement;
+    const ways = [...(box.form?.querySelectorAll("a") ?? [])].map((a) => a.getAttribute("href"));
+    expect(ways).toContain("/privacy#processors");
+  });
 });
 
 describe("what a merchant is served after asking for a link", () => {
