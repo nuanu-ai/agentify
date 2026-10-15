@@ -1,8 +1,8 @@
 # 0038. The registry of payout splits is never rewritten
 
 Date: 2026-10-14
-Status: accepted (the product owner, 2026-10-14, with ADR-0037). Built, not yet
-released.
+Status: accepted (the product owner, 2026-10-14, with ADR-0037). Released as
+app-v0.15.0 on 2026-10-15.
 
 ## Context
 
