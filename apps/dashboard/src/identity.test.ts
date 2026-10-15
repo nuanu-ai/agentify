@@ -258,3 +258,287 @@ describe("dashboard magic links", () => {
     );
   });
 });
+
+/**
+ * Synthetic: each passes the partner click identifier's pattern and was never
+ * issued by any tracker.
+ */
+const CLICK = {
+  id: "qa_click_0123456789abcdef",
+  consentedAt: "2026-10-15T09:30:00.000Z",
+  wording: "registration-consent-1",
+} as const;
+const ANOTHER_CLICK = {
+  id: "qa_click_fedcba9876543210",
+  consentedAt: "2026-10-15T09:31:00.000Z",
+  wording: "registration-consent-1",
+} as const;
+const SCAN = "019b41a0-7c51-7d63-84bd-a5a20faef497";
+const REQUEST = "019b41a0-7c51-7d63-84bd-a5a20faef498";
+const OPERATION = "019b41a0-7c51-7d63-84bd-a5a20faef497";
+
+const registrationsIn = (rows: Record<string, Record<string, unknown>[]>) =>
+  rows.dashboard_registration_postbacks ?? [];
+
+describe("the registration a consented link leaves for the tracker", () => {
+  it("leaves one pending registration with the click, the consent time and the wording when a consented link makes a new address's account", async () => {
+    const { identity, messages, rows } = memoryIdentity();
+    await identity.requestLink("person@example.com", "default", CLICK);
+    const pressedAt = Date.now();
+
+    const opened = await identity.openLink(tokenIn(messages[0] as Message));
+
+    if (opened.status !== "opened") throw new Error("the consented link did not open");
+    expect(opened.person).toMatchObject({ email: "person@example.com", confirmed: true });
+    expect(registrationsIn(rows)).toHaveLength(1);
+    const registration = registrationsIn(rows)[0];
+    expect(registration).toMatchObject({
+      accountId: opened.person.id,
+      clickId: CLICK.id,
+      consentedAt: new Date(CLICK.consentedAt),
+      consentWording: CLICK.wording,
+      state: "pending",
+      attempts: 0,
+      settledAt: null,
+    });
+    // Due at once: nothing about a new registration is worth waiting for.
+    const due = new Date(registration?.nextAttemptAt as Date).getTime();
+    expect(due).toBeGreaterThanOrEqual(pressedAt);
+    expect(due).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("leaves no registration when the link was asked for without a click", async () => {
+    const { identity, messages, rows } = memoryIdentity();
+    await identity.requestLink("person@example.com", "default");
+
+    await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
+      status: "opened",
+      person: { confirmed: true },
+    });
+
+    expect(rows.dashboard_accounts).toHaveLength(1);
+    expect(registrationsIn(rows)).toStrictEqual([]);
+  });
+
+  it("writes no registration for an address that already has a verified account, even with a fresh consented click", async () => {
+    const { identity, messages, rows } = memoryIdentity();
+    await identity.requestLink("person@example.com", "default");
+    await identity.openLink(tokenIn(messages[0] as Message));
+    rewindLinkSends(rows);
+    await identity.requestLink("person@example.com", "default", CLICK);
+
+    await expect(identity.openLink(tokenIn(messages[1] as Message))).resolves.toMatchObject({
+      status: "opened",
+    });
+
+    expect(rows.dashboard_accounts).toHaveLength(1);
+    expect(registrationsIn(rows)).toStrictEqual([]);
+  });
+
+  it("writes one registration for an address whose only account the operator made unverified, at its first verification", async () => {
+    const { identity, messages, rows, store } = memoryIdentity();
+    const made = await store.make("person@example.com", "mer_made");
+    if (made === null) throw new Error("the account was not made");
+    await identity.requestLink("person@example.com", "default", CLICK);
+
+    await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
+      status: "opened",
+      person: { id: made.id, confirmed: true, merchant: { id: "mer_made" } },
+    });
+
+    expect(registrationsIn(rows)).toMatchObject([{ accountId: made.id, clickId: CLICK.id }]);
+    expect(registrationsIn(rows)).toHaveLength(1);
+  });
+
+  it("writes nothing for a token that opens nothing: malformed, unknown or expired", async () => {
+    const { identity, messages, rows } = memoryIdentity();
+    await identity.requestLink("person@example.com", "default", CLICK);
+    const verification = rows.dashboard_verifications?.[0];
+    if (verification === undefined) throw new Error("the link was not stored");
+    verification.expiresAt = new Date(Date.now() - 1000);
+
+    for (const token of ["short", "A".repeat(32), tokenIn(messages[0] as Message)]) {
+      await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
+    }
+
+    expect(rows.dashboard_accounts).toHaveLength(0);
+    expect(rows.dashboard_sessions).toHaveLength(0);
+    expect(registrationsIn(rows)).toStrictEqual([]);
+  });
+
+  it("leaves one registration when the same consented link is opened twice", async () => {
+    const { identity, messages, rows } = memoryIdentity();
+    await identity.requestLink("person@example.com", "default", CLICK);
+    const token = tokenIn(messages[0] as Message);
+
+    await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
+    await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
+
+    expect(registrationsIn(rows)).toHaveLength(1);
+  });
+
+  it("writes nothing when the landing page reads a consented link's address", async () => {
+    const { identity, messages, rows } = memoryIdentity();
+    await identity.requestLink("person@example.com", "default", CLICK);
+
+    expect(await identity.addressOfLink(tokenIn(messages[0] as Message))).toBe(
+      "person@example.com",
+    );
+
+    expect(rows.dashboard_accounts).toHaveLength(0);
+    expect(rows.dashboard_verifications).toHaveLength(1);
+    expect(registrationsIn(rows)).toStrictEqual([]);
+  });
+
+  it("writes no registration for a report link opened by a new address", async () => {
+    const { messages, rows, store } = memoryIdentity();
+    await store.sendReportLink({
+      operation: "send",
+      email: "person@example.com",
+      destination: { report: SCAN },
+      request: REQUEST,
+    });
+
+    await expect(store.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
+      status: "opened",
+      person: { confirmed: true },
+    });
+
+    expect(rows.dashboard_accounts).toHaveLength(1);
+    expect(registrationsIn(rows)).toStrictEqual([]);
+  });
+
+  it("adds no registration and leaves the existing one as it was when a merchant is attached afterwards", async () => {
+    const { identity, messages, rows } = memoryIdentity();
+    await identity.requestLink("person@example.com", "default", CLICK);
+    const opened = await identity.openLink(tokenIn(messages[0] as Message));
+    if (opened.status !== "opened") throw new Error("the consented link did not open");
+    const before = structuredClone(registrationsIn(rows));
+
+    await expect(
+      identity.attachMerchant(opened.person.id, async () => "mer_attached"),
+    ).resolves.toMatchObject({ status: "attached" });
+
+    expect(before).toHaveLength(1);
+    expect(registrationsIn(rows)).toStrictEqual(before);
+  });
+
+  it("removes the registration with an account deleted for privacy, and keeps another account's", async () => {
+    const { identity, messages, rows, store } = memoryIdentity();
+    await identity.requestLink("person@example.com", "default", CLICK);
+    await identity.openLink(tokenIn(messages[0] as Message));
+    await identity.requestLink("bystander@example.com", "default", ANOTHER_CLICK);
+    const bystander = await identity.openLink(tokenIn(messages[1] as Message));
+    if (bystander.status !== "opened") throw new Error("the bystander's link did not open");
+    expect(registrationsIn(rows)).toHaveLength(2);
+
+    await expect(
+      store.deleteUnattachedPerson({
+        operation: "delete",
+        operation_id: OPERATION,
+        email: "person@example.com",
+      }),
+    ).resolves.toStrictEqual({ status: "deleted" });
+
+    expect(registrationsIn(rows)).toMatchObject([
+      { accountId: bystander.person.id, clickId: ANOTHER_CLICK.id },
+    ]);
+    expect(registrationsIn(rows)).toHaveLength(1);
+  });
+
+  it("still opens a link stored in the shape without a click, and writes no registration", async () => {
+    const { identity, messages, rows } = memoryIdentity();
+    await identity.requestLink("person@example.com", "settings", CLICK);
+    const verification = rows.dashboard_verifications?.[0];
+    if (verification === undefined) throw new Error("the link was not stored");
+    verification.value = JSON.stringify({
+      email: "person@example.com",
+      destination: "settings",
+      request: null,
+    });
+
+    await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
+      status: "opened",
+      destination: "settings",
+    });
+
+    expect(rows.dashboard_accounts).toHaveLength(1);
+    expect(registrationsIn(rows)).toStrictEqual([]);
+  });
+
+  it("opens nothing and writes nothing for a stored click outside the closed set", async () => {
+    // A row holding a click this file would not have written was not written by
+    // it, and opens nothing rather than reporting somebody else's click.
+    const { identity, messages, rows } = memoryIdentity();
+    await identity.requestLink("person@example.com", "default", CLICK);
+    const token = tokenIn(messages[0] as Message);
+    const dashboard = { email: "person@example.com", destination: "default", request: null };
+
+    for (const claim of [
+      { ...dashboard, click: { ...CLICK, id: "too-short" } },
+      { ...dashboard, click: { ...CLICK, id: "qa click 0123456789abcdef" } },
+      { ...dashboard, click: { ...CLICK, id: 1234567890123456 } },
+      { ...dashboard, click: { ...CLICK, also: "settings" } },
+      { ...dashboard, click: { id: CLICK.id, consentedAt: CLICK.consentedAt } },
+      { ...dashboard, click: { id: CLICK.id, wording: CLICK.wording } },
+      { ...dashboard, click: { ...CLICK, consentedAt: "yesterday" } },
+      { ...dashboard, click: { ...CLICK, consentedAt: "2026-10-15" } },
+      { ...dashboard, click: { ...CLICK, consentedAt: 1_789_465_800_000 } },
+      { ...dashboard, click: { ...CLICK, wording: "" } },
+      { ...dashboard, click: { ...CLICK, wording: "x".repeat(1000) } },
+      { ...dashboard, click: { ...CLICK, wording: 1 } },
+      { ...dashboard, click: CLICK.id },
+      { ...dashboard, click: null },
+      { ...dashboard, click: [CLICK.id, CLICK.consentedAt, CLICK.wording] },
+      {
+        email: "person@example.com",
+        destination: { report: SCAN },
+        request: REQUEST,
+        click: CLICK,
+      },
+    ]) {
+      // Read afresh, as above: each call replaces the stored rows.
+      const verification = rows.dashboard_verifications?.[0];
+      if (verification === undefined) throw new Error("the link was not stored");
+      verification.value = JSON.stringify(claim);
+
+      await expect(identity.openLink(token), JSON.stringify(claim)).resolves.toStrictEqual({
+        status: "refused",
+      });
+      expect(await identity.addressOfLink(token)).toBeNull();
+      expect(rows.dashboard_verifications).toHaveLength(1);
+      expect(rows.dashboard_accounts).toHaveLength(0);
+      expect(rows.dashboard_sessions).toHaveLength(0);
+      expect(registrationsIn(rows)).toStrictEqual([]);
+    }
+  });
+
+  it("fails the press loudly and spends nothing when the account already holds a registration it could not have", async () => {
+    // An unverified account has never been registered, so a row for it is a
+    // broken invariant; writing over it or beside it would hide that.
+    const { identity, messages, rows, store } = memoryIdentity();
+    const made = await store.make("person@example.com", "mer_made");
+    if (made === null) throw new Error("the account was not made");
+    const planted = {
+      accountId: made.id,
+      clickId: ANOTHER_CLICK.id,
+      consentedAt: new Date(ANOTHER_CLICK.consentedAt),
+      consentWording: ANOTHER_CLICK.wording,
+      state: "pending",
+      attempts: 0,
+      nextAttemptAt: new Date(),
+      lastOutcome: null,
+      createdAt: new Date(),
+      settledAt: null,
+    };
+    rows.dashboard_registration_postbacks = [planted];
+    await identity.requestLink("person@example.com", "default", CLICK);
+
+    await expect(identity.openLink(tokenIn(messages[0] as Message))).rejects.toThrow();
+
+    expect(await store.byId(made.id)).toMatchObject({ confirmed: false });
+    expect(rows.dashboard_sessions).toHaveLength(0);
+    expect(rows.dashboard_verifications).toHaveLength(1);
+    expect(registrationsIn(rows)).toStrictEqual([planted]);
+  });
+});

@@ -737,6 +737,415 @@ if (databaseUrl === null) {
       expect(JSON.stringify(evidence.rows)).not.toContain("person@example.com");
     });
   });
+  /**
+   * Synthetic: each passes the partner click identifier's pattern and was never
+   * issued by any tracker.
+   */
+  const CLICK = {
+    id: "qa_click_0123456789abcdef",
+    consentedAt: "2026-10-15T09:30:00.000Z",
+    wording: "registration-consent-1",
+  } as const;
+  const ANOTHER_CLICK = {
+    id: "qa_click_fedcba9876543210",
+    consentedAt: "2026-10-15T09:31:00.000Z",
+    wording: "registration-consent-1",
+  } as const;
+  const SCAN = "019b41a0-7c51-7d63-84bd-a5a20faef497";
+  const REQUEST = "019b41a0-7c51-7d63-84bd-a5a20faef498";
+  const OPERATION = "019b41a0-7c51-7d63-84bd-a5a20faef497";
+
+  async function registrations(): Promise<Record<string, unknown>[]> {
+    return (
+      await pool.query(
+        `select account_id, click_id, consented_at, consent_wording, state, attempts,
+                next_attempt_at, last_outcome, created_at, settled_at
+           from dashboard_registration_postbacks order by account_id`,
+      )
+    ).rows;
+  }
+
+  async function countIn(table: string): Promise<number> {
+    return (await pool.query<{ count: number }>(`select count(*)::int as count from ${table}`))
+      .rows[0]?.count as number;
+  }
+
+  describe("the registration a consented link leaves for the tracker, on PostgreSQL", () => {
+    beforeEach(async () => {
+      await emptyEverything();
+      await migrateEverything();
+    });
+
+    it("leaves one pending registration with the click, the consent time and the wording when a consented link makes a new address's account", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      await identity.requestLink("person@example.com", "default", CLICK);
+      const pressedAt = Date.now();
+
+      const opened = await identity.openLink(tokenIn(messages[0] as Message));
+
+      if (opened.status !== "opened") throw new Error("the consented link did not open");
+      expect(opened.person).toMatchObject({ email: "person@example.com", confirmed: true });
+      const stored = await registrations();
+      expect(stored).toStrictEqual([
+        {
+          account_id: opened.person.id,
+          click_id: CLICK.id,
+          consented_at: new Date(CLICK.consentedAt),
+          consent_wording: CLICK.wording,
+          state: "pending",
+          attempts: 0,
+          next_attempt_at: expect.any(Date),
+          last_outcome: null,
+          created_at: expect.any(Date),
+          settled_at: null,
+        },
+      ]);
+      // Due at once: nothing about a new registration is worth waiting for.
+      const due = new Date(stored[0]?.next_attempt_at as Date).getTime();
+      expect(due).toBeGreaterThanOrEqual(pressedAt);
+      expect(due).toBeLessThanOrEqual(Date.now());
+    });
+
+    it("leaves no registration when the link was asked for without a click", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      await identity.requestLink("person@example.com", "default");
+
+      await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
+        status: "opened",
+      });
+
+      expect(await countIn("dashboard_accounts")).toBe(1);
+      expect(await registrations()).toStrictEqual([]);
+    });
+
+    it("writes no registration for an address that already has a verified account, even with a fresh consented click", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      await identity.requestLink("person@example.com", "default");
+      await identity.openLink(tokenIn(messages[0] as Message));
+      await rewindLinkSends();
+      await identity.requestLink("person@example.com", "default", CLICK);
+
+      await expect(identity.openLink(tokenIn(messages[1] as Message))).resolves.toMatchObject({
+        status: "opened",
+      });
+
+      expect(await countIn("dashboard_accounts")).toBe(1);
+      expect(await registrations()).toStrictEqual([]);
+    });
+
+    it("writes one registration for an address whose only account the operator made unverified, at its first verification", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      const made = await identity.make("person@example.com", MERCHANT);
+      if (made === null) throw new Error("the account was not made");
+      await identity.requestLink("person@example.com", "default", CLICK);
+
+      await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
+        status: "opened",
+        person: { id: made.id, confirmed: true, merchant: { id: MERCHANT } },
+      });
+
+      expect(await registrations()).toMatchObject([{ account_id: made.id, click_id: CLICK.id }]);
+      expect(await countIn("dashboard_registration_postbacks")).toBe(1);
+    });
+
+    it("writes nothing for a token that opens nothing or for the landing page's read, and one registration for a link opened twice", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      await identity.requestLink("person@example.com", "default", CLICK);
+      const token = tokenIn(messages[0] as Message);
+
+      expect(await identity.addressOfLink(token)).toBe("person@example.com");
+      await expect(identity.openLink("short")).resolves.toStrictEqual({ status: "refused" });
+      await expect(identity.openLink("A".repeat(32))).resolves.toStrictEqual({
+        status: "refused",
+      });
+      await pool.query(
+        "update dashboard_verifications set expires_at = now() - interval '1 second'",
+      );
+      await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
+      expect(await countIn("dashboard_accounts")).toBe(0);
+      expect(await registrations()).toStrictEqual([]);
+
+      await pool.query("update dashboard_verifications set expires_at = now() + interval '1 hour'");
+      await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
+      await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
+      expect(await countIn("dashboard_registration_postbacks")).toBe(1);
+    });
+
+    it("writes no registration for a report link opened by a new address", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      await identity.sendReportLink({
+        operation: "send",
+        email: "person@example.com",
+        destination: { report: SCAN },
+        request: REQUEST,
+      });
+
+      await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
+        status: "opened",
+      });
+
+      expect(await countIn("dashboard_accounts")).toBe(1);
+      expect(await registrations()).toStrictEqual([]);
+    });
+
+    it.each([
+      ["its session", "dashboard_sessions"],
+      ["its registration", "dashboard_registration_postbacks"],
+    ])(
+      "leaves neither the account, its session nor its registration when %s cannot be written, and the link still opens",
+      async (_what, table) => {
+        // One transaction: an account committed without its registration would
+        // never be reported, and a registration without its account would
+        // report somebody who never signed in.
+        const messages: Message[] = [];
+        const identity = identityOn(messages);
+        await identity.requestLink("person@example.com", "default", CLICK);
+        const token = tokenIn(messages[0] as Message);
+        await pool.query(`
+          create function fail_dashboard_insert() returns trigger language plpgsql as $$
+          begin raise exception 'injected insert failure'; end $$
+        `);
+        await pool.query(`
+          create trigger fail_dashboard_insert before insert on ${table}
+          for each row execute function fail_dashboard_insert()
+        `);
+
+        await expect(identity.openLink(token)).rejects.toThrow();
+
+        expect(await countIn("dashboard_accounts")).toBe(0);
+        expect(await countIn("dashboard_sessions")).toBe(0);
+        expect(await countIn("dashboard_registration_postbacks")).toBe(0);
+        expect(await countIn("dashboard_verifications")).toBe(1);
+        await pool.query(`drop trigger fail_dashboard_insert on ${table}`);
+        await pool.query("drop function fail_dashboard_insert()");
+        await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
+        expect(await registrations()).toMatchObject([{ click_id: CLICK.id }]);
+      },
+    );
+
+    async function slowAccountInserts(): Promise<void> {
+      await pool.query(`
+        create function slow_dashboard_person() returns trigger language plpgsql as $$
+        begin perform pg_sleep(0.05); return new; end $$
+      `);
+      await pool.query(`
+        create trigger slow_dashboard_person before insert on dashboard_accounts
+        for each row execute function slow_dashboard_person()
+      `);
+    }
+
+    it("makes one account and one registration when the same consented link is pressed twice at once", async () => {
+      const messages: Message[] = [];
+      const one = identityOn(messages);
+      const two = identityOn(messages);
+      await one.requestLink("person@example.com", "default", CLICK);
+      const token = tokenIn(messages[0] as Message);
+      await slowAccountInserts();
+
+      const [first, second] = await Promise.all([one.openLink(token), two.openLink(token)]);
+
+      expect([first.status, second.status].sort()).toStrictEqual(["opened", "refused"]);
+      expect(await countIn("dashboard_accounts")).toBe(1);
+      expect(await registrations()).toMatchObject([{ click_id: CLICK.id }]);
+      expect(await countIn("dashboard_registration_postbacks")).toBe(1);
+    });
+
+    it("makes one account and one registration when two consented links for one new address are opened at once", async () => {
+      const messages: Message[] = [];
+      const one = identityOn(messages);
+      const two = identityOn(messages);
+      await one.requestLink("person@example.com", "default", CLICK);
+      await rewindLinkSends();
+      await two.requestLink("person@example.com", "settings", ANOTHER_CLICK);
+      await slowAccountInserts();
+
+      const [first, second] = await Promise.all([
+        one.openLink(tokenIn(messages[0] as Message)),
+        two.openLink(tokenIn(messages[1] as Message)),
+      ]);
+
+      if (first.status !== "opened" || second.status !== "opened") {
+        throw new Error("both consented links should open");
+      }
+      expect(second.person.id).toBe(first.person.id);
+      expect(await countIn("dashboard_accounts")).toBe(1);
+      const stored = await registrations();
+      expect(stored).toHaveLength(1);
+      expect([CLICK.id, ANOTHER_CLICK.id]).toContain(stored[0]?.click_id);
+      expect(stored[0]?.account_id).toBe(first.person.id);
+    });
+
+    it("adds no registration and leaves the existing one as it was when a merchant is attached afterwards", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      await identity.requestLink("person@example.com", "default", CLICK);
+      const opened = await identity.openLink(tokenIn(messages[0] as Message));
+      if (opened.status !== "opened") throw new Error("the consented link did not open");
+      const before = await registrations();
+
+      await expect(
+        identity.attachMerchant(opened.person.id, async () => MERCHANT),
+      ).resolves.toMatchObject({ status: "attached" });
+
+      expect(before).toHaveLength(1);
+      expect(await registrations()).toStrictEqual(before);
+    });
+
+    it("removes the registration with an account deleted for privacy, and keeps another account's", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      await identity.requestLink("person@example.com", "default", CLICK);
+      await identity.openLink(tokenIn(messages[0] as Message));
+      await identity.requestLink("bystander@example.com", "default", ANOTHER_CLICK);
+      const bystander = await identity.openLink(tokenIn(messages[1] as Message));
+      if (bystander.status !== "opened") throw new Error("the bystander's link did not open");
+      expect(await countIn("dashboard_registration_postbacks")).toBe(2);
+
+      await expect(
+        identity.deleteUnattachedPerson({
+          operation: "delete",
+          operation_id: OPERATION,
+          email: "person@example.com",
+        }),
+      ).resolves.toStrictEqual({ status: "deleted" });
+
+      expect(await registrations()).toMatchObject([
+        { account_id: bystander.person.id, click_id: ANOTHER_CLICK.id },
+      ]);
+      expect(await countIn("dashboard_registration_postbacks")).toBe(1);
+    });
+
+    it("still opens a link stored in the shape without a click, and writes no registration", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      await identity.requestLink("person@example.com", "settings", CLICK);
+      await pool.query("update dashboard_verifications set value = $1", [
+        JSON.stringify({ email: "person@example.com", destination: "settings", request: null }),
+      ]);
+
+      await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
+        status: "opened",
+        destination: "settings",
+      });
+
+      expect(await countIn("dashboard_accounts")).toBe(1);
+      expect(await registrations()).toStrictEqual([]);
+    });
+
+    it("opens nothing and writes nothing for a stored click outside the closed set", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      await identity.requestLink("person@example.com", "default", CLICK);
+      const token = tokenIn(messages[0] as Message);
+      const dashboard = { email: "person@example.com", destination: "default", request: null };
+
+      for (const claim of [
+        { ...dashboard, click: { ...CLICK, id: "too-short" } },
+        { ...dashboard, click: { ...CLICK, also: "settings" } },
+        { ...dashboard, click: { ...CLICK, consentedAt: "yesterday" } },
+        { ...dashboard, click: { ...CLICK, wording: "" } },
+        {
+          email: "person@example.com",
+          destination: { report: SCAN },
+          request: REQUEST,
+          click: CLICK,
+        },
+      ]) {
+        await pool.query("update dashboard_verifications set value = $1", [JSON.stringify(claim)]);
+
+        await expect(identity.openLink(token), JSON.stringify(claim)).resolves.toStrictEqual({
+          status: "refused",
+        });
+        expect(await countIn("dashboard_verifications")).toBe(1);
+        expect(await countIn("dashboard_accounts")).toBe(0);
+        expect(await countIn("dashboard_sessions")).toBe(0);
+        expect(await registrations()).toStrictEqual([]);
+      }
+    });
+
+    it("fails the press loudly and spends nothing when the account already holds a registration it could not have", async () => {
+      // An unverified account has never been registered, so a row for it is a
+      // broken invariant; writing over it or beside it would hide that.
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      const made = await identity.make("person@example.com", MERCHANT);
+      if (made === null) throw new Error("the account was not made");
+      await pool.query(
+        `insert into dashboard_registration_postbacks
+           (account_id, click_id, consented_at, consent_wording, state, attempts,
+            next_attempt_at, created_at)
+         values ($1, $2, $3, $4, 'pending', 0, now(), now())`,
+        [made.id, ANOTHER_CLICK.id, ANOTHER_CLICK.consentedAt, ANOTHER_CLICK.wording],
+      );
+      const planted = await registrations();
+      await identity.requestLink("person@example.com", "default", CLICK);
+
+      await expect(identity.openLink(tokenIn(messages[0] as Message))).rejects.toThrow();
+
+      expect(await identity.byId(made.id)).toMatchObject({ confirmed: false });
+      expect(await countIn("dashboard_sessions")).toBe(0);
+      expect(await countIn("dashboard_verifications")).toBe(1);
+      expect(await registrations()).toStrictEqual(planted);
+    });
+
+    it.each([
+      {
+        rule: "a pending row holds a click id",
+        constraint: "dashboard_registration_postbacks_pending_holds_click",
+        values: "null, 'pending', now(), null",
+      },
+      {
+        rule: "a settled row no longer holds the click id",
+        constraint: "dashboard_registration_postbacks_pending_holds_click",
+        values: "'qa_click_0123456789abcdef', 'delivered', null, now()",
+      },
+      {
+        rule: "a pending row has its next attempt",
+        constraint: "dashboard_registration_postbacks_pending_scheduled",
+        values: "'qa_click_0123456789abcdef', 'pending', null, null",
+      },
+      {
+        rule: "a settled row says when it settled",
+        constraint: "dashboard_registration_postbacks_settled_dated",
+        values: "null, 'given_up', null, null",
+      },
+      {
+        rule: "the state is one of the four",
+        constraint: "dashboard_registration_postbacks_state",
+        values: "null, 'sent', null, now()",
+      },
+    ])(
+      "refuses a registration row that breaks the rule that $rule",
+      async ({ constraint, values }) => {
+        await pool.query(
+          `insert into dashboard_accounts (id, email, email_verified, name, created_at, updated_at)
+         values ('acc_checked', 'checked@example.com', true, '', now(), now())`,
+        );
+        const insert = (columns: string) =>
+          pool.query(
+            `insert into dashboard_registration_postbacks
+             (account_id, consented_at, consent_wording, attempts, created_at,
+              click_id, state, next_attempt_at, settled_at)
+           values ('acc_checked', now(), 'registration-consent-1', 0, now(), ${columns})`,
+          );
+
+        await expect(insert(values)).rejects.toMatchObject({ code: "23514", constraint });
+
+        // The consent stays as evidence once the click id has gone with a final
+        // state.
+        await insert("null, 'delivered', null, now()");
+        expect(await registrations()).toMatchObject([
+          { click_id: null, state: "delivered", consent_wording: "registration-consent-1" },
+        ]);
+      },
+    );
+  });
 }
 
 function cookieHeader(setCookies: readonly string[]): string {
