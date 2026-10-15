@@ -40,8 +40,9 @@ the dashboard's settings page is the one such package
 (`docs/research/48-merchant-wallet-onboarding.md`): its analytics are off, its
 sub-accounts, which keep a key in the page that signs without asking, are
 never used, and the account and session keys it keeps in the page's storage
-are cleared before and after every press, since it would otherwise answer the
-next request, from any session in the origin, without its window.
+are cleared as every press begins, and as it ends unless a later press has
+begun, since it would otherwise answer the next request, from any session in
+the origin, without its window.
 
 `/healthz` sits outside the contract's prefixes, because a probe is not
 something a merchant's code calls, and answers for the gateway alone; the
