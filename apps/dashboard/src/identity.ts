@@ -535,12 +535,17 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       cookies.dontRememberToken.name,
     ],
 
+    // The sweep of old links runs in a transaction of its own, first: inside
+    // the one that waits on the mail provider it would hold other requests up
+    // behind a send, and a refused send would undo it.
     async requestLink(rawEmail, destination, click) {
       const email = emailAs(rawEmail);
       try {
         if (parts.pool === undefined) {
-          return await inMemoryTransaction(async (bound, rows) => {
+          await inMemoryTransaction(async (_bound, rows) => {
             cleanupOldLinksInMemory(rows, new Date());
+          });
+          return await inMemoryTransaction(async (bound, rows) => {
             const rated = memoryRate(rows, rateKey(config.authSecret, email), "dashboard");
             if (!rated.sent)
               return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
@@ -550,8 +555,10 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         const db = drizzle(parts.pool, {
           schema: { accounts, credentials, linkSends, sessions, verifications },
         });
-        return await db.transaction(async (tx) => {
+        await db.transaction(async (tx) => {
           await cleanupOldLinksInPostgres(tx, new Date());
+        });
+        return await db.transaction(async (tx) => {
           await lockEmail(tx, email);
           const rated = await postgresRate(tx, rateKey(config.authSecret, email), "dashboard");
           if (!rated.sent) return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
