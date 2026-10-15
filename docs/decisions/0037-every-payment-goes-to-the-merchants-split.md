@@ -2,15 +2,16 @@
 
 Date: 2026-10-14
 Status: accepted (the product owner, 2026-10-14: a commission on every
-payment, payouts by hand, a Safe for the commission). Built, not yet released,
-and held: the code names no commission wallet on Base, so the gateway does not
-start there, and a production release of this code would stop commerce. The
-hold ends when the product owner's Safe exists on Base, its address is the Base
-entry of the gateway's network table, `pnpm commission-wallet` passes with its
-owners named, and this status is edited. The test channel's commission wallet
-is a plain wallet the product owner named on 2026-10-15; every split records
-it for good. At the release the wallets already set move to their splits
-unannounced, since nobody sells on the live channel.
+payment, payouts by hand, a Safe for the commission). Built, not yet released.
+Base's commission wallet is the product owner's Safe
+`0xf44Ac5860c13fDa0577305121f00cBa4d0B96541`, whose one owner is his hardware
+wallet `0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5` (confirmed by him on
+2026-10-15); it is the Base entry of the gateway's network table, and `pnpm
+commission-wallet` passes on both networks with that owner named. The test
+channel's commission wallet is a plain wallet the product owner named on
+2026-10-15. Every split records its network's for good. At the release the
+wallets already set move to their splits unannounced, since nobody sells on the
+live channel.
 
 ## Context
 
