@@ -10,6 +10,7 @@ import { launchChromium } from "@agentify/ui/chromium";
 import express from "express";
 import type { Browser, BrowserContext } from "playwright";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { ADS_CONSENT } from "./ads-consent.js";
 import { loadConfig } from "./config.js";
 import { identityFor } from "./identity.js";
 import { builtPages } from "./pages.js";
@@ -25,6 +26,17 @@ let identity: ReturnType<typeof identityFor>;
 let close: () => Promise<void>;
 const google = googleExchange();
 const consents = new Map<string, URLSearchParams>();
+/** Where each Google start sent the browser, before the provider is replaced. */
+const sentToGoogle: string[] = [];
+const rows: Record<string, Record<string, unknown>[]> = {
+  dashboard_accounts: [],
+  dashboard_sessions: [],
+  dashboard_credentials: [],
+  dashboard_verifications: [],
+  dashboard_link_sends: [],
+};
+/** In the form the tracker's identifiers take, and nobody's. */
+const CLICK = "qa_click_0123456789abcdef";
 
 beforeAll(async () => {
   const nativeFetch = globalThis.fetch;
@@ -69,8 +81,13 @@ beforeAll(async () => {
     PUBLIC_BASE_URL: origin,
     GOOGLE_CLIENT_ID: "offline-client",
     GOOGLE_CLIENT_SECRET: "offline-secret",
+    // A laptop's report, posting to a receiver of its own; no test here waits
+    // for a delivery.
+    REGISTRATION_POSTBACK_ENABLED: "true",
+    REGISTRATION_POSTBACK_KEY: ["qa", "synthetic", "postback", "key"].join("-"),
+    REGISTRATION_POSTBACK_URL: "http://127.0.0.1:4010/postback",
   });
-  identity = identityFor(config);
+  identity = identityFor(config, { rows });
   const pages = await builtPages();
   host.use(buildApp(config, { pages, gateway: harnessed.gateway, identity }));
   browser = await launchChromium();
@@ -95,6 +112,7 @@ async function consentFor(context: BrowserContext, profile: Partial<GoogleProfil
       return;
     }
     const response = await route.fetch({ maxRedirects: 0 });
+    sentToGoogle.push(response.headers().location ?? "");
     const query = google.authorize(response.headers().location ?? "", profile);
     const flow = query.get("state") ?? "";
     consents.set(flow, query);
@@ -170,4 +188,81 @@ describe("Google sign-in in the built dashboard", () => {
       await context.close();
     }
   });
+});
+
+describe("a Google sign-in from an ad in the built dashboard", () => {
+  const registrationOf = async (email: string) => {
+    const person = await identity.byEmail(email);
+    return (rows.dashboard_registration_postbacks ?? []).filter(
+      (row) => person !== null && row.accountId === person.id,
+    );
+  };
+
+  for (const javaScriptEnabled of [true, false]) {
+    it(`tells the tracker of the sign-up the visitor ticked the box for, keeping the click out of cookies and Google's address, with JavaScript ${javaScriptEnabled ? "on" : "off"}`, async () => {
+      const email = `ad-${javaScriptEnabled ? "script" : "plain"}@gmail.com`;
+      const context = await browser.newContext({ javaScriptEnabled });
+      try {
+        await consentFor(context, { sub: email, email });
+        const page = await context.newPage();
+        await page.goto(`${origin}/dashboard/sign-in?clickid=${CLICK}&destination=settings`, {
+          waitUntil: "domcontentloaded",
+        });
+        await page.getByLabel(ADS_CONSENT.sentence).check();
+        // Nothing is typed into the address: the Google press needs none.
+        await page.getByRole("button", { name: "Sign in with Google", exact: true }).click();
+        await page.getByRole("link", { name: "Continue to Agentify" }).waitFor();
+        const cookiesAtGoogle = JSON.stringify(await context.cookies());
+        await page.getByRole("link", { name: "Continue to Agentify" }).click();
+        await page.waitForURL(`${origin}/dashboard/merchant`);
+
+        expect(await registrationOf(email)).toMatchObject([{ clickId: CLICK, state: "pending" }]);
+        expect(sentToGoogle.at(-1)).toMatch(/^https:\/\/accounts\.google\.com\//);
+        expect(decodeURIComponent(sentToGoogle.at(-1) ?? "")).not.toContain(CLICK);
+        expect(cookiesAtGoogle).not.toContain(CLICK);
+        expect(JSON.stringify(await context.cookies())).not.toContain(CLICK);
+      } finally {
+        await context.close();
+      }
+    });
+  }
+
+  it("tells the tracker nothing of a Google sign-up whose visitor left the box unticked", async () => {
+    const email = "ad-unticked@gmail.com";
+    const context = await browser.newContext();
+    try {
+      await consentFor(context, { sub: email, email });
+      const page = await context.newPage();
+      await page.goto(`${origin}/dashboard/sign-in?clickid=${CLICK}&destination=settings`);
+      await page.getByRole("button", { name: "Sign in with Google", exact: true }).click();
+      await page.getByRole("link", { name: "Continue to Agentify" }).click();
+      await page.waitForURL(`${origin}/dashboard/merchant`);
+
+      expect((await identity.byEmail(email))?.confirmed).toBe(true);
+      expect(await registrationOf(email)).toStrictEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  for (const javaScriptEnabled of [true, false]) {
+    it(`asks for a mailed link, not Google, when Enter is pressed in the address, with JavaScript ${javaScriptEnabled ? "on" : "off"}`, async () => {
+      const context = await browser.newContext({ javaScriptEnabled });
+      try {
+        await consentFor(context);
+        const page = await context.newPage();
+        await page.goto(`${origin}/dashboard/sign-in?clickid=${CLICK}`, {
+          waitUntil: "domcontentloaded",
+        });
+        const started = sentToGoogle.length;
+        await page.getByLabel("Email address").fill(`enter-${javaScriptEnabled}@example.com`);
+        await page.getByLabel("Email address").press("Enter");
+
+        await page.getByRole("heading", { name: "Check your mail" }).waitFor();
+        expect(sentToGoogle).toHaveLength(started);
+      } finally {
+        await context.close();
+      }
+    });
+  }
 });

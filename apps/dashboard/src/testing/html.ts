@@ -86,6 +86,9 @@ interface ServedPress {
   readonly name: string | undefined;
   readonly value: string | undefined;
   readonly label: string;
+  /** Where this button sends the form instead of the form's own address. */
+  readonly action: string | undefined;
+  readonly method: string | undefined;
 }
 
 /**
@@ -110,6 +113,8 @@ export const formsIn = (html: string): ServedForm[] =>
         name: attribute(tag, "name"),
         value: attribute(tag, "value"),
         label: readable(label),
+        action: attribute(tag, "formaction"),
+        method: attribute(tag, "formmethod")?.toLowerCase(),
       }));
     return {
       method: (attribute(written, "method") ?? "get").toLowerCase(),
@@ -119,6 +124,15 @@ export const formsIn = (html: string): ServedForm[] =>
     };
   });
 
-/** The one form on a page that sends this method to this address, if there is one. */
+/**
+ * The one form on a page that sends this method to this address, by its own
+ * address or by a button that sends it elsewhere, if there is one.
+ */
 export const formTo = (html: string, method: string, action: string): ServedForm | undefined =>
-  formsIn(html).find((form) => form.method === method && form.action === action);
+  formsIn(html).find(
+    (form) =>
+      (form.method === method && form.action === action) ||
+      form.presses.some(
+        (press) => press.action === action && (press.method ?? form.method) === method,
+      ),
+  );

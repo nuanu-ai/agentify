@@ -32,6 +32,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ADS_CONSENT } from "./ads-consent.js";
 import { type DashboardConfig, loadConfig } from "./config.js";
 import { SIGN_OUT_EVERY_OTHER_DEVICE } from "./control-labels.js";
+import type { ConsentedClick, DashboardDestination } from "./dashboard-entry.js";
 import { DRAWN_FOR } from "./drawn-for.js";
 import {
   type Acting,
@@ -50,6 +51,7 @@ import type { Handover, Message, Postman } from "./mail.js";
 import { NOT_AN_ADDRESS } from "./page-services.js";
 import type { Pages } from "./pages.js";
 import { buildApp } from "./server.js";
+import { googleExchange } from "./testing/google.js";
 import { formsIn, formTo, readable, shownMarkIn, waitingButton } from "./testing/html.js";
 import { PAGES_IN_FRONT_OF_THE_GATE } from "./testing/in-front-of-the-gate.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
@@ -1463,6 +1465,159 @@ describe("the box that tells the ad tracker an ad's visitor signed up", () => {
     expect(running.mails).toHaveLength(mailed);
     expect(running.rows.dashboard_link_sends).toHaveLength(sends ?? 0);
     expect(registrationsIn(running)).toStrictEqual([]);
+  });
+});
+
+describe("the box and the Google button on the sign-in page", () => {
+  const GOOGLE = { GOOGLE_CLIENT_ID: "offline-client", GOOGLE_CLIENT_SECRET: "offline-secret" };
+  const GOOGLE_PAGE = "https://accounts.google.com/o/oauth2/v2/auth?state=held";
+
+  /** The clicks the Google start was handed, one per press. */
+  const startsWith = (handed: (ConsentedClick | undefined)[]) => (real: Identity) => ({
+    ...real,
+    googleEnabled: true,
+    async startGoogle(_destination: DashboardDestination, click?: ConsentedClick) {
+      handed.push(click);
+      return { status: "redirect" as const, location: GOOGLE_PAGE, setCookies: [] };
+    },
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("offers one box, which goes with the Google press as it goes with the email press", async () => {
+    const { browser } = await started({ dashboard: REPORTING, identity: startsWith([]) });
+
+    const page = await browser.get(`/sign-in?clickid=${CLICK}&destination=settings`);
+
+    const email = formTo(page.html, "post", "/sign-in");
+    const google = formTo(page.html, "post", "/sign-in/google");
+    expect(google).toStrictEqual(email);
+    expect(google?.fields.get("clickid")).toBe(CLICK);
+    expect(google?.fields.get("destination")).toBe("settings");
+    expect(page.html.match(/name="ads_consent"/g)).toHaveLength(1);
+    expect(consentBoxIn(page.html)).toStrictEqual({ ticked: false });
+  });
+
+  it("hands the Google start the click of a ticked box, and none for an unticked box or a click it cannot read", async () => {
+    const handed: (ConsentedClick | undefined)[] = [];
+    const running = await started({ dashboard: REPORTING, identity: startsWith(handed) });
+    const before = Date.now();
+
+    const sent = await running.browser.post("/sign-in/google", {
+      clickid: CLICK,
+      ads_consent: "yes",
+    });
+    const after = Date.now();
+    const notConsented: Record<string, string>[] = [
+      { clickid: CLICK },
+      { clickid: CLICK, ads_consent: "no" },
+      { clickid: "too-short", ads_consent: "yes" },
+      { ads_consent: "yes" },
+    ];
+    for (const form of notConsented) await running.browser.post("/sign-in/google", form);
+
+    expect(sent.status).toBe(303);
+    expect(sent.to).toBe(GOOGLE_PAGE);
+    const [ticked, ...rest] = handed;
+    expect(ticked).toMatchObject({ id: CLICK, wording: ADS_CONSENT.version });
+    const consentedAt = new Date(ticked?.consentedAt ?? "").getTime();
+    expect(consentedAt).toBeGreaterThanOrEqual(before);
+    expect(consentedAt).toBeLessThanOrEqual(after);
+    expect(rest).toStrictEqual([undefined, undefined, undefined, undefined]);
+  });
+
+  it("draws the Google page as it is and hands the start no click while the report is switched off", async () => {
+    const handed: (ConsentedClick | undefined)[] = [];
+    const running = await started({ identity: startsWith(handed) });
+
+    const today = await running.browser.get("/sign-in");
+    const offered = await running.browser.get(`/sign-in?clickid=${CLICK}`);
+    await running.browser.post("/sign-in/google", { clickid: CLICK, ads_consent: "yes" });
+
+    expect(seenOn(offered.html)).toStrictEqual(seenOn(today.html));
+    expect(consentBoxIn(offered.html)).toBeUndefined();
+    expect(handed).toStrictEqual([undefined]);
+  });
+
+  it("draws the Google page as it is for a visitor with no click, or one it cannot read", async () => {
+    const off = await started({ identity: startsWith([]) });
+    const today = seenOn((await off.browser.get("/sign-in")).html);
+    await off.browser.close();
+    await off.identity.close();
+    await off.gateway.close();
+    await off.harnessed.stop();
+    const { browser } = await started({ dashboard: REPORTING, identity: startsWith([]) });
+
+    for (const query of ["", "?clickid=too-short", `?clickid=${CLICK}&clickid=${ANOTHER_CLICK}`]) {
+      expect(seenOn((await browser.get(`/sign-in${query}`)).html), query).toStrictEqual(today);
+    }
+  });
+
+  it("keeps the box as the press left it when Google cannot be started", async () => {
+    const running = await started({
+      dashboard: REPORTING,
+      identity: (real) => ({
+        ...real,
+        googleEnabled: true,
+        async startGoogle() {
+          return { status: "unavailable" };
+        },
+      }),
+    });
+
+    const ticked = await running.browser.post("/sign-in/google", {
+      clickid: CLICK,
+      ads_consent: "yes",
+      destination: "settings",
+    });
+    const unticked = await running.browser.post("/sign-in/google", { clickid: CLICK });
+
+    expect(ticked.status).toBe(503);
+    expect(consentBoxIn(ticked.html)).toStrictEqual({ ticked: true });
+    expect(formTo(ticked.html, "post", "/sign-in")?.fields).toMatchObject(
+      new Map([
+        ["clickid", CLICK],
+        ["destination", "settings"],
+      ]),
+    );
+    expect(consentBoxIn(unticked.html)).toStrictEqual({ ticked: false });
+  });
+
+  it("takes a ticked box's click through Google to one registration, in no cookie and no address the browser is sent to", async () => {
+    const google = googleExchange();
+    const nativeFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", ((input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return url === "https://oauth2.googleapis.com/token"
+        ? google.fetch(input, init)
+        : nativeFetch(input, init);
+    }) satisfies typeof fetch);
+    const running = await started({ dashboard: { ...REPORTING, ...GOOGLE } });
+    const page = await running.browser.get(`/sign-in?clickid=${CLICK}&destination=settings`);
+    const form = formTo(page.html, "post", "/sign-in/google");
+
+    const sent = await running.browser.from(running.url).post("/sign-in/google", {
+      ...Object.fromEntries(form?.fields ?? []),
+      ads_consent: "yes",
+    });
+    const returned = await running.browser.get(
+      `/sign-in/google/callback?${google.authorize(sent.to ?? "")}`,
+    );
+
+    expect(sent.status).toBe(303);
+    expect(returned.status).toBe(303);
+    expect(returned.to).toBe("/merchant");
+    const seen = [sent.to, returned.to, ...sent.headers.getSetCookie()]
+      .concat(returned.headers.getSetCookie())
+      .map((line) => decodeURIComponent(line ?? ""))
+      .join("\n");
+    expect(seen).not.toContain(CLICK);
+    const person = await running.identity.byEmail("person@gmail.com");
+    expect(registrationsIn(running)).toMatchObject([
+      { accountId: person?.id, clickId: CLICK, state: "pending" },
+    ]);
   });
 });
 
