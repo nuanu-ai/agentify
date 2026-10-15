@@ -364,8 +364,6 @@ services:
       POSTHOG_DESTINATION_ENV: "${POSTHOG_DESTINATION_ENV:-local}"
       META_CAPI_ENABLED: "${META_CAPI_ENABLED:-false}"
       META_DESTINATION_ENV: "${META_DESTINATION_ENV:-local}"
-      PARTNER_POSTBACK_ENABLED: "${PARTNER_POSTBACK_ENABLED:-false}"
-      PARTNER_POSTBACK_SECRET: "${PARTNER_POSTBACK_SECRET:-}"
       # Passive browser observation through an Apify actor, which is a paid
       # service and a deployment target of its own. Off, and every knob it
       # would need is named here so that turning it on is a line in a `.env`
@@ -430,7 +428,6 @@ services:
       # Off here and off unless a deployment names them.
       BENCHMARK_ENABLED: "${BENCHMARK_ENABLED:-false}"
       PUBLIC_SHARE_ENABLED: "${PUBLIC_SHARE_ENABLED:-false}"
-      PARTNER_POSTBACK_ENABLED: "${PARTNER_POSTBACK_ENABLED:-false}"
       CARD_SIGNAL_ENABLED: "false"
       APIFY_BROWSER_MODE: "${APIFY_BROWSER_MODE:-off}"
       ANALYTICS_RUNTIME_ENV: "${ANALYTICS_RUNTIME_ENV:-local}"
