@@ -3,8 +3,9 @@
 Date: 2026-10-15. A research note for the product owner, which may be
 rewritten. It compares ways a merchant who has never held cryptocurrency gets
 from the dashboard's settings to money they can use, and ends with the
-questions only the product owner can answer. It chooses nothing, and nothing
-is built from it until the product owner has chosen.
+questions only the product owner can answer. The comparison chooses nothing;
+the product owner chose on 2026-10-15, and the section "What the product owner
+decided" records the choice.
 
 ## The question
 
@@ -439,6 +440,44 @@ money a script in the origin can reach.
 6. Is Agentify to hold a Coinbase Developer Platform project, accept its
    terms and pay for operations or gas? Way 3 needs it, and so does a
    paymaster or the offramp in any way.
+
+## What the product owner decided
+
+The product owner answered the six questions on 2026-10-15.
+
+1. USDC only. A merchant is paid in USDC in their own wallet, and turning it
+   into dollars in a bank is not part of this work.
+2. The merchant sends their own payout, and pays its fee in USDC, provided it
+   takes one press and one confirmation; copying data into a wallet is not
+   something a merchant who does not know crypto is asked to do. This brings
+   in the dashboard's "Get your payout" button, which the commission design
+   had deferred.
+3. Every payment is confirmed by the merchant. Way 3 is out, and so are
+   Coinbase Wallet's sub-accounts, which sign without a prompt.
+4. No exchange deposit address: way 2 is not offered. Entering an address by
+   hand stays open to everyone, whatever wallet it belongs to.
+5. A capped payout with real money was allowed; with way 2 out nothing needs
+   it, and none is sent.
+6. No Coinbase Developer Platform project where it can be avoided, so no
+   paymaster and no offramp.
+
+What is built is therefore way 1. The settings screen gets a button that opens
+Coinbase's window to create or connect a Coinbase Wallet and puts its address
+into the existing field, which the merchant then saves as today, the save
+being consent to the commission. Beside the payout instruction, a button sends
+that same transaction through Coinbase's window, where the merchant approves
+it and chooses to pay its fee in USDC. Coinbase's analytics are turned off in
+Agentify's page.
+
+Three things stay to be seen in a live run on the test channel, which the
+product owner does by hand: what a new merchant sees in Coinbase's window;
+whether Coinbase Wallet lets the fee be paid in USDC without a paymaster of
+Agentify's, as its documentation says it does for "a set of universally
+supported tokens, such as USDC" [checked, `coinbase-wallet/improve-ux/sponsor-gas/erc20-paymasters`];
+and what happens on a merchant's first payout, when the wallet holds no USDC
+yet to pay the fee with [inferred: it cannot pay, and that payout arrives with
+the operator's]. If the fee cannot be paid in USDC, this comes back to the
+product owner as one choice, not a set of combinations.
 
 ## What is not known
 
