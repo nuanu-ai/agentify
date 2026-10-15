@@ -1602,6 +1602,36 @@ describe("the box and the Google button on the sign-in page", () => {
     }
   });
 
+  it("offers the box again, ticked, with the click, on the page a cancelled Google sign-in returns to, and keeps the click out of its cookies", async () => {
+    const google = exchangingWithGoogle();
+    const running = await started({ dashboard: { ...REPORTING, ...GOOGLE } });
+    const sent = await running.browser.from(running.url).post("/sign-in/google", {
+      clickid: CLICK,
+      ads_consent: "yes",
+      destination: "settings",
+    });
+    const cancelled = google.authorize(sent.to ?? "");
+    cancelled.delete("code");
+    cancelled.set("error", "access_denied");
+
+    const refused = await running.browser.get(`/sign-in/google/callback?${cancelled}`);
+
+    expect(refused.status).toBe(401);
+    expect(consentBoxIn(refused.html)).toStrictEqual({ ticked: true });
+    const again = formTo(refused.html, "post", "/sign-in");
+    expect(again?.fields.get("clickid")).toBe(CLICK);
+    expect(again?.fields.get("destination")).toBe("settings");
+    expect(refused.headers.getSetCookie().map(decodeURIComponent).join("\n")).not.toContain(CLICK);
+    // A link asked for from there carries the consent the box shows.
+    const asked = await running.browser.post("/sign-in", {
+      ...Object.fromEntries(again?.fields ?? []),
+      email: FRESH.email,
+    });
+    expect(asked.status).toBe(202);
+    expect((await openLatest(running)).status).toBe(303);
+    expect(registrationsIn(running)).toMatchObject([{ clickId: CLICK }]);
+  });
+
   it("keeps the box as the press left it when Google cannot be started", async () => {
     const running = await started({
       dashboard: REPORTING,

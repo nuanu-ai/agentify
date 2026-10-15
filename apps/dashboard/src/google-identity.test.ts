@@ -460,6 +460,63 @@ describe("the registration a consented Google sign-in leaves for the tracker", (
     },
   );
 
+  it("brings the click back with a Google return refused once its browser's own state was confirmed, and with no other refusal", async () => {
+    const { start, identity, rows } = setup({
+      registrationPostback: reporting.registrationPostback,
+    });
+    const cancelled = await start({}, CLICK);
+    cancelled.query.delete("code");
+    cancelled.query.set("error", "access_denied");
+    const unverified = await start({ email_verified: false }, CLICK);
+    const foreign = await start({}, CLICK);
+    foreign.query.set("state", "other-browser");
+    const elsewhere = await start({}, CLICK);
+    const another = await start({}, CLICK);
+    const unticked = await start({ email_verified: false });
+
+    const answers = {
+      cancelled: await identity.finishGoogle(cancelled.query, cancelled.cookie),
+      unverified: await identity.finishGoogle(unverified.query, unverified.cookie),
+      foreign: await identity.finishGoogle(foreign.query, foreign.cookie),
+      // The state is a real sign-in's, held to the cookie of another browser.
+      elsewhere: await identity.finishGoogle(elsewhere.query, another.cookie),
+      unticked: await identity.finishGoogle(unticked.query, unticked.cookie),
+    };
+
+    expect(answers.cancelled).toMatchObject({
+      status: "refused",
+      reason: "cancelled",
+      click: CLICK,
+    });
+    expect(answers.unverified).toMatchObject({
+      status: "refused",
+      reason: "email-unverified",
+      click: CLICK,
+    });
+    for (const answer of [answers.foreign, answers.elsewhere, answers.unticked]) {
+      expect(answer.status).toBe("refused");
+      expect(answer).not.toHaveProperty("click");
+    }
+    for (const answer of Object.values(answers)) {
+      expect(answer.setCookies.map(decodeURIComponent).join("\n")).not.toContain(CLICK.id);
+    }
+    expect(rows.dashboard_accounts).toStrictEqual([]);
+    expect(registrationsIn(rows)).toStrictEqual([]);
+  });
+
+  it("brings no click back with a refused Google return while reporting is switched off", async () => {
+    const on = setup({ registrationPostback: reporting.registrationPostback });
+    const flow = await on.start({}, CLICK);
+    flow.query.delete("code");
+    flow.query.set("error", "access_denied");
+    const off = setup({}, on.rows);
+
+    const answer = await off.identity.finishGoogle(flow.query, flow.cookie);
+
+    expect(answer).toMatchObject({ status: "refused", reason: "cancelled" });
+    expect(answer).not.toHaveProperty("click");
+  });
+
   it("keeps the click out of every cookie and out of the address the browser is sent to Google with", async () => {
     const { start, identity, rows } = setup({
       registrationPostback: reporting.registrationPostback,

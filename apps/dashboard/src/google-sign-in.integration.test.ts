@@ -98,7 +98,11 @@ beforeAll(async () => {
   };
 });
 
-async function consentFor(context: BrowserContext, profile: Partial<GoogleProfile> = {}) {
+async function consentFor(
+  context: BrowserContext,
+  profile: Partial<GoogleProfile> = {},
+  answer: "consent" | "cancel" = "consent",
+) {
   // Interception runs only for the first URL of a redirect chain. Replace the
   // provider at the outbound Location boundary, before a browser contacts it.
   await context.route("**/*", async (route) => {
@@ -114,6 +118,10 @@ async function consentFor(context: BrowserContext, profile: Partial<GoogleProfil
     const response = await route.fetch({ maxRedirects: 0 });
     sentToGoogle.push(response.headers().location ?? "");
     const query = google.authorize(response.headers().location ?? "", profile);
+    if (answer === "cancel") {
+      query.delete("code");
+      query.set("error", "access_denied");
+    }
     const flow = query.get("state") ?? "";
     consents.set(flow, query);
     await route.fulfill({
@@ -240,6 +248,28 @@ describe("a Google sign-in from an ad in the built dashboard", () => {
 
       expect((await identity.byEmail(email))?.confirmed).toBe(true);
       expect(await registrationOf(email)).toStrictEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("offers the box again, ticked, on the page a cancelled Google sign-in returns to, from which a link can be asked for", async () => {
+    const context = await browser.newContext();
+    try {
+      await consentFor(context, {}, "cancel");
+      const page = await context.newPage();
+      await page.goto(`${origin}/dashboard/sign-in?clickid=${CLICK}&destination=settings`);
+      await page.getByLabel(ADS_CONSENT.sentence).check();
+      await page.getByRole("button", { name: "Sign in with Google", exact: true }).click();
+      await page.getByRole("link", { name: "Continue to Agentify" }).click();
+      await page.waitForURL(/\/sign-in\/google\/callback\?/);
+
+      expect(await page.getByLabel(ADS_CONSENT.sentence).isChecked()).toBe(true);
+      expect(await page.locator('input[name="clickid"]').inputValue()).toBe(CLICK);
+      expect(JSON.stringify(await context.cookies())).not.toContain(CLICK);
+      await page.getByLabel("Email address").fill("cancelled-google@example.com");
+      await page.getByRole("button", { name: "Send me a sign-in link" }).click();
+      await page.getByRole("heading", { name: "Check your mail" }).waitFor();
     } finally {
       await context.close();
     }
