@@ -98,6 +98,14 @@ const visit = () =>
     ),
   );
 
+/**
+ * Lets `ms` of the page's time pass, landing every answer and render due by
+ * then. The fake clock moves only here: one that also follows the wall clock
+ * lets a loaded machine fire the next ask inside a window the test means to be
+ * quiet.
+ */
+const timePasses = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+
 beforeEach(() => {
   statusAsks = [];
 });
@@ -138,44 +146,49 @@ describe("the token that reads a scan", () => {
   });
 
   it("is said to be no longer valid when the API refuses it, and the page stops asking", async () => {
+    vi.useFakeTimers();
     sessionStorage.setItem(TOKEN_KEY, "a-revoked-token");
     apiAnswers(() => json(401, { error: { code: "unauthorized" } }));
 
     visit();
+    await timePasses(0);
 
-    expect(await screen.findByText("This scan link is no longer valid")).toBeTruthy();
-    await new Promise((resolve) => setTimeout(resolve, 2_100));
+    expect(screen.getByText("This scan link is no longer valid")).toBeTruthy();
+    await timePasses(5_000);
     expect(statusAsks).toHaveLength(1);
   });
 });
 
 describe("how often the page asks", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    sessionStorage.setItem(TOKEN_KEY, "scan-token");
+  });
+
   it.each([
     ["queued", 2_000],
     ["running", 1_000],
   ])("asks again every %s scan's interval: %ims", async (status, interval) => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    sessionStorage.setItem(TOKEN_KEY, "scan-token");
     apiAnswers(() => json(200, scan({ status })));
     visit();
-    await waitFor(() => expect(statusAsks).toHaveLength(1));
-    await act(() => vi.advanceTimersByTimeAsync(10));
-    const before = statusAsks.length;
+    await timePasses(0);
+    expect(statusAsks).toHaveLength(1);
 
-    await act(() => vi.advanceTimersByTimeAsync(interval - 50));
-    expect(statusAsks).toHaveLength(before);
-    await act(() => vi.advanceTimersByTimeAsync(100));
-    expect(statusAsks).toHaveLength(before + 1);
+    for (const asks of [2, 3, 4]) {
+      await timePasses(interval - 1);
+      expect(statusAsks).toHaveLength(asks - 1);
+      await timePasses(1);
+      expect(statusAsks).toHaveLength(asks);
+    }
   });
 
   it("stops asking once the scan has ended", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    sessionStorage.setItem(TOKEN_KEY, "scan-token");
     apiAnswers(() => json(200, blockedScan));
     visit();
-    await screen.findByText("The site blocked our reader");
+    await timePasses(0);
+    expect(screen.getByText("The site blocked our reader")).toBeTruthy();
 
-    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    await timePasses(5_000);
     expect(statusAsks).toHaveLength(1);
   });
 });
@@ -251,17 +264,18 @@ describe("a scan's states", () => {
   });
 
   it("says it cannot reach the scanner while it cannot, and recovers once it answers again", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.useFakeTimers();
     apiAnswers(
       () => Promise.reject(new TypeError("Failed to fetch")),
       () => json(200, scan({})),
     );
 
     visit();
-    expect(await screen.findByText(/temporarily unreachable/)).toBeTruthy();
-    await act(() => vi.advanceTimersByTimeAsync(2_100));
+    await timePasses(0);
+    expect(screen.getByText(/temporarily unreachable/)).toBeTruthy();
+    await timePasses(2_100);
 
-    expect(await screen.findByText("7 of 18 checks reported")).toBeTruthy();
+    expect(screen.getByText("7 of 18 checks reported")).toBeTruthy();
     expect(screen.queryByText(/temporarily unreachable/)).toBeNull();
   });
 });
