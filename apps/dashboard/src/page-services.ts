@@ -118,8 +118,9 @@ export type SignInView =
 
 /**
  * The ad click a visitor arrived with, which the sign-in forms carry from page
- * to page, and whether they ticked the box that lets the tracker hear they
- * signed up. Present only where the report is switched on.
+ * to page, and whether they ticked the box that lets the click be kept with
+ * the link, for the address's owner to confirm at the press. Present only
+ * where the report is switched on.
  */
 export type OfferedClick = Readonly<{ id: string; consented: boolean }>;
 

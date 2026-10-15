@@ -217,16 +217,17 @@ export const reportDeletionTombstones = pgTable(
 
 /**
  * The one registration the dashboard reports to the ad tracker whose click
- * brought the person: written in the transaction where a link asked for with a
- * consented click makes the address's first verified account, so there is at
- * most one per account and none for anybody who did not tick the box. What is
- * reported is the click id and the fact that a registration happened, nothing
- * about the person.
+ * brought the person: written in the transaction where a link asked for with
+ * the box ticked makes the address's first verified account and the address's
+ * owner said yes on the link's page, so there is at most one per account and
+ * none without both. What is reported is the click id and the fact that a
+ * registration happened, nothing about the person.
  *
  * The click id is kept only while the report is pending and is erased once the
- * row is final; the consent time and the version of the sentence agreed to
- * stay, because the link's claim that held them is deleted when the link is
- * spent. The row goes with the account.
+ * row is final; the moment of the tick and the version of the sentences agreed
+ * to stay, because the link's claim that held them is deleted when the link is
+ * spent, and the row's creation is the moment of the press. The row goes with
+ * the account.
  */
 export const registrationPostbacks = pgTable(
   "dashboard_registration_postbacks",
@@ -240,7 +241,7 @@ export const registrationPostbacks = pgTable(
     state: text("state").notNull().default("pending"),
     attempts: integer("attempts").notNull().default(0),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" }),
-    /** How the last attempt ended, such as `http_403` or `timeout`. */
+    /** How the last attempt ended, such as `http_403` or `timeout`; null before any. */
     lastOutcome: text("last_outcome"),
     createdAt: moment("created_at"),
     settledAt: timestamp("settled_at", { withTimezone: true, mode: "date" }),
