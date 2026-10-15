@@ -12,6 +12,8 @@
 import { createBaseAccountSDK } from "@base-org/account";
 import type { Wallet } from "./requests.js";
 
+export { askAddress, sendPayout } from "./requests.js";
+
 const opened = new Map<number, Wallet>();
 
 /** The provider for `chainId`, made once per page, since each SDK made registers itself globally. */

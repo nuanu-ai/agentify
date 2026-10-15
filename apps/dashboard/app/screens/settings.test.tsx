@@ -19,7 +19,7 @@ import {
   type RecordedPayoutSplit,
 } from "@agentify/gateway";
 import { checksummedAddressOf, PayoutWalletSchema } from "@nuanu-ai/agentify-contracts";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
@@ -315,18 +315,20 @@ describe("the payout wallet on the settings screen", () => {
 
 describe("a change of the payout wallet on its way", () => {
   /** The wallet form pressed in a live document; nothing leaves it. */
-  const pressed = (looking: Looking) => {
+  const pressed = (looking: Looking): HTMLFormElement => {
     render(routed(() => <PayoutWalletPanel wallet={viewOf(looking).wallet} />));
     document.addEventListener("submit", (event) => event.preventDefault(), { once: true });
     const box = screen.getByLabelText(/payout wallet address/i);
     fireEvent.change(box, { target: { value: WAITING } });
-    fireEvent.submit(box.closest("form") as HTMLFormElement);
+    const form = box.closest("form") as HTMLFormElement;
+    fireEvent.submit(form);
+    return form;
   };
 
   it("says on live that every account is told before it is recorded, so the wait does not look frozen", () => {
-    pressed({ mode: "live", wallet: SHAPED });
+    const form = pressed({ mode: "live", wallet: SHAPED });
 
-    const said = screen.getByRole("status").textContent ?? "";
+    const said = within(form).getByRole("status").textContent ?? "";
     expect(said).toMatch(/every account of your merchant is sent a message/i);
     expect(said).toMatch(/30 seconds/);
     expect(
@@ -340,9 +342,9 @@ describe("a change of the payout wallet on its way", () => {
       { mode: "test", wallet: SHAPED },
       { mode: "live", wallet: null },
     ] as const) {
-      pressed(looking);
+      const form = pressed(looking);
 
-      expect(screen.queryByRole("status"), JSON.stringify(looking)).toBeNull();
+      expect(within(form).queryByRole("status"), JSON.stringify(looking)).toBeNull();
       cleanup();
     }
   });
@@ -706,6 +708,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     await act(async () => {
       fireEvent.click(control);
     });
+    await waitFor(() => expect(screen.queryByText(WALLET_WORDS.waiting)).toBeNull());
   };
 
   it("is offered only once the page's script runs, so a page without script shows no button that does nothing", () => {
@@ -779,6 +782,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
     await act(async () => {
       fireEvent.click(button());
     });
+    await waitFor(() => expect(screen.queryByText(WALLET_WORDS.waiting)).toBeNull());
   };
 
   it("is offered only once the page's script runs, beside the transaction it sends", () => {

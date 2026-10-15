@@ -56,6 +56,8 @@ export type PayoutView =
       pays: readonly Readonly<{ split: string; wallet: string }>[];
       /** What sending it can and cannot do, and when the merchant is paid without it. */
       after: string;
+      /** The chain a Coinbase Wallet sends it on, the one `lead` names. */
+      chain: number;
     }>
   | Readonly<{ kind: "too_many" | "unbuilt"; said: string }>;
 
@@ -87,6 +89,8 @@ export interface WalletView {
   readonly onItsWay: string | null;
   readonly typed: string;
   readonly problem: string | null;
+  /** The chain a Coinbase Wallet is opened on to fill the box; null in the sandbox, where no wallet is paid. */
+  readonly chain: number | null;
 }
 
 export interface SettingsView {
@@ -122,6 +126,12 @@ const SETTLES: Readonly<Record<SurfaceMode, string>> = {
 const SENT_ON: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
   test: "To be paid now, send this transaction on Base Sepolia only, from any wallet with a little test ETH for the fee.",
   live: "To be paid now, send this transaction on Base only, from any wallet with a little ETH for the fee.",
+};
+
+/** The chain each channel's merchant wallet is paid on, Base Sepolia for test money and Base for real. */
+const WALLET_CHAIN: Readonly<Record<Exclude<SurfaceMode, "sandbox">, number>> = {
+  test: 84532,
+  live: 8453,
 };
 
 /** When a merchant who sends nothing is paid: Agentify's own payout pays out every contract, whenever it is sent. */
@@ -186,6 +196,7 @@ const payoutView = (mode: SurfaceMode, splits: PayoutSplits): PayoutView | null 
         ? "your share arrives in the same transaction"
         : "each share arrives in the wallet beside its contract, in the same transaction"
     }. Otherwise you are ${PAID_ON_NO_SET_DATE}`,
+    chain: WALLET_CHAIN[mode],
   };
 };
 
@@ -266,6 +277,7 @@ export const settingsView = (
       onItsWay: saved !== null && mode === "live" ? CHANGE_ON_ITS_WAY : null,
       typed: wallet?.typed ?? "",
       problem: wallet?.problem ?? null,
+      chain: mode === "sandbox" ? null : WALLET_CHAIN[mode],
     },
     payout: saved === null ? null : payoutView(mode, payoutSplits),
     account: {

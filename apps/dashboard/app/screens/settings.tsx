@@ -2,6 +2,7 @@ import { Button, Field } from "@agentify/ui";
 import { useState } from "react";
 import { Form } from "react-router";
 import type { PayoutView, SettingsView, SplitView, WalletView } from "../../src/settings-view.js";
+import { CoinbaseAddress, CoinbasePayout } from "../components/coinbase-wallet.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 
@@ -200,6 +201,9 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
           </div>
         </div>
       </div>
+      {wallet.chain === null ? null : (
+        <CoinbaseAddress chainId={wallet.chain} box="payout_wallet" />
+      )}
       <PostForm document action="/settings/payout-wallet" className="issue">
         {(pressed) => (
           <>
@@ -284,6 +288,7 @@ function PayoutPanel({ payout }: Readonly<{ payout: PayoutView }>) {
           </p>
         </div>
       </div>
+      <CoinbasePayout chainId={payout.chain} payout={{ to: payout.to, data: payout.data }} />
       <dl className="payout">
         <dt>To</dt>
         <dd>
