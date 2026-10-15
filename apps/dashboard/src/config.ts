@@ -134,6 +134,20 @@ const environmentSchema = z.object({
    * itself should say so.
    */
   MAIL_FROM: emptyIsAbsent(z.string().min(1)),
+
+  /**
+   * Whether a registration made through a consented ad click is reported to
+   * the ad tracker. The key and the receiver are held to their rules only once
+   * this is on: a host keeps one environment file for every service, and a key
+   * written there ahead of the switch must not stop the process.
+   */
+  REGISTRATION_POSTBACK_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  REGISTRATION_POSTBACK_KEY: emptyIsAbsent(z.string()),
+  /** A laptop's own receiver; a deployment posts only to the tracker. */
+  REGISTRATION_POSTBACK_URL: emptyIsAbsent(z.string()),
 });
 
 /**
@@ -167,6 +181,24 @@ export interface DashboardConfig {
   readonly mailUrl: string;
   readonly mailApiKey: string | null;
   readonly mailFrom: string;
+  /**
+   * Where a consented registration is reported and the key it is reported
+   * with, or null where nothing is reported. The key is never printed.
+   */
+  readonly registrationPostback: Readonly<{ endpoint: string; key: string }> | null;
+}
+
+/** The only address a deployment reports a registration to. */
+const REGISTRATION_POSTBACK_ENDPOINT = "https://aisamuraihub.com/postback";
+
+/** The tracker's own key, as it issued it, is at least this long. */
+const SHORTEST_POSTBACK_KEY = 16;
+
+/** The tracker's host and every name under it, a trailing dot included. */
+function isTheTrackers(address: string): boolean {
+  const host = new URL(address).hostname.replace(/\.$/, "");
+  const tracker = new URL(REGISTRATION_POSTBACK_ENDPOINT).hostname;
+  return host === tracker || host.endsWith(`.${tracker}`);
 }
 
 /** Used only in the sandbox, where messages go to the log. */
@@ -244,8 +276,14 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     );
   }
 
+  const postback = values.REGISTRATION_POSTBACK_ENABLED
+    ? registrationPostbackOf(surfaceMode, values, problems)
+    : null;
+
   if (problems.length > 0) {
-    throw new Error(`The dashboard cannot start, the mail is not set up — ${problems.join("; ")}`);
+    throw new Error(
+      `The dashboard cannot start, the configuration does not hold together — ${problems.join("; ")}`,
+    );
   }
 
   return {
@@ -261,5 +299,64 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     mailUrl: values.MAIL_URL,
     mailApiKey: values.MAIL_API_KEY ?? null,
     mailFrom: values.MAIL_FROM ?? NOBODY_READS_THIS,
+    registrationPostback: postback,
   };
+}
+
+/**
+ * The report's endpoint and key once it is switched on, or null with each
+ * problem added to `problems`. None names a value: the key is a credential,
+ * and a receiver's address says nothing a reader of the log needs.
+ */
+function registrationPostbackOf(
+  surfaceMode: SurfaceMode,
+  values: z.infer<typeof environmentSchema>,
+  problems: string[],
+): DashboardConfig["registrationPostback"] {
+  const key = values.REGISTRATION_POSTBACK_KEY;
+  const receiver = values.REGISTRATION_POSTBACK_URL;
+  let endpoint: string | null = null;
+
+  if (key === undefined || key.length < SHORTEST_POSTBACK_KEY) {
+    problems.push(
+      `REGISTRATION_POSTBACK_ENABLED is true and REGISTRATION_POSTBACK_KEY is ${key === undefined ? "not set" : `shorter than ${SHORTEST_POSTBACK_KEY} characters`},` +
+        " so the tracker would turn every report away",
+    );
+  }
+
+  if (surfaceMode === "test") {
+    // The tracker would count a test registration as a real conversion.
+    problems.push(
+      "REGISTRATION_POSTBACK_ENABLED is true on the test channel, which never reports a" +
+        " registration to the ad tracker",
+    );
+  } else if (surfaceMode === "live") {
+    if (receiver === undefined) {
+      endpoint = REGISTRATION_POSTBACK_ENDPOINT;
+    } else {
+      problems.push(
+        "REGISTRATION_POSTBACK_URL is set on the live channel, which reports only to the" +
+          " tracker's own address; the variable is for a laptop's receiver",
+      );
+    }
+  } else if (receiver === undefined) {
+    // A laptop reports only to a receiver of its own, so a registration made
+    // while trying the page can never become somebody's conversion.
+    problems.push(
+      "REGISTRATION_POSTBACK_ENABLED is true on a sandbox and REGISTRATION_POSTBACK_URL is" +
+        " not set, so there is no receiver of its own to report to",
+    );
+  } else if (!isHttpUrl(receiver)) {
+    problems.push("REGISTRATION_POSTBACK_URL must be an http or https address");
+  } else if (isTheTrackers(receiver)) {
+    problems.push(
+      "REGISTRATION_POSTBACK_URL names the ad tracker's host, and a sandbox reports only to a" +
+        " receiver of its own",
+    );
+  } else {
+    endpoint = receiver;
+  }
+
+  // Null whenever a problem was added, which the caller throws on.
+  return endpoint === null || key === undefined ? null : { endpoint, key };
 }
