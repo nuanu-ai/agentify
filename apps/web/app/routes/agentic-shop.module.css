@@ -1010,8 +1010,13 @@
     transform: none;
   }
 }
-.opportunity a:focus-visible {
+.opportunity :focus-visible,
+.entry :focus-visible {
   outline-color: var(--shop-mint);
+}
+
+.entryCard :focus-visible {
+  outline-color: var(--accent);
 }
 
 .sectionHeading h2 {
