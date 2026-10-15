@@ -271,7 +271,11 @@ export function MailUnavailableScreen({ chrome }: Readonly<{ chrome: Chrome }>) 
  * Drawing it spends nothing; the press does. The address is shown because a
  * link for somebody else's address, sent to a victim, would otherwise sign them
  * in as that somebody without their noticing. The page runs no script, so the
- * form is posted by the browser itself.
+ * form is posted by the browser itself, with the name of the button pressed.
+ *
+ * Where the press would tell the ad tracker of the sign-up, the page says so
+ * and offers a second button that signs in without it: anybody can ask for a
+ * link for any address, so the box ticked then is not the owner's word.
  */
 export function OpenLinkScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: OpenLinkView }>) {
   if (view.screen === "refused") {
@@ -303,11 +307,28 @@ export function OpenLinkScreen({ chrome, view }: Readonly<{ chrome: Chrome; view
         <p>
           This link signs <strong>{view.email}</strong> in on this browser.
         </p>
+        {view.tellsTracker ? (
+          <p>
+            {ADS_CONSENT.confirmation}{" "}
+            <a href={ADS_CONSENT.explained.href}>{ADS_CONSENT.explained.words}</a>
+          </p>
+        ) : null}
         <input type="hidden" name="token" value={view.token} />
-        <Button>Sign in as {view.email}</Button>
+        {view.tellsTracker ? (
+          <>
+            <Button name="report" value="yes">
+              Sign in as {view.email}
+            </Button>
+            <Button variant="secondary" name="report" value="no">
+              {ADS_CONSENT.without}
+            </Button>
+          </>
+        ) : (
+          <Button>Sign in as {view.email}</Button>
+        )}
         <p className="quiet">
-          If that is not your address, close this page. Nothing happens unless the button is
-          pressed.
+          If that is not your address, close this page. Nothing happens unless{" "}
+          {view.tellsTracker ? "a" : "the"} button is pressed.
         </p>
       </Form>
     </GatePage>

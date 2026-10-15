@@ -13,6 +13,11 @@ export const ADS_CONSENT = {
   version: "2026-10-15",
   sentence:
     "Tell AI Samurai, Agentify's ad tracker, that I signed up after clicking an Agentify ad. Nothing else is shared.",
+  /** Read by whoever presses the link, who may not be who ticked the box. */
+  confirmation:
+    "Signing in also tells AI Samurai, Agentify's ad tracker, that this sign-up came from an Agentify ad, as the box ticked when this link was asked for allows, and shares nothing else.",
+  /** The button that signs in and tells the tracker nothing. */
+  without: "Sign in without telling AI Samurai",
   /** The privacy page's section that names the tracker and what it is told. */
   explained: { words: "What AI Samurai is told", href: "/privacy#processors" },
 } as const;

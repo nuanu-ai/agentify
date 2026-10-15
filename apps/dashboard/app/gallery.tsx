@@ -674,7 +674,33 @@ const SIGNING_IN: GalleryState[] = [
       path: "/sign-in/open?token=…",
       mode: "live",
       loaded: {
-        "routes/sign-in-open": { screen: "open", token: "the token from the email", email: WHO },
+        "routes/sign-in-open": {
+          screen: "open",
+          token: "the token from the email",
+          email: WHO,
+          tellsTracker: false,
+        },
+      },
+    },
+  ),
+  at(
+    {
+      id: "dashboard-link-open-from-an-ad",
+      screen: "The emailed sign-in link",
+      when: "Somebody opens a sign-in link that was asked for with the ad tracker's box ticked.",
+      cause:
+        "The press would make the address's first account and the report to the tracker is switched on, so the page asks the address's owner before telling it.",
+    },
+    {
+      path: "/sign-in/open?token=…",
+      mode: "live",
+      loaded: {
+        "routes/sign-in-open": {
+          screen: "open",
+          token: "the token from the email",
+          email: WHO,
+          tellsTracker: true,
+        },
       },
     },
   ),

@@ -133,8 +133,12 @@ export type LinkAnswer =
   | Readonly<{ sent: true; seconds: number }>
   | Readonly<{ wall: LinkWall; seconds: number }>;
 
+/**
+ * `tellsTracker` is whether the press would tell the ad tracker of a
+ * registration, which the page then says and offers to sign in without.
+ */
 export type OpenLinkView =
-  | Readonly<{ screen: "open"; token: string; email: string }>
+  | Readonly<{ screen: "open"; token: string; email: string; tellsTracker: boolean }>
   | Readonly<{ screen: "refused" }>;
 
 /**
@@ -729,7 +733,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         }
         return {
           kind: "view",
-          view: { screen: "open", token, email: link.email },
+          view: { screen: "open", token, email: link.email, tellsTracker: link.tellsTracker },
           headers: LINK_HEADERS,
         };
       },
