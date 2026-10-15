@@ -27,42 +27,37 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
         }}
       >
         <section className={`${styles.hero} container`}>
-          <div className={styles.heroGrid}>
-            <div className={styles.heroCopy}>
-              <div className="eyebrow">{config.eyebrow}</div>
-              <h1>{config.hero.title}</h1>
-              <p>{config.hero.subtitle}</p>
-              <UrlScanForm
-                cta={config.hero.cta}
-                segment={config.segment}
-                variant={config.variant}
-              />
-              <div className={styles.assurances}>
-                {LANDING_SHARED_CONTENT.assurances.map((assurance) => (
-                  <span key={assurance}>{assurance}</span>
-                ))}
-              </div>
-              {config.secondDoor ? (
-                <p className={styles.secondDoor}>
-                  {config.secondDoor.lead}{" "}
-                  <SiteLink to={config.secondDoor.href}>{config.secondDoor.label} →</SiteLink>
-                </p>
-              ) : null}
+          <div className={styles.heroCopy}>
+            <div className="eyebrow">{config.eyebrow}</div>
+            <h1>{config.hero.title}</h1>
+            <p>{config.hero.subtitle}</p>
+            <UrlScanForm cta={config.hero.cta} segment={config.segment} variant={config.variant} />
+            <div className={styles.assurances}>
+              {LANDING_SHARED_CONTENT.assurances.map((assurance) => (
+                <span key={assurance}>{assurance}</span>
+              ))}
             </div>
-            <ExampleSurface segmentPhase={config.segmentPhase} />
+            {config.secondDoor ? (
+              <p className={styles.secondDoor}>
+                {config.secondDoor.lead}{" "}
+                <SiteLink to={config.secondDoor.href}>{config.secondDoor.label} →</SiteLink>
+              </p>
+            ) : null}
           </div>
+          <ExampleSurface segmentPhase={config.segmentPhase} />
         </section>
 
         <section className={styles.how} id="how">
           <div className="container">
             <h2>{LANDING_SHARED_CONTENT.howTitle}</h2>
-            <div className={styles.steps}>
+            {/* biome-ignore lint/a11y/noRedundantRoles: Safari needs the role when CSS hides list markers. */}
+            <ol className={styles.steps} role="list">
               {LANDING_SHARED_CONTENT.howSteps.map((step) => (
                 <Step index={step.index} key={step.index} title={step.title}>
                   {step.body}
                 </Step>
               ))}
-            </div>
+            </ol>
           </div>
         </section>
 
@@ -136,10 +131,10 @@ function Step({
   title,
 }: Readonly<{ children: string; index: string; title: string }>) {
   return (
-    <article>
-      <span>{index}</span>
+    <li>
+      <span aria-hidden="true">{index}</span>
       <h3>{title}</h3>
       <p>{children}</p>
-    </article>
+    </li>
   );
 }

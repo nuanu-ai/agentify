@@ -3,6 +3,10 @@
   color: var(--footer-text);
 }
 
+.footer :focus-visible {
+  outline-color: var(--accent-on-dark);
+}
+
 .footer a {
   text-decoration: none;
 }

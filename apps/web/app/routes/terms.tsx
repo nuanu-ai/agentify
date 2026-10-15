@@ -8,7 +8,13 @@ import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 export const loader = () => getPublicEditorialPage("/terms", getPublicAppConfig());
 
 export const meta = ({ matches }: MetaArgs) =>
-  pageMeta(siteConfigOf(matches), { title: "Terms", canonical: "/terms", robots: "index, follow" });
+  pageMeta(siteConfigOf(matches), {
+    title: "Terms",
+    description:
+      "Terms for Agentify's website diagnostic: acceptable use, service scope, availability limits, and what a diagnostic result does not guarantee.",
+    canonical: "/terms",
+    robots: "index, follow",
+  });
 
 export default function TermsPage() {
   return <PublicEditorialPage page={useLoaderData<typeof loader>()} />;

@@ -15,7 +15,7 @@ export const loader = () => AGENTIC_SHOP_RESEARCH;
 
 export const meta = ({ matches }: MetaArgs) =>
   pageMeta(siteConfigOf(matches), {
-    title: "Sell to agents",
+    title: "Sell products and services to AI agents",
     description:
       "Open your Agentify dashboard with an email link, integrate through the SDK and test agent-ready offers. Live publication requires operator approval.",
     canonical: "/agentic-shop",
@@ -225,9 +225,12 @@ export default function AgenticShopPage() {
               rules an order follows.
             </p>
           </div>
-          <div className={styles.steps}>
-            <article>
-              <span className={styles.stepNumber}>01</span>
+          {/* biome-ignore lint/a11y/noRedundantRoles: Safari needs the role when CSS hides list markers. */}
+          <ol className={styles.steps} role="list">
+            <li>
+              <span className={styles.stepNumber} aria-hidden="true">
+                01
+              </span>
               <div className={styles.stepSymbol} aria-hidden="true">
                 ↗
               </div>
@@ -236,9 +239,11 @@ export default function AgenticShopPage() {
                 Enter your email and use the one-time link. The first visit creates your merchant
                 and asks for the name buyers will see.
               </p>
-            </article>
-            <article>
-              <span className={styles.stepNumber}>02</span>
+            </li>
+            <li>
+              <span className={styles.stepNumber} aria-hidden="true">
+                02
+              </span>
               <div className={styles.stepSymbol} aria-hidden="true">
                 ⇄
               </div>
@@ -247,9 +252,11 @@ export default function AgenticShopPage() {
                 Use the <a href="/docs/quickstart">SDK</a> to publish the offer, price and
                 fulfilment promises. The WooCommerce connector is experimental.
               </p>
-            </article>
-            <article>
-              <span className={styles.stepNumber}>03</span>
+            </li>
+            <li>
+              <span className={styles.stepNumber} aria-hidden="true">
+                03
+              </span>
               <div className={styles.stepSymbol} aria-hidden="true">
                 ✓
               </div>
@@ -258,8 +265,8 @@ export default function AgenticShopPage() {
                 Test publication needs the seller name and test payout wallet. Live publication uses
                 a separate wallet and also needs the operator’s approval for that merchant.
               </p>
-            </article>
-          </div>
+            </li>
+          </ol>
         </section>
 
         <section className={styles.settlement}>
@@ -348,8 +355,9 @@ export default function AgenticShopPage() {
               delivering what you promise.
             </p>
           </div>
-          <div className={styles.steps}>
-            <article>
+          {/* biome-ignore lint/a11y/noRedundantRoles: Safari needs the role when CSS hides list markers. */}
+          <ol className={styles.steps} role="list">
+            <li>
               <span className={styles.stepSymbol} aria-hidden="true">
                 01
               </span>
@@ -358,8 +366,8 @@ export default function AgenticShopPage() {
                 Once your merchant is verified, agree a cashback rate, budget and return rules. An
                 agent can read the offer and compare what it is worth to its customer.
               </p>
-            </article>
-            <article>
+            </li>
+            <li>
               <span className={styles.stepSymbol} aria-hidden="true">
                 02
               </span>
@@ -368,8 +376,8 @@ export default function AgenticShopPage() {
                 Cashback becomes payable to the customer only after verified delivery of the product
                 or service, under the agreed terms. Payment alone does not trigger a reward.
               </p>
-            </article>
-            <article>
+            </li>
+            <li>
               <span className={styles.stepSymbol} aria-hidden="true">
                 03
               </span>
@@ -378,8 +386,8 @@ export default function AgenticShopPage() {
                 Delivery success, service quality and refund speed build a record that agents can
                 weigh alongside price and cashback.
               </p>
-            </article>
-          </div>
+            </li>
+          </ol>
           <div className={styles.localNote}>
             <p>
               <strong>A loyalty model we’re developing.</strong> Reward funding and refund reserves

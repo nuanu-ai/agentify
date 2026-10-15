@@ -9,6 +9,8 @@ export const loader = () => LANDINGS.store;
 export const meta = ({ matches }: MetaArgs) =>
   pageMeta(siteConfigOf(matches), {
     title: "Agent-readiness diagnostic for online stores",
+    description:
+      "Check your store's public products, prices and stock for AI agents. Get diagnostic findings without placing orders or testing checkout.",
     canonical: "/store",
   });
 

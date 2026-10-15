@@ -53,6 +53,8 @@ having spent nothing.
 
 ```mermaid
 sequenceDiagram
+    accTitle: Synchronous order fulfillment
+    accDescr: The agent buys a card. Agentify sends the order to the merchant, who returns the goods. Only then is the buyer charged, and Agentify returns the goods in the purchase response.
     participant A as Agent
     participant C as Agentify
     participant Y as You
@@ -70,6 +72,8 @@ a separate call — a minute later or a day later, which changes nothing here.
 
 ```mermaid
 sequenceDiagram
+    accTitle: Asynchronous order fulfillment
+    accDescr: The agent buys a card and the buyer is charged before delivery. Agentify returns an order and sends it to the merchant. The merchant accepts and delivers the goods through a separate call. The agent reads the order to receive the goods.
     participant A as Agent
     participant C as Agentify
     participant Y as You
@@ -124,6 +128,8 @@ than the one where everything goes well.
 
 ```mermaid
 sequenceDiagram
+    accTitle: Order fulfillment with confirmation, unavailable during the pilot
+    accDescr: Agentify asks the merchant to confirm delivery before charging the buyer. Refusal or silence closes the order without a charge. If the merchant confirms and the agent pays in time, the buyer is charged and the merchant delivers separately. If the agent never pays, the order expires without a charge.
     participant A as Agent
     participant C as Agentify
     participant Y as You

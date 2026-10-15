@@ -6,7 +6,8 @@
  * needs nothing more, the consent banner takes a choice without a reload, the merchant
  * landing's menu opens and closes, and behind the live channel's edge, as
  * `deploy/Caddyfile` routes it, the landing stays the page that says there is
- * none once the browser takes the page over. The headers that promise the
+ * none once the browser takes the page over. Keyboard focus stays visible
+ * against both light and dark page surfaces. The headers that promise the
  * caching are held offline in `answers.test.ts`.
  *
  * It needs the build (`pnpm --filter @agentify/web build`) and Playwright's
@@ -246,6 +247,59 @@ describe("a page's first visit in Chromium", () => {
 });
 
 describe("the sell-to-agents page", () => {
+  it.each([
+    ["paper", 'main a[href="#how-it-works"]'],
+    ["the opportunity band", "#opportunity a"],
+    ["the entry band", '#start a[href="/docs/quickstart"]'],
+    ["the light entry card", '#start a[href="/dashboard/sign-in"]'],
+    ["the footer", 'footer a[href="/privacy"]'],
+  ])("makes keyboard focus distinguishable on %s", async (_surface, selector) => {
+    const { page } = await visit("/agentic-shop");
+    try {
+      await page.keyboard.press("Tab");
+      const link = page.locator(selector).first();
+      await link.focus();
+      const focus = await link.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const context = document.createElement("canvas").getContext("2d");
+        if (context === null) throw new Error("A canvas context is required to measure contrast");
+        const backgrounds = [];
+        for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+          backgrounds.unshift(getComputedStyle(parent).backgroundColor);
+        }
+        context.fillStyle = "white";
+        context.fillRect(0, 0, 1, 1);
+        for (const background of backgrounds) {
+          context.fillStyle = background;
+          context.fillRect(0, 0, 1, 1);
+        }
+        const luminance = () => {
+          const [red = 0, green = 0, blue = 0] = [...context.getImageData(0, 0, 1, 1).data]
+            .slice(0, 3)
+            .map((channel) => {
+              const value = channel / 255;
+              return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            });
+          return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+        };
+        const background = luminance();
+        context.fillStyle = style.outlineColor;
+        context.fillRect(0, 0, 1, 1);
+        const outline = luminance();
+        return {
+          visible: element.matches(":focus-visible") && style.outlineStyle !== "none",
+          width: Number.parseFloat(style.outlineWidth),
+          contrast: (Math.max(outline, background) + 0.05) / (Math.min(outline, background) + 0.05),
+        };
+      });
+      expect(focus.visible).toBe(true);
+      expect(focus.width).toBeGreaterThanOrEqual(2);
+      expect(focus.contrast).toBeGreaterThanOrEqual(3);
+    } finally {
+      await page.context().close();
+    }
+  });
+
   it("shows its still life", async () => {
     const { page } = await visit("/agentic-shop");
     const image = page.locator("main img").first();

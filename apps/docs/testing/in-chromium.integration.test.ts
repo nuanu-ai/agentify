@@ -283,10 +283,29 @@ describe("a page of the documentation in Chromium", () => {
     }
   });
 
-  it("draws every diagram of the orders page as a picture, running no diagram code", async () => {
+  it("draws every diagram of the orders page as a named, described picture, running no diagram code", async () => {
     const { page, asked } = await visit("/docs/orders");
 
     expect(await page.locator("figure.diagram svg").count()).toBe(3);
+    for (const diagram of await page.locator("figure.diagram svg").all()) {
+      const accessible = await diagram.evaluate((element) => {
+        const texts = (attribute: string, tag: string) => {
+          const ids = element.getAttribute(attribute)?.trim().split(/\s+/) ?? [];
+          return ids.map(
+            (id) => element.querySelector(`${tag}[id="${id}"]`)?.textContent?.trim() ?? "",
+          );
+        };
+        return {
+          name: texts("aria-labelledby", "title"),
+          description: texts("aria-describedby", "desc"),
+        };
+      });
+      for (const [kind, texts] of Object.entries(accessible)) {
+        expect(texts.length, kind).toBeGreaterThan(0);
+        expect(texts.every(Boolean), kind).toBe(true);
+      }
+      expect(accessible.description.join(" ")).not.toBe(accessible.name.join(" "));
+    }
     expect(asked.filter((path) => /mermaid/i.test(path))).toEqual([]);
     await page.context().close();
   });
@@ -428,6 +447,31 @@ describe("the search", () => {
     await page.context().close();
   });
 
+  it("keeps both Tab directions inside failed search and returns to its opener on Escape", async () => {
+    const { page } = await visit("/docs/");
+    await page.route("**/docs/search-index.json", (route) =>
+      route.fulfill({ status: 503, body: "" }),
+    );
+    const opener = page.locator(".docs-aside .docs-search-button");
+    await opener.focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "Search the documentation" });
+    const reload = dialog.getByRole("button", { name: "Reload the page" });
+    await reload.waitFor();
+
+    for (const key of ["Tab", "Shift+Tab"]) {
+      await page.keyboard.press(key);
+      expect(await reload.evaluate((element) => element === document.activeElement)).toBe(true);
+    }
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "detached" });
+    await page.waitForFunction(() =>
+      document.activeElement?.classList.contains("docs-search-button"),
+    );
+    expect(await opener.evaluate((element) => element === document.activeElement)).toBe(true);
+    await page.context().close();
+  });
+
   it("says when nothing matches, where a screen reader reads it out", async () => {
     const { page } = await visit("/docs/");
     await page.keyboard.press("/");
@@ -468,6 +512,73 @@ describe("the search", () => {
 
     await page.keyboard.press("Enter");
     await page.waitForFunction((id) => document.activeElement?.id === id, anchor);
+    await page.context().close();
+  });
+});
+
+describe("copying a code example", () => {
+  it("copies the displayed code and announces success after the browser accepts it", async () => {
+    const { page, complaints } = await visit(
+      "/docs/quickstart",
+      undefined,
+      false,
+      true,
+      (context) =>
+        context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: edge.origin }),
+    );
+    const copy = page.getByRole("button", { name: "Copy the code", exact: true }).first();
+    const block = copy.locator("..");
+    const code = await block.locator("pre").textContent();
+    await copy.focus();
+    await page.keyboard.press("Enter");
+
+    await block
+      .getByRole("status")
+      .filter({ hasText: /copied/i })
+      .waitFor();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(code);
+    expect(await copy.evaluate((element) => element === document.activeElement)).toBe(true);
+    expect(await copy.evaluate((element) => getComputedStyle(element, "::before").content)).toBe(
+      '"✓"',
+    );
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+
+  it("reports clipboard denial without claiming a successful copy and can recover", async () => {
+    const { page, complaints } = await visit("/docs/quickstart");
+    const session = await page.context().newCDPSession(page);
+    const { targetInfo } = await session.send("Target.getTargetInfo");
+    const permission = {
+      permission: { name: "clipboard-write" },
+      origin: edge.origin,
+      browserContextId: targetInfo.browserContextId,
+    };
+    await session.send("Browser.setPermission", { ...permission, setting: "denied" });
+    const copy = page.getByRole("button", { name: "Copy the code", exact: true }).first();
+    const block = copy.locator("..");
+    await copy.click();
+
+    expect(
+      await copy.evaluate((element) => getComputedStyle(element, "::before").content),
+    ).not.toBe('"✓"');
+    await block
+      .getByRole("status")
+      .filter({ hasText: /copy.*(failed|could not|couldn't)/i })
+      .waitFor();
+    expect(await block.getByRole("status").isVisible()).toBe(true);
+    expect(
+      await copy.evaluate((element) => getComputedStyle(element, "::before").content),
+    ).not.toBe('"✓"');
+    expect(complaints).toEqual([]);
+
+    await session.send("Browser.setPermission", { ...permission, setting: "granted" });
+    await copy.click();
+    await block
+      .getByRole("status")
+      .filter({ hasText: /copied/i })
+      .waitFor();
+    expect(complaints).toEqual([]);
     await page.context().close();
   });
 });
@@ -636,6 +747,39 @@ describe("an address the documentation answered at before", () => {
     expect(answered?.status()).toBe(404);
     expect(await page.locator("h1").textContent()).toContain("There is no such page");
     await context.close();
+  });
+});
+
+describe("the documentation's canonical addresses", () => {
+  it.each(DOCS_PAGES.filter((page) => page.path !== "/"))(
+    "permanently redirects a trailing slash on $path, keeping the query",
+    async (page) => {
+      const address = docsAddress(page.path);
+      const query = "?source=a%2Bb&count=2";
+      const answered = await fetch(`${edge.origin}${address}/${query}`, { redirect: "manual" });
+
+      expect(answered.status).toBe(308);
+      expect(answered.headers.get("location")).toBe(`${address}${query}`);
+      const canonical = await fetch(`${edge.origin}${answered.headers.get("location")}`);
+      expect(canonical.status).toBe(200);
+    },
+  );
+
+  it("keeps the documentation root and refuses a missing page instead of redirecting it", async () => {
+    const root = await fetch(`${edge.origin}/docs/`, { redirect: "manual" });
+    expect(root.status).toBe(200);
+    expect(root.headers.get("location")).toBeNull();
+
+    for (const path of [
+      "/docs/no-such-page/",
+      "/docs/assets/no-such-file/",
+      "/docs/index/",
+      "/docs/404/",
+    ]) {
+      const missing = await fetch(`${edge.origin}${path}`, { redirect: "manual" });
+      expect(missing.status).toBe(404);
+      expect(missing.headers.get("location")).toBeNull();
+    }
   });
 });
 

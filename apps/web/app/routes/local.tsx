@@ -9,6 +9,8 @@ export const loader = () => LANDINGS.local;
 export const meta = ({ matches }: MetaArgs) =>
   pageMeta(siteConfigOf(matches), {
     title: "Website diagnostic for local businesses",
+    description:
+      "Check your public business information, services, opening hours and booking links for AI agents. No bookings or availability tests.",
     canonical: "/local",
   });
 

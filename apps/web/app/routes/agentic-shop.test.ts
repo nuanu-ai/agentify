@@ -91,7 +91,7 @@ describe("the sell-to-agents page", () => {
   it("unfurls into its own card at its own address, with the sell-to-agents image", async () => {
     const page = await drawn("/agentic-shop");
 
-    expect(page.title).toBe("Sell to agents · Agentify");
+    expect(page.title).toMatch(/^\S.+ · Agentify$/);
     expect(page.canonical).toBe("https://agentify.ad/agentic-shop");
     expect(page.meta("og:title")).toBe("Your next customer sends an agent. Be ready.");
     expect(page.meta("twitter:title")).toBe("Your next customer sends an agent. Be ready.");

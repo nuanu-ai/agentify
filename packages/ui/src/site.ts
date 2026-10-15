@@ -18,12 +18,9 @@ export const SITE_PICTURE = {
 /** The page that names the scanner and how to reach its operator. */
 const IDENTITY_PAGE = "/docs/scanner";
 
-/**
- * What a crawler reads as the site's description. It says what the
- * methodology's introduction says to a person.
- */
+/** The diagnostic and merchant services described across the site's public pages. */
 const SITE_DESCRIPTION =
-  "A diagnostic for public, machine-readable website signals. We do not modify sites or test a particular model's answer.";
+  "Agentify checks public, machine-readable website signals and lets merchants publish products and services, receive purchases from AI agents, and fulfill orders through its SDK.";
 
 /** The site and its operator as schema.org describes them; `origin` has no trailing slash. */
 export function siteSchema({

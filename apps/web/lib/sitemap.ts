@@ -5,7 +5,7 @@ import { getPublicAppConfig } from "./app-config";
 type Entry = Readonly<{ path: string; lastModified?: string; priority: number }>;
 
 /** Written when the page about selling to agents last changed, as the public pages' dates are. */
-const SELL_TO_AGENTS: Entry = { path: "/agentic-shop", lastModified: "2026-09-09", priority: 0.9 };
+const SELL_TO_AGENTS: Entry = { path: "/agentic-shop", lastModified: "2026-10-14", priority: 0.9 };
 
 /**
  * Every page of the documentation, the scanner's own among them, in the order

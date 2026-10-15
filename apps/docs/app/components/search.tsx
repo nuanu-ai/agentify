@@ -1,13 +1,35 @@
-import { lazy, Suspense, useEffect } from "react";
+import {
+  lazy,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  Suspense,
+  useEffect,
+} from "react";
 
 /** `onClose(true)` when the reader closes the panel, so the focus goes back where it was; `onClose(false)` when they follow a result. */
 export type Close = Readonly<{ onClose: (restoreFocus: boolean) => void }>;
 
-/**
- * What the panel says when the search's code or its index could not be
- * fetched, as after a release has replaced the files this page was built with.
- */
-export function SearchUnavailable({ onClose }: Close) {
+/** Both search states keep keyboard navigation inside the dialog until it closes. */
+export function SearchDialog({ children, onClose }: Close & Readonly<{ children: ReactNode }>) {
+  const onKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose(true);
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = [
+      ...event.currentTarget.querySelectorAll<HTMLElement>(
+        "input:not(:disabled), a[href], button:not(:disabled)",
+      ),
+    ].filter((element) => element.tabIndex >= 0);
+    const at = focusable.indexOf(document.activeElement as HTMLElement);
+    const next = focusable.at(
+      event.shiftKey ? (at <= 0 ? -1 : at - 1) : (at + 1) % focusable.length,
+    );
+    event.preventDefault();
+    next?.focus();
+  };
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: clicking outside is a pointer shortcut; Escape inside the dialog closes it from the keyboard
     <div className="search-backdrop" role="presentation" onClick={() => onClose(true)}>
@@ -17,25 +39,35 @@ export function SearchUnavailable({ onClose }: Close) {
         aria-modal="true"
         aria-label="Search the documentation"
         onClick={(event) => event.stopPropagation()}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") onClose(true);
-        }}
+        onKeyDown={onKey}
       >
-        <p className="search-none" role="status">
-          The search could not be loaded, perhaps because the documentation changed since this page
-          was opened. Reload the page to search it.
-        </p>
-        <button
-          // biome-ignore lint/a11y/noAutofocus: the reader opened this dialog, so its only action takes focus
-          autoFocus
-          type="button"
-          className="button button-secondary search-reload"
-          onClick={() => window.location.reload()}
-        >
-          Reload the page
-        </button>
+        {children}
       </div>
     </div>
+  );
+}
+
+/**
+ * What the panel says when the search's code or its index could not be
+ * fetched, as after a release has replaced the files this page was built with.
+ */
+export function SearchUnavailable({ onClose }: Close) {
+  return (
+    <SearchDialog onClose={onClose}>
+      <p className="search-none" role="status">
+        The search could not be loaded, perhaps because the documentation changed since this page
+        was opened. Reload the page to search it.
+      </p>
+      <button
+        // biome-ignore lint/a11y/noAutofocus: the reader opened this dialog, so its only action takes focus
+        autoFocus
+        type="button"
+        className="button button-secondary search-reload"
+        onClick={() => window.location.reload()}
+      >
+        Reload the page
+      </button>
+    </SearchDialog>
   );
 }
 

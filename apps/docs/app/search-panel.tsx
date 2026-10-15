@@ -11,9 +11,9 @@
  */
 
 import MiniSearch from "minisearch";
-import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { type Close, SearchUnavailable } from "./components/search.js";
+import { type Close, SearchDialog, SearchUnavailable } from "./components/search.js";
 import { SEARCH_OPTIONS, type SearchHit } from "./search-options.js";
 
 let index: Promise<MiniSearch> | undefined;
@@ -99,7 +99,6 @@ export default function SearchPanel({ onClose }: Close) {
   const [loaded, setLoaded] = useState<MiniSearch | null>(null);
   const [failed, setFailed] = useState(false);
   const [active, setActive] = useState(0);
-  const panel = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -144,93 +143,63 @@ export default function SearchPanel({ onClose }: Close) {
     event.preventDefault();
   };
 
-  /** Escape closes the panel from wherever the focus is in it, and Tab goes round inside it. */
-  const onPanelKey = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose(true);
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const focusable = [
-      ...(panel.current?.querySelectorAll<HTMLElement>("input, a[href], button") ?? []),
-    ].filter((element) => element.tabIndex >= 0);
-    const at = focusable.indexOf(document.activeElement as HTMLElement);
-    const next = focusable.at(
-      event.shiftKey ? (at <= 0 ? -1 : at - 1) : (at + 1) % focusable.length,
-    );
-    event.preventDefault();
-    next?.focus();
-  };
-
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: clicking outside is a pointer shortcut; Escape inside the dialog closes it from the keyboard
-    <div className="search-backdrop" role="presentation" onClick={() => onClose(true)}>
-      <div
-        className="search-panel"
-        role="dialog"
-        aria-modal="true"
+    <SearchDialog onClose={onClose}>
+      <input
+        // biome-ignore lint/a11y/noAutofocus: the reader opened search, and the combobox owns keyboard navigation within its dialog
+        autoFocus
+        type="search"
+        role="combobox"
         aria-label="Search the documentation"
-        ref={panel}
-        onClick={(event) => event.stopPropagation()}
-        onKeyDown={onPanelKey}
-      >
-        <input
-          // biome-ignore lint/a11y/noAutofocus: the reader opened search, and the combobox owns keyboard navigation within its dialog
-          autoFocus
-          type="search"
-          role="combobox"
-          aria-label="Search the documentation"
-          aria-autocomplete="list"
-          aria-controls="search-results"
-          aria-expanded={results.length > 0}
-          aria-activedescendant={
-            results[active] === undefined ? undefined : `search-result-${active}`
-          }
-          placeholder="Search the documentation"
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            keepQuery(event.target.value);
-            setActive(0);
-          }}
-          onFocus={(event) => event.target.select()}
-          onKeyDown={onInputKey}
-        />
-        <div className="search-results" id="search-results" role="listbox" aria-label="Results">
-          {results.map((hit, at) => (
-            <div
-              key={hit.id}
-              id={`search-result-${at}`}
-              role="option"
+        aria-autocomplete="list"
+        aria-controls="search-results"
+        aria-expanded={results.length > 0}
+        aria-activedescendant={
+          results[active] === undefined ? undefined : `search-result-${active}`
+        }
+        placeholder="Search the documentation"
+        value={query}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          keepQuery(event.target.value);
+          setActive(0);
+        }}
+        onFocus={(event) => event.target.select()}
+        onKeyDown={onInputKey}
+      />
+      <div className="search-results" id="search-results" role="listbox" aria-label="Results">
+        {results.map((hit, at) => (
+          <div
+            key={hit.id}
+            id={`search-result-${at}`}
+            role="option"
+            tabIndex={-1}
+            aria-selected={at === active}
+          >
+            <Link
+              to={inside(hit.id)}
+              onClick={() => {
+                focusWithin(hit.id);
+                onClose(false);
+              }}
               tabIndex={-1}
-              aria-selected={at === active}
             >
-              <Link
-                to={inside(hit.id)}
-                onClick={() => {
-                  focusWithin(hit.id);
-                  onClose(false);
-                }}
-                tabIndex={-1}
-              >
-                {hit.titles.length > 0 ? (
-                  <span className="search-path">{hit.titles.join(" › ")}</span>
-                ) : null}
-                <span className="search-title">{hit.title}</span>
-                <span className="search-excerpt">{excerptOf(hit.text, hit.terms)}</span>
-              </Link>
-            </div>
-          ))}
-        </div>
-        <p className="search-none" role="status">
-          {loaded === null
-            ? "Loading the index…"
-            : query.trim() !== "" && results.length === 0
-              ? `Nothing in the documentation matches “${query}”.`
-              : ""}
-        </p>
+              {hit.titles.length > 0 ? (
+                <span className="search-path">{hit.titles.join(" › ")}</span>
+              ) : null}
+              <span className="search-title">{hit.title}</span>
+              <span className="search-excerpt">{excerptOf(hit.text, hit.terms)}</span>
+            </Link>
+          </div>
+        ))}
       </div>
-    </div>
+      <p className="search-none" role="status">
+        {loaded === null
+          ? "Loading the index…"
+          : query.trim() !== "" && results.length === 0
+            ? `Nothing in the documentation matches “${query}”.`
+            : ""}
+      </p>
+    </SearchDialog>
   );
 }

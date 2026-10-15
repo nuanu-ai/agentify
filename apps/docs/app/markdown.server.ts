@@ -186,7 +186,7 @@ function fences(md: MarkdownIt, highlighter: Highlighter): void {
         theme: THEME,
       })
       .replace(/background-color:#[0-9a-f]+;?/i, "");
-    return `<div class="language-${lang || "text"}"><button type="button" title="Copy Code" aria-label="Copy the code" class="copy"></button><span class="lang">${lang}</span>${code}</div>\n`;
+    return `<div class="language-${lang || "text"}"><button type="button" title="Copy Code" aria-label="Copy the code" class="copy"></button><span class="lang">${lang}</span>${code}<span class="copy-status sr-only" role="status"></span></div>\n`;
   };
 }
 

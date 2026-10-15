@@ -598,6 +598,29 @@ const actionIn = (message: Message | undefined): URL => {
 };
 
 describe("the passwordless dashboard door", () => {
+  it.each(["", "/dashboard"])(
+    "keeps the sign-in form and its answers out of search at %s",
+    async (base) => {
+      const { browser } = await started({ base });
+      const path = `${base}/sign-in`;
+      const pages = [
+        await browser.get(path),
+        await browser.get(`${path}?reason=session-ended&destination=settings`),
+        await browser.post(path, { email: "not an address" }),
+        await browser.post(path, { email: PERSON }),
+      ];
+
+      for (const page of pages) {
+        expect(page.status).toBeLessThan(500);
+        const head = page.html.slice(0, page.html.indexOf("</head>"));
+        expect(head.match(/<meta\b[^>]*name="robots"[^>]*>/)?.[0]).toMatch(
+          /content="[^"\n]*\bnoindex\b/,
+        );
+        expect(formTo(page.html, "post", path)).toBeDefined();
+      }
+    },
+  );
+
   it("sends a person with a live session on without asking for an address: to the cards, or to the name screen without a merchant", async () => {
     const running = await started();
     await running.browser.signIn();
