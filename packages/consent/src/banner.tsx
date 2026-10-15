@@ -1,5 +1,6 @@
 import {
   CONSENT_POLICY_VERSION,
+  CONSENT_STORAGE_KEY,
   type ConsentCategories,
   type ConsentSnapshot,
   createConsentSnapshot,
@@ -148,12 +149,21 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
     });
   }, []);
 
+  // A choice made in another of the site's tabs holds in this one as well.
   useEffect(() => {
-    const current = readCurrentConsent(window.localStorage);
-    if (!current) return;
-    setProductAnalytics(current.categories.product_analytics);
-    setAdsMeasurement(current.categories.ads_measurement);
-    setVisible(false);
+    const read = () => {
+      const current = readCurrentConsent(window.localStorage);
+      setVisible(current === undefined);
+      if (current === undefined) return;
+      setProductAnalytics(current.categories.product_analytics);
+      setAdsMeasurement(current.categories.ads_measurement);
+    };
+    read();
+    const kept = (event: StorageEvent) => {
+      if (event.key === null || event.key === CONSENT_STORAGE_KEY) read();
+    };
+    window.addEventListener("storage", kept);
+    return () => window.removeEventListener("storage", kept);
   }, []);
 
   useEffect(() => {

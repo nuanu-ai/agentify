@@ -50,6 +50,20 @@ describe("consent persistence", () => {
     );
   });
 
+  it("goes when the visitor chooses in another tab, and comes back when that choice is gone", async () => {
+    render(<ConsentBanner brand="Agentify" />);
+    const banner = () => screen.queryByRole("complementary", { name: "Privacy choices" });
+    expect(banner()).not.toBeNull();
+
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, keptUnder(CONSENT_POLICY_VERSION));
+    window.dispatchEvent(new StorageEvent("storage", { key: CONSENT_STORAGE_KEY }));
+    await waitFor(() => expect(banner()).toBeNull());
+
+    window.localStorage.clear();
+    window.dispatchEvent(new StorageEvent("storage", { key: null }));
+    await waitFor(() => expect(banner()).not.toBeNull());
+  });
+
   it("keeps optional analytics off and the banner visible when saving fails", async () => {
     globalThis.fetch = async () => new Response(null, { status: 503 });
     const user = userEvent.setup();
