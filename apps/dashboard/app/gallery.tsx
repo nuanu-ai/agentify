@@ -538,6 +538,25 @@ const SIGNING_IN: GalleryState[] = [
     },
     "/sign-in",
   ),
+  at(
+    {
+      id: "dashboard-sign-in-from-an-ad",
+      screen: "Sign in",
+      when: "Somebody presses the button on a landing page they reached through a paid ad.",
+      cause:
+        "The address carries the ad tracker's click identifier and the report to the tracker is switched on, so the box is offered, unticked.",
+    },
+    {
+      path: "/sign-in?clickid=qa_click_0123456789abcdef",
+      mode: "live",
+      loaded: {
+        "routes/sign-in": {
+          ...askViewOf(new URLSearchParams()),
+          click: { id: "qa_click_0123456789abcdef", consented: false },
+        },
+      },
+    },
+  ),
   signIn(
     {
       id: "dashboard-sign-in-session-ended",

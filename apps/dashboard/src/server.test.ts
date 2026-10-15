@@ -1094,6 +1094,9 @@ describe("the box that tells the ad tracker an ad's visitor signed up", () => {
     expect(formTo(page.html, "post", "/sign-in")?.fields.get("clickid")).toBe(CLICK);
     expect(consentBoxIn(page.html)).toStrictEqual({ ticked: false });
     expect(readable(page.html)).toContain(ADS_CONSENT.sentence);
+    // Only a press on the box is a consent, so an address cannot come ticked.
+    const ticked = await browser.get(`/sign-in?clickid=${CLICK}&ads_consent=yes`);
+    expect(consentBoxIn(ticked.html)).toStrictEqual({ ticked: false });
   });
 
   it("draws today's page for a click that is missing, malformed, repeated or too long", async () => {

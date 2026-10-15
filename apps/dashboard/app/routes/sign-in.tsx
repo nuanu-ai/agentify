@@ -42,6 +42,7 @@ export default function SignIn() {
         email={view.email}
         destination={view.destination}
         answer={view.answer}
+        {...(view.click === undefined ? {} : { click: view.click })}
       />
     );
   }

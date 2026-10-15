@@ -9,13 +9,16 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
   EvmAddressSchema,
   IssueKeyRequestSchema,
   type PendingPayoutWallet,
 } from "@nuanu-ai/agentify-contracts";
+import { ADS_CONSENT } from "./ads-consent.js";
 import type { DashboardConfig } from "./config.js";
 import {
+  type ConsentedClick,
   type DashboardDestination,
   type DashboardIdentity,
   dashboardDestinationIn,
@@ -102,14 +105,23 @@ export type SignInView =
       destination: DashboardDestination;
       problem?: string;
       reason?: string;
+      click?: OfferedClick;
     }>
   | Readonly<{
       screen: "requested";
       email: string;
       destination: DashboardDestination;
       answer: LinkAnswer;
+      click?: OfferedClick;
     }>
   | Readonly<{ screen: "unavailable" }>;
+
+/**
+ * The ad click a visitor arrived with, which the sign-in forms carry from page
+ * to page, and whether they ticked the box that lets the tracker hear they
+ * signed up. Present only where the report is switched on.
+ */
+export type OfferedClick = Readonly<{ id: string; consented: boolean }>;
 
 /**
  * Accepted carries a key of its own rather than the absence of a limit, so a
@@ -287,6 +299,21 @@ const UNSAVED = "You are not signed in, so the change you submitted was not save
 const once = (values: readonly unknown[]): unknown => (values.length === 1 ? values[0] : undefined);
 
 /**
+ * The click an address or a form names once, in the tracker's form; null for
+ * anything else, which leaves the page as it is without one.
+ */
+const clickIdIn = (named: URLSearchParams | FormData): string | null => {
+  const id = once(named.getAll("clickid"));
+  return typeof id === "string" && PARTNER_CLICK_ID_PATTERN.test(id) ? id : null;
+};
+
+/** What a link is asked for with: a click only where its box was ticked. */
+const consentedClickOf = (click: OfferedClick | undefined): ConsentedClick | undefined =>
+  click?.consented === true
+    ? { id: click.id, consentedAt: new Date().toISOString(), wording: ADS_CONSENT.version }
+    : undefined;
+
+/**
  * The sign-in form for a browser with no session, as its address asks for it:
  * where the person was going, and why they are here. An expired session is
  * the reason, said as the page's first line; a change lost with it is a
@@ -413,6 +440,17 @@ export const whatIsWrongWithTheLabel = (label: string): string | null => {
 export function pageServicesFor(config: DashboardConfig, parts: PageParts): PageServices {
   const base = config.basePath;
   const { identity } = parts;
+
+  /**
+   * Read only where the report is switched on, so a dashboard that reports
+   * nothing draws every sign-in page exactly as it would with no click.
+   */
+  const offeredIn = (named: URLSearchParams | FormData): Readonly<{ click?: OfferedClick }> => {
+    if (config.registrationPostback === null) return {};
+    const id = clickIdIn(named);
+    if (id === null) return {};
+    return { click: { id, consented: once(named.getAll("ads_consent")) === "yes" } };
+  };
 
   /**
    * The name is passed only by screens that asked the gateway for it: a screen
@@ -623,13 +661,23 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             setCookies: signedIn.setCookies,
           };
         }
-        return { kind: "view", view: askViewOf(query) };
+        // The box is drawn unticked whatever the address says: only a press
+        // on it is a consent.
+        const { click } = offeredIn(query);
+        return {
+          kind: "view",
+          view: {
+            ...askViewOf(query),
+            ...(click === undefined ? {} : { click: { id: click.id, consented: false } }),
+          },
+        };
       },
 
       async ask(form) {
         const typed = once(form.getAll("email"));
         const email = typeof typed === "string" ? typed.trim() : "";
         const destination = dashboardDestinationIn(once(form.getAll("destination")));
+        const offered = offeredIn(form);
         if (!LOOKS_LIKE_AN_ADDRESS.test(email)) {
           return {
             kind: "view",
@@ -638,10 +686,15 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
               screen: "ask",
               destination,
               problem: NOT_AN_ADDRESS,
+              ...offered,
             },
           };
         }
-        const requested = await identity.requestLink(email, destination);
+        const requested = await identity.requestLink(
+          email,
+          destination,
+          consentedClickOf(offered.click),
+        );
         if (requested.status === "unavailable") {
           return { kind: "view", status: 503, view: { screen: "unavailable" } };
         }
@@ -657,7 +710,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           kind: "view",
           status: 202,
           ...("wall" in answer ? { headers: { "retry-after": String(answer.seconds) } } : {}),
-          view: { screen: "requested", email, destination, answer },
+          view: { screen: "requested", email, destination, answer, ...offered },
         };
       },
 
