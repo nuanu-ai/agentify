@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 import { loadConfig, SANDBOX_FACILITATOR } from "../config.js";
 import { PaymentEdge } from "../http/x402.js";
 import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "../testing/split-networks.js";
-import { IMPLEMENTATION, inputOf, ON_CHAIN } from "./fixture.js";
+import { COMMISSION, DISTRIBUTOR, IMPLEMENTATION, inputOf, MERCHANT, ON_CHAIN } from "./fixture.js";
 import {
   PAYOUT_SPLIT_NETWORKS,
   type PayoutSplitNetwork,
@@ -116,6 +116,13 @@ describe("the payout split table in the code", () => {
         expect(wallet).not.toBe("0x0000000000000000000000000000000000000000");
         expect(contracts.has(wallet), wallet).toBe(false);
       }
+    }
+  });
+
+  it("pays every network's commission to a wallet chosen for it, none of the experiment's", () => {
+    const experiment = [MERCHANT, COMMISSION, DISTRIBUTOR].map((address) => address.toLowerCase());
+    for (const entry of entriesOf(PAYOUT_SPLIT_NETWORKS)) {
+      expect(experiment, entry.network).not.toContain(entry.commissionWallet.toLowerCase());
     }
   });
 
