@@ -307,6 +307,20 @@ describe("the registration a consented link leaves for the tracker", () => {
     expect(due).toBeLessThanOrEqual(Date.now());
   });
 
+  it("refuses to send a link carrying a click it could not read back, and sends or counts nothing", async () => {
+    // The page checks the identifier before passing it; a click that reaches
+    // this far malformed is a defect, and a link carrying it would open nothing.
+    const { identity, messages, rows } = memoryIdentity();
+
+    await expect(
+      identity.requestLink("person@example.com", "default", { ...CLICK, id: "too-short" }),
+    ).rejects.toThrow();
+
+    expect(messages).toHaveLength(0);
+    expect(rows.dashboard_verifications).toHaveLength(0);
+    expect(rows.dashboard_link_sends).toHaveLength(0);
+  });
+
   it("leaves no registration when the link was asked for without a click", async () => {
     const { identity, messages, rows } = memoryIdentity();
     await identity.requestLink("person@example.com", "default");

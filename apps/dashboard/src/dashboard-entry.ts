@@ -40,6 +40,16 @@ export const dashboardDestinationIn = (value: unknown): DashboardDestination =>
 export type LinkDestination = DashboardDestination | Readonly<{ report: string }>;
 
 /**
+ * A partner network's click identifier that the person agreed, on the sign-in
+ * form, to have reported back once the link makes their account. `consentedAt`
+ * is the moment as `Date.prototype.toISOString` writes it, and `wording` names
+ * the version of the sentence they agreed to, at most 64 characters. A request
+ * carrying a click that does not have exactly this form throws, and nothing is
+ * sent or counted: the page checks the identifier before passing it.
+ */
+export type ConsentedClick = Readonly<{ id: string; consentedAt: string; wording: string }>;
+
+/**
  * The waits differ by an order of magnitude (under a minute against most of an
  * hour), so a page that says how long to wait has to know which one it hit.
  */
@@ -99,7 +109,11 @@ type SessionReading = Readonly<{ renew?: boolean }>;
 export interface DashboardIdentity {
   readonly cookieNames: readonly string[];
 
-  requestLink(email: string, destination: DashboardDestination): Promise<LinkRequestResult>;
+  requestLink(
+    email: string,
+    destination: DashboardDestination,
+    click?: ConsentedClick,
+  ): Promise<LinkRequestResult>;
   /**
    * Read without spending the link; null for a link that no longer opens
    * anything.

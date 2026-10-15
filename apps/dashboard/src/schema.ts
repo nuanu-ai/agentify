@@ -1,12 +1,21 @@
 /**
- * The dashboard's identity and WooCommerce tables. They share a database with
- * the gateway's, so the names are prefixed with their owner; no dashboard query
- * reads the gateway's tables. Migration bookkeeping is kept in its own table,
- * for the reason `src/database.ts` gives.
+ * The dashboard's identity, registration and WooCommerce tables. They share a
+ * database with the gateway's, so the names are prefixed with their owner; no
+ * dashboard query reads the gateway's tables. Migration bookkeeping is kept in
+ * its own table, for the reason `src/database.ts` gives.
  */
 
 import { sql } from "drizzle-orm";
-import { boolean, check, index, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 
 const moment = (column: string) =>
   timestamp(column, { withTimezone: true, mode: "date" }).notNull();
@@ -203,6 +212,60 @@ export const reportDeletionTombstones = pgTable(
       "dashboard_report_deletion_tombstones_result",
       sql`${table.result} in ('deleted', 'already_absent', 'retained')`,
     ),
+  ],
+);
+
+/**
+ * The one registration the dashboard reports to the ad tracker whose click
+ * brought the person: written in the transaction where a link asked for with a
+ * consented click makes the address's first verified account, so there is at
+ * most one per account and none for anybody who did not tick the box. What is
+ * reported is the click id and the fact that a registration happened, nothing
+ * about the person.
+ *
+ * The click id is kept only while the report is pending and is erased once the
+ * row is final; the consent time and the version of the sentence agreed to
+ * stay, because the link's claim that held them is deleted when the link is
+ * spent. The row goes with the account.
+ */
+export const registrationPostbacks = pgTable(
+  "dashboard_registration_postbacks",
+  {
+    accountId: text("account_id")
+      .primaryKey()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    clickId: text("click_id"),
+    consentedAt: moment("consented_at"),
+    consentWording: text("consent_wording").notNull(),
+    state: text("state").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" }),
+    /** How the last attempt ended, such as `http_403` or `timeout`. */
+    lastOutcome: text("last_outcome"),
+    createdAt: moment("created_at"),
+    settledAt: timestamp("settled_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [
+    check(
+      "dashboard_registration_postbacks_state",
+      sql`${table.state} in ('pending', 'delivered', 'refused', 'given_up')`,
+    ),
+    check(
+      "dashboard_registration_postbacks_pending_holds_click",
+      sql`(${table.state} = 'pending') = (${table.clickId} is not null)`,
+    ),
+    check(
+      "dashboard_registration_postbacks_pending_scheduled",
+      sql`${table.state} <> 'pending' or ${table.nextAttemptAt} is not null`,
+    ),
+    check(
+      "dashboard_registration_postbacks_settled_dated",
+      sql`${table.state} = 'pending' or ${table.settledAt} is not null`,
+    ),
+    // What the delivery reads: the pending rows that are due.
+    index("dashboard_registration_postbacks_due_idx")
+      .on(table.nextAttemptAt)
+      .where(sql`${table.state} = 'pending'`),
   ],
 );
 

@@ -8,6 +8,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
   type DeleteUnattachedPersonRequest,
   type DeleteUnattachedPersonResponse,
@@ -27,6 +28,7 @@ import type { Pool } from "pg";
 import type { DashboardConfig } from "./config.js";
 import {
   type AttachMerchantResult,
+  type ConsentedClick,
   DASHBOARD_DESTINATIONS,
   type DashboardDestination,
   type DashboardIdentity,
@@ -46,6 +48,7 @@ import {
   accounts,
   credentials,
   linkSends,
+  registrationPostbacks,
   reportDeletionTombstones,
   reportIdentitySecrets,
   sessions,
@@ -108,6 +111,7 @@ const LINK_PROOF_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const LINK_CLEANUP_BATCH = 100;
 const REPORT_DIGEST_KEY_ID = "digest-v1";
 const RAW_TOKEN = /^[A-Za-z0-9]{32}$/;
+const CLICK_WORDING_MAX = 64;
 
 type MemoryRows = Record<string, Record<string, unknown>[]>;
 
@@ -125,6 +129,18 @@ type LinkClaim = Readonly<{
   email: string;
   destination: LinkDestination;
   request: string | null;
+  click?: ConsentedClick;
+}>;
+
+type Registration = typeof registrationPostbacks.$inferInsert;
+
+/**
+ * What an opening transaction does that the component cannot: take the
+ * address's lock, and write the registration in the same transaction.
+ */
+type OpeningTransaction = Readonly<{
+  lockEmail?: (email: string) => Promise<void>;
+  register: (registration: Registration) => Promise<void>;
 }>;
 
 type LinkSend = {
@@ -171,6 +187,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       dashboard_link_sends: [],
       dashboard_report_identity_secrets: [],
       dashboard_report_deletion_tombstones: [],
+      dashboard_registration_postbacks: [],
     } satisfies MemoryRows);
 
   const optionsFor = (database: BetterAuthOptions["database"]) =>
@@ -287,10 +304,11 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     bound: typeof auth,
     email: string,
     destination: DashboardDestination,
+    click: ConsentedClick | undefined,
     retryAt: Date,
   ): Promise<LinkRequestResult> => {
     const active: LinkSend = {
-      claim: { email, destination, request: null },
+      claim: { email, destination, request: null, ...(click === undefined ? {} : { click }) },
       handed: "refused",
     };
     await sending.run(active, async () => {
@@ -326,7 +344,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const openWith = async (
     bound: typeof auth,
     token: string,
-    lockEmail?: (email: string) => Promise<void>,
+    { lockEmail, register }: OpeningTransaction,
   ): Promise<DashboardLinkResult> => {
     if (!RAW_TOKEN.test(token)) return { status: "refused" };
     const context = await bound.$context;
@@ -340,6 +358,14 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     const claim = claimFrom(stored.value);
     if (claim === null) return { status: "refused" };
     await lockEmail?.(claim.email);
+    // Whether this press makes the address's first verified account has to be
+    // read before the component verifies it. Under the address's lock, a second
+    // press waits here and then finds the account the first one verified.
+    const registering =
+      claim.click !== undefined &&
+      (await context.internalAdapter.findUserByEmail(claim.email))?.user.emailVerified !== true
+        ? claim.click
+        : undefined;
 
     const verify = async () =>
       await bound.api.magicLinkVerify({
@@ -365,6 +391,22 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       // finish it.
       await context.internalAdapter.updateSession(opened.response.token, {
         reportRequest: claim.request,
+      });
+    }
+    if (registering !== undefined) {
+      // A plain insert on both sides: an account verified for the first time
+      // cannot have a registration yet, and one already there is a broken
+      // invariant that fails the press rather than being skipped.
+      const now = new Date();
+      await register({
+        accountId: opened.response.user.id,
+        clickId: registering.id,
+        consentedAt: new Date(registering.consentedAt),
+        consentWording: registering.wording,
+        state: "pending",
+        attempts: 0,
+        nextAttemptAt: now,
+        createdAt: now,
       });
     }
     return {
@@ -477,7 +519,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       cookies.dontRememberToken.name,
     ],
 
-    async requestLink(rawEmail, destination) {
+    async requestLink(rawEmail, destination, click) {
       const email = emailAs(rawEmail);
       try {
         if (parts.pool === undefined) {
@@ -485,7 +527,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             const rated = memoryRate(rows, rateKey(config.authSecret, email), "dashboard");
             if (!rated.sent)
               return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
-            return await requestWith(bound, email, destination, rated.retryAt);
+            return await requestWith(bound, email, destination, click, rated.retryAt);
           });
         }
         const db = drizzle(parts.pool, {
@@ -499,6 +541,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             authFor(drizzleAdapter(tx, { provider: "pg", schema })),
             email,
             destination,
+            click,
             rated.retryAt,
           );
         });
@@ -565,15 +608,21 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     async openLink(token) {
       try {
         if (parts.pool === undefined) {
-          return await inMemoryTransaction(async (bound) => await openWith(bound, token));
+          return await inMemoryTransaction(
+            async (bound, rows) =>
+              await openWith(bound, token, {
+                register: async (registration) => registerInMemory(rows, registration),
+              }),
+          );
         }
         const db = drizzle(parts.pool);
         return await db.transaction(async (tx) => {
           const bound = authFor(drizzleAdapter(tx, { provider: "pg", schema }));
-          return await openWith(bound, token, async (email) => {
-            await tx.execute(
-              sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-email:${email}`}, 0))`,
-            );
+          return await openWith(bound, token, {
+            lockEmail: async (email) => await lockEmail(tx, email),
+            register: async (registration) => {
+              await tx.insert(registrationPostbacks).values(registration);
+            },
           });
         });
       } catch (thrown) {
@@ -930,11 +979,21 @@ function claimOf(value: Record<string, unknown>): LinkClaim | null {
   if (typeof value.email !== "string" || value.email !== emailAs(value.email)) return null;
   const request = value.request ?? null;
   if (request !== null && (typeof request !== "string" || !UUID.test(request))) return null;
+  const click = value.click === undefined ? undefined : clickOf(value.click);
+  if (click === null) return null;
   const destination = value.destination;
   if (typeof destination === "string") {
     const known = DASHBOARD_DESTINATIONS.find((one) => one === destination);
-    return known === undefined ? null : { email: value.email, destination: known, request };
+    if (known === undefined) return null;
+    return {
+      email: value.email,
+      destination: known,
+      request,
+      ...(click === undefined ? {} : { click }),
+    };
   }
+  // The scanner asks for report links, and no consent travels with its request.
+  if (click !== undefined) return null;
   if (typeof destination !== "object" || destination === null) return null;
   const keys = Object.keys(destination);
   const report = (destination as { report?: unknown }).report;
@@ -942,10 +1001,39 @@ function claimOf(value: Record<string, unknown>): LinkClaim | null {
   return { email: value.email, destination: { report }, request };
 }
 
+const CLICK_KEYS = ["consentedAt", "id", "wording"] as const;
+
+/**
+ * Exactly the three fields: the identifier in the partner network's form, the
+ * moment as `toISOString` writes it, and a short version name.
+ */
+function clickOf(value: unknown): ConsentedClick | null {
+  if (typeof value !== "object" || value === null) return null;
+  const keys = Object.keys(value).sort();
+  if (keys.length !== CLICK_KEYS.length || keys.some((key, at) => key !== CLICK_KEYS[at])) {
+    return null;
+  }
+  const { id, consentedAt, wording } = value as Record<string, unknown>;
+  if (typeof id !== "string" || !PARTNER_CLICK_ID_PATTERN.test(id)) return null;
+  if (typeof consentedAt !== "string" || !isInstant(consentedAt)) return null;
+  if (typeof wording !== "string" || wording === "" || wording.length > CLICK_WORDING_MAX) {
+    return null;
+  }
+  return { id, consentedAt, wording };
+}
+
+function isInstant(value: string): boolean {
+  const at = new Date(value);
+  return !Number.isNaN(at.getTime()) && at.toISOString() === value;
+}
+
 function sameClaim(one: LinkClaim, other: LinkClaim): boolean {
   return (
     one.email === other.email &&
     one.request === other.request &&
+    one.click?.id === other.click?.id &&
+    one.click?.consentedAt === other.click?.consentedAt &&
+    one.click?.wording === other.click?.wording &&
     (typeof one.destination === "string" || typeof other.destination === "string"
       ? one.destination === other.destination
       : one.destination.report === other.destination.report)
@@ -1199,8 +1287,21 @@ function deleteFromMemory(rows: MemoryRows, email: string): DeleteResult {
     rows.dashboard_woo_shops = (rows.dashboard_woo_shops ?? []).filter(
       (row) => row.accountId !== personId,
     );
+    rows.dashboard_registration_postbacks = (rows.dashboard_registration_postbacks ?? []).filter(
+      (row) => row.accountId !== personId,
+    );
   }
   return result;
+}
+
+/** Refuses a second row for one account, as the table's primary key does. */
+function registerInMemory(rows: MemoryRows, registration: Registration): void {
+  const registered = rows.dashboard_registration_postbacks ?? [];
+  rows.dashboard_registration_postbacks = registered;
+  if (registered.some((row) => row.accountId === registration.accountId)) {
+    throw new Error("dashboard_registration_postback_duplicate");
+  }
+  registered.push({ lastOutcome: null, settledAt: null, ...registration });
 }
 
 function dashboardLinkMessage(to: string, link: string): Message {
