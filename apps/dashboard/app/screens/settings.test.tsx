@@ -41,11 +41,17 @@ import { PayoutWalletPanel, SettingsScreen } from "./settings.js";
  * the module that brings Coinbase Wallet cannot be opened at all, and the next
  * `holding` windows wait in `held` to be answered by hand, as a window left
  * open does, or a vanished one never is.
+ *
+ * As the provider does, it keeps one session with its window for the whole
+ * page: a disconnection begins a new one, an answer to a request made in an
+ * earlier session can no longer be read (4100), and such a failure itself
+ * disconnects the provider.
  */
 const coinbase = vi.hoisted(() => ({
   opened: true,
   account: "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed",
   remembered: null as readonly string[] | null,
+  session: 0,
   holding: 0,
   held: [] as Readonly<{ accept: (account?: string) => void; decline: () => void }>[],
   declines: undefined as string | undefined,
@@ -59,6 +65,7 @@ vi.mock("../wallet/coinbase.js", async () => {
   const wallet: Wallet = {
     async disconnect() {
       coinbase.remembered = null;
+      coinbase.session += 1;
     },
     async request({ method, params }) {
       if (method === coinbase.declines) throw { code: 4001, message: "User rejected the request." };
@@ -67,10 +74,28 @@ vi.mock("../wallet/coinbase.js", async () => {
         if (coinbase.remembered !== null) return coinbase.remembered;
         if (coinbase.holding > 0) {
           coinbase.holding -= 1;
+          const asked = coinbase.session;
           return new Promise((resolve, reject) => {
+            const unreadable = () => {
+              if (coinbase.session === asked) return false;
+              coinbase.remembered = null;
+              coinbase.session += 1;
+              reject({
+                code: 4100,
+                message: "Invalid session: no shared secret found when decrypting response",
+              });
+              return true;
+            };
             coinbase.held.push({
-              accept: (account = coinbase.account) => resolve([account]),
-              decline: () => reject({ code: 4001, message: "User rejected the request." }),
+              accept: (account = coinbase.account) => {
+                if (!unreadable()) {
+                  coinbase.remembered = [account];
+                  resolve([account]);
+                }
+              },
+              decline: () => {
+                if (!unreadable()) reject({ code: 4001, message: "User rejected the request." });
+              },
             });
           });
         }
@@ -233,6 +258,7 @@ afterEach(() => {
   Object.assign(coinbase, {
     opened: true,
     remembered: null,
+    session: 0,
     holding: 0,
     held: [],
     declines: undefined,
@@ -947,7 +973,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
     expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy();
   });
 
-  it("never says nothing was sent when an earlier press sends its payout after a later one was closed", async () => {
+  it("says it does not know, rather than that nothing was sent, once an earlier press's answer can no longer be read", async () => {
     coinbase.holding = 1;
     render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
     await act(async () => {
@@ -961,28 +987,11 @@ describe("sending the payout from a Coinbase Wallet", () => {
       coinbase.held[0]?.accept();
     });
 
-    expect(coinbase.sent).toHaveLength(1);
-    await waitFor(() => expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy());
+    expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
+    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
   });
 
-  it("keeps saying a payout was sent when an earlier press is closed after it", async () => {
-    coinbase.holding = 1;
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
-    await act(async () => {
-      fireEvent.click(button());
-    });
-    await press();
-    coinbase.declines = "wallet_sendCalls";
-
-    await act(async () => {
-      coinbase.held[0]?.accept();
-    });
-
-    expect(coinbase.sent).toHaveLength(1);
-    expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy();
-  });
-
-  it("never says nothing was sent after a payout went out, when a later press into the same window is closed", async () => {
+  it("never says nothing was sent when two presses wait in one window and neither answer can be read", async () => {
     coinbase.holding = 2;
     render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
     for (const _ of [1, 2]) {
@@ -994,13 +1003,31 @@ describe("sending the payout from a Coinbase Wallet", () => {
     await act(async () => {
       coinbase.held[0]?.accept();
     });
-    await waitFor(() => expect(coinbase.sent).toHaveLength(1));
     await act(async () => {
       coinbase.held[1]?.decline();
     });
 
     expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutEarlierStands)).toBeTruthy();
+    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+  });
+
+  it("does not say a waiting payout failed when filling the wallet box meanwhile ends its session", async () => {
+    coinbase.holding = 1;
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: WALLET_WORDS.connect }));
+    });
+    await waitFor(() => expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy());
+
+    await act(async () => {
+      coinbase.held[0]?.accept();
+    });
+
+    expect(screen.queryByText(/did not send the payout/)).toBeNull();
+    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
   });
 
   it("is not offered where there is no transaction to send", () => {

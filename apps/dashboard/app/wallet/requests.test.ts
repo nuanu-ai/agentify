@@ -38,11 +38,14 @@ const wallet = ({
   startsOn = "0x2105",
   declines,
   breaks,
+  loses,
 }: {
   readonly windows?: readonly unknown[];
   readonly startsOn?: string;
   readonly declines?: "eth_requestAccounts" | "wallet_sendCalls";
   readonly breaks?: string;
+  /** A request whose answer the provider can no longer read, its session with the window gone. */
+  readonly loses?: string;
 } = {}) => {
   let chain = startsOn;
   let remembered: unknown = null;
@@ -52,6 +55,12 @@ const wallet = ({
     async request({ method, params }) {
       if (method === declines) throw DECLINED;
       if (method === breaks) throw { code: -32603, message: "Something went wrong at Coinbase" };
+      if (method === loses) {
+        throw {
+          code: 4100,
+          message: "Invalid session: no shared secret found when decrypting response",
+        };
+      }
       if (method === "eth_requestAccounts") {
         if (remembered !== null) return remembered;
         remembered = windows[Math.min(opened, windows.length - 1)];
@@ -100,6 +109,27 @@ describe("asking the merchant's wallet for its address", () => {
     await askAddress(answering);
 
     expect(remembered()).toBeNull();
+  });
+
+  it("leaves the session to a press begun since rather than ending it under that press", async () => {
+    const { answering, remembered } = wallet();
+
+    await askAddress(answering, () => false);
+
+    expect(remembered()).not.toBeNull();
+  });
+
+  it("works with a wallet that has no way to be disconnected", async () => {
+    const { answering } = wallet();
+    const plain: Wallet = { request: (asked) => answering.request(asked) };
+
+    expect(await askAddress(plain)).toEqual({ kind: "address", address: CHECKSUMMED });
+  });
+
+  it("reads an answer the wallet can no longer read as not knowing, not as a failure", async () => {
+    const { answering } = wallet({ loses: "eth_requestAccounts" });
+
+    expect(await askAddress(answering)).toEqual({ kind: "lost" });
   });
 
   it("reads a closed window as the merchant changing their mind, not as a failure", async () => {
@@ -203,6 +233,12 @@ describe("sending the payout through the merchant's wallet", () => {
       reason: "Something went wrong at Coinbase",
     });
     expect(sent).toEqual([]);
+  });
+
+  it("does not know whether a payout went out when the wallet's answer to it can no longer be read", async () => {
+    const { answering } = wallet({ loses: "wallet_sendCalls" });
+
+    expect(await sendPayout(answering, 84532, payout)).toEqual({ kind: "lost" });
   });
 
   it("does not call a payout sent that the wallet refused to send", async () => {
