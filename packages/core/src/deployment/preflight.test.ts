@@ -235,6 +235,20 @@ describe("Google sign-in is optional and only the application receives its crede
     GOOGLE_CLIENT_SECRET: "synthetic-google-client-secret",
   };
 
+  it("refuses sharing the Google secret with session signing or the scanner's private identity route", () => {
+    for (const name of ["AUTH_SECRET", "REPORT_IDENTITY_SECRET"]) {
+      const wrong = structuredClone(TEST_CHANNEL);
+      const shared = "synthetic-shared-secret-at-least-thirty-two-characters";
+      Object.assign(envFor(wrong, "app"), google, { GOOGLE_CLIENT_SECRET: shared, [name]: shared });
+      if (name === "REPORT_IDENTITY_SECRET")
+        envFor(wrong, "scanner").REPORT_IDENTITY_SECRET = shared;
+      const checked = runCli("test", JSON.stringify(wrong));
+      expect(checked.status).toBe(65);
+      expect(checked.stderr).toContain("GOOGLE_CLIENT_SECRET");
+      expect(checked.stdout + checked.stderr).not.toContain(shared);
+    }
+  });
+
   it.each([
     ["production", PRODUCTION_CHANNEL],
     ["test", TEST_CHANNEL],

@@ -75,6 +75,18 @@ describe("Google sign-in configuration", () => {
       loadConfig(given({ ...google, PUBLIC_BASE_URL: "https://test.agentify.ad" })),
     ).toThrow(/COOKIE_SECURE/);
   });
+
+  it("keeps the Google client secret separate from session signing and the scanner's identity route", () => {
+    expect(() =>
+      loadConfig(given({ ...google, GOOGLE_CLIENT_SECRET: REQUIRED.AUTH_SECRET })),
+    ).toThrow(/GOOGLE_CLIENT_SECRET/);
+    const shared = "a-synthetic-secret-long-enough-for-the-private-route";
+    expect(() =>
+      loadConfig(
+        given({ ...google, GOOGLE_CLIENT_SECRET: shared, REPORT_IDENTITY_SECRET: shared }),
+      ),
+    ).toThrow(/GOOGLE_CLIENT_SECRET/);
+  });
 });
 
 describe("what the dashboard will not start without", () => {
