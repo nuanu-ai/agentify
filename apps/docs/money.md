@@ -20,11 +20,12 @@ address, your payout contract and the shared 0xSplits warehouse it pays
 through included, for as long as the money waits there.
 
 You can get paid out at any time. The Settings screen of your dashboard shows
-your payout contract and the one transaction that pays it out. You send it
-from any wallet that holds a little ETH, the currency Base charges its network
-fee in, and whose app lets you paste data into a transaction ([Getting paid
-out](#getting-paid-out) says how), and your share reaches your wallet in that
-same transaction. The transaction carries no money
+your payout contract and the one transaction that pays it out. A Coinbase
+Wallet sends it from Settings once you approve it in Coinbase's window; any
+other wallet that holds a little ETH, the currency Base charges its network
+fee in, and whose app lets you paste data into a transaction can send it too
+([Getting paid out](#getting-paid-out) says how). Either way your share
+reaches your wallet in that same transaction. The transaction carries no money
 of its own and costs only that fee. If you do not send it, your share arrives
 when Agentify collects its own, because collecting it pays out every payout
 contract, yours included; there is no fixed day for that. Until somebody pays
@@ -54,17 +55,36 @@ for those two days.
 ### If you have no wallet yet
 
 Your wallet is an address on Base, the network these payments run on: `0x`
-followed by forty letters and digits. If your business has none, a wallet app
-that supports the Base network, such as MetaMask, creates one. The app
-shows the address, which is what you enter in the dashboard's Settings, and a
+followed by forty letters and digits. If your business has none, the
+dashboard's Settings make one with you. Create or connect a Coinbase Wallet
+opens Coinbase's window over the page, where you create a Coinbase Wallet or
+connect one you already have, and its address comes into the box; it is saved
+only when you press the button beside the box, as an address you typed would
+be. You see the wallet's USDC and send it on at
+[wallet.coinbase.com](https://wallet.coinbase.com).
+
+The wallet is yours, and so is the way into it. Agentify cannot reach it, and
+Coinbase keeps no copy of your passkey or of a recovery key you create and
+cannot get you back in without them, so set up a way back while you still can
+get in ([how Coinbase's recovery works](https://help.coinbase.com/en/wallet/getting-started/smart-wallet-recovery)).
+
+Any other wallet app that supports the Base network, such as MetaMask, works
+as well. It shows the address, which is what you enter in Settings, and a
 recovery phrase, which stays with you and is never entered anywhere at
 Agentify: whoever holds the phrase holds the money. On the test channel your
 wallet only ever receives test USDC, so it needs no money of its own.
 
 ### Getting paid out
 
-The payout on your Settings screen is three values for a transaction you send
-yourself: the address it goes to, which is Multicall3, an amount of zero, and
+With a Coinbase Wallet, Settings sends the payout for you: Pay out with
+Coinbase Wallet opens Coinbase's window with the transaction, which shows its
+fee, and nothing is sent until you approve it there. Your share reaches your
+wallet in that same transaction. A wallet that holds nothing yet may have
+nothing to pay the fee with; then that first payout arrives when Agentify next
+pays out every payout contract.
+
+From any other wallet, the payout on your Settings screen is three values for
+a transaction you send yourself: the address it goes to, which is Multicall3, an amount of zero, and
 its data. Send it on the network the screen names, Base, or Base Sepolia on the
 test channel, and on no other. Multicall3 sits at the same address on most
 networks, so the same transaction sent on another one can go through there,
@@ -271,6 +291,9 @@ arrives](#where-the-money-arrives)).
   nothing yet shows which sales a payout covered. A receipt follows the goods,
   so an order paid for and not delivered has none, and matching the payouts
   into your wallet against the orders is still yours to do by hand.
+- Whether Coinbase Wallet lets you pay a payout's fee in USDC, as Coinbase
+  says it does, and what it shows on a first payout from a wallet that holds
+  nothing yet. Neither has been tried on the test channel.
 - The written terms of the commission. Until they are published, saving your
   wallet on the screen that names the commission is the whole of how you
   accept it.
