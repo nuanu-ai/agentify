@@ -411,6 +411,16 @@ class TheTimer(ReleaseTest):
         self.assertEqual(self.tick(), 0)
         self.assertEqual((len(self.activations()), self.said), (1, ""))
 
+    def test_makes_existing_checkouts_listable_without_releasing_again(self):
+        self.tag("deploy-test", self.first)
+        self.assertEqual(self.tick(), 0, self.said)
+        checkouts = self.state / "checkouts"
+        checkouts.chmod(0o700)
+
+        self.assertEqual(self.tick(), 0, self.said)
+        self.assertEqual(checkouts.stat().st_mode & 0o777, 0o755)
+        self.assertEqual((len(self.activations()), self.said), (1, ""))
+
     def test_waits_for_a_build_that_is_running_and_activates_once_it_succeeds(self):
         second = self.commit("second")
         self.push("main")
@@ -578,7 +588,17 @@ class AManualRun(ReleaseTest):
         finally:
             os.umask(previous)
         self.assertEqual(self.state.stat().st_mode & 0o777, 0o755)
+        self.assertEqual((self.state / "checkouts").stat().st_mode & 0o777, 0o755)
         self.assertEqual((self.state / "current").stat().st_mode & 0o777, 0o644)
+
+    def test_makes_existing_checkouts_listable_when_retrying_the_same_revision(self):
+        self.assertEqual(self.release("main", exit_code=3), 3, self.said)
+        checkouts = self.state / "checkouts"
+        checkouts.chmod(0o700)
+
+        self.assertEqual(self.release("main"), 0, self.said)
+        self.assertEqual(checkouts.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(self.recorded("current"), self.first)
 
     def test_refuses_a_name_the_repository_does_not_have(self):
         self.refused("no-such-branch", "names nothing")
