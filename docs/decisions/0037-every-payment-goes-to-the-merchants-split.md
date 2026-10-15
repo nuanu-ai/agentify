@@ -2,7 +2,9 @@
 
 Date: 2026-10-14
 Status: accepted (the product owner, 2026-10-14: a commission on every
-payment, payouts by hand, a Safe for the commission). Built, not yet released.
+payment, payouts by hand, a Safe for the commission). Released as app-v0.15.0
+on both channels on 2026-10-15; the check on Base passed the same day
+(`docs/research/47-commission-in-the-product.md`).
 Base's commission wallet is the product owner's Safe
 `0xf44Ac5860c13fDa0577305121f00cBa4d0B96541`, whose one owner is his hardware
 wallet `0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5` (confirmed by him on
