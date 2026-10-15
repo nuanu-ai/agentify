@@ -1,18 +1,29 @@
 /**
- * The browser a surface's Chromium tests drive: the Chrome a Mac already has,
- * as the browser observer's test uses, and Playwright's own Chromium wherever
- * there is none, as on the CI runner after `playwright install chromium`.
+ * The browser a surface's Chromium tests drive: Playwright's own Chromium on
+ * every machine, the one the CI runner installs and whose verdict merges a
+ * change. `AGENTIFY_TEST_BROWSER=chrome` asks for the Google Chrome installed
+ * on the machine instead.
  */
 
-import { existsSync } from "node:fs";
-import { type Browser, chromium, type Locator, type Page } from "playwright";
+import { type Browser, chromium, type LaunchOptions, type Locator, type Page } from "playwright";
 
-const MAC_CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-
-export const launchChromium = (): Promise<Browser> =>
-  chromium.launch(
-    process.platform === "darwin" && existsSync(MAC_CHROME) ? { executablePath: MAC_CHROME } : {},
+/**
+ * Headless, Playwright's Chromium is its headless shell, which a page can tell
+ * from Chrome: it names itself HeadlessChrome among its brands, times its
+ * frames differently, and is pinned by the lockfile while Chrome updates
+ * itself. A pass in Chrome therefore says nothing of CI, and Chrome is asked
+ * for by name.
+ */
+const launchOptions = (): LaunchOptions => {
+  const asked = process.env.AGENTIFY_TEST_BROWSER;
+  if (asked === undefined || asked === "") return {};
+  if (asked === "chrome") return { channel: "chrome" };
+  throw new Error(
+    `AGENTIFY_TEST_BROWSER is "${asked}", which names no browser: "chrome" runs the Google Chrome installed here, and leaving it unset runs Playwright's Chromium, as CI does.`,
   );
+};
+
+export const launchChromium = (): Promise<Browser> => chromium.launch(launchOptions());
 
 /**
  * A finger put on the window at `from`, drawn `by` pixels up, as a phone
