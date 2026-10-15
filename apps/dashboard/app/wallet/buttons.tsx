@@ -89,6 +89,14 @@ export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; bo
       const field = document.getElementById(box);
       if (field instanceof HTMLInputElement) {
         field.value = asked.address;
+        // A refusal of the address typed before would be read out against
+        // this one, so it comes off the box until the next save is answered.
+        if (field.getAttribute("aria-invalid") === "true") {
+          const line = field.getAttribute("aria-describedby");
+          if (line !== null) document.getElementById(line)?.setAttribute("hidden", "");
+          field.removeAttribute("aria-invalid");
+          field.removeAttribute("aria-describedby");
+        }
         field.focus();
       }
     }
