@@ -89,6 +89,25 @@ export type DashboardLinkResult =
     }>
   | Readonly<{ status: "refused" }>;
 
+export type GoogleStartResult =
+  | Readonly<{ status: "redirect"; location: string; setCookies: readonly string[] }>
+  | Readonly<{ status: "unavailable" }>;
+
+export type GoogleFinishResult =
+  | Readonly<{
+      status: "opened";
+      person: Person;
+      destination: DashboardDestination;
+      setCookies: readonly string[];
+    }>
+  | Readonly<{
+      status: "refused";
+      reason: "email-unverified" | "email-changed" | "cancelled" | "invalid" | "unavailable";
+      email: string | null;
+      destination: DashboardDestination;
+      setCookies: readonly string[];
+    }>;
+
 export type MerchantPerson = Person & Readonly<{ merchant: AccountMerchant }>;
 export type UnattachedPerson = Person & Readonly<{ merchant: null }>;
 
@@ -122,6 +141,10 @@ type SessionReading = Readonly<{ renew?: boolean }>;
 
 export interface DashboardIdentity {
   readonly cookieNames: readonly string[];
+  readonly googleEnabled: boolean;
+
+  startGoogle(destination: DashboardDestination): Promise<GoogleStartResult>;
+  finishGoogle(query: URLSearchParams, cookie: string | undefined): Promise<GoogleFinishResult>;
 
   requestLink(
     email: string,

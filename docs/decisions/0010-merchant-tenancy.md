@@ -15,9 +15,21 @@ first screen, so tenancy comes before registration.
 
 A merchant is a row with an identity, and its selling switch is its own. Every
 card, order, receipt and key carries its merchant, not null, so no such row
-exists without an owner. The one table without a merchant records which order
-claimed a payment, because an agent's single signature must not be spendable
-once at each merchant.
+exists without an owner. Two tables are written down as exceptions, whose rows
+are not bound to a living merchant. The one table without a merchant records
+which order claimed a payment, because an agent's single signature must not be
+spendable once at each merchant. The registry of payout splits (ADR-0038)
+names its merchant with no foreign key, so a merchant forgotten on the test
+channel leaves their recorded splits behind: money can still arrive at a split
+after its merchant is gone, and until the split's first payout its parameters
+exist nowhere else. A read of the registry for one merchant still names that
+merchant in its predicate. Three readers cross merchants on purpose: the
+operator's payout and the start's check of the registry, which answer no
+request; and the wallet rule, on a dashboard save and at a start, which asks
+whether an address is any merchant's split. A save it refuses says only whether
+the split is the merchant's own or another merchant's, of an address the
+merchant already holds; the registry also holds waiting splits no payment
+challenge has shown, and nothing else of them leaves it.
 
 A key is a row that names its merchant. Its secret is generated, shown once and
 stored as a SHA-256 digest, and a request is resolved by looking the digest up,

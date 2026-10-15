@@ -20,10 +20,13 @@ import {
 } from "./environment.js";
 
 describe("environmentOf", () => {
-  it("reads every written testnet as a test environment", () => {
-    for (const chain of ["eip155:84532", "eip155:11155111", "eip155:80002"]) {
-      expect(environmentOf(chain)).toBe("test");
-    }
+  it("reads Base Sepolia as a test environment", () => {
+    expect(environmentOf("eip155:84532")).toBe("test");
+  });
+
+  it("refuses Ethereum Sepolia and Polygon Amoy, where no payout split is written", () => {
+    expect(() => environmentOf("eip155:11155111")).toThrowError(/neither written list/);
+    expect(() => environmentOf("eip155:80002")).toThrowError(/neither written list/);
   });
 
   it("reads Base mainnet as a live environment", () => {

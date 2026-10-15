@@ -8,10 +8,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
 import { Pool } from "pg";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";
 import { identityFor, LINK_MIN_INTERVAL_MS, LINK_RATE_WINDOW_MS } from "./identity.js";
 import type { Message } from "./mail.js";
+import { type GoogleProfile, googleExchange } from "./testing/google.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
 const wanted = (() => {
@@ -331,6 +332,115 @@ if (databaseUrl === null) {
     beforeEach(async () => {
       await emptyEverything();
       await migrateEverything();
+    });
+
+    describe("Google sign-in transactions", () => {
+      afterEach(() => {
+        vi.unstubAllGlobals();
+      });
+
+      function setupGoogle() {
+        const google = googleExchange();
+        vi.stubGlobal("fetch", google.fetch);
+        const identity = identityFor(
+          { ...config(), google: { clientId: "offline-client", clientSecret: "offline-secret" } },
+          { pool },
+        );
+        const start = async (profile: Partial<GoogleProfile> = {}) => {
+          const began = await identity.startGoogle("settings");
+          if (began.status !== "redirect") throw new Error("Google must start");
+          return {
+            query: google.authorize(began.location, profile),
+            cookie: cookieHeader(began.setCookies),
+          };
+        };
+        return { identity, start, google };
+      }
+
+      it("serializes independent first Google callbacks for the same person", async () => {
+        const { identity, start, google } = setupGoogle();
+        const first = await start();
+        const second = await start();
+        const opened = await Promise.all([
+          identity.finishGoogle(first.query, first.cookie),
+          identity.finishGoogle(second.query, second.cookie),
+        ]);
+        expect(opened[0]).toMatchObject({ status: "opened" });
+        expect(opened[1]).toMatchObject({ status: "opened" });
+        if (opened[0]?.status !== "opened" || opened[1]?.status !== "opened")
+          throw new Error("both callbacks should open");
+        expect(opened[0].person.id).toBe(opened[1].person.id);
+        expect(
+          (await pool.query("select count(*)::int as n from dashboard_accounts")).rows[0],
+        ).toEqual({ n: 1 });
+        expect(
+          (await pool.query("select count(*)::int as n from dashboard_sessions")).rows[0],
+        ).toEqual({ n: 2 });
+        const stored = (await pool.query("select * from dashboard_credentials")).rows;
+        expect(stored).toHaveLength(1);
+        for (const token of google.issuedTokens)
+          expect(JSON.stringify(stored)).not.toContain(token);
+      });
+
+      it("holds the scanner's email lock before creating a Google person or session", async () => {
+        const { identity, start } = setupGoogle();
+        const flow = await start();
+        const blocker = await pool.connect();
+        await blocker.query("begin");
+        await blocker.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+          "dashboard-email:person@gmail.com",
+        ]);
+        const pid = (await blocker.query("select pg_backend_pid() as pid")).rows[0].pid as number;
+        const pending = identity.finishGoogle(flow.query, flow.cookie);
+        try {
+          await expect
+            .poll(
+              async () =>
+                (
+                  await pool.query(
+                    "select count(*)::int as n from pg_stat_activity where $1 = any(pg_blocking_pids(pid))",
+                    [pid],
+                  )
+                ).rows[0].n,
+              { timeout: 3000 },
+            )
+            .toBe(1);
+          expect(
+            (await pool.query("select count(*)::int as n from dashboard_accounts")).rows[0],
+          ).toEqual({ n: 0 });
+          expect(
+            (await pool.query("select count(*)::int as n from dashboard_sessions")).rows[0],
+          ).toEqual({ n: 0 });
+        } finally {
+          await blocker.query("rollback");
+          blocker.release();
+        }
+        expect(await pending).toMatchObject({ status: "opened" });
+      });
+
+      it("rolls person and Google binding back if the session cannot commit", async () => {
+        const { identity, start } = setupGoogle();
+        const flow = await start();
+        await pool.query(
+          `create function fail_google_session() returns trigger language plpgsql as $$ begin raise exception 'injected session failure'; end $$`,
+        );
+        await pool.query(
+          "create trigger fail_google_session before insert on dashboard_sessions for each row execute function fail_google_session()",
+        );
+        const refused = await identity.finishGoogle(flow.query, flow.cookie);
+        expect(refused).toMatchObject({ status: "refused", reason: "unavailable", setCookies: [] });
+        for (const table of ["dashboard_accounts", "dashboard_credentials", "dashboard_sessions"]) {
+          expect((await pool.query(`select count(*)::int as n from ${table}`)).rows[0]).toEqual({
+            n: 0,
+          });
+        }
+        await pool.query("drop trigger fail_google_session on dashboard_sessions");
+        await pool.query("drop function fail_google_session()");
+        const retry = await start();
+        expect(await identity.finishGoogle(retry.query, retry.cookie)).toMatchObject({
+          status: "opened",
+        });
+      });
     });
 
     it("commits token, new person and session together, then consumes only once", async () => {

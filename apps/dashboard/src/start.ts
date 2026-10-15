@@ -24,6 +24,7 @@ import type { Pages } from "./pages.js";
 import { startRegistrationReports } from "./registration-postbacks.js";
 import { startReportIdentityServer } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
+import type { CommissionRate } from "./shares.js";
 import { type Teller, tellerFor } from "./teller.js";
 import { postgresWooShops, wooOfferedOn } from "./woo-shops.js";
 import { startWooWorker } from "./woo-worker.js";
@@ -65,12 +66,21 @@ export interface Dashboard {
 const closed = (listener: Server | null): Promise<void> =>
   listener === null ? Promise.resolve() : closedWithin(listener, CLOSING_GRACE_MS);
 
-export function dashboardFor(config: DashboardConfig, pages: Pages): Dashboard {
+/**
+ * The rate is the gateway's: the dashboard is made before the gateway it
+ * announces for, and its messages name the rate the gateway records splits
+ * with.
+ */
+export function dashboardFor(
+  config: DashboardConfig,
+  pages: Pages,
+  rate: CommissionRate,
+): Dashboard {
   const pool = connect(config.databaseUrl);
   const identity = identityFor(config, { pool });
   const wooShops = postgresWooShops(pool);
   return {
-    tell: tellerFor(config, identity, postmanFor(config)),
+    tell: tellerFor(config, identity, postmanFor(config), rate),
     start: (application) => started(config, application, { pool, identity, wooShops }, pages),
   };
 }

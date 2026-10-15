@@ -113,6 +113,15 @@ succeeded.
 
 ## Releasing to production
 
+The code that takes a commission names a commission wallet on each network it
+sells on, on Base the product owner's Safe. Before an `app-v*` tag of it goes
+to production, `COMMISSION_SAFE_OWNERS=<the Safe's owners> pnpm
+commission-wallet` passes on both networks
+(`docs/research/47-commission-in-the-product.md`, «Кошелёк комиссии в Base»).
+A payment into a merchant's split and its payout were checked on Base itself
+on 2026-10-15 (the same note, «Проверка в основной сети до выпуска на живой
+канал»).
+
 A production release starts from `main`. Every change a merchant can see in
 the published packages carries a Changeset (`pnpm changeset` on the branch
 that makes it). When a release is due, one pull request prepares the versions:
@@ -399,6 +408,22 @@ them in, in one transaction. The databases it replaced stay beside them as
 `<database>_replaced_<time>` until the next verified release drops them, so a
 restore made by mistake can still be undone by hand until then.
 
+Last, the restore copies into each restored database every payout split the
+database it replaced recorded and it lacks (`deploy/carry-payout-splits`):
+until a split's first payout its row is the only record of how to create it,
+and a split recorded after the restore point may already hold buyers' money.
+Rows are never changed once written, so the copy loses nothing. A restore
+point older than the registry has no table to take them, so they stay in the
+replaced database, and a copy that fails says so and exits non-zero after the
+restore has finished. Either way the next verified release copies them before
+it drops that database, and keeps the database, saying so, while it cannot. A
+copy counts only when every address the replaced database holds is in the
+current one afterwards: a row whose insert did nothing, because the current
+database holds another row for the same merchant and wallet, keeps the
+replaced database and is named. A release of a revision older than this copy
+drops a replaced database without it, so release such a revision only once no
+`<database>_replaced_<time>` holds payout splits.
+
 A bad dump or a failure before the swap leaves the databases as they were and
 the record as the restore found it, so it holds no release back, and the
 message says what to try: the same restore again if the cause has passed,
@@ -421,6 +446,30 @@ restored: revert or fix it on a branch, merge to `main`, tag the new commit and
 release that tag. Restoring its restore point would lose every order and
 receipt written since, and the command refuses to move production backwards
 from the revision `current` names.
+
+## Collecting the commission
+
+Agentify's 0.1% stays credited to its commission wallet in the shared 0xSplits
+warehouse until somebody pays the splits out; nothing does that on a timer. The
+operator's payout command prints, for every split recorded on the channel's
+network, the transactions that create each split if it has no code yet,
+distribute it, withdraw each merchant's share to their wallet and, last in each,
+withdraw the commission; it reads the database and nothing else, and sends
+nothing:
+
+```sh
+ssh -t agentify "sudo docker exec agentify-app-1 pnpm --silent --filter @agentify/gateway payout"
+```
+
+Each transaction it prints is sent by hand, on Base only, from any wallet that
+holds a little ETH for the fee (in MetaMask with Show hex data turned on, under
+Settings → Transactions): To, Amount 0 and the Data as printed. The commission
+arrives at the Safe; the merchants' shares go to their own wallets in the same
+transaction. On TEST the same command, against `agentify-test`, prints Base
+Sepolia transactions whose commission goes to the test channel's wallet. A
+payout costs gas whether or not a split holds anything, so it is worth sending
+when the commission credited covers it (`docs/research/47-commission-in-the-product.md`,
+«Выплата вручную»).
 
 ## Backups
 
@@ -632,6 +681,60 @@ anywhere else as the start of a variable, cuts the value there and prints the
 rest in a warning, so `stack.sh` refuses such a file and names the key. The first release renders
 the file and refuses, before it stops anything, if a variable is missing, the
 preflight disagrees or the scanner refuses the configuration at its own start.
+
+## Google sign-in
+
+Google sign-in is optional. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
+together in the channel's root-owned environment file. The application alone
+receives them. Leaving both absent or empty keeps sign-in by email link and
+hides the Google button. A missing partner or a whitespace-only value is
+refused by the release preflight before activation switches the running
+release. Deployed channels require their HTTPS public origin and
+`AGENTIFY_COOKIE_SECURE=true`.
+
+Use separate Google Cloud projects for TEST and PRODUCTION under the
+`nuanu.ai` organization, as required by
+[Google's environment-isolation policy](https://developers.google.com/identity/protocols/oauth2/policies#use-separate-projects-for-testing-and-production).
+The organization owns the projects; the External audience lets merchants
+outside that organization sign in.
+
+In [Google Auth Platform](https://console.cloud.google.com/auth/overview),
+configure Branding with Agentify's name, support contact, home page, privacy
+policy and terms. The public pages are `https://agentify.ad/`,
+`https://agentify.ad/privacy` and `https://agentify.ad/terms`; confirm that the
+published policy describes the sign-in data before enabling it. Choose an
+External audience for merchants outside the project's Google Workspace
+organization. Add the acceptance accounts as test users when Google's
+Audience settings require it, and complete the applicable publishing and
+brand verification steps before opening access to merchants. See Google's
+[consent configuration](https://developers.google.com/workspace/guides/configure-oauth-consent)
+and [OAuth policies](https://developers.google.com/identity/protocols/oauth2/policies).
+
+Create an OAuth client of type **Web application** under Clients in each
+channel's project. Keep local development clients outside the production
+project. Register the exact authorized redirect URI for that client:
+
+| Environment | Authorized redirect URI |
+| --- | --- |
+| Dashboard run directly with its defaults | `http://localhost:3001/sign-in/google/callback` |
+| Local Compose | `http://localhost:8080/dashboard/sign-in/google/callback` |
+| TEST | `https://test.agentify.ad/dashboard/sign-in/google/callback` |
+| PRODUCTION | `https://agentify.ad/dashboard/sign-in/google/callback` |
+
+The path is `PUBLIC_BASE_URL` + `BASE_PATH` + `/sign-in/google/callback`, with
+no trailing slash. Update the registered URI if the local port, origin or
+base path changes. This server redirect flow needs no browser JavaScript
+origin entry. Store the client secret outside the repository; do not paste
+it into a command or diagnostic output. Google's
+[web-server setup](https://developers.google.com/identity/protocols/oauth2/web-server#creatingcred)
+explains client creation and redirect matching.
+
+Enabling configuration is not live acceptance. On TEST, finish a Google
+redirect in a browser with a permitted Gmail or verified Workspace account,
+confirm that an existing email-link account retains the same account and
+merchant, and check sign-out and an intelligible return after cancellation.
+The email-link route must still work. These checks require the channel's
+Google client and real acceptance accounts; offline tests do not prove them.
 
 ## Who opens /admin
 

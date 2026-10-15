@@ -341,7 +341,7 @@ if (databaseUrl === null) {
       const connected = connect(url);
       pool = connected.pool;
       db = connected.db;
-      store = PostgresStore.over(db, countedIds());
+      store = PostgresStore.over(db, "eip155:84532", countedIds());
     }, 60_000);
 
     afterAll(async () => {
@@ -991,6 +991,117 @@ if (databaseUrl === null) {
            values ('item_odd', 'mch_new', 'sku-2', '{}', now(), 'shopify')`,
         ),
       ).rejects.toThrow(/cards_integration_known/);
+    });
+  });
+
+  describe("the migration that adds the registry of payout splits", () => {
+    // The SQL cannot compute a split's address, which needs Keccak-256, so the
+    // rows come from the gateway's start. The migration adds the table and
+    // nothing else: every order keeps the address its payer signed for.
+    const url = databaseUrl;
+    let pool: Pool;
+
+    const run = async (file: string): Promise<void> => {
+      for (const statement of await statementsOf(file)) {
+        await pool.query(statement);
+      }
+    };
+
+    beforeAll(async () => {
+      pool = connect(url).pool;
+    }, 60_000);
+
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    beforeEach(async () => {
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      for (const file of [
+        "0000_init.sql",
+        "0001_payment_claims.sql",
+        "0002_selling.sql",
+        "0003_merchant_tenancy.sql",
+        "0004_merchant_service_name.sql",
+        "0005_merchant_payout_wallet.sql",
+        "0006_order_pay_to_backfill.sql",
+        "0007_cabinet_keys.sql",
+        "0008_key_last_use.sql",
+        "0009_live_approval.sql",
+        "0010_pending_payout_wallet.sql",
+        "0011_merchant_seller_site.sql",
+        "0012_dashboard_keys.sql",
+        "0013_delete_dashboard_keys.sql",
+        "0014_one_integration.sql",
+      ]) {
+        await run(file);
+      }
+    });
+
+    it("writes no row and touches no merchant and no order", async () => {
+      const wallet = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+      const waiting = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+      const at = new Date("2026-10-01T10:00:00.000Z");
+      await pool.query(
+        `insert into merchants (id, name, selling, created_at, updated_at, payout_wallet,
+           pending_payout_wallet, pending_payout_wallet_from)
+         values ('mch_paid', 'Paid', 'open', $1, $1, $2, null, null),
+                ('mch_waiting', 'Waiting', 'open', $1, $1, $2, $3, $4),
+                ('mch_unpaid', 'Unpaid', 'open', $1, $1, null, null, null)`,
+        [at, wallet, waiting, new Date("2026-10-03T10:00:00.000Z")],
+      );
+      await pool.query(
+        `insert into orders (id, state, open, merchant_id, item_id, merchant_item_id, record,
+           created_at, updated_at)
+         values ('ord_verified', 'dispatched', true, 'mch_paid', 'item_1', 'sku-1', $1, $2, $2)`,
+        [JSON.stringify({ payment: "PAYMENT", payTo: wallet, merchantId: "mch_paid" }), at],
+      );
+      const merchantsBefore = (await pool.query("select * from merchants order by id")).rows;
+      const ordersBefore = (await pool.query("select * from orders order by id")).rows;
+
+      await run("0015_payout_splits.sql");
+
+      expect((await pool.query("select * from payout_splits")).rows).toStrictEqual([]);
+      expect((await pool.query("select * from merchants order by id")).rows).toStrictEqual(
+        merchantsBefore,
+      );
+      expect((await pool.query("select * from orders order by id")).rows).toStrictEqual(
+        ordersBefore,
+      );
+      const kept = await pool.query<{ pay_to: string }>(
+        "select record ->> 'payTo' as pay_to from orders where id = 'ord_verified'",
+      );
+      expect(kept.rows[0]?.pay_to).toBe(wallet);
+    });
+
+    it("then keys a wallet's split in either spelling, keeping every row it finds", async () => {
+      // A wallet may be stored in lower case while the rows name it
+      // checksummed; a second row for the same wallet in another
+      // spelling would be a second contract for one wallet.
+      await run("0015_payout_splits.sql");
+      const row = (address: string, merchant: string, wallet: string) =>
+        pool.query(
+          `insert into payout_splits values ($1, 'eip155:84532', $2, $3, '0xC', 999000, 1000,
+             1000000, 0, '0x0000000000000000000000000000000000000000', '0xsalt', '0xF', now())`,
+          [address, merchant, wallet],
+        );
+      const wallet = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+      await row("0x1111111111111111111111111111111111111111", "mch_paid", wallet);
+      await row("0x2222222222222222222222222222222222222222", "mch_other", wallet);
+      const before = (await pool.query("select * from payout_splits order by address")).rows;
+
+      await run("0016_payout_split_wallet_any_spelling.sql");
+
+      expect((await pool.query("select * from payout_splits order by address")).rows).toStrictEqual(
+        before,
+      );
+      await expect(
+        row("0x3333333333333333333333333333333333333333", "mch_paid", wallet.toLowerCase()),
+      ).rejects.toMatchObject({ code: "23505", constraint: "payout_splits_wallet_unique" });
+      await expect(
+        row("0x4444444444444444444444444444444444444444", "mch_third", wallet.toLowerCase()),
+      ).resolves.toBeDefined();
     });
   });
 }

@@ -18,23 +18,24 @@ import {
 import { runApproval } from "./approval-command.js";
 import { PostgresApprovalDirectory } from "./approval-directory.js";
 
-const liveNetwork = (): boolean => {
+/** The live network `PAYMENT_NETWORK` names, or null, said, where it names none. */
+const liveNetwork = (): string | null => {
   const network = process.env.PAYMENT_NETWORK;
   if (network === undefined || network === "") {
     console.error("PRODUCTION approval refused: PAYMENT_NETWORK is not set.");
-    return false;
+    return null;
   }
 
   try {
     if (environmentOf(network) !== "live") {
       console.error("PRODUCTION approval refused: PAYMENT_NETWORK is not the live network.");
-      return false;
+      return null;
     }
   } catch {
     console.error("PRODUCTION approval refused: PAYMENT_NETWORK is not a recognized network.");
-    return false;
+    return null;
   }
-  return true;
+  return network;
 };
 
 const emailFromStdin = async (): Promise<string> => {
@@ -47,7 +48,8 @@ const emailFromStdin = async (): Promise<string> => {
 };
 
 const main = async (): Promise<number> => {
-  if (!liveNetwork()) {
+  const network = liveNetwork();
+  if (network === null) {
     return 1;
   }
 
@@ -61,7 +63,7 @@ const main = async (): Promise<number> => {
   try {
     connected = connect(databaseUrl);
     const rawEmail = await emailFromStdin();
-    const store = PostgresStore.over(connected.db, randomIds);
+    const store = PostgresStore.over(connected.db, network, randomIds);
     return await runApproval(
       rawEmail,
       new PostgresApprovalDirectory(connected.pool),

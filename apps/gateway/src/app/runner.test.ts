@@ -1,7 +1,7 @@
 import type { Order } from "@agentify/core";
 import { afterEach, describe, expect, it } from "vitest";
 import type { StoredOrder } from "../ports/store.js";
-import { type Harness, harness } from "../testing/harness.js";
+import { drawEverything, type Harness, harness } from "../testing/harness.js";
 
 /**
  * The runner refuses to write an order that breaks a money invariant: writing
@@ -463,5 +463,65 @@ describe("an event held to the hand-over the order is waiting on", () => {
     const after = await open.store.orderById(orderId);
     expect(after?.openDeliveryId).toBe(handOver);
     expect(after?.order.dispatch.attempts).toBe(1);
+  });
+});
+
+describe("the address a charge is sent to", () => {
+  const asyncCard = {
+    merchant_item_id: "esim",
+    title: "A seven day eSIM",
+    description: "Seven days of data",
+    price: { amount: "12.00", currency: "USD" },
+    result: { activation_code: { type: "string" } },
+    fulfillment: "async",
+  } as const;
+
+  const quoted = async (harnessed: Harness): Promise<string> => {
+    const published = await harnessed.gateway.publishCard(harnessed.merchant.id, asyncCard);
+    if (!published.ok) throw new Error("the card would not publish");
+    const offered = await harnessed.gateway.beginPurchase(published.id, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    return offered.order.order.id;
+  };
+
+  it("charges an order verified before payments went to splits at the wallet it was verified against", async () => {
+    // The buyer signed for the wallet itself. Rewritten to the merchant's
+    // split, the charge would be refused, after the goods in the synchronous
+    // mode; such an order is charged without commission.
+    open = await harness();
+    const orderId = await quoted(open);
+    const wallet = open.merchant.wallet;
+    const split = (await open.store.merchantById(open.merchant.id))?.payoutWallet.split;
+    expect(split?.merchantWallet).toBe(wallet);
+
+    // What a gateway of the previous release kept on the order.
+    await open.gateway.runner.presentVerifiedPayment(orderId, "alice", "PAY-A", wallet, open.now());
+
+    expect(open.facilitator.settles.at(-1)?.payTo).toBe(wallet);
+    expect(open.facilitator.settles.at(-1)?.payTo).not.toBe(split?.address);
+  });
+
+  it("owes the buyer the whole price when a refund falls due on a payment to a split", async () => {
+    // The merchant refunds the whole price and the commission stays with
+    // Agentify, so the event naming the debt names the whole sum.
+    open = await harness();
+    const orderId = await quoted(open);
+    await open.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    expect((await open.store.orderById(orderId))?.payTo).toBe(
+      (await open.store.merchantById(open.merchant.id))?.payoutWallet.split?.address,
+    );
+    await open.gateway.refuseOrder(open.merchant.id, orderId, {
+      code: "out_of_stock",
+      message: "the supplier has none",
+    });
+
+    const told = await drawEverything(open);
+    const owed = told.flatMap((envelope) =>
+      envelope.kind === "order_event" && envelope.payload.type === "order.refund_due"
+        ? [envelope.payload]
+        : [],
+    );
+    expect(owed).toHaveLength(1);
+    expect(owed[0]).toMatchObject({ price: { amount: "12.00", currency: "USD" } });
   });
 });

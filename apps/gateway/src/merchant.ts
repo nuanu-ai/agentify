@@ -14,6 +14,7 @@
  */
 
 import { connect, PostgresStore } from "./adapters/postgres/store.js";
+import { DEFAULT_PAYMENT_NETWORK } from "./config.js";
 import { runMerchant } from "./merchant-command.js";
 import { randomIds, systemClock } from "./ports/clock.js";
 
@@ -34,7 +35,9 @@ let code = 1;
 try {
   code = await runMerchant(
     process.argv.slice(2),
-    PostgresStore.over(db, randomIds),
+    // A wallet's split is read on the deployment's network. This command shows
+    // none, so where the variable is unset the gateway's own default serves.
+    PostgresStore.over(db, process.env.PAYMENT_NETWORK || DEFAULT_PAYMENT_NETWORK, randomIds),
     systemClock,
     (line) => {
       console.log(line);

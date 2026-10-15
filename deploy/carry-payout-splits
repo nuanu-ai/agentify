@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Copies into one database of a channel every row of the registry of payout
+# splits that another database of it holds and it lacks:
+#
+#   deploy/carry-payout-splits <channel> <from database> <into database>
+#
+# Until a split's first payout its row is the only record of the parameters
+# that create it, so a row must never go with a database that is dropped or
+# swapped out. Rows are never changed once written, so a row found in both is
+# the same row, and keeping what is there loses nothing. deploy/restore.sh
+# runs this from the database a restore replaced into the restored one, and
+# deploy/activate.sh from each such database into the one it was replaced by
+# before dropping it.
+#
+# A copied row may still be kept out: an insert does nothing where <into>
+# already holds a row for the same merchant and wallet, as one a start
+# recorded under other constants. So the copy ends by checking that every
+# address <from> holds is in <into>, and fails naming the ones that are not.
+#
+# Exit 0: every row of <from> is in <into>, or <from> has no registry.
+# Exit 10: <from> has a registry and <into> has none yet, as a database
+# restored from a copy older than the registry; nothing was copied.
+# Exit 11: the copy ran and some address of <from> is still not in <into>.
+# Any other failure exits with the status of what failed, which psql and
+# pg_dump keep below 10, having copied nothing, since the rows go in one
+# transaction.
+set -euo pipefail
+
+channel="$1" from="$2" into="$3"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+stack() { "$root/deploy/stack.sh" "$channel" "$@"; }
+registry_in() {
+  stack exec -T postgres psql -U agentify -d "$1" -v ON_ERROR_STOP=1 -Atc \
+    "select to_regclass('public.payout_splits') is not null"
+}
+addresses_in() {
+  stack exec -T postgres psql -U agentify -d "$1" -v ON_ERROR_STOP=1 -Atc \
+    "select lower(address) from public.payout_splits order by 1"
+}
+
+# Read apart from the test, so a database that does not answer fails this
+# rather than reading as one with no registry.
+held="$(registry_in "$from")"
+[[ $held == t ]] || exit 0
+taking="$(registry_in "$into")"
+[[ $taking == t ]] || exit 10
+# Column by column, so a column the two databases order differently cannot
+# shift a value into another.
+stack exec -T postgres pg_dump -U agentify --data-only --column-inserts --on-conflict-do-nothing \
+  --table=public.payout_splits "$from" \
+  | stack exec -T postgres psql -U agentify -d "$into" -v ON_ERROR_STOP=1 -q --single-transaction >/dev/null
+
+held_addresses="$(addresses_in "$from")"
+taken_addresses="$(addresses_in "$into")"
+missing="$(LC_ALL=C comm -23 <(LC_ALL=C sort <<<"$held_addresses") <(LC_ALL=C sort <<<"$taken_addresses") | sed '/^$/d')"
+if [[ -n $missing ]]; then
+  echo "carry-payout-splits: $(wc -l <<<"$missing" | tr -d ' ') payout split(s) of $from are not in $into after the copy, whose inserts did nothing for them, as where $into holds another row for the same merchant and wallet: $(tr '\n' ' ' <<<"$missing")" >&2
+  exit 11
+fi

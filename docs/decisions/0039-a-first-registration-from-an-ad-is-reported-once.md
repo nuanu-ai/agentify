@@ -1,4 +1,4 @@
-# 0037. A first registration from an ad is reported once, with consent
+# 0039. A first registration from an ad is reported once, with consent
 
 Date: 2026-10-15
 Status: accepted (the product owner, 2026-10-15)

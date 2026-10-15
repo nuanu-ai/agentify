@@ -178,7 +178,7 @@ export async function verdictOnPurchase(
 }
 
 /** The real facilitator, built from the loaded config exactly as production does. */
-function realFacilitator(config: GatewayConfig): Facilitator {
+export function realFacilitator(config: GatewayConfig): Facilitator {
   const edge = new PaymentEdge(config.payment, config.publicBaseUrl, config.payment.timeoutSeconds);
   const { cdpApiKeyId, cdpApiKeySecret } = config.payment;
   const client = new HTTPFacilitatorClient({

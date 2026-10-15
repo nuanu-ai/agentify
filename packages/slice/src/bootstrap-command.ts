@@ -9,7 +9,7 @@
  * show yet is its own verdict, not a pass.
  *
  * It spends real money on a real chain, from the wallet whose key is in the
- * environment, paid straight to the merchant's own address. `SMOKE_MAX_USD`
+ * environment, paid into the merchant's payout split. `SMOKE_MAX_USD`
  * caps one purchase and `SMOKE_TOTAL_USD` the whole run. Only the per-purchase
  * cap is handed to the payment client as its spend control, because the client
  * otherwise has a hidden default of $1 a payment that silently drops anything

@@ -38,17 +38,21 @@ const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
 /** A whole gateway and a socket to talk to it over, built from nothing. */
 async function aGatewayOnAPort() {
   const ids = () => randomUUID();
+  const config = loadConfig({
+    DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
+    PAY_TO_ADDRESS: PAY_TO,
+  });
   const queue = new MemoryQueue();
   // The queue is made first because the store publishes through it: an envelope
   // that must not be lost is written together with the order.
-  const store = new MemoryStore(ids, () => Date.now(), queue.envelopes());
+  const store = new MemoryStore(config.payment.network, ids, () => Date.now(), queue.envelopes());
   const facilitator = new ScriptedFacilitator();
 
   // The calls below carry only the key; the door turns it into the merchant.
   // Without the name or the payout address the first publish would be refused.
   await store.addMerchant({ id: "mch_the_walk", name: "The merchant of this walk" }, Date.now());
   await setServiceName(store, "mch_the_walk", "The walk's own shop", Date.now());
-  await setPayoutWallet(store, "mch_the_walk", THE_WALKS_WALLET, Date.now());
+  await setPayoutWallet(store, config.payoutSplit, "mch_the_walk", THE_WALKS_WALLET, Date.now());
   await store.addKey(
     {
       id: "mk_the_walk",
@@ -60,10 +64,7 @@ async function aGatewayOnAPort() {
   );
 
   const gateway = new Gateway({
-    config: loadConfig({
-      DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
-      PAY_TO_ADDRESS: PAY_TO,
-    }),
+    config,
     store,
     queue,
     facilitator,
@@ -493,10 +494,13 @@ describe("a purchase from the outside", () => {
         (declared as unknown as { resource: { serviceName?: string } }).resource.serviceName,
       ).toBe("The registered shop");
       expect(declared.extensions?.bazaar).toBeDefined();
-      // And who the agent is told to pay: this merchant, at the address they
-      // set a moment ago, and not the one the gateway itself was configured
-      // with.
-      expect(declared.accepts[0]?.payTo).toBe(theirWallet);
+      // And who the agent is told to pay: this merchant's split of the
+      // wallet they set a moment ago, and not the one the gateway itself was
+      // configured with.
+      const split = (await gateway.store.merchantById(merchantId))?.payoutWallet.split;
+      expect(split?.merchantWallet).toBe(theirWallet);
+      expect(declared.accepts[0]?.payTo).toBe(split?.address);
+      expect(declared.accepts[0]?.payTo).not.toBe(theirWallet);
       expect(declared.accepts[0]?.payTo).not.toBe(PAY_TO);
 
       // And the sale itself, on their key and their worker.

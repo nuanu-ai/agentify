@@ -12,7 +12,7 @@
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
-import type { Gateway } from "@agentify/gateway";
+import { type Gateway, merchantPayout, payoutSplitFor, setPayoutWallet } from "@agentify/gateway";
 import {
   buyOverHttp,
   type Harness,
@@ -31,6 +31,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ADS_CONSENT } from "./ads-consent.js";
 import { type DashboardConfig, loadConfig } from "./config.js";
+import { SIGN_OUT_EVERY_OTHER_DEVICE } from "./control-labels.js";
 import { DRAWN_FOR } from "./drawn-for.js";
 import {
   type Acting,
@@ -1881,6 +1882,197 @@ describe("the operator flag", () => {
   });
 });
 
+describe("the Google dashboard door", () => {
+  const stateCookie = "agentify.oauth_state=browser-bound; Path=/; HttpOnly; SameSite=Lax";
+  const clearedState = "agentify.oauth_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax";
+
+  it("offers Google only when configured, while the email door stays open without it", async () => {
+    const running = await started();
+    const page = await running.browser.get("/sign-in?destination=settings");
+
+    expect(formTo(page.html, "post", "/sign-in/google")).toBeUndefined();
+    expect(formTo(page.html, "post", "/sign-in")?.fields.get("destination")).toBe("settings");
+    const unavailable = await running.browser.post("/sign-in/google", { destination: "settings" });
+    expect(unavailable.status).toBe(503);
+    expect(formTo(unavailable.html, "post", "/sign-in")?.fields.get("destination")).toBe(
+      "settings",
+    );
+    expect((await running.browser.post("/sign-in", { email: PERSON })).status).toBe(202);
+  });
+
+  it("starts a browser navigation from its own post and carries only a closed dashboard destination", async () => {
+    const running = await started({
+      base: "/dashboard",
+      identity: (real) => ({
+        ...real,
+        googleEnabled: true,
+        async startGoogle(destination) {
+          return {
+            status: "redirect",
+            location: `https://accounts.google.com/o/oauth2/v2/auth?destination=${destination}`,
+            setCookies: [stateCookie],
+          };
+        },
+      }),
+    });
+    const page = await running.browser.get("/dashboard/sign-in?destination=settings");
+    expect(formTo(page.html, "post", "/dashboard/sign-in/google")?.fields.get("destination")).toBe(
+      "settings",
+    );
+
+    const sent = await running.browser
+      .from(running.url)
+      .post("/dashboard/sign-in/google", { destination: "settings" });
+    expect(sent.status).toBe(303);
+    expect(sent.to).toBe("https://accounts.google.com/o/oauth2/v2/auth?destination=settings");
+    expect(sent.headers.getSetCookie()).toContain(stateCookie);
+    expect(running.rows.dashboard_sessions).toStrictEqual([]);
+
+    const external = await running.browser.post("/dashboard/sign-in/google", {
+      destination: "https://elsewhere.example",
+    });
+    expect(external.to).toBe("https://accounts.google.com/o/oauth2/v2/auth?destination=default");
+    const forged = await running.browser
+      .from("https://test.agentify.ad")
+      .post("/dashboard/sign-in/google");
+    expect(forged.status).toBe(403);
+    expect(
+      forged.headers.getSetCookie().filter((line) => line.startsWith("agentify.oauth_state=")),
+    ).toStrictEqual([]);
+  });
+
+  for (const reason of [
+    "email-unverified",
+    "email-changed",
+    "cancelled",
+    "invalid",
+    "unavailable",
+  ] as const) {
+    it(`keeps a mail alternative and the trusted destination after Google answers ${reason}`, async () => {
+      const email =
+        reason === "email-unverified" || reason === "email-changed" ? "owner@example.net" : null;
+      const running = await started({
+        base: "/dashboard",
+        identity: (real) => ({
+          ...real,
+          googleEnabled: true,
+          async finishGoogle() {
+            return {
+              status: "refused",
+              reason,
+              email,
+              destination: "settings",
+              setCookies: [clearedState],
+            };
+          },
+        }),
+      });
+      const refused = await running.browser.get(
+        "/dashboard/sign-in/google/callback?state=state&error=attacker-secret&email=attacker@example.com&destination=https://elsewhere.example",
+      );
+
+      expect(refused.status).toBe(reason === "unavailable" ? 503 : 401);
+      expect(formTo(refused.html, "post", "/dashboard/sign-in")?.fields.get("destination")).toBe(
+        "settings",
+      );
+      expect(formTo(refused.html, "post", "/dashboard/sign-in")?.fields.get("email")).toBe(
+        reason === "email-unverified" ? email : "",
+      );
+      expect(refused.html).not.toContain("attacker@example.com");
+      expect(refused.html).not.toContain("attacker-secret");
+      expect(refused.html).not.toContain("<script");
+      expect(refused.headers.getSetCookie()).toContain(clearedState);
+      expect(running.rows.dashboard_sessions).toStrictEqual([]);
+    });
+  }
+
+  it("replaces only this browser's old session after Google succeeds and follows the held destination", async () => {
+    let opening: Awaited<ReturnType<Identity["openLink"]>> = { status: "refused" };
+    const running = await started({
+      identity: (real) => ({
+        ...real,
+        googleEnabled: true,
+        async finishGoogle() {
+          if (opening.status !== "opened") throw new Error("the identity did not open a session");
+          return { ...opening, destination: "settings" };
+        },
+      }),
+    });
+    await running.identity.make(OTHER, running.theMerchant);
+    await running.browser.signIn(PERSON);
+    const oldToken = running.browser.sessionToken();
+    const otherDevice = await running.another();
+    await otherDevice.signIn(PERSON);
+    await running.browser.post("/sign-in", { email: OTHER });
+    opening = await running.identity.openLink(
+      actionIn(running.mails.at(-1)).searchParams.get("token") ?? "",
+    );
+
+    const opened = await running.browser.get(
+      "/sign-in/google/callback?state=held&code=google-code",
+    );
+
+    expect(opened.status).toBe(303);
+    expect(opened.to).toBe("/settings");
+    expect(running.browser.sessionToken()).not.toBe(oldToken);
+    expect(readable((await running.browser.get("/settings")).html)).toContain(OTHER);
+    const oldSession = await running.browser
+      .withRawCookie(`${COOKIE}=${oldToken}`)
+      .get("/settings");
+    expect(oldSession.status).toBe(303);
+    expect(oldSession.to).toMatch(/^\/sign-in/);
+    expect((await otherDevice.get("/settings")).status).toBe(200);
+  });
+
+  it("does not sign an existing browser out when Google refuses", async () => {
+    const running = await started({
+      identity: (real) => ({
+        ...real,
+        googleEnabled: true,
+        async finishGoogle() {
+          return {
+            status: "refused",
+            reason: "invalid",
+            email: null,
+            destination: "default",
+            setCookies: [clearedState],
+          };
+        },
+      }),
+    });
+    await running.browser.signIn(PERSON);
+    const token = running.browser.sessionToken();
+    expect(
+      (await running.browser.get("/sign-in/google/callback?state=forged&code=code")).status,
+    ).toBe(401);
+    expect(running.browser.sessionToken()).toBe(token);
+    expect((await running.browser.get("/settings")).status).toBe(200);
+  });
+
+  it("does not exchange a Google code on a HEAD or page-data request", async () => {
+    const running = await started({
+      identity: (real) => ({
+        ...real,
+        googleEnabled: true,
+        async finishGoogle() {
+          throw new Error("a prefetch must never exchange this code");
+        },
+      }),
+    });
+    const head = await fetch(`${running.url}/sign-in/google/callback?state=held&code=code`, {
+      method: "HEAD",
+      redirect: "manual",
+    });
+    const data = await running.browser.get("/sign-in/google/callback.data?state=held&code=code");
+
+    expect(head.status).toBe(405);
+    expect(data.status).toBe(405);
+    expect(head.headers.getSetCookie()).toStrictEqual([]);
+    expect(data.headers.getSetCookie()).toStrictEqual([]);
+    expect(running.rows.dashboard_sessions).toStrictEqual([]);
+  });
+});
+
 describe("the gate", () => {
   it("lets a visitor with no session reach only the sign-in pages, the health probe and the shop's callback and return", async () => {
     // Every route on this list answers a stranger without the sign-in redirect,
@@ -1921,7 +2113,14 @@ describe("the gate", () => {
     for (const page of PAGES_IN_FRONT_OF_THE_GATE) {
       const answer = await stranger.get(`/dashboard${page}`);
       expect(gate(answer), page).toBe(false);
-      expect(answer.status, page).toBeLessThan(500);
+      if (page === "/sign-in/google/callback") {
+        // Google is not configured here; its return still offers the email
+        // door rather than sending the visitor through the account gate.
+        expect(answer.status).toBe(503);
+        expect(formTo(answer.html, "post", "/dashboard/sign-in")).toBeDefined();
+      } else {
+        expect(answer.status, page).toBeLessThan(500);
+      }
     }
 
     for (const path of [
@@ -2373,7 +2572,7 @@ describe("the account on the settings screen", () => {
   });
 });
 
-describe("the address a merchant's money arrives at", () => {
+describe("the wallet a merchant's share is paid out to", () => {
   /**
    * Of the right shape and obviously nobody's. Two spellings: the lower case a
    * block explorer prints, and the checksummed mixed case a wallet shows,
@@ -2486,6 +2685,196 @@ describe("the address a merchant's money arrives at", () => {
     expect(readable(answered.html)).toMatch(/not saved/i);
     expect(answered.html.replaceAll(/<[^>]*>/g, "")).toContain(AS_A_WALLET_SHOWS_IT);
     expect(await paidInto(running)).toBe(AS_A_WALLET_SHOWS_IT);
+  });
+
+  it("shows, once saved, the payout contract recorded for it and the whole transaction that pays it out", async () => {
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    await running.browser.signIn();
+
+    const saved = await running.browser.post("/settings/payout-wallet", {
+      payout_wallet: AS_A_WALLET_SHOWS_IT,
+    });
+    const screen = await running.browser.get("/settings");
+
+    expect(saved.status).toBe(303);
+    const recorded = await running.harnessed.gateway.payoutSplitsOf(running.harnessed.merchant.id);
+    expect(recorded.inForce?.merchantWallet).toBe(AS_A_WALLET_SHOWS_IT);
+    const split = recorded.inForce?.address ?? "";
+    expect(screen.html.replaceAll(/<[^>]*>/g, "")).toContain(split);
+    expect(screen.html).toContain(`href="https://sepolia.basescan.org/address/${split}"`);
+    const data = /<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(screen.html)?.[1];
+    expect(data).toBe(
+      merchantPayout(
+        running.harnessed.runtime.config.payoutSplit,
+        recorded.toPayOut,
+        running.harnessed.runtime.config.payoutSplitNetworks,
+      ).data,
+    );
+    expect(data).toHaveLength(3_146);
+  });
+
+  it("names the commission at the terms the split of the saved wallet was recorded with", async () => {
+    // The screen's words are the merchant's consent, and the split is what
+    // takes the money: the percentages on the page are the recorded split's.
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    await running.browser.signIn();
+    await running.browser.post("/settings/payout-wallet", { payout_wallet: AS_A_WALLET_SHOWS_IT });
+
+    const screen = await running.browser.get("/settings");
+
+    const { inForce } = await running.harnessed.gateway.payoutSplitsOf(
+      running.harnessed.merchant.id,
+    );
+    if (inForce === null) throw new Error("no split was recorded for the saved wallet");
+    const percent = (part: number): string => `${(part / inForce.totalAllocation) * 100}%`;
+    const text = readable(screen.html);
+    expect(text).toContain(`Agentify keeps ${percent(inForce.commissionAllocation)} of every sale`);
+    expect(text).toContain(
+      `it pays ${percent(inForce.merchantAllocation)} to the wallet and ${percent(inForce.commissionAllocation)} to Agentify`,
+    );
+  });
+
+  it("pays out, beside the contract of the wallet saved now, the earlier contract a sale was paid into, each to its own wallet", async () => {
+    // A sale paid into the earlier wallet's contract waits there after the
+    // change, and pays that wallet, not the new one.
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    const { harnessed } = running;
+    const earlier = (await harnessed.gateway.payoutSplitsOf(harnessed.merchant.id)).inForce;
+    const itemId = await publish(running.gateway, roomCard);
+    await buyOverHttp(harnessed, running.gateway, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    await running.browser.signIn();
+
+    await running.browser.post("/settings/payout-wallet", { payout_wallet: AS_A_WALLET_SHOWS_IT });
+    const screen = await running.browser.get("/settings");
+
+    const { inForce: now, toPayOut } = await harnessed.gateway.payoutSplitsOf(
+      harnessed.merchant.id,
+    );
+    expect(now?.merchantWallet).toBe(AS_A_WALLET_SHOWS_IT);
+    expect(toPayOut.map((split) => split.address).sort()).toStrictEqual(
+      [earlier?.address, now?.address].sort(),
+    );
+    expect(/<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(screen.html)?.[1]).toBe(
+      merchantPayout(
+        harnessed.runtime.config.payoutSplit,
+        toPayOut,
+        harnessed.runtime.config.payoutSplitNetworks,
+      ).data,
+    );
+    const shown = readable(screen.html.replaceAll(/<\/?span[^>]*>/g, ""));
+    expect(shown).toContain(`${earlier?.address} pays ${harnessed.merchant.wallet}`);
+    expect(shown).toContain(`${now?.address} pays ${AS_A_WALLET_SHOWS_IT}`);
+  });
+
+  it("refuses an address a merchant's share could never come back from, says what it is, and saves nothing", async () => {
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    await running.browser.signIn();
+    const network = running.harnessed.runtime.config.payoutSplit;
+    const ownSplit =
+      (await running.harnessed.gateway.payoutSplitsOf(running.harnessed.merchant.id)).inForce
+        ?.address ?? "";
+    const before = await paidInto(running);
+
+    for (const [address, said] of [
+      [network.commissionWallet, /Agentify's commission wallet/],
+      [network.warehouse.toLowerCase(), /0xSplits warehouse/],
+      [network.multicall3, /Multicall3/],
+      [ownSplit, /one of your own payout contracts, not a wallet/],
+      ["0x0000000000000000000000000000000000000000", /the zero address/],
+    ] as const) {
+      const answered = await running.browser.post("/settings/payout-wallet", {
+        payout_wallet: address,
+      });
+
+      expect(answered.status, address).toBe(400);
+      const text = readable(answered.html);
+      expect(text, address).toMatch(said);
+      expect(text, address).toMatch(/not saved/i);
+      // Given back whole under the box, to be read against the wallet.
+      expect(answered.html.replaceAll(/<[^>]*>/g, ""), address).toContain(address);
+      expect(await paidInto(running), address).toBe(before);
+    }
+  });
+
+  it("tells a payout contract of the merchant's own, an earlier wallet's too, from another merchant's, which pays that merchant", async () => {
+    // The gateway refuses every recorded split alike. The words differ because
+    // a share paid into another merchant's contract becomes that merchant's,
+    // and one paid into the merchant's own comes back to them split again.
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    const { harnessed } = running;
+    const network = harnessed.runtime.config.payoutSplit;
+    const earlier = (await harnessed.gateway.payoutSplitsOf(harnessed.merchant.id)).inForce;
+    const other = await harnessed.gateway.registerMerchant();
+    await setPayoutWallet(
+      harnessed.runtime.store,
+      network,
+      other,
+      "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+      harnessed.runtime.clock(),
+    );
+    const theirs = (await harnessed.gateway.payoutSplitsOf(other)).inForce;
+    await running.browser.signIn();
+    // The test channel applies a change at once, so the first wallet's
+    // contract is now neither in force nor paid into.
+    await running.browser.post("/settings/payout-wallet", { payout_wallet: AS_A_WALLET_SHOWS_IT });
+    const said = async (address: string | undefined): Promise<string> =>
+      readable(
+        (await running.browser.post("/settings/payout-wallet", { payout_wallet: address ?? "" }))
+          .html,
+      );
+
+    const ofAnEarlierWallet = await said(earlier?.address);
+    const ofAnotherMerchant = await said(theirs?.address);
+
+    expect(ofAnEarlierWallet).toMatch(/one of your own payout contracts, not a wallet/);
+    expect(ofAnEarlierWallet).not.toMatch(/another merchant/);
+    expect(ofAnotherMerchant).toMatch(/another merchant's payout contract, not a wallet/);
+    expect(ofAnotherMerchant).toMatch(/go to that merchant/);
+    expect(ofAnotherMerchant).not.toMatch(/your own/);
+    expect(await paidInto(running)).toBe(AS_A_WALLET_SHOWS_IT);
+  });
+
+  it("draws the rest of Settings, and no transaction, where the payout cannot be built", async () => {
+    // A wallet saved before the rule existed, written straight into the store:
+    // its split pays Multicall3, a payout over it would hand the share to
+    // whoever calls Multicall3 next, and the builder refuses it. The merchant
+    // still needs the page, the control that signs every other device out and
+    // the box that replaces the wallet among it.
+    const running = await started({
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
+    const { harnessed } = running;
+    const network = harnessed.runtime.config.payoutSplit;
+    await setPayoutWallet(
+      harnessed.runtime.store,
+      network,
+      harnessed.merchant.id,
+      network.multicall3,
+      harnessed.runtime.clock(),
+    );
+    await running.browser.signIn();
+
+    const screen = await running.browser.get("/settings");
+
+    expect(screen.status).toBe(200);
+    expect(screen.html).not.toContain("<textarea");
+    const text = readable(screen.html);
+    expect(text).toMatch(/get your payout/i);
+    expect(text).toMatch(/could not build/i);
+    expect(text).toContain(SIGN_OUT_EVERY_OTHER_DEVICE);
+    expect(screen.html).toContain('name="payout_wallet"');
   });
 
   it("refuses an empty box and says what to paste into it", async () => {
@@ -3153,7 +3542,8 @@ describe("the orders screen", () => {
 
     expect(text).toContain("refund due");
     expect(text).toContain("1 order needs you");
-    expect(text).toContain("You return it from your own wallet");
+    // The whole price, though the split paid the merchant only their share.
+    expect(text).toContain("the full price, 8.00 USD");
     // `refund_due` is what a program branches on; a merchant reads a sentence.
     expect(text).not.toContain("refund_due");
   });
@@ -3223,6 +3613,23 @@ describe("the receipts screen", () => {
     expect(row.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/g)).toHaveLength(3);
     // The summary counts what it can stand behind.
     expect(text).toContain("Delivered or shipped 1 of 1 receipt");
+  });
+
+  it("says on Orders and Receipts about how much of a sale is the merchant's and how much Agentify's", async () => {
+    // The sale went into the merchant's payout split, which pays 99.9% to
+    // their wallet and 0.1% to Agentify when it is paid out.
+    const { browser, gateway, harnessed } = await started();
+    const itemId = await publish(gateway, roomCard);
+    await buyOverHttp(harnessed, gateway, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    await browser.signIn();
+
+    for (const path of ["/orders", "/receipts"]) {
+      const html = (await browser.get(path)).html;
+      const cell = /<td class="amount"[^>]*>([\s\S]*?)<\/td>/.exec(html)?.[1] ?? "";
+      expect(readable(cell), path).toBe("80.00 USD test ≈ 79.92 USD to you ≈ 0.08 USD to Agentify");
+    }
   });
 
   it("links each receipt to its transfer on the chain the money moved on", async () => {
@@ -4530,7 +4937,13 @@ describe("a page left open while another address signs in", () => {
 
     // These answer without a session, and the sign-out signs this browser out
     // whichever page it was pressed on.
-    const above = new Set(["/sign-in", "/sign-in/open", "/sign-out", "/woocommerce/callback"]);
+    const above = new Set([
+      "/sign-in",
+      "/sign-in/open",
+      "/sign-in/google",
+      "/sign-out",
+      "/woocommerce/callback",
+    ]);
     const behind = (await routesOf(running)).filter(
       ({ method, path }) => method === "post" && !above.has(path),
     );
@@ -4949,6 +5362,35 @@ describe("a wallet change waiting on the live deployment", () => {
     ]);
   });
 
+  it("keeps the payout transaction on the contract paid now while a change waits, and moves it once the change applies", async () => {
+    const running = await live();
+    await running.browser.signIn();
+    const merchantId = running.harnessed.merchant.id;
+    const { payoutSplit: network, payoutSplitNetworks: networks } =
+      running.harnessed.runtime.config;
+    const paidNowSplit = (await running.harnessed.gateway.payoutSplitsOf(merchantId)).inForce;
+    await aChangeWaits(running);
+    const waitingSplit = (await running.harnessed.gateway.payoutSplitsOf(merchantId)).pending;
+    const dataOn = (screen: Visit) =>
+      /<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(screen.html)?.[1];
+
+    const waiting = await running.browser.get("/settings");
+
+    expect(waitingSplit?.merchantWallet).toBe(WAITING);
+    const shown = waiting.html.replaceAll(/<[^>]*>/g, "");
+    expect(shown.slice(shown.indexOf("Waiting to replace it"))).toContain(waitingSplit?.address);
+    expect(dataOn(waiting)).toBe(
+      merchantPayout(network, paidNowSplit === null ? [] : [paidNowSplit], networks).data,
+    );
+
+    running.harnessed.advance(48 * 60 * 60 * 1_000);
+    const applied = await running.browser.get("/settings");
+
+    expect(dataOn(applied)).toBe(
+      merchantPayout(network, waitingSplit === null ? [] : [waitingSplit], networks).data,
+    );
+  });
+
   it("shows the address waiting, the moment it takes effect, and a control to cancel it", async () => {
     const running = await live();
     await running.browser.signIn();
@@ -5018,7 +5460,16 @@ describe("a wallet change waiting on the live deployment", () => {
           expected,
           {
             address: running.harnessed.merchant.wallet,
-            pending: { address: OVERTAKING, takesEffectAt: when + 48 * 60 * 60 * 1_000 },
+            split: payoutSplitFor(
+              running.harnessed.runtime.config.payoutSplit,
+              id,
+              running.harnessed.merchant.wallet,
+            ),
+            pending: {
+              address: OVERTAKING,
+              takesEffectAt: when + 48 * 60 * 60 * 1_000,
+              split: payoutSplitFor(running.harnessed.runtime.config.payoutSplit, id, OVERTAKING),
+            },
           },
           when,
         );
@@ -5147,7 +5598,11 @@ describe("a wallet change waiting on the live deployment", () => {
       await store.setPayoutWallet(
         merchant.id,
         merchant.payoutWallet,
-        { address: PAID, pending: null },
+        {
+          address: PAID,
+          split: payoutSplitFor(running.harnessed.runtime.config.payoutSplit, merchant.id, PAID),
+          pending: null,
+        },
         running.harnessed.now(),
       );
       await running.browser.signIn();

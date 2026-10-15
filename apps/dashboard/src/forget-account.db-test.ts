@@ -8,7 +8,15 @@ import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { connect, issueKey, PostgresStore, randomIds } from "@agentify/gateway";
+import {
+  connect,
+  issueKey,
+  PAYOUT_SPLIT_NETWORKS,
+  PostgresStore,
+  payoutSplitFor,
+  payoutSplitNetworkOf,
+  randomIds,
+} from "@agentify/gateway";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -64,7 +72,7 @@ if (databaseUrl === null) {
 } else {
   const connected = connect(databaseUrl);
   const pool = connected.pool;
-  const store = PostgresStore.over(connected.db, randomIds);
+  const store = PostgresStore.over(connected.db, TEST_NETWORK, randomIds);
   const messages: Message[] = [];
   const identity = identityFor(
     loadConfig({
@@ -320,6 +328,35 @@ if (databaseUrl === null) {
       expect(await countOf("dashboard_accounts", "id", person.id)).toBe(1);
       expect(await countOf("merchants", "id", merchantId)).toBe(1);
       expect(await countOf("cards", "merchant_id", merchantId)).toBe(1);
+    });
+
+    it("keeps the recorded splits of the merchant it removes", async () => {
+      // Money may still sit at a split after its merchant is gone, a stray
+      // transfer or a late settlement, and its parameters are nowhere else
+      // until its first payout.
+      const { merchantId } = await merchantAccount(EMAIL, []);
+      const network = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, TEST_NETWORK);
+      const wallet = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+      const split = payoutSplitFor(network, merchantId, wallet);
+      await store.setPayoutWallet(
+        merchantId,
+        { address: null, pending: null },
+        { address: wallet, split, pending: null },
+        Date.now(),
+      );
+      const before = (
+        await pool.query("select * from payout_splits where merchant_id = $1", [merchantId])
+      ).rows;
+      expect(before).toHaveLength(1);
+
+      const forgotten = await forget(EMAIL);
+
+      expect(forgotten.code, forgotten.output).toBe(0);
+      expect(forgotten.output).toContain(merchantId);
+      expect(await countOf("merchants", "id", merchantId)).toBe(0);
+      expect(
+        (await pool.query("select * from payout_splits where merchant_id = $1", [merchantId])).rows,
+      ).toStrictEqual(before);
     });
 
     it("forgets a person who never made a merchant, and says there was none", async () => {
