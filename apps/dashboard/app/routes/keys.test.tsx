@@ -193,4 +193,27 @@ describe("issuing a key where the page's script runs", () => {
     expect(await screen.findByText("Issue a key")).toBeTruthy();
     expect(document.body.textContent).not.toContain(SECRET);
   });
+
+  it("takes the secret off a page left the moment the secret is drawn", async () => {
+    // React runs a page's ordinary effects a turn after it draws, and a browser
+    // may leave the page inside that turn: here it is left as soon as the
+    // secret is on it.
+    keysPage({ listAfterIssue: "answers" });
+    let keptWithTheSecret: boolean | undefined;
+    const leaveOnSight = new MutationObserver(() => {
+      if (keptWithTheSecret !== undefined || !document.body.textContent?.includes(SECRET)) return;
+      window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
+      keptWithTheSecret = document.body.textContent.includes(SECRET);
+    });
+    leaveOnSight.observe(document.body, { characterData: true, childList: true, subtree: true });
+
+    fireEvent.change(await screen.findByLabelText("What this key is for"), {
+      target: { value: "the second worker" },
+    });
+    fireEvent.click(screen.getByText("Issue a key"));
+    await screen.findByText(/This is the key for "the second worker"/);
+    leaveOnSight.disconnect();
+
+    expect(keptWithTheSecret).toBe(false);
+  });
 });
