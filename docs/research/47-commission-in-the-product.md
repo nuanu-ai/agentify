@@ -111,9 +111,10 @@ Safe меняются без смены адреса, поэтому сплит�
 `0xf44Ac5860c13fDa0577305121f00cBa4d0B96541` в Base, его единственный
 подписант — аппаратный кошелёк владельца продукта
 `0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5` (подтвердил владелец продукта
-2026-10-15), и этот адрес входит в код константой сети Base. На тестовом канале кошелёк
-комиссии — обычный кошелёк `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`,
-который назвал владелец продукта 2026-10-15.
+2026-10-15), и этот адрес входит в код константой сети Base. На тестовом канале
+кошелёк комиссии — тот же аппаратный кошелёк владельца продукта,
+`0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5`: адрес счёта одинаков во всех
+сетях, и им распоряжается тот же ключ.
 
 ## Сплит мерчанта и реестр
 
@@ -640,10 +641,20 @@ commission-wallet` проходит в обеих сетях (раздел «К�
 таблица — TypeScript шлюза, а проверка — JavaScript ядра, которое кода шлюза
 не знает, поэтому запись Base держат тесты шлюза и эта команда, а не она.
 
-Кошелёк комиссии тестового канала уже назван: до первого `deploy-test` в коде
-стоял кошелёк A из опыта записки 39, а каждый сплит записывает кошелёк комиссии
-навсегда, поэтому его заменили до того, как тестовый канал записал хоть один
-сплит.
+Кошелёк комиссии тестового канала стал верным со второй попытки, и это урок.
+Первым в код попал адрес `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`, который
+оказался не счётом владельца продукта, а контрактом USDC компании Circle в сети
+Ethereum Sepolia: адрес скопировали со страницы токена в кошельке. В Base
+Sepolia по нему нет кода, поэтому проверка кошелька комиссии сочла его обычным
+кошельком, а чей он, не спросил никто. Ошибку нашёл прогон `pnpm smoke:split`
+2026-10-15: комиссия ушла на адрес, которым никто не владеет [проверено в
+сети]. Деньги были тестовые. Тестовый канал успел записать десять сплитов с
+этим адресом; их строки стёрты из реестра тестовой базы (на production ничего
+не трогали), адрес в коде заменён на счёт владельца продукта, и при следующем
+старте шлюз записал сплиты заново. Отсюда правило: адрес кошелька комиссии
+владелец продукта копирует с заголовка своего счёта, а не со страницы токена,
+и проверка кошелька комиссии считает обычным кошельком только адрес, у
+которого нет кода ни в одной из сетей, которые она читает.
 
 ## Проверка в основной сети до выпуска на живой канал
 
@@ -763,11 +774,19 @@ COMMISSION_SAFE_OWNERS=0x…,0x… pnpm commission-wallet
 `COMMISSION_SAFE_OWNERS` через запятую, в любом порядке. В Base Sepolia
 обычный кошелёк проходит, и команда так и пишет, что это обычный кошелёк;
 кошелёк с кодом в любой из сетей проверяется как Safe. Сеть, для которой в
-таблице нет записи, не проходит без единого чтения: продавать там нечем. Каждая
-проверка — одна строка `PASS` или `FAIL` с прочитанным, и команда выходит с
-кодом 1, если не прошла хоть одна: выпуск ждёт. `BASE_RPC_URL` и
-`BASE_SEPOLIA_RPC_URL` заменяют публичные узлы `https://mainnet.base.org` и
-`https://sepolia.base.org`.
+таблице нет записи, не проходит без единого чтения: продавать там нечем. Кроме
+того, по адресу кошелька комиссии каждой сети не должно быть кода ни в одной
+другой сети, которую команда читает, — в Base, Base Sepolia, Ethereum и
+Ethereum Sepolia: адрес контракта, скопированный не с той страницы, иначе
+сошёл бы за обычный кошелёк там, где у него кода нет. Перед этим чтением
+команда спрашивает у узла номер его сети, и узел, который не ответил или
+назвался не той сетью, проверку не проходит: молчание не считается «кода нет».
+Каждая проверка — одна строка `PASS` или `FAIL` с прочитанным, и команда
+выходит с кодом 1, если не прошла хоть одна: выпуск ждёт. `BASE_RPC_URL`,
+`BASE_SEPOLIA_RPC_URL`, `ETHEREUM_RPC_URL` и `ETHEREUM_SEPOLIA_RPC_URL`
+заменяют публичные узлы `https://mainnet.base.org`, `https://sepolia.base.org`,
+`https://ethereum-rpc.publicnode.com` и
+`https://ethereum-sepolia-rpc.publicnode.com`.
 
 В обеих сетях проходит всё [проверено в сети 2026-10-15]: в Base кошелёк
 комиссии — Safe с одним владельцем, который назван в `COMMISSION_SAFE_OWNERS`,
@@ -778,19 +797,25 @@ COMMISSION_SAFE_OWNERS=0x…,0x… pnpm commission-wallet
 [commission-wallet] PASS eip155:8453 commission wallet: 0xf44Ac5860c13fDa0577305121f00cBa4d0B96541 holds 123 bytes of code
 [commission-wallet] PASS eip155:8453 Safe threshold: 1 signatures move the commission
 [commission-wallet] PASS eip155:8453 Safe owners: 0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5
+[commission-wallet] PASS eip155:8453 commission wallet on eip155:84532: 0xf44Ac5860c13fDa0577305121f00cBa4d0B96541 holds no code on eip155:84532
+[commission-wallet] PASS eip155:8453 commission wallet on eip155:1: 0xf44Ac5860c13fDa0577305121f00cBa4d0B96541 holds no code on eip155:1
+[commission-wallet] PASS eip155:8453 commission wallet on eip155:11155111: 0xf44Ac5860c13fDa0577305121f00cBa4d0B96541 holds no code on eip155:11155111
 [commission-wallet] PASS eip155:8453 factory: 0x6B9118074aB15142d7524E8c4ea8f62A3Bdb98f1 holds 3030 bytes of code
 [commission-wallet] PASS eip155:8453 implementation: 0x98254AeDb6B2c30b70483064367f0BA24ca86244 holds 11286 bytes of code
 [commission-wallet] PASS eip155:8453 warehouse: 0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8 holds 12146 bytes of code
 [commission-wallet] PASS eip155:8453 Multicall3: 0xcA11bde05977b3631167028862bE2a173976CA11 holds 3808 bytes of code
 [commission-wallet] PASS eip155:8453 USDC: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 holds 1852 bytes of code
 [commission-wallet] PASS eip155:84532 chain id: 84532
-[commission-wallet] PASS eip155:84532 commission wallet: 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238 holds no code: a plain wallet
+[commission-wallet] PASS eip155:84532 commission wallet: 0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5 holds no code: a plain wallet
+[commission-wallet] PASS eip155:84532 commission wallet on eip155:8453: 0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5 holds no code on eip155:8453
+[commission-wallet] PASS eip155:84532 commission wallet on eip155:1: 0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5 holds no code on eip155:1
+[commission-wallet] PASS eip155:84532 commission wallet on eip155:11155111: 0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5 holds no code on eip155:11155111
 [commission-wallet] PASS eip155:84532 factory: 0x6B9118074aB15142d7524E8c4ea8f62A3Bdb98f1 holds 3030 bytes of code
 [commission-wallet] PASS eip155:84532 implementation: 0x98254AeDb6B2c30b70483064367f0BA24ca86244 holds 11286 bytes of code
 [commission-wallet] PASS eip155:84532 warehouse: 0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8 holds 12146 bytes of code
 [commission-wallet] PASS eip155:84532 Multicall3: 0xcA11bde05977b3631167028862bE2a173976CA11 holds 3808 bytes of code
 [commission-wallet] PASS eip155:84532 USDC: 0x036CbD53842c5426634e7929541eC2318f3dCF7e holds 1798 bytes of code
-[commission-wallet] all 16 checks passed
+[commission-wallet] all 22 checks passed
 ```
 
 ## Порядок работ

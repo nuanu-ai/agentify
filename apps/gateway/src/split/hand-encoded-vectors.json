@@ -4,7 +4,7 @@
     "The salt is keccak256(abi.encode(string \"agentify.payout-split\", uint256 chainId, string merchantId)). Each split pays merchantWallet 999000 and then commissionWallet 1000 of 1000000, with no distribution incentive and no owner, through PullSplitFactory v2.2 0x6B9118074aB15142d7524E8c4ea8f62A3Bdb98f1 and its implementation 0x98254AeDb6B2c30b70483064367f0BA24ca86244.",
     "payouts: the data of aggregate3 calls to Multicall3, with the zero address as creator and distributor, Base Sepolia USDC 0x036CbD53842c5426634e7929541eC2318f3dCF7e as the token and the warehouse 0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8. merchant: for the first split below, createSplitDeterministic to the factory (allowFailure false), distribute to the split (true), withdraw of the merchant's wallet (true). merchantOverTwoWallets: the same for the first split and the last (the merchant's two wallets), each created (false) and distributed (true), then each wallet withdrawn once (true). operator: the experiment's S and S2 and then the last split, each created (false) and distributed (true), then each merchant wallet withdrawn once and the commission wallet last (all true). The same encoder computed all three; run again with a second, independently written Keccak-256 it gives the same bytes, and with the merchant payouts' distribute flags set to false it gives payouts that differ from these in those flag words alone.",
     "The last split pays the test channel's commission wallet the product owner chose; its address was computed by a second hand-written encoder with its own Keccak-256 and confirmed on 2026-10-15 by a read-only call of the factory's predictDeterministicAddress on Base Sepolia.",
-    "The split on eip155:8453 that pays 0xf44Ac5860c13fDa0577305121f00cBa4d0B96541, the product owner's commission Safe on Base, was computed by the second hand-written encoder and confirmed on 2026-10-15 by a read-only call of the factory's predictDeterministicAddress on Base."
+    "The last split pays the test channel's commission wallet, the product owner's own account; its address was computed by a second hand-written encoder with its own Keccak-256 and confirmed on 2026-10-15 by a read-only call of the factory's predictDeterministicAddress on Base Sepolia."
   ],
   "salts": [
     {
@@ -63,8 +63,8 @@
       "network": "eip155:84532",
       "merchantId": "mch_0123456789abcdef0123456789abcdef",
       "merchantWallet": "0xde3F8C4422A7F8C94bce9Cc2Ec118665108148EF",
-      "commissionWallet": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-      "address": "0xd14ba909c540e9CB720619bD85eb7EdC882e5cC5"
+      "commissionWallet": "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5",
+      "address": "0xA6b13B1708508e9C700CEABE659455F523e219BB"
     }
   ],
   "payouts": {

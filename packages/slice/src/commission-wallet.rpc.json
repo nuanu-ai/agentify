@@ -4,7 +4,8 @@
     "Every eth_getCode answer that is not empty is cut to its first 32 bytes; the check asks only whether an address holds code. Nothing else is changed.",
     "On Base: the 0xSplits v2.2 factory, implementation and warehouse, Multicall3 and USDC; Base Sepolia's USDC address, which holds no code there; safe, the Safe that administers the bridged USDbC token on Base (threshold 3 of 6 owners); safeSingleton, the Safe 1.4.1 singleton, which answers getThreshold but not getOwners; feeDisburser, a proxy contract that answers neither; distributor, the Base Sepolia experiment's distributor, which holds no code on Base.",
     "On Base Sepolia: the same contracts with Base Sepolia's USDC; commission, the experiment's commission wallet, which holds no code; and safeSingleton, the Safe 1.4.1 singleton there, which answers getThreshold but not getOwners.",
-    "Recorded on 2026-10-15, from the same RPCs: on Base, eth_getCode and the Safe's getThreshold() and getOwners() at commissionSafe, the product owner's Safe 1.5.0 (123 bytes of proxy code, threshold 1, one owner); on Base Sepolia, eth_getCode at testChannelCommission, the test channel's commission wallet, which holds no code."
+    "Recorded on 2026-10-15, from the same RPCs: on Base, eth_getCode and the Safe's getThreshold() and getOwners() at commissionSafe, the product owner's Safe 1.5.0 (123 bytes of proxy code, threshold 1, one owner); on Base Sepolia, eth_getCode at testChannelCommission, the test channel's commission wallet, which holds no code.",
+    "Recorded on 2026-10-15, read-only, so that each commission wallet is read on every chain the check reads: from Ethereum (chain 1, https://ethereum-rpc.publicnode.com) and Ethereum Sepolia (chain 11155111, https://ethereum-sepolia-rpc.publicnode.com) their eth_chainId; eth_getCode there at commissionSafe and testChannelCommission, which hold no code on either; on Ethereum Sepolia also at ethereumSepoliaUsdc, Circle's USDC there, 1798 bytes of proxy code, and at safeSingleton, the Safe 1.4.1 singleton; eth_getCode at testChannelCommission on Base and at commissionSafe and ethereumSepoliaUsdc on Base Sepolia, none of which holds code."
   ],
   "addresses": {
     "eip155:8453": {
@@ -18,7 +19,8 @@
       "safeSingleton": "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762",
       "feeDisburser": "0x09C7bAD99688a55a2e83644BFAed09e62bDcCcBA",
       "distributor": "0xF029d915c69C1902bB09A86c801c8226825F265c",
-      "commissionSafe": "0xf44Ac5860c13fDa0577305121f00cBa4d0B96541"
+      "commissionSafe": "0xf44Ac5860c13fDa0577305121f00cBa4d0B96541",
+      "testChannelCommission": "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5"
     },
     "eip155:84532": {
       "factory": "0x6B9118074aB15142d7524E8c4ea8f62A3Bdb98f1",
@@ -28,7 +30,19 @@
       "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       "commission": "0xd111fcC29f658b2f53ee7BEA09f5Ccd7140Ee960",
       "safeSingleton": "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762",
-      "testChannelCommission": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+      "testChannelCommission": "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5",
+      "commissionSafe": "0xf44Ac5860c13fDa0577305121f00cBa4d0B96541",
+      "ethereumSepoliaUsdc": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+    },
+    "eip155:1": {
+      "commissionSafe": "0xf44Ac5860c13fDa0577305121f00cBa4d0B96541",
+      "testChannelCommission": "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5"
+    },
+    "eip155:11155111": {
+      "commissionSafe": "0xf44Ac5860c13fDa0577305121f00cBa4d0B96541",
+      "testChannelCommission": "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5",
+      "ethereumSepoliaUsdc": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+      "safeSingleton": "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762"
     }
   },
   "answers": {
@@ -191,6 +205,11 @@
             "latest"
           ],
           "result": "0x0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000100000000000000000000000036d44e40d127046b69e1163ef995fe8c7b159ca5"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5", "latest"],
+          "result": "0x"
         }
       ]
     },
@@ -264,8 +283,68 @@
         },
         {
           "method": "eth_getCode",
+          "params": ["0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5", "latest"],
+          "result": "0x"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0xf44Ac5860c13fDa0577305121f00cBa4d0B96541", "latest"],
+          "result": "0x"
+        },
+        {
+          "method": "eth_getCode",
           "params": ["0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", "latest"],
           "result": "0x"
+        }
+      ]
+    },
+    "eip155:1": {
+      "rpc": "https://ethereum-rpc.publicnode.com",
+      "exchanges": [
+        {
+          "method": "eth_chainId",
+          "params": [],
+          "result": "0x1"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0xf44Ac5860c13fDa0577305121f00cBa4d0B96541", "latest"],
+          "result": "0x"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5", "latest"],
+          "result": "0x"
+        }
+      ]
+    },
+    "eip155:11155111": {
+      "rpc": "https://ethereum-sepolia-rpc.publicnode.com",
+      "exchanges": [
+        {
+          "method": "eth_chainId",
+          "params": [],
+          "result": "0xaa36a7"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0xf44Ac5860c13fDa0577305121f00cBa4d0B96541", "latest"],
+          "result": "0x"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5", "latest"],
+          "result": "0x"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", "latest"],
+          "result": "0x60806040526004361061005a5760003560e01c80635c60da1b11610043578063"
+        },
+        {
+          "method": "eth_getCode",
+          "params": ["0x29fcB43b46531BcA003ddC8FCB67FFE91900C762", "latest"],
+          "result": "0x6080604052600436106101d15760003560e01c8063affed0e0116100f7578063"
         }
       ]
     }
