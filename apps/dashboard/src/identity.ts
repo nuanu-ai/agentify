@@ -174,6 +174,7 @@ const tokenHash = (token: string): string => createHash("sha256").update(token).
 
 export function identityFor(config: DashboardConfig, parts: IdentityParts = {}): Identity {
   const postman = parts.postman ?? postmanFor(config);
+  const reporting = config.registrationPostback !== null;
   const base = `${config.publicBaseUrl}${config.basePath}`;
   const originHeaders = new Headers({ origin: new URL(config.publicBaseUrl).origin });
   const sending = new AsyncLocalStorage<LinkSend>();
@@ -361,7 +362,9 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     // Whether this press makes the address's first verified account has to be
     // read before the component verifies it. Under the address's lock, a second
     // press waits here and then finds the account the first one verified.
+    // Switched off, a click asked for while reporting was on is kept no longer.
     const registering =
+      reporting &&
       claim.click !== undefined &&
       (await context.internalAdapter.findUserByEmail(claim.email))?.user.emailVerified !== true
         ? claim.click
