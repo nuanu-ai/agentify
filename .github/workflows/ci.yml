@@ -29,8 +29,7 @@ jobs:
           fetch-depth: 0
       - run: ./scripts/scan-secrets.sh . "$GITHUB_SHA"
 
-  # Source checks need no database or build output, so they run beside the
-  # database and build checks, in their own checkout.
+  # Static checks need no database or build output and run beside the tests.
   checks:
     name: checks
     needs: secret_scan
@@ -52,6 +51,25 @@ jobs:
       # Files, exports and dependencies nothing uses; `knip.ts` says what it
       # reads as used and what it leaves alone.
       - run: pnpm deadcode
+
+  # The offline suite needs only source and dependencies. It can start without
+  # waiting for the static checks, which produce no files the tests consume.
+  tests:
+    name: tests
+    needs: secret_scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
       - run: pnpm test
 
   # Database suites share one server and run in sequence because they empty

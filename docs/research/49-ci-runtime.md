@@ -115,3 +115,32 @@ configuration, and the secret-scan dependencies. Independent review found no
 dependency on output from the moved commands. `git diff --check` and the
 decision checks pass. Actionlint reports the same nine existing diagnostics
 about numeric service-port keys, with no new diagnostics.
+
+## Follow-up comparison plan
+
+The control for the next two steps is
+`5d7d608736c2158a7355ef47263a4fd5b9881692`, whose PR CI and Images runs pass.
+The product owner approves both steps, with a separate commit and measurement
+for each.
+
+Step 3 moves the unchanged `pnpm test` command into a separate job beside
+Biome, typecheck, and deadcode. Both jobs require the secret scan and install
+the same dependencies. The prediction is about 34 seconds less elapsed time
+if other job durations match the completed step-2 measurement: the database
+and build job would then determine completion at roughly four minutes.
+Another checkout and install add work even when elapsed time decreases.
+
+Step 4 reuses the web build already produced by `scanner:test:browser` in the
+same job. The documentation still builds before its unchanged browser test
+file runs. The standalone `docs:test:browser` command continues to build both
+applications for callers without an existing build. The prediction is about
+13 seconds less work in the browser job; total elapsed time may be unchanged
+if another job finishes last.
+
+Measure these pinned commits with the same temporary-tag and
+`workflow_dispatch` procedure. All jobs must pass, including the unchanged
+offline suite and all browser suites. Record each step's elapsed difference
+against its immediate predecessor and compare common-command variation.
+If variation exceeds the work removed, report the elapsed-time effect as
+inconclusive. Do not combine a reduction in work with a claim of the same
+reduction in total waiting time.
