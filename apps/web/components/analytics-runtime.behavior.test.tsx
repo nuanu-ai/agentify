@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 
-import { CONSENT_STORAGE_KEY, createConsentSnapshot } from "@agentify/analytics/browser";
+import {
+  CONSENT_POLICY_VERSION,
+  CONSENT_STORAGE_KEY,
+  createConsentSnapshot,
+} from "@agentify/analytics/browser";
 import { type BrowserAnalyticsConfig, CONSENT_CHANGED_EVENT } from "@agentify/consent";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -54,7 +58,7 @@ describe("a visit before and after the visitor's choice", () => {
 
     const allowed = createConsentSnapshot({
       policy: {
-        policyVersion: "test-policy",
+        policyVersion: CONSENT_POLICY_VERSION,
         requireOptInForProductAnalytics: true,
         requireOptInForAdsMeasurement: true,
       },

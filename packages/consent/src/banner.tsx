@@ -150,7 +150,7 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
 
   useEffect(() => {
     const current = readCurrentConsent(window.localStorage);
-    if (!current || current.policyVersion !== CONSENT_POLICY_VERSION) return;
+    if (!current) return;
     setProductAnalytics(current.categories.product_analytics);
     setAdsMeasurement(current.categories.ads_measurement);
     setVisible(false);

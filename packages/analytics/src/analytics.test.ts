@@ -1,6 +1,11 @@
 import { ANALYTICS_EVENT_NAMES, type AnalyticsEventName } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
-import { POSTHOG_BROWSER_OPTIONS } from "./browser-entry.js";
+import {
+  CONSENT_POLICY_VERSION,
+  CONSENT_STORAGE_KEY,
+  POSTHOG_BROWSER_OPTIONS,
+  readCurrentConsent,
+} from "./browser-entry.js";
 import {
   assertDestinationIsolation,
   buildMetaPayload,
@@ -177,6 +182,29 @@ describe("analytics privacy and dedup contracts", () => {
       }),
     ).rejects.toThrow("consent_not_recorded");
     expect(values.size).toBe(0);
+  });
+
+  it("reads a kept choice as no choice once the policy it was made under is not the current one", () => {
+    const kept = (policyVersion: string) => {
+      const snapshot = createConsentSnapshot({
+        policy: {
+          policyVersion,
+          requireOptInForAdsMeasurement: true,
+          requireOptInForProductAnalytics: true,
+        },
+        decisions: { product_analytics: true, ads_measurement: true },
+        source: "banner",
+      });
+      return {
+        getItem: (key: string) => (key === CONSENT_STORAGE_KEY ? JSON.stringify(snapshot) : null),
+        setItem: () => {},
+      };
+    };
+
+    expect(readCurrentConsent(kept(CONSENT_POLICY_VERSION))?.categories.product_analytics).toBe(
+      true,
+    );
+    expect(readCurrentConsent(kept("consent-v0.9.0"))).toBeUndefined();
   });
 
   it("prevents preview/test from using production destinations", () => {

@@ -1,11 +1,30 @@
 // @vitest-environment jsdom
 
-import { CONSENT_STORAGE_KEY, readCurrentConsent } from "@agentify/analytics/browser";
+import {
+  CONSENT_POLICY_VERSION,
+  CONSENT_STORAGE_KEY,
+  createConsentSnapshot,
+  readCurrentConsent,
+} from "@agentify/analytics/browser";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ConsentBanner } from "./banner.js";
+
+/** A choice as the banner keeps it, made under `policyVersion`. */
+const keptUnder = (policyVersion: string): string =>
+  JSON.stringify(
+    createConsentSnapshot({
+      policy: {
+        policyVersion,
+        requireOptInForAdsMeasurement: true,
+        requireOptInForProductAnalytics: true,
+      },
+      decisions: { product_analytics: true, ads_measurement: true },
+      source: "banner",
+    }),
+  );
 
 describe("consent persistence", () => {
   beforeEach(() => {
@@ -16,6 +35,19 @@ describe("consent persistence", () => {
   afterEach(() => {
     cleanup();
     window.localStorage.clear();
+  });
+
+  it("asks again a visitor whose choice was made under an earlier policy, and no one who chose under this one", async () => {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, keptUnder("consent-v0.9.0"));
+    render(<ConsentBanner brand="Agentify" />);
+    expect(screen.queryByRole("complementary", { name: "Privacy choices" })).not.toBeNull();
+    cleanup();
+
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, keptUnder(CONSENT_POLICY_VERSION));
+    render(<ConsentBanner brand="Agentify" />);
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Privacy choices" })).toBeNull(),
+    );
   });
 
   it("keeps optional analytics off and the banner visible when saving fails", async () => {
