@@ -72,6 +72,10 @@ if (databaseUrl === null) {
       AUTH_SECRET,
       PAYMENT_NETWORK: TEST_NETWORK,
       FACILITATOR_URL: "sandbox:scripted",
+      // Switched on, so a consented sign-in leaves a registration to forget.
+      REGISTRATION_POSTBACK_ENABLED: "true",
+      REGISTRATION_POSTBACK_KEY: ["qa", "synthetic", "postback", "key"].join("-"),
+      REGISTRATION_POSTBACK_URL: "http://127.0.0.1:4010/postback",
     }),
     {
       pool,

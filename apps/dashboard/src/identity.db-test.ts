@@ -90,22 +90,36 @@ if (databaseUrl === null) {
     }
   }
 
-  function config() {
+  function config(settings: Record<string, string> = {}) {
     return loadConfig({
       DATABASE_URL: identityDatabaseUrl,
       AUTH_SECRET: TEST_AUTH_SECRET,
       PAYMENT_NETWORK: "eip155:84532",
       FACILITATOR_URL: "sandbox:scripted",
+      ...settings,
     });
   }
 
-  function identityOn(messages: Message[], handover: "accepted" | "refused" = "accepted") {
-    return identityFor(config(), {
+  function identityOn(
+    messages: Message[],
+    handover: "accepted" | "refused" = "accepted",
+    settings: Record<string, string> = {},
+  ) {
+    return identityFor(config(settings), {
       pool,
       postman: async (message) => {
         messages.push(message);
         return handover;
       },
+    });
+  }
+
+  /** A laptop's dashboard with the report switched on, posting to a receiver of its own. */
+  function reportingOn(messages: Message[]) {
+    return identityOn(messages, "accepted", {
+      REGISTRATION_POSTBACK_ENABLED: "true",
+      REGISTRATION_POSTBACK_KEY: ["qa", "synthetic", "postback", "key"].join("-"),
+      REGISTRATION_POSTBACK_URL: "http://127.0.0.1:4010/postback",
     });
   }
 
@@ -807,7 +821,7 @@ if (databaseUrl === null) {
 
     it("leaves one pending registration with the click, the consent time and the wording when a consented link makes a new address's account", async () => {
       const messages: Message[] = [];
-      const identity = identityOn(messages);
+      const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default", CLICK);
       const pressedAt = Date.now();
 
@@ -836,9 +850,19 @@ if (databaseUrl === null) {
       expect(due).toBeLessThanOrEqual(Date.now());
     });
 
+    it("writes no registration when the link asked for while reporting was on is opened after it went off", async () => {
+      const messages: Message[] = [];
+      await reportingOn(messages).requestLink("person@example.com", "default", CLICK);
+
+      const opened = await identityOn(messages).openLink(tokenIn(messages[0] as Message));
+
+      expect(opened).toMatchObject({ status: "opened", person: { confirmed: true } });
+      expect(await registrations()).toStrictEqual([]);
+    });
+
     it("leaves no registration when the link was asked for without a click", async () => {
       const messages: Message[] = [];
-      const identity = identityOn(messages);
+      const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default");
 
       await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
@@ -851,7 +875,7 @@ if (databaseUrl === null) {
 
     it("writes no registration for an address that already has a verified account, even with a fresh consented click", async () => {
       const messages: Message[] = [];
-      const identity = identityOn(messages);
+      const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default");
       await identity.openLink(tokenIn(messages[0] as Message));
       await rewindLinkSends();
@@ -867,7 +891,7 @@ if (databaseUrl === null) {
 
     it("writes one registration for an address whose only account the operator made unverified, at its first verification", async () => {
       const messages: Message[] = [];
-      const identity = identityOn(messages);
+      const identity = reportingOn(messages);
       const made = await identity.make("person@example.com", MERCHANT);
       if (made === null) throw new Error("the account was not made");
       await identity.requestLink("person@example.com", "default", CLICK);
@@ -883,7 +907,7 @@ if (databaseUrl === null) {
 
     it("writes nothing for a token that opens nothing or for the landing page's read, and one registration for a link opened twice", async () => {
       const messages: Message[] = [];
-      const identity = identityOn(messages);
+      const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default", CLICK);
       const token = tokenIn(messages[0] as Message);
 
@@ -907,7 +931,7 @@ if (databaseUrl === null) {
 
     it("writes no registration for a report link opened by a new address", async () => {
       const messages: Message[] = [];
-      const identity = identityOn(messages);
+      const identity = reportingOn(messages);
       await identity.sendReportLink({
         operation: "send",
         email: "person@example.com",
@@ -933,7 +957,7 @@ if (databaseUrl === null) {
         // never be reported, and a registration without its account would
         // report somebody who never signed in.
         const messages: Message[] = [];
-        const identity = identityOn(messages);
+        const identity = reportingOn(messages);
         await identity.requestLink("person@example.com", "default", CLICK);
         const token = tokenIn(messages[0] as Message);
         await pool.query(`
@@ -971,8 +995,8 @@ if (databaseUrl === null) {
 
     it("makes one account and one registration when the same consented link is pressed twice at once", async () => {
       const messages: Message[] = [];
-      const one = identityOn(messages);
-      const two = identityOn(messages);
+      const one = reportingOn(messages);
+      const two = reportingOn(messages);
       await one.requestLink("person@example.com", "default", CLICK);
       const token = tokenIn(messages[0] as Message);
       await slowAccountInserts();
@@ -987,8 +1011,8 @@ if (databaseUrl === null) {
 
     it("makes one account and one registration when two consented links for one new address are opened at once", async () => {
       const messages: Message[] = [];
-      const one = identityOn(messages);
-      const two = identityOn(messages);
+      const one = reportingOn(messages);
+      const two = reportingOn(messages);
       await one.requestLink("person@example.com", "default", CLICK);
       await rewindLinkSends();
       await two.requestLink("person@example.com", "settings", ANOTHER_CLICK);
@@ -1012,7 +1036,7 @@ if (databaseUrl === null) {
 
     it("adds no registration and leaves the existing one as it was when a merchant is attached afterwards", async () => {
       const messages: Message[] = [];
-      const identity = identityOn(messages);
+      const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default", CLICK);
       const opened = await identity.openLink(tokenIn(messages[0] as Message));
       if (opened.status !== "opened") throw new Error("the consented link did not open");
@@ -1028,7 +1052,7 @@ if (databaseUrl === null) {
 
     it("removes the registration with an account deleted for privacy, and keeps another account's", async () => {
       const messages: Message[] = [];
-      const identity = identityOn(messages);
+      const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default", CLICK);
       await identity.openLink(tokenIn(messages[0] as Message));
       await identity.requestLink("bystander@example.com", "default", ANOTHER_CLICK);
@@ -1052,7 +1076,7 @@ if (databaseUrl === null) {
 
     it("still opens a link stored in the shape without a click, and writes no registration", async () => {
       const messages: Message[] = [];
-      const identity = identityOn(messages);
+      const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "settings", CLICK);
       await pool.query("update dashboard_verifications set value = $1", [
         JSON.stringify({ email: "person@example.com", destination: "settings", request: null }),
@@ -1069,7 +1093,7 @@ if (databaseUrl === null) {
 
     it("opens nothing and writes nothing for a stored click outside the closed set", async () => {
       const messages: Message[] = [];
-      const identity = identityOn(messages);
+      const identity = reportingOn(messages);
       await identity.requestLink("person@example.com", "default", CLICK);
       const token = tokenIn(messages[0] as Message);
       const dashboard = { email: "person@example.com", destination: "default", request: null };
@@ -1102,7 +1126,7 @@ if (databaseUrl === null) {
       // An unverified account has never been registered, so a row for it is a
       // broken invariant; writing over it or beside it would hide that.
       const messages: Message[] = [];
-      const identity = identityOn(messages);
+      const identity = reportingOn(messages);
       const made = await identity.make("person@example.com", MERCHANT);
       if (made === null) throw new Error("the account was not made");
       await pool.query(

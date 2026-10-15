@@ -7,23 +7,37 @@ import type { Message } from "./mail.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
-const config = loadConfig({
+const SETTINGS = {
   DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
   AUTH_SECRET: TEST_AUTH_SECRET,
   PAYMENT_NETWORK: "eip155:84532",
   FACILITATOR_URL: "sandbox:scripted",
+} as const;
+const config = loadConfig(SETTINGS);
+/** A laptop's dashboard with the report switched on, posting to a receiver of its own. */
+const reporting = loadConfig({
+  ...SETTINGS,
+  REGISTRATION_POSTBACK_ENABLED: "true",
+  REGISTRATION_POSTBACK_KEY: ["qa", "synthetic", "postback", "key"].join("-"),
+  REGISTRATION_POSTBACK_URL: "http://127.0.0.1:4010/postback",
 });
 
-function memoryIdentity(handed: "accepted" | "refused" = "accepted") {
-  const rows: Record<string, Record<string, unknown>[]> = {
+type MemoryRows = Record<string, Record<string, unknown>[]>;
+
+/** `rows` shares another identity's store, as two processes share a database. */
+function memoryIdentity(
+  handed: "accepted" | "refused" = "accepted",
+  configured = config,
+  rows: MemoryRows = {
     dashboard_accounts: [],
     dashboard_sessions: [],
     dashboard_credentials: [],
     dashboard_verifications: [],
     dashboard_link_sends: [],
-  };
+  },
+) {
   const messages: Message[] = [];
-  const store = identityFor(config, {
+  const store = identityFor(configured, {
     rows,
     postman: async (message) => {
       messages.push(message);
@@ -309,7 +323,7 @@ const registrationsIn = (rows: Record<string, Record<string, unknown>[]>) =>
 
 describe("the registration a consented link leaves for the tracker", () => {
   it("leaves one pending registration with the click, the consent time and the wording when a consented link makes a new address's account", async () => {
-    const { identity, messages, rows } = memoryIdentity();
+    const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default", CLICK);
     const pressedAt = Date.now();
 
@@ -334,10 +348,23 @@ describe("the registration a consented link leaves for the tracker", () => {
     expect(due).toBeLessThanOrEqual(Date.now());
   });
 
+  it("writes no registration when the link asked for while reporting was on is opened after it went off", async () => {
+    // Switched off, nothing about a click is kept past the press, whatever the
+    // link was asked for with.
+    const on = memoryIdentity("accepted", reporting);
+    await on.identity.requestLink("person@example.com", "default", CLICK);
+    const off = memoryIdentity("accepted", config, on.rows);
+
+    const opened = await off.identity.openLink(tokenIn(on.messages[0] as Message));
+
+    expect(opened).toMatchObject({ status: "opened", person: { confirmed: true } });
+    expect(registrationsIn(on.rows)).toStrictEqual([]);
+  });
+
   it("refuses to send a link carrying a click it could not read back, and sends or counts nothing", async () => {
     // The page checks the identifier before passing it; a click that reaches
     // this far malformed is a defect, and a link carrying it would open nothing.
-    const { identity, messages, rows } = memoryIdentity();
+    const { identity, messages, rows } = memoryIdentity("accepted", reporting);
 
     await expect(
       identity.requestLink("person@example.com", "default", { ...CLICK, id: "too-short" }),
@@ -349,7 +376,7 @@ describe("the registration a consented link leaves for the tracker", () => {
   });
 
   it("leaves no registration when the link was asked for without a click", async () => {
-    const { identity, messages, rows } = memoryIdentity();
+    const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default");
 
     await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
@@ -362,7 +389,7 @@ describe("the registration a consented link leaves for the tracker", () => {
   });
 
   it("writes no registration for an address that already has a verified account, even with a fresh consented click", async () => {
-    const { identity, messages, rows } = memoryIdentity();
+    const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default");
     await identity.openLink(tokenIn(messages[0] as Message));
     rewindLinkSends(rows);
@@ -377,7 +404,7 @@ describe("the registration a consented link leaves for the tracker", () => {
   });
 
   it("writes one registration for an address whose only account the operator made unverified, at its first verification", async () => {
-    const { identity, messages, rows, store } = memoryIdentity();
+    const { identity, messages, rows, store } = memoryIdentity("accepted", reporting);
     const made = await store.make("person@example.com", "mer_made");
     if (made === null) throw new Error("the account was not made");
     await identity.requestLink("person@example.com", "default", CLICK);
@@ -392,7 +419,7 @@ describe("the registration a consented link leaves for the tracker", () => {
   });
 
   it("writes nothing for a token that opens nothing: malformed, unknown or expired", async () => {
-    const { identity, messages, rows } = memoryIdentity();
+    const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default", CLICK);
     const verification = rows.dashboard_verifications?.[0];
     if (verification === undefined) throw new Error("the link was not stored");
@@ -408,7 +435,7 @@ describe("the registration a consented link leaves for the tracker", () => {
   });
 
   it("leaves one registration when the same consented link is opened twice", async () => {
-    const { identity, messages, rows } = memoryIdentity();
+    const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default", CLICK);
     const token = tokenIn(messages[0] as Message);
 
@@ -419,7 +446,7 @@ describe("the registration a consented link leaves for the tracker", () => {
   });
 
   it("writes nothing when the landing page reads a consented link's address", async () => {
-    const { identity, messages, rows } = memoryIdentity();
+    const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default", CLICK);
 
     expect(await identity.addressOfLink(tokenIn(messages[0] as Message))).toBe(
@@ -432,7 +459,7 @@ describe("the registration a consented link leaves for the tracker", () => {
   });
 
   it("writes no registration for a report link opened by a new address", async () => {
-    const { messages, rows, store } = memoryIdentity();
+    const { messages, rows, store } = memoryIdentity("accepted", reporting);
     await store.sendReportLink({
       operation: "send",
       email: "person@example.com",
@@ -450,7 +477,7 @@ describe("the registration a consented link leaves for the tracker", () => {
   });
 
   it("adds no registration and leaves the existing one as it was when a merchant is attached afterwards", async () => {
-    const { identity, messages, rows } = memoryIdentity();
+    const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default", CLICK);
     const opened = await identity.openLink(tokenIn(messages[0] as Message));
     if (opened.status !== "opened") throw new Error("the consented link did not open");
@@ -465,7 +492,7 @@ describe("the registration a consented link leaves for the tracker", () => {
   });
 
   it("removes the registration with an account deleted for privacy, and keeps another account's", async () => {
-    const { identity, messages, rows, store } = memoryIdentity();
+    const { identity, messages, rows, store } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default", CLICK);
     await identity.openLink(tokenIn(messages[0] as Message));
     await identity.requestLink("bystander@example.com", "default", ANOTHER_CLICK);
@@ -488,7 +515,7 @@ describe("the registration a consented link leaves for the tracker", () => {
   });
 
   it("still opens a link stored in the shape without a click, and writes no registration", async () => {
-    const { identity, messages, rows } = memoryIdentity();
+    const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "settings", CLICK);
     const verification = rows.dashboard_verifications?.[0];
     if (verification === undefined) throw new Error("the link was not stored");
@@ -510,7 +537,7 @@ describe("the registration a consented link leaves for the tracker", () => {
   it("opens nothing and writes nothing for a stored click outside the closed set", async () => {
     // A row holding a click this file would not have written was not written by
     // it, and opens nothing rather than reporting somebody else's click.
-    const { identity, messages, rows } = memoryIdentity();
+    const { identity, messages, rows } = memoryIdentity("accepted", reporting);
     await identity.requestLink("person@example.com", "default", CLICK);
     const token = tokenIn(messages[0] as Message);
     const dashboard = { email: "person@example.com", destination: "default", request: null };
@@ -557,7 +584,7 @@ describe("the registration a consented link leaves for the tracker", () => {
   it("fails the press loudly and spends nothing when the account already holds a registration it could not have", async () => {
     // An unverified account has never been registered, so a row for it is a
     // broken invariant; writing over it or beside it would hide that.
-    const { identity, messages, rows, store } = memoryIdentity();
+    const { identity, messages, rows, store } = memoryIdentity("accepted", reporting);
     const made = await store.make("person@example.com", "mer_made");
     if (made === null) throw new Error("the account was not made");
     const planted = {
