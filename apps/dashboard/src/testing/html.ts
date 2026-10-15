@@ -69,7 +69,11 @@ export const shownMarkIn = (html: string): string | undefined =>
 export interface ServedForm {
   readonly method: string;
   readonly action: string;
-  /** Each input that carries a name, with the value it was served with. */
+  /**
+   * Each input that carries a name, with the value it was served with, as the
+   * browser would send the form untouched: a box counts only where it is
+   * served ticked.
+   */
   readonly fields: ReadonlyMap<string, string>;
   /**
    * Each button that submits the form, with the name and value it adds to what
@@ -96,7 +100,9 @@ export const formsIn = (html: string): ServedForm[] =>
     const fields = new Map<string, string>();
     for (const [, input = ""] of inside.matchAll(/<input\b([^>]*)>/gi)) {
       const name = attribute(input, "name");
-      if (name !== undefined) fields.set(name, attribute(input, "value") ?? "");
+      const box = /^(checkbox|radio)$/i.test(attribute(input, "type") ?? "");
+      if (box && !/\schecked(?:=""|\s|\/|$)/i.test(input)) continue;
+      if (name !== undefined) fields.set(name, attribute(input, "value") ?? (box ? "on" : ""));
     }
     const presses = [...inside.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)]
       .filter(([, tag = ""]) => (attribute(tag, "type") ?? "submit").toLowerCase() === "submit")

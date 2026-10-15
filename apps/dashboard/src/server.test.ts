@@ -1332,6 +1332,54 @@ describe("the box that tells the ad tracker an ad's visitor signed up", () => {
     expect(formTo(offeredAgain.html, "post", "/sign-in")?.fields.get("clickid")).toBe(CLICK);
   });
 
+  it("shows the box with its sentence beside the button that sends another link, ticked as it was", async () => {
+    // Another link is asked for from this page, so what it asks with has to
+    // be on this page to be seen.
+    const running = await started({ dashboard: REPORTING });
+
+    const ticked = await running.browser.post("/sign-in", {
+      email: FRESH.email,
+      clickid: CLICK,
+      ads_consent: "yes",
+    });
+    const unticked = await (await running.another()).post("/sign-in", {
+      email: OTHER,
+      clickid: CLICK,
+    });
+
+    expect(consentBoxIn(ticked.html)).toStrictEqual({ ticked: true });
+    expect(consentBoxIn(unticked.html)).toStrictEqual({ ticked: false });
+    expect(readable(ticked.html)).toContain(ADS_CONSENT.sentence);
+    expect(linksIn(ticked.html)).toContain("/privacy#processors");
+  });
+
+  it("asks for the next link with the box as it was left on that page: ticked, the click and the consent; unticked, the click alone", async () => {
+    const running = await started({ dashboard: REPORTING });
+
+    for (const [email, kept] of [
+      ["left-ticked@example.com", true],
+      ["unticked-there@example.com", false],
+    ] as const) {
+      const visitor = await running.another();
+      const asked = await visitor.post("/sign-in", { email, clickid: CLICK, ads_consent: "yes" });
+      const resend = [...(formTo(asked.html, "post", "/sign-in")?.fields ?? [])];
+      rewindLinkSends(running.rows);
+
+      const again = await visitor.post(
+        "/sign-in",
+        Object.fromEntries(resend.filter(([name]) => kept || name !== "ads_consent")),
+      );
+
+      expect(again.status, email).toBe(202);
+      expect(formTo(again.html, "post", "/sign-in")?.fields.get("clickid"), email).toBe(CLICK);
+      expect(consentBoxIn(again.html), email).toStrictEqual({ ticked: kept });
+      await openLatest(running, visitor);
+    }
+    const ticked = await running.identity.byEmail("left-ticked@example.com");
+    expect(registrationsIn(running)).toMatchObject([{ accountId: ticked?.id, clickId: CLICK }]);
+    expect(registrationsIn(running)).toHaveLength(1);
+  });
+
   it("carries the click without a consent into the next link when the box was left unticked", async () => {
     const running = await started({ dashboard: REPORTING });
     const asked = await running.browser.post("/sign-in", { email: FRESH.email, clickid: CLICK });
