@@ -424,7 +424,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             "Operational logs: 14 days, without email, raw IP, secrets, or full URL query.",
             "Expired or used registration intents and legacy verification tokens: the executable retention cleanup removes them after 7 days.",
             "Unverified email: the same idempotent cleanup irreversibly anonymizes it after 30 days by default.",
-            "Ad click identifier from sign-up: kept with the sign-in link, which works for an hour, until the link is used, or, if it never is, until the first request for a sign-in link made 7 days or more after it expired. If the link registers you and you confirm the report, it is kept until the tracker accepts or refuses the report or a day of attempts has passed, then erased, while the time the box was ticked and the version of its wording stay with your account; otherwise nothing about the click is kept once you sign in.",
+            "Ad click identifier from sign-up: kept with the sign-in link, which works for an hour, until the link is used, or, if it never is, cleared from 7 days after the link expired. If the link registers you and you confirm the report, it is kept until the tracker accepts or refuses the report or a day of attempts has passed, then erased, while the time the box was ticked and the version of its wording stay with your account; otherwise nothing about the click is kept once you sign in.",
             "Raw analytics events: 13 months.",
             "Structured scan/check/fingerprint dataset: 24 months, then review or anonymization.",
           ],
