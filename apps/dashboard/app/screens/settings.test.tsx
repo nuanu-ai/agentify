@@ -45,7 +45,8 @@ import { PayoutWalletPanel, SettingsScreen } from "./settings.js";
  * As the provider does, it keeps one session with its window for the whole
  * page: a disconnection begins a new one, an answer to a request made in an
  * earlier session can no longer be read (4100), and such a failure itself
- * disconnects the provider.
+ * disconnects the provider. Each test gets a provider of its own, as each
+ * page load does.
  */
 const coinbase = vi.hoisted(() => ({
   opened: true,
@@ -64,11 +65,12 @@ const coinbase = vi.hoisted(() => ({
   loses: undefined as string | undefined,
   chain: "0x2105",
   sent: [] as Readonly<{ chainId: string; calls: readonly unknown[] }>[],
+  provider: undefined as Wallet | undefined,
 }));
 
 vi.mock("../wallet/coinbase.js", async () => {
   const requests = await import("../wallet/requests.js");
-  const wallet: Wallet = {
+  const provider = (): Wallet => ({
     async disconnect() {
       coinbase.remembered = null;
       coinbase.session += 1;
@@ -131,12 +133,13 @@ vi.mock("../wallet/coinbase.js", async () => {
       }
       throw { code: 4200, message: `Unsupported method ${method}` };
     },
-  };
+  });
   return {
     ...requests,
     coinbaseWallet: () => {
       if (!coinbase.opened) throw new Error("Failed to fetch dynamically imported module");
-      return wallet;
+      coinbase.provider ??= provider();
+      return coinbase.provider;
     },
   };
 });
@@ -278,6 +281,7 @@ afterEach(() => {
     holding: 0,
     held: [],
     loses: undefined,
+    provider: undefined,
     declines: undefined,
     breaks: undefined,
     chain: "0x2105",
@@ -890,6 +894,25 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     expect(screen.getByText(WALLET_WORDS.connectLost)).toBeTruthy();
   });
 
+  it("says its answer was lost, not the browser's words, when a payout press overtook it and the answer failed", async () => {
+    coinbase.holding = 1;
+    const W = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: WALLET_WORDS.payOut }));
+    });
+    await waitFor(() => expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy());
+
+    await act(async () => {
+      coinbase.held[0]?.fail();
+    });
+
+    expect(screen.getByText(WALLET_WORDS.connectLost)).toBeTruthy();
+  });
+
   it("takes the refusal of an earlier address off the box it fills, so it is not read out against the new one", async () => {
     const refused = "That is not an address.";
     render(
@@ -1117,6 +1140,41 @@ describe("sending the payout from a Coinbase Wallet", () => {
     });
 
     expect(screen.queryByText(/did not send the payout/)).toBeNull();
+    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+  });
+
+  it("says it does not know, not that nothing was sent, when the screen was drawn again while a payout waited", async () => {
+    coinbase.holding = 1;
+    const screenOf = () =>
+      routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />);
+    const { rerender } = render(screenOf());
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    rerender(<div />);
+    rerender(screenOf());
+    coinbase.declines = "eth_requestAccounts";
+
+    await press();
+    await act(async () => {
+      coinbase.held[0]?.accept();
+    });
+
+    expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
+    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+  });
+
+  it("says it does not know, not that nothing was sent, while an earlier payout press still waits", async () => {
+    coinbase.holding = 1;
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    coinbase.declines = "eth_requestAccounts";
+
+    await press();
+
+    expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
     expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
   });
 
