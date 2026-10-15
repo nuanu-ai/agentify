@@ -40,7 +40,6 @@ import type { Ids } from "../ports/clock.js";
 import type { Integration } from "../ports/store.js";
 
 export { loggedWhile } from "./logged.js";
-export { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "./split-networks.js";
 
 /** Identifiers a test can read: ord_1, item_1, env_3. */
 export const countedIds = (): Ids => {
