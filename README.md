@@ -320,6 +320,12 @@ kept apart for that reason:
   a hover's fetch serves the click, and the consent banner takes a choice
   without a reload. `pnpm scanner:test:start` starts that build the way its
   image does, with nothing installed beside it, and stops it.
+- Every `*:test:browser` suite drives Playwright's own Chromium on every
+  machine, the same build CI runs, though the runner's Linux fonts and system
+  still differ from a Mac's. `AGENTIFY_TEST_BROWSER=chrome pnpm scanner:test:browser`
+  runs a suite in the Google Chrome installed on the machine instead, which
+  presents itself as a person's Chrome and updates on its own, so its pass says
+  nothing about CI's.
 - Each surface's speed budget reads its build:
   `pnpm --filter @agentify/dashboard budget` and
   `pnpm --filter @agentify/web budget` fail when a page's first visit asks for
