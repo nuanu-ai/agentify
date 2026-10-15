@@ -366,6 +366,26 @@ if (databaseUrl === null) {
       expect((await onlyRow()).settled_at).not.toBeNull();
     });
 
+    it("gives up rather than schedule a try for the very moment the day ends", async () => {
+      const account = await registered(CLICK, 18 * HOUR);
+      // Four failures behind it, so the next wait is six hours: to the
+      // millisecond a day after the registration.
+      await pool.query(
+        "update dashboard_registration_postbacks set attempts = 4 where account_id = $1",
+        [account],
+      );
+      const { post } = tracker(503);
+
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
+
+      expect(await onlyRow()).toMatchObject({
+        click_id: null,
+        state: "given_up",
+        attempts: 5,
+        last_outcome: "http_503",
+      });
+    });
+
     it("gives up without posting a report found a day or more after the registration", async () => {
       await registered(CLICK, 24 * HOUR);
       const { post, received } = tracker(200);
@@ -425,6 +445,52 @@ if (databaseUrl === null) {
         `{"clickid":"${CLICKS[1]}","event":"reg"}`,
       ]);
       expect((received[1]?.at ?? 0) - (received[0]?.at ?? 0)).toBeGreaterThanOrEqual(1_100);
+    });
+
+    it("posts the report that has waited longest first", async () => {
+      const later = await registered(CLICKS[0]);
+      const sooner = await registered(CLICKS[1]);
+      await pool.query(
+        "update dashboard_registration_postbacks set next_attempt_at = $2 where account_id = $1",
+        [later, new Date(clock - MINUTE)],
+      );
+      await pool.query(
+        "update dashboard_registration_postbacks set next_attempt_at = $2 where account_id = $1",
+        [sooner, new Date(clock - 10 * MINUTE)],
+      );
+      const { post, received } = tracker(200, 200);
+
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
+
+      expect(received.map((request) => request.body)).toStrictEqual([
+        `{"clickid":"${CLICKS[1]}","event":"reg"}`,
+      ]);
+    });
+
+    it("leaves alone, without waiting for it, a report whose account is being deleted at that moment", async () => {
+      // Waiting would hold the lock every process shares for as long as the
+      // other transaction runs.
+      const account = await registered(CLICK);
+      const deleting = await otherPool.connect();
+      const { post, received } = tracker(200);
+      try {
+        await deleting.query("begin");
+        await deleting.query("delete from dashboard_accounts where id = $1", [account]);
+
+        const took = await Promise.race([
+          reportOnce({ pool, target: TARGET, fetch: post, now, wait }),
+          sleep(3_000).then(() => "still waiting"),
+        ]);
+
+        expect(took).toBe(false);
+        expect(received).toStrictEqual([]);
+        await deleting.query("commit");
+      } finally {
+        // A no-op once committed; otherwise the connection goes back clean.
+        await deleting.query("rollback");
+        deleting.release();
+      }
+      expect(await rows()).toStrictEqual([]);
     });
 
     it("never posts one report twice from two processes running at once, and spaces their posts too", async () => {

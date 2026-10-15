@@ -1193,6 +1193,29 @@ describe("the box that tells the ad tracker an ad's visitor signed up", () => {
     expect(registrationsIn(running)).toStrictEqual([]);
   });
 
+  it("counts only the ticked box's own answer as a consent, named once", async () => {
+    // A box drawn without its value would post "on"; anything else is not a
+    // press on this page's box.
+    const running = await started({ dashboard: REPORTING });
+    const answers = ["no", "on", "", "yes&ads_consent=yes"];
+
+    for (const [at, answer] of answers.entries()) {
+      const email = `ad-visitor-${at}@example.com`;
+      const visitor = await running.another();
+      const asked = await visitor.postRaw(
+        "/sign-in",
+        "application/x-www-form-urlencoded",
+        `email=${encodeURIComponent(email)}&clickid=${CLICK}&ads_consent=${answer}`,
+      );
+      expect(asked.status, answer).toBe(202);
+      expect(formTo(asked.html, "post", "/sign-in")?.fields.has("ads_consent"), answer).toBe(false);
+      await openLatest(running, visitor);
+      expect((await running.identity.byEmail(email))?.confirmed, answer).toBe(true);
+    }
+
+    expect(registrationsIn(running)).toStrictEqual([]);
+  });
+
   it("does nothing with a consent that arrives without a click it can read", async () => {
     const running = await started({ dashboard: REPORTING });
 
