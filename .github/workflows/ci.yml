@@ -29,10 +29,33 @@ jobs:
           fetch-depth: 0
       - run: ./scripts/scan-secrets.sh . "$GITHUB_SHA"
 
-  # Every check that needs the source, the dependencies or a database shares
-  # one checkout, one install and one database server, so setup is paid once.
-  # The jobs beside this one are split by what they need — a browser, the
-  # portal build, only files — never by which half of the product they check.
+  # Source checks need no database or build output, so they run beside the
+  # database and build checks, in their own checkout.
+  checks:
+    name: checks
+    needs: secret_scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec biome ci .
+      - run: pnpm typecheck
+      # Files, exports and dependencies nothing uses; `knip.ts` says what it
+      # reads as used and what it leaves alone.
+      - run: pnpm deadcode
+      - run: pnpm test
+
+  # Database suites share one server and run in sequence because they empty
+  # its tables. Checks of the built applications follow the build here.
   gate:
     name: gate
     needs: secret_scan
@@ -86,12 +109,6 @@ jobs:
             -c "create database agentify_scanner_migration_test"
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec biome ci .
-      - run: pnpm typecheck
-      # Files, exports and dependencies nothing uses; `knip.ts` says what it
-      # reads as used and what it leaves alone.
-      - run: pnpm deadcode
-      - run: pnpm test
       - run: pnpm test:db
         env:
           AGENTIFY_TEST_DATABASE_URL: postgresql://agentify:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_test
