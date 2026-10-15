@@ -272,15 +272,11 @@ export async function commissionWalletVerdicts(options: {
   readonly clientOf: (network: string) => PublicClient;
   readonly owners: Readonly<Record<string, readonly string[]>>;
 }): Promise<readonly Verdict[]> {
-  const ids = new Map<string, Promise<Read<number>>>();
   const chains = {
     read: options.chainsRead,
     clientOf: options.clientOf,
-    idOf: (network: string): Promise<Read<number>> => {
-      const asked = ids.get(network) ?? read(() => options.clientOf(network).getChainId());
-      ids.set(network, asked);
-      return asked;
-    },
+    idOf: (network: string): Promise<Read<number>> =>
+      read(() => options.clientOf(network).getChainId()),
   };
   const verdicts: Verdict[] = [];
   for (const network of options.networks) {
