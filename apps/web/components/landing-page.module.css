@@ -1,8 +1,5 @@
 .hero {
   padding-block: 64px 56px;
-}
-
-.heroGrid {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
   align-items: center;
@@ -136,10 +133,12 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 40px;
-  margin-top: 40px;
+  margin: 40px 0 0;
+  padding: 0;
+  list-style: none;
 }
 
-.steps article > span {
+.steps > li > span {
   color: var(--accent);
   font: 0.8125rem / 1.4 var(--font-mono);
 }
@@ -228,7 +227,7 @@
 }
 
 @media (max-width: 900px) {
-  .heroGrid {
+  .hero {
     grid-template-columns: 1fr;
     gap: 40px;
   }

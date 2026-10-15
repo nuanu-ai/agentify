@@ -373,8 +373,11 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.steps article {
+.steps > li {
   position: relative;
   border-top: 1px solid var(--line-strong);
   padding: 26px 10px 0 0;
@@ -756,7 +759,7 @@
     grid-template-columns: 1fr;
     gap: 35px;
   }
-  .steps article {
+  .steps > li {
     padding-right: 0;
   }
   .steps p {
