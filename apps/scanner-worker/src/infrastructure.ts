@@ -13,10 +13,8 @@ import {
 } from "@agentify/scanner-database";
 import { PgBoss } from "pg-boss";
 import {
-  type AdvisoryLockPool,
   AnalyticsOutboxRepository,
   createDestinationDeliverer,
-  createPartnerRateLimitedDeliverer,
   type SqlPool,
   startAnalyticsOutboxConsumer,
 } from "./analytics-outbox.js";
@@ -281,26 +279,6 @@ export async function startWorkerInfrastructure(
           onError: throttledErrorLog(logger, "analytics_outbox_cycle_failed"),
         })
       : () => {};
-  const stopPartnerConsumer = env.PARTNER_POSTBACK_ENABLED
-    ? startAnalyticsOutboxConsumer({
-        repository: new AnalyticsOutboxRepository(pool as unknown as SqlPool, ["partner_tracker"]),
-        deliver: createPartnerRateLimitedDeliverer(
-          pool as unknown as AdvisoryLockPool,
-          createDestinationDeliverer({
-            runtimeEnvironment: env.ANALYTICS_ENV,
-            partner: {
-              destinationEnvironment: "production",
-              enabled: true,
-              secret: env.PARTNER_POSTBACK_SECRET,
-            },
-          }),
-        ),
-        claimLimit: 1,
-        intervalMs: 1_100,
-        emitMetric: (metric) => emitWorkerMetric(logger, metric),
-        onError: throttledErrorLog(logger, "partner_outbox_cycle_failed"),
-      })
-    : () => {};
 
   let lastReadiness = "";
   const logReadinessTransition = (snapshot: WorkerReadinessSnapshot) => {
@@ -374,7 +352,6 @@ export async function startWorkerInfrastructure(
     stopBrowserJanitor();
     stopLostScanSweeper();
     stopAnalyticsConsumer();
-    stopPartnerConsumer();
     health.ready = false;
     await boss.stop({ graceful: true, timeout: 10_000 });
     await pool.end();
