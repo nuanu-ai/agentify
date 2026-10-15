@@ -38,8 +38,9 @@ describe("Google sign-in configuration", () => {
       clientSecret: google.GOOGLE_CLIENT_SECRET,
     });
     expect(
-      loadConfig(given({ ...google, PUBLIC_BASE_URL: "https://test.agentify.ad", COOKIE_SECURE: "true" }))
-        .google,
+      loadConfig(
+        given({ ...google, PUBLIC_BASE_URL: "https://test.agentify.ad", COOKIE_SECURE: "true" }),
+      ).google,
     ).not.toBeNull();
   });
 
@@ -66,11 +67,13 @@ describe("Google sign-in configuration", () => {
 
   it("requires HTTPS and secure cookies for Google on a public site", () => {
     expect(() =>
-      loadConfig(given({ ...google, PUBLIC_BASE_URL: "http://test.agentify.ad", COOKIE_SECURE: "true" })),
+      loadConfig(
+        given({ ...google, PUBLIC_BASE_URL: "http://test.agentify.ad", COOKIE_SECURE: "true" }),
+      ),
     ).toThrow(/PUBLIC_BASE_URL/);
-    expect(() => loadConfig(given({ ...google, PUBLIC_BASE_URL: "https://test.agentify.ad" }))).toThrow(
-      /COOKIE_SECURE/,
-    );
+    expect(() =>
+      loadConfig(given({ ...google, PUBLIC_BASE_URL: "https://test.agentify.ad" })),
+    ).toThrow(/COOKIE_SECURE/);
   });
 });
 
