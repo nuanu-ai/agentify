@@ -11,7 +11,8 @@
  * the wallet's window; on a shared browser that would put one merchant's
  * address into another's box. It also keeps one session with its window for
  * the whole page, so the disconnection a request starts with leaves an earlier
- * request still waiting unable to read its answer, which comes back `lost`.
+ * request still waiting unable to read its answer, which comes back `lost`, or
+ * as a failure with no code where the browser's cryptography refuses it.
  */
 
 import { getAddress, isAddress } from "viem";
