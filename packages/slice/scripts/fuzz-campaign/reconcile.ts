@@ -3,10 +3,9 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { OrderListSchema, ReceiptListSchema } from "../../packages/contracts/src/index.js";
+import { OrderListSchema, ReceiptListSchema } from "../../../../packages/contracts/src/index.js";
 
-const require = createRequire(new URL("../../packages/slice/package.json", import.meta.url));
-// biome-ignore lint/correctness/noUndeclaredDependencies: resolves slice's declared dependency.
+const require = createRequire(new URL("../../package.json", import.meta.url));
 const { createPublicClient, http, parseAbi, parseEventLogs } = require("viem");
 const rpc = createPublicClient({ transport: http("https://sepolia.base.org", { retryCount: 1 }) });
 assert.equal(await rpc.getChainId(), 84532);
@@ -25,7 +24,7 @@ const report: { at: string; chainId: number; merchants: unknown[]; buyerBalanceA
 for (const name of ["sdk", "woo"]) {
   const fixture = JSON.parse(
     readFileSync(
-      new URL(`../../.local/fuzz-campaign/${name}-merchant.json`, import.meta.url),
+      new URL(`../../../../.local/fuzz-campaign/${name}-merchant.json`, import.meta.url),
       "utf8",
     ),
   );
@@ -137,7 +136,7 @@ report.buyerBalanceAtomic = (
 ).toString();
 writeFileSync(
   new URL(
-    "../../docs/research/fuzz-campaign-2026-10-15/reconciliation-evidence.json",
+    "../../../../docs/research/fuzz-campaign-2026-10-15/reconciliation-evidence.json",
     import.meta.url,
   ),
   `${JSON.stringify(report, null, 2)}\n`,

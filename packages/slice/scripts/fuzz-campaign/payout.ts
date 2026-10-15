@@ -13,30 +13,33 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { PAYOUT_SPLIT_NETWORKS } from "../../apps/gateway/src/split/networks.js";
-import { type PayoutSplit, payoutSplitFor } from "../../apps/gateway/src/split/parameters.js";
-import { merchantPayout } from "../../apps/gateway/src/split/payout.js";
-import { type Ledger, play, type UsdcTransfer } from "../../packages/slice/src/split-ledger.js";
+import { PAYOUT_SPLIT_NETWORKS } from "../../../../apps/gateway/src/split/networks.js";
+import { type PayoutSplit, payoutSplitFor } from "../../../../apps/gateway/src/split/parameters.js";
+import { merchantPayout } from "../../../../apps/gateway/src/split/payout.js";
+import {
+  type Ledger,
+  play,
+  type UsdcTransfer,
+} from "../../../../packages/slice/src/split-ledger.js";
 
-const require = createRequire(new URL("../../packages/slice/package.json", import.meta.url));
-// biome-ignore lint/correctness/noUndeclaredDependencies: createRequire resolves slice's declared dependency.
+const require = createRequire(new URL("../../package.json", import.meta.url));
 const viem = require("viem");
 const { createPublicClient, createWalletClient, getAddress, http, parseAbi, parseEventLogs } = viem;
-// biome-ignore lint/correctness/noUndeclaredDependencies: createRequire resolves slice's declared dependency.
 const { privateKeyToAccount } = require("viem/accounts");
-// biome-ignore lint/correctness/noUndeclaredDependencies: createRequire resolves slice's declared dependency.
 const { baseSepolia } = require("viem/chains");
-// biome-ignore lint/correctness/noUndeclaredDependencies: createRequire resolves slice's declared dependency.
 const { estimateL1Fee } = require("viem/op-stack");
 
 const RPC = "https://sepolia.base.org";
 const CHAIN = 84532;
 const USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 const CAP = 500_000_000_000_000n;
-const local = fileURLToPath(new URL("../../.local/fuzz-campaign/", import.meta.url));
+const local = fileURLToPath(new URL("../../../../.local/fuzz-campaign/", import.meta.url));
 const budgetPath = `${local}/payout-budget.json`;
 const evidencePath = fileURLToPath(
-  new URL("../../docs/research/fuzz-campaign-2026-10-15/payout-evidence.json", import.meta.url),
+  new URL(
+    "../../../../docs/research/fuzz-campaign-2026-10-15/payout-evidence.json",
+    import.meta.url,
+  ),
 );
 const network = PAYOUT_SPLIT_NETWORKS["eip155:84532"];
 type Target = "sdk" | "woo";
@@ -518,7 +521,9 @@ async function main() {
           requests,
           reservations: budget.reservations,
         },
-        fileURLToPath(new URL("../../docs/research/fuzz-campaign-2026-10-15/", import.meta.url)),
+        fileURLToPath(
+          new URL("../../../../docs/research/fuzz-campaign-2026-10-15/", import.meta.url),
+        ),
       );
     };
     if (mode === "verify") {

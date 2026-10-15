@@ -18,32 +18,28 @@ import {
   AgentOrderStatusSchema,
   API_ROUTES,
   expandPath,
-} from "../../packages/contracts/src/index.js";
-import { createClient, type LiveOrder } from "../../packages/sdk/src/client.js";
+} from "../../../../packages/contracts/src/index.js";
+import { createClient, type LiveOrder } from "../../../../packages/sdk/src/client.js";
 
-const require = createRequire(new URL("../../packages/slice/package.json", import.meta.url));
-// biome-ignore lint/correctness/noUndeclaredDependencies: createRequire resolves slice's declared dependencies.
+const require = createRequire(new URL("../../package.json", import.meta.url));
 const { x402Client } = require("@x402/core/client");
-// biome-ignore lint/correctness/noUndeclaredDependencies: createRequire resolves slice's declared dependencies.
 const { registerExactEvmScheme } = require("@x402/evm/exact/client");
-// biome-ignore lint/correctness/noUndeclaredDependencies: createRequire resolves slice's declared dependencies.
 const { wrapFetchWithPayment, decodePaymentResponseHeader } = require("@x402/fetch");
-// biome-ignore lint/correctness/noUndeclaredDependencies: createRequire resolves slice's declared dependencies.
 const { privateKeyToAccount } = require("viem/accounts");
 const base = "https://test.agentify.ad";
-const local = fileURLToPath(new URL("../../.local/fuzz-campaign/", import.meta.url));
+const local = fileURLToPath(new URL("../../../../.local/fuzz-campaign/", import.meta.url));
 const scenario = process.argv[2];
 const isWoo = scenario === "woo-download";
 const evidencePath = fileURLToPath(
   new URL(
-    `../../docs/research/fuzz-campaign-2026-10-15/live-${isWoo ? "woo" : "sdk"}-evidence.json`,
+    `../../../../docs/research/fuzz-campaign-2026-10-15/live-${isWoo ? "woo" : "sdk"}-evidence.json`,
     import.meta.url,
   ),
 );
 const fixture = JSON.parse(readFileSync(`${local}/${isWoo ? "woo" : "sdk"}-merchant.json`, "utf8"));
 const content = readFileSync(
   new URL(
-    "../../deploy/woocommerce-lab/seed/downloads/gift-message-templates.txt",
+    "../../../../deploy/woocommerce-lab/seed/downloads/gift-message-templates.txt",
     import.meta.url,
   ),
   "utf8",

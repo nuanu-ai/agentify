@@ -94,6 +94,9 @@
       "informational": 1,
       "campaignFiles": "no diagnostics"
     },
-    "decisionLog": "29 unique decisions; check passed"
+    "decisionLog": "29 unique decisions; check passed",
+    "deadcode": "passed after registering manual campaign entry points in their dependency-owning workspace",
+    "campaignScriptTypes": "strict standalone check passed",
+    "relocatedPayoutInspect": "read-only TEST balance inspection passed; no new transaction"
   }
 }

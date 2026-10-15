@@ -7,7 +7,7 @@ const fixtures = ["sdk", "woo"].map((name) => ({
   name,
   ...JSON.parse(
     readFileSync(
-      new URL(`../../.local/fuzz-campaign/${name}-merchant.json`, import.meta.url),
+      new URL(`../../../../.local/fuzz-campaign/${name}-merchant.json`, import.meta.url),
       "utf8",
     ),
   ),
@@ -81,7 +81,10 @@ for (const fixture of fixtures) {
 }
 const report = { at: new Date().toISOString(), base, passed: true, calls, observations };
 writeFileSync(
-  new URL("../../docs/research/fuzz-campaign-2026-10-15/closeout-evidence.json", import.meta.url),
+  new URL(
+    "../../../../docs/research/fuzz-campaign-2026-10-15/closeout-evidence.json",
+    import.meta.url,
+  ),
   `${JSON.stringify(report, null, 2)}\n`,
 );
 console.log(JSON.stringify(report));

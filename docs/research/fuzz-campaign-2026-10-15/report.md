@@ -315,7 +315,7 @@ neither establishes failure recovery.
 
 ## Completed live SDK consumer flows
 
-The reusable [live script](../../../scripts/fuzz-campaign/live-sdk.ts) pins
+The reusable [live script](../../../packages/slice/scripts/fuzz-campaign/live-sdk.ts) pins
 TEST, Base Sepolia chain 84532, canonical test USDC, the allowed recipient and
 the accepted order quote. Before signing, it durably reserves the authorization
 under a process lock. The registered ceilings are forty authorizations,
@@ -368,7 +368,7 @@ Reservation includes an unpaid refusal and is not the actual transfer total.
 
 ## Chain reconciliation and deployed recovery
 
-The read-only [reconciliation script](../../../scripts/fuzz-campaign/reconcile.ts)
+The read-only [reconciliation script](../../../packages/slice/scripts/fuzz-campaign/reconcile.ts)
 and [ledger](reconciliation-evidence.json), rerun at 16:42:44 UTC after its final
 assertions, verify Base Sepolia chain 84532 and the canonical test-USDC token.
 Every receipt transaction succeeds and contains exactly one 10,000-unit token
@@ -417,7 +417,7 @@ that harness constraint is not a product defect.
 
 ## Verified merchant payouts and final spending
 
-The [payout script](../../../scripts/fuzz-campaign/payout.ts) uses the controlled
+The [payout script](../../../packages/slice/scripts/fuzz-campaign/payout.ts) uses the controlled
 merchant signer and the application's actual payout transaction builder.
 The [payout ledger](payout-evidence.json) records both reservations as
 `verified`: their receipts succeed, have nonzero block hashes matching the
@@ -554,6 +554,34 @@ mutation imports and a scratch jsdom path also require harness corrections.
 The first header probe uses the wrong path, and a direct runner cannot import
 the Vitest-dependent gateway fixture; neither attempt supplies product
 evidence. No such failure is included among the four confirmed defects.
+
+## Running the retained tools
+
+The case reports above give their exact test commands and seeds. The live
+utilities belong to the private `slice` workspace, which declares their
+payment and chain dependencies. They are manual entry points in the unused-code
+checker and remain separate from the offline unit command. The complete
+workspace type check, unused-code check and strict standalone script check
+pass after this registration.
+
+For a read-only payout observation from the repository root:
+
+```sh
+pnpm --filter @agentify/slice exec node --import tsx scripts/fuzz-campaign/payout.ts inspect all
+```
+
+`verify sdk`, `verify woo`, or `verify all` verifies a previously reserved
+transaction without constructing a wallet or signing. The other command
+variants are `execute sdk|woo|all`; they require the campaign merchant signer
+in the process environment and keep the original durable reservations.
+The `live-sdk.ts` script accepts `sync`, `async`, `confirm`, `refused`,
+`redelivery`, `debt` and `woo-download`. `reconcile.ts` performs keyed
+receipt-to-chain readback, while `closeout.ts` repeats the selected account
+context checks and pauses selling. Campaign fixture keys are now revoked, so
+keyed tools require owner-provisioned replacement access before another run.
+A reserved scenario or split cannot simply be executed again: inspect its
+existing outcome and retain its budget history.
+
 
 ## Evidence index and completion boundary
 
