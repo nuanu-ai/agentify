@@ -234,6 +234,47 @@ describe("a page of the documentation in Chromium", () => {
     await page.context().close();
   });
 
+  it("discovers one Latin sans face in the document for regular and semibold text", async () => {
+    const { page } = await visit("/docs/orders");
+    await page.evaluate(() => document.fonts.ready);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("DOM.enable");
+    await cdp.send("CSS.enable");
+    const { root } = await cdp.send("DOM.getDocument");
+
+    for (const [selector, weight] of [
+      [".doc > p:nth-of-type(2)", "400"],
+      [".doc h1", "600"],
+    ] as const) {
+      expect(
+        await page.locator(selector).evaluate((node) => getComputedStyle(node).fontWeight),
+      ).toBe(weight);
+      const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector });
+      const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
+      expect(
+        fonts.some(
+          (font) =>
+            font.isCustomFont &&
+            font.familyName.startsWith("Schibsted Grotesk") &&
+            font.glyphCount > 0,
+        ),
+      ).toBe(true);
+    }
+
+    const downloaded = await page.evaluate(() =>
+      performance
+        .getEntriesByType("resource")
+        .filter(
+          (entry) =>
+            /\/schibsted-grotesk[^/]*latin[^/]*\.woff2$/.test(new URL(entry.name).pathname) &&
+            !entry.name.includes("latin-ext"),
+        )
+        .map((entry) => (entry as PerformanceResourceTiming).initiatorType),
+    );
+    expect(downloaded).toEqual(["link"]);
+    await page.context().close();
+  });
+
   it("loads no code of a measuring service on a first visit, which waits for the visitor's choice", async () => {
     for (const script of firstVisitScriptsOfAPage()) {
       const code = await readFile(join(BUILT, script.replace(/^\/docs\//, "")), "utf8");

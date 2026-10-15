@@ -201,6 +201,19 @@ describe("a page in Chromium", () => {
 });
 
 describe("a page's first visit in Chromium", () => {
+  it("discovers the main text font from the document and downloads it once", async () => {
+    const { page } = await visit("/");
+    await page.evaluate(() => document.fonts.ready);
+    const fonts = await page.evaluate(() =>
+      performance
+        .getEntriesByType("resource")
+        .filter((entry) => /\/schibsted-grotesk-latin-wght-normal[^/]*\.woff2$/.test(entry.name))
+        .map((entry) => (entry as PerformanceResourceTiming).initiatorType),
+    );
+    expect(fonts).toEqual(["link"]);
+    await page.context().close();
+  });
+
   it.each([
     ["/", "routes/home"],
     ["/privacy", "routes/privacy"],
