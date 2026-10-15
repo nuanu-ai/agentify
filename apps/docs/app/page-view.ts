@@ -8,7 +8,11 @@
  */
 
 import type { ConsentSnapshot } from "@agentify/analytics/browser";
-import { type BrowserAnalyticsConfig, metaPixelOf, posthogOf } from "@agentify/consent";
+import {
+  type BrowserAnalyticsConfig,
+  metaPixelOf,
+  posthogOf,
+} from "@agentify/consent/destinations";
 
 export async function sendPageView(
   config: BrowserAnalyticsConfig,

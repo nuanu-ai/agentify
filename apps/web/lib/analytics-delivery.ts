@@ -7,7 +7,11 @@
  */
 
 import type { ConsentSnapshot } from "@agentify/analytics/browser";
-import { type BrowserAnalyticsConfig, metaPixelOf, posthogOf } from "@agentify/consent";
+import {
+  type BrowserAnalyticsConfig,
+  metaPixelOf,
+  posthogOf,
+} from "@agentify/consent/destinations";
 import type { AnalyticsEventName, Segment } from "@agentify/scanner-contracts";
 
 import {

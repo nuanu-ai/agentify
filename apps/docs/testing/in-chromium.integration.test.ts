@@ -222,6 +222,14 @@ describe("a page of the documentation in Chromium", () => {
     await page.context().close();
   });
 
+  it("loads no code of a measuring service on a first visit, which waits for the visitor's choice", async () => {
+    for (const script of firstVisitScriptsOfAPage()) {
+      const code = await readFile(join(BUILT, script.replace(/^\/docs\//, "")), "utf8");
+      expect(code, script).not.toContain("fbevents.js");
+      expect(code, script).not.toContain("api_host");
+    }
+  });
+
   it("draws every diagram of the orders page as a picture, running no diagram code", async () => {
     const { page, asked } = await visit("/docs/orders");
 

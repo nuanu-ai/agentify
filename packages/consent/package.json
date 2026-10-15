@@ -5,7 +5,8 @@
   "type": "module",
   "description": "One choice about measuring a visit for the whole origin: the consent banner and its preferences every surface that measures draws, and the measuring services a choice lets a page load",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./destinations": "./src/destinations.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
