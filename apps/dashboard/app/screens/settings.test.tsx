@@ -957,6 +957,27 @@ describe("sending the payout from a Coinbase Wallet", () => {
     expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy();
   });
 
+  it("never says nothing was sent after a payout went out, when a later press into the same window is closed", async () => {
+    coinbase.holding = 2;
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    for (const _ of [1, 2]) {
+      await act(async () => {
+        fireEvent.click(button());
+      });
+    }
+
+    await act(async () => {
+      coinbase.held[0]?.accept();
+    });
+    await waitFor(() => expect(coinbase.sent).toHaveLength(1));
+    await act(async () => {
+      coinbase.held[1]?.decline();
+    });
+
+    expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
+    expect(screen.getByText(WALLET_WORDS.payoutEarlierStands)).toBeTruthy();
+  });
+
   it("is not offered where there is no transaction to send", () => {
     render(
       routed(() => (
