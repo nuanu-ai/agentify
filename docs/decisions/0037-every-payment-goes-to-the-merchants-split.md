@@ -8,9 +8,8 @@ start there, and a production release of this code would stop commerce. The
 hold ends when the product owner's Safe exists on Base, its address is the Base
 entry of the gateway's network table, `pnpm commission-wallet` passes with its
 owners named, and this status is edited. The test channel's commission wallet
-in the code is the experiment's placeholder; every split records it for good,
-so the wallet the product owner names replaces it before any `deploy-test` of
-this code. At the release the wallets already set move to their splits
+is a plain wallet the product owner named on 2026-10-15; every split records
+it for good. At the release the wallets already set move to their splits
 unannounced, since nobody sells on the live channel.
 
 ## Context
