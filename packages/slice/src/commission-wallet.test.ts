@@ -149,20 +149,41 @@ describe("the pre-release check of the commission wallets", () => {
     );
   });
 
-  it("fails Base while the code names no commission wallet there, reading nothing", async () => {
+  it("passes the code's own table on both networks, Base's commission wallet a Safe with the product owner's one owner", async () => {
     const verdicts = await commissionWalletVerdicts({
       networks: [BASE, BASE_SEPOLIA],
-      table: { [BASE_SEPOLIA]: SEPOLIA_ENTRY },
+      table: PAYOUT_SPLIT_NETWORKS,
+      clientOf: (network) => answeringAs(network),
+      // The product owner's hardware wallet, confirmed by him on 2026-10-15.
+      owners: { [BASE]: ["0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5"] },
+    });
+
+    expect(verdicts.map((v) => [v.network, v.check, v.passed])).toStrictEqual([
+      [BASE, "chain id", true],
+      [BASE, "commission wallet", true],
+      [BASE, "Safe threshold", true],
+      [BASE, "Safe owners", true],
+      ...CONTRACTS_PASS.map(([check, passed]) => [BASE, check, passed]),
+      [BASE_SEPOLIA, "chain id", true],
+      [BASE_SEPOLIA, "commission wallet", true],
+      ...CONTRACTS_PASS.map(([check, passed]) => [BASE_SEPOLIA, check, passed]),
+    ]);
+    const on = (network: string, check: string) =>
+      verdicts.find((v) => v.network === network && v.check === check)?.saw;
+    expect(on(BASE, "commission wallet")).toContain(named(BASE, "commissionSafe"));
+    expect(on(BASE, "Safe threshold")).toMatch(/^1 /);
+    expect(on(BASE_SEPOLIA, "commission wallet")).toMatch(/plain wallet/);
+  });
+
+  it("fails a network the table names no payout split for, reading nothing", async () => {
+    const verdicts = await commissionWalletVerdicts({
+      networks: [BASE],
+      table: {},
       clientOf: (network) => answeringAs(network),
       owners: {},
     });
 
-    expect(
-      verdicts.filter((verdict) => verdict.network === BASE).map((v) => [v.check, v.passed]),
-    ).toStrictEqual([["the code table", false]]);
-    expect(
-      verdicts.filter((verdict) => verdict.network === BASE_SEPOLIA).every((v) => v.passed),
-    ).toBe(true);
+    expect(outcome(verdicts)).toStrictEqual([["the code table", false]]);
   });
 
   it("passes Base when its commission wallet is a Safe whose owners are exactly the ones named, in any order and spelling", async () => {
