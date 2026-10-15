@@ -337,9 +337,15 @@ describe("who an agent is told to pay", () => {
     // account, the seller's name, another chain) would name an address no
     // record of the rule could rebuild, and only a restart would notice.
     const { served, harnessed } = await started();
-    const golden = handEncoded.splits[0];
-    if (golden === undefined || golden.network !== "eip155:84532") {
-      throw new Error("the hand-encoded vectors have no split on the test chain first");
+    const golden = handEncoded.splits.find(
+      (split) =>
+        split.network === "eip155:84532" &&
+        split.commissionWallet === "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+    );
+    if (golden === undefined) {
+      throw new Error(
+        "the hand-encoded vectors have no split paying the test channel's commission wallet",
+      );
     }
     await harnessed.store.addMerchant({ id: golden.merchantId, name: "A shop" }, harnessed.now());
     const { secret } = await harnessed.gateway.issueMerchantKey(

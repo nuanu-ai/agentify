@@ -32,12 +32,11 @@ export interface PayoutSplitNetwork {
 export type PayoutSplitNetworks = Readonly<Record<string, PayoutSplitNetwork>>;
 
 /**
- * Stands in for the test channel's commission wallet until the product owner
- * names one: it is the wallet that took the commission in the Base Sepolia
- * experiment. Every split recorded names its commission wallet for good, so
- * this is replaced before the test channel records one.
+ * The test channel's commission wallet, chosen by the product owner. Every
+ * split recorded names it for good, so changing it is a new split for every
+ * merchant on the test channel, which nothing here does.
  */
-const BASE_SEPOLIA_COMMISSION_WALLET = "0xd111fcC29f658b2f53ee7BEA09f5Ccd7140Ee960";
+const BASE_SEPOLIA_COMMISSION_WALLET = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
 
 /**
  * 0xSplits v2.2 and Multicall3 are deployed at these addresses on Base and on

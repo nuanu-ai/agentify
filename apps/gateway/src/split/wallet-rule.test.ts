@@ -7,7 +7,7 @@
 import { checksummedAddressOf } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "../testing/split-networks.js";
-import { COMMISSION, IMPLEMENTATION, MERCHANT, ON_CHAIN, S, S2 } from "./fixture.js";
+import { IMPLEMENTATION, MERCHANT, ON_CHAIN, S, S2 } from "./fixture.js";
 import { payoutSplitNetworkOf } from "./networks.js";
 import { whyNotAPayoutWallet } from "./wallet-rule.js";
 
@@ -28,7 +28,11 @@ describe("a wallet the merchant's share could not come back from", () => {
 
   it.each([
     ["the zero address", "0x0000000000000000000000000000000000000000", "zero_address"],
-    ["the test chain's commission wallet", COMMISSION, "commission_wallet"],
+    [
+      "the test chain's commission wallet",
+      "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+      "commission_wallet",
+    ],
     ["the live chain's commission wallet", live.commissionWallet, "commission_wallet"],
     ["the factory the splits are made by", ON_CHAIN.factory, "split_factory"],
     ["the implementation every split runs", IMPLEMENTATION, "split_implementation"],
