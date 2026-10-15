@@ -8,7 +8,7 @@
  */
 
 import { Button } from "@agentify/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Coinbase Wallet's code, fetched when the pointer reaches a button or it takes
@@ -51,15 +51,33 @@ function useScriptRuns(): boolean {
   return runs;
 }
 
+/**
+ * The status of the latest press. A button is never held disabled while
+ * Coinbase Wallet answers, because its window can vanish without answering,
+ * as when a phone closes its tab, and a held button would then stay held; a
+ * second press is taken, and an earlier one that answers late is not shown.
+ */
+function useLatestPress(): [string, () => (said: string) => void] {
+  const [said, setSaid] = useState("");
+  const latest = useRef(0);
+  const press = () => {
+    latest.current += 1;
+    const mine = latest.current;
+    setSaid(WALLET_WORDS.waiting);
+    return (answer: string) => {
+      if (mine === latest.current) setSaid(answer);
+    };
+  };
+  return [said, press];
+}
+
 /** Fills the box whose id is `box` with the wallet's address and leaves saving to the merchant. */
 export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; box: string }>) {
   const runs = useScriptRuns();
-  const [waiting, setWaiting] = useState(false);
-  const [said, setSaid] = useState("");
+  const [said, press] = useLatestPress();
   if (!runs) return null;
   const ask = async () => {
-    setWaiting(true);
-    setSaid(WALLET_WORDS.waiting);
+    const answer = press();
     const asked = await coinbase()
       .then(({ askAddress, coinbaseWallet }) => askAddress(coinbaseWallet(chainId)))
       .catch(() => NOT_OPENED);
@@ -70,14 +88,13 @@ export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; bo
         field.focus();
       }
     }
-    setSaid(
+    answer(
       asked.kind === "address"
         ? WALLET_WORDS.addressInTheBox
         : asked.kind === "cancelled"
           ? WALLET_WORDS.connectClosed
           : WALLET_WORDS.connectFailed(asked.reason),
     );
-    setWaiting(false);
   };
   return (
     <div className="lede">
@@ -86,7 +103,6 @@ export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; bo
           <Button
             type="button"
             variant="secondary"
-            pending={waiting}
             onPointerEnter={() => void coinbase().catch(() => undefined)}
             onFocus={() => void coinbase().catch(() => undefined)}
             onClick={() => void ask()}
@@ -116,25 +132,22 @@ export function CoinbasePayout({
   payout,
 }: Readonly<{ chainId: number; payout: Readonly<{ to: string; data: string }> }>) {
   const runs = useScriptRuns();
-  const [waiting, setWaiting] = useState(false);
-  const [said, setSaid] = useState("");
+  const [said, press] = useLatestPress();
   if (!runs) return null;
   const send = async () => {
-    setWaiting(true);
-    setSaid(WALLET_WORDS.waiting);
+    const answer = press();
     const sent = await coinbase()
       .then(({ sendPayout, coinbaseWallet }) =>
         sendPayout(coinbaseWallet(chainId), chainId, payout),
       )
       .catch(() => NOT_OPENED);
-    setSaid(
+    answer(
       sent.kind === "sent"
         ? WALLET_WORDS.payoutSent
         : sent.kind === "cancelled"
           ? WALLET_WORDS.payoutClosed
           : WALLET_WORDS.payoutFailed(sent.reason),
     );
-    setWaiting(false);
   };
   return (
     <div className="lede">
@@ -143,7 +156,6 @@ export function CoinbasePayout({
         <p className="copy-row">
           <Button
             type="button"
-            pending={waiting}
             onPointerEnter={() => void coinbase().catch(() => undefined)}
             onFocus={() => void coinbase().catch(() => undefined)}
             onClick={() => void send()}
