@@ -26,8 +26,6 @@ export interface Failed {
 /** EIP-1193's code for a request the person turned down. */
 const DECLINED = 4001;
 
-const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
-
 const outcomeOf = (thrown: unknown): Cancelled | Failed => {
   const { code, message } = (thrown ?? {}) as { code?: unknown; message?: unknown };
   if (code === DECLINED) return { kind: "cancelled" };
@@ -39,26 +37,22 @@ const outcomeOf = (thrown: unknown): Cancelled | Failed => {
 
 /**
  * The first account the wallet names, which for Coinbase Wallet is the wallet
- * itself; anything that is not an address is refused rather than passed on.
+ * itself, in the spelling a wallet shows (EIP-55), the one the saved address is
+ * checked against by eye; anything that is not an address is refused rather
+ * than passed on.
  */
 const accountOf = async (wallet: Wallet): Promise<string> => {
   const accounts = await wallet.request({ method: "eth_requestAccounts" });
   const first = Array.isArray(accounts) ? (accounts[0] as unknown) : undefined;
-  if (typeof first !== "string" || !ADDRESS.test(first)) {
-    throw { message: "the wallet answered with no address" };
-  }
-  return first;
+  if (typeof first !== "string") throw { message: "the wallet answered with no address" };
+  return getAddress(first);
 };
 
-/**
- * The wallet's address in the spelling a wallet shows (EIP-55), which is the
- * spelling the saved address is checked against by eye.
- */
 export async function askAddress(
   wallet: Wallet,
 ): Promise<{ readonly kind: "address"; readonly address: string } | Cancelled | Failed> {
   try {
-    return { kind: "address", address: getAddress(await accountOf(wallet)) };
+    return { kind: "address", address: await accountOf(wallet) };
   } catch (thrown) {
     return outcomeOf(thrown);
   }

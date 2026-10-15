@@ -108,7 +108,7 @@ describe("sending the payout through the merchant's wallet", () => {
     expect(sent).toEqual([
       expect.objectContaining({
         chainId: "0x14a34",
-        from: CHECKSUMMED.toLowerCase(),
+        from: CHECKSUMMED,
         calls: [{ to: MULTICALL3, value: "0x0", data: DATA }],
       }),
     ]);
