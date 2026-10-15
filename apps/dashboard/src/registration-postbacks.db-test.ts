@@ -112,7 +112,9 @@ if (databaseUrl === null) {
     // Nothing about whose registration it was, and never the key, in any line
     // any of these tests made the code write.
     for (const line of told) {
-      for (const click of CLICKS) expect(line).not.toContain(click);
+      // Every click these tests plant has this form, the listed ones and any
+      // planted by one test alone.
+      expect(line).not.toMatch(/qa_click_/);
       expect(line).not.toContain(KEY);
       expect(line).not.toMatch(/@example\.com/);
       expect(line).not.toMatch(/acc_report_/);
