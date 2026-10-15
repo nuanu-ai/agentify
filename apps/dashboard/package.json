@@ -25,6 +25,7 @@
     "@agentify/scanner-contracts": "workspace:*",
     "@agentify/ui": "workspace:*",
     "@agentify/visual": "workspace:*",
+    "@base-org/account": "2.5.13",
     "@nuanu-ai/agentify-contracts": "workspace:*",
     "@react-router/express": "8.4.0",
     "@react-router/node": "8.4.0",
