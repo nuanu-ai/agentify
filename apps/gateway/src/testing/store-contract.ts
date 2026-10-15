@@ -23,9 +23,8 @@ import type {
   StoredOrder,
   StoredPayoutWallet,
 } from "../ports/store.js";
-import { payoutSplitNetworkOf } from "../split/networks.js";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../split/networks.js";
 import { type PayoutSplit, payoutSplitFor } from "../split/parameters.js";
-import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "./split-networks.js";
 
 /** The merchant almost everything here belongs to, because a card needs one. */
 const A = "mch_a";
@@ -36,8 +35,8 @@ const B = "mch_b";
 const NO_WALLET = { address: null, split: null, pending: null } as const;
 
 /** The two networks a registry row can name here: the test chain, and Base under a fixture's wallet. */
-const BASE_SEPOLIA = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:84532");
-const BASE = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453");
+const BASE_SEPOLIA = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532");
+const BASE = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:8453");
 
 /** Wallets with letters in them, in the checksummed spelling the caller hands the store. */
 const W1 = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";

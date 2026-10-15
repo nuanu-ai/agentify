@@ -19,11 +19,11 @@ import {
 import type { GalleryState, GallerySurface } from "@agentify/gallery";
 import {
   merchantPayout,
+  PAYOUT_SPLIT_NETWORKS,
   payoutSplitFor,
   payoutSplitNetworkOf,
   type RecordedPayoutSplit,
 } from "@agentify/gateway";
-import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "@agentify/gateway/testing";
 import {
   MerchantCardListSchema,
   type MerchantKey,
@@ -237,11 +237,7 @@ const MISTYPED = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAeD";
 
 const MERCHANT = idOf("mch", "Freeland");
 
-/**
- * Each channel's payout split as the gateway makes it. Base has no commission
- * wallet in the code yet, so the live examples stand on the tests' fixture
- * for Base.
- */
+/** Each channel's payout split as the gateway makes it. */
 const PAYOUT_NETWORKS: Readonly<Record<SurfaceMode, string>> = {
   live: "eip155:8453",
   test: "eip155:84532",
@@ -249,7 +245,7 @@ const PAYOUT_NETWORKS: Readonly<Record<SurfaceMode, string>> = {
 };
 
 const networkIn = (mode: SurfaceMode) =>
-  payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, PAYOUT_NETWORKS[mode]);
+  payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, PAYOUT_NETWORKS[mode]);
 
 const splitOf = (mode: SurfaceMode, wallet: string): RecordedPayoutSplit => ({
   ...payoutSplitFor(networkIn(mode), MERCHANT, wallet),
@@ -271,10 +267,7 @@ const splitsOf = (
     },
     inForce: wallet === null ? null : splitOf(mode, wallet),
     pending: pending === undefined ? null : splitOf(mode, pending),
-    payout:
-      paidOut.length === 0
-        ? null
-        : merchantPayout(network, paidOut, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE),
+    payout: paidOut.length === 0 ? null : merchantPayout(network, paidOut, PAYOUT_SPLIT_NETWORKS),
   };
 };
 

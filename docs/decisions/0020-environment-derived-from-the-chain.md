@@ -26,9 +26,7 @@ list Base. Adding a chain edits this decision and
 `packages/core/src/deployment/environment.ts`, and a listed chain starts only
 where ADR-0037 names its commission wallet, so a testnet without one, such as
 Ethereum Sepolia or Polygon Amoy, is not listed; Ethereum and Polygon mainnet,
-where we do not sell, are absent. Base is listed while the code names no
-commission wallet there yet, so until it does a live deployment does not start
-(ADR-0037).
+where we do not sell, are absent.
 
 Whether anything settles is a value of `FACILITATOR_URL`, never a flag beside
 it: `sandbox:scripted` selects a facilitator that verifies and settles against

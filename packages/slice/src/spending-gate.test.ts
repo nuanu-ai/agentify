@@ -16,7 +16,6 @@
 
 import { isTestnetChain, LIVE_CHAINS, TESTNET_CHAINS } from "@agentify/core";
 import { loadConfig, ScriptedFacilitator } from "@agentify/gateway";
-import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "@agentify/gateway/testing";
 import { describe, expect, it } from "vitest";
 import {
   type CatalogCard,
@@ -81,16 +80,13 @@ describe("the shared list", () => {
   it("makes all three say out loud that a live chain is a live chain", () => {
     for (const chain of LIVE_CHAINS) {
       expect(
-        loadConfig(
-          {
-            DATABASE_URL,
-            PAYMENT_NETWORK: chain,
-            FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
-            CDP_API_KEY_ID: "key-id",
-            CDP_API_KEY_SECRET: "secret",
-          },
-          SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
-        ).environment,
+        loadConfig({
+          DATABASE_URL,
+          PAYMENT_NETWORK: chain,
+          FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+          CDP_API_KEY_ID: "key-id",
+          CDP_API_KEY_SECRET: "secret",
+        }).environment,
       ).toBe("live");
       expect(whyNotThisNetwork(chain, false)).toMatch(/SMOKE_ALLOW_MAINNET/);
       expect(bootstrapRefusal(chain)).toMatch(/SMOKE_ALLOW_MAINNET/);
@@ -145,9 +141,7 @@ const seededKeyOpensTheDoor = async (chain: string): Promise<boolean> => {
       isTestnetChain(chain)
         ? { PAYMENT_NETWORK: chain }
         : { ...LIVE_SETTLEMENT, PAYMENT_NETWORK: chain },
-      SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
     ),
-    SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
   );
   try {
     const answered = await fetch(`${booted.baseUrl}/v0/cards`, {

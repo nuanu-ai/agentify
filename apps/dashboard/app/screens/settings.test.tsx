@@ -13,11 +13,11 @@ import { join } from "node:path";
 import type { SurfaceMode } from "@agentify/core";
 import {
   merchantPayout,
+  PAYOUT_SPLIT_NETWORKS,
   payoutSplitFor,
   payoutSplitNetworkOf,
   type RecordedPayoutSplit,
 } from "@agentify/gateway";
-import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "@agentify/gateway/testing";
 import { checksummedAddressOf, PayoutWalletSchema } from "@nuanu-ai/agentify-contracts";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
@@ -35,7 +35,7 @@ import { PayoutWalletPanel, SettingsScreen } from "./settings.js";
 const SHAPED = "0x0123456789abcdef0123456789abcdef01234567";
 const WAITING = checksummedAddressOf("0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed");
 
-/** Each channel as its deployment configures it; Base's commission wallet is a test fixture's. */
+/** Each channel as its deployment configures it. */
 const CHANNELS: Readonly<Record<SurfaceMode, Record<string, string>>> = {
   sandbox: { PAYMENT_NETWORK: "eip155:84532", FACILITATOR_URL: "sandbox:scripted" },
   test: { PAYMENT_NETWORK: "eip155:84532", FACILITATOR_URL: "https://x402.org/facilitator" },
@@ -48,7 +48,7 @@ const CHANNELS: Readonly<Record<SurfaceMode, Record<string, string>>> = {
 const MERCHANT = "mch_0123456789abcdef0123456789abcdef";
 
 const networkOf = (mode: SurfaceMode) =>
-  payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, CHANNELS[mode].PAYMENT_NETWORK ?? "");
+  payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, CHANNELS[mode].PAYMENT_NETWORK ?? "");
 
 /** The split the gateway records for this merchant's wallet on the mode's chain. */
 const splitOf = (mode: SurfaceMode, wallet: string): RecordedPayoutSplit => ({
@@ -84,7 +84,7 @@ const splitsFor = (
         ? { tooMany }
         : paidOut.length === 0
           ? null
-          : merchantPayout(network, paidOut, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE),
+          : merchantPayout(network, paidOut, PAYOUT_SPLIT_NETWORKS),
   };
 };
 
@@ -372,7 +372,7 @@ describe("the commission, before a merchant saves their first wallet", () => {
           rate: AT_THREE_PERCENT,
           inForce: split,
           pending: null,
-          payout: merchantPayout(network, [split], SPLIT_NETWORKS_WITH_A_FIXTURE_BASE),
+          payout: merchantPayout(network, [split], PAYOUT_SPLIT_NETWORKS),
         },
       }),
     );
@@ -505,7 +505,7 @@ describe("the payout instruction", () => {
     const built = merchantPayout(
       networkOf("test"),
       [splitOf("test", W)],
-      SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
+      PAYOUT_SPLIT_NETWORKS,
     ).data;
 
     expect(dataIn(html)).toBe(built);
@@ -530,8 +530,7 @@ describe("the payout instruction", () => {
     });
 
     expect(held).toBe(
-      merchantPayout(networkOf("test"), [splitOf("test", W)], SPLIT_NETWORKS_WITH_A_FIXTURE_BASE)
-        .data,
+      merchantPayout(networkOf("test"), [splitOf("test", W)], PAYOUT_SPLIT_NETWORKS).data,
     );
     expect(screen.getByRole("status").textContent).toBe("Copied.");
     Reflect.deleteProperty(navigator, "clipboard");
@@ -548,8 +547,7 @@ describe("the payout instruction", () => {
     expect(onLive).toMatch(/send this transaction on Base only/);
     expect(onLive).not.toMatch(/Base Sepolia|test ETH/);
     expect(dataIn(settingsPage({ mode: "live", wallet: W }))).toBe(
-      merchantPayout(networkOf("live"), [splitOf("live", W)], SPLIT_NETWORKS_WITH_A_FIXTURE_BASE)
-        .data,
+      merchantPayout(networkOf("live"), [splitOf("live", W)], PAYOUT_SPLIT_NETWORKS).data,
     );
   });
 

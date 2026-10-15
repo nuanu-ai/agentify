@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   isSandboxFacilitator,
@@ -8,20 +9,11 @@ import {
 import { nobodyAnnounces } from "./ports/announcer.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "./split/networks.js";
 import { startGateway } from "./start.js";
-import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "./testing/split-networks.js";
 
 const database = "postgres://agentify:secret@localhost:5432/agentify";
 
 /** The one variable that has no sensible default and must always be given. */
 const required = { DATABASE_URL: database };
-
-/**
- * `loadConfig` on the table with a fixture's Base entry, for the tests about a
- * live chain: the code's own table refuses Base until it has a commission
- * wallet there.
- */
-const loadOnBase = (environment: Record<string, string | undefined>) =>
-  loadConfig(environment, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE);
 
 /**
  * What the gateway said when it refused to start on this environment. Refusals
@@ -129,7 +121,7 @@ describe("loadConfig", () => {
       cdpApiKeySecret: null,
     });
 
-    const live = loadOnBase({
+    const live = loadConfig({
       ...required,
       FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
       PAYMENT_NETWORK: "eip155:8453",
@@ -203,7 +195,7 @@ describe("loadConfig", () => {
 
     it("still refuses Coinbase's facilitator with a credential set to nothing", () => {
       expect(() =>
-        loadOnBase({
+        loadConfig({
           ...required,
           PAYMENT_NETWORK: "eip155:8453",
           FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
@@ -595,7 +587,7 @@ describe("a seeded key belongs to this environment", () => {
     // Catches a laptop's `.env` seeding a live gateway with a key written down
     // in a repository.
     expect(() =>
-      loadOnBase({
+      loadConfig({
         ...required,
         PAYMENT_NETWORK: "eip155:8453",
         FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
@@ -620,7 +612,7 @@ describe("the environment is derived from the chain", () => {
 
   it("reads Base mainnet as a live environment", () => {
     expect(
-      loadOnBase({
+      loadConfig({
         ...required,
         PAYMENT_NETWORK: "eip155:8453",
         FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
@@ -644,22 +636,62 @@ describe("the environment is derived from the chain", () => {
   });
 });
 
-describe("a network the code names no commission wallet for", () => {
-  it("refuses to start on Base until Base's commission wallet is written into the code, among every other problem", () => {
-    // Every payment there would name a split paying 0.1% to a wallet nobody
-    // has chosen, and a split cannot be changed once it exists. The missing
-    // secret is there so the refusal has to list both: an operator fixing
-    // one problem per restart would learn of the wallet last.
-    const refused = refusalFor({
-      PAYMENT_NETWORK: "eip155:8453",
-      FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
-      CDP_API_KEY_ID: "key-id",
-    });
+describe("Base's commission wallet", () => {
+  const live = {
+    ...required,
+    PAYMENT_NETWORK: "eip155:8453",
+    FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+    CDP_API_KEY_ID: "key-id",
+    CDP_API_KEY_SECRET: "secret",
+  };
+
+  it("is the product owner's Safe wherever a gateway on Base is configured from its environment alone", () => {
+    expect(loadConfig(live).payoutSplit.commissionWallet).toBe(
+      "0xf44Ac5860c13fDa0577305121f00cBa4d0B96541",
+    );
+  });
+
+  it("is none of the addresses of the Base Sepolia experiment, whose keys others hold", () => {
+    const experiment = addressesIn(
+      JSON.parse(
+        readFileSync(new URL("./split/base-sepolia-experiment.json", import.meta.url), "utf8"),
+      ),
+    );
+    expect(experiment.size).toBeGreaterThan(5);
+    expect(experiment).not.toContain(loadConfig(live).payoutSplit.commissionWallet.toLowerCase());
+  });
+
+  it("is refused for want of one, among every other problem, on a table that names none", () => {
+    // A table without Base, as the code's was before its Safe existed: every
+    // payment would name a split paying a wallet nobody chose. The missing
+    // secret is there so the refusal has to list both.
+    const { CDP_API_KEY_SECRET, ...noSecret } = live;
+    let refused = "";
+    try {
+      loadConfig(noSecret, {
+        "eip155:84532": payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532"),
+      });
+    } catch (thrown) {
+      refused = thrown instanceof Error ? thrown.message : String(thrown);
+    }
 
     expect(refused).toMatch(/eip155:8453.*commission wallet/s);
     expect(refused).toMatch(/CDP_API_KEY_SECRET/);
   });
 });
+
+/** Every value in this document, and in what it holds, that is written as an address, in lower case. */
+function addressesIn(value: unknown): Set<string> {
+  const found = new Set<string>();
+  const walk = (inner: unknown): void => {
+    if (typeof inner === "string" && /^0x[0-9a-fA-F]{40}$/.test(inner))
+      found.add(inner.toLowerCase());
+    else if (Array.isArray(inner)) inner.forEach(walk);
+    else if (inner !== null && typeof inner === "object") Object.values(inner).forEach(walk);
+  };
+  walk(value);
+  return found;
+}
 
 describe("a live chain is allowed exactly one facilitator", () => {
   const live = {
@@ -671,20 +703,20 @@ describe("a live chain is allowed exactly one facilitator", () => {
   };
 
   it("starts on Coinbase's canonical facilitator with both credentials", () => {
-    expect(() => loadOnBase(live)).not.toThrow();
+    expect(() => loadConfig(live)).not.toThrow();
   });
 
   it("refuses the scripted facilitator, which takes payments that never happened", () => {
     const { CDP_API_KEY_ID, CDP_API_KEY_SECRET, ...noCredentials } = live;
     expect(() =>
-      loadOnBase({ ...noCredentials, FACILITATOR_URL: SANDBOX_FACILITATOR }),
+      loadConfig({ ...noCredentials, FACILITATOR_URL: SANDBOX_FACILITATOR }),
     ).toThrowError(/eip155:8453.*sandbox:scripted/s);
   });
 
   it("refuses the public x402 facilitator", () => {
     const { CDP_API_KEY_ID, CDP_API_KEY_SECRET, ...noCredentials } = live;
     expect(() =>
-      loadOnBase({ ...noCredentials, FACILITATOR_URL: "https://x402.org/facilitator" }),
+      loadConfig({ ...noCredentials, FACILITATOR_URL: "https://x402.org/facilitator" }),
     ).toThrowError(/eip155:8453.*x402\.org/s);
   });
 
@@ -693,17 +725,17 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // `.env` with only the network changed would otherwise start live, issue
     // csk_live_ keys and settle in the wrong place.
     const { FACILITATOR_URL, CDP_API_KEY_ID, CDP_API_KEY_SECRET, ...unnamed } = live;
-    expect(() => loadOnBase(unnamed)).toThrowError(/eip155:8453.*FACILITATOR_URL/s);
+    expect(() => loadConfig(unnamed)).toThrowError(/eip155:8453.*FACILITATOR_URL/s);
   });
 
   it("refuses Coinbase's facilitator without credentials", () => {
     const { CDP_API_KEY_ID, CDP_API_KEY_SECRET, ...noCredentials } = live;
-    expect(() => loadOnBase(noCredentials)).toThrowError(/CDP_API_KEY_ID and CDP_API_KEY_SECRET/);
+    expect(() => loadConfig(noCredentials)).toThrowError(/CDP_API_KEY_ID and CDP_API_KEY_SECRET/);
   });
 
   it("refuses Coinbase's facilitator over http, which puts a bearer token on the wire in the clear", () => {
     expect(() =>
-      loadOnBase({ ...live, FACILITATOR_URL: "http://api.cdp.coinbase.com/platform/v2/x402" }),
+      loadConfig({ ...live, FACILITATOR_URL: "http://api.cdp.coinbase.com/platform/v2/x402" }),
     ).toThrowError(/https:/);
   });
 
@@ -712,7 +744,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // anything. Refusing it would be an operator with a correct configuration
     // being told it is wrong.
     expect(() =>
-      loadOnBase({ ...live, FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402/" }),
+      loadConfig({ ...live, FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402/" }),
     ).not.toThrow();
   });
 
@@ -720,7 +752,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // Starts healthy, issues csk_live_ keys, and fails at the first buyer: the
     // gateway builds /verify and /settle under whatever base it was given.
     expect(() =>
-      loadOnBase({ ...live, FACILITATOR_URL: "https://api.cdp.coinbase.com/wrong" }),
+      loadConfig({ ...live, FACILITATOR_URL: "https://api.cdp.coinbase.com/wrong" }),
     ).toThrowError(/https:\/\/api\.cdp\.coinbase\.com\/platform\/v2\/x402/);
   });
 
@@ -729,7 +761,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // built, so every verify and settle would throw on a gateway that came up
     // healthy, and that refusal would print the password into the log.
     expect(() =>
-      loadOnBase({
+      loadConfig({
         ...live,
         FACILITATOR_URL: "https://someone:secret@api.cdp.coinbase.com/platform/v2/x402",
       }),
@@ -740,7 +772,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // Nothing listens on that port: the gateway would start, issue keys, and
     // find out at the first buyer.
     expect(() =>
-      loadOnBase({
+      loadConfig({
         ...live,
         FACILITATOR_URL: "https://api.cdp.coinbase.com:8443/platform/v2/x402",
       }),
@@ -752,7 +784,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // is the canonical endpoint spelled in full. Refusing it would be an
     // operator with a correct live configuration told it is wrong.
     expect(() =>
-      loadOnBase({
+      loadConfig({
         ...live,
         FACILITATOR_URL: "https://api.cdp.coinbase.com:443/platform/v2/x402",
       }),
@@ -763,7 +795,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // The laptop requires exactly that pairing, and it is what makes
     // `docker compose up` sell with no network, no wallet and no faucet.
     expect(() =>
-      loadOnBase({
+      loadConfig({
         ...required,
         PAYMENT_NETWORK: "eip155:84532",
         FACILITATOR_URL: SANDBOX_FACILITATOR,
