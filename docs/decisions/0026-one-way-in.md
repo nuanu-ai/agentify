@@ -19,7 +19,9 @@ The token, hashed and single-use, lives an hour; a spent, expired or unknown one
 is refused alike, and no answer says whether an address has an account or a
 report. Where a link leads is kept with its token, not in the link; one with no
 destination, or a dead one while signed in, goes to the person's start: their
-latest report if they have one and no merchant, else the dashboard.
+latest report if they have one and no merchant, else the dashboard. What is
+kept with a token may also carry an ad's click identifier that the person
+consented to have reported (ADR-0037).
 
 **2. One identity and one session, held by the dashboard.** Identity is Better
 Auth, a library in the dashboard's process on our PostgreSQL with telemetry off,
