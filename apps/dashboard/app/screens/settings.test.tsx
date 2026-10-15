@@ -43,6 +43,9 @@ const coinbase = vi.hoisted(() => ({
   opened: true,
   /** The first request is never answered, as when Coinbase's window vanished without saying so. */
   silentOnce: false,
+  /** The first request is answered only when `answerLate` is called, after later ones. */
+  lateOnce: false,
+  answerLate: undefined as (() => void) | undefined,
   account: "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed",
   declines: undefined as string | undefined,
   breaks: undefined as string | undefined,
@@ -57,6 +60,12 @@ vi.mock("../wallet/coinbase.js", async () => {
       if (coinbase.silentOnce) {
         coinbase.silentOnce = false;
         return new Promise(() => undefined);
+      }
+      if (coinbase.lateOnce) {
+        coinbase.lateOnce = false;
+        return new Promise((resolve) => {
+          coinbase.answerLate = () => resolve(["0x0000000000000000000000000000000000000bad"]);
+        });
       }
       if (method === coinbase.declines) throw { code: 4001, message: "User rejected the request." };
       if (method === coinbase.breaks) throw { code: -32603, message: "insufficient funds for gas" };
@@ -216,6 +225,8 @@ afterEach(() => {
   Object.assign(coinbase, {
     opened: true,
     silentOnce: false,
+    lateOnce: false,
+    answerLate: undefined,
     declines: undefined,
     breaks: undefined,
     chain: "0x2105",
@@ -781,6 +792,22 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     });
 
     await press(button());
+
+    expect(box().value).toBe(CHECKSUMMED);
+    expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy();
+  });
+
+  it("keeps what the latest press brought when an earlier press is answered after it", async () => {
+    coinbase.lateOnce = true;
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    await act(async () => {
+      fireEvent.click(button());
+    });
+    await press(button());
+
+    await act(async () => {
+      coinbase.answerLate?.();
+    });
 
     expect(box().value).toBe(CHECKSUMMED);
     expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy();
