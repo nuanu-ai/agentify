@@ -199,6 +199,11 @@ input {
   color: var(--muted);
 }
 
+/* Kept on the page while it says nothing, so what it says next is read out. */
+.search-none:empty {
+  padding: 0;
+}
+
 .search-reload {
   align-self: flex-start;
   margin: 0 20px 20px;

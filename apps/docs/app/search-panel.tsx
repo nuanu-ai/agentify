@@ -5,8 +5,9 @@
  * browser, so the search opens on it again after a move or a reload. The
  * input is a combobox over a list of results: up and down move through them,
  * Enter follows one, Escape or a click outside closes the panel, and Tab stays
- * inside it. An index that cannot be fetched says so and is asked for again
- * the next time the search opens.
+ * inside it; the result the arrows reach stays in sight, and what the search
+ * says of its state is read out. An index that cannot be fetched says so and
+ * is asked for again the next time the search opens.
  */
 
 import MiniSearch from "minisearch";
@@ -52,6 +53,22 @@ const keepQuery = (query: string): void => {
 
 /** A result's address inside the documentation: `/docs/money#x` is `/money#x`. */
 const inside = (id: string): string => id.replace(/^\/docs/, "") || "/";
+
+/**
+ * A result on the page being read is a move inside it, which hands the focus
+ * nowhere by itself, as a move to another page hands it to that page's
+ * heading: the focus goes to the result's own heading.
+ */
+const focusWithin = (id: string): void => {
+  const [path = "", anchor] = id.split("#");
+  if (path !== window.location.pathname) return;
+  requestAnimationFrame(() => {
+    const heading = anchor
+      ? document.getElementById(anchor)
+      : document.querySelector<HTMLElement>(".doc h1");
+    heading?.focus({ preventScroll: true });
+  });
+};
 
 const AROUND = 80;
 
@@ -108,14 +125,21 @@ export default function SearchPanel({ onClose }: Close) {
     [loaded, query],
   );
 
+  // The result the arrows reach is scrolled into sight, the list being shorter than its results.
+  useEffect(() => {
+    document.getElementById(`search-result-${active}`)?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
   if (failed) return <SearchUnavailable onClose={onClose} />;
 
   const onInputKey = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "ArrowDown") setActive((at) => Math.min(at + 1, results.length - 1));
     else if (event.key === "ArrowUp") setActive((at) => Math.max(at - 1, 0));
     else if (event.key === "Enter" && results[active] !== undefined) {
+      const { id } = results[active];
+      focusWithin(id);
       onClose(false);
-      navigate(inside(results[active].id));
+      navigate(inside(id));
     } else return;
     event.preventDefault();
   };
@@ -174,7 +198,14 @@ export default function SearchPanel({ onClose }: Close) {
         <ul className="search-results" id="search-results" role="listbox" aria-label="Results">
           {results.map((hit, at) => (
             <li key={hit.id} id={`search-result-${at}`} role="option" aria-selected={at === active}>
-              <Link to={inside(hit.id)} onClick={() => onClose(false)} tabIndex={-1}>
+              <Link
+                to={inside(hit.id)}
+                onClick={() => {
+                  focusWithin(hit.id);
+                  onClose(false);
+                }}
+                tabIndex={-1}
+              >
                 {hit.titles.length > 0 ? (
                   <span className="search-path">{hit.titles.join(" › ")}</span>
                 ) : null}
@@ -184,10 +215,13 @@ export default function SearchPanel({ onClose }: Close) {
             </li>
           ))}
         </ul>
-        {loaded !== null && query.trim() !== "" && results.length === 0 ? (
-          <p className="search-none">Nothing in the documentation matches “{query}”.</p>
-        ) : null}
-        {loaded === null ? <p className="search-none">Loading the index…</p> : null}
+        <p className="search-none" role="status">
+          {loaded === null
+            ? "Loading the index…"
+            : query.trim() !== "" && results.length === 0
+              ? `Nothing in the documentation matches “${query}”.`
+              : ""}
+        </p>
       </div>
     </div>
   );

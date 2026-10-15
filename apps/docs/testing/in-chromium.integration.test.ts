@@ -375,12 +375,46 @@ describe("the search", () => {
     await page.context().close();
   });
 
-  it("says when nothing matches", async () => {
+  it("says when nothing matches, where a screen reader reads it out", async () => {
     const { page } = await visit("/docs/");
     await page.keyboard.press("/");
     await page.getByRole("combobox").fill("zzqqxx");
 
-    await page.getByText("Nothing in the documentation matches").waitFor();
+    await page
+      .getByRole("dialog", { name: "Search the documentation" })
+      .getByRole("status")
+      .getByText("Nothing in the documentation matches")
+      .waitFor();
+    await page.context().close();
+  });
+
+  it("keeps the result the arrows reach in sight", async () => {
+    const { page } = await visit("/docs/", { width: 390, height: 640 }, true);
+    await page.locator(".docs-bar .docs-search-button").click();
+    await page.getByRole("combobox").fill("order");
+    await page.locator("#search-result-11").waitFor();
+    for (let press = 0; press < 11; press += 1) await page.keyboard.press("ArrowDown");
+
+    const list = await page.locator(".search-results").boundingBox();
+    const reached = await page.locator("#search-result-11").boundingBox();
+    expect(reached?.y ?? 0).toBeGreaterThanOrEqual(list?.y ?? 0);
+    expect((reached?.y ?? 0) + (reached?.height ?? 0)).toBeLessThanOrEqual(
+      (list?.y ?? 0) + (list?.height ?? 0) + 1,
+    );
+    await page.context().close();
+  });
+
+  it("hands the focus to the heading of a result on the page being read", async () => {
+    const { page } = await visit("/docs/orders");
+    await page.keyboard.press("/");
+    await page.getByRole("combobox").fill("tracking number");
+    const first = page.locator(".search-results a").first();
+    await first.waitFor();
+    const anchor = ((await first.getAttribute("href")) ?? "").split("#")[1] ?? "";
+    expect(anchor).not.toBe("");
+
+    await page.keyboard.press("Enter");
+    await page.waitForFunction((id) => document.activeElement?.id === id, anchor);
     await page.context().close();
   });
 });
