@@ -177,8 +177,20 @@ class GoogleTransactionRefused extends Error {}
 
 type GoogleAdmission = {
   email: string | null;
-  lockIdentity?: (subject: string, email: string) => Promise<void>;
+  admit: (subject: string, email: string) => Promise<void>;
+  /** Unknown until Google has named the address and it is admitted. */
+  firstVerification?: boolean;
 };
+
+/**
+ * What a Google callback's transaction does that the component cannot: take
+ * the subject's and the address's locks, and write the registration in the
+ * same transaction.
+ */
+type GoogleTransaction = Readonly<{
+  lockIdentity?: (subject: string, email: string) => Promise<void>;
+  register: (registration: Registration) => Promise<void>;
+}>;
 
 const hostedDomain = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
 
@@ -257,7 +269,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
                   const email = typeof profile.email === "string" ? emailAs(profile.email) : "";
                   active.email = email || null;
                   if (typeof profile.sub === "string" && profile.sub !== "" && email !== "") {
-                    await active.lockIdentity?.(profile.sub, email);
+                    await active.admit(profile.sub, email);
                   }
                   return { email, name: "", image: undefined };
                 },
@@ -370,6 +382,16 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const sessionCookie = cookies.sessionToken.name;
 
   /**
+   * Whether verifying the address now makes its first verified account: it has
+   * no account, or only one nobody has verified.
+   */
+  const isFirstVerification = async (
+    context: Awaited<typeof auth.$context>,
+    email: string,
+  ): Promise<boolean> =>
+    (await context.internalAdapter.findUserByEmail(email))?.user.emailVerified !== true;
+
+  /**
    * The click a press of this link would report: only where reporting is
    * switched on, the link was asked for with a consented click, and the press
    * makes the address's first verified account. A click asked for while
@@ -379,9 +401,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     context: Awaited<typeof auth.$context>,
     claim: LinkClaim,
   ): Promise<ConsentedClick | undefined> =>
-    reporting &&
-    claim.click !== undefined &&
-    (await context.internalAdapter.findUserByEmail(claim.email))?.user.emailVerified !== true
+    reporting && claim.click !== undefined && (await isFirstVerification(context, claim.email))
       ? claim.click
       : undefined;
 
@@ -505,17 +525,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       // A plain insert on both sides: an account verified for the first time
       // cannot have a registration yet, and one already there is a broken
       // invariant that fails the press rather than being skipped.
-      const now = new Date();
-      await register({
-        accountId: opened.response.user.id,
-        clickId: registering.id,
-        consentedAt: new Date(registering.consentedAt),
-        consentWording: registering.wording,
-        state: "pending",
-        attempts: 0,
-        nextAttemptAt: now,
-        createdAt: now,
-      });
+      await register(registrationOf(opened.response.user.id, registering));
     }
     return {
       status: "opened",
@@ -528,9 +538,18 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const startGoogleWith = async (
     bound: typeof auth,
     destination: DashboardDestination,
+    click: ConsentedClick | undefined,
   ): Promise<GoogleStartResult> => {
     const callback = new URL(`${base}/sign-in`);
     callback.searchParams.set("next", destination);
+    if (click !== undefined) {
+      const checked = clickOf(click);
+      if (checked === null) throw new GoogleTransactionRefused();
+      // The component keeps the callback address in the state's own row on
+      // the server, keyed by the state the browser's cookie is bound to; the
+      // browser and Google are handed only the state.
+      callback.searchParams.set("click", JSON.stringify(checked));
+    }
     const started = await bound.api.signInSocial({
       headers: originHeaders,
       returnHeaders: true,
@@ -553,9 +572,19 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     bound: typeof auth,
     query: URLSearchParams,
     cookie: string | undefined,
-    lockIdentity?: GoogleAdmission["lockIdentity"],
+    { lockIdentity, register }: GoogleTransaction,
   ): Promise<GoogleFinishResult> => {
-    const active: GoogleAdmission = { email: null, lockIdentity };
+    const context = await bound.$context;
+    const active: GoogleAdmission = {
+      email: null,
+      async admit(subject, email) {
+        await lockIdentity?.(subject, email);
+        // Read under the address's lock and before the component writes, so a
+        // second callback for a new address waits here and then finds the
+        // account the first one made.
+        active.firstVerification = await isFirstVerification(context, email);
+      },
+    };
     return await googleAdmission.run(active, async () => {
       const headers = new Headers(originHeaders);
       if (cookie !== undefined) headers.set("cookie", cookie);
@@ -620,6 +649,12 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         opened.user.email !== active.email
       ) {
         throw new GoogleTransactionRefused();
+      }
+      // The press that started this sign-in carried the consent, and Google
+      // has just shown that the same browser's person owns the address.
+      const click = reporting ? clickIn(redirected) : undefined;
+      if (click !== undefined && active.firstVerification === true) {
+        await register(registrationOf(opened.user.id, click));
       }
       return { status: "opened", person: personFrom(opened.user), destination, setCookies };
     });
@@ -729,12 +764,12 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     ],
     googleEnabled: config.google !== null,
 
-    async startGoogle(destination) {
+    async startGoogle(destination, click) {
       if (config.google === null) return { status: "unavailable" };
       try {
         if (parts.pool === undefined) {
           return await inMemoryTransaction(
-            async (bound) => await startGoogleWith(bound, destination),
+            async (bound) => await startGoogleWith(bound, destination, click),
           );
         }
         return await drizzle(parts.pool).transaction(
@@ -742,6 +777,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             await startGoogleWith(
               authFor(drizzleAdapter(tx, { provider: "pg", schema })),
               destination,
+              click,
             ),
         );
       } catch {
@@ -785,7 +821,10 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       try {
         if (parts.pool === undefined) {
           return await inMemoryTransaction(
-            async (bound) => await finishGoogleWith(bound, proof, cookie),
+            async (bound, rows) =>
+              await finishGoogleWith(bound, proof, cookie, {
+                register: async (registration) => registerInMemory(rows, registration),
+              }),
             true,
           );
         }
@@ -809,11 +848,16 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             authFor(drizzleAdapter(tx, { provider: "pg", schema }), true),
             proof,
             cookie,
-            async (subject, email) => {
-              await tx.execute(
-                sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-google-sub:${subject}`}, 0))`,
-              );
-              await lockEmail(tx, email);
+            {
+              lockIdentity: async (subject, email) => {
+                await tx.execute(
+                  sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-google-sub:${subject}`}, 0))`,
+                );
+                await lockEmail(tx, email);
+              },
+              register: async (registration) => {
+                await tx.insert(registrationPostbacks).values(registration);
+              },
             },
           );
         });
@@ -1344,6 +1388,36 @@ function clickOf(value: unknown): ConsentedClick | null {
     return null;
   }
   return { id, consentedAt, wording };
+}
+
+/**
+ * The click a Google sign-in was started with, read back from where the
+ * component kept it, or none where it holds anything this file would not have
+ * written there.
+ */
+function clickIn(callback: URL): ConsentedClick | undefined {
+  const written = callback.searchParams.get("click");
+  if (written === null) return undefined;
+  try {
+    return clickOf(JSON.parse(written)) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Due at once: nothing about a new registration is worth waiting for. */
+function registrationOf(accountId: string, click: ConsentedClick): Registration {
+  const now = new Date();
+  return {
+    accountId,
+    clickId: click.id,
+    consentedAt: new Date(click.consentedAt),
+    consentWording: click.wording,
+    state: "pending",
+    attempts: 0,
+    nextAttemptAt: now,
+    createdAt: now,
+  };
 }
 
 function isInstant(value: string): boolean {
