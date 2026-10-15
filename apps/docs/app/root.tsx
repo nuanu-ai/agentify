@@ -40,6 +40,13 @@ import { Missing, Unavailable } from "./components/missing.js";
 import { SERVED_CLASS, servedPart, servedTemplate } from "./served.js";
 
 export const links = () => [
+  {
+    rel: "preload",
+    href: "/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2",
+    as: "font",
+    type: "font/woff2",
+    crossOrigin: "anonymous",
+  },
   { rel: "icon", href: "/assets/agentify-mark-heavy.svg", type: "image/svg+xml" },
 ];
 
