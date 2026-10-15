@@ -18,7 +18,7 @@ import {
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { memoryAdapter } from "better-auth/adapters/memory";
-import { APIError } from "better-auth/api";
+import { isAPIError } from "better-auth/api";
 import { getCookies } from "better-auth/cookies";
 import { magicLink } from "better-auth/plugins/magic-link";
 import { and, asc, eq, gt, isNull, lte, sql } from "drizzle-orm";
@@ -351,7 +351,9 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     try {
       opened = await verify();
     } catch (thrown) {
-      if (thrown instanceof APIError) throw new VerificationRefused();
+      // The component refuses a spent or expired link by throwing a redirect,
+      // which is not an instance of the error class it exports.
+      if (isAPIError(thrown)) throw new VerificationRefused();
       throw thrown;
     }
     if (opened.response.user.email !== claim.email || opened.response.user.emailVerified !== true) {

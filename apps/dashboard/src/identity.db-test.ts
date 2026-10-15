@@ -381,6 +381,35 @@ if (databaseUrl === null) {
       ).toStrictEqual({ count: 2 });
     });
 
+    it("refuses the second of two presses of one link at once, rather than failing it", async () => {
+      // The second press finds the link before the first spends it, then waits
+      // on the address's lock; by the time the component looks again the link is
+      // spent, and that is a refusal like any other.
+      const messages: Message[] = [];
+      const one = identityOn(messages);
+      const two = identityOn(messages);
+      await one.requestLink("person@example.com", "default");
+      const token = tokenIn(messages[0] as Message);
+      await pool.query(`
+        create function slow_dashboard_person() returns trigger language plpgsql as $$
+        begin perform pg_sleep(0.05); return new; end $$
+      `);
+      await pool.query(`
+        create trigger slow_dashboard_person before insert on dashboard_accounts
+        for each row execute function slow_dashboard_person()
+      `);
+
+      const [first, second] = await Promise.all([one.openLink(token), two.openLink(token)]);
+
+      expect([first.status, second.status].sort()).toStrictEqual(["opened", "refused"]);
+      expect(
+        (await pool.query("select count(*)::int as count from dashboard_accounts")).rows[0],
+      ).toStrictEqual({ count: 1 });
+      expect(
+        (await pool.query("select count(*)::int as count from dashboard_sessions")).rows[0],
+      ).toStrictEqual({ count: 1 });
+    });
+
     it("rolls token consumption and person creation back when session creation fails", async () => {
       const messages: Message[] = [];
       const identity = identityOn(messages);
