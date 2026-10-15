@@ -1,9 +1,7 @@
-import { partnerClickIdSchema, registrationRequestSchema } from "@agentify/scanner-contracts";
+import { registrationRequestSchema } from "@agentify/scanner-contracts";
 import type { Params } from "react-router";
-import { PARTNER_CLICK_ID_COOKIE } from "../../../../lib/server/attribution";
 import { visitorOf } from "../../../../lib/server/auth";
 import { getServerConfig } from "../../../../lib/server/config";
-import { readCookie } from "../../../../lib/server/cookies";
 import { normalizeEmail } from "../../../../lib/server/crypto";
 import {
   bearerToken,
@@ -88,15 +86,11 @@ async function register(request: Request, params: Params): Promise<Response> {
       "invalid_registration",
       "Enter the email address the report should be sent to.",
     );
-  const partnerClickId = partnerClickIdSchema.safeParse(
-    readCookie(request, PARTNER_CLICK_ID_COOKIE),
-  );
-  const partner = partnerClickId.success ? { partnerClickId: partnerClickId.data } : {};
   try {
     if (visitor.kind === "person") {
       let result: Awaited<ReturnType<typeof askAsSignedIn>>;
       try {
-        result = await askAsSignedIn(scan, parsed.data, visitor.email, partner);
+        result = await askAsSignedIn(scan, parsed.data, visitor.email);
       } catch {
         return errorResponse(
           request,
@@ -127,11 +121,10 @@ async function register(request: Request, params: Params): Promise<Response> {
         { headers: { "Cache-Control": "private, no-store" } },
       );
     }
-    const result = await createScannerRegistrationIntent(
-      scan,
-      { ...parsed.data, email: email ?? "" },
-      partner,
-    );
+    const result = await createScannerRegistrationIntent(scan, {
+      ...parsed.data,
+      email: email ?? "",
+    });
     if (!result.sent) return linkCooldownResponse(request, result);
     return Response.json(
       { status: "verification_sent" },

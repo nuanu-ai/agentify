@@ -7,7 +7,6 @@ import {
   consentSnapshots,
   createDatabase,
   createUuidV7,
-  deliveryOutbox,
   leadScans,
   leads,
   migrateDatabase,
@@ -90,7 +89,6 @@ process.env.EMAIL_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
 process.env.TURNSTILE_ENFORCED = "false";
 process.env.PUBLIC_SHARE_ENABLED = "true";
 process.env.REGISTRATION_ENABLED = "false";
-process.env.PARTNER_POSTBACK_ENABLED = "true";
 process.env.REPORT_IDENTITY_SECRET = "r".repeat(32);
 process.env.DASHBOARD_IDENTITY_URL = "http://127.0.0.1:1";
 
@@ -1481,31 +1479,9 @@ describe("P4 dashboard-owned scanner identity", () => {
     const { db } = getDatabase();
     const { scan, accessToken } = await createFreshCompletedScan("encrypted-registration");
     await copyChecks(scan.id);
-    const partnerConsentId = createUuidV7();
-    await db.insert(consentSnapshots).values({
-      id: partnerConsentId,
-      sessionId: scan.sessionId,
-      policyVersion: "consent-v1.0.0",
-      categories: {
-        essential_processing: true,
-        product_analytics: false,
-        ads_measurement: true,
-        marketing_email: false,
-        dataset_reuse: false,
-        card_signal: false,
-      },
-      source: "test",
-    });
-    await db
-      .update(sessions)
-      .set({ consentSnapshotId: partnerConsentId })
-      .where(eq(sessions.id, scan.sessionId));
 
     const email = "dashboard-new@example.com";
-    const partnerClickId = "Xk8sJ2QpR4vN7bL0aZ9wQg";
-    await createScannerRegistrationIntent(scan, registrationBody(email), {
-      partnerClickId,
-    });
+    await createScannerRegistrationIntent(scan, registrationBody(email));
     const firstLink = latestLink(email);
     const emailLookupHash = hmacHex(tokenHmacSecret, "email", email);
     const activeIntent = onlyRow(
@@ -1521,11 +1497,9 @@ describe("P4 dashboard-owned scanner identity", () => {
         ),
     );
     expect(JSON.stringify(activeIntent)).not.toContain("+14155550123");
-    expect(JSON.stringify(activeIntent)).not.toContain(partnerClickId);
 
     await expect(
       createScannerRegistrationIntent(scan, registrationBody(email), {
-        partnerClickId,
         sendReportLink: async () => ({ status: "unavailable" }) as const,
       }),
     ).rejects.toThrow("dashboard_identity_unavailable");
@@ -1610,53 +1584,6 @@ describe("P4 dashboard-owned scanner identity", () => {
     );
     expect(lead.phoneE164Ciphertext).not.toContain("+14155550123");
     expect(lead.phoneLookupHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(
-      await db
-        .select()
-        .from(deliveryOutbox)
-        .where(eq(deliveryOutbox.destination, "partner_tracker")),
-    ).toHaveLength(1);
-
-    await createScannerRegistrationIntent(scan, registrationBody(email), {
-      partnerClickId,
-    });
-    await visitorOf(pressLink(latestLink(email)));
-    expect(
-      await db
-        .select()
-        .from(deliveryOutbox)
-        .where(eq(deliveryOutbox.destination, "partner_tracker")),
-    ).toHaveLength(1);
-
-    const { scan: revokedScan } = await createFreshCompletedScan("revoked-partner");
-    const revokedConsentId = createUuidV7();
-    await db.insert(consentSnapshots).values({
-      id: revokedConsentId,
-      sessionId: revokedScan.sessionId,
-      policyVersion: "consent-v1.0.0",
-      categories: {
-        essential_processing: true,
-        ads_measurement: false,
-      },
-      source: "test_withdrawal",
-    });
-    await db
-      .update(sessions)
-      .set({ consentSnapshotId: revokedConsentId })
-      .where(eq(sessions.id, revokedScan.sessionId));
-    const revokedEmail = "revoked-partner@example.com";
-    await createScannerRegistrationIntent(revokedScan, registrationBody(revokedEmail), {
-      partnerClickId,
-    });
-    await expect(visitorOf(pressLink(latestLink(revokedEmail)))).resolves.toMatchObject({
-      kind: "person",
-    });
-    expect(
-      await db
-        .select()
-        .from(deliveryOutbox)
-        .where(eq(deliveryOutbox.destination, "partner_tracker")),
-    ).toHaveLength(1);
   });
 
   it("authorizes the 18-row report and a revocable safe share for the owner's session", async () => {
