@@ -255,8 +255,10 @@ describe("a click under the dashboard's prefix", () => {
     expect(await page.locator("nav.tabs [aria-current=page]").textContent()).toContain("Receipts");
     expect(await page.locator(".on-its-way").isVisible()).toBe(true);
     await page.waitForURL(`${origin}${BASE}/receipts`);
-    await page.waitForLoadState("networkidle");
-    expect(await page.locator(".on-its-way").isVisible()).toBe(false);
+    // The address moves before the arrived page is drawn, and a load state the
+    // page reached on its first load is not waited for again, so the bar is
+    // waited out rather than read once.
+    await page.locator(".on-its-way").waitFor({ state: "hidden", timeout: 5000 });
 
     await page.goto(`${origin}${BASE}/orders`);
     await page.waitForLoadState("networkidle");

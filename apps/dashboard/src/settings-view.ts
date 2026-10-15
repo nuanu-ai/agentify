@@ -27,6 +27,8 @@ export interface Settings {
   readonly payoutSplits: PayoutSplits;
   /** The dashboard configuration's; null where there is none, as in the sandbox. */
   readonly addressPage: string | null;
+  /** The dashboard configuration's: the chain a merchant's wallet works on, null in the sandbox. */
+  readonly walletChain: number | null;
   /** Read on the live channel only. */
   readonly liveApproval?: boolean;
 }
@@ -56,6 +58,8 @@ export type PayoutView =
       pays: readonly Readonly<{ split: string; wallet: string }>[];
       /** What sending it can and cannot do, and when the merchant is paid without it. */
       after: string;
+      /** The chain a Coinbase Wallet sends it on, the one `lead` names; null where there is none. */
+      chain: number | null;
     }>
   | Readonly<{ kind: "too_many" | "unbuilt"; said: string }>;
 
@@ -87,6 +91,8 @@ export interface WalletView {
   readonly onItsWay: string | null;
   readonly typed: string;
   readonly problem: string | null;
+  /** The chain a Coinbase Wallet is opened on to fill the box; null in the sandbox, where no wallet is paid. */
+  readonly chain: number | null;
 }
 
 export interface SettingsView {
@@ -155,7 +161,11 @@ const splitBeside = (
         explorer: addressPage === null ? null : `${addressPage}${split.address}`,
       };
 
-const payoutView = (mode: SurfaceMode, splits: PayoutSplits): PayoutView | null => {
+const payoutView = (
+  mode: SurfaceMode,
+  splits: PayoutSplits,
+  walletChain: number | null,
+): PayoutView | null => {
   const { payout } = splits;
   if (mode === "sandbox" || payout === null) return null;
   if (payout === "unbuilt") {
@@ -186,6 +196,7 @@ const payoutView = (mode: SurfaceMode, splits: PayoutSplits): PayoutView | null 
         ? "your share arrives in the same transaction"
         : "each share arrives in the wallet beside its contract, in the same transaction"
     }. Otherwise you are ${PAID_ON_NO_SET_DATE}`,
+    chain: walletChain,
   };
 };
 
@@ -195,8 +206,15 @@ export const settingsView = (
   settings: Settings,
   press?: SettingsPress,
 ): SettingsView => {
-  const { sellerName, sellerSite, payoutWallet, payoutSplits, addressPage, liveApproval } =
-    settings;
+  const {
+    sellerName,
+    sellerSite,
+    payoutWallet,
+    payoutSplits,
+    addressPage,
+    walletChain,
+    liveApproval,
+  } = settings;
   // The rule is the gateway's own, so no screen holds an opinion about which
   // setting publishing needs where; the approval goes in as unknown where it
   // was not read.
@@ -266,8 +284,9 @@ export const settingsView = (
       onItsWay: saved !== null && mode === "live" ? CHANGE_ON_ITS_WAY : null,
       typed: wallet?.typed ?? "",
       problem: wallet?.problem ?? null,
+      chain: walletChain,
     },
-    payout: saved === null ? null : payoutView(mode, payoutSplits),
+    payout: saved === null ? null : payoutView(mode, payoutSplits, walletChain),
     account: {
       signOutOthers: SIGN_OUT_EVERY_OTHER_DEVICE,
       notice: press?.kind === "account" ? press.notice : null,
