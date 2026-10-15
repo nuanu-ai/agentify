@@ -293,6 +293,20 @@ describe("telling the ad tracker that somebody it sent signed up", () => {
     ).toBe("sixteen-chars-xx");
   });
 
+  it("refuses to start switched on with a key padded with whitespace, without printing the key", () => {
+    // The request strips a header value's ends, so such a key would pass the
+    // length rule and then have every report refused.
+    for (const key of [` ${KEY}`, `${KEY} `, `${KEY}\n`, `\t${KEY}`]) {
+      const said = thrownBy({
+        ...SWITCHED_ON,
+        REGISTRATION_POSTBACK_KEY: key,
+        REGISTRATION_POSTBACK_URL: RECEIVER,
+      });
+      expect(said, JSON.stringify(key)).toMatch(/REGISTRATION_POSTBACK_KEY/);
+      expect(said, JSON.stringify(key)).not.toContain(KEY);
+    }
+  });
+
   it("refuses to start switched on the test channel, which never reports a registration", () => {
     expect(() => loadConfig(given({ ...ON_TEST, ...SWITCHED_ON }))).toThrow(
       /REGISTRATION_POSTBACK_ENABLED/,
