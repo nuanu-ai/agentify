@@ -116,7 +116,7 @@ jobs:
 
       - name: Verify the release source
         run: |
-          pnpm check
+          pnpm exec biome ci .
           pnpm typecheck
           pnpm test
           pnpm build

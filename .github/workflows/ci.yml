@@ -86,7 +86,7 @@ jobs:
             -c "create database agentify_scanner_migration_test"
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check
+      - run: pnpm exec biome ci .
       - run: pnpm typecheck
       # Files, exports and dependencies nothing uses; `knip.ts` says what it
       # reads as used and what it leaves alone.
