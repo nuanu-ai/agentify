@@ -201,8 +201,8 @@ describe("a page in Chromium", () => {
 });
 
 describe("a page's first visit in Chromium", () => {
-  it("discovers the main text font from the document and downloads it once", async () => {
-    const { page } = await visit("/");
+  it("discovers the selling page's text font from the document and downloads it once", async () => {
+    const { page } = await visit("/agentic-shop");
     await page.evaluate(() => document.fonts.ready);
     const fonts = await page.evaluate(() =>
       performance

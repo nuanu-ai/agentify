@@ -1,3 +1,4 @@
+import textFont from "@fontsource-variable/schibsted-grotesk/files/schibsted-grotesk-latin-wght-normal.woff2?url";
 import { type MetaArgs, useLoaderData } from "react-router";
 
 import { SiteFooter, SiteHeader } from "../../components/site-chrome";
@@ -5,6 +6,10 @@ import { AGENTIC_SHOP_RESEARCH } from "../../content/agentic-shop";
 import { SELL_TO_AGENTS_PICTURE } from "../../content/pictures";
 import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 import styles from "./agentic-shop.module.css";
+
+export const links = () => [
+  { rel: "preload", href: textFont, as: "font", type: "font/woff2", crossOrigin: "anonymous" },
+];
 
 export const loader = () => AGENTIC_SHOP_RESEARCH;
 
