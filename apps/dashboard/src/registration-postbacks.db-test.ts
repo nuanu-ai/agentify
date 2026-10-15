@@ -634,4 +634,93 @@ if (databaseUrl === null) {
       expect(performance.now() - began).toBeLessThan(2_000);
     });
   });
+
+  /** Asks again until the database says yes, or fails the test. */
+  const eventually = async (condition: () => Promise<boolean>, within = 20_000): Promise<void> => {
+    const deadline = Date.now() + within;
+    while (!(await condition())) {
+      if (Date.now() > deadline) throw new Error("the condition did not come about in time");
+      await sleep(10);
+    }
+  };
+
+  describe("the loop every dashboard starts, whichever way the report is switched", () => {
+    it("reports what is due when switched on", async () => {
+      await registered(CLICK);
+      const { post, received } = tracker(200);
+      const running = startRegistrationReports({
+        pool,
+        target: TARGET,
+        fetch: post,
+        now,
+        wait,
+        idleMs: 20,
+      });
+      try {
+        await until(() => received.length === 1);
+      } finally {
+        await running.stop();
+      }
+
+      expect(received[0]?.body).toBe(`{"clickid":"${CLICK}","event":"reg"}`);
+      expect((await onlyRow()).state).toBe("delivered");
+    });
+
+    it("posts nothing when switched off, and gives up every report a day old so its click goes", async () => {
+      // Pending rows from before the switch went off would otherwise keep
+      // their click for as long as it stays off.
+      const unasked = await registered(CLICKS[0], 24 * HOUR);
+      const failed = await registered(CLICKS[1], 30 * HOUR);
+      await pool.query(
+        "update dashboard_registration_postbacks set attempts = 3, last_outcome = 'http_503' where account_id = $1",
+        [failed],
+      );
+      const young = await registered(CLICKS[2], 23 * HOUR);
+      const { post, received } = tracker();
+
+      const running = startRegistrationReports({
+        pool,
+        target: null,
+        fetch: post,
+        now,
+        wait,
+        idleMs: 20,
+      });
+      try {
+        await eventually(async () =>
+          (await rows()).every((row) => row.account_id === young || row.state === "given_up"),
+        );
+        // Room for a post, had the loop been going to make one.
+        await sleep(100);
+      } finally {
+        await running.stop();
+      }
+
+      expect(received).toStrictEqual([]);
+      const byAccount = new Map((await rows()).map((row) => [row.account_id, row]));
+      expect(byAccount.get(unasked)).toMatchObject({
+        click_id: null,
+        state: "given_up",
+        attempts: 0,
+        next_attempt_at: null,
+        last_outcome: null,
+      });
+      expect(byAccount.get(unasked)?.settled_at).not.toBeNull();
+      expect(byAccount.get(failed)).toMatchObject({
+        click_id: null,
+        state: "given_up",
+        attempts: 3,
+        next_attempt_at: null,
+        last_outcome: "http_503",
+      });
+      // Untouched: nobody was asked about it.
+      expect(byAccount.get(young)).toMatchObject({
+        click_id: CLICKS[2],
+        state: "pending",
+        attempts: 0,
+        last_outcome: null,
+        settled_at: null,
+      });
+    });
+  });
 }
