@@ -501,11 +501,12 @@ every press, and after a press the store held no account and no keys. Signing
 in, creating a wallet, approving a payout and paying its fee were not tried:
 they need a person with a passkey.
 
-As built on 2026-10-15, the settings page loads 95.4 KB of script on its first
-visit, 1.5 KB more than before, for the two buttons and their words; no other
-page changed by more than the budget check's rounding; and a press can fetch
-161.1 KB more, Coinbase Wallet's code with the dashboard's requests to it, as
-the budget check prints beside the page.
+As built on 2026-10-15, the settings page loads 95.8 KB of script on its first
+visit, 1.9 KB more than before, for the two buttons, their words and what the
+page remembers of their presses; no other page changed by more than the budget
+check's rounding; and a press can fetch 161.0 KB more, Coinbase Wallet's code
+with the dashboard's requests to it, as the budget check prints beside the
+page.
 
 ## What is not known
 
