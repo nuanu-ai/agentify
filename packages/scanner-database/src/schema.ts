@@ -78,11 +78,7 @@ export const outboxStatusEnum = pgEnum("outbox_status", [
   "delivered",
   "dead_letter",
 ]);
-export const deliveryDestinationEnum = pgEnum("delivery_destination", [
-  "posthog",
-  "meta",
-  "partner_tracker",
-]);
+export const deliveryDestinationEnum = pgEnum("delivery_destination", ["posthog", "meta"]);
 export const webhookReceiptStatusEnum = pgEnum("webhook_receipt_status", [
   "received",
   "processed",
@@ -267,7 +263,6 @@ export const registrationIntents = pgTable(
     emailLookupHash: text("email_lookup_hash").notNull(),
     phoneE164Ciphertext: text("phone_e164_ciphertext"),
     phoneLookupHash: text("phone_lookup_hash"),
-    partnerClickIdCiphertext: text("partner_click_id_ciphertext"),
     role: text("role").notNull(),
     siteOwnershipClaim: boolean("site_ownership_claim").notNull().default(false),
     marketingEmailOptIn: boolean("marketing_email_opt_in").notNull().default(false),
