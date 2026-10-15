@@ -42,14 +42,19 @@ const Click = ({
 
 /**
  * Unticked unless the person ticked it on the press this page answers; the
- * sentence is the box's label, so pressing the words ticks it too.
+ * sentence is the box's label, so pressing the words ticks it too. The way to
+ * the privacy page stays outside the label, or it would become part of the
+ * box's name.
  */
 const ConsentBox = ({ click }: Readonly<{ click: OfferedClick | undefined }>) =>
   click === undefined ? null : (
-    <label className="consent">
-      <input type="checkbox" name="ads_consent" value="yes" defaultChecked={click.consented} />
-      <span>{ADS_CONSENT.sentence}</span>
-    </label>
+    <div className="consent">
+      <label>
+        <input type="checkbox" name="ads_consent" value="yes" defaultChecked={click.consented} />
+        <span>{ADS_CONSENT.sentence}</span>
+      </label>
+      <a href={ADS_CONSENT.explained.href}>{ADS_CONSENT.explained.words}</a>
+    </div>
   );
 
 /** The press is on its way while React Router sends a form here. */

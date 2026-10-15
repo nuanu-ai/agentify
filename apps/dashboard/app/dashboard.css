@@ -602,13 +602,23 @@ td.control {
    not as a second thing to fill in. Written against the gate, whose rule for
    labels would otherwise stack the two. */
 .gate .consent {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-tight);
   margin: var(--space-block) 0 0;
   font-size: var(--text-small);
   color: var(--muted);
+}
+
+.gate .consent label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-tight);
+  margin: 0;
   cursor: pointer;
+}
+
+/* Under the sentence, not under the box. */
+.gate .consent > a {
+  display: inline-block;
+  margin: 4px 0 0 calc(18px + var(--space-tight));
 }
 
 .gate .consent input {
