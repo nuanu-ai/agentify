@@ -479,6 +479,28 @@ yet to pay the fee with [inferred: it cannot pay, and that payout arrives with
 the operator's]. If the fee cannot be paid in USDC, this comes back to the
 product owner as one choice, not a set of combinations.
 
+What a real browser showed on 2026-10-15, with the built dashboard on the test
+channel's configuration in headless Chromium, Playwright 1.61.1 driving a
+Chromium of revision 1194, no person and no passkey: the settings page drawn
+with the browser's script switched off shows no Coinbase button and saves an
+address typed into the box; with script, the button opens
+`https://keys.coinbase.com/connect` for `@base-org/account` 2.5.13, whose first
+screen, under a banner reading "Base Account is now Coinbase Wallet", offers
+"Sign In" and "Create Account" above "You agree to our Terms & Privacy
+Policy"; closing that window as a person closes it gives the page's "Coinbase
+Wallet was closed" within two seconds, and the payout button opens the same
+window; the page itself requests nothing but its own origin. Two things only
+that run could show changed the code. A window closed without its unload
+handlers running, as Playwright closes one and as a phone may drop a tab,
+never answers the page, so a button held disabled while waiting stayed held;
+no button is held now. And the SDK keeps the account it connected, with the
+keys of its session, in the page's `localStorage`, and answers the next
+request for an address from there without a window, for whichever account of
+the dashboard is signed in; the dashboard now clears that before and after
+every press, and after a press the store held no account and no keys. Signing
+in, creating a wallet, approving a payout and paying its fee were not tried:
+they need a person with a passkey.
+
 As built on 2026-10-15, the settings page loads 95.4 KB of script on its first
 visit, 1.5 KB more than before, for the two buttons and their words; no other
 page changed by more than the budget check's rounding; and a press can fetch
