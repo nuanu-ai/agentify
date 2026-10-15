@@ -4,11 +4,14 @@
  * once the merchant approves it in the wallet. Neither saves anything: the box
  * is saved by the merchant's own press, as an address typed by hand is.
  *
- * Each request starts and ends with the wallet disconnected. The provider
- * remembers the account it connected in the page's storage, across reloads and
- * across the dashboard's own accounts, and answers the next request for an
- * address from that memory without opening the wallet's window; on a shared
- * browser that would put one merchant's address into another's box.
+ * Each request starts with the wallet disconnected, and ends so unless a later
+ * request has begun. The provider remembers the account it connected in the
+ * page's storage, across reloads and across the dashboard's own accounts, and
+ * answers the next request for an address from that memory without opening
+ * the wallet's window; on a shared browser that would put one merchant's
+ * address into another's box. It also keeps one session with its window for
+ * the whole page, so the disconnection a request starts with leaves an earlier
+ * request still waiting unable to read its answer, which comes back `lost`.
  */
 
 import { getAddress, isAddress } from "viem";
@@ -16,8 +19,11 @@ import { getAddress, isAddress } from "viem";
 /** An EIP-1193 provider, as far as the dashboard uses one. */
 export interface Wallet {
   request(asked: { method: string; params?: readonly unknown[] }): Promise<unknown>;
-  /** Forgets the connected account and the keys of the session with the wallet's window. */
-  disconnect(): Promise<void>;
+  /**
+   * Forgets the connected account and the keys of the session with the
+   * wallet's window. A provider a wallet's own browser injects may have none.
+   */
+  disconnect?(): Promise<void> | void;
 }
 
 /** The merchant closed the wallet's window or declined; nothing happened. */
@@ -31,12 +37,24 @@ export interface Failed {
   readonly reason: string;
 }
 
+/**
+ * The wallet's answer could not be read, its session with the page gone: what
+ * the merchant did in the wallet's window, approving included, is unknown.
+ */
+export interface Lost {
+  readonly kind: "lost";
+}
+
 /** EIP-1193's code for a request the person turned down. */
 const DECLINED = 4001;
 
-const outcomeOf = (thrown: unknown): Cancelled | Failed => {
+/** EIP-1193's code for a request the provider is not authorised for, as an answer from a session it no longer has. */
+const UNAUTHORISED = 4100;
+
+const outcomeOf = (thrown: unknown): Cancelled | Failed | Lost => {
   const { code, message } = (thrown ?? {}) as { code?: unknown; message?: unknown };
   if (code === DECLINED) return { kind: "cancelled" };
+  if (code === UNAUTHORISED) return { kind: "lost" };
   return {
     kind: "failed",
     reason: typeof message === "string" && message !== "" ? message : "the wallet gave no reason",
@@ -58,26 +76,39 @@ const accountOf = async (wallet: Wallet): Promise<string> => {
   return getAddress(first);
 };
 
-/** `ask`, between two disconnections of the wallet, with what it threw read as an outcome. */
+const disconnected = (wallet: Wallet): Promise<void> =>
+  Promise.resolve()
+    .then(() => wallet.disconnect?.())
+    .catch(() => undefined);
+
+/**
+ * `ask` from a wallet just disconnected, with what it threw read as an outcome,
+ * and the wallet disconnected again after unless `alone` says a later request
+ * has begun, whose session that would end.
+ */
 const forgotten = async <T>(
   wallet: Wallet,
+  alone: () => boolean,
   ask: () => Promise<T>,
-): Promise<T | Cancelled | Failed> => {
+): Promise<T | Cancelled | Failed | Lost> => {
   try {
-    await wallet.disconnect();
+    await disconnected(wallet);
     return await ask();
   } catch (thrown) {
     return outcomeOf(thrown);
   } finally {
-    await wallet.disconnect().catch(() => undefined);
+    if (alone()) await disconnected(wallet);
   }
 };
 
+/** `alone` says whether no later request has begun on this page; by default none has. */
 export async function askAddress(
   wallet: Wallet,
-): Promise<{ readonly kind: "address"; readonly address: string } | Cancelled | Failed> {
+  alone: () => boolean = () => true,
+): Promise<{ readonly kind: "address"; readonly address: string } | Cancelled | Failed | Lost> {
   return forgotten(
     wallet,
+    alone,
     async () => ({ kind: "address", address: await accountOf(wallet) }) as const,
   );
 }
@@ -94,9 +125,10 @@ export async function sendPayout(
   wallet: Wallet,
   chainId: number,
   payout: Readonly<{ to: string; data: string }>,
-): Promise<{ readonly kind: "sent" } | Cancelled | Failed> {
+  alone: () => boolean = () => true,
+): Promise<{ readonly kind: "sent" } | Cancelled | Failed | Lost> {
   const chain = `0x${chainId.toString(16)}`;
-  return forgotten(wallet, async () => {
+  return forgotten(wallet, alone, async () => {
     const from = await accountOf(wallet);
     await wallet.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain }] });
     await wallet.request({

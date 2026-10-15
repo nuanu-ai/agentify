@@ -29,16 +29,20 @@ export const WALLET_WORDS = {
   addressInTheBox:
     "Your Coinbase Wallet's address is in the box. Check it against the wallet, then save it; nothing has changed yet.",
   connectClosed: "Coinbase Wallet was closed. The box is as you left it.",
+  connectLost:
+    "Coinbase Wallet's answer was lost, as happens when another of its buttons is pressed while its window is open. Press again.",
   connectFailed: (reason: string) =>
     `Coinbase Wallet gave no address: ${reason}. You can still enter one by hand.`,
   payOut: "Pay out with Coinbase Wallet",
   payoutLead:
     "With a Coinbase Wallet you send it in one step: Coinbase's window asks you to approve it, and nothing is sent until you do.",
   payoutSent:
-    "Coinbase Wallet sent the payout. It pays out once the network includes the transaction.",
+    "Coinbase Wallet sent the payout. Your payout contract's page shows once the network has carried it out.",
   payoutClosed: "Coinbase Wallet was closed. Nothing was sent.",
   payoutEarlierStands:
-    "Coinbase Wallet sent nothing more. The payout it sent earlier from this page stands.",
+    "Coinbase Wallet sent nothing this time. It did send a payout from this page earlier.",
+  payoutUnknown:
+    "Coinbase Wallet did not tell this page whether a payout it was asked for went out. Check what your payout contract holds before sending another.",
   payoutFailed: (reason: string) =>
     `Coinbase Wallet did not send the payout: ${reason}. If your wallet holds nothing yet to pay the fee with, the payout arrives when Agentify next pays out every contract, on no set date.`,
 } as const;
@@ -54,22 +58,43 @@ function useScriptRuns(): boolean {
 }
 
 /**
- * The status of the latest press. A button is never held disabled while
+ * Coinbase Wallet's SDK keeps one session with its window for the whole page,
+ * and every press starts by ending it, so a press begun while another waits in
+ * the window, of either button, leaves the waiting one unable to read its
+ * answer, whatever the merchant did there. Presses of both buttons are counted
+ * here together, so a press knows whether another has begun since it did.
+ */
+let begun = 0;
+
+const begin = (): (() => boolean) => {
+  begun += 1;
+  const mine = begun;
+  return () => mine === begun;
+};
+
+interface Pressed {
+  /** No press of either button has begun since this one. */
+  readonly alone: () => boolean;
+  /** No press of this button has begun since this one. */
+  readonly latest: () => boolean;
+  readonly say: (said: string) => void;
+}
+
+/**
+ * The status of a button's presses. A button is never held disabled while
  * Coinbase Wallet answers, because its window can vanish without answering,
  * as when a phone closes its tab, and a held button would then stay held; a
- * second press is taken, and an earlier one that answers late does nothing.
+ * second press is taken instead.
  */
-function useLatestPress(): [
-  string,
-  () => Readonly<{ latest: () => boolean; say: (said: string) => void }>,
-] {
+function usePresses(): [string, () => Pressed] {
   const [said, setSaid] = useState("");
   const counted = useRef(0);
-  const press = () => {
+  const press = (): Pressed => {
     counted.current += 1;
     const mine = counted.current;
+    const alone = begin();
     setSaid(WALLET_WORDS.waiting);
-    return { latest: () => mine === counted.current, say: setSaid };
+    return { alone, latest: () => mine === counted.current, say: setSaid };
   };
   return [said, press];
 }
@@ -77,12 +102,12 @@ function useLatestPress(): [
 /** Fills the box whose id is `box` with the wallet's address and leaves saving to the merchant. */
 export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; box: string }>) {
   const runs = useScriptRuns();
-  const [said, press] = useLatestPress();
+  const [said, press] = usePresses();
   if (!runs) return null;
   const ask = async () => {
     const pressed = press();
     const asked = await coinbase()
-      .then(({ askAddress, coinbaseWallet }) => askAddress(coinbaseWallet(chainId)))
+      .then(({ askAddress, coinbaseWallet }) => askAddress(coinbaseWallet(chainId), pressed.alone))
       .catch(() => NOT_OPENED);
     if (!pressed.latest()) return;
     if (asked.kind === "address") {
@@ -105,7 +130,9 @@ export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; bo
         ? WALLET_WORDS.addressInTheBox
         : asked.kind === "cancelled"
           ? WALLET_WORDS.connectClosed
-          : WALLET_WORDS.connectFailed(asked.reason),
+          : asked.kind === "lost"
+            ? WALLET_WORDS.connectLost
+            : WALLET_WORDS.connectFailed(asked.reason),
     );
   };
   return (
@@ -144,32 +171,40 @@ export function CoinbasePayout({
   payout,
 }: Readonly<{ chainId: number; payout: Readonly<{ to: string; data: string }> }>) {
   const runs = useScriptRuns();
-  const [said, press] = useLatestPress();
+  const [said, press] = usePresses();
   const sentHere = useRef(false);
+  const unknownHere = useRef(false);
   if (!runs) return null;
   const send = async () => {
     const pressed = press();
     const sent = await coinbase()
       .then(({ sendPayout, coinbaseWallet }) =>
-        sendPayout(coinbaseWallet(chainId), chainId, payout),
+        sendPayout(coinbaseWallet(chainId), chainId, payout, pressed.alone),
       )
       .catch(() => NOT_OPENED);
-    // A payout that went out is said whenever it went out, and once one has,
-    // no press that sent nothing says nothing was sent: Coinbase's SDK sends a
-    // second press into the window the first opened, so the first can send and
-    // the second be closed after it.
+    // What the page says of payouts holds whichever press answers last: a
+    // payout sent is said whenever it went out, and a press whose answer was
+    // lost, or that another press overtook in the window, says the page does
+    // not know, after which no press says that nothing was sent.
     if (sent.kind === "sent") {
       sentHere.current = true;
       pressed.say(WALLET_WORDS.payoutSent);
       return;
     }
+    if (sent.kind === "lost" || !pressed.alone()) {
+      unknownHere.current = true;
+      pressed.say(WALLET_WORDS.payoutUnknown);
+      return;
+    }
     if (!pressed.latest()) return;
     pressed.say(
-      sentHere.current
-        ? WALLET_WORDS.payoutEarlierStands
-        : sent.kind === "cancelled"
-          ? WALLET_WORDS.payoutClosed
-          : WALLET_WORDS.payoutFailed(sent.reason),
+      unknownHere.current
+        ? WALLET_WORDS.payoutUnknown
+        : sentHere.current
+          ? WALLET_WORDS.payoutEarlierStands
+          : sent.kind === "cancelled"
+            ? WALLET_WORDS.payoutClosed
+            : WALLET_WORDS.payoutFailed(sent.reason),
     );
   };
   return (
