@@ -20,6 +20,8 @@ output
 /01-research
 /02-meetings
 /apps/web
+/apps/docs
+/packages/consent
 /apps/scanner-worker
 /apps/browser-observer-actor
 /packages/scanner-database
