@@ -271,6 +271,32 @@ describe("dashboard magic links", () => {
     expect(kept).toHaveLength(2);
   });
 
+  it("still removes week-old unpressed links when the mail provider refuses the link asked for", async () => {
+    // The sweep is not the request's to undo: it runs before the mail is
+    // tried, on its own.
+    const { identity, rows } = memoryIdentity("refused");
+    const aWeek = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const unpressed = (id: string, expiresAt: Date) => ({
+      id,
+      identifier: id,
+      value: JSON.stringify({ email: "other@example.com", destination: "default", request: null }),
+      expiresAt,
+      createdAt: new Date(expiresAt.getTime() - 60 * 60 * 1000),
+      updatedAt: new Date(expiresAt.getTime() - 60 * 60 * 1000),
+    });
+    rows.dashboard_verifications = [
+      unpressed("younger", new Date(now - aWeek + 60_000)),
+      unpressed("older", new Date(now - aWeek - 1)),
+    ];
+
+    await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+      status: "unavailable",
+    });
+
+    expect(rows.dashboard_verifications?.map((row) => row.id)).toStrictEqual(["younger"]);
+  });
+
   it("keeps no token or rate event when the mail provider refuses the message", async () => {
     const { identity, rows } = memoryIdentity("refused");
 

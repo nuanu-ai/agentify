@@ -502,6 +502,33 @@ if (databaseUrl === null) {
       expect(kept).toHaveLength(2);
     });
 
+    it("still removes week-old unpressed links when the mail provider refuses the link asked for", async () => {
+      const identity = identityOn([], "refused");
+      const aWeek = 7 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      await pool.query(
+        `insert into dashboard_verifications
+           (id, identifier, value, expires_at, created_at, updated_at)
+         values
+           ('younger', 'younger', $1, $2, $4, $4),
+           ('older', 'older', $1, $3, $4, $4)`,
+        [
+          JSON.stringify({ email: "other@example.com", destination: "default", request: null }),
+          new Date(now - aWeek + 60_000),
+          new Date(now - aWeek - 1),
+          new Date(now - aWeek - 60 * 60 * 1000),
+        ],
+      );
+
+      await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+        status: "unavailable",
+      });
+
+      expect(
+        (await pool.query<{ id: string }>("select id from dashboard_verifications")).rows,
+      ).toStrictEqual([{ id: "younger" }]);
+    });
+
     it("keeps a seeded merchant unconfirmed until that mailbox consumes a link", async () => {
       const messages: Message[] = [];
       const identity = identityOn(messages);
