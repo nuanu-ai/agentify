@@ -702,6 +702,36 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(await visitorSession()).toMatchObject({ lastLandingVariant: "store-v2" });
   });
 
+  it("expires a partner's click cookie the browser may still hold once its visitor saves a choice without ads measurement", async () => {
+    const choose = (adsMeasurement: boolean) =>
+      persistConsent(
+        new Request("http://localhost:3000/api/v1/consent", {
+          method: "POST",
+          headers: { origin: "http://localhost:3000", "content-type": "application/json" },
+          body: JSON.stringify({
+            policy_version: CONSENT_POLICY_VERSION,
+            categories: {
+              essential_processing: true,
+              product_analytics: true,
+              ads_measurement: adsMeasurement,
+              marketing_email: false,
+              dataset_reuse: false,
+              card_signal: false,
+            },
+          }),
+        }),
+      );
+    const expired = "clickid=; Path=/; Max-Age=0; HttpOnly; SameSite=lax";
+
+    const withdrawn = await choose(false);
+    const allowed = await choose(true);
+
+    expect(withdrawn.status).toBe(201);
+    expect(withdrawn.headers.getSetCookie()).toContain(expired);
+    expect(allowed.status).toBe(201);
+    expect(allowed.headers.getSetCookie().join("\n")).not.toContain("clickid=");
+  });
+
   it("keeps attribution neutral and both accepted registration links usable", async () => {
     const { db } = getDatabase();
     const attributionRequest = (campaign: string, fbclidHash: string) =>

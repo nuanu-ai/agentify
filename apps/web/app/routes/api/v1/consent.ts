@@ -17,6 +17,13 @@ const categoriesSchema = z
   })
   .strict();
 
+/**
+ * Browsers may still hold the partner click cookie an earlier release set for a
+ * visitor who allowed ads measurement; a choice saved without ads measurement
+ * removes it, with the name, path and attributes it was set with.
+ */
+const PARTNER_CLICK_COOKIE = "clickid";
+
 const requestSchema = z
   .object({
     policy_version: z.literal(CONSENT_POLICY_VERSION),
@@ -53,6 +60,18 @@ async function consent(request: Request): Promise<Response> {
           sameSite: "lax",
           path: "/",
           maxAge: 13 * 30 * 24 * 60 * 60,
+        }),
+      );
+    }
+    if (!parsed.data.categories.ads_measurement) {
+      response.headers.append(
+        "Set-Cookie",
+        cookieHeader(PARTNER_CLICK_COOKIE, "", {
+          httpOnly: true,
+          secure: getServerConfig().production,
+          sameSite: "lax",
+          path: "/",
+          maxAge: 0,
         }),
       );
     }
