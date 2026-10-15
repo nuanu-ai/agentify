@@ -35,11 +35,12 @@ help.coinbase.com, answers this environment only with a Cloudflare challenge,
 so what it says is known here only from a search engine's summary of the page,
 and is marked so. Coinbase has renamed the wallet the dashboard would open:
 the package's own README says "Base Account is now Coinbase Wallet" and that
-the package, still named `@base-org/account`, stays the recommended one "until
-the next-generation Coinbase Wallet SDK is ready", and the old pages at
-docs.base.org now redirect to docs.base.org/sdks/migrated-products, which
-points to docs.cdp.coinbase.com [checked]. A way built on this SDK is
-therefore built on code its maker calls interim.
+the package, still named `@base-org/account`, "is still the current recommended
+SDK for connecting to Coinbase Wallet until the next-generation Coinbase Wallet
+SDK is ready" and that "Existing integrations do not need to migrate"; the old
+pages at docs.base.org now redirect to docs.base.org/sdks/migrated-products,
+which points to docs.cdp.coinbase.com [checked]. A next SDK is announced, and
+whether a site built on this one will have to move to it is not said.
 
 Each claim below carries one of four marks. [checked] means it was read in a
 primary Coinbase source, in a package's code, or in this repository.
@@ -60,7 +61,11 @@ calls and have its fee paid by someone else, a service called a paymaster. An
 offramp is a service that sells the token for money in a bank account; ACH is
 the United States' bank transfer, and a spread is the difference between the
 price a trade is made at and the market price. A faucet hands out test tokens.
-An SDK is the code a provider gives a site to talk to its service. Multicall3
+An SDK is the code a provider gives a site to talk to its service, and
+Coinbase Developer Platform, CDP for short, is Coinbase's set of services for
+developers, under which the embedded wallet, the paymaster and the offramp are
+sold. A lockfile is the file that pins the exact version of every package the
+repository installs. Multicall3
 is a public contract, not Agentify's, that runs a batch of calls in one
 transaction, and the 0xSplits warehouse is the shared contract every split
 pays its shares through. ADR-NNNN names a decision record in
@@ -101,8 +106,12 @@ measured there in a simulation without a record, a merchant's payout of one new
 split costs about $0.0046, of a split already on the chain about $0.0019, and
 the operator's payout of twenty new splits about $0.078 [inferred: arithmetic
 on those figures]. Base also charges for publishing the transaction's data to
-Ethereum; its own price contract put the upper bound at about $0.000013 for
-1,000 bytes and $0.000026 for 2,000 bytes at 07:13 UTC [checked]. The money is
+Ethereum. The gateway's own payout builder makes a merchant's payout of one
+split 1,572 bytes of data and the operator's payout of twenty 30,404 bytes
+[checked], and Base's price contract (`getL1FeeUpperBound` at
+`0x420000000000000000000000000000000000000F`) put the upper bound of that fee
+at about $0.00002 and $0.00039 for them at 07:26 UTC, at an ETH price of
+$2,367.01 read then [checked]. The money is
 not the obstacle. The obstacle is that the merchant needs ETH on Base in some
 wallet that can send raw data, and the sections below say for each way whether
 the wallet it gives can.
@@ -123,9 +132,10 @@ needed [snippet], and the wallet's terms ask only that the user be eighteen
 and "not barred from using the Services under applicable law" [checked]; that
 no identity check is asked I infer from those two and could not check. A user
 who already has a Coinbase Wallet gets that wallet back [checked, the brand
-guidelines], so the button says "create or connect". The same guidelines say
-to "Always use 'Sign in with Base'" on Coinbase's button, which the dashboard
-would have to weigh against its own wording [checked]. The help centre warns
+guidelines], so the button says "create or connect". The same guidelines
+ask that Coinbase's sign-in button "Always use 'Sign in with Base' unless
+there's an explicit 'Sign in' heading prior", which the dashboard would have to
+weigh against its own wording [checked]. The help centre warns
 that the account follows the sign-in method, so a merchant who signs in
 another way than before may get another address [snippet]. The address is a
 smart account that may not exist on the chain until its first outgoing
@@ -134,10 +144,11 @@ transfer runs no code at the recipient [inferred]. Its factory has the same
 code on Base and Base Sepolia [checked by reading both networks' nodes for
 this note], so the address is very likely the same on both [inferred]. What
 the merchant must understand here is not Base or USDC but that the passkey,
-and the email account if they sign in by email, are the wallet: the terms make
-the user "solely responsible" for "any email or social media account used to
-access the Services" and for their passkeys, and say in capitals that Coinbase
-keeps no backup and cannot recover them [checked,
+any recovery key they create and the email account if they sign in by email
+are the wallet: the terms make the user "solely responsible" for "any recovery
+key you create for your Smart Wallet, or any email or social media account
+used to access the Services" and for their passkeys, and say in capitals that
+Coinbase keeps no backup and cannot recover them [checked,
 wallet.coinbase.com/terms-of-service, last updated 2026-09-08].
 
 **Receiving.** The payout arrives in the wallet, and the merchant sees it by
@@ -176,8 +187,9 @@ sends every signing request to the window]. A script injected into Agentify's
 page could open that window with a request it built, and the window would show
 Agentify's name on it, so the last defence is the merchant reading the window
 [inferred]. One optional feature would weaken this and stays off:
-sub-accounts, which Coinbase pairs by default with permissions to spend
-without a prompt, put a signing key in Agentify's origin [checked]. By default
+sub-accounts, extra accounts a site creates under the user's wallet, put a
+signing key in Agentify's origin that signs for them without a prompt
+[checked]. By default
 the SDK keeps in the page's `localStorage` only a key pair that encrypts its
 messages to the window, the connected address and its settings [checked in
 the code].
@@ -229,10 +241,10 @@ both ways. A help page of Coinbase Exchange, the institutional venue, says
 "ERC-20 deposits via Ethereum smart contracts" are supported, ERC-20 being the
 standard USDC follows [snippet]; a page
 of Coinbase Pro, its former trading venue, said it did not "accept sends from
-contract-generated transactions" [snippet]. The European agreement says of
-"any smart contract functionality, which may supplement or interact with a
-Supported Crypto Asset": "Do not use your Coinbase Account to attempt to
-receive" it, and "Any attempted transactions in such items will result in loss
+contract-generated transactions" [snippet]. The European agreement says, unless Coinbase
+"specifically announced" otherwise on its site, of "any smart contract
+functionality, which may supplement or interact with a Supported Crypto
+Asset": "Do not use your Coinbase Account to attempt to receive" it, and "Any attempted transactions in such items will result in loss
 of the item"; it also lets Coinbase refuse a transfer whose "transfer type or
 transfer mechanism" it does not support [checked, §5.4 and §5.18]. Whether a
 plain USDC transfer made inside a contract call counts as such functionality
@@ -302,7 +314,8 @@ a bank linked and a secret API key on Agentify's server, and Agentify is
 these security measures" [checked, `onramp/security-requirements`]. It pays
 out to a Coinbase.com balance in every country Coinbase serves but Japan, to a
 card in the United States and over ninety other countries, by ACH in the
-United States and by PayPal in a few [checked,
+United States and by PayPal in Canada, the United Kingdom and a few others
+[checked,
 `onramp/additional-resources/payment-methods`].
 
 **Custody.** This is where the way differs. The wallet's code runs as
@@ -310,20 +323,26 @@ Agentify's own script in Agentify's origin, and while the merchant is signed
 in, any script there can call `sendUsdc` or `sendEvmTransaction` without a
 confirmation that Coinbase controls [checked in the package, which wraps these
 calls only in a check of the session and of second-factor enrolment; inferred
-as to an attacker]. It can do more than spend while the session lasts: the
-package still exports `exportEvmAccount`, marked deprecated, which returns the
-account's raw private key to the page's script under the same two checks, and
-`createDelegation`, which lets a developer's server "sign on behalf of an end
-user" for a chosen period [checked in the type declarations of
-`@coinbase/cdp-core@0.0.127`]. A script that runs once while the merchant is
-signed in can therefore take the key and move the money later, after the
-merchant signs out and after the script is removed [inferred]. A merchant who
+as to an attacker]. It may be able to do more than spend while the session
+lasts. Coinbase's page says "User wallet exports always happen inside a
+secure, isolated iframe. Your application code never has access to the raw
+key material" [checked, `wallets/using-wallets/import-and-export`], yet
+`@coinbase/cdp-core@0.0.127` still exports `exportEvmAccount`, marked
+deprecated and to be "removed soon", whose code decrypts the account's raw
+private key in the page under the same two checks [checked in the package];
+whether Coinbase's service still answers that call I don't know. If it does, a
+script that runs once while the merchant is signed in can take the key and
+move the money later, after the merchant signs out and after the script is
+removed [inferred]. The package also exports `createDelegation`, which lets a
+developer's server "sign on behalf of an end user" for a chosen period once
+the developer has turned delegation on [checked]. A merchant who
 enrolled a second factor is asked for it, but by default one verification
 authorises every protected operation until it expires, and even a per-request
 passkey "signs an opaque digest", so "the description the user approves comes
 from your UI" [checked, `wallets/authentication/mfa`]. Where a browser blocks
 third-party cookies, as Safari and Firefox do, the session's refresh token sits
-in the page's `localStorage` [checked,
+in the page's `localStorage`; Coinbase's remedy, a cookie served from a
+subdomain of Agentify's own, is in "limited access" [checked,
 `wallets/security-and-policies/first-party-cookies`]. Agentify's server cannot
 sign for the merchant unless Agentify turns delegation on in its project and a
 delegation is created [checked]. So the rule of ADR-0019, that Agentify cannot
@@ -353,13 +372,13 @@ section differ, the section holds.
 | | Way 1: Coinbase Wallet window | Way 2: Coinbase.com deposit address | Way 3: embedded wallet by email |
 | --- | --- | --- | --- |
 | Getting the wallet | A click and a passkey or email code in Coinbase's window; no Coinbase.com account [snippet] | A Coinbase.com account, an identity check, choosing Base and copying an address | An email code in Agentify's page; no Coinbase.com account [don't know of one] |
-| What the merchant must understand first | The passkey, and the email if used, are the wallet; Coinbase cannot recover them | Which network to choose; whether their account may receive business income | The email account is the way in [inferred] |
-| Sending their own payout | From this wallet only through a dashboard button not built, or Wallet MCP [fee: don't know]; else from another wallet with ETH | Never from this account; from another wallet with ETH | Through screens Agentify builds, or another wallet with ETH |
+| What the merchant must understand first | The passkey, any recovery key and the email if used are the wallet; Coinbase cannot recover them | Which network to choose; whether their account may receive business income | The email account is the way in [inferred] |
+| Sending their own payout | From this wallet only through a dashboard button not built, or Wallet MCP [fee: don't know]; else from another wallet with ETH | Never from this account; from another wallet with ETH | Through screens Agentify builds, with a smart account and a paymaster or with ETH; or from another wallet with ETH |
 | Seeing the money | wallet.coinbase.com; test balances [don't know] | Coinbase.com | Agentify's screens or a block explorer |
 | Dollars in a bank | Needs a Coinbase.com account later | Already there; credit of a split's payout [don't know] | Needs a Coinbase.com account later |
-| Who can move the money | The merchant, through Coinbase's window | The merchant, through Coinbase, which holds it and may block it | The merchant, and any script in Agentify's origin that runs while they are signed in, for good if it takes the key |
+| Who can move the money | The merchant, through Coinbase's window | The merchant, through Coinbase, which holds it and may block it | The merchant, and any script in Agentify's origin while they are signed in; for good if the key can still be exported [don't know] |
 | Script on the click | 159.7 KB | none | 86.4 KB, or 203.6 KB with Coinbase's interface |
-| Testable without money | Getting and receiving; not cashing out | Nothing | Everything but cashing out |
+| Testable without money | Getting and receiving; not cashing out | Nothing [inferred] | Everything but cashing out |
 | Needed from Coinbase | Nothing | Nothing | A project, its terms, $0.005 an operation |
 | What decides it | Today's sign-up screens and test balances, which a live run answers | Whether a split's payout is credited, which only real money answers | Whether Agentify's pages may hold that power, which is a decision, not a fact |
 
@@ -373,12 +392,15 @@ keeps a second wallet with ETH or waits for the operator. Other offramps than
 Coinbase's were not examined.
 
 At ten times the merchants each way grows in its own direction. Way 1 grows
-in wallets whose only key is a passkey or an email account that Coinbase
-cannot recover, and in payouts the operator sends for merchants without ETH.
+in wallets whose only keys are a passkey, a recovery key or an email account
+that Coinbase cannot recover, and in payouts the operator sends for merchants
+without ETH.
 Way 2 grows, if Coinbase does hold deposits from a contract in the European
 Union and the United Kingdom [snippet], into one held deposit per payout for
 every merchant there, and in the same operator payouts. Way 3 grows into a
-monthly bill past the free operations and into more signed-in sessions whose
+monthly bill once the merchants together pass 5,000 operations a month, about
+2,500 sent transactions since a send counts as two, plus the paymaster's gas
+times 1.07 for every payout it carries, and into more signed-in sessions whose
 money a script in the origin can reach.
 
 ## What only the product owner can decide
@@ -398,8 +420,9 @@ money a script in the origin can reach.
    Without it a merchant needs a second wallet with ETH, or waits as long as
    the operator's payouts take, whose frequency is already an open question of
    the product owner's.
-3. May Agentify's pages hold the power to take a signed-in merchant's money,
-   including by exporting the wallet's key? Way 3 requires it. If the answer is
+3. May Agentify's pages hold the power to spend a signed-in merchant's money,
+   and perhaps to export the wallet's key, which Coinbase's page says cannot
+   happen and its package still allows? Way 3 requires the first. If the answer is
    yes, it is a change to ADR-0019 and ADR-0005 before any code, not a design
    note.
 4. May the dashboard point merchants to a Coinbase.com account for their
@@ -429,8 +452,10 @@ transfer sent from the 0xSplits warehouse inside another contract's call, and
 whether it then holds it for a sender declaration; the minimum deposit for
 USDC on Base; and the countries where each way is available, for which no list
 was found for any of the three. Whether the embedded wallet's code runs in a
-browser without a stand-in for Node's `Buffer` was not tested, and its smart
-account was not measured separately.
+browser without a stand-in for Node's `Buffer` was not tested, and the build of
+Coinbase's interface for it warned that it lacks one; its smart account was
+not measured separately. Whether Coinbase's service still answers the
+deprecated export of a wallet's raw key from the page I don't know.
 
 These were checked and are absent: a key or registration for the Coinbase
 Wallet window; a field for contract data in a Coinbase.com account's sending
@@ -504,8 +529,11 @@ The measurement ran twice on 2026-10-15 on `spike/wallet-weight`, with Node
 24.22.0, pnpm 11.12.0 and the dashboard's own Vite 7.3.6 and React Router
 8.4.0. The first run, at commit `14edad7`, broke the registration: it installed
 every provider's packages together rather than each in turn, and
-`@coinbase/cdp-react@0.0.127`, which declares `@base-org/account` an optional
-peer, loads it whenever it is installed, so R's figure carried way 1's SDK.
+`@coinbase/cdp-react@0.0.127` declares `@base-org/account` an optional peer
+that it fetches by `import()` only for its "Sign in with Base" option, so with
+both installed R's code could load way 1's SDK as a separate 210.6 KB file and
+its figure at most was 417.3 KB; what R's click loaded at once, 203.7 KB, was
+not affected.
 The second run, at commit `0dc7199`, installs exactly each probe's packages
 before its build; its output, `spike/measured-2026-10-15-second-run.txt`, is
 what the table shows, and B's and C's figures are the same in both runs.
@@ -523,9 +551,11 @@ this note.
 | Control, no provider | 0.1 KB | 0.1 KB | 0.0 KB | 94.4–94.5 KB, +0.5–0.6 | +0.0 | builds |
 | B, Base Account SDK | 159.7 KB | 160.8 KB | 550.3 KB | 94.5–94.6 KB, +0.6–0.7 | +0.0–0.1 | builds |
 | C, CDP embedded wallet, no interface | 86.4 KB | 86.4 KB | 350.8 KB | 94.6–94.7 KB, +0.7–0.8 | +0.1–0.2 | builds |
-| R, CDP embedded wallet with Coinbase's sign-in | 203.6 KB and a 5.1 KB stylesheet | 203.7 KB | 987.7 KB | 94.8–94.9 KB, +0.9–1.0 | +0.3–0.4 | builds |
+| R, CDP embedded wallet with Coinbase's sign-in | 203.6 KB and a 5.1 KB stylesheet | 203.7 KB and the stylesheet | 987.7 KB | 94.8–94.9 KB, +0.9–1.0 | +0.3–0.4 | builds |
 
-The changes in M2 are against the figures measured before the spike, 93.9 KB
+R's stylesheet belongs to the file its click loads at once, as Vite's
+manifest of that build records. The changes in M2 are against the figures
+measured before the spike, 93.9 KB
 on the settings pages and 91.5–95.1 KB elsewhere; the budget check prints one
 decimal, so a change of 0.1 KB is within its rounding.
 
@@ -546,7 +576,12 @@ a decision of another kind: pnpm 11 refuses to install until `bufferutil` and
 Solana's client inside `@coinbase/cdp-core`, are allowed or declined a build
 script, and the spike declined both. Whether C and R then run in a browser
 without a stand-in for Node's `Buffer` was not tested: the measurement built
-the code and did not run it. C and R ask for an ordinary account
+the code and did not run it. R's build did warn, twice, that the module
+`buffer` "has been externalized for browser compatibility, imported by"
+`safe-buffer@5.2.1`, which Coinbase's interface reaches through an encoding
+library; the builds of B and C gave no such warning. `safe-buffer` reads
+`Buffer` from that module when it loads, so R may fail when it runs
+[inferred]. C and R ask for an ordinary account
 (`createOnLogin: "eoa"`); a smart account is chosen by the same setting at run
 time, so its code is very likely in the same bundle [inferred], but it was not
 measured.
@@ -614,6 +649,10 @@ their Markdown form (the same path with `.md`).
   https://help.coinbase.com/en/coinbase/getting-started/verify-my-account/id-doc-verification,
   https://help.coinbase.com/en/base/getting-started/sign-in,
   https://help.coinbase.com/en/wallet/getting-started/smart-wallet-recovery.
+- Base: `eth_gasPrice` and `getL1FeeUpperBound` at
+  `0x420000000000000000000000000000000000000F` read from https://mainnet.base.org,
+  and the ETH price from https://api.coinbase.com/v2/prices/ETH-USD/spot, on
+  2026-10-15.
 - The packages: `@base-org/account@2.5.13`, `@coinbase/cdp-core@0.0.127`,
   `@coinbase/cdp-hooks@0.0.127` and `@coinbase/cdp-react@0.0.127` from the npm
   registry.
