@@ -597,22 +597,25 @@ PRODUCTION adds `AGENTIFY_DB_PASSWORD`,
 `MAIL_FROM`.
 
 PRODUCTION may also name `REGISTRATION_POSTBACK_ENABLED=true` and
-`REGISTRATION_POSTBACK_KEY`, the ad tracker's key of at least 16 characters
-with no space at either end. With the switch on, the dashboard tells the
-tracker once, at `https://aisamuraihub.com/postback`, that a person its ad sent
-made their first account, for each person who ticked the box the sign-in page
-offers to a visitor arriving from the tracker's landing page and confirmed it
-on the link's page when signing in; the tracker's click identifier is all it
-sends. Each outcome is one line in the application's log, such as
+`REGISTRATION_POSTBACK_KEY`, the ad tracker's key of at least 16 characters,
+all of them visible ASCII: no space, line break or typographic dash. With the
+switch on, the dashboard tells the tracker once, at
+`https://aisamuraihub.com/postback`, that a person its ad sent made their
+first account, for each person who ticked the box the sign-in page offers to a
+visitor arriving from the tracker's landing page and confirmed it on the
+link's page when signing in; the tracker's click identifier is all it sends.
+Each outcome is one line in the application's log, such as
 `registration report delivered: http_200`, naming no person and no click. With
-the switch on and no such key the application refuses to start; with it off
-the key is not read, so the key can go into the file first, and the
-application only gives up any report still pending a day after its sign-up,
-so no click outlives the day. On TEST a line naming the switch changes
-nothing: `deploy/compose.agentify-test.yaml` fixes it off for the application
-whatever the host's file says, and the application itself refuses to start
-with the switch on that channel, because the tracker would count a test
-registration as a real one.
+the switch on and no such key the application refuses to start; with it off the
+key is not read, so the key can go into the file first, and the application
+only gives up any report still pending a day after its sign-up, so no
+registration's click outlives its day; a click kept with a link nobody pressed
+goes when that link's record is cleared, from 7 days after the link expired.
+On TEST a line naming the switch changes nothing:
+`deploy/compose.agentify-test.yaml` fixes it off for the application whatever
+the host's file says, and the application itself refuses to start with the
+switch on that channel, because the tracker would count a test registration as
+a real one.
 
 The scanner's remaining settings — `PRIVACY_EMAIL`,
 `ABUSE_EMAIL`, the `LEGAL_*` pair, the `TURNSTILE_*`, `POSTHOG_*`, `META_*`,
