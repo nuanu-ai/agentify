@@ -288,7 +288,9 @@ function PayoutPanel({ payout }: Readonly<{ payout: PayoutView }>) {
           </p>
         </div>
       </div>
-      <CoinbasePayout chainId={payout.chain} payout={{ to: payout.to, data: payout.data }} />
+      {payout.chain === null ? null : (
+        <CoinbasePayout chainId={payout.chain} payout={{ to: payout.to, data: payout.data }} />
+      )}
       <dl className="payout">
         <dt>To</dt>
         <dd>

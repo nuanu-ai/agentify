@@ -157,13 +157,13 @@ const splitsFor = (
   };
 };
 
-/** Where this deployment's chain shows an address, as the dashboard's configuration names it. */
-const addressPageOn = (mode: SurfaceMode): string | null =>
+/** The dashboard's configuration on each channel, which names its chain's pages and its wallet's chain. */
+const configOn = (mode: SurfaceMode) =>
   loadConfig({
     DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
     AUTH_SECRET: TEST_AUTH_SECRET,
     ...CHANNELS[mode],
-  }).addressPage;
+  });
 
 interface Looking {
   readonly mode?: SurfaceMode;
@@ -197,7 +197,8 @@ const viewOf = ({
             : { payout_wallet: pending, takes_effect_at: "2026-08-28T12:00:00Z" },
       }),
       payoutSplits: splits ?? splitsFor(mode, wallet, pending === undefined ? {} : { pending }),
-      addressPage: addressPageOn(mode),
+      addressPage: configOn(mode).addressPage,
+      walletChain: configOn(mode).walletChain,
       ...(liveApproval === undefined ? {} : { liveApproval }),
     },
     press,

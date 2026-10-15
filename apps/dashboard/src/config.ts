@@ -164,6 +164,11 @@ export interface DashboardConfig {
    * the other chain would show an empty address as nothing owed.
    */
   readonly addressPage: string | null;
+  /**
+   * The EIP-155 chain a merchant's wallet is asked to work on, the payment
+   * network's, or null in the sandbox, where no wallet is ever paid.
+   */
+  readonly walletChain: number | null;
   readonly basePath: string;
   readonly cookieSecure: boolean;
   readonly databaseUrl: string;
@@ -192,6 +197,12 @@ const TRANSACTION_PAGES: Readonly<Record<string, string>> = {
 const ADDRESS_PAGES: Readonly<Record<string, string>> = {
   "eip155:8453": "https://basescan.org/address/",
   "eip155:84532": "https://sepolia.basescan.org/address/",
+};
+
+/** The chain number of an `eip155:` network, or null for a network of another family. */
+const eip155ChainOf = (network: string): number | null => {
+  const chain = /^eip155:(\d+)$/.exec(network)?.[1];
+  return chain === undefined ? null : Number(chain);
 };
 
 export function loadConfig(environment: Record<string, string | undefined>): DashboardConfig {
@@ -267,6 +278,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     transactionPage:
       surfaceMode === "sandbox" ? null : (TRANSACTION_PAGES[values.PAYMENT_NETWORK] ?? null),
     addressPage: surfaceMode === "sandbox" ? null : (ADDRESS_PAGES[values.PAYMENT_NETWORK] ?? null),
+    walletChain: surfaceMode === "sandbox" ? null : eip155ChainOf(values.PAYMENT_NETWORK),
     basePath: values.BASE_PATH,
     cookieSecure: values.COOKIE_SECURE,
     databaseUrl: values.DATABASE_URL,

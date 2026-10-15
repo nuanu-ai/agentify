@@ -483,6 +483,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           payoutWallet: wallet.document,
           payoutSplits: splits.document,
           addressPage: config.addressPage,
+          walletChain: config.walletChain,
           ...(approval.document === undefined ? {} : { liveApproval: approval.document }),
         },
         press,
