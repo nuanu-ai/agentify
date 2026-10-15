@@ -1,5 +1,4 @@
 import { createSocket } from "node:dgram";
-import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 
 import {
@@ -17,11 +16,6 @@ import {
   PASSIVE_BROWSER_ARGS,
 } from "./runtime-guards.js";
 
-const chromeExecutable = (): string | undefined => {
-  const macChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  return process.platform === "darwin" && existsSync(macChrome) ? macChrome : undefined;
-};
-
 describe("real Chromium aggregate extraction", () => {
   it("observes JS, ARIA, forms, WebMCP and hidden instructions without returning raw content", async () => {
     const html = await readFile(
@@ -31,7 +25,6 @@ describe("real Chromium aggregate extraction", () => {
     const browser = await chromium.launch({
       headless: true,
       args: [...PASSIVE_BROWSER_ARGS],
-      executablePath: chromeExecutable(),
     });
     try {
       const context = await browser.newContext({
@@ -79,7 +72,6 @@ describe("real Chromium aggregate extraction", () => {
     const browser = await chromium.launch({
       headless: true,
       args: [...PASSIVE_BROWSER_ARGS],
-      executablePath: chromeExecutable(),
     });
     try {
       const context = await browser.newContext({ serviceWorkers: "block" });
