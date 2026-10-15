@@ -40,14 +40,16 @@ export const dashboardDestinationIn = (value: unknown): DashboardDestination =>
 export type LinkDestination = DashboardDestination | Readonly<{ report: string }>;
 
 /**
- * A partner network's click identifier that the person asking for a link
- * agreed, on the sign-in form, to have kept with it; it is reported only if the
- * address's owner confirms when pressing the link and the press makes their
- * account. `consentedAt` is the moment of the tick as
+ * A partner network's click identifier that the person signing in agreed, on
+ * the sign-in form, to have kept with the link they ask for or the Google
+ * sign-in they start; it is reported only if that sign-in makes the address's
+ * first verified account, and a link's only once the address's owner confirms
+ * at the press. `consentedAt` is the moment of the tick as
  * `Date.prototype.toISOString` writes it, and `wording` names the version of
- * the sentences agreed to, at most 64 characters. A request
- * carrying a click that does not have exactly this form throws, and nothing is
- * sent or counted: the page checks the identifier before passing it.
+ * the sentences agreed to, at most 64 characters. A link request carrying a
+ * click that does not have exactly this form throws, and nothing is sent or
+ * counted; a Google start carrying one is unavailable and keeps nothing. The
+ * page checks the identifier before passing it.
  */
 export type ConsentedClick = Readonly<{ id: string; consentedAt: string; wording: string }>;
 
