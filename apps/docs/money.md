@@ -60,13 +60,12 @@ dashboard's Settings make one with you. Create or connect a Coinbase Wallet
 opens Coinbase's window over the page, where you create a Coinbase Wallet or
 connect one you already have, and its address comes into the box; it is saved
 only when you press the button beside the box, as an address you typed would
-be. You see the wallet's USDC and send it on at
-[wallet.coinbase.com](https://wallet.coinbase.com).
+be. You manage the wallet at [wallet.coinbase.com](https://wallet.coinbase.com).
 
-The wallet is yours, and so is the way into it. Agentify cannot reach it, and
-Coinbase keeps no copy of your passkey or of a recovery key you create and
-cannot get you back in without them, so set up a way back while you still can
-get in ([how Coinbase's recovery works](https://help.coinbase.com/en/wallet/getting-started/smart-wallet-recovery)).
+The wallet is yours, and so is the way into it. Nothing leaves it without
+your approval in Coinbase's window, and Coinbase keeps no copy of your passkey
+or of a recovery key you create and cannot get you back in without them, so
+set up a way back while you still can get in ([how Coinbase's recovery works](https://help.coinbase.com/en/wallet/getting-started/smart-wallet-recovery)).
 
 Any other wallet app that supports the Base network, such as MetaMask, works
 as well. It shows the address, which is what you enter in Settings, and a
@@ -77,8 +76,8 @@ wallet only ever receives test USDC, so it needs no money of its own.
 ### Getting paid out
 
 With a Coinbase Wallet, Settings sends the payout for you: Pay out with
-Coinbase Wallet opens Coinbase's window with the transaction, which shows its
-fee, and nothing is sent until you approve it there. Your share reaches your
+Coinbase Wallet opens Coinbase's window, which asks you to approve the
+transaction, and nothing is sent until you do. Your share reaches your
 wallet in that same transaction. A wallet that holds nothing yet may have
 nothing to pay the fee with; then that first payout arrives when Agentify next
 pays out every payout contract.
@@ -292,8 +291,9 @@ arrives](#where-the-money-arrives)).
   so an order paid for and not delivered has none, and matching the payouts
   into your wallet against the orders is still yours to do by hand.
 - Whether Coinbase Wallet lets you pay a payout's fee in USDC, as Coinbase
-  says it does, and what it shows on a first payout from a wallet that holds
-  nothing yet. Neither has been tried on the test channel.
+  says it does, what it shows on a first payout from a wallet that holds
+  nothing yet, and whether wallet.coinbase.com shows the test channel's test
+  USDC. None of these has been tried on the test channel.
 - The written terms of the commission. Until they are published, saving your
   wallet on the screen that names the commission is the whole of how you
   accept it.
