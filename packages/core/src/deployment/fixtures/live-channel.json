@@ -44,6 +44,8 @@
         "PAYMENT_NETWORK": "eip155:8453",
         "PAY_TO_ADDRESS": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
         "PUBLIC_BASE_URL": "https://agentify.ad",
+        "REGISTRATION_POSTBACK_ENABLED": "false",
+        "REGISTRATION_POSTBACK_KEY": "",
         "REPORT_IDENTITY_SECRET": "fixture-report-identity-secret-of-64-hexish-characters-0000000000",
         "SANDBOX_MERCHANT_KEY": ""
       },

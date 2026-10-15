@@ -11,6 +11,14 @@ services:
     volumes:
       - "${AGENTIFY_POSTGRES_INIT:?deploy/stack.sh names the database's init scripts}:/docker-entrypoint-initdb.d:ro"
 
+  # The test channel never reports a registration to the ad tracker, because
+  # nothing signed up here is a real person from a real ad. The switch is fixed
+  # here so no line in the host's environment file can turn it on; turned on,
+  # the application refuses to start on this channel.
+  app:
+    environment:
+      REGISTRATION_POSTBACK_ENABLED: "false"
+
   # What the test channel's scanner does is fixed here rather than read from
   # the host's environment file, so no line in that file can change it. It takes
   # registrations and scans from anybody, because the whole path a reader walks
