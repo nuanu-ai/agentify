@@ -637,15 +637,11 @@ export function loadConfig(
   }
 
   // Every payment is asked for at a split paying the network's commission
-  // wallet, so a written chain the code names none for cannot sell at all.
-  if (chainEnvironment !== null) {
-    try {
-      payoutSplitNetworkOf(payoutSplitNetworks, network);
-    } catch (thrown) {
-      problems.push(
-        `PAYMENT_NETWORK: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
-      );
-    }
+  // wallet, so a chain the code names none for cannot sell at all.
+  try {
+    payoutSplitNetworkOf(payoutSplitNetworks, network);
+  } catch (thrown) {
+    problems.push(`PAYMENT_NETWORK: ${thrown instanceof Error ? thrown.message : String(thrown)}`);
   }
 
   // The prefix says which environment a key belongs to; it is not a check that
