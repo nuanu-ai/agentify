@@ -1,8 +1,9 @@
 /**
  * The search index, built from the rendered pages cut into sections at their
  * headings the way VitePress cuts them: a section is a heading with what
- * follows it up to the next heading, found by the anchor link every heading
- * carries, and is titled by the headings above it.
+ * follows it up to the next heading, and is titled by the headings above it.
+ * A page's title and its introduction are found at the page's own address,
+ * every other section at its heading's anchor.
  */
 
 import { docsAddress } from "@agentify/ui/docs";
@@ -23,8 +24,8 @@ const IN_WORDS = {
   "identity-confirmed": "true",
 } as const;
 
-const HEADING = /<h(\d*).*?>(.*?<a.*? href="#.*?".*?>.*?<\/a>)<\/h\1>/gi;
-const HEADING_CONTENT = /(.*?)<a.*? href="#(.*?)".*?>.*?<\/a>/i;
+/** A heading as the pipeline writes it: its level, its id and what it holds. */
+const HEADING = /<h([1-6])\b[^>]*?\sid="([^"]*)"[^>]*>(.*?)<\/h\1>/gis;
 
 /** What a reader sees of some HTML: its text, with the entities the pipeline writes read back. */
 const textOf = (html: string): string =>
@@ -45,15 +46,18 @@ function* sectionsOf(html: string): Generator<Section> {
   const parts = html.split(HEADING);
   parts.shift();
   let parents: string[] = [];
-  for (let at = 0; at < parts.length; at += 3) {
-    const level = Number.parseInt(parts[at] ?? "", 10) - 1;
-    const heading = HEADING_CONTENT.exec(parts[at + 1] ?? "");
-    const title = textOf(heading?.[1] ?? "");
-    const content = parts[at + 2];
+  for (let at = 0; at < parts.length; at += 4) {
+    const level = Number(parts[at]) - 1;
+    const title = textOf(parts[at + 2] ?? "");
+    const content = parts[at + 3];
     if (!title || !content) continue;
     const titles = parents.slice(0, level);
     titles[level] = title;
-    yield { anchor: heading?.[2] ?? "", titles: titles.filter(Boolean), text: textOf(content) };
+    yield {
+      anchor: level === 0 ? "" : (parts[at + 1] ?? ""),
+      titles: titles.filter(Boolean),
+      text: textOf(content),
+    };
     if (level === 0) parents = [title];
     else parents[level] = title;
   }
