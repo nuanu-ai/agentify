@@ -524,6 +524,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       try {
         if (parts.pool === undefined) {
           return await inMemoryTransaction(async (bound, rows) => {
+            cleanupOldLinksInMemory(rows, new Date());
             const rated = memoryRate(rows, rateKey(config.authSecret, email), "dashboard");
             if (!rated.sent)
               return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
@@ -534,6 +535,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           schema: { accounts, credentials, linkSends, sessions, verifications },
         });
         return await db.transaction(async (tx) => {
+          await cleanupOldLinksInPostgres(tx, new Date());
           await lockEmail(tx, email);
           const rated = await postgresRate(tx, rateKey(config.authSecret, email), "dashboard");
           if (!rated.sent) return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
@@ -1224,8 +1226,9 @@ async function reportDigestKeyInPostgres(tx: DashboardTransaction, now: Date): P
 
 /**
  * A spent link's row is deleted by the component; an unpressed one keeps a
- * hashed token and an address, and this bounds how long. In batches, so one
- * request never pays for a backlog.
+ * hashed token, an address and any ad click its claim carries, and this bounds
+ * how long. Every request for a link runs it, in batches, so one request never
+ * pays for a backlog.
  */
 function cleanupOldLinksInMemory(rows: MemoryRows, now: Date): void {
   const cutoff = now.getTime() - LINK_PROOF_RETENTION_MS;
