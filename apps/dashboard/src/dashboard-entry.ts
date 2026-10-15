@@ -75,7 +75,7 @@ export type LinkRequestResult =
  * reporting is switched on, the link was asked for with a consented click, and
  * the address has no verified account yet.
  */
-export type LinkLanding = Readonly<{ email: string; tellsTracker: boolean }>;
+type LinkLanding = Readonly<{ email: string; tellsTracker: boolean }>;
 
 /** The address's owner's answer on the link's page. */
 export type OwnersChoice = Readonly<{ tellTracker: boolean }>;

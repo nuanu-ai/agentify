@@ -82,7 +82,7 @@ export interface ServedForm {
   readonly presses: readonly ServedPress[];
 }
 
-export interface ServedPress {
+interface ServedPress {
   readonly name: string | undefined;
   readonly value: string | undefined;
   readonly label: string;
