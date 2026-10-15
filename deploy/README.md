@@ -113,11 +113,13 @@ succeeded.
 
 ## Releasing to production
 
-While the code that takes a commission names no commission wallet on Base,
-the gateway does not start there, so no `app-v*` tag of such a commit is
-released to production until ADR-0037's status says the hold has ended
-(`docs/research/47-commission-in-the-product.md`, «Выпуск ждёт кошелька
-комиссии в Base»).
+The code that takes a commission names a commission wallet on each network it
+sells on, on Base the product owner's Safe. Before an `app-v*` tag of it goes
+to production, `COMMISSION_SAFE_OWNERS=<the Safe's owners> pnpm
+commission-wallet` passes on both networks, and nothing sells on the live
+channel until the check on Base itself has passed
+(`docs/research/47-commission-in-the-product.md`, «Кошелёк комиссии в Base»
+and «Проверка в основной сети до выпуска на живой канал»).
 
 A production release starts from `main`. Every change a merchant can see in
 the published packages carries a Changeset (`pnpm changeset` on the branch
