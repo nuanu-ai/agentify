@@ -54,6 +54,7 @@ import { keysView, newKeyView } from "../src/keys.js";
 import {
   askViewOf,
   cancelledByTyping,
+  googleRefusalView,
   type LinkAnswer,
   landedBeforePress,
   NOT_AN_ADDRESS,
@@ -589,7 +590,7 @@ const signIn = (told: Told, path: string, answered?: SignInView): GalleryState =
   at(told, {
     path,
     mode: "live",
-    loaded: { "routes/sign-in": askViewOf(new URL(path, ORIGIN.live).searchParams) },
+    loaded: { "routes/sign-in": askViewOf(new URL(path, ORIGIN.live).searchParams, false) },
     ...(answered === undefined ? {} : { pressed: { "routes/sign-in": answered } }),
   });
 
@@ -609,6 +610,51 @@ const SIGNING_IN: GalleryState[] = [
       cause: "The browser carries no session, so the gate sends it here.",
     },
     "/sign-in",
+  ),
+  signIn(
+    {
+      id: "dashboard-sign-in-google",
+      screen: "Sign in",
+      when: "Somebody opens the dashboard on a channel configured for Google sign-in.",
+      cause: "Google sign-in is available alongside the email link.",
+    },
+    "/sign-in?destination=settings",
+    { screen: "ask", destination: "settings", googleEnabled: true },
+  ),
+  at(
+    {
+      id: "dashboard-google-start-unavailable",
+      screen: "Sign in",
+      when: "Somebody presses Google sign-in while Google cannot be reached.",
+      cause: "The start failed, so the email form keeps the requested dashboard section.",
+    },
+    {
+      path: "/sign-in/google",
+      mode: "live",
+      pressed: {
+        "routes/sign-in-google": googleRefusalView(true, "unavailable", "settings"),
+      },
+    },
+  ),
+  at(
+    {
+      id: "dashboard-google-address-unverified",
+      screen: "Sign in",
+      when: "Google returns an address whose current ownership it does not confirm.",
+      cause: "No session opened; the email form lets the person confirm the returned address.",
+    },
+    {
+      path: "/sign-in/google/callback",
+      mode: "live",
+      loaded: {
+        "routes/sign-in-google-callback": googleRefusalView(
+          true,
+          "email-unverified",
+          "settings",
+          WHO,
+        ),
+      },
+    },
   ),
   signIn(
     {
@@ -647,7 +693,7 @@ const SIGNING_IN: GalleryState[] = [
       cause: "The typed address does not have the shape of an email address, so no link was sent.",
     },
     "/sign-in",
-    { screen: "ask", destination: "default", problem: NOT_AN_ADDRESS },
+    { screen: "ask", destination: "default", googleEnabled: false, problem: NOT_AN_ADDRESS },
   ),
   signIn(
     {
@@ -712,7 +758,7 @@ const SIGNING_IN: GalleryState[] = [
     {
       path: "/sign-in",
       mode: "test",
-      loaded: { "routes/sign-in": askViewOf(new URLSearchParams()) },
+      loaded: { "routes/sign-in": askViewOf(new URLSearchParams(), false) },
     },
   ),
   at(

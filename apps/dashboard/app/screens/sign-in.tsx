@@ -11,7 +11,9 @@ import { Form, useNavigation } from "react-router";
 import type { DashboardDestination } from "../../src/dashboard-entry.js";
 import type { LinkAnswer, OpenLinkView, SignInView } from "../../src/page-services.js";
 import type { Chrome } from "../answer.js";
+import googleButton from "../assets/google-sign-in-light.png";
 import { GatePage } from "../components/gate-page.js";
+import styles from "./sign-in.module.css";
 
 const Destination = ({ destination }: Readonly<{ destination: DashboardDestination }>) =>
   destination === "default" ? null : <input type="hidden" name="destination" value={destination} />;
@@ -26,33 +28,48 @@ export function AskScreen({
   const pressed = usePressed();
   return (
     <GatePage chrome={chrome} title="Sign in">
-      <Form className="gate-card" method="post" action="/sign-in">
+      <div className="gate-card">
         <h1>Sign in</h1>
         {view.reason === undefined ? null : <p>{view.reason}</p>}
-        <p>Enter your email address and we will send you a sign-in link.</p>
-        <Field
-          label="Email address"
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          autoCapitalize="off"
-          spellCheck={false}
-          autoFocus
-          required
-          {...(view.problem === undefined ? {} : { error: view.problem })}
-        />
-        <Destination destination={view.destination} />
-        <Button pending={pressed}>Send me a sign-in link</Button>
+        {view.googleEnabled ? (
+          <>
+            <Form method="post" action="/sign-in/google" reloadDocument>
+              <Destination destination={view.destination} />
+              <button className={styles.google} type="submit">
+                <img src={googleButton} alt="Sign in with Google" width="180" height="40" />
+              </button>
+            </Form>
+            <p>Or enter your email address and we will send you a sign-in link.</p>
+          </>
+        ) : (
+          <p>Enter your email address and we will send you a sign-in link.</p>
+        )}
+        <Form method="post" action="/sign-in">
+          <Field
+            label="Email address"
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            autoCapitalize="off"
+            spellCheck={false}
+            autoFocus
+            required
+            defaultValue={view.email ?? ""}
+            {...(view.problem === undefined ? {} : { error: view.problem })}
+          />
+          <Destination destination={view.destination} />
+          <Button pending={pressed}>Send me a sign-in link</Button>
+        </Form>
         <p className="quiet">
-          Every sign-in gets its own link. It opens once and expires an hour after it is sent, so
-          there is nothing to keep and no password to remember.
+          Each email sign-in link opens once and expires an hour after it is sent, so there is
+          nothing to keep and no password to remember.
         </p>
         <p className="quiet">
-          New to Agentify? Use this same form. Once the link signs you in, one button opens your
-          seller dashboard.
+          New to Agentify? Sign in here. Once you are signed in, one button opens your seller
+          dashboard.
         </p>
-      </Form>
+      </div>
     </GatePage>
   );
 }

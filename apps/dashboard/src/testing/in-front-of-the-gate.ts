@@ -7,5 +7,7 @@
 export const PAGES_IN_FRONT_OF_THE_GATE: readonly string[] = [
   "/sign-in",
   "/sign-in/open",
+  "/sign-in/google",
+  "/sign-in/google/callback",
   "/woocommerce/return",
 ];
