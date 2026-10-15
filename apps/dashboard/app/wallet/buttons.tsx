@@ -143,7 +143,9 @@ export function CoinbasePayout({
         sendPayout(coinbaseWallet(chainId), chainId, payout),
       )
       .catch(() => NOT_OPENED);
-    if (!pressed.latest()) return;
+    // A payout that went out is said whenever it went out: hiding a late one
+    // would leave the page saying nothing was sent.
+    if (!pressed.latest() && sent.kind !== "sent") return;
     pressed.say(
       sent.kind === "sent"
         ? WALLET_WORDS.payoutSent
