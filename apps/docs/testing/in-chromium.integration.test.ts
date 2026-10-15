@@ -21,6 +21,7 @@ import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { gunzipSync } from "node:zlib";
 import {
   CONSENT_POLICY_VERSION,
   CONSENT_STORAGE_KEY,
@@ -31,7 +32,7 @@ import { precompressedFrom } from "@agentify/ui/assets";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
 import { launchChromium } from "@agentify/ui/chromium";
 import { DOCS_PAGES, docsAddress } from "@agentify/ui/docs";
-import type { Browser, BrowserContext, Page } from "playwright";
+import type { Browser, BrowserContext, Page, Request } from "playwright";
 import type { ServerBuild } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BUILT, CHANNELS, type Edge, standEdge } from "./edge.js";
@@ -585,11 +586,35 @@ describe("the scanner's addresses for its pages in the documentation", () => {
   });
 });
 
-/** What a page asked of the measuring services, its consent recorded as the scanner records it. */
-const measured = async (context: BrowserContext): Promise<string[]> => {
+/** The events a request to PostHog carries, however PostHog chose to pack them. */
+const eventsIn = (
+  request: Request,
+): Array<{ event: string; properties: Record<string, unknown> }> => {
+  const body = request.postDataBuffer();
+  if (body === null) return [];
+  let text = (body[0] === 0x1f && body[1] === 0x8b ? gunzipSync(body) : body).toString("utf8");
+  if (text.startsWith("data=")) {
+    text = Buffer.from(decodeURIComponent(text.slice(5)), "base64").toString("utf8");
+  }
+  const packed = JSON.parse(text) as unknown;
+  return (Array.isArray(packed) ? packed : [packed]) as ReturnType<typeof eventsIn>;
+};
+
+/**
+ * What a page asked of the measuring services, its consent recorded as the
+ * scanner records it: every address asked, and the page each view PostHog was
+ * sent names.
+ */
+const measured = async (
+  context: BrowserContext,
+): Promise<Readonly<{ sent: string[]; views: string[] }>> => {
   const sent: string[] = [];
+  const views: string[] = [];
   await context.route(`${POSTHOG}/**`, (route) => {
     sent.push(route.request().url());
+    for (const { event, properties } of eventsIn(route.request())) {
+      if (event === "$pageview") views.push(new URL(String(properties.$current_url)).pathname);
+    }
     return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   });
   // The route's own answer, which needs a database, is held by its integration
@@ -601,7 +626,7 @@ const measured = async (context: BrowserContext): Promise<string[]> => {
       body: JSON.stringify({ status: "saved", policy_version: CONSENT_POLICY_VERSION }),
     }),
   );
-  return sent;
+  return { sent, views };
 };
 
 /** A capture PostHog is sent, as against the settings it asks for when it starts. */
@@ -610,7 +635,7 @@ const captures = (sent: readonly string[]) => sent.filter((url) => /\/e\/|\/i\/v
 describe("measuring a visit", () => {
   it("asks on a first visit, and sends nothing and loads nothing to measure before a choice", async () => {
     const { page, asked } = await visit("/docs/money", undefined, false, false);
-    const sent = await measured(page.context());
+    const { sent } = await measured(page.context());
     const banner = page.getByRole("complementary", { name: "Privacy choices" });
 
     expect(await banner.isVisible()).toBe(true);
@@ -626,7 +651,7 @@ describe("measuring a visit", () => {
 
   it("records a view of the page a visitor allowed it on and of every page they move to", async () => {
     const { page } = await visit("/docs/money", undefined, false, false);
-    const sent = await measured(page.context());
+    const { sent } = await measured(page.context());
 
     await page.getByRole("button", { name: "Allow optional analytics" }).click();
     await expect.poll(() => captures(sent).length, { timeout: 10_000 }).toBeGreaterThan(0);
@@ -639,9 +664,31 @@ describe("measuring a visit", () => {
     await page.context().close();
   });
 
+  it("counts the page a visitor allowed it on by that page's address though they move on at once, and counts no page twice", async () => {
+    const { page } = await visit("/docs/money", undefined, false, false);
+    const { views } = await measured(page.context());
+    // The code that measures arrives only after the visitor has moved on, as on a slow line.
+    await page.context().route("**/assets/page-view-*.js", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      await route.continue();
+    });
+
+    await page.getByRole("button", { name: "Allow optional analytics" }).click();
+    await contents(page).getByRole("link", { name: "Orders and fulfillment modes" }).click();
+    await drawn(page, "/docs/orders");
+    await expect.poll(() => views.length, { timeout: 10_000 }).toBe(2);
+    await page.locator("footer").getByRole("button", { name: "Privacy choices" }).click();
+    await page.getByRole("button", { name: "Save choices" }).click();
+    await page.getByRole("dialog", { name: "Privacy choices" }).waitFor({ state: "detached" });
+    await page.waitForTimeout(1_000);
+
+    expect(views.toSorted()).toEqual(["/docs/money", "/docs/orders"]);
+    await page.context().close();
+  });
+
   it("records nothing and loads nothing to measure after a visitor kept optional measuring off, a move included", async () => {
     const { page, asked } = await visit("/docs/money", undefined, false, false);
-    const sent = await measured(page.context());
+    const { sent } = await measured(page.context());
 
     await page.getByRole("button", { name: "Essential only" }).click();
     await page

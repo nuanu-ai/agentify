@@ -31,9 +31,10 @@ const analyticsConfigOf = (values: SiteValues): BrowserAnalyticsConfig => ({
 /**
  * Records a view of each page a visitor reads, once they allowed measuring:
  * the page they were on when they chose, and every page after it, a move
- * without a reload included. Nothing is fetched or sent before a choice that
- * allows it, and where the document was served without its settings filled
- * nothing is sent at all.
+ * without a reload included. Each service a choice allows counts a page once,
+ * under the address it was read at, however often the choice is saved again.
+ * Nothing is fetched or sent before a choice that allows it, and where the
+ * document was served without its settings filled nothing is sent at all.
  */
 export function Measured({ built }: Readonly<{ built: string }>) {
   const { pathname } = useLocation();
@@ -41,12 +42,24 @@ export function Measured({ built }: Readonly<{ built: string }>) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: each page the visitor moves to is a view of its own
   useEffect(() => {
     const values = servedValues(built);
+    const address = window.location.href;
+    const counted = { product_analytics: false, ads_measurement: false };
     const record = (snapshot: ConsentSnapshot | undefined) => {
       if (values === null || snapshot === undefined) return;
-      if (!consentAllowsMeasurement(snapshot.categories)) return;
+      const unsent: ConsentSnapshot = {
+        ...snapshot,
+        categories: {
+          ...snapshot.categories,
+          product_analytics: snapshot.categories.product_analytics && !counted.product_analytics,
+          ads_measurement: snapshot.categories.ads_measurement && !counted.ads_measurement,
+        },
+      };
+      if (!consentAllowsMeasurement(unsent.categories)) return;
+      counted.product_analytics ||= unsent.categories.product_analytics;
+      counted.ads_measurement ||= unsent.categories.ads_measurement;
       const config = analyticsConfigOf(values);
       void import("../page-view.js")
-        .then(({ sendPageView }) => sendPageView(config, snapshot, window.location.href))
+        .then(({ sendPageView }) => sendPageView(config, unsent, address))
         .catch(() => {
           // Not fetched, so not recorded: the next page tries again.
         });
