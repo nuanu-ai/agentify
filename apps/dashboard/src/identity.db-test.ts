@@ -945,6 +945,21 @@ if (databaseUrl === null) {
     ).rows;
   }
 
+  /**
+   * Each new account waits a moment before it is written, so two transactions
+   * that would both make one overlap.
+   */
+  async function slowAccountInserts(): Promise<void> {
+    await pool.query(`
+      create function slow_dashboard_person() returns trigger language plpgsql as $$
+      begin perform pg_sleep(0.05); return new; end $$
+    `);
+    await pool.query(`
+      create trigger slow_dashboard_person before insert on dashboard_accounts
+      for each row execute function slow_dashboard_person()
+    `);
+  }
+
   async function countIn(table: string): Promise<number> {
     return (await pool.query<{ count: number }>(`select count(*)::int as count from ${table}`))
       .rows[0]?.count as number;
@@ -1179,17 +1194,6 @@ if (databaseUrl === null) {
         expect(await registrations()).toMatchObject([{ click_id: CLICK.id }]);
       },
     );
-
-    async function slowAccountInserts(): Promise<void> {
-      await pool.query(`
-        create function slow_dashboard_person() returns trigger language plpgsql as $$
-        begin perform pg_sleep(0.05); return new; end $$
-      `);
-      await pool.query(`
-        create trigger slow_dashboard_person before insert on dashboard_accounts
-        for each row execute function slow_dashboard_person()
-      `);
-    }
 
     it("makes one account and one registration when the same consented link is pressed twice at once", async () => {
       const messages: Message[] = [];
@@ -1500,6 +1504,7 @@ if (databaseUrl === null) {
       const { identity, start } = reportingGoogle();
       const first = await start(CLICK);
       const second = await start(ANOTHER_CLICK);
+      await slowAccountInserts();
 
       const opened = await Promise.all([
         identity.finishGoogle(first.query, first.cookie),
