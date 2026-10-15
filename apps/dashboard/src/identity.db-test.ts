@@ -459,6 +459,35 @@ if (databaseUrl === null) {
       ).toStrictEqual({ count: 0 });
     });
 
+    it("removes another address's unpressed link a week past its end when a link is asked for, and keeps a younger one", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      const aWeek = 7 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      await pool.query(
+        `insert into dashboard_verifications
+           (id, identifier, value, expires_at, created_at, updated_at)
+         values
+           ('younger', 'younger', $1, $2, $4, $4),
+           ('older', 'older', $1, $3, $4, $4)`,
+        [
+          JSON.stringify({ email: "other@example.com", destination: "default", request: null }),
+          new Date(now - aWeek + 60_000),
+          new Date(now - aWeek - 1),
+          new Date(now - aWeek - 60 * 60 * 1000),
+        ],
+      );
+
+      await identity.requestLink("person@example.com", "default");
+
+      const kept = (
+        await pool.query<{ id: string }>("select id from dashboard_verifications")
+      ).rows.map((row) => row.id);
+      expect(kept).toContain("younger");
+      expect(kept).not.toContain("older");
+      expect(kept).toHaveLength(2);
+    });
+
     it("keeps a seeded merchant unconfirmed until that mailbox consumes a link", async () => {
       const messages: Message[] = [];
       const identity = identityOn(messages);

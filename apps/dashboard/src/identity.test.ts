@@ -230,6 +230,33 @@ describe("dashboard magic links", () => {
     }
   });
 
+  it("removes another address's unpressed link a week past its end when a link is asked for, and keeps a younger one", async () => {
+    // An unpressed link keeps an address and whatever its claim carries, such
+    // as an ad's click, until something removes it.
+    const { identity, rows } = memoryIdentity();
+    const aWeek = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const unpressed = (id: string, expiresAt: Date) => ({
+      id,
+      identifier: id,
+      value: JSON.stringify({ email: "other@example.com", destination: "default", request: null }),
+      expiresAt,
+      createdAt: new Date(expiresAt.getTime() - 60 * 60 * 1000),
+      updatedAt: new Date(expiresAt.getTime() - 60 * 60 * 1000),
+    });
+    rows.dashboard_verifications = [
+      unpressed("younger", new Date(now - aWeek + 60_000)),
+      unpressed("older", new Date(now - aWeek - 1)),
+    ];
+
+    await identity.requestLink("person@example.com", "default");
+
+    const kept = rows.dashboard_verifications?.map((row) => row.id) ?? [];
+    expect(kept).toContain("younger");
+    expect(kept).not.toContain("older");
+    expect(kept).toHaveLength(2);
+  });
+
   it("keeps no token or rate event when the mail provider refuses the message", async () => {
     const { identity, rows } = memoryIdentity("refused");
 
