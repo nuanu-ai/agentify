@@ -21,7 +21,7 @@ import { ADS_CONSENT } from "../../src/ads-consent.js";
 import type { LinkAnswer } from "../../src/page-services.js";
 import { formTo, readable, waitingButton } from "../../src/testing/html.js";
 import type { Chrome } from "../answer.js";
-import { AskScreen, LinkRequestedScreen } from "./sign-in.js";
+import { AskScreen, LinkRequestedScreen, OpenLinkScreen } from "./sign-in.js";
 
 const PERSON = "owner@example.com";
 
@@ -286,5 +286,38 @@ describe("the script that waits the wait out", () => {
 
     expect(readable(document.body.innerHTML)).toContain("Try again in 61 seconds");
     expect(page.button.textContent).toBe("Send another link (61 s)");
+  });
+});
+
+describe("the link's page, where the address's owner answers whether to tell the tracker", () => {
+  const opening = (tellsTracker: boolean) =>
+    render(
+      routed(() => (
+        <OpenLinkScreen
+          chrome={chromeIn("live")}
+          view={{ screen: "open", token: "a".repeat(32), email: PERSON, tellsTracker }}
+        />
+      )),
+    );
+
+  it("sends with each button the answer its words give, and draws the two alike", () => {
+    // Neither answer is the one the page leans towards.
+    const { getByRole, container } = opening(true);
+
+    const tell = getByRole("button", { name: ADS_CONSENT.tell }) as HTMLButtonElement;
+    const without = getByRole("button", { name: ADS_CONSENT.without }) as HTMLButtonElement;
+
+    expect([tell.name, tell.value]).toStrictEqual(["report", "yes"]);
+    expect([without.name, without.value]).toStrictEqual(["report", "no"]);
+    expect(tell.className).toBe(without.className);
+    expect(container.textContent).toContain(PERSON);
+  });
+
+  it("has one button that sends no answer where the press would tell the tracker nothing", () => {
+    const { getAllByRole } = opening(false);
+
+    const buttons = getAllByRole("button") as HTMLButtonElement[];
+
+    expect(buttons.map((button) => [button.name, button.value])).toStrictEqual([["", ""]]);
   });
 });
