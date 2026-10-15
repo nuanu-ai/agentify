@@ -194,6 +194,9 @@ const REGISTRATION_POSTBACK_ENDPOINT = "https://aisamuraihub.com/postback";
 /** The tracker's own key, as it issued it, is at least this long. */
 const SHORTEST_POSTBACK_KEY = 16;
 
+/** Letters, digits and punctuation, from `!` to `~`. */
+const VISIBLE_ASCII = /^[\x21-\x7e]+$/;
+
 /** The tracker's host and every name under it, a trailing dot included. */
 function isTheTrackers(address: string): boolean {
   const host = new URL(address).hostname.replace(/\.$/, "");
@@ -322,12 +325,12 @@ function registrationPostbackOf(
       `REGISTRATION_POSTBACK_ENABLED is true and REGISTRATION_POSTBACK_KEY is ${key === undefined ? "not set" : `shorter than ${SHORTEST_POSTBACK_KEY} characters`},` +
         " so the tracker would turn every report away",
     );
-  } else if (key !== key.trim()) {
-    // A request strips a header value's ends, so the tracker would be sent
-    // another key than this one.
+  } else if (!VISIBLE_ASCII.test(key)) {
+    // A request strips a header value's ends and throws on a character that is
+    // not a byte, so the key it sent would not be this one, or nothing would go.
     problems.push(
-      "REGISTRATION_POSTBACK_KEY begins or ends with whitespace, so the tracker would turn" +
-        " every report away",
+      "REGISTRATION_POSTBACK_KEY holds a character other than visible ASCII, such as a space," +
+        " a line break or a typographic dash, so no report could carry it",
     );
   }
 
