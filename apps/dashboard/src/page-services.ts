@@ -114,7 +114,7 @@ export type SignInView =
       answer: LinkAnswer;
       click?: OfferedClick;
     }>
-  | Readonly<{ screen: "unavailable" }>;
+  | Readonly<{ screen: "unavailable"; click?: OfferedClick }>;
 
 /**
  * The ad click a visitor arrived with, which the sign-in forms carry from page
@@ -700,7 +700,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           consentedClickOf(offered.click),
         );
         if (requested.status === "unavailable") {
-          return { kind: "view", status: 503, view: { screen: "unavailable" } };
+          return { kind: "view", status: 503, view: { screen: "unavailable", ...offered } };
         }
         // Both waits come from the reading of the same rows; this page never
         // works one out, because the only wait it could guess is the minute,

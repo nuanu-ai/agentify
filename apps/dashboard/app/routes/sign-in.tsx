@@ -47,7 +47,12 @@ export default function SignIn() {
     );
   }
   if (view.screen === "unavailable") {
-    return <MailUnavailableScreen chrome={chrome} />;
+    return (
+      <MailUnavailableScreen
+        chrome={chrome}
+        {...(view.click === undefined ? {} : { click: view.click })}
+      />
+    );
   }
   return <AskScreen chrome={chrome} view={view} />;
 }

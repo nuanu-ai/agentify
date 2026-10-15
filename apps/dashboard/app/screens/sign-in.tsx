@@ -241,9 +241,13 @@ export function LinkRequestedScreen({
 /**
  * "Refused" covers both a provider that rejected the message and one that did
  * not answer in time, and the second may have delivered it. What is known is
- * that the send cannot be confirmed and nothing was written.
+ * that the send cannot be confirmed and nothing was written. Trying again
+ * keeps the ad's click, so the box is offered again, unticked.
  */
-export function MailUnavailableScreen({ chrome }: Readonly<{ chrome: Chrome }>) {
+export function MailUnavailableScreen({
+  chrome,
+  click,
+}: Readonly<{ chrome: Chrome; click?: OfferedClick }>) {
   return (
     <GatePage chrome={chrome} title="We could not confirm your sign-in link went out">
       <Form className="gate-card" method="get" action="/sign-in">
@@ -252,6 +256,7 @@ export function MailUnavailableScreen({ chrome }: Readonly<{ chrome: Chrome }>) 
           Something went wrong while sending the email, so we do not know whether it was delivered.
           No account or session was created. Try again, and check that the email address is correct.
         </p>
+        <Click click={click} />
         <Button>Try again</Button>
       </Form>
     </GatePage>
