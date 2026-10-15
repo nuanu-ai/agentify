@@ -108,6 +108,11 @@ export type GoogleFinishResult =
       email: string | null;
       destination: DashboardDestination;
       setCookies: readonly string[];
+      /**
+       * The click the refused sign-in was started with, given back only where
+       * reporting is on and the state was this browser's own.
+       */
+      click?: ConsentedClick;
     }>;
 
 export type MerchantPerson = Person & Readonly<{ merchant: AccountMerchant }>;

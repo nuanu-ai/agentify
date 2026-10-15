@@ -602,6 +602,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       const destination =
         DASHBOARD_DESTINATIONS.find((value) => value === redirected.searchParams.get("next")) ??
         "default";
+      const click = reporting ? clickIn(redirected) : undefined;
       const error = redirected.searchParams.get("error");
       if (error !== null) {
         const reason =
@@ -631,12 +632,17 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         ) {
           throw new GoogleTransactionRefused();
         }
+        // A refusal of the state itself may come with another browser's
+        // sign-in, so only a state held to this browser's cookie gives back
+        // the click this browser's own press kept.
+        const ownState = !["state_not_found", "state_mismatch", "state_invalid"].includes(error);
         return {
           status: "refused",
           reason,
           destination,
           setCookies,
           email: reason === "email-unverified" || reason === "email-changed" ? active.email : null,
+          ...(click === undefined || !ownState ? {} : { click }),
         };
       }
       const sessionHeaders = new Headers({
@@ -652,7 +658,6 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       }
       // The press that started this sign-in carried the consent, and Google
       // has just shown that the same browser's person owns the address.
-      const click = reporting ? clickIn(redirected) : undefined;
       if (click !== undefined && active.firstVerification === true) {
         await register(registrationOf(opened.user.id, click));
       }

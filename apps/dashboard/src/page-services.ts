@@ -849,12 +849,19 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           status: finished.reason === "unavailable" ? 503 : 401,
           headers: LINK_HEADERS,
           setCookies: finished.setCookies,
-          view: googleRefusalView(
-            identity.googleEnabled,
-            finished.reason,
-            finished.destination,
-            finished.email,
-          ),
+          view: {
+            ...googleRefusalView(
+              identity.googleEnabled,
+              finished.reason,
+              finished.destination,
+              finished.email,
+            ),
+            // Ticked as this browser left it when it pressed Google, which is
+            // the only way the click came back; the person can untick it.
+            ...(finished.click === undefined
+              ? {}
+              : { click: { id: finished.click.id, consented: true } }),
+          },
         };
       },
 
