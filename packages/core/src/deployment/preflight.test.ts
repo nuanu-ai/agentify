@@ -315,7 +315,7 @@ describe("Google sign-in is optional and only the application receives its crede
     for (const [name, value] of [
       ["PUBLIC_BASE_URL", "http://test.agentify.ad"],
       ["COOKIE_SECURE", "false"],
-    ]) {
+    ] as const) {
       const wrong = withEnv(enabled, "app", name, value);
       const checked = runCli("test", JSON.stringify(wrong));
       expect(checked.status).toBe(65);

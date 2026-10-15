@@ -1,7 +1,8 @@
 /**
  * Better Auth owns token consumption, people and sessions, but its HTTP routes
  * stay unmounted: the dashboard sends every link itself and calls the component
- * only from its own same-origin POST handlers. Production runs it on a
+ * only from its own handlers. OAuth starts with a same-origin POST and returns
+ * through a state-bound callback. Production runs it on a
  * transaction-bound Drizzle adapter; the memory store runs the same component
  * on an isolated transaction copy.
  */
@@ -31,6 +32,8 @@ import {
   type DashboardDestination,
   type DashboardIdentity,
   type DashboardLinkResult,
+  type GoogleFinishResult,
+  type GoogleStartResult,
   type LinkDestination,
   type LinkRequestResult,
   type LinkWall,
@@ -152,6 +155,25 @@ const schema = {
 
 class DeliveryRefused extends Error {}
 class VerificationRefused extends Error {}
+class GoogleTransactionRefused extends Error {}
+
+type GoogleAdmission = {
+  email: string | null;
+  lockIdentity?: (subject: string, email: string) => Promise<void>;
+};
+
+const hostedDomain = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
+
+const googleControlsEmail = (email: string, profile: Record<string, unknown>): boolean => {
+  const domain = /^[^\s@]+@([^\s@]+)$/.exec(email)?.[1];
+  return (
+    profile.email_verified === true &&
+    domain !== undefined &&
+    (domain === "gmail.com" ||
+      domain === "googlemail.com" ||
+      (typeof profile.hd === "string" && hostedDomain.test(profile.hd)))
+  );
+};
 
 /** As the component hashes it. */
 const tokenHash = (token: string): string => createHash("sha256").update(token).digest("base64url");
@@ -161,6 +183,9 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const base = `${config.publicBaseUrl}${config.basePath}`;
   const originHeaders = new Headers({ origin: new URL(config.publicBaseUrl).origin });
   const sending = new AsyncLocalStorage<LinkSend>();
+  const googleAdmission = new AsyncLocalStorage<GoogleAdmission>();
+  const googleStateCookie = `${config.cookieSecure ? "__Host-" : ""}agentify.state`;
+  const googleCallback = `${base}/sign-in/google/callback`;
   const memoryRows =
     parts.rows ??
     ({
@@ -173,14 +198,54 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       dashboard_report_deletion_tombstones: [],
     } satisfies MemoryRows);
 
-  const optionsFor = (database: BetterAuthOptions["database"]) =>
+  const validateGoogleInfo: NonNullable<
+    NonNullable<BetterAuthOptions["user"]>["validateUserInfo"]
+  > = async ({ user, source }, context) => {
+    if (source.method !== "oauth" || source.oauth?.providerId !== "google") return;
+    const profile = source.oauth.profile ?? {};
+    const email = typeof user.email === "string" ? emailAs(user.email) : "";
+    if (
+      typeof profile.sub !== "string" ||
+      profile.sub.trim() === "" ||
+      !googleControlsEmail(email, profile)
+    )
+      return { error: "google_email_unverified" };
+    if (source.action !== "create-user" && typeof user.id === "string") {
+      const existing = await context.context.internalAdapter.findUserById(user.id);
+      if (existing === null || existing.email !== email) return { error: "google_email_changed" };
+    }
+  };
+
+  const optionsFor = (database: BetterAuthOptions["database"], forGoogle = false) =>
     ({
       baseURL: base,
       secret: config.authSecret,
       telemetry: { enabled: false },
+      onAPIError: { errorURL: `${base}/sign-in` },
       database,
+      socialProviders:
+        config.google === null
+          ? {}
+          : {
+              google: {
+                clientId: config.google.clientId,
+                clientSecret: config.google.clientSecret,
+                redirectURI: googleCallback,
+                async mapProfileToUser(profile) {
+                  const active = googleAdmission.getStore();
+                  if (active === undefined) throw new Error("Google admission context is missing");
+                  const email = typeof profile.email === "string" ? emailAs(profile.email) : "";
+                  active.email = email || null;
+                  if (typeof profile.sub === "string" && profile.sub !== "" && email !== "") {
+                    await active.lockIdentity?.(profile.sub, email);
+                  }
+                  return { email, name: "", image: undefined };
+                },
+              },
+            },
       user: {
         modelName: "dashboard_accounts",
+        ...(forGoogle ? { validateUserInfo: validateGoogleInfo } : {}),
         additionalFields: {
           merchantId: { type: "string", required: false, input: false },
           // Closed to input: only the terminal command writes it.
@@ -197,7 +262,27 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           reportRequest: { type: "string", required: false, input: false },
         },
       },
-      account: { modelName: "dashboard_credentials" },
+      account: {
+        modelName: "dashboard_credentials",
+        storeAccountCookie: false,
+        updateAccountOnSignIn: false,
+      },
+      databaseHooks: {
+        account: {
+          create: {
+            before: async () => ({
+              data: {
+                accessToken: null,
+                refreshToken: null,
+                idToken: null,
+                accessTokenExpiresAt: null,
+                refreshTokenExpiresAt: null,
+                scope: null,
+              },
+            }),
+          },
+        },
+      },
       verification: { modelName: "dashboard_verifications" },
       advanced: {
         cookiePrefix: "agentify",
@@ -206,7 +291,10 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         // for the whole origin and with no Domain, so a sibling host cannot
         // plant or replace a session.
         useSecureCookies: false,
-        cookies: { session_token: { name: sessionCookieName(config.cookieSecure) } },
+        cookies: {
+          session_token: { name: sessionCookieName(config.cookieSecure) },
+          state: { name: googleStateCookie },
+        },
         defaultCookieAttributes: {
           path: "/",
           sameSite: "lax",
@@ -250,7 +338,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       ],
     }) satisfies BetterAuthOptions;
 
-  const authFor = (database: BetterAuthOptions["database"]) => betterAuth(optionsFor(database));
+  const authFor = (database: BetterAuthOptions["database"], forGoogle = false) =>
+    betterAuth(optionsFor(database, forGoogle));
   const rootDatabase =
     parts.pool === undefined
       ? memoryAdapter(memoryRows)
@@ -265,10 +354,11 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   let memoryTail: Promise<void> = Promise.resolve();
   const inMemoryTransaction = async <T>(
     work: (bound: typeof auth, rows: MemoryRows) => Promise<T>,
+    forGoogle = false,
   ): Promise<T> => {
     const run = async (): Promise<T> => {
       const cloned = structuredClone(memoryRows);
-      const result = await work(authFor(memoryAdapter(cloned)), cloned);
+      const result = await work(authFor(memoryAdapter(cloned), forGoogle), cloned);
       for (const key of new Set([...Object.keys(memoryRows), ...Object.keys(cloned)])) {
         if (cloned[key] === undefined) delete memoryRows[key];
         else memoryRows[key] = cloned[key];
@@ -373,6 +463,106 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     };
   };
 
+  const startGoogleWith = async (
+    bound: typeof auth,
+    destination: DashboardDestination,
+  ): Promise<GoogleStartResult> => {
+    const callback = new URL(`${base}/sign-in`);
+    callback.searchParams.set("next", destination);
+    const started = await bound.api.signInSocial({
+      headers: originHeaders,
+      returnHeaders: true,
+      body: {
+        provider: "google",
+        callbackURL: callback.toString(),
+        errorCallbackURL: callback.toString(),
+        disableRedirect: true,
+      },
+    });
+    if (typeof started.response.url !== "string") throw new GoogleTransactionRefused();
+    return {
+      status: "redirect",
+      location: started.response.url,
+      setCookies: started.headers.getSetCookie(),
+    };
+  };
+
+  const finishGoogleWith = async (
+    bound: typeof auth,
+    query: URLSearchParams,
+    cookie: string | undefined,
+    lockIdentity?: GoogleAdmission["lockIdentity"],
+  ): Promise<GoogleFinishResult> => {
+    const active: GoogleAdmission = { email: null, lockIdentity };
+    return await googleAdmission.run(active, async () => {
+      const headers = new Headers(originHeaders);
+      if (cookie !== undefined) headers.set("cookie", cookie);
+      const response = await bound.api.callbackOAuth({
+        method: "GET",
+        params: { id: "google" },
+        query: Object.fromEntries(query),
+        headers,
+        asResponse: true,
+      });
+      const setCookies = response.headers.getSetCookie();
+      const location = response.headers.get("location");
+      if (location === null) throw new GoogleTransactionRefused();
+      const redirected = new URL(location, base);
+      const destination =
+        DASHBOARD_DESTINATIONS.find((value) => value === redirected.searchParams.get("next")) ??
+        "default";
+      const error = redirected.searchParams.get("error");
+      if (error !== null) {
+        const reason =
+          error === "google_email_unverified"
+            ? "email-unverified"
+            : error === "google_email_changed"
+              ? "email-changed"
+              : error === "access_denied"
+                ? "cancelled"
+                : error === "invalid_code"
+                  ? "unavailable"
+                  : "invalid";
+        if (
+          ![
+            "google_email_unverified",
+            "google_email_changed",
+            "access_denied",
+            "invalid_code",
+            "state_not_found",
+            "state_mismatch",
+            "state_invalid",
+            "no_code",
+            "email_not_found",
+            "unable_to_get_user_info",
+            "account_not_linked",
+          ].includes(error)
+        ) {
+          throw new GoogleTransactionRefused();
+        }
+        return {
+          status: "refused",
+          reason,
+          destination,
+          setCookies,
+          email: reason === "email-unverified" || reason === "email-changed" ? active.email : null,
+        };
+      }
+      const sessionHeaders = new Headers({
+        cookie: setCookies.map((line) => line.split(";", 1)[0]).join("; "),
+      });
+      const opened = await bound.api.getSession({ headers: sessionHeaders });
+      if (
+        opened === null ||
+        opened.user.emailVerified !== true ||
+        opened.user.email !== active.email
+      ) {
+        throw new GoogleTransactionRefused();
+      }
+      return { status: "opened", person: personFrom(opened.user), destination, setCookies };
+    });
+  };
+
   const makeWith = async (
     bound: typeof auth,
     email: string,
@@ -473,7 +663,98 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       cookies.sessionToken.name,
       cookies.sessionData.name,
       cookies.dontRememberToken.name,
+      googleStateCookie,
     ],
+    googleEnabled: config.google !== null,
+
+    async startGoogle(destination) {
+      if (config.google === null) return { status: "unavailable" };
+      try {
+        if (parts.pool === undefined) {
+          return await inMemoryTransaction(
+            async (bound) => await startGoogleWith(bound, destination),
+          );
+        }
+        return await drizzle(parts.pool).transaction(
+          async (tx) =>
+            await startGoogleWith(
+              authFor(drizzleAdapter(tx, { provider: "pg", schema })),
+              destination,
+            ),
+        );
+      } catch {
+        return { status: "unavailable" };
+      }
+    },
+
+    async finishGoogle(query, cookie) {
+      if (config.google === null)
+        return {
+          status: "refused",
+          reason: "unavailable",
+          email: null,
+          destination: "default",
+          setCookies: [],
+        };
+      const proof = new URLSearchParams();
+      for (const key of ["state", "code", "error", "error_description", "iss"]) {
+        const values = query.getAll(key);
+        if (values.length > 1)
+          return {
+            status: "refused",
+            reason: "invalid",
+            email: null,
+            destination: "default",
+            setCookies: [],
+          };
+        if (values[0] !== undefined) proof.set(key, values[0]);
+      }
+      // The lock and the OAuth component must consume one identical proof.
+      // Choosing different occurrences of a repeated state bypasses serialization.
+      if (!proof.get("state") || Boolean(proof.get("code")) === Boolean(proof.get("error"))) {
+        return {
+          status: "refused",
+          reason: "invalid",
+          email: null,
+          destination: "default",
+          setCookies: [],
+        };
+      }
+      try {
+        if (parts.pool === undefined) {
+          return await inMemoryTransaction(
+            async (bound) => await finishGoogleWith(bound, proof, cookie),
+            true,
+          );
+        }
+        return await drizzle(parts.pool).transaction(async (tx) => {
+          const state = proof.get("state");
+          if (state !== null)
+            await tx.execute(
+              sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-google-state:${state}`}, 0))`,
+            );
+          return await finishGoogleWith(
+            authFor(drizzleAdapter(tx, { provider: "pg", schema }), true),
+            proof,
+            cookie,
+            async (subject, email) => {
+              await tx.execute(
+                sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-google-sub:${subject}`}, 0))`,
+              );
+              await lockEmail(tx, email);
+            },
+          );
+        });
+      } catch {
+        return {
+          status: "refused",
+          reason: "unavailable",
+          email: null,
+          destination: "default",
+          setCookies: [],
+        };
+      }
+    },
 
     async requestLink(rawEmail, destination) {
       const email = emailAs(rawEmail);

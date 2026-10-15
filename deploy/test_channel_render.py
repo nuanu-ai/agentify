@@ -1,12 +1,12 @@
-"""What a deployed channel's gateway is handed to seed, from the real files.
+"""What a deployed channel receives at activation, from the real files.
 
 The preflight's own tests read two hand-written fixtures, so they cannot see
-what `deploy/compose.public.yaml` does to the seed. This renders each channel
+how the Compose files isolate optional credentials or empty the seed. This renders each channel
 the way deploy/stack.sh does — the same compose files in the same order, the
 jobs profile activation renders with — from a synthetic environment file, and
 runs the preflight over the result, as activation does. A deployed channel
-seeds no merchant, whether or not its environment file names
-AGENTIFY_SEED_KEY.
+seeds no merchant, whether or not its environment file names AGENTIFY_SEED_KEY;
+Google credentials reach only the application and must arrive together.
 
 It needs Docker with Compose and Node, as the release does.
 """

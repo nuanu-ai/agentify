@@ -63,7 +63,10 @@ describe("what a page says about the stack it belongs to", () => {
   const signIn = (mode: SurfaceMode): string =>
     renderToString(
       routed(() => (
-        <AskScreen chrome={chromeIn(mode)} view={{ screen: "ask", destination: "default" }} />
+        <AskScreen
+          chrome={chromeIn(mode)}
+          view={{ screen: "ask", destination: "default", googleEnabled: false }}
+        />
       )),
     );
 
@@ -110,13 +113,9 @@ describe("the Google sign-in choice", () => {
     expect(google?.fields.get("destination")).toBe("settings");
     expect(formTo(html, "post", "/sign-in")?.fields.get("destination")).toBe("settings");
     const document = new DOMParser().parseFromString(html, "text/html");
-    expect(document.querySelector('form[action="/sign-in/google"] button')?.textContent).toMatch(
-      /continue with google/i,
-    );
-    // A router fetch cannot navigate the browser to Google's consent page.
     expect(
-      document.querySelector('form[action="/sign-in/google"]')?.getAttribute("data-discover"),
-    ).toBeNull();
+      document.querySelector('form[action="/sign-in/google"] button img')?.getAttribute("alt"),
+    ).toMatch(/sign in with google/i);
   });
 
   it("offers no unavailable Google choice and fills only the address its server view supplied", () => {

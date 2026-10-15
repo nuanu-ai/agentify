@@ -1460,7 +1460,7 @@ describe("the Google dashboard door", () => {
         "settings",
       );
       expect(formTo(refused.html, "post", "/dashboard/sign-in")?.fields.get("email")).toBe(
-        email ?? "",
+        reason === "email-unverified" ? email : "",
       );
       expect(refused.html).not.toContain("attacker@example.com");
       expect(refused.html).not.toContain("attacker-secret");
@@ -1500,9 +1500,11 @@ describe("the Google dashboard door", () => {
     expect(opened.to).toBe("/settings");
     expect(running.browser.sessionToken()).not.toBe(oldToken);
     expect(readable((await running.browser.get("/settings")).html)).toContain(OTHER);
-    expect(
-      (await running.browser.withRawCookie(`${COOKIE}=${oldToken}`).get("/settings")).to,
-    ).toMatch(/^\/sign-in/);
+    const oldSession = await running.browser
+      .withRawCookie(`${COOKIE}=${oldToken}`)
+      .get("/settings");
+    expect(oldSession.status).toBe(303);
+    expect(oldSession.to).toMatch(/^\/sign-in/);
     expect((await otherDevice.get("/settings")).status).toBe(200);
   });
 
@@ -1595,7 +1597,14 @@ describe("the gate", () => {
     for (const page of PAGES_IN_FRONT_OF_THE_GATE) {
       const answer = await stranger.get(`/dashboard${page}`);
       expect(gate(answer), page).toBe(false);
-      expect(answer.status, page).toBeLessThan(500);
+      if (page === "/sign-in/google/callback") {
+        // Google is not configured here; its return still offers the email
+        // door rather than sending the visitor through the account gate.
+        expect(answer.status).toBe(503);
+        expect(formTo(answer.html, "post", "/dashboard/sign-in")).toBeDefined();
+      } else {
+        expect(answer.status, page).toBeLessThan(500);
+      }
     }
 
     for (const path of [
@@ -4204,7 +4213,13 @@ describe("a page left open while another address signs in", () => {
 
     // These answer without a session, and the sign-out signs this browser out
     // whichever page it was pressed on.
-    const above = new Set(["/sign-in", "/sign-in/open", "/sign-out", "/woocommerce/callback"]);
+    const above = new Set([
+      "/sign-in",
+      "/sign-in/open",
+      "/sign-in/google",
+      "/sign-out",
+      "/woocommerce/callback",
+    ]);
     const behind = (await routesOf(running)).filter(
       ({ method, path }) => method === "post" && !above.has(path),
     );

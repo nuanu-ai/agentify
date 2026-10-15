@@ -100,6 +100,8 @@ export type SignInView =
   | Readonly<{
       screen: "ask";
       destination: DashboardDestination;
+      googleEnabled: boolean;
+      email?: string;
       problem?: string;
       reason?: string;
     }>
@@ -152,6 +154,11 @@ export interface PageServices {
     ask(form: FormData): Promise<Outcome<SignInView>>;
     landing(cookie: string | undefined, query: URLSearchParams): Promise<Outcome<OpenLinkView>>;
     open(cookie: string | undefined, form: FormData): Promise<Outcome<OpenLinkView>>;
+    googleStart(form: FormData): Promise<Outcome<Extract<SignInView, { screen: "ask" }>>>;
+    googleFinish(
+      cookie: string | undefined,
+      query: URLSearchParams,
+    ): Promise<Outcome<Extract<SignInView, { screen: "ask" }>>>;
     signOut(cookie: string | undefined): Promise<Outcome<never>>;
   };
   /**
@@ -292,7 +299,10 @@ const once = (values: readonly unknown[]): unknown => (values.length === 1 ? val
  * the reason, said as the page's first line; a change lost with it is a
  * refusal, drawn under the box.
  */
-export const askViewOf = (query: URLSearchParams): Extract<SignInView, { screen: "ask" }> => {
+export const askViewOf = (
+  query: URLSearchParams,
+  googleEnabled: boolean,
+): Extract<SignInView, { screen: "ask" }> => {
   const said = once(query.getAll("reason"));
   const problem =
     said === "session-ended-unsaved"
@@ -304,6 +314,7 @@ export const askViewOf = (query: URLSearchParams): Extract<SignInView, { screen:
   return {
     screen: "ask",
     destination: dashboardDestinationIn(once(query.getAll("destination"))),
+    googleEnabled,
     ...(problem === undefined ? {} : { problem }),
     ...(reason === undefined ? {} : { reason }),
   };
@@ -319,6 +330,30 @@ export const NOT_AN_ADDRESS = "Enter an address of the shape someone@example.com
  * keeps the exact origin and sends no query.
  */
 const LINK_HEADERS = { "referrer-policy": "strict-origin" } as const;
+
+const GOOGLE_REFUSALS = {
+  "email-unverified":
+    "Google cannot confirm who owns this email address. Use a sign-in link to confirm it instead.",
+  "email-changed":
+    "This Google account's email address has changed. Use a sign-in link to your original Agentify email address.",
+  cancelled: "Google sign-in was cancelled. Try again or use a sign-in link.",
+  invalid: "Google sign-in could not be completed. Start again or use a sign-in link.",
+  unavailable: "Google sign-in is unavailable right now. Use a sign-in link or try again later.",
+} as const;
+
+/** The email comes from the identity's refusal, never from the callback's query. */
+export const googleRefusalView = (
+  googleEnabled: boolean,
+  reason: keyof typeof GOOGLE_REFUSALS,
+  destination: DashboardDestination,
+  email: string | null = null,
+): Extract<SignInView, { screen: "ask" }> => ({
+  screen: "ask",
+  destination,
+  googleEnabled,
+  reason: GOOGLE_REFUSALS[reason],
+  ...(email === null || reason !== "email-unverified" ? {} : { email }),
+});
 
 /**
  * Which switch a press on the cards names: one card's, or all selling's when
@@ -623,7 +658,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             setCookies: signedIn.setCookies,
           };
         }
-        return { kind: "view", view: askViewOf(query) };
+        return { kind: "view", view: askViewOf(query, identity.googleEnabled) };
       },
 
       async ask(form) {
@@ -637,6 +672,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             view: {
               screen: "ask",
               destination,
+              googleEnabled: identity.googleEnabled,
               problem: NOT_AN_ADDRESS,
             },
           };
@@ -694,6 +730,50 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           location: whereOpened(opened.person, opened.destination),
           headers: LINK_HEADERS,
           setCookies: opened.setCookies,
+        };
+      },
+
+      async googleStart(form) {
+        const destination = dashboardDestinationIn(once(form.getAll("destination")));
+        const started = await identity.startGoogle(destination);
+        if (started.status === "redirect") {
+          return {
+            kind: "redirect",
+            location: started.location,
+            headers: LINK_HEADERS,
+            setCookies: started.setCookies,
+          };
+        }
+        return {
+          kind: "view",
+          status: 503,
+          headers: LINK_HEADERS,
+          view: googleRefusalView(identity.googleEnabled, "unavailable", destination),
+        };
+      },
+
+      async googleFinish(cookie, query) {
+        const finished = await identity.finishGoogle(query, cookie);
+        if (finished.status === "opened") {
+          await identity.signOut(cookie);
+          return {
+            kind: "redirect",
+            location: whereOpened(finished.person, finished.destination),
+            headers: LINK_HEADERS,
+            setCookies: finished.setCookies,
+          };
+        }
+        return {
+          kind: "view",
+          status: finished.reason === "unavailable" ? 503 : 401,
+          headers: LINK_HEADERS,
+          setCookies: finished.setCookies,
+          view: googleRefusalView(
+            identity.googleEnabled,
+            finished.reason,
+            finished.destination,
+            finished.email,
+          ),
         };
       },
 

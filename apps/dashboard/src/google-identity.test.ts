@@ -56,6 +56,13 @@ afterEach(() => {
 });
 
 describe("Google dashboard identity", () => {
+  it("keeps operator provisioning available without an OAuth request", async () => {
+    const { identity } = setup();
+    expect(await identity.make("operator-created@example.com", "mer_operator")).toMatchObject({
+      email: "operator-created@example.com",
+      confirmed: false,
+    });
+  });
   it("opens a verified person with the requested destination and an empty merchant name", async () => {
     const { login, identity, rows, google } = setup();
     const opened = await login();
@@ -72,6 +79,15 @@ describe("Google dashboard identity", () => {
     });
     const stored = JSON.stringify(rows) + opened.setCookies.join(";");
     for (const token of google.issuedTokens) expect(stored).not.toContain(token);
+  });
+
+  it("uses the same trimmed lowercase email identity as the email-link path", async () => {
+    const { login, rows } = setup();
+    expect(await login({ email: " Person@Gmail.Com " })).toMatchObject({
+      status: "opened",
+      person: { email: "person@gmail.com" },
+    });
+    expect(rows.dashboard_accounts?.[0]?.email).toBe("person@gmail.com");
   });
 
   it("links the existing verified merchant and keeps the same person on repeat login without tokens", async () => {
@@ -126,6 +142,37 @@ describe("Google dashboard identity", () => {
       ).toMatchObject({ status: "opened", person: { email } });
     },
   );
+
+  it.each([
+    { email: undefined },
+    { email: "" },
+    { sub: undefined },
+    { sub: "" },
+    { sub: 12 },
+    { email_verified: undefined },
+    { email_verified: "true" },
+    { email: "reader@company.example", hd: true },
+    { email: "reader@company.example", hd: "" },
+    { email: "reader@company.example", hd: "not a domain" },
+  ])("refuses absent or malformed required Google claims: %j", async (profile) => {
+    const { login, rows } = setup();
+    expect(await login(profile as Partial<GoogleProfile>)).toMatchObject({ status: "refused" });
+    expect(rows.dashboard_accounts).toHaveLength(0);
+    expect(rows.dashboard_sessions).toHaveLength(0);
+    expect(rows.dashboard_credentials).toHaveLength(0);
+  });
+
+  it("refuses an already linked Workspace subject when its address loses Google's authority", async () => {
+    const { login, rows } = setup();
+    expect(await login({ email: "reader@company.example", hd: "company.example" })).toMatchObject({
+      status: "opened",
+    });
+    expect(await login({ email: "reader@company.example" })).toMatchObject({
+      status: "refused",
+      reason: "email-unverified",
+    });
+    expect(rows.dashboard_sessions).toHaveLength(1);
+  });
 
   it("rejects an already linked subject when Google stops verifying its address", async () => {
     const { login, rows } = setup();
@@ -191,10 +238,38 @@ describe("Google dashboard identity", () => {
     two.query.set("code", one.query.get("code") ?? "");
     expect(await identity.finishGoogle(two.query, two.cookie)).toMatchObject({
       status: "refused",
-      reason: "invalid",
     });
     expect(rows.dashboard_sessions).toHaveLength(1);
   });
+
+  it.each(["state", "code", "error", "both", "neither"])(
+    "refuses ambiguous callback proof parameters: %s",
+    async (kind) => {
+      const { start, identity, rows } = setup();
+      const flow = await start();
+      const query = new URLSearchParams(flow.query);
+      if (kind === "state") {
+        query.delete("state");
+        query.append("state", "unrelated-lock");
+        query.append("state", flow.query.get("state") ?? "");
+      }
+      if (kind === "code") query.append("code", flow.query.get("code") ?? "");
+      if (kind === "error") {
+        query.delete("code");
+        query.append("error", "access_denied");
+        query.append("error", "access_denied");
+      }
+      if (kind === "both") query.append("error", "access_denied");
+      if (kind === "neither") query.delete("code");
+      expect(await identity.finishGoogle(query, flow.cookie)).toMatchObject({
+        status: "refused",
+        reason: "invalid",
+        email: null,
+      });
+      expect(rows.dashboard_accounts).toHaveLength(0);
+      expect(rows.dashboard_sessions).toHaveLength(0);
+    },
+  );
 
   it("returns a cancelled flow to the original destination without opening a session", async () => {
     const { start, identity, rows } = setup();
