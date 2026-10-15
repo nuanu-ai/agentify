@@ -288,6 +288,7 @@ async function main(): Promise<void> {
   }
   const verdicts = await commissionWalletVerdicts({
     networks: [SMOKE_NETWORK],
+    chainsRead: [SMOKE_NETWORK],
     table: PAYOUT_SPLIT_NETWORKS,
     clientOf: () => client,
     owners: {},

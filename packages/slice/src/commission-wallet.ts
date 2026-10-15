@@ -17,10 +17,19 @@
  * network the table has no entry for fails without a read: nothing there can
  * be sold.
  *
+ * Each commission wallet's address must also hold no code on every other chain
+ * the check reads: Base, Base Sepolia, Ethereum and Ethereum Sepolia. An
+ * address with no code on its own chain may be somebody's contract on another,
+ * as a token is, and nobody holds a key to it; and a Safe's address on another
+ * chain would be another contract. That chain's RPC must answer that chain's
+ * id first, so a read of the wrong chain is not taken for an empty one.
+ *
  * Each check prints one line, PASS or FAIL, with what was read. The command
  * exits 1 when any check fails, which holds the release, and 0 when all pass.
- * BASE_RPC_URL and BASE_SEPOLIA_RPC_URL replace the public RPCs
- * (https://mainnet.base.org, https://sepolia.base.org).
+ * BASE_RPC_URL, BASE_SEPOLIA_RPC_URL, ETHEREUM_RPC_URL and
+ * ETHEREUM_SEPOLIA_RPC_URL replace the public RPCs (https://mainnet.base.org,
+ * https://sepolia.base.org, https://ethereum-rpc.publicnode.com,
+ * https://ethereum-sepolia-rpc.publicnode.com).
  */
 
 import { isTestnetChain } from "@agentify/core";
@@ -42,9 +51,15 @@ import {
 /** The networks a release sells on, each checked whether the table names it or not. */
 const RELEASE_NETWORKS = ["eip155:8453", "eip155:84532"] as const;
 
+/** Chains read only for whether a commission wallet's address is a contract there. */
+const ALSO_READ = ["eip155:1", "eip155:11155111"] as const;
+
 const PUBLIC_RPCS: Readonly<Record<string, string | undefined>> = {
   "eip155:8453": process.env.BASE_RPC_URL ?? "https://mainnet.base.org",
   "eip155:84532": process.env.BASE_SEPOLIA_RPC_URL ?? "https://sepolia.base.org",
+  "eip155:1": process.env.ETHEREUM_RPC_URL ?? "https://ethereum-rpc.publicnode.com",
+  "eip155:11155111":
+    process.env.ETHEREUM_SEPOLIA_RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com",
 };
 
 const SAFE = parseAbi([
@@ -93,12 +108,20 @@ export function ownersFrom(written: string | undefined): readonly string[] | nul
   });
 }
 
+/** The chain id a CAIP-2 network names. */
+const chainIdIn = (network: string): number => Number(network.split(":")[1]);
+
 async function verdictsOn(
   network: string,
   entry: PayoutSplitNetwork | undefined,
-  client: PublicClient,
   owners: readonly string[] | undefined,
+  chains: {
+    readonly read: readonly string[];
+    readonly clientOf: (network: string) => PublicClient;
+    readonly idOf: (network: string) => Promise<Read<number>>;
+  },
 ): Promise<readonly Verdict[]> {
+  const client = chains.clientOf(network);
   const verdicts: Verdict[] = [];
   const verdict = (check: string, passed: boolean, saw: string): void => {
     verdicts.push({ network, check, passed, saw });
@@ -113,8 +136,8 @@ async function verdictsOn(
     return verdicts;
   }
 
-  const expected = Number(network.split(":")[1]);
-  const chain = await read(() => client.getChainId());
+  const expected = chainIdIn(network);
+  const chain = await chains.idOf(network);
   if (!chain.ok || chain.value !== expected) {
     verdict(
       "chain id",
@@ -190,6 +213,31 @@ async function verdictsOn(
     }
   }
 
+  for (const other of chains.read.filter((chain) => chain !== network)) {
+    const check = `commission wallet on ${other}`;
+    const id = await chains.idOf(other);
+    if (!id.ok || id.value !== chainIdIn(other)) {
+      verdict(
+        check,
+        false,
+        id.ok
+          ? `the RPC for ${other} answers chain ${id.value}, so what ${wallet} is there is not known`
+          : `the RPC for ${other} did not answer: ${id.why}`,
+      );
+      continue;
+    }
+    const there = await read(() => chains.clientOf(other).getCode({ address: wallet }));
+    verdict(
+      check,
+      there.ok && there.value === undefined,
+      !there.ok
+        ? `the RPC for ${other} did not answer: ${there.why}`
+        : there.value === undefined
+          ? `${wallet} holds no code on ${other}`
+          : `${wallet} holds ${(there.value.length - 2) / 2} bytes of code on ${other}: a contract there, not an account`,
+    );
+  }
+
   for (const [check, address] of [
     ["factory", entry.factory],
     ["implementation", entry.implementation],
@@ -212,20 +260,33 @@ async function verdictsOn(
 }
 
 /**
- * Every check on every network named, in order. `owners` are, by network, the
- * owners a commission wallet holding code there must have.
+ * Every check on every network named, in order. `chainsRead` are the chains on
+ * which every commission wallet's address must hold no code but its own
+ * network; `owners` are, by network, the owners a commission wallet holding
+ * code there must have.
  */
 export async function commissionWalletVerdicts(options: {
   readonly networks: readonly string[];
+  readonly chainsRead: readonly string[];
   readonly table: PayoutSplitNetworks;
   readonly clientOf: (network: string) => PublicClient;
   readonly owners: Readonly<Record<string, readonly string[]>>;
 }): Promise<readonly Verdict[]> {
+  const ids = new Map<string, Promise<Read<number>>>();
+  const chains = {
+    read: options.chainsRead,
+    clientOf: options.clientOf,
+    idOf: (network: string): Promise<Read<number>> => {
+      const asked = ids.get(network) ?? read(() => options.clientOf(network).getChainId());
+      ids.set(network, asked);
+      return asked;
+    },
+  };
   const verdicts: Verdict[] = [];
   for (const network of options.networks) {
     const entry = Object.hasOwn(options.table, network) ? options.table[network] : undefined;
     const owners = Object.hasOwn(options.owners, network) ? options.owners[network] : undefined;
-    verdicts.push(...(await verdictsOn(network, entry, options.clientOf(network), owners)));
+    verdicts.push(...(await verdictsOn(network, entry, owners, chains)));
   }
   return verdicts;
 }
@@ -258,6 +319,7 @@ async function main(): Promise<number> {
   const networks = [...new Set([...RELEASE_NETWORKS, ...Object.keys(PAYOUT_SPLIT_NETWORKS)])];
   const verdicts = await commissionWalletVerdicts({
     networks,
+    chainsRead: [...new Set([...networks, ...ALSO_READ])],
     table: PAYOUT_SPLIT_NETWORKS,
     clientOf: publicClientOf,
     owners: owners === null ? {} : { "eip155:8453": owners },
