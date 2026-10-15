@@ -228,7 +228,7 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
       </PostForm>
       <div className="panel-messages">
         {problem === null || typed === "" ? null : (
-          <p className="address">
+          <p className="address" id="payout_wallet-refused">
             <Address address={typed} />
           </p>
         )}

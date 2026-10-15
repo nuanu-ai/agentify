@@ -118,7 +118,9 @@ export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; bo
         // this one, so it comes off the box until the next save is answered.
         if (field.getAttribute("aria-invalid") === "true") {
           const line = field.getAttribute("aria-describedby");
-          if (line !== null) document.getElementById(line)?.setAttribute("hidden", "");
+          for (const shown of [line, `${box}-refused`]) {
+            if (shown !== null) document.getElementById(shown)?.setAttribute("hidden", "");
+          }
           field.removeAttribute("aria-invalid");
           field.removeAttribute("aria-describedby");
         }
