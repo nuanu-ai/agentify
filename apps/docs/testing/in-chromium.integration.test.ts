@@ -72,11 +72,23 @@ const MEASURED = {
 
 /**
  * A person's browser: PostHog drops what a browser naming itself headless, or
- * driven by a tool, sends.
+ * driven by a tool, sends. The CI runner's Chromium also names itself
+ * HeadlessChrome among its brands, which PostHog reads as well as the user
+ * agent, so the brands are a person's Chrome too.
  */
 const asAPerson = (context: BrowserContext) =>
   context.addInitScript(() => {
     Object.defineProperty(Navigator.prototype, "webdriver", { get: () => false });
+    type Hints = { brands: ReadonlyArray<{ brand: string; version: string }> };
+    const hints = (navigator as Navigator & { userAgentData?: Hints }).userAgentData;
+    if (hints === undefined) return;
+    const brands = hints.brands.map(({ brand, version }) => ({
+      brand: brand.replace("HeadlessChrome", "Google Chrome"),
+      version,
+    }));
+    // Every read of the hints makes a new object, so the brands are replaced
+    // where each of them reads its own.
+    Object.defineProperty(Object.getPrototypeOf(hints), "brands", { get: () => brands });
   });
 const PERSON =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36";
