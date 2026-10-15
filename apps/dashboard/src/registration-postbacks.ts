@@ -138,29 +138,24 @@ export async function reportOnce(parts: ReportParts): Promise<boolean> {
     }
 
     const started = now().getTime();
-    const { outcome, next } = await posted(parts.fetch ?? fetch, parts.target, due.clickId);
-    const attempts = due.attempts + 1;
-    let ended: Said;
-    if (next !== "retry") {
-      ended = await settle(next, outcome, attempts);
-    } else {
+    try {
+      const { outcome, next } = await posted(parts.fetch ?? fetch, parts.target, due.clickId);
+      const attempts = due.attempts + 1;
+      if (next !== "retry") return await settle(next, outcome, attempts);
       const nextAt = now().getTime() + (RETRY_DELAYS_MS[attempts - 1] ?? LAST_RETRY_DELAY_MS);
-      if (nextAt >= windowEnds) {
-        ended = await settle("given_up", outcome, attempts);
-      } else {
-        await tx
-          .update(registrationPostbacks)
-          .set({ attempts, nextAttemptAt: new Date(nextAt), lastOutcome: outcome })
-          .where(theRow);
-        ended = { state: "pending", outcome };
-      }
+      if (nextAt >= windowEnds) return await settle("given_up", outcome, attempts);
+      await tx
+        .update(registrationPostbacks)
+        .set({ attempts, nextAttemptAt: new Date(nextAt), lastOutcome: outcome })
+        .where(theRow);
+      return { state: "pending", outcome };
+    } finally {
+      // The lock is held until the spacing has passed since this post began,
+      // so the next post, from any process, cannot begin sooner; also when the
+      // outcome could not be recorded, which leaves the row to be posted again.
+      const left = SPACED_MS - (now().getTime() - started);
+      if (left > 0) await (parts.wait ?? pause)(left);
     }
-
-    // The lock is held until the spacing has passed since this post began, so
-    // the next post, from any process, cannot begin sooner.
-    const left = SPACED_MS - (now().getTime() - started);
-    if (left > 0) await (parts.wait ?? pause)(left);
-    return ended;
   });
   if (said === null) return false;
   console.log(`[dashboard] registration report ${said.state}: ${said.outcome}`);
