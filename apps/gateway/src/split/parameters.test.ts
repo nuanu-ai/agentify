@@ -6,7 +6,6 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "../testing/split-networks.js";
 import { COMMISSION, handEncoded, IMPLEMENTATION, MERCHANT, ON_CHAIN } from "./fixture.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "./networks.js";
 import { payoutSplitFor } from "./parameters.js";
@@ -21,7 +20,7 @@ const TEST_CHANNEL = {
   commissionWallet: COMMISSION,
 };
 
-const LIVE_CHANNEL = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453");
+const LIVE_CHANNEL = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:8453");
 
 const goldenSplit = (network: string, merchantId: string, commissionWallet: string) => {
   const found = handEncoded.splits.find(

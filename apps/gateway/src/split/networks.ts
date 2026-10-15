@@ -39,6 +39,13 @@ export type PayoutSplitNetworks = Readonly<Record<string, PayoutSplitNetwork>>;
 const BASE_SEPOLIA_COMMISSION_WALLET = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
 
 /**
+ * The live channel's commission wallet: the product owner's Safe on Base,
+ * whose signers and threshold change without its address changing. Every
+ * split on Base names it for good, as above.
+ */
+const BASE_COMMISSION_SAFE = "0xf44Ac5860c13fDa0577305121f00cBa4d0B96541";
+
+/**
  * 0xSplits v2.2 and Multicall3 are deployed at these addresses on Base and on
  * Base Sepolia alike, and so are the rate's terms: Agentify takes 1000 of
  * every 1000000, 0.1%.
@@ -53,9 +60,9 @@ const ON_BOTH_BASE_CHAINS = {
 } as const;
 
 /**
- * The networks a gateway can take payments on. Base has no entry until its
- * commission wallet, a Safe, exists; a gateway configured for it refuses to
- * start rather than name a split paying a wallet nobody chose.
+ * The networks a gateway can take payments on. A gateway configured for any
+ * other refuses to start rather than name a split paying a wallet nobody
+ * chose.
  */
 export const PAYOUT_SPLIT_NETWORKS: PayoutSplitNetworks = {
   "eip155:84532": {
@@ -63,6 +70,12 @@ export const PAYOUT_SPLIT_NETWORKS: PayoutSplitNetworks = {
     commissionWallet: BASE_SEPOLIA_COMMISSION_WALLET,
     ...ON_BOTH_BASE_CHAINS,
     usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  },
+  "eip155:8453": {
+    network: "eip155:8453",
+    commissionWallet: BASE_COMMISSION_SAFE,
+    ...ON_BOTH_BASE_CHAINS,
+    usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
   },
 };
 

@@ -19,7 +19,7 @@ import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
 import { SANDBOX_FACILITATOR } from "../config.js";
 import { handEncoded } from "../split/fixture.js";
-import { payoutSplitNetworkOf } from "../split/networks.js";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../split/networks.js";
 import { payoutSplitFor } from "../split/parameters.js";
 import {
   buyOverHttp,
@@ -28,7 +28,6 @@ import {
   harness,
   loggedWhile,
   type Served,
-  SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
   serve,
 } from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER, PAYMENT_RESPONSE_HEADER } from "./x402.js";
@@ -162,7 +161,7 @@ const recordedSplit = async (
 /** The split the sandbox pays for a merchant who set no wallet, never recorded. */
 const placeholderSplit = (merchantId: string): string =>
   payoutSplitFor(
-    payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:84532"),
+    payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532"),
     merchantId,
     CONFIGURED_PAY_TO,
   ).address;

@@ -35,17 +35,11 @@ import { openCommandApplication } from "../../command-application.js";
 import { loadConfig } from "../../config.js";
 import { nobodyAnnounces } from "../../ports/announcer.js";
 import type { OrderChange } from "../../ports/store.js";
-import { payoutSplitNetworkOf } from "../../split/networks.js";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../../split/networks.js";
 import { payoutSplitFor } from "../../split/parameters.js";
 import { startGateway } from "../../start.js";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "../../testing/database.js";
-import {
-  countedIds,
-  loggedWhile,
-  SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
-  testConfig,
-  workUntilStopped,
-} from "../../testing/harness.js";
+import { countedIds, loggedWhile, testConfig, workUntilStopped } from "../../testing/harness.js";
 import { anOrder, describeStore } from "../../testing/store-contract.js";
 import { describeWalletSpelling } from "../../testing/wallet-spelling.js";
 import { ScriptedFacilitator } from "../memory/facilitator.js";
@@ -1345,7 +1339,7 @@ if (databaseUrl === null) {
     });
 
     describe("the registry of payout splits", () => {
-      const network = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:84532");
+      const network = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532");
       const W1 = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
       const W2 = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
       const splitOf = (merchantId: string, wallet: string) =>
@@ -1510,7 +1504,7 @@ if (databaseUrl === null) {
       });
 
       /** A gateway of its own over this database, with nothing in memory but its queue. */
-      const aGatewayOn = (db: Database, table = SPLIT_NETWORKS_WITH_A_FIXTURE_BASE) =>
+      const aGatewayOn = (db: Database, table = PAYOUT_SPLIT_NETWORKS) =>
         new Gateway({
           config: loadConfig({ DATABASE_URL: databaseUrl }, table),
           store: PostgresStore.over(db, "eip155:84532", countedIds()),
@@ -1666,7 +1660,7 @@ if (databaseUrl === null) {
       });
 
       describe("on a deployment of another network than the test chain", () => {
-        const base = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453");
+        const base = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:8453");
         const MERCHANT = "mch_on_base";
 
         /**
@@ -1683,16 +1677,13 @@ if (databaseUrl === null) {
 
         /** The live deployment on Base, under the fixture's commission wallet. */
         const onBase = () =>
-          loadConfig(
-            {
-              DATABASE_URL: databaseUrl,
-              PAYMENT_NETWORK: "eip155:8453",
-              FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
-              CDP_API_KEY_ID: "key-id",
-              CDP_API_KEY_SECRET: anApiKeySecret(),
-            },
-            SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
-          );
+          loadConfig({
+            DATABASE_URL: databaseUrl,
+            PAYMENT_NETWORK: "eip155:8453",
+            FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+            CDP_API_KEY_ID: "key-id",
+            CDP_API_KEY_SECRET: anApiKeySecret(),
+          });
 
         /** A registry holding nothing of the test chain, and a merchant paid at W1. */
         beforeEach(async () => {
@@ -1739,7 +1730,7 @@ if (databaseUrl === null) {
         // write is written first.
         await withoutTheirSplits();
         const edited = {
-          ...SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
+          ...PAYOUT_SPLIT_NETWORKS,
           "eip155:84532": { ...network, commissionWallet: W2 },
         };
         const config = loadConfig(

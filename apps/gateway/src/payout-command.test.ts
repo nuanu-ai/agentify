@@ -20,14 +20,18 @@ import { setServiceName } from "./app/merchants.js";
 import { loadConfig } from "./config.js";
 import { runPayout } from "./payout-command.js";
 import { DISTRIBUTOR } from "./split/fixture.js";
-import { type PayoutSplitNetworks, payoutSplitNetworkOf } from "./split/networks.js";
+import {
+  PAYOUT_SPLIT_NETWORKS,
+  type PayoutSplitNetworks,
+  payoutSplitNetworkOf,
+} from "./split/networks.js";
 import { payoutSplitFor } from "./split/parameters.js";
 import { operatorPayouts } from "./split/payout.js";
-import { countedIds, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "./testing/harness.js";
+import { countedIds } from "./testing/harness.js";
 
 const NOW = Date.parse("2026-10-14T12:00:00.000Z");
 
-const T1 = SPLIT_NETWORKS_WITH_A_FIXTURE_BASE;
+const T1 = PAYOUT_SPLIT_NETWORKS;
 const T1_TEST = payoutSplitNetworkOf(T1, "eip155:84532");
 
 const card: Card = {

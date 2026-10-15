@@ -9,7 +9,6 @@
 
 import { checksummedAddressOf } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "../testing/split-networks.js";
 import {
   COMMISSION,
   createInputWith,
@@ -43,10 +42,10 @@ const TEST_NETWORK = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532")
 /** The same with the experiment's commission wallet, so its splits are this network's. */
 const WITH_THE_EXPERIMENTS_COMMISSION = { ...TEST_NETWORK, commissionWallet: COMMISSION };
 
-const LIVE_NETWORK = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453");
+const LIVE_NETWORK = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:8453");
 
 /** Every network a payout is built knowing of: no share is withdrawn to a contract or wallet of any. */
-const NETWORKS = SPLIT_NETWORKS_WITH_A_FIXTURE_BASE;
+const NETWORKS = PAYOUT_SPLIT_NETWORKS;
 
 /** One of the experiment's splits as the registry would hand it over. */
 const recorded = (split: { address: string; salt: string }, merchantId: string): PayoutSplit => ({
