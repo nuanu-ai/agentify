@@ -4,7 +4,8 @@
  * worker, which fills paid orders for merchants who connected a shop instead of
  * writing code, and the loop that reports consented registrations to the ad
  * tracker. The worker does not start on the live channel, where the connector
- * is not offered; the reports run wherever they are switched on, live included.
+ * is not offered. The reports' loop starts everywhere: switched on it reports,
+ * and switched off it only gives up what is left pending a day on.
  *
  * Migrations are not run here: a process that migrates on boot migrates once
  * per replica and races itself.
@@ -115,10 +116,7 @@ function started(
         now: () => new Date(),
       });
 
-  const reports =
-    config.registrationPostback === null
-      ? { stop: async () => {} }
-      : startRegistrationReports({ pool, target: config.registrationPostback });
+  const reports = startRegistrationReports({ pool, target: config.registrationPostback });
 
   return {
     async closeListeners() {

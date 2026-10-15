@@ -13,6 +13,10 @@
  * A process that stops after the tracker accepted a post and before the
  * commit leaves the row pending, and it is posted again. That cannot become a
  * second conversion: the tracker keeps one `reg` per click.
+ *
+ * Switched off, the loop still runs and posts nothing: it gives up every
+ * report still pending a day after its registration, so no click outlives the
+ * day because the switch went off.
  */
 
 import { failureNamed } from "@agentify/gateway/failure-named";
@@ -30,17 +34,24 @@ const SPACING_LOCK = [0x64617368, 0x72656770] as const;
 const SPACED_MS = 1_100;
 const DEADLINE_MS = 5_000;
 const IDLE_MS = 5_000;
+/** Switched off, how long a click can stay past its day. */
+const EXPIRY_IDLE_MS = 60_000;
 const RETRIED_FOR_MS = 24 * 60 * 60 * 1_000;
 /** The n-th failure waits the n-th of these, and every failure after them six hours. */
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 60 * 60_000] as const;
 const LAST_RETRY_DELAY_MS = 6 * 60 * 60_000;
 
-export interface ReportParts {
+type Target = NonNullable<DashboardConfig["registrationPostback"]>;
+
+interface LoopParts {
   readonly pool: Pool;
-  readonly target: NonNullable<DashboardConfig["registrationPostback"]>;
-  readonly fetch?: typeof fetch;
   readonly now?: () => Date;
   readonly wait?: (ms: number) => Promise<void>;
+}
+
+interface ReportParts extends LoopParts {
+  readonly target: Target;
+  readonly fetch?: typeof fetch;
 }
 
 type Final = "delivered" | "refused" | "given_up";
@@ -53,10 +64,19 @@ const pause = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+const lockedForPosting = sql`select pg_advisory_xact_lock(${SPACING_LOCK[0]}::integer, ${SPACING_LOCK[1]}::integer)`;
+
+/**
+ * A row given up keeps the tracker's last answer, or none where it was never
+ * asked; its state and the moment it settled say the day ran out.
+ */
+const givenUp = (at: Date) =>
+  ({ state: "given_up", clickId: null, nextAttemptAt: null, settledAt: at }) as const;
+
 /** The outcome of one post as the row records it, and what follows from it. */
 const posted = async (
   post: typeof fetch,
-  target: ReportParts["target"],
+  target: Target,
   clickId: string,
 ): Promise<Readonly<{ outcome: string; next: Final | "retry" }>> => {
   try {
@@ -91,9 +111,7 @@ const posted = async (
 export async function reportOnce(parts: ReportParts): Promise<boolean> {
   const now = parts.now ?? (() => new Date());
   const said = await drizzle(parts.pool).transaction(async (tx): Promise<Said | null> => {
-    await tx.execute(
-      sql`select pg_advisory_xact_lock(${SPACING_LOCK[0]}::integer, ${SPACING_LOCK[1]}::integer)`,
-    );
+    await tx.execute(lockedForPosting);
     const [due] = await tx
       .select({
         accountId: registrationPostbacks.accountId,
@@ -134,12 +152,7 @@ export async function reportOnce(parts: ReportParts): Promise<boolean> {
     }
 
     if (now().getTime() >= windowEnds) {
-      // The row keeps the tracker's last answer, or none where it was never
-      // asked; the state and the moment it settled say the day ran out.
-      await tx
-        .update(registrationPostbacks)
-        .set({ state: "given_up", clickId: null, nextAttemptAt: null, settledAt: now() })
-        .where(theRow);
+      await tx.update(registrationPostbacks).set(givenUp(now())).where(theRow);
       return { state: "given_up", outcome: "retry_window_exhausted" };
     }
 
@@ -168,24 +181,65 @@ export async function reportOnce(parts: ReportParts): Promise<boolean> {
   return true;
 }
 
+/**
+ * Gives up, in one statement, every report still pending a day after its
+ * registration, without posting. Under the same lock as a post, so it never
+ * takes a row from under a turn of a process that still reports, and two
+ * processes giving up at once never lock the same rows in opposite orders.
+ */
+async function expireOnce(parts: LoopParts): Promise<void> {
+  const now = parts.now ?? (() => new Date());
+  const given = await drizzle(parts.pool).transaction(async (tx) => {
+    await tx.execute(lockedForPosting);
+    return await tx
+      .update(registrationPostbacks)
+      .set(givenUp(now()))
+      .where(
+        and(
+          eq(registrationPostbacks.state, "pending"),
+          lte(registrationPostbacks.createdAt, new Date(now().getTime() - RETRIED_FOR_MS)),
+        ),
+      )
+      .returning({ accountId: registrationPostbacks.accountId });
+  });
+  if (given.length > 0) {
+    const many =
+      given.length === 1
+        ? "1 pending report a day old was"
+        : `${given.length} pending reports a day old were`;
+    console.log(`[dashboard] registration reporting is switched off, so ${many} given up`);
+  }
+}
+
 export interface RegistrationReports {
   /** Settles once the turn in flight has ended. */
   stop(): Promise<void>;
 }
 
 /**
- * Turns one after another, pausing when nothing was due or a turn failed. A
- * turn that fails, such as one the database did not answer, is logged and the
- * loop goes on.
+ * Started on every dashboard: with a target it reports, and with none, where
+ * reporting is switched off, it only gives up what the day left. Turns run one
+ * after another, pausing when nothing was due or a turn failed; a turn that
+ * fails, such as one the database did not answer, is logged and the loop goes
+ * on.
  */
 export function startRegistrationReports(
-  parts: ReportParts & { readonly idleMs?: number },
+  parts: LoopParts & Readonly<{ target: Target | null; fetch?: typeof fetch; idleMs?: number }>,
 ): RegistrationReports {
+  const { target } = parts;
+  // Expiry takes every row it can in one turn, so it always pauses after one.
+  const turn =
+    target === null
+      ? async (): Promise<boolean> => {
+          await expireOnce(parts);
+          return false;
+        }
+      : async (): Promise<boolean> => await reportOnce({ ...parts, target });
   let running = true;
   let wake: (() => void) | null = null;
   // Cut short by a stop, so the process does not wait out the pause.
   const idle = async (): Promise<void> => {
-    const ms = parts.idleMs ?? IDLE_MS;
+    const ms = parts.idleMs ?? (target === null ? EXPIRY_IDLE_MS : IDLE_MS);
     await new Promise<void>((resolve) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       if (parts.wait === undefined) timer = setTimeout(resolve, ms);
@@ -202,7 +256,7 @@ export function startRegistrationReports(
     while (running) {
       let took = false;
       try {
-        took = await reportOnce(parts);
+        took = await turn();
       } catch (thrown) {
         console.error(`[dashboard] a registration report turn failed: ${failureNamed(thrown)}`);
       }
