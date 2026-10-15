@@ -37,6 +37,7 @@ if (!existsSync(fileURLToPath(new URL("./dist/server/index.js", import.meta.url)
 
 const SESSION = "agentify.session_token";
 const HEADING = "Agentify operating dashboard";
+const BANNER = 'aria-label="Privacy choices"';
 /** The cookie values the stand-in seller dashboard knows, and which of them are operators. */
 const people = new Set(["operator", "person"]);
 const operators = new Set(["operator"]);
@@ -146,7 +147,7 @@ async function scriptsHandedOver(answer: Answer, door: string, visitor: Asking) 
 
 /**
  * Asserts that `/admin` and what is under it are the site's 404 page for this
- * visitor, asked as a page, as a HEAD, as a client navigation and as a post,
+ * visitor, consent banner and all, asked as a page, as a HEAD, as a client navigation and as a post,
  * whose data must be refused the same way and carry none of the operator's
  * dashboard, nor any script the browser is handed with it.
  */
@@ -165,6 +166,9 @@ async function expectMissingPages(visitor: Asking, who: string): Promise<void> {
     // browser draws it from the payload beside it.
     expect(textOf("title", answered.body), label).toBe(textOf("title", missing.body));
     expect(answered.body, label).toContain(heading);
+    // Every missing page asks how the visit may be measured, so this one does too.
+    expect(missing.body, label).toContain(BANNER);
+    expect(answered.body, label).toContain(BANNER);
     const named = answered.headers.map(([name]) => (name ?? "").toLowerCase());
     expect(named, label).not.toContain("www-authenticate");
     expect(named, label).not.toContain("x-robots-tag");
@@ -265,6 +269,8 @@ describe("the operator's dashboard at /admin", () => {
     const opened = await ask("/admin", operator);
     expect(opened.status).toBe(200);
     expect(opened.body).toContain(HEADING);
+    // The dashboard is measured by nobody, so nobody is asked on it.
+    expect(opened.body).not.toContain(BANNER);
     // Nothing in front of the scanner keeps the dashboard out of caches, so the
     // scanner's own answer must.
     const cacheControl = opened.headers

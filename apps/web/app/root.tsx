@@ -28,7 +28,6 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
-  useLocation,
   useRouteError,
   useRouteLoaderData,
 } from "react-router";
@@ -80,9 +79,10 @@ export const meta = ({ loaderData, error }: MetaArgs<typeof loader>) =>
  */
 export function SiteBody({ children }: Readonly<{ children: ReactNode }>) {
   const site = useRouteLoaderData<typeof loader>("root");
-  const { pathname } = useLocation();
-  // The operator's pages are measured by nobody, so nobody is asked.
-  const operator = pathname === "/admin" || pathname.startsWith("/admin/");
+  // The operator's dashboard is measured by nobody, so nobody is asked on it.
+  // Its data exists only where it was drawn: to everybody it refuses, /admin is
+  // the site's missing page, and asks as every missing page does.
+  const operator = useRouteLoaderData("routes/admin") !== undefined;
   return site === undefined ? (
     children
   ) : (
