@@ -108,9 +108,9 @@ export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; bo
             onClick={() => void ask()}
           >
             {WALLET_WORDS.connect}
-          </Button>{" "}
-          <span role="status">{said}</span>
+          </Button>
         </p>
+        <p role="status">{said}</p>
         <p className="quiet">
           {WALLET_WORDS.connectLead} {WALLET_WORDS.yours}{" "}
           <a href={WALLET_WORDS.manageAt} rel="noreferrer">
@@ -161,9 +161,9 @@ export function CoinbasePayout({
             onClick={() => void send()}
           >
             {WALLET_WORDS.payOut}
-          </Button>{" "}
-          <span role="status">{said}</span>
+          </Button>
         </p>
+        <p role="status">{said}</p>
       </div>
     </div>
   );
