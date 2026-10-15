@@ -24,21 +24,11 @@ const Destination = ({ destination }: Readonly<{ destination: DashboardDestinati
 
 /**
  * The ad click a visitor arrived with, carried from form to form as the
- * destination is; `withConsent` adds the ticked box's answer, for a form that
- * asks for another link without drawing the box.
+ * destination is. Never the consent: only the box drawn beside a button
+ * carries that.
  */
-const Click = ({
-  click,
-  withConsent = false,
-}: Readonly<{ click: OfferedClick | undefined; withConsent?: boolean }>) =>
-  click === undefined ? null : (
-    <>
-      <input type="hidden" name="clickid" value={click.id} />
-      {withConsent && click.consented ? (
-        <input type="hidden" name="ads_consent" value="yes" />
-      ) : null}
-    </>
-  );
+const Click = ({ click }: Readonly<{ click: OfferedClick | undefined }>) =>
+  click === undefined ? null : <input type="hidden" name="clickid" value={click.id} />;
 
 /**
  * Unticked unless the person ticked it on the press this page answers; the
@@ -228,9 +218,10 @@ export function LinkRequestedScreen({
         <Form method="post" action="/sign-in">
           <input name="email" type="hidden" value={email} />
           <Destination destination={destination} />
-          {/* The link that is opened is the one that counts, so another link
-              carries the consent the first was asked for with. */}
-          <Click click={click} withConsent />
+          {/* Another link is asked for with what this page shows: the box,
+              ticked as the person left it on the page before. */}
+          <Click click={click} />
+          <ConsentBox click={click} />
           <WaitingButton
             seconds={Math.max(0, Math.ceil(answer.seconds))}
             pending={pressed}

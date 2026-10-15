@@ -609,6 +609,23 @@ const SIGNING_IN: GalleryState[] = [
   ),
   signIn(
     {
+      id: "dashboard-sign-in-link-sent-from-an-ad",
+      screen: "Sign in",
+      when: "Somebody an ad sent asks for a sign-in link with the ad tracker's box ticked.",
+      cause:
+        "The link went out; another link is asked for with the box as this page shows it, ticked as it was left.",
+    },
+    "/sign-in?clickid=qa_click_0123456789abcdef",
+    {
+      screen: "requested",
+      email: WHO,
+      destination: "default",
+      answer: { sent: true, seconds: 60 },
+      click: { id: "qa_click_0123456789abcdef", consented: true },
+    },
+  ),
+  signIn(
+    {
       id: "dashboard-sign-in-last-link-this-hour",
       screen: "Sign in",
       when: "Somebody asks for their third link within an hour.",
