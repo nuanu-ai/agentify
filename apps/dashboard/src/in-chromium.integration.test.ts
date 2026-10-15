@@ -18,7 +18,7 @@ import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { type Harness, harness } from "@agentify/gateway/testing";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
-import { launchChromium } from "@agentify/ui/chromium";
+import { dragUp, launchChromium, theBar } from "@agentify/ui/chromium";
 import express from "express";
 import type { Browser, Page } from "playwright";
 import type { ServerBuild } from "react-router";
@@ -93,6 +93,14 @@ beforeAll(async () => {
   ) as ViteManifest;
   const dashboard = buildApp(config, { pages, gateway: harnessed.gateway, identity });
   const counted = express();
+  // The site's font, which the edge serves to every process's pages, so the
+  // pages are measured in the face a visitor sees.
+  counted.use(
+    "/styles",
+    express.static(
+      fileURLToPath(new URL("../../../packages/visual/public/styles", import.meta.url)),
+    ),
+  );
   counted.use((request, _response, next) => {
     if (request.method === "GET" && request.path.endsWith(".data")) asked.push(request.path);
     // The receipts' data and the open orders' arrive late, as from a slow
@@ -123,9 +131,12 @@ afterAll(async () => {
   await close();
 });
 
-/** A browser with nothing kept yet, signed in, on the cards. */
-const onTheCards = async (viewport = { width: 1280, height: 900 }): Promise<Page> => {
-  const context = await browser.newContext({ viewport });
+/** A browser with nothing kept yet, signed in, on the cards; `phone` gives it a phone's touch. */
+const onTheCards = async (
+  viewport = { width: 1280, height: 900 },
+  phone = false,
+): Promise<Page> => {
+  const context = await browser.newContext({ viewport, isMobile: phone, hasTouch: phone });
   await context.addCookies(cookies.map((one) => ({ ...one, url: origin })));
   const page = await context.newPage();
   await page.goto(`${origin}${BASE}/cards`);
@@ -281,23 +292,68 @@ describe("the sections on a long page", () => {
     await page.context().close();
   });
 
-  it("are in a phone's menu that Escape closes wherever the focus is, so the page scrolls again", async () => {
+  it("are in a phone's menu that, opened on a scrolled page, keeps the header at the top and holds the page still under a wheel and a finger until it closes", async () => {
+    const page = await onTheCards({ width: 390, height: 600 }, true);
+    const burger = page.locator(".site-menu > summary");
+    const panel = page.locator(".site-menu-panel");
+    const scrolled = () => page.evaluate(() => window.scrollY);
+    await page.evaluate(() => window.scrollTo(0, 300));
+    const before = await scrolled();
+    expect(before).toBe(300);
+
+    await burger.tap();
+    await panel.waitFor({ state: "visible" });
+    expect((await page.locator("header.site-header").boundingBox())?.y).toBe(0);
+    const box = await panel.boundingBox();
+    const bottom = (box?.y ?? 0) + (box?.height ?? 0);
+    expect(box?.y).toBeGreaterThan(0);
+    expect(bottom).toBeLessThanOrEqual(600);
+    // A point on the page itself, just under the panel.
+    const under = { x: 100, y: bottom + 20 };
+    await page.mouse.move(under.x, under.y);
+    await page.mouse.wheel(0, 400);
+    await dragUp(page, under, 200);
+    await page.waitForTimeout(300);
+    expect(await scrolled()).toBe(before);
+
+    await burger.tap();
+    await panel.waitFor({ state: "hidden" });
+    await dragUp(page, under, 200);
+    expect(await scrolled()).toBeGreaterThan(before);
+    await page.context().close();
+  });
+
+  it("are in a phone's menu that Escape closes wherever the focus is, handing the focus back to its button", async () => {
     const page = await onTheCards({ width: 390, height: 600 });
     const burger = page.locator(".site-menu > summary");
     const panel = page.locator(".site-menu-panel");
-    const pageScrolls = () =>
-      page.evaluate(() => getComputedStyle(document.body).overflowY !== "hidden");
 
     await burger.click();
     await panel.waitFor({ state: "visible" });
-    expect(await pageScrolls()).toBe(false);
     // A browser that does not focus a pressed summary, as Safari does not.
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.keyboard.press("Escape");
 
     await panel.waitFor({ state: "hidden" });
-    expect(await pageScrolls()).toBe(true);
     expect(await burger.evaluate((element) => element === document.activeElement)).toBe(true);
+    await page.context().close();
+  });
+
+  it("are in a phone's menu that closes once the focus leaves it, so what has the focus is not behind it", async () => {
+    const page = await onTheCards({ width: 390, height: 800 });
+    const menu = page.locator(".site-menu");
+    const open = () => menu.evaluate((details) => (details as HTMLDetailsElement).open);
+
+    await menu.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    await menu.locator(".site-menu-panel").waitFor({ state: "visible" });
+    await page.keyboard.press("Tab");
+    expect(await open()).toBe(true);
+    await menu.getByRole("button", { name: "Sign out" }).focus();
+    await page.keyboard.press("Tab");
+
+    expect(await open()).toBe(false);
+    expect(await page.evaluate(() => document.activeElement?.closest(".site-menu"))).toBeNull();
     await page.context().close();
   });
 
@@ -321,6 +377,24 @@ describe("the sections on a long page", () => {
     await page.context().close();
   });
 
+  it.each([900, 905, 910, 911])(
+    "are in the sidebar or in the header's menu at %ipx, never both, and who is signed in is in sight",
+    async (width) => {
+      const page = await onTheCards({ width, height: 800 });
+      const burger = page.locator(".site-menu > summary");
+      const inSidebar = await page.locator(".app-sidebar nav.tabs").isVisible();
+      const inMenu = await burger.isVisible();
+
+      expect(inSidebar).not.toBe(inMenu);
+      if (inMenu) await burger.click();
+      expect(await page.getByText(PERSON).filter({ visible: true }).count()).toBe(1);
+      expect(
+        await page.getByRole("button", { name: "Sign out" }).filter({ visible: true }).count(),
+      ).toBe(1);
+      await page.context().close();
+    },
+  );
+
   it("stay whole under the header on a laptop, down to the foot of the page", async () => {
     // A window taller than the sidebar's words and the foot together.
     const page = await onTheCards({ width: 1280, height: 700 });
@@ -332,4 +406,39 @@ describe("the sections on a long page", () => {
     expect(sidebar?.y).toBeGreaterThanOrEqual((header?.y ?? 0) + (header?.height ?? 0));
     await page.context().close();
   });
+});
+
+describe("the header over the frame", () => {
+  it.each([
+    [320, []],
+    [481, []],
+    [499, []],
+    [500, ["Methodology", "Privacy"]],
+    [640, ["Methodology", "Privacy"]],
+    [641, ["Scanner", "Methodology", "Privacy"]],
+    [910, ["Scanner", "Methodology", "Privacy"]],
+  ] as const)(
+    "keeps one row at %ipx with the site's sections %j, who is signed in only in its menu",
+    async (width, sections) => {
+      const page = await onTheCards({ width, height: 600 });
+      await page.evaluate(() => document.fonts.ready);
+      expect(
+        await page.evaluate(() =>
+          [...document.fonts].some(
+            (face) => face.family.includes("Schibsted Grotesk") && face.status === "loaded",
+          ),
+        ),
+      ).toBe(true);
+      const header = page.locator("header.site-header");
+
+      const bar = await theBar(header);
+      expect(bar.spread).toBeLessThanOrEqual(1);
+      expect(bar.sections).toEqual(sections);
+      expect(bar.visitor).toBe(0);
+      expect(bar.button).toBe(true);
+      await header.locator(".site-menu > summary").click();
+      expect(await header.locator(".site-menu-panel").getByText(PERSON).isVisible()).toBe(true);
+      await page.context().close();
+    },
+  );
 });

@@ -397,7 +397,7 @@ function Masthead({ content }: Readonly<{ content: SellLanding }>) {
         </a>
       </nav>
       <button
-        aria-controls="site-menu"
+        aria-controls="masthead-menu"
         aria-expanded={open}
         aria-label={open ? "Close menu" : "Open menu"}
         className="masthead__burger"
@@ -409,7 +409,7 @@ function Masthead({ content }: Readonly<{ content: SellLanding }>) {
         <span />
         <span />
       </button>
-      <nav aria-label="Menu" className="site-menu" hidden={!open} id="site-menu">
+      <nav aria-label="Menu" className="masthead__menu" hidden={!open} id="masthead-menu">
         {sections.map(([href, label]) => (
           <a href={href} key={href} onClick={close}>
             {label}

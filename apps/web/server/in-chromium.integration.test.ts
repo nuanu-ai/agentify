@@ -21,10 +21,14 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { CONSENT_STORAGE_KEY } from "@agentify/analytics/browser";
+import {
+  CONSENT_POLICY_VERSION,
+  CONSENT_STORAGE_KEY,
+  createConsentSnapshot,
+} from "@agentify/analytics/browser";
 import { precompressedFrom } from "@agentify/ui/assets";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
-import { launchChromium } from "@agentify/ui/chromium";
+import { dragUp, launchChromium, theBar } from "@agentify/ui/chromium";
 import express from "express";
 import type { Browser, Page } from "playwright";
 import type { ServerBuild } from "react-router";
@@ -268,7 +272,7 @@ describe("the merchant landing", () => {
     const { page, complaints } = await visit("/sell");
     await page.setViewportSize({ width: 390, height: 800 });
     const burger = page.locator(".masthead__burger");
-    const menu = page.locator("#site-menu");
+    const menu = page.locator("#masthead-menu");
     const opened = async () => {
       await burger.click();
       await menu.waitFor({ state: "visible" });
@@ -677,7 +681,7 @@ describe("a scan in Chromium", () => {
   });
 });
 
-/** How the dashboard can answer who is visiting: a person, an operator, or not at all. */
+/** How the dashboard can answer who is visiting: a person, an operator, nobody, or not at all. */
 const VISITORS = [
   [
     "a signed-in address",
@@ -697,13 +701,25 @@ const VISITORS = [
       body: { status: "signed_in", email: "ops@agentify.example", operator: true },
     },
   ],
+  ["nobody signed in", { status: 200, body: { status: "signed_out" } }],
   ["no answer", { status: 503, body: {} }],
 ] as const;
 
+/** The choice of a visitor who answered the consent banner on an earlier visit. */
+const SAVED_CONSENT = createConsentSnapshot({
+  policy: {
+    policyVersion: CONSENT_POLICY_VERSION,
+    requireOptInForAdsMeasurement: true,
+    requireOptInForProductAnalytics: true,
+  },
+  decisions: {},
+  source: "banner",
+});
+
 /**
- * A phone-sized browser on `path` whose question of who is visiting is held
- * until `release`, and answered then with `answer`; the scan's status is the
- * running one.
+ * A browser `width` pixels wide, a phone's by default, on `path`, whose
+ * question of who is visiting is held until `release`, and answered then with
+ * `answer`; the scan's status is the running one.
  */
 const onAPhone = async (
   path: string,
@@ -767,6 +783,28 @@ describe("the doors on a phone", () => {
   );
 });
 
+/** The site's sections, as the header lists them. */
+const SECTIONS = ["Sell to agents", "Scanner", "Methodology", "Privacy"];
+
+/**
+ * How many of the sections the bar keeps beside the doors and the menu's
+ * button at a width, from a phone's to the widest the menu shows at, with the
+ * pixel on each side of every step. The last of them leaves first.
+ */
+const IN_THE_BAR = [
+  [320, 0],
+  [390, 0],
+  [439, 0],
+  [440, 1],
+  [519, 1],
+  [520, 2],
+  [767, 2],
+  [768, 3],
+  [839, 3],
+  [840, 4],
+  [910, 4],
+] as const;
+
 describe("the site's menu on a phone", () => {
   it("holds the site's sections, Sell to agents first, closes on Escape, and closes once a link in it is followed, fetched ahead as the bar's are", async () => {
     const { page, complaints } = await visit("/methodology");
@@ -780,12 +818,7 @@ describe("the site's menu on a phone", () => {
     expect(await panel.isVisible()).toBe(false);
     await burger.click();
     await panel.waitFor({ state: "visible" });
-    expect(await panel.locator("nav a").allTextContents()).toEqual([
-      "Sell to agents",
-      "Scanner",
-      "Methodology",
-      "Privacy",
-    ]);
+    expect(await panel.locator("nav a").allTextContents()).toEqual(SECTIONS);
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.keyboard.press("Escape");
     await panel.waitFor({ state: "hidden" });
@@ -807,10 +840,202 @@ describe("the site's menu on a phone", () => {
     await page.context().close();
   });
 
-  it.each(VISITORS)(
-    "keeps the header's height when %s comes back, and holds who is visiting",
-    async (_who, answer) => {
-      const { page, answered } = await onAPhone("/methodology", answer, 390);
+  it("opened on a scrolled page keeps the bar at the top and itself in view, and holds the page still under a wheel and a finger until it closes", async () => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 700 },
+      isMobile: true,
+      hasTouch: true,
+    });
+    const page = await context.newPage();
+    await page.route("**/api/v2/session", (route) =>
+      route.fulfill({ json: { status: "signed_out" } }),
+    );
+    await page.goto(`${origin}/methodology`);
+    await page.waitForLoadState("networkidle");
+    const burger = page.locator("header .site-menu > summary");
+    const panel = page.locator("header .site-menu-panel");
+    const scrolled = () => page.evaluate(() => window.scrollY);
+    // The scanner scrolls smoothly, so a plain scrollTo is still running when
+    // the finger comes down, and its animation wins over the finger.
+    await page.evaluate(() => window.scrollTo({ top: 300, behavior: "instant" }));
+    await dragUp(page, { x: 100, y: 450 }, 200);
+    // A finger's scroll reaches the page's script a frame or more after it lifts.
+    await expect.poll(scrolled).toBeGreaterThan(300);
+    const before = await scrolled();
+
+    await burger.tap();
+    await panel.waitFor({ state: "visible" });
+    expect((await page.locator("header.site-header").boundingBox())?.y).toBe(0);
+    const box = await panel.boundingBox();
+    const bottom = (box?.y ?? 0) + (box?.height ?? 0);
+    expect(box?.y).toBeGreaterThan(0);
+    expect(bottom).toBeLessThanOrEqual(700);
+    // A point on the page itself, just under the panel.
+    const under = { x: 100, y: bottom + 20 };
+    await page.mouse.move(under.x, under.y);
+    await page.mouse.wheel(0, 400);
+    await dragUp(page, under, 200);
+    await page.waitForTimeout(300);
+    expect(await scrolled()).toBe(before);
+    expect((await page.locator("header.site-header").boundingBox())?.y).toBe(0);
+
+    await burger.tap();
+    await panel.waitFor({ state: "hidden" });
+    await dragUp(page, under, 200);
+    await expect.poll(scrolled).toBeGreaterThan(before);
+    await context.close();
+  });
+
+  it.each(
+    (
+      [
+        [
+          "a scan",
+          `/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`,
+          "7 of 18 checks reported",
+        ],
+        [
+          "a report",
+          "/report/0190f4c5-0000-7000-8000-00000000f002",
+          "Private report access required",
+        ],
+      ] as const
+    ).flatMap(([top, path, drawn]) =>
+      [
+        { width: 740, height: 360 },
+        { width: 568, height: 320 },
+      ].map(
+        (viewport) => [top, `${viewport.width}x${viewport.height}`, viewport, path, drawn] as const,
+      ),
+    ),
+  )(
+    "fits the room under the top of %s in a landscape phone's window of %s, its last item in reach",
+    async (_top, _size, viewport, path, drawn) => {
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      await page.route(`**/api/v1/scans/${SCAN_ID}/status`, (route) =>
+        route.fulfill({ json: RUNNING }),
+      );
+      await page.route("**/api/v2/session", (route) =>
+        route.fulfill({
+          json: { status: "signed_in", email: "ops@agentify.example", operator: true },
+        }),
+      );
+      await page.goto(`${origin}${path}`);
+      await page.getByText(drawn).first().waitFor();
+      await page.locator('.site-visitor[aria-busy="false"]').first().waitFor({ state: "attached" });
+      const panel = page.locator(".site-menu-panel");
+
+      await page.locator(".site-menu > summary").click();
+      await panel.waitFor({ state: "visible" });
+      const room = await panel.boundingBox();
+      const end = (room?.y ?? 0) + (room?.height ?? 0);
+      expect(end).toBeLessThanOrEqual(viewport.height);
+      await page.mouse.move(370, (room?.y ?? 0) + 20);
+      await page.mouse.wheel(0, 600);
+      await page.waitForTimeout(300);
+      const last = panel.getByRole("button", { name: "Sign out" });
+      const box = await last.boundingBox();
+      expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(end);
+      // Nothing is drawn over it, the consent banner of a first visit included.
+      expect(
+        await last.evaluate((button) => {
+          const { left, top, width, height } = button.getBoundingClientRect();
+          return button.contains(document.elementFromPoint(left + width / 2, top + height / 2));
+        }),
+      ).toBe(true);
+      await context.close();
+    },
+  );
+
+  it("refits the room under a scan's top when the phone is turned while it is open", async () => {
+    const context = await browser.newContext({ viewport: { width: 360, height: 740 } });
+    const page = await context.newPage();
+    // A visitor who has answered the consent banner, whose panel runs to the
+    // foot of the window rather than stopping above the banner.
+    await page.addInitScript(([key, choice]) => localStorage.setItem(key, choice), [
+      CONSENT_STORAGE_KEY,
+      JSON.stringify(SAVED_CONSENT),
+    ] as const);
+    await page.route(`**/api/v1/scans/${SCAN_ID}/status`, (route) =>
+      route.fulfill({ json: RUNNING }),
+    );
+    // An operator, whose part of the panel is the tallest.
+    await page.route("**/api/v2/session", (route) =>
+      route.fulfill({
+        json: { status: "signed_in", email: "ops@agentify.example", operator: true },
+      }),
+    );
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    await page.getByText("7 of 18 checks reported").first().waitFor();
+    await page.locator('.site-visitor[aria-busy="false"]').first().waitFor({ state: "attached" });
+    const panel = page.locator(".site-menu-panel");
+    await page.locator(".site-menu > summary").click();
+    await panel.waitFor({ state: "visible" });
+
+    await page.setViewportSize({ width: 740, height: 360 });
+    await page.waitForTimeout(300);
+
+    expect(await panel.isVisible()).toBe(true);
+    const room = await panel.boundingBox();
+    if (room === null) throw new Error("the open panel has no box");
+    expect(room.y + room.height).toBeLessThanOrEqual(360);
+    await context.close();
+  });
+
+  it("left open while the window is too wide to show it, is closed when the window narrows again, so the page is not held", async () => {
+    const { page, complaints } = await visit("/methodology");
+    await page.setViewportSize({ width: 900, height: 700 });
+    const menu = page.locator("header .site-menu");
+    const scrolled = () => page.evaluate(() => window.scrollY);
+    await menu.locator("summary").click();
+    await menu.locator(".site-menu-panel").waitFor({ state: "visible" });
+
+    await page.setViewportSize({ width: 1000, height: 700 });
+    await page.mouse.move(500, 400);
+    await page.mouse.wheel(0, 300);
+    await page.waitForTimeout(300);
+    await page.setViewportSize({ width: 900, height: 700 });
+    await page.waitForTimeout(300);
+
+    expect(await menu.evaluate((details) => (details as HTMLDetailsElement).open)).toBe(false);
+    const before = await scrolled();
+    expect(before).toBeGreaterThan(0);
+    await page.mouse.wheel(0, 300);
+    await page.waitForTimeout(300);
+    expect(await scrolled()).toBeGreaterThan(before);
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+
+  it("closes once the focus leaves it, so what has the focus is not behind it", async () => {
+    const { page, complaints } = await visit("/methodology");
+    await page.setViewportSize({ width: 390, height: 800 });
+    const menu = page.locator("header .site-menu");
+    const open = () => menu.evaluate((details) => (details as HTMLDetailsElement).open);
+
+    await menu.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    await menu.locator(".site-menu-panel").waitFor({ state: "visible" });
+    await page.keyboard.press("Tab");
+    expect(await open()).toBe(true);
+    await menu.locator(".site-menu-panel a").last().focus();
+    await page.keyboard.press("Tab");
+
+    expect(await open()).toBe(false);
+    expect(await page.evaluate(() => document.activeElement?.closest(".site-menu"))).toBeNull();
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+
+  it.each(
+    VISITORS.flatMap(([who, answer]) =>
+      IN_THE_BAR.map(([width, shown]) => [who, width, answer, shown] as const),
+    ),
+  )(
+    "keeps the header to one row of the same height when %s comes back at %ipx, with the sections that fit, and holds who is visiting and every section in its menu",
+    async (_who, width, answer, shown) => {
+      const { page, answered } = await onAPhone("/methodology", answer, width);
       await page.locator("h1").first().waitFor();
       await page.evaluate(() => document.fonts.ready);
       const header = page.locator("header.site-header");
@@ -818,8 +1043,14 @@ describe("the site's menu on a phone", () => {
 
       await answered();
       expect(await header.boundingBox()).toEqual(before);
+      const bar = await theBar(header);
+      expect(bar.spread).toBeLessThanOrEqual(1);
+      expect(bar.sections).toEqual(SECTIONS.slice(0, shown));
+      expect(bar.visitor).toBe(0);
+      expect(bar.button).toBe(true);
 
       await header.locator(".site-menu > summary").click();
+      expect(await header.locator(".site-menu-panel nav a").allTextContents()).toEqual(SECTIONS);
       const visitor = header.locator(".site-menu-panel .site-visitor");
       if ("email" in answer.body) {
         const address = visitor.getByRole("link", { name: answer.body.email });
@@ -831,6 +1062,8 @@ describe("the site's menu on a phone", () => {
         expect(await visitor.getByRole("link", { name: "Admin" }).count()).toBe(
           answer.body.operator ? 1 : 0,
         );
+      } else if (answer.status === 200) {
+        expect(await visitor.isVisible()).toBe(false);
       } else {
         expect(await visitor.getByText("Sign-in unknown").isVisible()).toBe(true);
       }

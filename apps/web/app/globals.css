@@ -40,6 +40,12 @@ body {
   padding-bottom: var(--consent-banner-height);
 }
 
+/* The header's menu stops above the bar as well, so its last item is never
+   under it. */
+.site-menu {
+  --site-menu-foot: var(--consent-banner-height);
+}
+
 /*
  * The scanner's links are navigation and editorial rows that take their colour
  * and underline from the block they sit in. The shared base's accent with an
