@@ -209,8 +209,6 @@ describe("dashboard magic links", () => {
     const { identity, messages, rows } = memoryIdentity();
     await identity.requestLink("person@example.com", "default");
     const token = tokenIn(messages[0] as Message);
-    const verification = rows.dashboard_verifications?.[0];
-    if (verification === undefined) throw new Error("the link was not stored");
 
     for (const destination of [
       "https://evil.example/",
@@ -218,6 +216,10 @@ describe("dashboard magic links", () => {
       { report: "not-a-scan" },
       { report: "019b41a0-7c51-7d63-84bd-a5a20faef497", also: "settings" },
     ]) {
+      // Read afresh: every call replaces the stored rows with its transaction's
+      // copy, so a row held from before the first call is no longer stored.
+      const verification = rows.dashboard_verifications?.[0];
+      if (verification === undefined) throw new Error("the link was not stored");
       verification.value = JSON.stringify({ email: "person@example.com", destination });
 
       await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
