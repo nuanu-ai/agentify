@@ -134,7 +134,13 @@ export async function reportOnce(parts: ReportParts): Promise<boolean> {
     }
 
     if (now().getTime() >= windowEnds) {
-      return await settle("given_up", "retry_window_exhausted", due.attempts);
+      // The row keeps the tracker's last answer, or none where it was never
+      // asked; the state and the moment it settled say the day ran out.
+      await tx
+        .update(registrationPostbacks)
+        .set({ state: "given_up", clickId: null, nextAttemptAt: null, settledAt: now() })
+        .where(theRow);
+      return { state: "given_up", outcome: "retry_window_exhausted" };
     }
 
     const started = now().getTime();
