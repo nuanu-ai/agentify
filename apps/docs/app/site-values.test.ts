@@ -7,13 +7,12 @@
  * environment.
  */
 
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { type Environment, fillTemplates } from "../testing/caddy-templates.js";
 import { CHANNELS } from "../testing/edge.js";
 import { renderedPages } from "./markdown.server.js";
 import { servedTemplate } from "./served.js";
-import { fillSiteValues, siteValuesIn } from "./site-values.js";
+import { analyticsConfigIn, fillSiteValues, siteValuesIn } from "./site-values.js";
 
 const identity = (await renderedPages()).get("/scanner")?.html ?? "";
 
@@ -76,57 +75,41 @@ describe("the values a deployment decides", () => {
   });
 });
 
-/** One service's environment as a compose file writes it, each variable with its expression. */
-const environmentOf = (file: string, service: string): ReadonlyMap<string, string> => {
-  const compose = readFileSync(new URL(`../../../${file}`, import.meta.url), "utf8");
-  const block = new RegExp(`^  ${service}:\\n([\\s\\S]*?)(?=^  [\\w-]+:\\n|^\\S)`, "m").exec(
-    compose,
-  )?.[1];
-  const environment = /^ {4}environment:\n((?: {6}.*\n|\s*\n)+)/m.exec(block ?? "")?.[1] ?? "";
-  return new Map(
-    [...environment.matchAll(/^ {6}([A-Z_]+): (.+)$/gm)].map(([, name = "", value = ""]) => [
-      name,
-      value,
-    ]),
-  );
+/** Where a channel's measurements go, as its file may name them. */
+const MEASURING = {
+  ...CHANNELS.test,
+  ANALYTICS_RUNTIME_ENV: "test",
+  POSTHOG_BROWSER_KEY: "channel-browser-key",
+  POSTHOG_BROWSER_HOST: "https://posthog.invalid",
+  POSTHOG_DESTINATION_ENV: "test",
+  META_PIXEL_ID: "1234567890",
+  META_DESTINATION_ENV: "test",
 };
 
-/** Where the scanner's pages and the documentation's measurements go. */
-const ANALYTICS = [
-  "ANALYTICS_RUNTIME_ENV",
-  "POSTHOG_BROWSER_KEY",
-  "POSTHOG_BROWSER_HOST",
-  "POSTHOG_DESTINATION_ENV",
-  "META_PIXEL_ID",
-  "META_DESTINATION_ENV",
-];
+const configOn = (environment: Environment) => {
+  const values = siteValuesIn(fillTemplates(servedTemplate(), environment));
+  if (values === null) throw new Error("the served part carried no values");
+  return analyticsConfigIn(values);
+};
 
-describe("what Caddy fills the documentation with", () => {
-  it("is what the scanner is given, so its own pages and the documentation's say the same", () => {
-    const caddy = environmentOf("compose.yaml", "web");
-    const scanner = environmentOf("compose.yaml", "scanner");
-
-    expect(caddy.get("AGENTIFY_PUBLIC_ORIGIN")).toBe(scanner.get("APP_BASE_URL"));
-    for (const name of [
-      "ABUSE_EMAIL",
-      "LEGAL_OPERATOR",
-      "LEGAL_IDENTITY_CONFIRMED",
-      ...ANALYTICS,
-    ]) {
-      expect(caddy.get(name), name).toBe(scanner.get(name));
-    }
-    expect(scanner.size).toBeGreaterThan(10);
+describe("where a page's measurements go", () => {
+  it("is where Caddy was told the scanner's go", () => {
+    expect(configOn(MEASURING)).toEqual({
+      runtimeEnvironment: "test",
+      posthog: {
+        key: "channel-browser-key",
+        host: "https://posthog.invalid",
+        destinationEnvironment: "test",
+      },
+      meta: { pixelId: "1234567890", destinationEnvironment: "test" },
+    });
   });
 
-  it.each(["deploy/compose.agentify-test.yaml", "deploy/compose.hetzner-commerce.yaml"])(
-    "sends the documentation's page views where %s sends the scanner's",
-    (file) => {
-      const caddy = environmentOf(file, "web");
-      const scanner = environmentOf(file, "scanner");
-      const named = ANALYTICS.filter((name) => scanner.has(name) || caddy.has(name));
-
-      expect(named.length).toBeGreaterThan(0);
-      for (const name of named) expect(caddy.get(name), name).toBe(scanner.get(name));
+  it.each(["ANALYTICS_RUNTIME_ENV", "POSTHOG_DESTINATION_ENV", "META_DESTINATION_ENV"])(
+    "is nowhere when %s names an environment the scanner would refuse to start on",
+    (name) => {
+      expect(configOn({ ...MEASURING, [name]: "staging" })).toBeNull();
+      expect(configOn({ ...MEASURING, [name]: "" })).toBeNull();
     },
   );
 });

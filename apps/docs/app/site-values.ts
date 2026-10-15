@@ -16,6 +16,8 @@
  * once a visitor allows measuring.
  */
 
+import type { BrowserAnalyticsConfig } from "@agentify/consent";
+
 /** Each value a page may name, by the name a writer uses, with the variable Caddy reads it from. */
 const SITE_VALUES = {
   origin: "AGENTIFY_PUBLIC_ORIGIN",
@@ -142,3 +144,28 @@ export function siteValuesIn(served: string): SiteValues | null {
  */
 export const withTemplatesRestored = (html: string): string =>
   html.replace(/&lt;!--\{\{(.*?)\}\}--&gt;/g, "<!--{{$1}}-->");
+
+const ENVIRONMENTS = ["local", "test", "preview", "production"] as const;
+
+const environmentOf = (written: string) => ENVIRONMENTS.find((each) => each === written);
+
+/**
+ * Where measurements go, from the settings Caddy filled in as the scanner is
+ * given them, or null where one names an environment the scanner would refuse
+ * to start on, so a page sends nothing a misconfigured channel would.
+ */
+export function analyticsConfigIn(values: SiteValues): BrowserAnalyticsConfig | null {
+  const runtimeEnvironment = environmentOf(values["analytics-runtime"]);
+  const posthog = environmentOf(values["posthog-destination"]);
+  const meta = environmentOf(values["meta-destination"]);
+  if (runtimeEnvironment === undefined || posthog === undefined || meta === undefined) return null;
+  return {
+    runtimeEnvironment,
+    posthog: {
+      key: values["posthog-key"] || null,
+      host: values["posthog-host"] || null,
+      destinationEnvironment: posthog,
+    },
+    meta: { pixelId: values["meta-pixel"] || null, destinationEnvironment: meta },
+  };
+}

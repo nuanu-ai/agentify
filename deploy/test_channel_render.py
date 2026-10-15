@@ -1,4 +1,4 @@
-"""What a deployed channel's gateway is handed to seed, from the real files.
+"""What a deployed channel's services are handed, from the real files.
 
 The preflight's own tests read two hand-written fixtures, so they cannot see
 what `deploy/compose.public.yaml` does to the seed. This renders each channel
@@ -6,7 +6,9 @@ the way deploy/stack.sh does — the same compose files in the same order, the
 jobs profile activation renders with — from a synthetic environment file, and
 runs the preflight over the result, as activation does. A deployed channel
 seeds no merchant, whether or not its environment file names
-AGENTIFY_SEED_KEY.
+AGENTIFY_SEED_KEY. Caddy, which fills the documentation's pages, is handed
+the same address, contacts and measuring destinations as the scanner, so the
+two halves of one site say and measure the same.
 
 It needs Docker with Compose and Node, as the release does.
 """
@@ -62,6 +64,21 @@ CHANNELS = {
     },
 }
 SEED = {"test": "csk_test_" + "k" * 44, "production": "csk_live_" + "k" * 44}
+# What a channel's file may name about its operator and its measuring, each a
+# value no default has, so a service that is not handed it shows.
+SITE = {
+    "ABUSE_EMAIL": "abuse@operator.invalid",
+    "LEGAL_OPERATOR": "Operator of this channel",
+    "LEGAL_IDENTITY_CONFIRMED": "true",
+    "ANALYTICS_RUNTIME_ENV": "preview",
+    "POSTHOG_BROWSER_KEY": "channel-browser-key",
+    "POSTHOG_BROWSER_HOST": "https://posthog.invalid",
+    "POSTHOG_DESTINATION_ENV": "preview",
+    "META_PIXEL_ID": "1234567890",
+    "META_DESTINATION_ENV": "preview",
+}
+# Caddy's name for each value, and the scanner's.
+SHARED = {"AGENTIFY_PUBLIC_ORIGIN": "APP_BASE_URL", **{name: name for name in SITE}}
 
 
 def tools_available():
@@ -124,6 +141,18 @@ class ChannelRender(unittest.TestCase):
                 self.assertNotIn(SEED[channel], json.dumps(document))
                 checked = self.preflight(channel, document)
                 self.assertEqual(checked.returncode, 0, checked.stderr)
+
+    def test_the_documentation_is_handed_what_the_scanner_is(self):
+        for channel in CHANNELS:
+            for extra in ({}, SITE):
+                with self.subTest(channel=channel, named=bool(extra)):
+                    services = self.render(channel, extra)["services"]
+                    for caddy, scanner in SHARED.items():
+                        self.assertEqual(
+                            services["web"]["environment"].get(caddy),
+                            services["scanner"]["environment"].get(scanner),
+                            caddy,
+                        )
 
     def test_the_preflight_run_here_refuses_a_rendered_seed_without_printing_it(self):
         # The control for the two above: the same rendered document, with a key
