@@ -95,6 +95,50 @@ describe("what a page says about the stack it belongs to", () => {
   });
 });
 
+describe("the Google sign-in choice", () => {
+  it("offers a separate browser post while keeping the email form and its destination", () => {
+    const html = renderToString(
+      routed(() => (
+        <AskScreen
+          chrome={chromeIn("sandbox")}
+          view={{ screen: "ask", destination: "settings", googleEnabled: true }}
+        />
+      )),
+    );
+
+    const google = formTo(html, "post", "/sign-in/google");
+    expect(google?.fields.get("destination")).toBe("settings");
+    expect(formTo(html, "post", "/sign-in")?.fields.get("destination")).toBe("settings");
+    const document = new DOMParser().parseFromString(html, "text/html");
+    expect(document.querySelector('form[action="/sign-in/google"] button')?.textContent).toMatch(
+      /continue with google/i,
+    );
+    // A router fetch cannot navigate the browser to Google's consent page.
+    expect(
+      document.querySelector('form[action="/sign-in/google"]')?.getAttribute("data-discover"),
+    ).toBeNull();
+  });
+
+  it("offers no unavailable Google choice and fills only the address its server view supplied", () => {
+    const html = renderToString(
+      routed(() => (
+        <AskScreen
+          chrome={chromeIn("sandbox")}
+          view={{
+            screen: "ask",
+            destination: "keys",
+            googleEnabled: false,
+            email: PERSON,
+          }}
+        />
+      )),
+    );
+
+    expect(formTo(html, "post", "/sign-in/google")).toBeUndefined();
+    expect(formTo(html, "post", "/sign-in")?.fields.get("email")).toBe(PERSON);
+  });
+});
+
 describe("what a merchant is served after asking for a link", () => {
   for (const [said, answer] of ANSWERS) {
     it(`keeps the resend on the page when ${said}`, () => {

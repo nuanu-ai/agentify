@@ -1366,6 +1366,195 @@ describe("the operator flag", () => {
   });
 });
 
+describe("the Google dashboard door", () => {
+  const stateCookie = "agentify.oauth_state=browser-bound; Path=/; HttpOnly; SameSite=Lax";
+  const clearedState = "agentify.oauth_state=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax";
+
+  it("offers Google only when configured, while the email door stays open without it", async () => {
+    const running = await started();
+    const page = await running.browser.get("/sign-in?destination=settings");
+
+    expect(formTo(page.html, "post", "/sign-in/google")).toBeUndefined();
+    expect(formTo(page.html, "post", "/sign-in")?.fields.get("destination")).toBe("settings");
+    const unavailable = await running.browser.post("/sign-in/google", { destination: "settings" });
+    expect(unavailable.status).toBe(503);
+    expect(formTo(unavailable.html, "post", "/sign-in")?.fields.get("destination")).toBe(
+      "settings",
+    );
+    expect((await running.browser.post("/sign-in", { email: PERSON })).status).toBe(202);
+  });
+
+  it("starts a browser navigation from its own post and carries only a closed dashboard destination", async () => {
+    const running = await started({
+      base: "/dashboard",
+      identity: (real) => ({
+        ...real,
+        googleEnabled: true,
+        async startGoogle(destination) {
+          return {
+            status: "redirect",
+            location: `https://accounts.google.com/o/oauth2/v2/auth?destination=${destination}`,
+            setCookies: [stateCookie],
+          };
+        },
+      }),
+    });
+    const page = await running.browser.get("/dashboard/sign-in?destination=settings");
+    expect(formTo(page.html, "post", "/dashboard/sign-in/google")?.fields.get("destination")).toBe(
+      "settings",
+    );
+
+    const sent = await running.browser
+      .from(running.url)
+      .post("/dashboard/sign-in/google", { destination: "settings" });
+    expect(sent.status).toBe(303);
+    expect(sent.to).toBe("https://accounts.google.com/o/oauth2/v2/auth?destination=settings");
+    expect(sent.headers.getSetCookie()).toContain(stateCookie);
+    expect(running.rows.dashboard_sessions).toStrictEqual([]);
+
+    const external = await running.browser.post("/dashboard/sign-in/google", {
+      destination: "https://elsewhere.example",
+    });
+    expect(external.to).toBe("https://accounts.google.com/o/oauth2/v2/auth?destination=default");
+    const forged = await running.browser
+      .from("https://test.agentify.ad")
+      .post("/dashboard/sign-in/google");
+    expect(forged.status).toBe(403);
+    expect(
+      forged.headers.getSetCookie().filter((line) => line.startsWith("agentify.oauth_state=")),
+    ).toStrictEqual([]);
+  });
+
+  for (const reason of [
+    "email-unverified",
+    "email-changed",
+    "cancelled",
+    "invalid",
+    "unavailable",
+  ] as const) {
+    it(`keeps a mail alternative and the trusted destination after Google answers ${reason}`, async () => {
+      const email =
+        reason === "email-unverified" || reason === "email-changed" ? "owner@example.net" : null;
+      const running = await started({
+        base: "/dashboard",
+        identity: (real) => ({
+          ...real,
+          googleEnabled: true,
+          async finishGoogle() {
+            return {
+              status: "refused",
+              reason,
+              email,
+              destination: "settings",
+              setCookies: [clearedState],
+            };
+          },
+        }),
+      });
+      const refused = await running.browser.get(
+        "/dashboard/sign-in/google/callback?state=state&error=attacker-secret&email=attacker@example.com&destination=https://elsewhere.example",
+      );
+
+      expect(refused.status).toBe(reason === "unavailable" ? 503 : 401);
+      expect(formTo(refused.html, "post", "/dashboard/sign-in")?.fields.get("destination")).toBe(
+        "settings",
+      );
+      expect(formTo(refused.html, "post", "/dashboard/sign-in")?.fields.get("email")).toBe(
+        email ?? "",
+      );
+      expect(refused.html).not.toContain("attacker@example.com");
+      expect(refused.html).not.toContain("attacker-secret");
+      expect(refused.html).not.toContain("<script");
+      expect(refused.headers.getSetCookie()).toContain(clearedState);
+      expect(running.rows.dashboard_sessions).toStrictEqual([]);
+    });
+  }
+
+  it("replaces only this browser's old session after Google succeeds and follows the held destination", async () => {
+    let opening: Awaited<ReturnType<Identity["openLink"]>> = { status: "refused" };
+    const running = await started({
+      identity: (real) => ({
+        ...real,
+        googleEnabled: true,
+        async finishGoogle() {
+          if (opening.status !== "opened") throw new Error("the identity did not open a session");
+          return { ...opening, destination: "settings" };
+        },
+      }),
+    });
+    await running.identity.make(OTHER, running.theMerchant);
+    await running.browser.signIn(PERSON);
+    const oldToken = running.browser.sessionToken();
+    const otherDevice = await running.another();
+    await otherDevice.signIn(PERSON);
+    await running.browser.post("/sign-in", { email: OTHER });
+    opening = await running.identity.openLink(
+      actionIn(running.mails.at(-1)).searchParams.get("token") ?? "",
+    );
+
+    const opened = await running.browser.get(
+      "/sign-in/google/callback?state=held&code=google-code",
+    );
+
+    expect(opened.status).toBe(303);
+    expect(opened.to).toBe("/settings");
+    expect(running.browser.sessionToken()).not.toBe(oldToken);
+    expect(readable((await running.browser.get("/settings")).html)).toContain(OTHER);
+    expect(
+      (await running.browser.withRawCookie(`${COOKIE}=${oldToken}`).get("/settings")).to,
+    ).toMatch(/^\/sign-in/);
+    expect((await otherDevice.get("/settings")).status).toBe(200);
+  });
+
+  it("does not sign an existing browser out when Google refuses", async () => {
+    const running = await started({
+      identity: (real) => ({
+        ...real,
+        googleEnabled: true,
+        async finishGoogle() {
+          return {
+            status: "refused",
+            reason: "invalid",
+            email: null,
+            destination: "default",
+            setCookies: [clearedState],
+          };
+        },
+      }),
+    });
+    await running.browser.signIn(PERSON);
+    const token = running.browser.sessionToken();
+    expect(
+      (await running.browser.get("/sign-in/google/callback?state=forged&code=code")).status,
+    ).toBe(401);
+    expect(running.browser.sessionToken()).toBe(token);
+    expect((await running.browser.get("/settings")).status).toBe(200);
+  });
+
+  it("does not exchange a Google code on a HEAD or page-data request", async () => {
+    const running = await started({
+      identity: (real) => ({
+        ...real,
+        googleEnabled: true,
+        async finishGoogle() {
+          throw new Error("a prefetch must never exchange this code");
+        },
+      }),
+    });
+    const head = await fetch(`${running.url}/sign-in/google/callback?state=held&code=code`, {
+      method: "HEAD",
+      redirect: "manual",
+    });
+    const data = await running.browser.get("/sign-in/google/callback.data?state=held&code=code");
+
+    expect(head.status).toBe(405);
+    expect(data.status).toBe(405);
+    expect(head.headers.getSetCookie()).toStrictEqual([]);
+    expect(data.headers.getSetCookie()).toStrictEqual([]);
+    expect(running.rows.dashboard_sessions).toStrictEqual([]);
+  });
+});
+
 describe("the gate", () => {
   it("lets a visitor with no session reach only the sign-in pages, the health probe and the shop's callback and return", async () => {
     // Every route on this list answers a stranger without the sign-in redirect,
