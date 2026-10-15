@@ -7,13 +7,48 @@ import {
   readCurrentConsent,
   saveConsentDecision,
 } from "@agentify/analytics/browser";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent as KeyPress, useCallback, useEffect, useRef, useState } from "react";
 import { CONSENT_CHANGED_EVENT, OPEN_PRIVACY_CHOICES_EVENT } from "./events.js";
 
 const policy = {
   policyVersion: CONSENT_POLICY_VERSION,
   requireOptInForAdsMeasurement: true,
   requireOptInForProductAnalytics: true,
+};
+
+/** Tab and Shift+Tab go round the dialog's own controls, as long as it is open. */
+const keepTabInside = (event: KeyPress<HTMLElement>) => {
+  if (event.key !== "Tab") return;
+  const controls = [
+    ...event.currentTarget.querySelectorAll<HTMLElement>(
+      "input:not([disabled]), button:not([disabled]), a[href]",
+    ),
+  ];
+  const at = controls.indexOf(document.activeElement as HTMLElement);
+  const next = event.shiftKey
+    ? at <= 0
+      ? controls.length - 1
+      : at - 1
+    : (at + 1) % controls.length;
+  event.preventDefault();
+  controls[next]?.focus();
+};
+
+/**
+ * Where the focus goes once the banner or its preferences close: back to the
+ * control that opened them, or, when that went with the banner, to the page's
+ * content, which the next Tab continues from.
+ */
+const returnFocus = (opener: HTMLElement | null) => {
+  if (opener?.isConnected) {
+    opener.focus();
+    return;
+  }
+  if (document.activeElement !== null && document.activeElement !== document.body) return;
+  const content = document.querySelector<HTMLElement>("main");
+  if (content === null) return;
+  if (!content.hasAttribute("tabindex")) content.setAttribute("tabindex", "-1");
+  content.focus({ preventScroll: true });
 };
 
 const decisions = (product: boolean, ads: boolean): Partial<ConsentCategories> => ({
@@ -39,6 +74,7 @@ export function ConsentPreferencesPanel(props: {
         aria-modal="true"
         className="consent-dialog"
         role="dialog"
+        onKeyDown={keepTabInside}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h2 id="consent-title" tabIndex={-1}>
@@ -144,9 +180,7 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
 
   const closePreferences = useCallback(() => {
     setPreferencesOpen(false);
-    window.requestAnimationFrame(() => {
-      if (preferencesOpener.current?.isConnected) preferencesOpener.current.focus();
-    });
+    window.requestAnimationFrame(() => returnFocus(preferencesOpener.current));
   }, []);
 
   // A choice made in another of the site's tabs holds in this one as well.
@@ -216,7 +250,8 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
       });
       setProductAnalytics(product);
       setAdsMeasurement(ads);
-      closePreferences();
+      if (preferencesOpen) closePreferences();
+      else window.requestAnimationFrame(() => returnFocus(null));
       setVisible(false);
       window.dispatchEvent(new CustomEvent(CONSENT_CHANGED_EVENT, { detail: snapshot }));
     } catch {

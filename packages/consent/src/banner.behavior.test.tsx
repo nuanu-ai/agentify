@@ -11,6 +11,7 @@ import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ConsentBanner } from "./banner.js";
+import { PrivacyChoicesButton } from "./privacy-choices.js";
 
 /** A choice as the banner keeps it, made under `policyVersion`. */
 const keptUnder = (policyVersion: string): string =>
@@ -94,5 +95,65 @@ describe("consent persistence", () => {
       dataset_reuse: false,
       card_signal: false,
     });
+  });
+});
+
+describe("the preferences, from the keyboard", () => {
+  beforeEach(() => {
+    Object.assign(globalThis, { React });
+    window.localStorage.clear();
+    globalThis.fetch = async () => new Response(null, { status: 201 });
+  });
+
+  afterEach(() => {
+    cleanup();
+    window.localStorage.clear();
+  });
+
+  it("keep Tab and Shift+Tab inside the dialog while it is open", async () => {
+    const user = userEvent.setup();
+    render(<ConsentBanner brand="Agentify" />);
+    await user.click(screen.getByRole("button", { name: "Preferences" }));
+    const dialog = screen.getByRole("dialog", { name: "Privacy choices" });
+
+    for (let press = 0; press < 6; press += 1) {
+      await user.tab();
+      expect(dialog.contains(document.activeElement), `Tab ${press + 1}`).toBe(true);
+    }
+    screen.getByRole("checkbox", { name: /product analytics/i }).focus();
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }));
+  });
+
+  it("hand the focus to the page's content once a choice took the banner away", async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <main>The page</main>
+        <ConsentBanner brand="Agentify" />
+      </>,
+    );
+    screen.getByRole("button", { name: "Essential only" }).focus();
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("main")));
+  });
+
+  it("hand the focus back to the page's Privacy choices once a choice made there is saved", async () => {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, keptUnder(CONSENT_POLICY_VERSION));
+    const user = userEvent.setup();
+    render(
+      <>
+        <main>The page</main>
+        <PrivacyChoicesButton />
+        <ConsentBanner brand="Agentify" />
+      </>,
+    );
+    await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+    await user.click(screen.getByRole("button", { name: "Save choices" }));
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Privacy choices" })),
+    );
   });
 });
