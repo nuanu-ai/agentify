@@ -242,10 +242,29 @@ describe("a page of the documentation in Chromium", () => {
     }
   });
 
-  it("draws every diagram of the orders page as a picture, running no diagram code", async () => {
+  it("draws every diagram of the orders page as a named, described picture, running no diagram code", async () => {
     const { page, asked } = await visit("/docs/orders");
 
     expect(await page.locator("figure.diagram svg").count()).toBe(3);
+    for (const diagram of await page.locator("figure.diagram svg").all()) {
+      const accessible = await diagram.evaluate((element) => {
+        const texts = (attribute: string, tag: string) => {
+          const ids = element.getAttribute(attribute)?.trim().split(/\s+/) ?? [];
+          return ids.map(
+            (id) => element.querySelector(`${tag}[id="${id}"]`)?.textContent?.trim() ?? "",
+          );
+        };
+        return {
+          name: texts("aria-labelledby", "title"),
+          description: texts("aria-describedby", "desc"),
+        };
+      });
+      for (const [kind, texts] of Object.entries(accessible)) {
+        expect(texts.length, kind).toBeGreaterThan(0);
+        expect(texts.every(Boolean), kind).toBe(true);
+      }
+      expect(accessible.description.join(" ")).not.toBe(accessible.name.join(" "));
+    }
     expect(asked.filter((path) => /mermaid/i.test(path))).toEqual([]);
     await page.context().close();
   });

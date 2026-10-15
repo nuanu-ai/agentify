@@ -159,7 +159,9 @@ after the path stop the build.
 
 A diagram is a `mermaid` code block. The build does not draw it: it shows the
 drawing kept in `diagrams/` under the hash of the diagram's source, and stops
-when there is none. After writing or changing a diagram, run
+when there is none. Give it an accessible name with `accTitle:` and explain
+the sequence in `accDescr:` so a reader using a screen reader can follow it.
+After writing or changing a diagram, run
 `pnpm --filter @agentify/docs diagrams`, which draws what is missing in
 Chromium and deletes what no page uses, and commit the drawings with the page.
 
