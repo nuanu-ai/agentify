@@ -116,10 +116,11 @@ succeeded.
 The code that takes a commission names a commission wallet on each network it
 sells on, on Base the product owner's Safe. Before an `app-v*` tag of it goes
 to production, `COMMISSION_SAFE_OWNERS=<the Safe's owners> pnpm
-commission-wallet` passes on both networks, and nothing sells on the live
-channel until the check on Base itself has passed
-(`docs/research/47-commission-in-the-product.md`, «Кошелёк комиссии в Base»
-and «Проверка в основной сети до выпуска на живой канал»).
+commission-wallet` passes on both networks
+(`docs/research/47-commission-in-the-product.md`, «Кошелёк комиссии в Base»).
+A payment into a merchant's split and its payout were checked on Base itself
+on 2026-10-15 (the same note, «Проверка в основной сети до выпуска на живой
+канал»).
 
 A production release starts from `main`. Every change a merchant can see in
 the published packages carries a Changeset (`pnpm changeset` on the branch
@@ -445,6 +446,30 @@ restored: revert or fix it on a branch, merge to `main`, tag the new commit and
 release that tag. Restoring its restore point would lose every order and
 receipt written since, and the command refuses to move production backwards
 from the revision `current` names.
+
+## Collecting the commission
+
+Agentify's 0.1% stays credited to its commission wallet in the shared 0xSplits
+warehouse until somebody pays the splits out; nothing does that on a timer. The
+operator's payout command prints, for every split recorded on the channel's
+network, the transactions that create each split if it has no code yet,
+distribute it, withdraw each merchant's share to their wallet and, last in each,
+withdraw the commission; it reads the database and nothing else, and sends
+nothing:
+
+```sh
+ssh -t agentify "sudo docker exec agentify-app-1 pnpm --silent --filter @agentify/gateway payout"
+```
+
+Each transaction it prints is sent by hand, on Base only, from any wallet that
+holds a little ETH for the fee (in MetaMask with Show hex data turned on, under
+Settings → Transactions): To, Amount 0 and the Data as printed. The commission
+arrives at the Safe; the merchants' shares go to their own wallets in the same
+transaction. On TEST the same command, against `agentify-test`, prints Base
+Sepolia transactions whose commission goes to the test channel's wallet. A
+payout costs gas whether or not a split holds anything, so it is worth sending
+when the commission credited covers it (`docs/research/47-commission-in-the-product.md`,
+«Выплата вручную»).
 
 ## Backups
 
