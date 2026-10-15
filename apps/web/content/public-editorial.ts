@@ -376,6 +376,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             "Hashed network rate keys; raw IP addresses are not stored.",
             "Email, international phone, role, and registration choices only when the contact form is submitted. Email and phone are encrypted with separate lookup HMAC domains; phone is contact data and is not treated as verified.",
             "Your privacy choices. Visit and funnel events, such as a page view, a scan or a registration, and the campaign tags of the link you arrived by, only if you allow product analytics or ads measurement.",
+            "The identifier of the ad click that brought you to sign-up, the time you ticked the box and the version of its wording, only if you tick the box that allows reporting your registration to the ad tracker.",
           ],
         },
       ],
@@ -409,7 +410,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
         {
           kind: "paragraph",
           content:
-            "The architecture supports private Postgres storage and in-process Better Auth with Resend for passwordless confirmation, PostHog for explicit product analytics, Meta Pixel/CAPI for consented ads measurement, Cloudflare Turnstile for abuse challenges, and Stripe for an optional $0 card signal. Apify acts as the isolated processor for optional passive public-page rendering; the API token is worker-only, the Actor is private and build-pinned, and output storage is deleted after validated ingestion. Provider adapters and destinations are disabled until configured; local success is not evidence of production delivery.",
+            "The architecture supports private Postgres storage and in-process Better Auth with Resend for passwordless confirmation, PostHog for explicit product analytics, Meta Pixel/CAPI for consented ads measurement, Cloudflare Turnstile for abuse challenges, and Stripe for an optional $0 card signal. For ads measurement, AI Samurai, the tracker our ads run through, is told that a click on one of our ads led to a registration, by that click's identifier alone, only when you tick the box that allows it at sign-up. Apify acts as the isolated processor for optional passive public-page rendering; the API token is worker-only, the Actor is private and build-pinned, and output storage is deleted after validated ingestion. Provider adapters and destinations are disabled until configured; local success is not evidence of production delivery.",
         },
       ],
     },
@@ -423,6 +424,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             "Operational logs: 14 days, without email, raw IP, secrets, or full URL query.",
             "Expired or used registration intents and legacy verification tokens: the executable retention cleanup removes them after 7 days.",
             "Unverified email: the same idempotent cleanup irreversibly anonymizes it after 30 days by default.",
+            "Ad click identifier from sign-up: kept with the sign-in link until the link is used, or for 7 days after it expires unused; if the link registers you, until the tracker accepts or refuses the report or a day of attempts has passed, then erased. The time you ticked the box and the version of its wording stay with your account.",
             "Raw analytics events: 13 months.",
             "Structured scan/check/fingerprint dataset: 24 months, then review or anonymization.",
           ],
