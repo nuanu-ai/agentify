@@ -1,93 +1,88 @@
-# 0026. One way in: an address, a one-time link and one session for the site
+# 0026. One identity: email links, Google and one session for the site
 
 Date: 2026-09-24
-Status: accepted (the product owner, 2026-08-28 to 2026-09-25); merges what were
-ADR-0009 and ADR-0024
+Status: accepted (the product owner, 2026-08-28 to 2026-09-25; Google sign-in,
+2026-10-15); merges what were ADR-0009 and ADR-0024
 
 ## Context
 
-One origin (ADR-0005) serves the scanner's reports, the seller dashboard and
-the operator's `/admin`. Whoever reads an address's mail is its person.
+One origin (ADR-0005) serves scanner reports, the seller dashboard and `/admin`.
+An address identifies its person; each sign-in must prove current ownership.
 
 ## Decision
 
-**1. One means of authentication.** No password or invitation code is typed. An
-address typed at the scanner or dashboard is mailed a link to the dashboard page
-naming it, and only a same-origin press of its button spends the token, which a
-mail preview cannot; the press writes any missing account and opens the session.
-The token, hashed and single-use, lives an hour; a spent, expired or unknown one
-is refused alike, and no answer says whether an address has an account or a
-report. Where a link leads is kept with its token, not in the link; one with no
-destination, or a dead one while signed in, goes to the person's start: their
-latest report if they have one and no merchant, else the dashboard.
+**1. Email links and Google authenticate the same person.** An address typed at
+scanner or dashboard receives a hashed, single-use link lasting an hour. Only
+its page's same-origin button spends it and creates any missing account; a mail
+preview cannot. Spent, expired and unknown links are refused alike, without
+revealing whether an address has an account or report. The destination lives
+with the token. A destinationless link, or a dead one while signed in, leads to
+the latest report for a person with reports and no merchant, else the dashboard.
 
-**2. One identity and one session, held by the dashboard.** Identity is Better
-Auth, a library in the dashboard's process on our PostgreSQL with telemetry off,
-used only through its server API from our handlers. A session is a row, so it
-can be ended alone, and it serves the whole site. Its cookie is `HttpOnly`,
-`SameSite=Lax` and `Path=/`, since inside one origin a path is no boundary, and
-over https `Secure` with the `__Host-` prefix, so another host under the domain,
-such as `test.agentify.ad`, cannot plant or replace it. `Lax` lets a link from
-mail arrive signed in, so every change is a POST, and as `SameSite` spans the
-registrable domain, a post whose `Origin` names another host is refused. A
-session lasts thirty days from the last visit, renewed at most daily.
+The dashboard also offers Google when configured. Google must verify the
+current address and control its mailbox: `gmail.com`, `googlemail.com`, or a
+Workspace account with a hosted-domain claim. Other addresses use an email
+link. The Google issuer and subject bind to the account with that exact address;
+a linked subject with a different current address is refused. Addresses are
+trimmed and lowercased, never merged by Gmail dots, plus suffixes or domain
+aliases. Google supplies no seller name and carries no scanner report request.
 
-The scanner signs nobody in and never sees a token. Over an internal route with
-no public port, behind a secret only the two hold, it asks the dashboard to send
-a link, to say whose session a cookie is and, for a deletion, to remove a person
-who owns no merchant; only its header asks to renew a session. A page that
-cannot reach the dashboard says it cannot tell who is visiting: not knowing who
-somebody is must not look like knowing they are nobody. The two share a database
-(ADR-0003 §3) but not tables. A report opens for a session whose address's lead
-is linked to its scan. A full-report request finishes at the first visit of the
-session its link opens; a signed-in ask names the address it files under and
-finishes at once, never somebody else's request. Deleting an address closes its
-reports at once and removes its lead and, if it owns no merchant, its account.
+**2. The dashboard holds one identity and session for the whole site.** Better
+Auth runs in its process on our PostgreSQL with telemetry off, through our
+handlers and its server API; its HTTP routes stay unmounted. A session is a
+revocable row, lasting thirty days from the last visit and renewed at most
+daily. Its cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, and on HTTPS `Secure`
+with `__Host-`, so a sibling host cannot plant it. Every change uses POST and a
+post with another host's `Origin` is refused. Google's callback is the GET
+exception: Better Auth checks single-use browser-bound state and PKCE before
+our email rules admit a session. Identity changes commit before its cookie is
+issued. Google access, refresh and ID tokens are never stored in rows or cookies.
 
-**3. The header and signing out.** Scanner and dashboard headers show a
-signed-in address and a sign-out, and no shared cache keeps an answer carrying
-an address. Signing out ends this browser's session, and settings can end every
-other one. People mostly sign out to return as another address, so every form
-behind the dashboard's gate and every scanner account form carries the address
-its page was drawn for, and one naming another or none is refused unacted.
+The scanner signs nobody in and sees no token. A secret internal route with no
+public port asks the dashboard to send links, read sessions and delete people
+without merchants; only the scanner's renewal header extends a session. Failure
+to read identity is said as uncertainty, never as signed out. The two share a
+database, not tables. A report opens for the session address's linked lead. A
+full-report request finishes on the first visit of the session its link opens;
+a signed-in ask names its address and finishes at once, never another request.
+Deleting an address closes its reports and removes its lead and, if it owns no
+merchant, its account. Sign-in and deletion serialize on that same address.
 
-**4. The merchant is made on the dashboard's explicit request.** A signed-in
-person without one is offered one control, and only its same-origin POST asks
-the gateway's application, inside the shared process
-(`docs/research/35-one-process.md`), for the merchant; under `Lax` a link from
-another site arrives signed in, so opening one makes nothing. That press is the
-only way to a merchant, as the link is to an account (ADR-0014).
+**3. Headers and sign-out belong to the whole site.** Headers name the signed-in
+address and offer sign-out; shared caches keep no answer carrying an address.
+Sign-out ends this browser's session, and settings can end all its other ones.
+Every dashboard form behind the gate and scanner account form names the address
+it was drawn for; another address or no address is refused without action.
 
-**5. The door to the shared catalogue is live publication**, not an invitation,
-which stops nobody. One rule, `readinessOf` in `packages/core`, asked by every
-path that publishes, sells or says whether a merchant can, wants a seller name
-everywhere, a payout wallet where payments settle (ADR-0020) and, on live, the
-operator's approval, until the day the operator cannot keep up and it becomes a
-paid subscription. Integrators learn what is missing only by publishing.
+**4. Only an explicit dashboard request creates a merchant.** A signed-in person
+without one sees one control. Only its same-origin POST asks the gateway inside
+the shared process (`docs/research/35-one-process.md`) to create one (ADR-0014).
 
-**6. The operator enters through the same door.** `/admin` opens for a session
-whose account carries the operator flag, set only by `pnpm account operator`,
-never by a configured list, and read with the session on every request, so a
-change holds from the next page; the header shows an operator the way in.
-Anybody else, and everybody while the dashboard cannot answer, gets the site's
-404 page, and nothing at the edge guards or marks the path. It is read-only.
+**5. Live publication guards the shared catalogue.** `readinessOf` in core is
+used by every publication and selling path: a seller name everywhere, a payout
+wallet for settled payments (ADR-0020), and operator approval on live until a
+paid subscription replaces it. Publishing tells an integrator what is missing.
 
-**7. The dashboard's gate.** One gate turns away a visitor without a session at
-every dashboard address but sign-in, sign-out, a link's landing page, the
-stylesheet and the pages' built scripts, the route table their script asks
-for, the health probe and a shop's key callback and return; a route joins those
-only if, without a session, it reads nothing and answers all alike.
+**6. Operators use the same sign-in.** `/admin` needs the account flag set only
+by `pnpm account operator`, read on every session request. The header shows its
+link to operators. Everybody else, including while identity is unavailable,
+gets the site's 404; the edge neither marks nor guards this read-only path.
+
+**7. One gate protects dashboard pages.** Its exceptions are sign-in, sign-out,
+the link landing page, Google start and callback, styles and built scripts,
+the route table, health probes and a shop's key callback and return. An exception
+reads nothing private and answers all alike without a session, or validates its
+own single-use authentication proof before accessing an identity.
 
 ## Consequences
 
-The mailbox is the whole key, to sign in and to recover access, and delivery is
-the way in's single point of failure. A session left open moves no money, since
-a payout wallet change waits (ADR-0019), so a short session would protect
-nothing. A dashboard that is down stops sign-in and, sharing the gateway's
-process (`docs/research/35-one-process.md`), sales. A second factor outside the
-mailbox is a later stage.
+Either eligible sign-in opens the same identity; email links remain available
+when Google cannot be used. Ending sessions does not revoke Google access: a
+compromised Google account must be recovered with Google. Google is an alternative,
+not a second factor. An open session moves no money because a wallet replacement
+waits (ADR-0019). A dashboard outage stops sign-in and, in the shared process,
+sales. A second factor is a later stage.
 
-Rejected: identity written by hand, as tokens, expiry and resend limits are the
-hard half; a hosted or separate identity service, one more system to be up
-before a merchant reaches their dashboard; a second identity store, another
-place for a deletion to miss; and a password, which the mailbox recovers.
+Rejected: hand-written identity infrastructure; a hosted or separate identity
+service; a second identity store for deletion to miss; and mailbox-recovered
+passwords. Each adds another security mechanism or operating dependency.

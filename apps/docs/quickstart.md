@@ -53,16 +53,16 @@ That is the only way to get a merchant. Returning merchants reach their
 existing dashboard with the same email-and-link flow.
 
 The test channel settles test USDC on Base Sepolia. Save the Base wallet where
-those payments should arrive in the dashboard's Settings before publishing; if
-your business has no wallet yet, [Money](/money#if-you-have-no-wallet-yet) says
-how to get one. The live
-channel is a separate account at `https://agentify.ad`: it uses Base
-mainnet and real USDC, and likewise refuses to publish a card until that
-account has a payout wallet and the operator has approved that merchant for
-live sales. Until then, publication lists each missing prerequisite and the
-merchant's products cannot start new live purchases. Operator approval is not
-required on the test channel. A local scripted sandbox moves no funds, so it
-does not require a merchant wallet either.
+your share of those payments should arrive in the dashboard's Settings before
+publishing; if your business has no wallet yet,
+[Money](/money#if-you-have-no-wallet-yet) says how to get one. The live channel
+is a separate account at `https://agentify.ad`: it uses Base mainnet and real
+USDC, and likewise refuses to publish a card until that account has a payout
+wallet and the operator has approved that merchant for live sales. Until then,
+publication lists each missing prerequisite and the merchant's products cannot
+start new live purchases. Operator approval is not required on the test
+channel. A local scripted sandbox moves no funds, so it does not require a
+merchant wallet either.
 
 The payout wallet is set in the dashboard, on the Settings screen, and nowhere
 else. The keys you issue operate your shop, but none of them can change where
@@ -70,22 +70,34 @@ its money goes, so a copy of a key in a server's environment cannot send your
 sales anywhere else: no call your code can reach sets the wallet. Your code
 can still read it with `GET /v0/payout-wallet`.
 
+What it reads is where your share arrives, and it is never the `payTo` of a
+payment request. Every payment request names your payout contract for that
+wallet, a split contract of the 0xSplits protocol with no owner, that pays
+99.9% to `payout_wallet` and 0.1% to Agentify whenever somebody sends its
+payout ([Money](/money#where-the-money-arrives)). So code that reconciles
+payments finds each buyer's transfer going into that contract, under the hash a
+receipt carries in `transaction`, and finds the wallet receiving one transfer
+per payout, each covering every sale since the payout before it, from the
+0xSplits warehouse, the shared contract that every such split pays its shares
+through. Code that compares `payTo` with `payout_wallet`, or looks for one
+incoming transfer per sale, finds no match.
+
 On the live channel a wallet already saved is not replaced at once. Everybody
-who signs in to your merchant's dashboard is sent a message first, saying the change
-was asked for in the dashboard and which account's session asked for it, and the
-new address takes effect forty-eight
-hours after the message went out. Until then every payment request names the
-address still paid, and the Settings screen shows the waiting address, the
-moment it takes effect and a control to cancel it. Your code reading the
-wallet in that time gets the address still paid in `payout_wallet` and the new
-one under `pending`, with `takes_effect_at`. The first wallet your merchant
-saves applies at once, and on the live channel every account is sent a message
-about it afterwards. On the test channel every change applies at once, nothing
-is sent and `pending` is always null, so the first time your code meets a
-waiting change is on the live channel.
+who signs in to your merchant's dashboard is sent a message first, saying the
+change was asked for in the dashboard and which account's session asked for it,
+and the new address takes effect forty-eight hours after the message went out.
+Until then every payment request names the payout contract of the wallet still
+in force, and the Settings screen shows the waiting address, the moment it
+takes effect and a control to cancel it. Your code reading the wallet in that
+time gets the wallet still in force in `payout_wallet` and the new one under
+`pending`, with `takes_effect_at`. The first wallet your merchant saves applies
+at once, and on the live channel every account is sent a message about it
+afterwards. On the test channel every change applies at once, nothing is sent
+and `pending` is always null, so the first time your code meets a waiting
+change is on the live channel.
 
 A change that cannot be announced to every account is not recorded, the
-dashboard says why, and your sales keep arriving where they did. A message
+dashboard says why, and your sales keep paying out where they did. A message
 about a change that was then refused is safe to ignore: every message says the
 change takes effect only if the Settings screen of your dashboard shows it
 waiting.
@@ -204,7 +216,7 @@ can act on, and the path to the field it is about where it is about one. That
 list is never empty.
 
 Not every finding is about the card. A name for buyers to read that you have
-not set, a wallet for your sales to be paid into, or, on the live channel, the
+not set, a wallet for your share of the sales, or, on the live channel, the
 operator's approval that has not been given yet: each arrives in the same list,
 so one answer names everything you have to fix instead of handing it to you a
 round trip at a time. A parcel's card asks one more: the site of your shop.

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   isSandboxFacilitator,
@@ -6,6 +7,7 @@ import {
   secondAttemptProblem,
 } from "./config.js";
 import { nobodyAnnounces } from "./ports/announcer.js";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "./split/networks.js";
 import { startGateway } from "./start.js";
 
 const database = "postgres://agentify:secret@localhost:5432/agentify";
@@ -357,6 +359,30 @@ describe("loadConfig", () => {
     ).not.toThrow();
   });
 
+  it("refuses a placeholder address no payout split could be made for, saying what it is", () => {
+    // The sandbox pays a merchant with no wallet at the split of this address.
+    // The commission wallet there makes a split paying one wallet twice, which
+    // no factory creates, and a payout contract or the token there is an
+    // address no share comes back from.
+    const network = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532");
+    const sandbox = { ...required, FACILITATOR_URL: SANDBOX_FACILITATOR };
+
+    for (const [placeholder, said] of [
+      [network.commissionWallet, /commission wallet/],
+      [network.multicall3.toLowerCase(), /Multicall3/],
+      [network.usdc, /USDC/],
+      ["0x0000000000000000000000000000000000000000", /zero address/],
+      ["0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed", /not an address/],
+    ] as const) {
+      expect(refusalFor({ ...sandbox, PAY_TO_ADDRESS: placeholder }), placeholder).toMatch(
+        new RegExp(`PAY_TO_ADDRESS.*${said.source}`, "s"),
+      );
+    }
+    expect(() =>
+      loadConfig({ ...sandbox, PAY_TO_ADDRESS: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" }),
+    ).not.toThrow();
+  });
+
   it("refuses a chain that is not written the way the protocol writes one", () => {
     // A network name from version one of the protocol looks harmless and is a
     // different string from the one the asset table is keyed by, so a challenge
@@ -609,6 +635,63 @@ describe("the environment is derived from the chain", () => {
     );
   });
 });
+
+describe("Base's commission wallet", () => {
+  const live = {
+    ...required,
+    PAYMENT_NETWORK: "eip155:8453",
+    FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+    CDP_API_KEY_ID: "key-id",
+    CDP_API_KEY_SECRET: "secret",
+  };
+
+  it("is the product owner's Safe wherever a gateway on Base is configured from its environment alone", () => {
+    expect(loadConfig(live).payoutSplit.commissionWallet).toBe(
+      "0xf44Ac5860c13fDa0577305121f00cBa4d0B96541",
+    );
+  });
+
+  it("is none of the addresses of the Base Sepolia experiment, whose keys others hold", () => {
+    const experiment = addressesIn(
+      JSON.parse(
+        readFileSync(new URL("./split/base-sepolia-experiment.json", import.meta.url), "utf8"),
+      ),
+    );
+    expect(experiment.size).toBeGreaterThan(5);
+    expect(experiment).not.toContain(loadConfig(live).payoutSplit.commissionWallet.toLowerCase());
+  });
+
+  it("is refused for want of one, among every other problem, on a table that names none", () => {
+    // A table without Base, as the code's was before its Safe existed: every
+    // payment would name a split paying a wallet nobody chose. The missing
+    // secret is there so the refusal has to list both.
+    const { CDP_API_KEY_SECRET, ...noSecret } = live;
+    let refused = "";
+    try {
+      loadConfig(noSecret, {
+        "eip155:84532": payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532"),
+      });
+    } catch (thrown) {
+      refused = thrown instanceof Error ? thrown.message : String(thrown);
+    }
+
+    expect(refused).toMatch(/eip155:8453.*commission wallet/s);
+    expect(refused).toMatch(/CDP_API_KEY_SECRET/);
+  });
+});
+
+/** Every value in this document, and in what it holds, that is written as an address, in lower case. */
+function addressesIn(value: unknown): Set<string> {
+  const found = new Set<string>();
+  const walk = (inner: unknown): void => {
+    if (typeof inner === "string" && /^0x[0-9a-fA-F]{40}$/.test(inner))
+      found.add(inner.toLowerCase());
+    else if (Array.isArray(inner)) inner.forEach(walk);
+    else if (inner !== null && typeof inner === "object") Object.values(inner).forEach(walk);
+  };
+  walk(value);
+  return found;
+}
 
 describe("a live chain is allowed exactly one facilitator", () => {
   const live = {

@@ -7,6 +7,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "smoke": "tsx src/smoke.ts",
+    "smoke:split": "tsx src/split-smoke.ts",
+    "commission-wallet": "tsx src/commission-wallet.ts",
     "bootstrap": "tsx src/bootstrap.ts",
     "serve": "tsx src/serve.ts",
     "buy": "tsx src/buy.ts",

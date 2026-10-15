@@ -52,6 +52,13 @@ export type AskedWith =
 type Wallet = string;
 
 /**
+ * The payout split a wallet is paid through: the address buyers pay into,
+ * which pays the wallet the merchant's share and Agentify its commission, in
+ * the checksummed spelling, as the registry records it.
+ */
+type Split = string;
+
+/**
  * A merchant's first payout wallet was set and already applies. Sent after,
  * never waited on; it exists so the owner hears of a wallet somebody else's
  * session set.
@@ -60,6 +67,7 @@ interface WalletSet {
   readonly kind: "wallet_set";
   readonly merchant_id: string;
   readonly to: Wallet;
+  readonly to_split: Split;
   readonly asked_with: AskedInTheDashboard;
 }
 
@@ -73,7 +81,11 @@ interface WalletChange {
   readonly kind: "wallet_change";
   readonly merchant_id: string;
   readonly from: Wallet;
+  /** The split buyers pay into until the change applies. */
+  readonly from_split: Split;
   readonly to: Wallet;
+  /** The split buyers pay into once it applies, recorded with the change. */
+  readonly to_split: Split;
   readonly not_before: string;
   readonly asked_with: AskedInTheDashboard;
 }
@@ -83,6 +95,7 @@ interface WalletChangeCancelled {
   readonly kind: "wallet_change_cancelled";
   readonly merchant_id: string;
   readonly kept: Wallet;
+  readonly kept_split: Split;
   readonly cancelled: Wallet;
   readonly asked_with: AskedInTheDashboard;
 }

@@ -1,25 +1,67 @@
 /**
  * What the settings screen shows: the name buyers read with the shop's site,
- * the payout wallet, and the account, built from one read of the gateway and
+ * the payout wallet with the payout split buyers pay into and the transaction
+ * that pays it out, and the account, built from one read of the gateway and
  * from what a press on the page just did.
  */
 
 import { readinessOf, type SurfaceMode, UNKNOWN } from "@agentify/core";
+import type { RecordedPayoutSplit } from "@agentify/gateway";
 import { MERCHANT_FINDINGS, type PayoutWallet } from "@nuanu-ai/agentify-contracts";
 import { SIGN_OUT_EVERY_OTHER_DEVICE } from "./control-labels.js";
+import type { PayoutSplits } from "./gateway.js";
 import { CHANGE_ON_ITS_WAY, LIVE_CHANGE_WAITS, WALLET_RULE } from "./payout-wallet.js";
 import { NAME_CANNOT_BE_TAKEN_AWAY, NAME_RULE, SITE_RULE } from "./seller-name.js";
+import { type CommissionRate, percentagesOf } from "./shares.js";
 import { type FrameView, type MomentView, momentView } from "./views.js";
 import { APPROVAL_GIVEN, APPROVAL_PENDING } from "./words.js";
 
-/** The gateway's answers the page is drawn from, all read together. */
+/**
+ * What the page is drawn from: the gateway's answers, all read together, and
+ * where this deployment's chain shows an address.
+ */
 export interface Settings {
   readonly sellerName: string | null;
   readonly sellerSite: string | null;
   readonly payoutWallet: PayoutWallet;
+  readonly payoutSplits: PayoutSplits;
+  /** The dashboard configuration's; null where there is none, as in the sandbox. */
+  readonly addressPage: string | null;
+  /** The dashboard configuration's: the chain a merchant's wallet works on, null in the sandbox. */
+  readonly walletChain: number | null;
   /** Read on the live channel only. */
   readonly liveApproval?: boolean;
 }
+
+/**
+ * A payout split shown whole beside the wallet it pays. What it pays is said
+ * once, in the paragraph that names the commission.
+ */
+export interface SplitView {
+  readonly address: string;
+  /** Where the chain shows what it holds; null where there is no such page. */
+  readonly explorer: string | null;
+}
+
+/**
+ * The one transaction that pays out every split that can hold the merchant's
+ * money, as a wallet asks for it, or why there is none to send.
+ */
+export type PayoutView =
+  | Readonly<{
+      kind: "send";
+      /** Where the money waits, and on which one chain, from what, it is sent. */
+      lead: string;
+      to: string;
+      data: string;
+      /** Each split it pays out, beside the wallet written into it. */
+      pays: readonly Readonly<{ split: string; wallet: string }>[];
+      /** What sending it can and cannot do, and when the merchant is paid without it. */
+      after: string;
+      /** The chain a Coinbase Wallet sends it on, the one `lead` names; null where there is none. */
+      chain: number | null;
+    }>
+  | Readonly<{ kind: "too_many" | "unbuilt"; said: string }>;
 
 /** What a press did, where it answers with the page rather than sending the browser on. */
 export type SettingsPress =
@@ -28,9 +70,18 @@ export type SettingsPress =
 
 export interface WalletView {
   readonly purpose: string;
+  /** The rate, how it is taken, and that saving a wallet agrees to it. */
+  readonly commission: string;
   /** As the gateway answered it, in the spelling a wallet shows; null where none is set. */
   readonly saved: string | null;
-  readonly pending: null | Readonly<{ wallet: string; takesEffectAt: string; from: MomentView }>;
+  /** The split buyers pay into, where one is recorded for the saved wallet. */
+  readonly split: SplitView | null;
+  readonly pending: null | Readonly<{
+    wallet: string;
+    takesEffectAt: string;
+    from: MomentView;
+    split: SplitView | null;
+  }>;
   /** Why a press was not what it looked like: a cancel after the change took effect. */
   readonly notice: string | null;
   readonly rule: string;
@@ -40,6 +91,8 @@ export interface WalletView {
   readonly onItsWay: string | null;
   readonly typed: string;
   readonly problem: string | null;
+  /** The chain a Coinbase Wallet is opened on to fill the box; null in the sandbox, where no wallet is paid. */
+  readonly chain: number | null;
 }
 
 export interface SettingsView {
@@ -56,13 +109,95 @@ export interface SettingsView {
   }>;
   readonly site: Readonly<{ rule: string; value: string; problem: string | null }>;
   readonly wallet: WalletView;
+  /** Null in the sandbox, where nothing is ever deployed, and where no split can hold money. */
+  readonly payout: PayoutView | null;
   readonly account: Readonly<{ signOutOthers: string; notice: string | null }>;
 }
 
 const SETTLES: Readonly<Record<SurfaceMode, string>> = {
-  test: "TEST settles test USDC on Base Sepolia to this address.",
-  live: "LIVE settles real USDC on Base mainnet to this address.",
+  test: "Your share of every TEST sale, paid in test USDC on Base Sepolia, is paid out to this wallet.",
+  live: "Your share of every sale, paid in USDC on Base, is paid out to this wallet.",
   sandbox: "SANDBOX does not settle a payment.",
+};
+
+/**
+ * The one chain a payout is sent on, and what its sender pays the fee with.
+ * Multicall3 is at the same address on most chains, and sent on another one
+ * the transaction can succeed and pay out nothing.
+ */
+const SENT_ON: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
+  test: "To be paid now, send this transaction on Base Sepolia only, from any wallet with a little test ETH for the fee.",
+  live: "To be paid now, send this transaction on Base only, from any wallet with a little ETH for the fee.",
+};
+
+/** When a merchant who sends nothing is paid: Agentify's own payout pays out every contract, whenever it is sent. */
+const PAID_ON_NO_SET_DATE = "paid when Agentify next pays out every contract, on no set date.";
+
+const sameAddress = (one: string, other: string): boolean =>
+  one.toLowerCase() === other.toLowerCase();
+
+const commissionOf = (mode: SurfaceMode, rate: CommissionRate): string => {
+  const { commission, share } = percentagesOf(rate);
+  return (
+    `Agentify keeps ${commission} of every sale, a refunded one included. Buyers pay into a payout contract made for this wallet: it pays ${share} to the wallet and ${commission} to Agentify, and nobody can change that. The money waits in the contract until somebody pays it out: you, at any time, or Agentify, on no set date. Saving a wallet here is your agreement.` +
+    (mode === "sandbox" ? " In the sandbox nothing is deployed and no money moves." : "")
+  );
+};
+
+/**
+ * The split recorded for this wallet, or null where the gateway named one for
+ * another: two reads that straddled a change must not show a contract paying a
+ * wallet that is not the one beside it.
+ */
+const splitBeside = (
+  wallet: string,
+  split: RecordedPayoutSplit | null,
+  addressPage: string | null,
+): SplitView | null =>
+  split === null || !sameAddress(split.merchantWallet, wallet)
+    ? null
+    : {
+        address: split.address,
+        explorer: addressPage === null ? null : `${addressPage}${split.address}`,
+      };
+
+const payoutView = (
+  mode: SurfaceMode,
+  splits: PayoutSplits,
+  walletChain: number | null,
+): PayoutView | null => {
+  const { payout } = splits;
+  if (mode === "sandbox" || payout === null) return null;
+  if (payout === "unbuilt") {
+    return {
+      kind: "unbuilt",
+      said: "Agentify could not build the transaction that pays out your payout contracts as they are recorded, so there is none to send here. Buyers' payments wait in them until somebody pays them out.",
+    };
+  }
+  if ("tooMany" in payout) {
+    return {
+      kind: "too_many",
+      said: `You have ${payout.tooMany} payout contracts that can hold money, more than one transaction can pay out, so there is no transaction for you to send here. You are ${PAID_ON_NO_SET_DATE}`,
+    };
+  }
+  const pays = payout.splits.map((split) => ({
+    split: split.address,
+    wallet: split.merchantWallet,
+  }));
+  const wallets = new Set(pays.map((pair) => pair.wallet.toLowerCase()));
+  return {
+    kind: "send",
+    lead: `Buyers' payments wait in your payout contract until someone pays it out. ${SENT_ON[mode]}`,
+    to: payout.to,
+    data: payout.data,
+    pays,
+    after: `It carries no money and can take nothing from the wallet that sends it; ${
+      wallets.size === 1
+        ? "your share arrives in the same transaction"
+        : "each share arrives in the wallet beside its contract, in the same transaction"
+    }. Otherwise you are ${PAID_ON_NO_SET_DATE}`,
+    chain: walletChain,
+  };
 };
 
 export const settingsView = (
@@ -71,7 +206,15 @@ export const settingsView = (
   settings: Settings,
   press?: SettingsPress,
 ): SettingsView => {
-  const { sellerName, sellerSite, payoutWallet, liveApproval } = settings;
+  const {
+    sellerName,
+    sellerSite,
+    payoutWallet,
+    payoutSplits,
+    addressPage,
+    walletChain,
+    liveApproval,
+  } = settings;
   // The rule is the gateway's own, so no screen holds an opinion about which
   // setting publishing needs where; the approval goes in as unknown where it
   // was not read.
@@ -123,7 +266,9 @@ export const settingsView = (
         : door.missing.includes(MERCHANT_FINDINGS.NO_PAYOUT_WALLET)
           ? `${SETTLES[mode]} Until you set one, publishing a card is refused.`
           : SETTLES[mode],
+      commission: commissionOf(mode, payoutSplits.rate),
       saved,
+      split: saved === null ? null : splitBeside(saved, payoutSplits.inForce, addressPage),
       pending:
         pending === null
           ? null
@@ -131,6 +276,7 @@ export const settingsView = (
               wallet: pending.payout_wallet,
               takesEffectAt: pending.takes_effect_at,
               from: momentView(pending.takes_effect_at),
+              split: splitBeside(pending.payout_wallet, payoutSplits.pending, addressPage),
             },
       notice: press?.kind === "wallet-notice" ? press.notice : null,
       rule: WALLET_RULE,
@@ -138,7 +284,9 @@ export const settingsView = (
       onItsWay: saved !== null && mode === "live" ? CHANGE_ON_ITS_WAY : null,
       typed: wallet?.typed ?? "",
       problem: wallet?.problem ?? null,
+      chain: walletChain,
     },
+    payout: saved === null ? null : payoutView(mode, payoutSplits, walletChain),
     account: {
       signOutOthers: SIGN_OUT_EVERY_OTHER_DEVICE,
       notice: press?.kind === "account" ? press.notice : null,

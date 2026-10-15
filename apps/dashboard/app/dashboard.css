@@ -772,6 +772,89 @@ h2 {
   margin-top: 10px;
 }
 
+/* The contract buyers pay into, under the wallet it pays, inside the same box. */
+.saved .split-label {
+  margin-top: 18px;
+}
+
+/*
+ * The payout transaction as a wallet asks for it: each field's name over its
+ * value on a phone, beside it where the panel has room. Every value wraps
+ * inside the panel, the data included, which sits whole in its own box rather
+ * than scrolling the page.
+ */
+.payout {
+  display: grid;
+  grid-template-columns: minmax(0, 8rem) minmax(0, 1fr);
+  gap: 14px 18px;
+  margin: 0;
+  padding: 20px 24px 8px;
+}
+
+.payout dt {
+  padding-top: 2px;
+  color: var(--muted);
+  font: 500 0.75rem / 1.5 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.payout dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.payout dd > .address {
+  margin-top: 0;
+}
+
+.payout-data {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  padding: 10px 14px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  resize: vertical;
+}
+
+.payout .copy-row {
+  margin: 10px 0 0;
+}
+
+.pays {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each contract over the wallet it pays, so neither address runs into the other. */
+.pays li > .address {
+  display: block;
+  margin-top: 0;
+}
+
+.pays li + li {
+  margin-top: 12px;
+}
+
+@media (max-width: 560px) {
+  .payout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .payout dd + dt {
+    margin-top: 10px;
+  }
+}
+
 /* Panels keep their explanations and controls together and use the frame's
    width; on a narrow screen they return to document order. */
 .settings-grid {

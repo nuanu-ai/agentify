@@ -14,8 +14,7 @@ const moment = (column: string) =>
 /**
  * The address is unique in the database rather than by a check in the process,
  * because two commands run at once fit in the gap between a check and an
- * insert. `dashboard_credentials` exists only because Better Auth's schema has
- * it, and stays empty.
+ * insert. Google account bindings live in `dashboard_credentials`.
  */
 export const accounts = pgTable(
   "dashboard_accounts",
@@ -93,8 +92,8 @@ export const sessions = pgTable(
 );
 
 /**
- * Kept empty for Better Auth's complete schema: no dashboard operation writes a
- * row here and no sign-in path reads one.
+ * Google issuer and subject bind an external identity to a person. OAuth
+ * access, refresh and ID tokens are discarded before a binding is written.
  */
 export const credentials = pgTable(
   "dashboard_credentials",
@@ -126,10 +125,10 @@ export const credentials = pgTable(
 );
 
 /**
- * Dashboard and report links share this table, with the purpose in the claim.
- * `identifier` is the SHA-256 base64url hash of the token; the raw token
- * appears only in the delivered link. There is no reference to an account on
- * purpose: asking for a link creates no person.
+ * Dashboard and report links store the SHA-256 base64url token hash and their
+ * claim here; the raw token appears only in the delivered link. Better Auth
+ * also keeps one-time OAuth state here with its PKCE verifier and destination.
+ * Starting either flow creates no person.
  */
 export const verifications = pgTable(
   "dashboard_verifications",

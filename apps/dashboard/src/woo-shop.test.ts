@@ -27,6 +27,7 @@ const createParcel = (
   sold: Parameters<typeof createTheParcelInTheShop>[1],
 ) => createTheParcelInTheShop(keys, sold, fetch);
 
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
 import type { ShipToLocality } from "@nuanu-ai/agentify-contracts";
 import {
   catalogueOf,
@@ -93,6 +94,20 @@ const shopAnswering = async (
 };
 
 let stand: Stand | null = null;
+
+/** The split a merchant's payment goes to on the test channel, by the gateway's own rule. */
+const PAID_INTO = payoutSplitFor(
+  payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532"),
+  "mch_0123456789abcdef0123456789abcdef",
+  "0xde3F8C4422A7F8C94bce9Cc2Ec118665108148EF",
+);
+
+/** The terms of the Base Sepolia experiment's splits, 97% and 3%, as they were created on chain. */
+const AT_THREE_PERCENT = {
+  ...PAID_INTO,
+  merchantAllocation: 970_000,
+  commissionAllocation: 30_000,
+};
 
 afterEach(async () => {
   await stand?.close();
@@ -220,6 +235,8 @@ describe("creating the order", () => {
     email: "merchant@example.com",
     price: { amount: "25.00", currency: "USD" },
     download: { id: "dl_guide", name: "Guide" },
+    // Checked against the wallet itself, before payments went to splits.
+    paidInto: null,
   };
   const madeOrder = (overrides: Record<string, unknown> = {}) => ({
     id: 13,
@@ -267,6 +284,8 @@ describe("creating the order", () => {
     // so the merchant never has to translate our name in WooCommerce.
     expect(sent.payment_method).toBe("agentify");
     expect(sent.payment_method_title).toBe("Agentify");
+    // Paid to the wallet itself, before payments went to splits: no commission
+    // was taken, so the order says none.
     expect(sent.meta_data).toEqual([{ key: "agentify_order_id", value: "ord_7" }]);
     expect(sent.line_items).toEqual([
       { product_id: 11, quantity: 1, subtotal: "25.00", total: "25.00" },
@@ -274,6 +293,67 @@ describe("creating the order", () => {
     // The only thread between the two systems.
     expect(sent.transaction_id).toBe("ord_7");
     expect(sent.billing.email).toBe("merchant@example.com");
+  });
+
+  it("writes the commission and the payout contract on the shop's order in the request that creates it", async () => {
+    // The shop's reports show revenue before the commission, and these two
+    // visible lines are the merchant's record of it, sent in the one request
+    // so there is no new way to fail between creating the order and noting it.
+    const lines = [
+      { key: "agentify_order_id", value: "ord_7" },
+      { key: "agentify_commission", value: "≈ 0.025 USD (0.1%)" },
+      { key: "agentify_payout_contract", value: PAID_INTO.address },
+    ];
+    stand = await shopAnswering(() => ({ status: 201, body: madeOrder({ meta_data: lines }) }));
+
+    const made = await createOrder(connectionTo(stand.url), { ...order, paidInto: PAID_INTO });
+
+    // The shop echoes all three, and the order is placed.
+    expect(made.ok).toBe(true);
+    expect(stand.asked).toHaveLength(1);
+    const sent = JSON.parse(stand.asked[0]?.body ?? "{}");
+    expect(sent.meta_data).toStrictEqual(lines);
+    // WooCommerce hides a key that starts with an underscore.
+    expect(
+      (sent.meta_data as { key: string }[]).filter((one) => one.key.startsWith("_")),
+    ).toStrictEqual([]);
+    // The order is still the whole price the buyer paid.
+    expect(sent.line_items).toEqual([
+      { product_id: 11, quantity: 1, subtotal: "25.00", total: "25.00" },
+    ]);
+  });
+
+  it("writes the commission at the rate of the split the payment went to", async () => {
+    stand = await shopAnswering(() => ({ status: 201, body: madeOrder() }));
+
+    await createOrder(connectionTo(stand.url), { ...order, paidInto: AT_THREE_PERCENT });
+
+    expect(JSON.parse(stand.asked[0]?.body ?? "{}").meta_data).toContainEqual({
+      key: "agentify_commission",
+      value: "≈ 0.75 USD (3%)",
+    });
+  });
+
+  it("still refuses an answer whose correlation changed when the commission lines come back with it", async () => {
+    const lines = [
+      { key: "agentify_commission", value: "≈ 0.025 USD (0.1%)" },
+      { key: "agentify_payout_contract", value: PAID_INTO.address },
+    ];
+    for (const meta of [
+      lines,
+      [{ key: "agentify_order_id", value: "ord_other" }, ...lines],
+      [
+        { key: "agentify_order_id", value: "ord_7" },
+        { key: "agentify_order_id", value: "ord_7" },
+        ...lines,
+      ],
+    ]) {
+      stand = await shopAnswering(() => ({ status: 201, body: madeOrder({ meta_data: meta }) }));
+      const made = await createOrder(connectionTo(stand.url), { ...order, paidInto: PAID_INTO });
+      expect(made.ok, JSON.stringify(meta)).toBe(false);
+      await stand.close();
+      stand = null;
+    }
   });
 
   it("reads the number the shop gave the order rather than its row id", async () => {
@@ -970,6 +1050,7 @@ describe("the protected product check", () => {
       email: "merchant@example.com",
       price: read.product.price,
       download: { id: read.product.downloadId, name: read.product.fileName },
+      paidInto: null,
     });
 
     expect(made).toMatchObject({ ok: true, id: "13", orderKey: "wc_order_13" });
@@ -1144,6 +1225,7 @@ describe("creating a parcel's order", () => {
     goods: "20.00",
     rate: { methodId: "flat_rate", instanceId: "1", title: "Bali courier", cost: "3.00" },
     address: ADDRESS,
+    paidInto: null,
   };
   const shipping = {
     first_name: "Nuanu Reception",
@@ -1232,6 +1314,22 @@ describe("creating a parcel's order", () => {
       ],
     });
     expect(body.shipping.last_name).toBeUndefined();
+  });
+
+  it("writes the commission of a parcel on what was paid, the goods and the shipping together", async () => {
+    // The split received the whole payment, shipping included: 0.1% of 23.00
+    // is 0.023, where the goods alone would make it 0.02.
+    const lines = [
+      { key: "agentify_order_id", value: "ord_9" },
+      { key: "agentify_commission", value: "≈ 0.023 USD (0.1%)" },
+      { key: "agentify_payout_contract", value: PAID_INTO.address },
+    ];
+    stand = await shopAnswering(() => ({ status: 201, body: madeParcel({ meta_data: lines }) }));
+
+    const made = await createParcel(connectionTo(stand.url), { ...sold, paidInto: PAID_INTO });
+
+    expect(made).toStrictEqual({ ok: true, id: "30", number: "30" });
+    expect(JSON.parse(stand.asked[0]?.body ?? "{}").meta_data).toStrictEqual(lines);
   });
 
   it("does not call an order placed whose answer does not carry the address it was sent", async () => {

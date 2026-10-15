@@ -64,9 +64,13 @@ export const ReceiptSchema = z.strictObject({
   outcome: ReceiptOutcomeSchema,
 
   /**
-   * The transfer as the payment layer reported it when the charge went
-   * through — on an EVM chain, the transaction hash — so a receipt can be
-   * matched to its payment on the chain by more than its time. Absent when the
+   * The buyer's payment as the payment layer reported it when the charge went
+   * through — on an EVM chain, the hash of the transaction that paid the
+   * merchant's payout contract — so a receipt can be matched to its payment on
+   * the chain by more than its time. It is not a transfer into the merchant's
+   * wallet, which receives one transfer per payout from the 0xSplits
+   * warehouse, the shared contract a payout contract pays its shares through,
+   * covering every sale paid in since the payout before. Absent when the
    * payment layer did not report one.
    */
   transaction: z.string().regex(/\S/, "a transaction names the transfer").optional(),

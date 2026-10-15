@@ -13,6 +13,7 @@ import { facilitatorClientFor, refuseUnlessCredentialsSign } from "./adapters/x4
 import { X402Facilitator } from "./adapters/x402/facilitator.js";
 import { Gateway } from "./app/gateway.js";
 import { seedSandboxKey } from "./app/merchants.js";
+import { RefusedToStart } from "./app/recorded-splits.js";
 import type { Runtime } from "./app/runtime.js";
 import { type GatewayConfig, isSandboxFacilitator, secondAttemptProblem } from "./config.js";
 import { buildApp } from "./http/server.js";
@@ -197,7 +198,7 @@ export async function startGateway(
     // An envelope that must not be lost is written in the same transaction as
     // its order, so a process that dies mid-flight did both or neither. This
     // works only because the queue and the store share one Postgres.
-    store: PostgresStore.over(db, randomIds, queue.envelopes()),
+    store: PostgresStore.over(db, config.payment.network, randomIds, queue.envelopes()),
     queue,
     facilitator: await paymentLayer(config, edge),
     clock: systemClock,
@@ -213,11 +214,16 @@ export async function startGateway(
     await gateway.start();
     await seedTheSandbox(config, runtime);
   } catch (thrown) {
-    // Names the database that did not answer, which a stack trace from the
-    // queue's internals does not.
-    console.error(
-      `[gateway] cannot start: the queue and the store both live in ${databaseNamed(config.databaseUrl)}, and it did not answer`,
-    );
+    if (thrown instanceof RefusedToStart) {
+      console.error(`[gateway] cannot start: ${thrown.message}`);
+    } else {
+      // Names the database that did not answer, which a stack trace from the
+      // queue's internals does not.
+      console.error(
+        `[gateway] cannot start: the queue and the store both live in ${databaseNamed(config.databaseUrl)}, and it did not answer`,
+      );
+    }
+    await pool.end().catch(() => undefined);
     throw thrown;
   }
 

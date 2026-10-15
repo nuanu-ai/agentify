@@ -1,22 +1,36 @@
 /**
- * The wallet a merchant's sales are paid into. A buyer's agent pays this
- * address directly, and nothing can call the payment back. Only a signed-in
- * dashboard session sets it, in-process; reading it, publishing and the payment
- * request an agent is sent all go through `serve`.
+ * The wallet a merchant's share is paid into, and the split a buyer's agent is
+ * told to pay: a contract that pays that wallet the merchant's share and
+ * Agentify its commission, recorded with the wallet and named in every payment
+ * request from the record. Nothing can call a payment back. Only a signed-in
+ * dashboard session sets the wallet, in-process; reading it, publishing and the
+ * payment request an agent is sent all go through `serve`.
  *
  * A merchant with no wallet is refused at publish, where they can still be
  * told, rather than at the till. The address in a payment request must be the
- * publishing merchant's, so those claims are tested with two merchants: a
- * gateway that paid every sale to one address would pass every single-merchant
- * assertion. The sandbox, with no chain and no money behind it, is exempt.
+ * publishing merchant's split, so those claims are tested with two merchants:
+ * a gateway that paid every sale to one address would pass every
+ * single-merchant assertion. The sandbox, with no chain and no money behind
+ * it, pays a split of its configured placeholder where a merchant set none.
  */
 
-import type { Card } from "@nuanu-ai/agentify-contracts";
+import { type Card, PayoutWalletSchema } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
 import { SANDBOX_FACILITATOR } from "../config.js";
-import { buyOverHttp, type Harness, harness, type Served, serve } from "../testing/harness.js";
-import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
+import { handEncoded } from "../split/fixture.js";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../split/networks.js";
+import { payoutSplitFor } from "../split/parameters.js";
+import {
+  buyOverHttp,
+  drawEverything,
+  type Harness,
+  harness,
+  loggedWhile,
+  type Served,
+  serve,
+} from "../testing/harness.js";
+import { PAYMENT_REQUIRED_HEADER, PAYMENT_RESPONSE_HEADER } from "./x402.js";
 
 /** The address the gateway itself is configured with: the operator's, not a merchant's. */
 const CONFIGURED_PAY_TO = "0x0000000000000000000000000000000000000001";
@@ -114,6 +128,43 @@ const payToInTheChallenge = async (served: Served, itemId: string): Promise<stri
   );
   return challenge.accepts[0]?.payTo;
 };
+
+/** What the purchase's own first step, the POST that opens an order, tells an agent to pay. */
+const payToWhenBuying = async (served: Served, itemId: string): Promise<string | undefined> => {
+  const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+    body: { params: {} },
+  });
+  expect(answered.status, JSON.stringify(answered.body)).toBe(402);
+  return decodePaymentRequiredHeader(answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "").accepts[0]
+    ?.payTo;
+};
+
+/**
+ * The address of the split recorded for this merchant and wallet. Found in the
+ * registry by the address the rule gives, and refused unless the row there
+ * names this merchant and wallet, so a test comparing with it compares with
+ * the record and not with arithmetic alone.
+ */
+const recordedSplit = async (
+  harnessed: Harness,
+  merchantId: string,
+  wallet: string,
+): Promise<string> => {
+  const computed = payoutSplitFor(harnessed.runtime.config.payoutSplit, merchantId, wallet);
+  const row = await harnessed.store.payoutSplitAt(computed.address);
+  expect(row, `no split is recorded for ${merchantId} at ${wallet}`).not.toBeNull();
+  expect(row?.merchantId).toBe(merchantId);
+  expect(row?.merchantWallet).toBe(wallet);
+  return computed.address;
+};
+
+/** The split the sandbox pays for a merchant who set no wallet, never recorded. */
+const placeholderSplit = (merchantId: string): string =>
+  payoutSplitFor(
+    payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532"),
+    merchantId,
+    CONFIGURED_PAY_TO,
+  ).address;
 
 describe("the wallet a merchant is paid at", () => {
   it("reads back nothing for a merchant who has set none", async () => {
@@ -257,17 +308,75 @@ describe("publishing before a wallet has been set", () => {
     await setPayoutWallet(harnessed, merchantId, A_WALLET);
 
     const itemId = await publish(served, key, cardFor("a-room", "A room"));
-    expect(await payToInTheChallenge(served, itemId)).toBe(A_WALLET);
+    expect(await payToInTheChallenge(served, itemId)).toBe(
+      await recordedSplit(harnessed, merchantId, A_WALLET),
+    );
   });
 });
 
 describe("who an agent is told to pay", () => {
-  it("names the wallet of the merchant who published the card", async () => {
+  it("names the recorded split of the publishing merchant's wallet, on the probe and on the purchase", async () => {
+    // The commission rests on every payment going to the split: the merchant's
+    // code, the agent and the facilitator all act on this one string, and the
+    // wallet itself would be paid in full.
+    const { served, harnessed } = await started();
+    await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
+    const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
+    const split = (await harnessed.store.merchantById(harnessed.merchant.id))?.payoutWallet.split;
+
+    expect(split?.merchantWallet).toBe(A_WALLET);
+    expect(await payToInTheChallenge(served, itemId)).toBe(split?.address);
+    expect(await payToWhenBuying(served, itemId)).toBe(split?.address);
+    expect(await payToInTheChallenge(served, itemId)).not.toBe(A_WALLET);
+  });
+
+  it("tells an agent to pay the split a person can compute from the merchant and their wallet", async () => {
+    // Computed outside this repository from the merchant's identifier, the
+    // test chain and the wallet: a gateway salting with anything else (the
+    // account, the seller's name, another chain) would name an address no
+    // record of the rule could rebuild, and only a restart would notice.
+    const { served, harnessed } = await started();
+    const golden = handEncoded.splits.find(
+      (split) =>
+        split.network === "eip155:84532" &&
+        split.commissionWallet === "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5",
+    );
+    if (golden === undefined) {
+      throw new Error(
+        "the hand-encoded vectors have no split paying the test channel's commission wallet",
+      );
+    }
+    await harnessed.store.addMerchant({ id: golden.merchantId, name: "A shop" }, harnessed.now());
+    const { secret } = await harnessed.gateway.issueMerchantKey(
+      golden.merchantId,
+      "their worker",
+      SIGNED_IN,
+    );
+    await named(served, secret, "A shop");
+    await setPayoutWallet(harnessed, golden.merchantId, golden.merchantWallet);
+    const itemId = await publish(served, secret, cardFor("a-room", "A room"));
+
+    expect(harnessed.runtime.config.payoutSplit.commissionWallet).toBe(golden.commissionWallet);
+    expect(await payToInTheChallenge(served, itemId)).toBe(golden.address);
+  });
+
+  it("asks for the full price, with the commission inside it, and charges it", async () => {
+    // A challenge for the merchant's share alone would be a different charge,
+    // and the merchant's books would not meet it.
     const { served, harnessed } = await started();
     await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
 
-    expect(await payToInTheChallenge(served, itemId)).toBe(A_WALLET);
+    const probed = await served.call("GET", `/x402/${itemId}/purchase`);
+    expect(
+      decodePaymentRequiredHeader(probed.headers.get(PAYMENT_REQUIRED_HEADER) ?? "").accepts[0]
+        ?.amount,
+    ).toBe("80000000");
+    const bought = await buyOverHttp(harnessed, served, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    expect(bought.status, JSON.stringify(bought.body)).toBe(200);
+    expect(harnessed.facilitator.settles.at(-1)?.amount).toBe("80.00");
   });
 
   it("pays each card to its own merchant, with two merchants selling at once", async () => {
@@ -282,10 +391,37 @@ describe("who an agent is told to pay", () => {
     const theirs = await publish(served, first.key, cardFor("a-room", "A room"));
     const others = await publish(served, second.key, cardFor("a-desk", "A desk"));
 
-    expect(await payToInTheChallenge(served, theirs)).toBe(A_WALLET);
-    expect(await payToInTheChallenge(served, others)).toBe(ANOTHER_WALLET);
-    expect(await payToInTheChallenge(served, theirs)).not.toBe(CONFIGURED_PAY_TO);
-    expect(await payToInTheChallenge(served, others)).not.toBe(CONFIGURED_PAY_TO);
+    const theirSplit = await recordedSplit(harnessed, first.id, A_WALLET);
+    const otherSplit = await recordedSplit(harnessed, second.id, ANOTHER_WALLET);
+    expect(await payToInTheChallenge(served, theirs)).toBe(theirSplit);
+    expect(await payToInTheChallenge(served, others)).toBe(otherSplit);
+    expect(theirSplit).not.toBe(otherSplit);
+    for (const neither of [CONFIGURED_PAY_TO, A_WALLET, ANOTHER_WALLET]) {
+      expect(await payToInTheChallenge(served, theirs)).not.toBe(neither);
+      expect(await payToInTheChallenge(served, others)).not.toBe(neither);
+    }
+  });
+
+  it("keeps two merchants with one wallet on two splits, each paid their own", async () => {
+    // One merchant's payout must not move another merchant's sales.
+    const { served, harnessed } = await started();
+    const first = await harnessed.addMerchant("First shop");
+    const second = await harnessed.addMerchant("Second shop");
+    await setPayoutWallet(harnessed, first.id, A_WALLET);
+    await setPayoutWallet(harnessed, second.id, A_WALLET);
+
+    const theirs = await publish(served, first.key, cardFor("a-room", "A room"));
+    const others = await publish(served, second.key, cardFor("a-desk", "A desk"));
+
+    expect(await payToInTheChallenge(served, theirs)).toBe(
+      await recordedSplit(harnessed, first.id, A_WALLET),
+    );
+    expect(await payToInTheChallenge(served, others)).toBe(
+      await recordedSplit(harnessed, second.id, A_WALLET),
+    );
+    expect(await payToInTheChallenge(served, theirs)).not.toBe(
+      await payToInTheChallenge(served, others),
+    );
   });
 
   it("follows a merchant who moves their wallet, with no republishing", async () => {
@@ -297,28 +433,64 @@ describe("who an agent is told to pay", () => {
 
     await setPayoutWallet(harnessed, harnessed.merchant.id, ANOTHER_WALLET);
 
-    expect(await payToInTheChallenge(served, itemId)).toBe(ANOTHER_WALLET);
+    expect(await payToInTheChallenge(served, itemId)).toBe(
+      await recordedSplit(harnessed, harnessed.merchant.id, ANOTHER_WALLET),
+    );
   });
 
-  it("stands the configured address in for a merchant with none, in the sandbox alone", async () => {
+  it("returns a merchant to the split of a wallet they had before, as first recorded", async () => {
+    // No count in the salt: going back to a wallet names the split already
+    // recorded for it, whose parameters stay as they were written.
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
+    await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
+    const first = await recordedSplit(harnessed, harnessed.merchant.id, A_WALLET);
+    const firstRecordedAt = (await harnessed.store.payoutSplitAt(first))?.recordedAt;
+    harnessed.advance(60_000);
+    await setPayoutWallet(harnessed, harnessed.merchant.id, ANOTHER_WALLET);
+    harnessed.advance(60_000);
+
+    await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
+
+    expect(await payToInTheChallenge(served, itemId)).toBe(first);
+    expect((await harnessed.store.payoutSplitAt(first))?.recordedAt).toBe(firstRecordedAt);
+    expect(await recordedSplit(harnessed, harnessed.merchant.id, ANOTHER_WALLET)).not.toBe(first);
+  });
+
+  it("pays a sandbox merchant with no wallet at the placeholder's split, computed and never recorded, in the sandbox alone", async () => {
     // The sandbox has no chain behind it, so the address is only a placeholder,
-    // but a challenge has to name one.
+    // but a challenge has to name one, and it names a split as a real channel
+    // would. Recording it would put a write on the buying path for a split
+    // nothing ever settles to.
     const { served, harnessed } = await started({ FACILITATOR_URL: SANDBOX_FACILITATOR });
-    const { key } = await fresh(harnessed);
+    const { merchantId, key } = await fresh(harnessed);
     await named(served, key, "Their own shop");
     const itemId = await publish(served, key, cardFor("a-room", "A room"));
 
-    expect(await payToInTheChallenge(served, itemId)).toBe(CONFIGURED_PAY_TO);
+    const placeholder = placeholderSplit(merchantId);
+    expect(await payToInTheChallenge(served, itemId)).toBe(placeholder);
+    expect(placeholder).not.toBe(CONFIGURED_PAY_TO);
+    expect(await harnessed.store.payoutSplitAt(placeholder)).toBeNull();
+    const bought = await buyOverHttp(harnessed, served, itemId, {
+      merchantId,
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    expect(bought.status, JSON.stringify(bought.body)).toBe(200);
   });
 
-  it("pays a sandbox merchant who has set a wallet at their own, not the placeholder", async () => {
+  it("pays a sandbox merchant who has set a wallet at their own split, not the placeholder's", async () => {
     // A sandbox merchant shown an address other than the one they set would be
     // misled about what happens when the card is sold for real.
     const { served, harnessed } = await started({ FACILITATOR_URL: SANDBOX_FACILITATOR });
     await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
 
-    expect(await payToInTheChallenge(served, itemId)).toBe(A_WALLET);
+    expect(await payToInTheChallenge(served, itemId)).toBe(
+      await recordedSplit(harnessed, harnessed.merchant.id, A_WALLET),
+    );
+    expect(await payToInTheChallenge(served, itemId)).not.toBe(
+      placeholderSplit(harnessed.merchant.id),
+    );
   });
 });
 
@@ -403,9 +575,9 @@ describe("a card whose merchant has nowhere to be paid", () => {
     // A local stack must complete a purchase with no chain configured, so in
     // the sandbox a missing wallet is no reason to refuse.
     const { served, harnessed } = await started({ FACILITATOR_URL: SANDBOX_FACILITATOR });
-    const { itemId } = await soldWithNowhereToPay(harnessed, served);
+    const { itemId, merchantId } = await soldWithNowhereToPay(harnessed, served);
 
-    expect(await payToInTheChallenge(served, itemId)).toBe(CONFIGURED_PAY_TO);
+    expect(await payToInTheChallenge(served, itemId)).toBe(placeholderSplit(merchantId));
     const listed = (await served.call("GET", "/x402/catalog")).body as { items: { id: string }[] };
     expect(listed.items.map((item) => item.id)).toContain(itemId);
   });
@@ -418,7 +590,9 @@ describe("a card whose merchant has nowhere to be paid", () => {
 
     await setPayoutWallet(harnessed, merchantId, A_WALLET);
 
-    expect(await payToInTheChallenge(served, itemId)).toBe(A_WALLET);
+    expect(await payToInTheChallenge(served, itemId)).toBe(
+      await recordedSplit(harnessed, merchantId, A_WALLET),
+    );
   });
 });
 
@@ -440,10 +614,13 @@ describe("a wallet that moves while a sale is in flight", () => {
     });
 
     expect(bought.status, JSON.stringify(bought.body)).toBe(200);
-    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(A_WALLET);
-    expect(harnessed.facilitator.settles.at(-1)?.payTo).toBe(A_WALLET);
-    // The move took effect: the next challenge names the new wallet.
-    expect(await payToInTheChallenge(served, itemId)).toBe(ANOTHER_WALLET);
+    const signedFor = await recordedSplit(harnessed, harnessed.merchant.id, A_WALLET);
+    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(signedFor);
+    expect(harnessed.facilitator.settles.at(-1)?.payTo).toBe(signedFor);
+    // The move took effect: the next challenge names the new wallet's split.
+    expect(await payToInTheChallenge(served, itemId)).toBe(
+      await recordedSplit(harnessed, harnessed.merchant.id, ANOTHER_WALLET),
+    );
   });
 
   it("asks about the payment against the address the challenge named", async () => {
@@ -454,13 +631,257 @@ describe("a wallet that moves while a sale is in flight", () => {
     const { served, harnessed } = await started();
     await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
-    expect(await payToInTheChallenge(served, itemId)).toBe(A_WALLET);
+    expect(await payToInTheChallenge(served, itemId)).toBe(
+      await recordedSplit(harnessed, harnessed.merchant.id, A_WALLET),
+    );
 
     await setPayoutWallet(harnessed, harnessed.merchant.id, ANOTHER_WALLET);
     await buyOverHttp(harnessed, served, itemId, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
 
-    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(ANOTHER_WALLET);
+    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(
+      await recordedSplit(harnessed, harnessed.merchant.id, ANOTHER_WALLET),
+    );
+  });
+});
+
+describe("an address that cannot be a payout wallet", () => {
+  /** A merchant's split and the network's contracts, which a merchant's share could never come back from. */
+  const notWallets = async (harnessed: Harness) => {
+    const network = harnessed.runtime.config.payoutSplit;
+    const other = await harnessed.addMerchant("Another shop");
+    return [
+      [
+        "the merchant's own split",
+        await recordedSplit(harnessed, harnessed.merchant.id, harnessed.merchant.wallet),
+        "payout_split",
+      ],
+      [
+        "another merchant's split",
+        await recordedSplit(harnessed, other.id, other.wallet),
+        "payout_split",
+      ],
+      ["Agentify's commission wallet", network.commissionWallet, "commission_wallet"],
+      ["the warehouse, in lower case", network.warehouse.toLowerCase(), "split_warehouse"],
+      ["Multicall3", network.multicall3, "multicall3"],
+    ] as const;
+  };
+
+  it("is refused, saying what it is, and nothing is written", async () => {
+    // A split as a wallet pays the commission twice and needs two payouts, and
+    // a payout contract as a wallet hands the merchant's share to whoever
+    // calls it next. A merchant pasting the payout contract the screen showed
+    // them is the likely way it happens.
+    const { served, harnessed } = await started();
+    const before = await payoutWallet(served, harnessed.merchant.key);
+    const recorded = () =>
+      harnessed.store.payoutSplitsOn(harnessed.runtime.config.payoutSplit.network);
+    const cases = await notWallets(harnessed);
+    const splitsBefore = await recorded();
+
+    for (const [what, address, is] of cases) {
+      expect(await setPayoutWallet(harnessed, harnessed.merchant.id, address), what).toStrictEqual({
+        refused: "not_a_payout_wallet",
+        is,
+      });
+    }
+    expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual(before);
+    expect(await recorded()).toStrictEqual(splitsBefore);
+  });
+
+  it("is refused as a first wallet too", async () => {
+    const { served, harnessed } = await started();
+    const { merchantId, key } = await fresh(harnessed);
+
+    for (const [what, address, is] of await notWallets(harnessed)) {
+      expect(await setPayoutWallet(harnessed, merchantId, address), what).toStrictEqual({
+        refused: "not_a_payout_wallet",
+        is,
+      });
+    }
+    expect(await payoutWallet(served, key)).toStrictEqual({ payout_wallet: null, pending: null });
+  });
+});
+
+describe("the wallet document a merchant's code reads", () => {
+  it("answers with the wallet, never the split, in the shape it always had", async () => {
+    // `payout_wallet` now means where the merchant's share arrives. Code that
+    // compares it with the wallet it saved must still agree, and a strict
+    // reader built from the published package must still read it.
+    const { served, harnessed } = await started();
+    await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
+    const split = await recordedSplit(harnessed, harnessed.merchant.id, A_WALLET);
+
+    const answered = await served.call("GET", "/v0/payout-wallet", {
+      headers: bearer(harnessed.merchant.key),
+    });
+
+    expect(PayoutWalletSchema.strict().parse(answered.body)).toStrictEqual({
+      payout_wallet: A_WALLET,
+      pending: null,
+    });
+    expect(JSON.stringify(answered.body).toLowerCase()).not.toContain(split.toLowerCase());
+  });
+});
+
+describe("a merchant whose wallet has no recorded split", () => {
+  /**
+   * A wallet written straight to the store with no split: a defect once the
+   * start has recorded every split, which this must still refuse to sell for.
+   */
+  const withoutASplitHere = async (harnessed: Harness, served: Served) => {
+    const { merchantId, key } = await fresh(harnessed);
+    await named(served, key, "A shop whose split went missing");
+    await harnessed.store.writeWalletWithoutSplit(merchantId, {
+      address: A_WALLET,
+      pending: null,
+    });
+    const stored = await harnessed.store.publishCard(
+      merchantId,
+      cardFor("a-room", "A room"),
+      harnessed.now(),
+    );
+    return { merchantId, key, itemId: stored.id };
+  };
+
+  it("sells nothing, in the words for no wallet, and says so in the log", async () => {
+    // A missing row is a defect. The safe outcome is no sale: never the
+    // wallet itself, which skips the commission; never a split recomputed
+    // here, whose parameters nothing recorded; never the operator's address.
+    const { served, harnessed } = await started();
+    const { merchantId, key, itemId } = await withoutASplitHere(harnessed, served);
+
+    const answers: Awaited<ReturnType<Served["call"]>>[] = [];
+    const logged = await loggedWhile(async () => {
+      answers.push(await served.call("GET", `/x402/${itemId}/purchase`));
+      answers.push(await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } }));
+    });
+
+    for (const answered of answers) {
+      expect(answered.status, JSON.stringify(answered.body)).toBe(409);
+      expect((answered.body as { error: { code: string } }).error.code).toBe("not_selling");
+      expect(answered.headers.get(PAYMENT_REQUIRED_HEADER)).toBeNull();
+    }
+    expect(answers).toHaveLength(2);
+    expect(await harnessed.gateway.orders(merchantId, undefined)).toStrictEqual([]);
+    expect(logged).toContain(merchantId);
+    expect(logged).toMatch(/no payout split is recorded/);
+
+    const refused = await publishing(served, key, cardFor("a-desk", "A desk"));
+    expect(refused.status).toBe(422);
+    const { problems } = (refused.body as { error: { problems: { code: string }[] } }).error;
+    expect(problems.map((problem) => problem.code)).toContain("no_payout_wallet");
+  });
+
+  it("says nothing of a missing split for a merchant whose split is recorded", async () => {
+    // The line is how an operator finds the defect; written for every
+    // merchant, it would bury the one it is about.
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
+
+    const logged = await loggedWhile(async () => {
+      expect((await served.call("GET", `/x402/${itemId}/purchase`)).status).toBe(402);
+    });
+
+    expect(logged).not.toMatch(/no payout split is recorded/);
+  });
+
+  it("sells nothing in the sandbox either, rather than at a split nothing recorded", async () => {
+    // The placeholder stands in for a merchant with no wallet, never for a
+    // merchant whose wallet lost its split.
+    const { served, harnessed } = await started({ FACILITATOR_URL: SANDBOX_FACILITATOR });
+    const { itemId } = await withoutASplitHere(harnessed, served);
+
+    const probed = await served.call("GET", `/x402/${itemId}/purchase`);
+
+    expect(probed.status, JSON.stringify(probed.body)).toBe(409);
+  });
+});
+
+describe("the split a payment is checked against", () => {
+  const asyncCard: Card = {
+    ...cardFor("an-esim", "An eSIM"),
+    fulfillment: "async",
+    fulfill_deadline_seconds: 3_600,
+  };
+
+  it.each([
+    ["a synchronous card", cardFor("a-room", "A room")],
+    ["an asynchronous card", asyncCard],
+  ])("is kept on the order and charged, for %s", async (_which, card) => {
+    // The charge goes where the buyer's authorisation names; the mode decides
+    // only when.
+    const { served, harnessed } = await started();
+    await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
+    const itemId = await publish(served, harnessed.merchant.key, card);
+    const split = await recordedSplit(harnessed, harnessed.merchant.id, A_WALLET);
+
+    const bought = await buyOverHttp(harnessed, served, itemId, {
+      onOrder: () =>
+        card.fulfillment === "sync" ? { delivered: { access_code: "SESAME" } } : { accepted: {} },
+    });
+
+    expect([200, 202], JSON.stringify(bought.body)).toContain(bought.status);
+    const [order] = await harnessed.gateway.orders(harnessed.merchant.id, undefined);
+    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(split);
+    expect(order?.payTo).toBe(split);
+    expect(harnessed.facilitator.settles.at(-1)?.payTo).toBe(split);
+  });
+
+  it("is told to nobody but the challenge", async () => {
+    // The wire for merchant code and agents keeps its shape: a split address in
+    // any other document is a field a strict reader refuses, and a document
+    // naming it would have to be learned by everyone who reconciles payments.
+    const { served, harnessed } = await started();
+    await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
+    const split = (await recordedSplit(harnessed, harnessed.merchant.id, A_WALLET)).toLowerCase();
+    const syncItem = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
+    const asyncItem = await publish(served, harnessed.merchant.key, asyncCard);
+    const handed: unknown[] = [];
+
+    const sync = await buyOverHttp(harnessed, served, syncItem, {
+      onOrder: (order) => {
+        handed.push(order);
+        return { delivered: { access_code: "SESAME" } };
+      },
+    });
+    const async = await buyOverHttp(harnessed, served, asyncItem, {
+      onOrder: (order) => {
+        handed.push(order);
+        return { accepted: {} };
+      },
+    });
+    const merchant = bearer(harnessed.merchant.key);
+    const orderIds = (await harnessed.gateway.orders(harnessed.merchant.id, undefined)).map(
+      (record) => record.order.id,
+    );
+    const documents: unknown[] = [
+      sync.body,
+      sync.headers.get(PAYMENT_RESPONSE_HEADER),
+      async.body,
+      async.headers.get(PAYMENT_RESPONSE_HEADER),
+      handed,
+      await drawEverything(harnessed),
+      (await served.call("GET", "/v0/orders", { headers: merchant })).body,
+      (await served.call("GET", "/v0/receipts", { headers: merchant })).body,
+      (await served.call("GET", "/v0/payout-wallet", { headers: merchant })).body,
+    ];
+    for (const orderId of orderIds) {
+      documents.push(
+        (await served.call("GET", `/v0/orders/${orderId}`, { headers: merchant })).body,
+      );
+      documents.push((await served.call("GET", `/x402/orders/${orderId}/status`)).body);
+    }
+
+    expect(orderIds).toHaveLength(2);
+    for (const document of documents) {
+      const text = typeof document === "string" ? document : JSON.stringify(document);
+      expect(text.toLowerCase()).not.toContain(split);
+      // A header is base64; its decoded text is what a client reads.
+      if (typeof document === "string") {
+        expect(Buffer.from(document, "base64").toString("utf8").toLowerCase()).not.toContain(split);
+      }
+    }
   });
 });

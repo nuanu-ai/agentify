@@ -7,6 +7,7 @@
  * server sends it.
  */
 
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
 import type { OrderList, ReceiptList } from "@nuanu-ai/agentify-contracts";
 import {
   MerchantCardListSchema,
@@ -94,6 +95,36 @@ const ordersPage = (orders: OrderList): string =>
 
 const receiptsPage = (receipts: ReceiptList): string =>
   served(() => <ReceiptsScreen view={receiptsView(SEEN_BY, cards, receipts)} />);
+
+/**
+ * The split a merchant's payments go to on the test channel, made by the
+ * gateway's own rule from the code's table, so the rate is the one every
+ * split is made with.
+ */
+const SPLIT = payoutSplitFor(
+  payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532"),
+  "mch_0123456789abcdef0123456789abcdef",
+  "0xde3F8C4422A7F8C94bce9Cc2Ec118665108148EF",
+);
+
+/** The terms of the Base Sepolia experiment's splits, 97% and 3%, as they were created on chain. */
+const AT_THREE_PERCENT = {
+  merchantAllocation: 970_000,
+  commissionAllocation: 30_000,
+  totalAllocation: 1_000_000,
+};
+
+/** An order at this price whose payment went into a split on these terms. */
+const pricedAt = (amount: string, id = `ord_${amount}`) => ({
+  ...order(id, false),
+  price: { ...order(id, false).price, amount },
+});
+
+/** Each row's amount cell, as a person reads it. */
+const amountsIn = (html: string): string[] =>
+  [...html.matchAll(/<td class="amount"[^>]*>([\s\S]*?)<\/td>/g)].map((cell) =>
+    readable(cell[1] ?? ""),
+  );
 
 describe("the receipts of sales that went out", () => {
   it("counts a parcel handed to a carrier beside goods handed over, and says which it is", () => {
@@ -183,5 +214,144 @@ describe("whether a live merchant is approved, on the cards", () => {
 
     expect(waiting).toMatch(/not approved your merchant/);
     expect(waiting).not.toMatch(/cannot tell/);
+  });
+});
+
+describe("the shares of a sale paid into the merchant's payout split", () => {
+  // Computed by hand in whole millionths of a dollar, USDC's smallest unit,
+  // each share rounded down as the split rounds it: 0.29 at 99.9% is 289710
+  // millionths exactly, where floating point makes it 0.28970999999999997.
+  const SHARES: readonly (readonly [price: string, merchant: string, commission: string])[] = [
+    ["80.00", "≈ 79.92 USD", "≈ 0.08 USD"],
+    ["5", "≈ 4.995 USD", "≈ 0.005 USD"],
+    ["0.29", "≈ 0.28971 USD", "≈ 0.00029 USD"],
+    ["0.09", "≈ 0.08991 USD", "≈ 0.00009 USD"],
+    ["0.01", "≈ 0.00999 USD", "≈ 0.00001 USD"],
+    ["0.000019", "≈ 0.000018 USD", "under 0.000001 USD"],
+    ["0.000001", "under 0.000001 USD", "under 0.000001 USD"],
+  ];
+
+  it("says each order's shares as about so much, rounded down to a millionth as the split rounds them", () => {
+    const orders: OrderList = OrderListSchema.parse({
+      orders: SHARES.map(([price]) => pricedAt(price)),
+    });
+    const paidInto = Object.fromEntries(orders.orders.map((one) => [one.id, SPLIT]));
+
+    const cells = amountsIn(
+      served(() => <OrdersScreen view={ordersView(SEEN_BY, cards, orders, false, {}, paidInto)} />),
+    );
+
+    expect(cells).toStrictEqual(
+      SHARES.map(
+        ([price, merchant, commission]) =>
+          `${price} USD ${merchant} to you ${commission} to Agentify`,
+      ),
+    );
+  });
+
+  it("says a receipt's shares the same way", () => {
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: SHARES.map(([price], at) => ({
+        ...receipt(`rcp_${at}`, false),
+        price: { ...receipt(`rcp_${at}`, false).price, amount: price },
+      })),
+    });
+    const paidInto = Object.fromEntries(receipts.receipts.map((one) => [one.order_id, SPLIT]));
+
+    const cells = amountsIn(
+      served(() => (
+        <ReceiptsScreen view={receiptsView(SEEN_BY, cards, receipts, null, paidInto)} />
+      )),
+    );
+
+    expect(cells).toStrictEqual(
+      SHARES.map(
+        ([price, merchant, commission]) =>
+          `${price} USD ${merchant} to you ${commission} to Agentify`,
+      ),
+    );
+  });
+
+  it("divides by the terms of the split the order was paid into, not by a rate of its own", () => {
+    const orders: OrderList = OrderListSchema.parse({ orders: [pricedAt("80.00")] });
+
+    const [cell] = amountsIn(
+      served(() => (
+        <OrdersScreen
+          view={ordersView(SEEN_BY, cards, orders, false, {}, { "ord_80.00": AT_THREE_PERCENT })}
+        />
+      )),
+    );
+
+    expect(cell).toBe("80.00 USD ≈ 77.60 USD to you ≈ 2.40 USD to Agentify");
+  });
+
+  it("shows no shares for an order paid to a wallet itself, before payments went to splits", () => {
+    // Such an order paid the whole price to the wallet, and "to Agentify" on
+    // it would be a false statement about money.
+    const orders: OrderList = OrderListSchema.parse({
+      orders: [pricedAt("80.00", "ord_split"), pricedAt("80.00", "ord_wallet")],
+    });
+
+    const cells = amountsIn(
+      served(() => (
+        <OrdersScreen view={ordersView(SEEN_BY, cards, orders, false, {}, { ord_split: SPLIT })} />
+      )),
+    );
+
+    expect(cells).toStrictEqual([
+      "80.00 USD ≈ 79.92 USD to you ≈ 0.08 USD to Agentify",
+      "80.00 USD",
+    ]);
+  });
+});
+
+describe("a refund owed", () => {
+  it("names the full price as owed back, although the merchant's share was less", () => {
+    // The commission is not given back by the split, and the buyer is owed
+    // what they paid.
+    const owing: OrderList = OrderListSchema.parse({
+      orders: [{ ...pricedAt("80.00", "ord_owed"), status: "refund_due" }],
+    });
+
+    const text = readable(
+      served(() => (
+        <OrdersScreen
+          view={ordersView(
+            SEEN_BY,
+            cards,
+            owing,
+            false,
+            { ord_owed: "deadline_passed" },
+            {
+              ord_owed: SPLIT,
+            },
+          )}
+        />
+      )),
+    );
+    const callout = text.slice(text.indexOf("Order ord_owed refund due"));
+
+    expect(callout).toMatch(/the full price, 80\.00 USD/);
+    expect(callout).toMatch(/the commission stays with Agentify/);
+    expect(callout).not.toContain("79.92");
+  });
+
+  it("says nothing of a commission on a refund owed for a payment to the wallet itself", () => {
+    // Paid before payments went to splits: no commission was taken. Where the
+    // cause could not be read, the sentence says only what holds for every
+    // debt.
+    const owing: OrderList = OrderListSchema.parse({
+      orders: [{ ...pricedAt("80.00", "ord_owed"), status: "refund_due" }],
+    });
+
+    const text = readable(
+      served(() => <OrdersScreen view={ordersView(SEEN_BY, cards, owing, false)} />),
+    );
+    const callout = text.slice(text.indexOf("Order ord_owed refund due"));
+
+    expect(callout).toMatch(/The payment was received and the product was not delivered/);
+    expect(callout).toMatch(/the full price, 80\.00 USD/);
+    expect(callout).not.toMatch(/commission/);
   });
 });

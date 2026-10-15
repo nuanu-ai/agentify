@@ -1,14 +1,15 @@
-"""What a deployed channel's services are handed, from the real files.
+"""What a deployed channel's services receive at activation, from the real files.
 
 The preflight's own tests read two hand-written fixtures, so they cannot see
-what `deploy/compose.public.yaml` does to the seed. This renders each channel
+how the Compose files isolate optional credentials or empty the seed. This renders each channel
 the way deploy/stack.sh does — the same compose files in the same order, the
 jobs profile activation renders with — from a synthetic environment file, and
 runs the preflight over the result, as activation does. A deployed channel
-seeds no merchant, whether or not its environment file names
-AGENTIFY_SEED_KEY. Caddy, which fills the documentation's pages, is handed
-the same address, contacts and measuring destinations as the scanner, so the
-two halves of one site say and measure the same.
+seeds no merchant, whether or not its environment file names AGENTIFY_SEED_KEY;
+Google credentials reach only the application and must arrive together; and
+Caddy, which fills the documentation's pages, is handed the same address,
+contacts and measuring destinations as the scanner, so the two halves of one
+site say and measure the same.
 
 It needs Docker with Compose and Node, as the release does.
 """
@@ -165,6 +166,47 @@ class ChannelRender(unittest.TestCase):
                 self.assertEqual(checked.returncode, 65)
                 self.assertIn("app: SANDBOX_MERCHANT_KEY", checked.stderr)
                 self.assertNotIn(SEED[channel], checked.stderr + checked.stdout)
+
+    def test_google_sign_in_is_disabled_when_the_host_supplies_no_credentials(self):
+        for channel in CHANNELS:
+            with self.subTest(channel=channel):
+                document = self.render(channel)
+                environment = document["services"]["app"]["environment"]
+                self.assertEqual(environment.get("GOOGLE_CLIENT_ID"), "")
+                self.assertEqual(environment.get("GOOGLE_CLIENT_SECRET"), "")
+                checked = self.preflight(channel, document)
+                self.assertEqual(checked.returncode, 0, checked.stderr)
+
+    def test_google_credentials_reach_only_the_application_and_pass_preflight(self):
+        google = {
+            "GOOGLE_CLIENT_ID": "synthetic-google-client.apps.googleusercontent.com",
+            "GOOGLE_CLIENT_SECRET": "synthetic-google-client-secret",
+        }
+        for channel in CHANNELS:
+            with self.subTest(channel=channel):
+                document = self.render(channel, google)
+                for service, definition in document["services"].items():
+                    environment = definition.get("environment", {})
+                    for name, value in google.items():
+                        if service == "app":
+                            self.assertEqual(environment.get(name), value)
+                        else:
+                            self.assertNotIn(name, environment, service)
+                checked = self.preflight(channel, document)
+                self.assertEqual(checked.returncode, 0, checked.stderr)
+                self.assertNotIn(google["GOOGLE_CLIENT_SECRET"], checked.stdout + checked.stderr)
+
+    def test_an_incomplete_google_pair_is_refused_before_activation_without_printing_it(self):
+        for channel in CHANNELS:
+            for name in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"):
+                with self.subTest(channel=channel, supplied=name):
+                    supplied = "synthetic-google-value"
+                    document = self.render(channel, {name: supplied})
+                    checked = self.preflight(channel, document)
+                    self.assertEqual(checked.returncode, 65)
+                    self.assertIn("GOOGLE_CLIENT_ID", checked.stderr)
+                    self.assertIn("GOOGLE_CLIENT_SECRET", checked.stderr)
+                    self.assertNotIn(supplied, checked.stdout + checked.stderr)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 import { Button, Table } from "@agentify/ui";
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import type { KeysView, NewKeyView } from "../../src/keys.js";
@@ -135,8 +135,10 @@ export function NewKeyScreen({ view }: Readonly<{ view: NewKeyView }>) {
   const navigate = useNavigate();
   // A browser may keep a page it leaves whole and show it again as it was, so
   // the secret comes off the page as it is left, and a page brought back
-  // draws the list.
-  useEffect(() => {
+  // draws the list. The listeners go on in the commit that draws the secret:
+  // an ordinary effect runs a turn later, and a page left inside that turn
+  // would keep it.
+  useLayoutEffect(() => {
     const leave = () => flushSync(() => setLeft(true));
     const back = (event: PageTransitionEvent) => {
       if (event.persisted) void navigate("/keys", { replace: true });

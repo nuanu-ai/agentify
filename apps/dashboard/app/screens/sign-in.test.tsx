@@ -63,7 +63,10 @@ describe("what a page says about the stack it belongs to", () => {
   const signIn = (mode: SurfaceMode): string =>
     renderToString(
       routed(() => (
-        <AskScreen chrome={chromeIn(mode)} view={{ screen: "ask", destination: "default" }} />
+        <AskScreen
+          chrome={chromeIn(mode)}
+          view={{ screen: "ask", destination: "default", googleEnabled: false }}
+        />
       )),
     );
 
@@ -92,6 +95,46 @@ describe("what a page says about the stack it belongs to", () => {
     // No banner element either: an empty styled one is a band across a live
     // page.
     expect(html).not.toContain('class="stack-note"');
+  });
+});
+
+describe("the Google sign-in choice", () => {
+  it("offers a separate browser post while keeping the email form and its destination", () => {
+    const html = renderToString(
+      routed(() => (
+        <AskScreen
+          chrome={chromeIn("sandbox")}
+          view={{ screen: "ask", destination: "settings", googleEnabled: true }}
+        />
+      )),
+    );
+
+    const google = formTo(html, "post", "/sign-in/google");
+    expect(google?.fields.get("destination")).toBe("settings");
+    expect(formTo(html, "post", "/sign-in")?.fields.get("destination")).toBe("settings");
+    const document = new DOMParser().parseFromString(html, "text/html");
+    expect(
+      document.querySelector('form[action="/sign-in/google"] button img')?.getAttribute("alt"),
+    ).toMatch(/sign in with google/i);
+  });
+
+  it("offers no unavailable Google choice and fills only the address its server view supplied", () => {
+    const html = renderToString(
+      routed(() => (
+        <AskScreen
+          chrome={chromeIn("sandbox")}
+          view={{
+            screen: "ask",
+            destination: "keys",
+            googleEnabled: false,
+            email: PERSON,
+          }}
+        />
+      )),
+    );
+
+    expect(formTo(html, "post", "/sign-in/google")).toBeUndefined();
+    expect(formTo(html, "post", "/sign-in")?.fields.get("email")).toBe(PERSON);
   });
 });
 

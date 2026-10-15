@@ -4,7 +4,7 @@ Date: 2026-08-28
 Status: accepted (the product owner, 2026-08-28; 2026-09-25: every registration
 path except the one main path is removed; 2026-10-09: the key made for a
 dashboard and the registration route are deleted when the dashboard joined the
-gateway's process, `docs/research/35-one-process.md`)
+gateway's process, `docs/research/35-one-process.md`; 2026-10-15: Google sign-in)
 
 ## Context
 
@@ -17,9 +17,9 @@ wait for perfection: the road's order is ADR-0010's.
 
 ## Decision
 
-There is one way in. An account comes into being when a person types their
-address, opens the link mailed to it and presses the button on the page it
-opens (ADR-0026 §1); a merchant, when that signed-in person presses the one
+An account comes into being at a successful sign-in: a person consumes the
+link mailed to their address or uses an eligible Google account (ADR-0026 §1);
+a merchant, when that signed-in person presses the one
 control the dashboard offers (§1). No command at a server's terminal makes an
 account, a merchant or a key, and no deployed channel's gateway seeds a
 merchant at start-up: the release refuses a channel configured to. The
@@ -29,7 +29,7 @@ moves the operator flag, approves live sales. Only the laptop's stack seeds its
 sandbox merchant, so that one command brings it up selling (ADR-0010).
 
 **1. The account is written at sign-in, the merchant on the dashboard's explicit
-request.** The account appears when a one-time link is consumed for an address
+request.** The account appears when a successful sign-in proves an address
 that has none (ADR-0026 §1), and no form asks for a password or an invitation.
 The merchant is made later, when the signed-in person presses the one control
 the dashboard offers (ADR-0026 §4). The press calls the gateway inside the
@@ -88,9 +88,8 @@ with no account, wrote a key for it straight into the database, and wrote an
 account for an existing merchant from a key piped in were a second door beside
 the mailed link: a merchant nobody could sign in as, a key no announcement
 covered (ADR-0019), an account whose address nobody had proved. What they were
-for is what the one way in does: a person who needs an account signs in, and a
-merchant who has lost every key signs in with a mailed link and issues a new one
-there. **Seeding a merchant on a deployed channel.** A key in a host's file,
+for is what sign-in does: a person who needs an account signs in, and a
+merchant who has lost every key signs in and issues a new one there. **Seeding a merchant on a deployed channel.** A key in a host's file,
 written into the database at every start, is a merchant nobody registered and a
 credential nobody can retire without a release: disabling its row stops it, and
 a database brought up from nothing is seeded off the same line again. **Open

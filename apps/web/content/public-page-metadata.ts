@@ -13,6 +13,6 @@ export const PUBLIC_PAGE_METADATA = {
   "/": { lastModified: "2026-09-21", priority: 1 },
   "/store": { lastModified: "2026-09-21", priority: 0.9 },
   "/local": { lastModified: "2026-09-21", priority: 0.9 },
-  "/privacy": { lastModified: "2026-07-14", priority: 0.6 },
+  "/privacy": { lastModified: "2026-10-15", priority: 0.6 },
   "/terms": { lastModified: "2026-07-13", priority: 0.6 },
 } as const satisfies Record<PublicPagePath, PublicPageMetadata>;

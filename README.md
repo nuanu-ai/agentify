@@ -10,8 +10,10 @@ address of their shop and read what it exposes to AI agents — the robots file
 and the sitemap, the structured data, the machine-readable output — as a report
 of named checks with the evidence behind each verdict. Through the same site
 they then sell their goods to those agents: the gateway behind it takes the
-purchase, the agent pays in stablecoins over the x402 protocol, and the money
-goes from the buyer's wallet to the merchant's without passing through us.
+purchase, and the agent pays in stablecoins over the x402 protocol into the
+merchant's payout split, a contract nobody owns, which pays 99.9% to the
+merchant's wallet and 0.1% to Agentify whenever somebody pays it out
+(ADR-0037).
 
 This file orients an engineer who has just opened the repository. What a
 merchant reads is at [agentify.ad/docs](https://agentify.ad/docs/), built from

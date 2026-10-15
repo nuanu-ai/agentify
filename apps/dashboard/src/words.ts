@@ -85,7 +85,7 @@ export type Unset = Exclude<MerchantFinding, "no_operator_approval" | "no_seller
 
 export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({
   no_seller_name: "the name your products are sold under",
-  no_payout_wallet: "the wallet address your money arrives at",
+  no_payout_wallet: "the wallet your share of every sale is paid out to",
 });
 
 /**

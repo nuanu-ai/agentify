@@ -90,6 +90,13 @@ const environmentSchema = z.object({
       `must be at least ${SHORTEST_SECRET} characters; make one with: openssl rand -base64 32`,
     ),
 
+  GOOGLE_CLIENT_ID: emptyIsAbsent(
+    z.string().refine((value) => value.trim().length > 0, "must not be blank"),
+  ),
+  GOOGLE_CLIENT_SECRET: emptyIsAbsent(
+    z.string().refine((value) => value.trim().length > 0, "must not be blank"),
+  ),
+
   /** Bearer for the unproxied scanner-to-dashboard identity route. */
   REPORT_IDENTITY_SECRET: emptyIsAbsent(
     z
@@ -157,11 +164,25 @@ export interface DashboardConfig {
    * nothing, and a chain not listed here has no page we vouch for.
    */
   readonly transactionPage: string | null;
+  /**
+   * The page an address on this deployment's chain is looked at on, which the
+   * address is appended to, or null where there is none, as for a transaction.
+   * It is where a merchant sees what waits in their payout split, so a page on
+   * the other chain would show an empty address as nothing owed.
+   */
+  readonly addressPage: string | null;
+  /**
+   * The EIP-155 chain a merchant's wallet is asked to work on, the payment
+   * network's, or null in the sandbox, where no wallet is ever paid.
+   */
+  readonly walletChain: number | null;
   readonly basePath: string;
   readonly cookieSecure: boolean;
   readonly databaseUrl: string;
   /** Never printed, never on a page. */
   readonly authSecret: string;
+  /** Both absent disables Google; a partial pair is refused before startup. */
+  readonly google: Readonly<{ clientId: string; clientSecret: string }> | null;
   readonly reportIdentitySecret: string | null;
   readonly publicBaseUrl: string;
   readonly mailUrl: string;
@@ -172,12 +193,25 @@ export interface DashboardConfig {
 /** Used only in the sandbox, where messages go to the log. */
 const NOBODY_READS_THIS = "Agentify <no-reply@localhost>";
 
-/** Each chain a deployment may run on, and where a transaction on it is looked at. */
+/**
+ * Where a transaction is looked at on each chain a gateway takes payments on,
+ * Base and Base Sepolia.
+ */
 const TRANSACTION_PAGES: Readonly<Record<string, string>> = {
   "eip155:8453": "https://basescan.org/tx/",
   "eip155:84532": "https://sepolia.basescan.org/tx/",
-  "eip155:11155111": "https://sepolia.etherscan.io/tx/",
-  "eip155:80002": "https://amoy.polygonscan.com/tx/",
+};
+
+/** Where an address is looked at on each of the same chains. */
+const ADDRESS_PAGES: Readonly<Record<string, string>> = {
+  "eip155:8453": "https://basescan.org/address/",
+  "eip155:84532": "https://sepolia.basescan.org/address/",
+};
+
+/** The chain number of an `eip155:` network, or null for a network of another family. */
+const eip155ChainOf = (network: string): number | null => {
+  const chain = /^eip155:(\d+)$/.exec(network)?.[1];
+  return chain === undefined ? null : Number(chain);
 };
 
 export function loadConfig(environment: Record<string, string | undefined>): DashboardConfig {
@@ -198,6 +232,20 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
   const surfaceMode = surfaceModeOf(values.PAYMENT_NETWORK, values.FACILITATOR_URL);
   const sandboxMail = isSandboxMail(values.MAIL_URL);
   const problems: string[] = [];
+
+  const googleConfigured =
+    values.GOOGLE_CLIENT_ID !== undefined || values.GOOGLE_CLIENT_SECRET !== undefined;
+  if (googleConfigured) {
+    if (values.GOOGLE_CLIENT_ID === undefined) problems.push("GOOGLE_CLIENT_ID is not set");
+    if (values.GOOGLE_CLIENT_SECRET === undefined) problems.push("GOOGLE_CLIENT_SECRET is not set");
+    if (!NOWHERE_ELSE.has(new URL(values.PUBLIC_BASE_URL).hostname)) {
+      if (new URL(values.PUBLIC_BASE_URL).protocol !== "https:") {
+        problems.push("PUBLIC_BASE_URL must use https for Google sign-in on a public site");
+      }
+      if (!values.COOKIE_SECURE)
+        problems.push("COOKIE_SECURE must be true for Google sign-in on a public site");
+    }
+  }
 
   // A credential beside the sandbox address is leftovers, most likely a
   // production environment file copied onto a sandbox, and is refused.
@@ -235,6 +283,17 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
   }
 
   if (
+    values.GOOGLE_CLIENT_SECRET !== undefined &&
+    [values.AUTH_SECRET, values.REPORT_IDENTITY_SECRET, values.MAIL_API_KEY].includes(
+      values.GOOGLE_CLIENT_SECRET,
+    )
+  ) {
+    problems.push(
+      "GOOGLE_CLIENT_SECRET must differ from AUTH_SECRET, REPORT_IDENTITY_SECRET and MAIL_API_KEY",
+    );
+  }
+
+  if (
     values.REPORT_IDENTITY_SECRET !== undefined &&
     [values.AUTH_SECRET, values.MAIL_API_KEY].includes(values.REPORT_IDENTITY_SECRET)
   ) {
@@ -245,17 +304,23 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
   }
 
   if (problems.length > 0) {
-    throw new Error(`The dashboard cannot start, the mail is not set up — ${problems.join("; ")}`);
+    throw new Error(`The dashboard cannot start, sign-in is not set up — ${problems.join("; ")}`);
   }
 
   return {
     surfaceMode,
     transactionPage:
       surfaceMode === "sandbox" ? null : (TRANSACTION_PAGES[values.PAYMENT_NETWORK] ?? null),
+    addressPage: surfaceMode === "sandbox" ? null : (ADDRESS_PAGES[values.PAYMENT_NETWORK] ?? null),
+    walletChain: surfaceMode === "sandbox" ? null : eip155ChainOf(values.PAYMENT_NETWORK),
     basePath: values.BASE_PATH,
     cookieSecure: values.COOKIE_SECURE,
     databaseUrl: values.DATABASE_URL,
     authSecret: values.AUTH_SECRET,
+    google:
+      values.GOOGLE_CLIENT_ID !== undefined && values.GOOGLE_CLIENT_SECRET !== undefined
+        ? { clientId: values.GOOGLE_CLIENT_ID, clientSecret: values.GOOGLE_CLIENT_SECRET }
+        : null,
     reportIdentitySecret: values.REPORT_IDENTITY_SECRET ?? null,
     publicBaseUrl: values.PUBLIC_BASE_URL,
     mailUrl: values.MAIL_URL,

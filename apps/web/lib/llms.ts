@@ -35,7 +35,7 @@ export function buildLlmsText(): string {
     "",
     "## Selling to agents",
     "",
-    "Agentify also runs a merchant channel: an ordinary online business publishes product cards that AI agents buy and pay for over x402, and the money goes from the buyer's wallet to the merchant's.",
+    "Agentify also runs a merchant channel: an ordinary online business publishes product cards that AI agents buy and pay for over x402. The buyer pays into the merchant's own payout contract, which nobody owns and which sends 99.9% to the merchant's wallet and 0.1% to Agentify when it is paid out.",
     "",
     `- [The sell-to-agents page, for the business owner](${whole("/agentic-shop")})`,
     `- [The catalogue AI agents buy from, as JSON](${whole("/x402/catalog")})`,
