@@ -18,6 +18,7 @@ import "./globals.css";
 
 import { ConsentBanner, KeptChoiceScript } from "@agentify/consent";
 import { OnItsWay } from "@agentify/ui";
+import textFont from "@fontsource-variable/schibsted-grotesk/files/schibsted-grotesk-latin-wght-normal.woff2?url";
 import type { ReactNode } from "react";
 import {
   isRouteErrorResponse,
@@ -42,6 +43,7 @@ import { markdownAnswer, withPlaceHeaders } from "../lib/server/answer-headers";
 import { getBrowserAnalyticsConfig } from "../lib/server/browser-analytics-config";
 
 export const links = () => [
+  { rel: "preload", href: textFont, as: "font", type: "font/woff2", crossOrigin: "anonymous" },
   { rel: "manifest", href: "/manifest.webmanifest" },
   { rel: "icon", href: "/icon.svg", sizes: "any", type: "image/svg+xml" },
   { rel: "apple-touch-icon", href: "/apple-icon", type: "image/png", sizes: "180x180" },

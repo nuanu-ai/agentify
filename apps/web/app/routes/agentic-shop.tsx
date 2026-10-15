@@ -99,6 +99,7 @@ export default function AgenticShopPage() {
           </div>
           <div className={styles.heroVisual}>
             <img
+              fetchPriority="high"
               alt="A teal shopping bag, espresso, hotel key card, ticket and folded towel on sunlit stone."
               className={styles.heroImage}
               decoding="async"
