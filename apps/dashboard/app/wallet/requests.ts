@@ -5,7 +5,7 @@
  * is saved by the merchant's own press, as an address typed by hand is.
  */
 
-import { checksummedAddressOf } from "@nuanu-ai/agentify-contracts";
+import { getAddress } from "viem";
 
 /** An EIP-1193 provider, as far as the dashboard uses one. */
 export interface Wallet {
@@ -58,7 +58,7 @@ export async function askAddress(
   wallet: Wallet,
 ): Promise<{ readonly kind: "address"; readonly address: string } | Cancelled | Failed> {
   try {
-    return { kind: "address", address: checksummedAddressOf(await accountOf(wallet)) };
+    return { kind: "address", address: getAddress(await accountOf(wallet)) };
   } catch (thrown) {
     return outcomeOf(thrown);
   }

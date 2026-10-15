@@ -2,9 +2,9 @@ import { Button, Field } from "@agentify/ui";
 import { useState } from "react";
 import { Form } from "react-router";
 import type { PayoutView, SettingsView, SplitView, WalletView } from "../../src/settings-view.js";
-import { CoinbaseAddress, CoinbasePayout } from "../components/coinbase-wallet.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
+import { CoinbaseAddress, CoinbasePayout } from "../wallet/buttons.js";
 
 /**
  * An address whole, never with the middle elided: first-few, dots, last-few is

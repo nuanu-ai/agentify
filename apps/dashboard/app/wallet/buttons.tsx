@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
  * the focus, so its window opens as close to the press as a browser asks of a
  * window; a browser that still blocks it gets Coinbase's own prompt to go on.
  */
-const coinbase = () => import("../wallet/coinbase.js");
+const coinbase = () => import("./coinbase.js");
 
 export const WALLET_WORDS = {
   connect: "Create or connect a Coinbase Wallet",
