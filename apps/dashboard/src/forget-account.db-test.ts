@@ -48,6 +48,12 @@ const AUTH_SECRET = "x".repeat(40);
 const SHOP = "https://shop.example.com";
 const TEST_NETWORK = "eip155:84532";
 const LIVE_NETWORK = "eip155:8453";
+/** Synthetic: it passes the click identifier's pattern and no tracker issued it. */
+const CLICK = {
+  id: "qa_click_0123456789abcdef",
+  consentedAt: "2026-10-15T09:30:00.000Z",
+  wording: "registration-consent-1",
+} as const;
 
 const card = (merchantItemId: string): Card => ({
   merchant_item_id: merchantItemId,
@@ -74,6 +80,10 @@ if (databaseUrl === null) {
       AUTH_SECRET,
       PAYMENT_NETWORK: TEST_NETWORK,
       FACILITATOR_URL: "sandbox:scripted",
+      // Switched on, so a consented sign-in leaves a registration to forget.
+      REGISTRATION_POSTBACK_ENABLED: "true",
+      REGISTRATION_POSTBACK_KEY: ["qa", "synthetic", "postback", "key"].join("-"),
+      REGISTRATION_POSTBACK_URL: "http://127.0.0.1:4010/postback",
     }),
     {
       pool,
@@ -104,10 +114,13 @@ if (databaseUrl === null) {
     return token;
   };
 
-  const signIn = async (email: string): Promise<Person> => {
-    const asked = await identity.requestLink(email, "default");
+  const signIn = async (email: string, click?: typeof CLICK): Promise<Person> => {
+    const asked = await identity.requestLink(email, "default", click);
     if (asked.status !== "accepted") throw new Error(`the link was ${asked.status}`);
-    const opened = await identity.openLink(tokenIn(messages.at(-1)));
+    // The owner says yes on the link's page wherever a click came with it.
+    const opened = await identity.openLink(tokenIn(messages.at(-1)), {
+      tellTracker: click !== undefined,
+    });
     if (opened.status !== "opened") throw new Error("the link did not open");
     return opened.person;
   };
@@ -115,8 +128,9 @@ if (databaseUrl === null) {
   const merchantAccount = async (
     email: string,
     cards: readonly string[],
+    click?: typeof CLICK,
   ): Promise<{ readonly person: Person; readonly merchantId: string }> => {
-    const person = await signIn(email);
+    const person = await signIn(email, click);
     const merchant = await store.addMerchant(
       { id: randomIds("mch"), name: "A merchant" },
       Date.now(),
@@ -164,7 +178,7 @@ if (databaseUrl === null) {
 
   describe("forgetting a test account on its real database", () => {
     it("removes the account and its merchant so the address signs in again as a newcomer", async () => {
-      const { person, merchantId } = await merchantAccount(EMAIL, ["room-101", "room-102"]);
+      const { person, merchantId } = await merchantAccount(EMAIL, ["room-101", "room-102"], CLICK);
       const report = {
         operation: "send" as const,
         email: EMAIL,
@@ -193,6 +207,7 @@ if (databaseUrl === null) {
       });
       await woo.recordQuote(person.id, "prc_one", "room-101", "fingerprint", now, now);
       const bystander = await merchantAccount(BYSTANDER, ["their-room"]);
+      expect(await countOf("dashboard_registration_postbacks", "account_id", person.id)).toBe(1);
 
       const forgotten = forgetProcess("  Merchant@Example.COM", TEST_NETWORK);
 
@@ -213,6 +228,7 @@ if (databaseUrl === null) {
       expect(await countOf("dashboard_woo_shops", "account_id", person.id)).toBe(0);
       expect(await countOf("dashboard_woo_grants", "account_id", person.id)).toBe(0);
       expect(await countOf("dashboard_woo_quotes", "account_id", person.id)).toBe(0);
+      expect(await countOf("dashboard_registration_postbacks", "account_id", person.id)).toBe(0);
 
       // The bystander keeps everything, including the wait before their next
       // link.

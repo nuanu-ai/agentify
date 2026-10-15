@@ -105,9 +105,16 @@ describe("initial database migration", () => {
          where table_schema = 'public'
            and ((table_name = 'scans' and column_name in ('cache_hit', 'source_scan_id'))
              or (table_name = 'browser_observations'
-                 and column_name in ('signals', 'request_count', 'transferred_bytes')))`,
+                 and column_name in ('signals', 'request_count', 'transferred_bytes'))
+             or (table_name = 'registration_intents'
+                 and column_name = 'partner_click_id_ciphertext'))`,
       );
       expect(deletedColumns.rows).toEqual([]);
+      // A delivery goes to PostHog or to Meta; the scanner has no other destination.
+      const destinations = await pool.query<{ destination: string }>(
+        "select unnest(enum_range(null::delivery_destination))::text as destination",
+      );
+      expect(destinations.rows.map(({ destination }) => destination)).toEqual(["posthog", "meta"]);
 
       const oldWorkerStart = new Date("2026-07-12T10:00:00.000Z");
       const newWorkerStart = new Date("2026-07-12T11:00:00.000Z");
@@ -1015,6 +1022,64 @@ describe("the scanner's migrations in the one database", () => {
     } finally {
       await rm(later, { recursive: true, force: true });
       await rm(scannerLater, { recursive: true, force: true });
+      await pool.end();
+      await resetDatabase();
+    }
+  }, 30_000);
+});
+
+describe("a database that holds deliveries bound for the partner", () => {
+  it("loses those deliveries and keeps every other when the partner destination is removed", async () => {
+    await resetDatabase();
+    const { db, pool } = createDatabase(connectionString, { max: 2 });
+    const before = await mkdtemp(join(tmpdir(), "scanner-migrations-"));
+    try {
+      // Every migration before the one that removes the destination, applied
+      // and committed first, as a deployed database has them.
+      await cp(migrationsFolder, before, { recursive: true });
+      const journal = JSON.parse(await readFile(join(before, "meta", "_journal.json"), "utf8"));
+      journal.entries = journal.entries.slice(
+        0,
+        journal.entries.findIndex(
+          ({ tag }: { tag: string }) => tag === "0024_the_scanner_sends_no_partner_postback",
+        ),
+      );
+      await writeFile(join(before, "meta", "_journal.json"), JSON.stringify(journal));
+      await migrateDatabase(db, before);
+
+      const sessionId = createUuidV7();
+      const consentId = createUuidV7();
+      const eventId = createUuidV7();
+      await pool.query("insert into sessions (id, anonymous_id_hash) values ($1, 'partner-hash')", [
+        sessionId,
+      ]);
+      await pool.query(
+        `insert into consent_snapshots (id, session_id, policy_version, categories, source)
+         values ($1, $2, 'consent-v1.0.0', '{"essential_processing": true}', 'api')`,
+        [consentId, sessionId],
+      );
+      await pool.query(
+        `insert into analytics_events
+           (id, event_id, name, occurred_at, session_id, segment, landing_variant, properties,
+            consent_snapshot_id)
+         values ($1, $2, 'registration_completed', now(), $3, 'store', 'store-v1', '{}', $4)`,
+        [createUuidV7(), eventId, sessionId, consentId],
+      );
+      await pool.query(
+        `insert into delivery_outbox (id, event_id, destination, payload)
+         values ($1, $3, 'posthog', '{}'), ($2, $3, 'partner_tracker', '{"event": "reg"}')`,
+        [createUuidV7(), createUuidV7(), eventId],
+      );
+
+      await migrateDatabase(db, migrationsFolder);
+
+      const kept = await pool.query<{ destination: string }>(
+        "select destination::text as destination from delivery_outbox where event_id = $1",
+        [eventId],
+      );
+      expect(kept.rows).toEqual([{ destination: "posthog" }]);
+    } finally {
+      await rm(before, { recursive: true, force: true });
       await pool.end();
       await resetDatabase();
     }

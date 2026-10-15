@@ -69,8 +69,26 @@ export const shownMarkIn = (html: string): string | undefined =>
 export interface ServedForm {
   readonly method: string;
   readonly action: string;
-  /** Each input that carries a name, with the value it was served with. */
+  /**
+   * Each input that carries a name, with the value it was served with, as the
+   * browser would send the form untouched: a box counts only where it is
+   * served ticked.
+   */
   readonly fields: ReadonlyMap<string, string>;
+  /**
+   * Each button that submits the form, with the name and value it adds to what
+   * is sent when it is the one pressed.
+   */
+  readonly presses: readonly ServedPress[];
+}
+
+interface ServedPress {
+  readonly name: string | undefined;
+  readonly value: string | undefined;
+  readonly label: string;
+  /** Where this button sends the form instead of the form's own address. */
+  readonly action: string | undefined;
+  readonly method: string | undefined;
 }
 
 /**
@@ -85,15 +103,36 @@ export const formsIn = (html: string): ServedForm[] =>
     const fields = new Map<string, string>();
     for (const [, input = ""] of inside.matchAll(/<input\b([^>]*)>/gi)) {
       const name = attribute(input, "name");
-      if (name !== undefined) fields.set(name, attribute(input, "value") ?? "");
+      const box = /^(checkbox|radio)$/i.test(attribute(input, "type") ?? "");
+      if (box && !/\schecked(?:=""|\s|\/|$)/i.test(input)) continue;
+      if (name !== undefined) fields.set(name, attribute(input, "value") ?? (box ? "on" : ""));
     }
+    const presses = [...inside.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)]
+      .filter(([, tag = ""]) => (attribute(tag, "type") ?? "submit").toLowerCase() === "submit")
+      .map(([, tag = "", label = ""]) => ({
+        name: attribute(tag, "name"),
+        value: attribute(tag, "value"),
+        label: readable(label),
+        action: attribute(tag, "formaction"),
+        method: attribute(tag, "formmethod")?.toLowerCase(),
+      }));
     return {
       method: (attribute(written, "method") ?? "get").toLowerCase(),
       action: attribute(written, "action") ?? "",
       fields,
+      presses,
     };
   });
 
-/** The one form on a page that sends this method to this address, if there is one. */
+/**
+ * The one form on a page that sends this method to this address, by its own
+ * address or by a button that sends it elsewhere, if there is one.
+ */
 export const formTo = (html: string, method: string, action: string): ServedForm | undefined =>
-  formsIn(html).find((form) => form.method === method && form.action === action);
+  formsIn(html).find(
+    (form) =>
+      (form.method === method && form.action === action) ||
+      form.presses.some(
+        (press) => press.action === action && (press.method ?? form.method) === method,
+      ),
+  );

@@ -18,6 +18,8 @@ preview cannot. Spent, expired and unknown links are refused alike, without
 revealing whether an address has an account or report. The destination lives
 with the token. A destinationless link, or a dead one while signed in, leads to
 the latest report for a person with reports and no merchant, else the dashboard.
+The token's claim may also keep an ad click that the person asking for the
+link consented to have kept (ADR-0039).
 
 The dashboard also offers Google when configured. Google must verify the
 current address and control its mailbox: `gmail.com`, `googlemail.com`, or a
@@ -25,7 +27,8 @@ Workspace account with a hosted-domain claim. Other addresses use an email
 link. The Google issuer and subject bind to the account with that exact address;
 a linked subject with a different current address is refused. Addresses are
 trimmed and lowercased, never merged by Gmail dots, plus suffixes or domain
-aliases. Google supplies no seller name and carries no scanner report request.
+aliases. Google supplies no seller name and carries no scanner report request;
+its single-use state may keep an ad click the person consented to (ADR-0039).
 
 **2. The dashboard holds one identity and session for the whole site.** Better
 Auth runs in its process on our PostgreSQL with telemetry off, through our

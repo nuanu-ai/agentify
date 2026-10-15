@@ -7,9 +7,15 @@
 
 import { Button, Field } from "@agentify/ui";
 import { useEffect, useState } from "react";
-import { Form, useNavigation } from "react-router";
+import { Form, useFormAction, useNavigation } from "react-router";
+import { ADS_CONSENT } from "../../src/ads-consent.js";
 import type { DashboardDestination } from "../../src/dashboard-entry.js";
-import type { LinkAnswer, OpenLinkView, SignInView } from "../../src/page-services.js";
+import type {
+  LinkAnswer,
+  OfferedClick,
+  OpenLinkView,
+  SignInView,
+} from "../../src/page-services.js";
 import type { Chrome } from "../answer.js";
 import googleButton from "../assets/google-sign-in-light.png";
 import { GatePage } from "../components/gate-page.js";
@@ -18,14 +24,99 @@ import styles from "./sign-in.module.css";
 const Destination = ({ destination }: Readonly<{ destination: DashboardDestination }>) =>
   destination === "default" ? null : <input type="hidden" name="destination" value={destination} />;
 
+/**
+ * The ad click a visitor arrived with, carried from form to form as the
+ * destination is. Never the consent: only the box drawn beside a button
+ * carries that.
+ */
+const Click = ({ click }: Readonly<{ click: OfferedClick | undefined }>) =>
+  click === undefined ? null : <input type="hidden" name="clickid" value={click.id} />;
+
+/**
+ * Unticked unless the person ticked it on the press this page answers; the
+ * sentence is the box's label, so pressing the words ticks it too. The way to
+ * the privacy page stays outside the label, or it would become part of the
+ * box's name.
+ */
+const ConsentBox = ({ click }: Readonly<{ click: OfferedClick | undefined }>) =>
+  click === undefined ? null : (
+    <div className="consent">
+      <label>
+        <input type="checkbox" name="ads_consent" value="yes" defaultChecked={click.consented} />
+        <span>{ADS_CONSENT.sentence}</span>
+      </label>
+      <a href={ADS_CONSENT.explained.href}>{ADS_CONSENT.explained.words}</a>
+    </div>
+  );
+
 /** The press is on its way while React Router sends a form here. */
 const usePressed = (): boolean => useNavigation().state === "submitting";
 
-export function AskScreen({
-  chrome,
-  view,
-}: Readonly<{ chrome: Chrome; view: Extract<SignInView, { screen: "ask" }> }>) {
+type AskView = Extract<SignInView, { screen: "ask" }>;
+
+const AddressField = ({ view }: Readonly<{ view: AskView }>) => (
+  <Field
+    label="Email address"
+    id="email"
+    name="email"
+    type="email"
+    autoComplete="email"
+    autoCapitalize="off"
+    spellCheck={false}
+    autoFocus
+    required
+    defaultValue={view.email ?? ""}
+    {...(view.problem === undefined ? {} : { error: view.problem })}
+  />
+);
+
+const GoogleButton = (sends: Readonly<{ formAction?: string; formNoValidate?: boolean }>) => (
+  <button className={styles.google} type="submit" {...sends}>
+    <img src={googleButton} alt="Sign in with Google" width="180" height="40" />
+  </button>
+);
+
+const SignInNotes = () => (
+  <>
+    <p className="quiet">
+      Each email sign-in link opens once and expires an hour after it is sent, so there is nothing
+      to keep and no password to remember.
+    </p>
+    <p className="quiet">
+      New to Agentify? Sign in here. Once you are signed in, one button opens your seller dashboard.
+    </p>
+  </>
+);
+
+export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: AskView }>) {
   const pressed = usePressed();
+  const toGoogle = useFormAction("/sign-in/google");
+  if (view.click !== undefined && view.googleEnabled) {
+    // One box goes with both ways in, and a box belongs to one form, so the
+    // Google button sends this form elsewhere. The email button comes first
+    // because Enter in the address presses a form's first button. Every press
+    // goes as a whole page: Google's answer moves the browser to Google, and
+    // React Router cannot send one button's press whole and another's in place.
+    return (
+      <GatePage chrome={chrome} title="Sign in">
+        <Form className="gate-card" method="post" action="/sign-in" reloadDocument>
+          <h1>Sign in</h1>
+          {view.reason === undefined ? null : <p>{view.reason}</p>}
+          <p>Enter your email address and we will send you a sign-in link.</p>
+          <AddressField view={view} />
+          <Destination destination={view.destination} />
+          <Click click={view.click} />
+          <ConsentBox click={view.click} />
+          <Button>Send me a sign-in link</Button>
+          <p>Or sign in with Google.</p>
+          <div className={styles.second}>
+            <GoogleButton formAction={toGoogle} formNoValidate />
+          </div>
+          <SignInNotes />
+        </Form>
+      </GatePage>
+    );
+  }
   return (
     <GatePage chrome={chrome} title="Sign in">
       <div className="gate-card">
@@ -35,9 +126,7 @@ export function AskScreen({
           <>
             <Form method="post" action="/sign-in/google" reloadDocument>
               <Destination destination={view.destination} />
-              <button className={styles.google} type="submit">
-                <img src={googleButton} alt="Sign in with Google" width="180" height="40" />
-              </button>
+              <GoogleButton />
             </Form>
             <p>Or enter your email address and we will send you a sign-in link.</p>
           </>
@@ -45,30 +134,13 @@ export function AskScreen({
           <p>Enter your email address and we will send you a sign-in link.</p>
         )}
         <Form method="post" action="/sign-in">
-          <Field
-            label="Email address"
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            autoCapitalize="off"
-            spellCheck={false}
-            autoFocus
-            required
-            defaultValue={view.email ?? ""}
-            {...(view.problem === undefined ? {} : { error: view.problem })}
-          />
+          <AddressField view={view} />
           <Destination destination={view.destination} />
+          <Click click={view.click} />
+          <ConsentBox click={view.click} />
           <Button pending={pressed}>Send me a sign-in link</Button>
         </Form>
-        <p className="quiet">
-          Each email sign-in link opens once and expires an hour after it is sent, so there is
-          nothing to keep and no password to remember.
-        </p>
-        <p className="quiet">
-          New to Agentify? Sign in here. Once you are signed in, one button opens your seller
-          dashboard.
-        </p>
+        <SignInNotes />
       </div>
     </GatePage>
   );
@@ -146,11 +218,13 @@ export function LinkRequestedScreen({
   email,
   destination,
   answer,
+  click,
 }: Readonly<{
   chrome: Chrome;
   email: string;
   destination: DashboardDestination;
   answer: LinkAnswer;
+  click?: OfferedClick;
 }>) {
   const pressed = usePressed();
   const wall = "wall" in answer ? answer.wall : null;
@@ -200,6 +274,10 @@ export function LinkRequestedScreen({
         <Form method="post" action="/sign-in">
           <input name="email" type="hidden" value={email} />
           <Destination destination={destination} />
+          {/* Another link is asked for with what this page shows: the box,
+              ticked as the person left it on the page before. */}
+          <Click click={click} />
+          <ConsentBox click={click} />
           <WaitingButton
             seconds={Math.max(0, Math.ceil(answer.seconds))}
             pending={pressed}
@@ -208,6 +286,7 @@ export function LinkRequestedScreen({
         </Form>
         <Form method="get" action="/sign-in">
           <Destination destination={destination} />
+          <Click click={click} />
           <Button variant="secondary">Use a different address</Button>
         </Form>
       </div>
@@ -218,9 +297,13 @@ export function LinkRequestedScreen({
 /**
  * "Refused" covers both a provider that rejected the message and one that did
  * not answer in time, and the second may have delivered it. What is known is
- * that the send cannot be confirmed and nothing was written.
+ * that the send cannot be confirmed and nothing was written. Trying again
+ * keeps the ad's click, so the box is offered again, unticked.
  */
-export function MailUnavailableScreen({ chrome }: Readonly<{ chrome: Chrome }>) {
+export function MailUnavailableScreen({
+  chrome,
+  click,
+}: Readonly<{ chrome: Chrome; click?: OfferedClick }>) {
   return (
     <GatePage chrome={chrome} title="We could not confirm your sign-in link went out">
       <Form className="gate-card" method="get" action="/sign-in">
@@ -229,6 +312,7 @@ export function MailUnavailableScreen({ chrome }: Readonly<{ chrome: Chrome }>) 
           Something went wrong while sending the email, so we do not know whether it was delivered.
           No account or session was created. Try again, and check that the email address is correct.
         </p>
+        <Click click={click} />
         <Button>Try again</Button>
       </Form>
     </GatePage>
@@ -239,7 +323,12 @@ export function MailUnavailableScreen({ chrome }: Readonly<{ chrome: Chrome }>) 
  * Drawing it spends nothing; the press does. The address is shown because a
  * link for somebody else's address, sent to a victim, would otherwise sign them
  * in as that somebody without their noticing. The page runs no script, so the
- * form is posted by the browser itself.
+ * form is posted by the browser itself, with the name of the button pressed.
+ *
+ * Where the press would tell the ad tracker of the sign-up, the page says so
+ * and asks: anybody can ask for a link for any address, so the box ticked then
+ * is not the owner's word. The two answers are drawn alike, so neither is the
+ * one the page leans towards.
  */
 export function OpenLinkScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: OpenLinkView }>) {
   if (view.screen === "refused") {
@@ -271,11 +360,28 @@ export function OpenLinkScreen({ chrome, view }: Readonly<{ chrome: Chrome; view
         <p>
           This link signs <strong>{view.email}</strong> in on this browser.
         </p>
+        {view.tellsTracker ? (
+          <p>
+            {ADS_CONSENT.confirmation}{" "}
+            <a href={ADS_CONSENT.explained.href}>{ADS_CONSENT.explained.words}</a>
+          </p>
+        ) : null}
         <input type="hidden" name="token" value={view.token} />
-        <Button>Sign in as {view.email}</Button>
+        {view.tellsTracker ? (
+          <>
+            <Button variant="secondary" name="report" value="yes">
+              {ADS_CONSENT.tell}
+            </Button>
+            <Button variant="secondary" name="report" value="no">
+              {ADS_CONSENT.without}
+            </Button>
+          </>
+        ) : (
+          <Button>Sign in as {view.email}</Button>
+        )}
         <p className="quiet">
-          If that is not your address, close this page. Nothing happens unless the button is
-          pressed.
+          If that is not your address, close this page. Nothing happens unless{" "}
+          {view.tellsTracker ? "a" : "the"} button is pressed.
         </p>
       </Form>
     </GatePage>

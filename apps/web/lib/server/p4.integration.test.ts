@@ -7,7 +7,6 @@ import {
   consentSnapshots,
   createDatabase,
   createUuidV7,
-  deliveryOutbox,
   leadScans,
   leads,
   migrateDatabase,
@@ -90,7 +89,6 @@ process.env.EMAIL_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
 process.env.TURNSTILE_ENFORCED = "false";
 process.env.PUBLIC_SHARE_ENABLED = "true";
 process.env.REGISTRATION_ENABLED = "false";
-process.env.PARTNER_POSTBACK_ENABLED = "true";
 process.env.REPORT_IDENTITY_SECRET = "r".repeat(32);
 process.env.DASHBOARD_IDENTITY_URL = "http://127.0.0.1:1";
 
@@ -704,53 +702,34 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(await visitorSession()).toMatchObject({ lastLandingVariant: "store-v2" });
   });
 
-  it("keeps a partner's click for thirty days in a cookie the page's script cannot read, once its visitor allows ads measurement", async () => {
-    const partnerClickId = "Rt5sJ2QpR4vN7bL0aZ9wMh";
-    const consented = await persistConsent(
-      new Request("http://localhost:3000/api/v1/consent", {
-        method: "POST",
-        headers: { origin: "http://localhost:3000", "content-type": "application/json" },
-        body: JSON.stringify({
-          policy_version: CONSENT_POLICY_VERSION,
-          categories: {
-            essential_processing: true,
-            product_analytics: true,
-            ads_measurement: true,
-            marketing_email: false,
-            dataset_reuse: false,
-            card_signal: false,
-          },
+  it("expires a partner's click cookie the browser may still hold once its visitor saves a choice without ads measurement", async () => {
+    const choose = (adsMeasurement: boolean) =>
+      persistConsent(
+        new Request("http://localhost:3000/api/v1/consent", {
+          method: "POST",
+          headers: { origin: "http://localhost:3000", "content-type": "application/json" },
+          body: JSON.stringify({
+            policy_version: CONSENT_POLICY_VERSION,
+            categories: {
+              essential_processing: true,
+              product_analytics: true,
+              ads_measurement: adsMeasurement,
+              marketing_email: false,
+              dataset_reuse: false,
+              card_signal: false,
+            },
+          }),
         }),
-      }),
-    );
-    expect(consented.status).toBe(201);
-    const visitor =
-      /agentify_anonymous=[^;]+/.exec(consented.headers.get("set-cookie") ?? "")?.[0] ?? "";
-    expect(visitor).not.toBe("");
+      );
+    const expired = "clickid=; Path=/; Max-Age=0; HttpOnly; SameSite=lax";
 
-    const attributed = await persistAttribution(
-      new Request("http://localhost:3000/api/v1/attribution", {
-        method: "POST",
-        headers: {
-          origin: "http://localhost:3000",
-          cookie: visitor,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          segment: "owner",
-          landing_variant: "owner-v1",
-          touch: {},
-          partner_click_id: partnerClickId,
-        }),
-      }),
-    );
+    const withdrawn = await choose(false);
+    const allowed = await choose(true);
 
-    expect(attributed.status).toBe(204);
-    expect(attributed.headers.get("set-cookie")).toMatch(
-      new RegExp(
-        `^clickid=${partnerClickId}; Path=/; Expires=[^;]+; Max-Age=2592000; HttpOnly; SameSite=lax$`,
-      ),
-    );
+    expect(withdrawn.status).toBe(201);
+    expect(withdrawn.headers.getSetCookie()).toContain(expired);
+    expect(allowed.status).toBe(201);
+    expect(allowed.headers.getSetCookie().join("\n")).not.toContain("clickid=");
   });
 
   it("keeps attribution neutral and both accepted registration links usable", async () => {
@@ -794,51 +773,6 @@ describe("P4 dashboard-owned scanner identity", () => {
     });
     expect(JSON.stringify(attributedSession)).not.toContain("fbclid=");
 
-    const partnerClickId = "Xk8sJ2QpR4vN7bL0aZ9wQg";
-    const partnerAttributionRequest = () =>
-      new Request("http://localhost:3000/api/v1/attribution", {
-        method: "POST",
-        headers: {
-          origin: "http://localhost:3000",
-          cookie: `agentify_anonymous=${anonymousToken}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          segment: "owner",
-          landing_variant: "owner-v1",
-          touch: {},
-          partner_click_id: partnerClickId,
-        }),
-      });
-    expect(
-      (await persistAttribution(partnerAttributionRequest())).headers.get("set-cookie") ?? "",
-    ).not.toContain(`clickid=${partnerClickId}`);
-    const consentRequest = (adsMeasurement: boolean) =>
-      new Request("http://localhost:3000/api/v1/consent", {
-        method: "POST",
-        headers: {
-          origin: "http://localhost:3000",
-          cookie: `agentify_anonymous=${anonymousToken}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          policy_version: CONSENT_POLICY_VERSION,
-          categories: {
-            essential_processing: true,
-            product_analytics: true,
-            ads_measurement: adsMeasurement,
-            marketing_email: false,
-            dataset_reuse: false,
-            card_signal: false,
-          },
-        }),
-      });
-    expect((await persistConsent(consentRequest(true))).status).toBe(201);
-    expect(
-      (await persistAttribution(partnerAttributionRequest())).headers.get("set-cookie"),
-    ).toContain(`clickid=${partnerClickId}`);
-    const revoked = await persistConsent(consentRequest(false));
-    expect(revoked.headers.get("set-cookie")).toMatch(/clickid=;.*Max-Age=0/i);
     const piiAttribution = await persistAttribution(
       new Request("http://localhost:3000/api/v1/attribution", {
         method: "POST",
@@ -1477,35 +1411,37 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(lead.phoneLookupHash).toBeNull();
   });
 
+  it("keeps the time an address was first verified when it confirms another report", async () => {
+    const { db } = getDatabase();
+    const email = "verified-once@example.com";
+    const verifiedAt = async () =>
+      onlyRow(
+        await db
+          .select({ verifiedAt: leads.verifiedAt })
+          .from(leads)
+          .where(eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", email))),
+      ).verifiedAt;
+    const { scan: first } = await createFreshCompletedScan("verified-once-first");
+    await createScannerRegistrationIntent(first, registrationBody(email));
+    await visitorOf(pressLink(latestLink(email)));
+    const firstVerified = await verifiedAt();
+    expect(firstVerified).toBeInstanceOf(Date);
+
+    const { scan: second } = await createFreshCompletedScan("verified-once-second");
+    await createScannerRegistrationIntent(second, registrationBody(email));
+    await visitorOf(pressLink(latestLink(email)));
+
+    expect(await registrationsFor(second.id)).toBe("1");
+    expect(await verifiedAt()).toEqual(firstVerified);
+  });
+
   it("stores phone only encrypted and finishes the request once", async () => {
     const { db } = getDatabase();
     const { scan, accessToken } = await createFreshCompletedScan("encrypted-registration");
     await copyChecks(scan.id);
-    const partnerConsentId = createUuidV7();
-    await db.insert(consentSnapshots).values({
-      id: partnerConsentId,
-      sessionId: scan.sessionId,
-      policyVersion: "consent-v1.0.0",
-      categories: {
-        essential_processing: true,
-        product_analytics: false,
-        ads_measurement: true,
-        marketing_email: false,
-        dataset_reuse: false,
-        card_signal: false,
-      },
-      source: "test",
-    });
-    await db
-      .update(sessions)
-      .set({ consentSnapshotId: partnerConsentId })
-      .where(eq(sessions.id, scan.sessionId));
 
     const email = "dashboard-new@example.com";
-    const partnerClickId = "Xk8sJ2QpR4vN7bL0aZ9wQg";
-    await createScannerRegistrationIntent(scan, registrationBody(email), {
-      partnerClickId,
-    });
+    await createScannerRegistrationIntent(scan, registrationBody(email));
     const firstLink = latestLink(email);
     const emailLookupHash = hmacHex(tokenHmacSecret, "email", email);
     const activeIntent = onlyRow(
@@ -1521,11 +1457,9 @@ describe("P4 dashboard-owned scanner identity", () => {
         ),
     );
     expect(JSON.stringify(activeIntent)).not.toContain("+14155550123");
-    expect(JSON.stringify(activeIntent)).not.toContain(partnerClickId);
 
     await expect(
       createScannerRegistrationIntent(scan, registrationBody(email), {
-        partnerClickId,
         sendReportLink: async () => ({ status: "unavailable" }) as const,
       }),
     ).rejects.toThrow("dashboard_identity_unavailable");
@@ -1610,53 +1544,6 @@ describe("P4 dashboard-owned scanner identity", () => {
     );
     expect(lead.phoneE164Ciphertext).not.toContain("+14155550123");
     expect(lead.phoneLookupHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(
-      await db
-        .select()
-        .from(deliveryOutbox)
-        .where(eq(deliveryOutbox.destination, "partner_tracker")),
-    ).toHaveLength(1);
-
-    await createScannerRegistrationIntent(scan, registrationBody(email), {
-      partnerClickId,
-    });
-    await visitorOf(pressLink(latestLink(email)));
-    expect(
-      await db
-        .select()
-        .from(deliveryOutbox)
-        .where(eq(deliveryOutbox.destination, "partner_tracker")),
-    ).toHaveLength(1);
-
-    const { scan: revokedScan } = await createFreshCompletedScan("revoked-partner");
-    const revokedConsentId = createUuidV7();
-    await db.insert(consentSnapshots).values({
-      id: revokedConsentId,
-      sessionId: revokedScan.sessionId,
-      policyVersion: "consent-v1.0.0",
-      categories: {
-        essential_processing: true,
-        ads_measurement: false,
-      },
-      source: "test_withdrawal",
-    });
-    await db
-      .update(sessions)
-      .set({ consentSnapshotId: revokedConsentId })
-      .where(eq(sessions.id, revokedScan.sessionId));
-    const revokedEmail = "revoked-partner@example.com";
-    await createScannerRegistrationIntent(revokedScan, registrationBody(revokedEmail), {
-      partnerClickId,
-    });
-    await expect(visitorOf(pressLink(latestLink(revokedEmail)))).resolves.toMatchObject({
-      kind: "person",
-    });
-    expect(
-      await db
-        .select()
-        .from(deliveryOutbox)
-        .where(eq(deliveryOutbox.destination, "partner_tracker")),
-    ).toHaveLength(1);
   });
 
   it("authorizes the 18-row report and a revocable safe share for the owner's session", async () => {

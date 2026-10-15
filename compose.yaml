@@ -228,6 +228,18 @@ services:
       # sign-in alone; one credential without the other is refused at start-up.
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID-}"
       GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET-}"
+      # Off unless the host's file turns it on. On, the dashboard tells the ad
+      # tracker once that a person its ad sent signed up, for each who ticked the
+      # box on the sign-in page and then confirmed it on the link's page or
+      # signed in with Google, with the tracker's key of at least sixteen visible
+      # ASCII characters.
+      # It refuses to start with the switch on and no such key, and on the test
+      # channel at all. Off, the key is not read, so it may wait in the file
+      # ahead of the switch. A laptop that tries it runs the application outside
+      # this file and names its own receiver in REGISTRATION_POSTBACK_URL, which
+      # no deployment is handed.
+      REGISTRATION_POSTBACK_ENABLED: "${REGISTRATION_POSTBACK_ENABLED:-false}"
+      REGISTRATION_POSTBACK_KEY: "${REGISTRATION_POSTBACK_KEY:-}"
       # Off because a Secure cookie is never sent back over plain http, so nobody
       # could sign in locally. Wherever the dashboard is reached over https this must
       # be "true", or a merchant's session is exposed to anybody on the path.
@@ -358,8 +370,6 @@ services:
       POSTHOG_DESTINATION_ENV: "${POSTHOG_DESTINATION_ENV:-local}"
       META_CAPI_ENABLED: "${META_CAPI_ENABLED:-false}"
       META_DESTINATION_ENV: "${META_DESTINATION_ENV:-local}"
-      PARTNER_POSTBACK_ENABLED: "${PARTNER_POSTBACK_ENABLED:-false}"
-      PARTNER_POSTBACK_SECRET: "${PARTNER_POSTBACK_SECRET:-}"
       # Passive browser observation through an Apify actor, which is a paid
       # service and a deployment target of its own. Off, and every knob it
       # would need is named here so that turning it on is a line in a `.env`
@@ -424,7 +434,6 @@ services:
       # Off here and off unless a deployment names them.
       BENCHMARK_ENABLED: "${BENCHMARK_ENABLED:-false}"
       PUBLIC_SHARE_ENABLED: "${PUBLIC_SHARE_ENABLED:-false}"
-      PARTNER_POSTBACK_ENABLED: "${PARTNER_POSTBACK_ENABLED:-false}"
       CARD_SIGNAL_ENABLED: "false"
       APIFY_BROWSER_MODE: "${APIFY_BROWSER_MODE:-off}"
       ANALYTICS_RUNTIME_ENV: "${ANALYTICS_RUNTIME_ENV:-local}"

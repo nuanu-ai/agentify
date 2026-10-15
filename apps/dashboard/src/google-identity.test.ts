@@ -1,27 +1,41 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";
+import type { ConsentedClick } from "./dashboard-entry.js";
 import { identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { cookieHeader, type GoogleProfile, googleExchange } from "./testing/google.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
-const config = loadConfig({
+const SETTINGS = {
   DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
   AUTH_SECRET: TEST_AUTH_SECRET,
   PAYMENT_NETWORK: "eip155:84532",
   FACILITATOR_URL: "sandbox:scripted",
   GOOGLE_CLIENT_ID: "offline-client",
   GOOGLE_CLIENT_SECRET: "offline-secret",
+} as const;
+const config = loadConfig(SETTINGS);
+/** A laptop's dashboard with the report switched on, posting to a receiver of its own. */
+const reporting = loadConfig({
+  ...SETTINGS,
+  REGISTRATION_POSTBACK_ENABLED: "true",
+  REGISTRATION_POSTBACK_KEY: ["qa", "synthetic", "postback", "key"].join("-"),
+  REGISTRATION_POSTBACK_URL: "http://127.0.0.1:4010/postback",
 });
 
-function setup(overrides = {}) {
-  const rows: Record<string, Record<string, unknown>[]> = {
+type MemoryRows = Record<string, Record<string, unknown>[]>;
+
+/** `rows` shares another identity's store, as two processes share a database. */
+function setup(
+  overrides = {},
+  rows: MemoryRows = {
     dashboard_accounts: [],
     dashboard_sessions: [],
     dashboard_credentials: [],
     dashboard_verifications: [],
     dashboard_link_sends: [],
-  };
+  },
+) {
   const messages: Message[] = [];
   const identity = identityFor(
     { ...config, ...overrides },
@@ -35,8 +49,8 @@ function setup(overrides = {}) {
   );
   const google = googleExchange();
   vi.stubGlobal("fetch", google.fetch);
-  const start = async (profile: Partial<GoogleProfile> = {}) => {
-    const began = await identity.startGoogle("settings");
+  const start = async (profile: Partial<GoogleProfile> = {}, click?: ConsentedClick) => {
+    const began = await identity.startGoogle("settings", click);
     if (began.status !== "redirect") throw new Error("Google must be available");
     return {
       began,
@@ -44,8 +58,8 @@ function setup(overrides = {}) {
       cookie: cookieHeader(began.setCookies),
     };
   };
-  const login = async (profile: Partial<GoogleProfile> = {}) => {
-    const flow = await start(profile);
+  const login = async (profile: Partial<GoogleProfile> = {}, click?: ConsentedClick) => {
+    const flow = await start(profile, click);
     return await identity.finishGoogle(flow.query, flow.cookie);
   };
   return { identity, rows, messages, google, start, login };
@@ -316,5 +330,240 @@ describe("Google dashboard identity", () => {
     expect(new URL(started.location).searchParams.get("redirect_uri")).toBe(
       "https://test.agentify.ad/sign-in/google/callback",
     );
+  });
+});
+
+/**
+ * Synthetic: each passes the partner click identifier's pattern and was never
+ * issued by any tracker.
+ */
+const CLICK = {
+  id: "qa_click_0123456789abcdef",
+  consentedAt: "2026-10-15T09:30:00.000Z",
+  wording: "registration-consent-1",
+} as const;
+
+const registrationsIn = (rows: MemoryRows) => rows.dashboard_registration_postbacks ?? [];
+
+describe("the registration a consented Google sign-in leaves for the tracker", () => {
+  it("leaves one pending registration with the click, the consent time and the wording when a consented Google sign-in makes a new address's account", async () => {
+    const { login, rows } = setup({ registrationPostback: reporting.registrationPostback });
+    const before = Date.now();
+
+    const opened = await login({}, CLICK);
+
+    if (opened.status !== "opened") throw new Error("the consented Google sign-in did not open");
+    expect(opened.person).toMatchObject({ email: "person@gmail.com", confirmed: true });
+    const [registration, ...more] = registrationsIn(rows);
+    expect(more).toStrictEqual([]);
+    expect(registration).toMatchObject({
+      accountId: opened.person.id,
+      clickId: CLICK.id,
+      consentedAt: new Date(CLICK.consentedAt),
+      consentWording: CLICK.wording,
+      state: "pending",
+      attempts: 0,
+      settledAt: null,
+    });
+    // Due at once: nothing about a new registration is worth waiting for.
+    const due = new Date(registration?.nextAttemptAt as Date).getTime();
+    expect(due).toBeGreaterThanOrEqual(before);
+    expect(due).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("writes no registration for a Google sign-in started without a click", async () => {
+    const { login, rows } = setup({ registrationPostback: reporting.registrationPostback });
+
+    expect(await login()).toMatchObject({ status: "opened", person: { confirmed: true } });
+
+    expect(rows.dashboard_accounts).toHaveLength(1);
+    expect(registrationsIn(rows)).toStrictEqual([]);
+  });
+
+  it("writes no registration while reporting is switched off, even for a sign-in started with a click while it was on", async () => {
+    const on = setup({ registrationPostback: reporting.registrationPostback });
+    const flow = await on.start({}, CLICK);
+    const off = setup({}, on.rows);
+    vi.stubGlobal("fetch", on.google.fetch);
+
+    expect(await off.identity.finishGoogle(flow.query, flow.cookie)).toMatchObject({
+      status: "opened",
+      person: { confirmed: true },
+    });
+    vi.stubGlobal("fetch", off.google.fetch);
+    expect(await off.login({ sub: "another", email: "another@gmail.com" }, CLICK)).toMatchObject({
+      status: "opened",
+    });
+
+    expect(on.rows.dashboard_accounts).toHaveLength(2);
+    expect(registrationsIn(on.rows)).toStrictEqual([]);
+  });
+
+  it("writes no registration when Google signs in an address that already has a verified account", async () => {
+    const { identity, login, messages, rows } = setup({
+      registrationPostback: reporting.registrationPostback,
+    });
+    // Verified by a mailed link, then linked to Google by its first Google sign-in.
+    await identity.requestLink("person@gmail.com", "default");
+    const token = /token=([^\s]+)/.exec(messages[0]?.body ?? "")?.[1] ?? "";
+    expect(await identity.openLink(token)).toMatchObject({ status: "opened" });
+    expect(await login({}, CLICK)).toMatchObject({ status: "opened" });
+    // Made by Google without a click, then signed in again with one.
+    expect(await login({ sub: "made", email: "made@gmail.com" })).toMatchObject({
+      status: "opened",
+    });
+    expect(await login({ sub: "made", email: "made@gmail.com" }, CLICK)).toMatchObject({
+      status: "opened",
+    });
+
+    expect(rows.dashboard_accounts).toHaveLength(2);
+    expect(rows.dashboard_credentials).toHaveLength(2);
+    expect(registrationsIn(rows)).toStrictEqual([]);
+  });
+
+  it("writes no registration where Google refuses an address whose only account is unverified", async () => {
+    // Google is not linked to an account nobody has verified: the address's
+    // owner verifies it with a mailed link, whose press registers it.
+    const { identity, login, rows } = setup({
+      registrationPostback: reporting.registrationPostback,
+    });
+    await identity.make("person@gmail.com", "mer_made");
+
+    expect(await login({}, CLICK)).toMatchObject({ status: "refused", reason: "invalid" });
+
+    expect(rows.dashboard_accounts).toMatchObject([{ emailVerified: false }]);
+    expect(rows.dashboard_sessions).toStrictEqual([]);
+    expect(registrationsIn(rows)).toStrictEqual([]);
+  });
+
+  it.each(["cancelled", "unverified-email", "foreign-state", "outage"])(
+    "writes nothing for a consented Google sign-in whose callback is refused: %s",
+    async (kind) => {
+      const { start, identity, rows, google } = setup({
+        registrationPostback: reporting.registrationPostback,
+      });
+      const flow = await start(kind === "unverified-email" ? { email_verified: false } : {}, CLICK);
+      if (kind === "cancelled") {
+        flow.query.delete("code");
+        flow.query.set("error", "access_denied");
+      }
+      if (kind === "foreign-state") flow.query.set("state", "other-browser");
+      if (kind === "outage") google.goOffline();
+
+      expect(await identity.finishGoogle(flow.query, flow.cookie)).toMatchObject({
+        status: "refused",
+      });
+
+      expect(rows.dashboard_accounts).toStrictEqual([]);
+      expect(rows.dashboard_sessions).toStrictEqual([]);
+      expect(registrationsIn(rows)).toStrictEqual([]);
+    },
+  );
+
+  it("brings the click back with a Google return refused once its browser's own state was confirmed, and with no other refusal", async () => {
+    const { start, identity, rows } = setup({
+      registrationPostback: reporting.registrationPostback,
+    });
+    const cancelled = await start({}, CLICK);
+    cancelled.query.delete("code");
+    cancelled.query.set("error", "access_denied");
+    const unverified = await start({ email_verified: false }, CLICK);
+    const foreign = await start({}, CLICK);
+    foreign.query.set("state", "other-browser");
+    const elsewhere = await start({}, CLICK);
+    const another = await start({}, CLICK);
+    const unticked = await start({ email_verified: false });
+
+    const answers = {
+      cancelled: await identity.finishGoogle(cancelled.query, cancelled.cookie),
+      unverified: await identity.finishGoogle(unverified.query, unverified.cookie),
+      foreign: await identity.finishGoogle(foreign.query, foreign.cookie),
+      // The state is a real sign-in's, held to the cookie of another browser.
+      elsewhere: await identity.finishGoogle(elsewhere.query, another.cookie),
+      unticked: await identity.finishGoogle(unticked.query, unticked.cookie),
+    };
+
+    expect(answers.cancelled).toMatchObject({
+      status: "refused",
+      reason: "cancelled",
+      click: CLICK,
+    });
+    expect(answers.unverified).toMatchObject({
+      status: "refused",
+      reason: "email-unverified",
+      click: CLICK,
+    });
+    for (const answer of [answers.foreign, answers.elsewhere, answers.unticked]) {
+      expect(answer.status).toBe("refused");
+      expect(answer).not.toHaveProperty("click");
+    }
+    for (const answer of Object.values(answers)) {
+      expect(answer.setCookies.map(decodeURIComponent).join("\n")).not.toContain(CLICK.id);
+    }
+    expect(rows.dashboard_accounts).toStrictEqual([]);
+    expect(registrationsIn(rows)).toStrictEqual([]);
+  });
+
+  it("brings no click back with a refused Google return while reporting is switched off", async () => {
+    const on = setup({ registrationPostback: reporting.registrationPostback });
+    const flow = await on.start({}, CLICK);
+    flow.query.delete("code");
+    flow.query.set("error", "access_denied");
+    const off = setup({}, on.rows);
+
+    const answer = await off.identity.finishGoogle(flow.query, flow.cookie);
+
+    expect(answer).toMatchObject({ status: "refused", reason: "cancelled" });
+    expect(answer).not.toHaveProperty("click");
+  });
+
+  it("keeps the click out of every cookie and out of the address the browser is sent to Google with", async () => {
+    const { start, identity, rows } = setup({
+      registrationPostback: reporting.registrationPostback,
+    });
+
+    const flow = await start({}, CLICK);
+    const finished = await identity.finishGoogle(flow.query, flow.cookie);
+
+    expect(finished.status).toBe("opened");
+    expect(registrationsIn(rows)).toHaveLength(1);
+    const seen = [flow.began.location, ...flow.began.setCookies, ...finished.setCookies]
+      .map(decodeURIComponent)
+      .join("\n");
+    for (const part of [CLICK.id, CLICK.consentedAt, CLICK.wording]) {
+      expect(seen).not.toContain(part);
+    }
+  });
+
+  it("signs in and writes nothing for a click that comes back from the state unreadable", async () => {
+    // A state row holding a click this file would not have written is no
+    // consent to tell anybody anything.
+    const { start, identity, rows } = setup({
+      registrationPostback: reporting.registrationPostback,
+    });
+    const flow = await start({}, CLICK);
+    const stored = rows.dashboard_verifications?.find(
+      (row) => row.identifier === flow.query.get("state"),
+    );
+    if (stored === undefined || !String(stored.value).includes(CLICK.id)) {
+      throw new Error("the started sign-in's state does not hold its click");
+    }
+    stored.value = String(stored.value).replaceAll(CLICK.id, "too-short");
+
+    expect(await identity.finishGoogle(flow.query, flow.cookie)).toMatchObject({
+      status: "opened",
+    });
+
+    expect(registrationsIn(rows)).toStrictEqual([]);
+  });
+
+  it("refuses to start a Google sign-in with a click it could not read back, and keeps no state", async () => {
+    const { identity, rows } = setup({ registrationPostback: reporting.registrationPostback });
+
+    expect(
+      await identity.startGoogle("settings", { ...CLICK, consentedAt: "yesterday" }),
+    ).toStrictEqual({ status: "unavailable" });
+
+    expect(rows.dashboard_verifications).toStrictEqual([]);
   });
 });

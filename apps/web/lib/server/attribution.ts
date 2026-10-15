@@ -16,8 +16,6 @@ export type AttributionTouch = Readonly<{
   fbclid_hash?: string;
 }>;
 
-export const PARTNER_CLICK_ID_COOKIE = "clickid";
-
 /**
  * Keeps the campaign a visit arrived from, for a visitor who allowed optional
  * measurement. A visit is known by the session its cookie names, and that
@@ -29,12 +27,11 @@ export async function persistAttributionTouch(input: {
   segment: Segment;
   landingVariant: string;
   touch: AttributionTouch;
-  partnerClickId?: string;
-}): Promise<{ partnerClickIdAccepted: boolean }> {
-  if (!input.anonymousToken) return { partnerClickIdAccepted: false };
+}): Promise<void> {
+  if (!input.anonymousToken) return;
   const anonymousHash = hmacHex(getServerConfig().hmacSecret, "anonymous", input.anonymousToken);
   const { db } = getDatabase();
-  return await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     const session = (
       await tx.select().from(sessions).where(eq(sessions.anonymousIdHash, anonymousHash)).limit(1)
     )[0];
@@ -51,7 +48,7 @@ export async function persistAttributionTouch(input: {
       typeof consent?.categories === "object" && consent.categories !== null
         ? (consent.categories as Partial<ConsentCategories>)
         : {};
-    if (!session || !consentAllowsMeasurement(categories)) return { partnerClickIdAccepted: false };
+    if (!session || !consentAllowsMeasurement(categories)) return;
 
     const firstTouch = !session.firstLandingVariant;
     await tx
@@ -78,8 +75,5 @@ export async function persistAttributionTouch(input: {
         lastSeenAt: new Date(),
       })
       .where(eq(sessions.id, session.id));
-    return {
-      partnerClickIdAccepted: Boolean(input.partnerClickId) && categories.ads_measurement === true,
-    };
   });
 }

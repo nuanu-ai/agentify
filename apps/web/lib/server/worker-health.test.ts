@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  evaluateOperationalSignals,
-  evaluateWorkerHeartbeat,
-  READINESS_OUTBOX_DESTINATIONS,
-} from "./worker-health";
+import { evaluateOperationalSignals, evaluateWorkerHeartbeat } from "./worker-health";
 
 describe("public worker dependency health", () => {
   const now = new Date("2026-07-17T00:00:30.000Z");
@@ -97,10 +93,5 @@ describe("operational health thresholds", () => {
         failed_15m: 1,
       }),
     ).toMatchObject({ scannerCapacity: true });
-  });
-
-  it("keeps partner delivery incidents out of product readiness", () => {
-    expect(READINESS_OUTBOX_DESTINATIONS).toEqual(["posthog", "meta"]);
-    expect(READINESS_OUTBOX_DESTINATIONS).not.toContain("partner_tracker");
   });
 });

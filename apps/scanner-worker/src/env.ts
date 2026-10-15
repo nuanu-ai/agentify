@@ -24,11 +24,6 @@ const workerEnvSchema = z
       .default("v23.0"),
     META_DATASET_ID: z.string().default(""),
     META_ACCESS_TOKEN: z.string().default(""),
-    PARTNER_POSTBACK_ENABLED: z
-      .enum(["true", "false"])
-      .default("false")
-      .transform((value) => value === "true"),
-    PARTNER_POSTBACK_SECRET: z.string().trim().default(""),
     WORKER_HEALTH_PORT: z.coerce.number().int().min(1).max(65535).default(8081),
     WORKER_ID: z.string().trim().min(1).max(200).default("local-scanner-1"),
     APIFY_BROWSER_ENABLED: z
@@ -47,13 +42,6 @@ const workerEnvSchema = z
     APIFY_BROWSER_MAX_PAGES: z.coerce.number().int().min(1).max(3).default(3),
   })
   .superRefine((env, context) => {
-    if (env.PARTNER_POSTBACK_ENABLED && env.PARTNER_POSTBACK_SECRET.length < 16) {
-      context.addIssue({
-        code: "custom",
-        path: ["PARTNER_POSTBACK_SECRET"],
-        message: "PARTNER_POSTBACK_SECRET is required when partner postback is active",
-      });
-    }
     const active = env.APIFY_BROWSER_ENABLED && env.APIFY_BROWSER_MODE !== "off";
     if (!active) return;
     for (const key of [

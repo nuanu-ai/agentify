@@ -42,11 +42,17 @@ export default function SignIn() {
         email={view.email}
         destination={view.destination}
         answer={view.answer}
+        {...(view.click === undefined ? {} : { click: view.click })}
       />
     );
   }
   if (view.screen === "unavailable") {
-    return <MailUnavailableScreen chrome={chrome} />;
+    return (
+      <MailUnavailableScreen
+        chrome={chrome}
+        {...(view.click === undefined ? {} : { click: view.click })}
+      />
+    );
   }
   return <AskScreen chrome={chrome} view={view} />;
 }

@@ -9,13 +9,16 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
 import {
   EvmAddressSchema,
   IssueKeyRequestSchema,
   type PendingPayoutWallet,
 } from "@nuanu-ai/agentify-contracts";
+import { ADS_CONSENT } from "./ads-consent.js";
 import type { DashboardConfig } from "./config.js";
 import {
+  type ConsentedClick,
   type DashboardDestination,
   type DashboardIdentity,
   dashboardDestinationIn,
@@ -110,14 +113,24 @@ export type SignInView =
       email?: string;
       problem?: string;
       reason?: string;
+      click?: OfferedClick;
     }>
   | Readonly<{
       screen: "requested";
       email: string;
       destination: DashboardDestination;
       answer: LinkAnswer;
+      click?: OfferedClick;
     }>
-  | Readonly<{ screen: "unavailable" }>;
+  | Readonly<{ screen: "unavailable"; click?: OfferedClick }>;
+
+/**
+ * The ad click a visitor arrived with, which the sign-in forms carry from page
+ * to page, and whether they ticked the box: kept with a link, the click waits
+ * for the address's owner to confirm at the press; kept with a Google sign-in,
+ * the tick is the consent. Present only where the report is switched on.
+ */
+export type OfferedClick = Readonly<{ id: string; consented: boolean }>;
 
 /**
  * Accepted carries a key of its own rather than the absence of a limit, so a
@@ -129,8 +142,12 @@ export type LinkAnswer =
   | Readonly<{ sent: true; seconds: number }>
   | Readonly<{ wall: LinkWall; seconds: number }>;
 
+/**
+ * `tellsTracker` is whether the press would tell the ad tracker of a
+ * registration, which the page then says and offers to sign in without.
+ */
 export type OpenLinkView =
-  | Readonly<{ screen: "open"; token: string; email: string }>
+  | Readonly<{ screen: "open"; token: string; email: string; tellsTracker: boolean }>
   | Readonly<{ screen: "refused" }>;
 
 /**
@@ -300,6 +317,21 @@ const UNSAVED = "You are not signed in, so the change you submitted was not save
 const once = (values: readonly unknown[]): unknown => (values.length === 1 ? values[0] : undefined);
 
 /**
+ * The click an address or a form names once, in the tracker's form; null for
+ * anything else, which leaves the page as it is without one.
+ */
+const clickIdIn = (named: URLSearchParams | FormData): string | null => {
+  const id = once(named.getAll("clickid"));
+  return typeof id === "string" && PARTNER_CLICK_ID_PATTERN.test(id) ? id : null;
+};
+
+/** What a link is asked for with: a click only where its box was ticked. */
+const consentedClickOf = (click: OfferedClick | undefined): ConsentedClick | undefined =>
+  click?.consented === true
+    ? { id: click.id, consentedAt: new Date().toISOString(), wording: ADS_CONSENT.version }
+    : undefined;
+
+/**
  * The sign-in form for a browser with no session, as its address asks for it:
  * where the person was going, and why they are here. An expired session is
  * the reason, said as the page's first line; a change lost with it is a
@@ -454,6 +486,17 @@ export const whatIsWrongWithTheLabel = (label: string): string | null => {
 export function pageServicesFor(config: DashboardConfig, parts: PageParts): PageServices {
   const base = config.basePath;
   const { identity } = parts;
+
+  /**
+   * Read only where the report is switched on, so a dashboard that reports
+   * nothing draws every sign-in page exactly as it would with no click.
+   */
+  const offeredIn = (named: URLSearchParams | FormData): Readonly<{ click?: OfferedClick }> => {
+    if (config.registrationPostback === null) return {};
+    const id = clickIdIn(named);
+    if (id === null) return {};
+    return { click: { id, consented: once(named.getAll("ads_consent")) === "yes" } };
+  };
 
   /**
    * The name is passed only by screens that asked the gateway for it: a screen
@@ -669,13 +712,23 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             setCookies: signedIn.setCookies,
           };
         }
-        return { kind: "view", view: askViewOf(query, identity.googleEnabled) };
+        // The box is drawn unticked whatever the address says: only a press
+        // on it is a consent.
+        const { click } = offeredIn(query);
+        return {
+          kind: "view",
+          view: {
+            ...askViewOf(query, identity.googleEnabled),
+            ...(click === undefined ? {} : { click: { id: click.id, consented: false } }),
+          },
+        };
       },
 
       async ask(form) {
         const typed = once(form.getAll("email"));
         const email = typeof typed === "string" ? typed.trim() : "";
         const destination = dashboardDestinationIn(once(form.getAll("destination")));
+        const offered = offeredIn(form);
         if (!LOOKS_LIKE_AN_ADDRESS.test(email)) {
           return {
             kind: "view",
@@ -685,12 +738,17 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
               destination,
               googleEnabled: identity.googleEnabled,
               problem: NOT_AN_ADDRESS,
+              ...offered,
             },
           };
         }
-        const requested = await identity.requestLink(email, destination);
+        const requested = await identity.requestLink(
+          email,
+          destination,
+          consentedClickOf(offered.click),
+        );
         if (requested.status === "unavailable") {
-          return { kind: "view", status: 503, view: { screen: "unavailable" } };
+          return { kind: "view", status: 503, view: { screen: "unavailable", ...offered } };
         }
         // Both waits come from the reading of the same rows; this page never
         // works one out, because the only wait it could guess is the minute,
@@ -704,7 +762,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           kind: "view",
           status: 202,
           ...("wall" in answer ? { headers: { "retry-after": String(answer.seconds) } } : {}),
-          view: { screen: "requested", email, destination, answer },
+          view: { screen: "requested", email, destination, answer, ...offered },
         };
       },
 
@@ -717,18 +775,27 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       async landing(cookie, query) {
         const named = once(query.getAll("token"));
         const token = typeof named === "string" ? named : "";
-        const email = token === "" ? null : await identity.addressOfLink(token);
-        if (email === null) {
+        const link = token === "" ? null : await identity.landingOf(token);
+        if (link === null) {
           return await refuseLink(cookie);
         }
-        return { kind: "view", view: { screen: "open", token, email }, headers: LINK_HEADERS };
+        return {
+          kind: "view",
+          view: { screen: "open", token, email: link.email, tellsTracker: link.tellsTracker },
+          headers: LINK_HEADERS,
+        };
       },
 
+      // Only the yes the page's own button sends, named once, tells the
+      // tracker; anything else signs in and tells it nothing.
       async open(cookie, form) {
         const named = once(form.getAll("token"));
         const token = typeof named === "string" ? named : "";
+        const tellTracker = once(form.getAll("report")) === "yes";
         const opened =
-          token === "" ? { status: "refused" as const } : await identity.openLink(token);
+          token === ""
+            ? { status: "refused" as const }
+            : await identity.openLink(token, { tellTracker });
         if (opened.status === "refused") {
           return await refuseLink(cookie);
         }
@@ -746,7 +813,8 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
 
       async googleStart(form) {
         const destination = dashboardDestinationIn(once(form.getAll("destination")));
-        const started = await identity.startGoogle(destination);
+        const offered = offeredIn(form);
+        const started = await identity.startGoogle(destination, consentedClickOf(offered.click));
         if (started.status === "redirect") {
           return {
             kind: "redirect",
@@ -759,7 +827,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           kind: "view",
           status: 503,
           headers: LINK_HEADERS,
-          view: googleRefusalView(identity.googleEnabled, "unavailable", destination),
+          view: {
+            ...googleRefusalView(identity.googleEnabled, "unavailable", destination),
+            ...offered,
+          },
         };
       },
 
@@ -779,12 +850,19 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           status: finished.reason === "unavailable" ? 503 : 401,
           headers: LINK_HEADERS,
           setCookies: finished.setCookies,
-          view: googleRefusalView(
-            identity.googleEnabled,
-            finished.reason,
-            finished.destination,
-            finished.email,
-          ),
+          view: {
+            ...googleRefusalView(
+              identity.googleEnabled,
+              finished.reason,
+              finished.destination,
+              finished.email,
+            ),
+            // Ticked as this browser left it when it pressed Google, which is
+            // the only way the click came back; the person can untick it.
+            ...(finished.click === undefined
+              ? {}
+              : { click: { id: finished.click.id, consented: true } }),
+          },
         };
       },
 

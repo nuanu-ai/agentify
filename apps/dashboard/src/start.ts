@@ -1,9 +1,11 @@
 /**
  * Starts the dashboard inside the process it shares with the gateway: its
- * listeners, the scanner's route where its secret is set, and the WooCommerce
+ * listeners, the scanner's route where its secret is set, the WooCommerce
  * worker, which fills paid orders for merchants who connected a shop instead of
- * writing code. The worker does not start on the live channel, where the
- * connector is not offered.
+ * writing code, and the loop that reports consented registrations to the ad
+ * tracker. The worker does not start on the live channel, where the connector
+ * is not offered. The reports' loop starts everywhere: switched on it reports,
+ * and switched off it only gives up what is left pending a day on.
  *
  * Migrations are not run here: a process that migrates on boot migrates once
  * per replica and races itself.
@@ -11,6 +13,7 @@
 
 import type { Server } from "node:http";
 import type { Gateway } from "@agentify/gateway";
+import type { Pool } from "pg";
 import { closedWithin } from "./closing.js";
 import type { DashboardConfig } from "./config.js";
 import { connect } from "./database.js";
@@ -18,6 +21,7 @@ import { gatewayFor } from "./gateway.js";
 import { identityFor } from "./identity.js";
 import { isSandboxMail, postmanFor } from "./mail.js";
 import type { Pages } from "./pages.js";
+import { startRegistrationReports } from "./registration-postbacks.js";
 import { startReportIdentityServer } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
 import type { CommissionRate } from "./shares.js";
@@ -46,7 +50,7 @@ interface RunningDashboard {
    * grace.
    */
   closeListeners(): Promise<void>;
-  /** Settles once the turn in flight has ended. */
+  /** Settles once the turns in flight have ended. */
   stopWorker(): Promise<void>;
   close(): Promise<void>;
 }
@@ -77,15 +81,22 @@ export function dashboardFor(
   const wooShops = postgresWooShops(pool);
   return {
     tell: tellerFor(config, identity, postmanFor(config), rate),
-    start: (application) => started(config, application, identity, wooShops, pages),
+    start: (application) => started(config, application, { pool, identity, wooShops }, pages),
   };
 }
 
 function started(
   config: DashboardConfig,
   application: Gateway,
-  identity: ReturnType<typeof identityFor>,
-  wooShops: ReturnType<typeof postgresWooShops>,
+  {
+    pool,
+    identity,
+    wooShops,
+  }: Readonly<{
+    pool: Pool;
+    identity: ReturnType<typeof identityFor>;
+    wooShops: ReturnType<typeof postgresWooShops>;
+  }>,
   pages: Pages,
 ): RunningDashboard {
   const reportIdentityServer = startReportIdentityServer(config.reportIdentitySecret, identity);
@@ -115,11 +126,15 @@ function started(
         now: () => new Date(),
       });
 
+  const reports = startRegistrationReports({ pool, target: config.registrationPostback });
+
   return {
     async closeListeners() {
       await Promise.all([server, reportIdentityServer].map(closed));
     },
-    stopWorker: () => worker.stop(),
+    stopWorker: async () => {
+      await Promise.all([worker.stop(), reports.stop()]);
+    },
     close: async () => {
       await Promise.all([identity.close(), pages.close()]);
     },

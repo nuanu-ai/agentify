@@ -12,23 +12,6 @@ describe("browser observation worker env", () => {
     const env = readWorkerEnv(base);
     expect(env.APIFY_BROWSER_ENABLED).toBe(false);
     expect(env.APIFY_BROWSER_MODE).toBe("off");
-    expect(env.PARTNER_POSTBACK_ENABLED).toBe(false);
-  });
-
-  it("requires a server-only secret when partner delivery is active", () => {
-    expect(() =>
-      readWorkerEnv({
-        ...base,
-        PARTNER_POSTBACK_ENABLED: "true",
-      }),
-    ).toThrow("PARTNER_POSTBACK_SECRET");
-    expect(
-      readWorkerEnv({
-        ...base,
-        PARTNER_POSTBACK_ENABLED: "true",
-        PARTNER_POSTBACK_SECRET: "partner-secret-value",
-      }).PARTNER_POSTBACK_ENABLED,
-    ).toBe(true);
   });
 
   // A browser mode that is switched on pays for runs at Apify, so it starts

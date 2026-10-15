@@ -16,7 +16,12 @@ describe("a cookie the scanner reads", () => {
   });
 
   it("is the last one where a name is sent twice", () => {
-    expect(readCookie(withCookie("clickid=first; clickid=second"), "clickid")).toBe("second");
+    expect(
+      readCookie(
+        withCookie("agentify_anonymous=first; agentify_anonymous=second"),
+        "agentify_anonymous",
+      ),
+    ).toBe("second");
   });
 
   it("is not there where it was not sent, or cannot be decoded", () => {
@@ -45,8 +50,8 @@ describe("a cookie the scanner sets", () => {
   });
 
   it("is cleared with an age of nothing and no expiry", () => {
-    expect(cookieHeader("clickid", "", { httpOnly: true, sameSite: "lax", maxAge: 0 })).toBe(
-      "clickid=; Path=/; Max-Age=0; HttpOnly; SameSite=lax",
-    );
+    expect(
+      cookieHeader("agentify_anonymous", "", { httpOnly: true, sameSite: "lax", maxAge: 0 }),
+    ).toBe("agentify_anonymous=; Path=/; Max-Age=0; HttpOnly; SameSite=lax");
   });
 });

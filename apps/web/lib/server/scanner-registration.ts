@@ -8,13 +8,12 @@
  * the scan, and it is the only way a report comes to belong to an address.
  */
 
-import { partnerClickIdSchema, type RegistrationRequest } from "@agentify/scanner-contracts";
+import type { RegistrationRequest } from "@agentify/scanner-contracts";
 import type { SendReportLinkResponse } from "@agentify/scanner-contracts/report-identity";
 import {
   consentSnapshots,
   createUuidV7,
   type DatabaseTransaction,
-  deliveryOutbox,
   emitStoredBusinessEvent,
   leadScans,
   leads,
@@ -25,7 +24,7 @@ import {
 } from "@agentify/scanner-database";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getServerConfig } from "./config";
-import { decryptSensitiveValue, encryptSensitiveValue, hmacHex, normalizeEmail } from "./crypto";
+import { encryptSensitiveValue, hmacHex, normalizeEmail } from "./crypto";
 import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
 import type { LinkSendOutcome } from "./link-wait";
@@ -34,7 +33,6 @@ import { consumeRateLimitsAtomically, refundRateLimitEvent } from "./rate-limit"
 const REGISTRATION_INTENT_TTL_MS = 60 * 60 * 1000;
 
 type RegistrationIntentOptions = Readonly<{
-  partnerClickId?: string;
   sendReportLink?: (email: string, request: string) => Promise<SendReportLinkResponse>;
 }>;
 
@@ -42,7 +40,6 @@ function intentValues(
   scan: typeof scans.$inferSelect,
   body: RegistrationRequest,
   normalizedEmail: string,
-  partnerClickId: string | undefined,
   now: Date,
 ) {
   const config = getServerConfig();
@@ -56,9 +53,6 @@ function intentValues(
       ? encryptSensitiveValue(body.phone, config.encryptionKey)
       : null,
     phoneLookupHash: body.phone ? hmacHex(config.hmacSecret, "phone", body.phone) : null,
-    partnerClickIdCiphertext: partnerClickId
-      ? encryptSensitiveValue(partnerClickId, config.encryptionKey)
-      : null,
     role: body.role,
     siteOwnershipClaim: body.site_is_mine,
     marketingEmailOptIn: body.marketing_email_opt_in,
@@ -95,7 +89,6 @@ export async function createScannerRegistrationIntent(
   options: RegistrationIntentOptions = {},
 ): Promise<LinkSendOutcome> {
   const config = getServerConfig();
-  const partnerClickId = partnerClickIdSchema.safeParse(options.partnerClickId);
   const normalizedEmail = normalizeEmail(body.email);
   const emailLookupHash = hmacHex(config.hmacSecret, "email", normalizedEmail);
   const limits = await consumeRateLimitsAtomically([
@@ -122,13 +115,7 @@ export async function createScannerRegistrationIntent(
 
   const now = new Date();
   const { db } = getDatabase();
-  const intent = intentValues(
-    scan,
-    body,
-    normalizedEmail,
-    partnerClickId.success ? partnerClickId.data : undefined,
-    now,
-  );
+  const intent = intentValues(scan, body, normalizedEmail, now);
   await db.transaction(async (tx) => {
     await lockScannerEmail(tx, emailLookupHash);
     await refuseDeletingAddress(tx, emailLookupHash);
@@ -186,10 +173,8 @@ export async function askAsSignedIn(
   scan: typeof scans.$inferSelect,
   body: RegistrationRequest,
   sessionEmail: string,
-  options: Pick<RegistrationIntentOptions, "partnerClickId"> = {},
 ): Promise<LinkSendOutcome> {
   const config = getServerConfig();
-  const partnerClickId = partnerClickIdSchema.safeParse(options.partnerClickId);
   const normalizedEmail = normalizeEmail(sessionEmail);
   const emailLookupHash = hmacHex(config.hmacSecret, "email", normalizedEmail);
   // No message goes out, so the address's hour is not spent; the session's hour
@@ -204,13 +189,7 @@ export async function askAsSignedIn(
   if (!limits.allowed)
     return { sent: false as const, retryAt: limits.retryAt, wall: "unspecified" as const };
   const now = new Date();
-  const intent = intentValues(
-    scan,
-    { ...body, email: normalizedEmail },
-    normalizedEmail,
-    partnerClickId.success ? partnerClickId.data : undefined,
-    now,
-  );
+  const intent = intentValues(scan, { ...body, email: normalizedEmail }, normalizedEmail, now);
   await getDatabase().db.transaction(async (tx) => {
     await lockScannerEmail(tx, emailLookupHash);
     await refuseDeletingAddress(tx, emailLookupHash);
@@ -326,7 +305,6 @@ async function finishIntentInTransaction(
           phoneLookupHash: intent.phoneLookupHash,
         }
       : {};
-  let firstVerification: boolean;
   if (!lead) {
     const leadId = createUuidV7();
     await tx.insert(leads).values({
@@ -341,27 +319,15 @@ async function finishIntentInTransaction(
       firstSessionId: intent.sessionId,
     });
     lead = (await tx.select().from(leads).where(eq(leads.id, leadId)).limit(1))[0];
-    firstVerification = true;
   } else {
-    const newlyVerified = (
-      await tx
-        .update(leads)
-        .set({
-          emailNormalizedCiphertext: intent.emailNormalizedCiphertext,
-          ...phoneUpdate,
-          role: intent.role,
-          verifiedAt: now,
-        })
-        .where(and(eq(leads.id, lead.id), isNull(leads.verifiedAt)))
-        .returning({ id: leads.id })
-    )[0];
-    firstVerification = Boolean(newlyVerified);
     await tx
       .update(leads)
       .set({
         emailNormalizedCiphertext: intent.emailNormalizedCiphertext,
         ...phoneUpdate,
         role: intent.role,
+        // A lead verified before keeps the time it was first verified.
+        verifiedAt: sql`coalesce(${leads.verifiedAt}, ${now})`,
       })
       .where(eq(leads.id, lead.id));
   }
@@ -417,7 +383,7 @@ async function finishIntentInTransaction(
     .onConflictDoNothing({
       target: [waitlistEntries.leadId, waitlistEntries.scanId],
     });
-  const registrationEvent = await emitStoredBusinessEvent(tx, {
+  await emitStoredBusinessEvent(tx, {
     name: "registration_completed",
     identifiers: { lead_id: lead.id, scan_id: scan.id },
     sessionId: intent.sessionId,
@@ -430,32 +396,6 @@ async function finishIntentInTransaction(
       role: intent.role,
     },
   });
-  const previousCategories =
-    typeof previousConsent?.categories === "object" && previousConsent.categories !== null
-      ? (previousConsent.categories as Record<string, unknown>)
-      : {};
-  if (
-    registrationEvent &&
-    config.PARTNER_POSTBACK_ENABLED &&
-    firstVerification &&
-    previousCategories.ads_measurement === true &&
-    intent.partnerClickIdCiphertext
-  ) {
-    const partnerClickId = partnerClickIdSchema.parse(
-      decryptSensitiveValue(intent.partnerClickIdCiphertext, config.encryptionKey),
-    );
-    await tx
-      .insert(deliveryOutbox)
-      .values({
-        id: createUuidV7(),
-        eventId: registrationEvent.eventId,
-        destination: "partner_tracker",
-        payload: { clickid: partnerClickId, event: "reg" },
-      })
-      .onConflictDoNothing({
-        target: [deliveryOutbox.eventId, deliveryOutbox.destination],
-      });
-  }
 
   return { leadId: lead.id, scanId: scan.id };
 }

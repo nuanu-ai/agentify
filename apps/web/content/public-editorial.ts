@@ -377,6 +377,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             "Email, international phone, role, and registration choices only when the contact form is submitted. Email and phone are encrypted with separate lookup HMAC domains; phone is contact data and is not treated as verified.",
             "Signing in creates an account and session record. Google sign-in also retains Google's issuer and stable account identifier, linked to your account email. Google profile names and pictures are not retained, and Google access, refresh and ID tokens are not stored in our database or cookies.",
             "Your privacy choices. Visit and funnel events, such as a page view, a scan or a registration, and the campaign tags of the link you arrived by, only if you allow product analytics or ads measurement.",
+            "The identifier of the ad click that brought you to sign-up, the time the box allowing the ad tracker to be told was ticked, and the version of its wording, only if that box was ticked: with the sign-in link then asked for, and with your account only if you also confirm it on the link's page when you sign in; or with the Google sign-in then started, and with your account if that Google sign-in creates it.",
           ],
         },
       ],
@@ -410,7 +411,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
         {
           kind: "paragraph",
           content:
-            "The architecture supports private Postgres storage and in-process Better Auth with Resend for passwordless confirmation, optional Google sign-in, PostHog for explicit product analytics, Meta Pixel/CAPI for consented ads measurement, Cloudflare Turnstile for abuse challenges, and Stripe for an optional $0 card signal. Choosing Google takes your browser to Google to authenticate; we do not request access to your mailbox, Drive or other Google services. Apify acts as the isolated processor for optional passive public-page rendering; the API token is worker-only, the Actor is private and build-pinned, and output storage is deleted after validated ingestion. Provider adapters and destinations are disabled until configured; local success is not evidence of production delivery.",
+            "The architecture supports private Postgres storage and in-process Better Auth with Resend for passwordless confirmation, optional Google sign-in, PostHog for explicit product analytics, Meta Pixel/CAPI for consented ads measurement, Cloudflare Turnstile for abuse challenges, and Stripe for an optional $0 card signal. Choosing Google takes your browser to Google to authenticate; we do not request access to your mailbox, Drive or other Google services. For ads measurement, AI Samurai, the tracker our ads run through, is told that a click on one of our ads led to a registration, by that click's identifier alone, only when the box allowing it was ticked as you chose how to sign in. With a sign-in link, you also confirm it on the link's page as you sign in, and the page offers to sign in without telling it, because anyone can ask for a link to any address; with Google, pressing the Google button with the box ticked is the confirmation, because Google signs in the browser that ticked it. Apify acts as the isolated processor for optional passive public-page rendering; the API token is worker-only, the Actor is private and build-pinned, and output storage is deleted after validated ingestion. Provider adapters and destinations are disabled until configured; local success is not evidence of production delivery.",
         },
       ],
     },
@@ -424,6 +425,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             "Operational logs: 14 days, without email, raw IP, secrets, or full URL query.",
             "Expired or used registration intents and legacy verification tokens: the executable retention cleanup removes them after 7 days.",
             "Unverified email: the same idempotent cleanup irreversibly anonymizes it after 30 days by default.",
+            "Ad click identifier from sign-up: kept with the sign-in link, which works for an hour, until the link is used, or, if it never is, cleared from 7 days after the link expired; kept with a Google sign-in, which may take ten minutes, until your return from Google uses it up, or, if that never happens, cleared from 7 days after those ten minutes. If the sign-in registers you, with a link's report confirmed on its page, it is kept until the tracker accepts or refuses the report or a day of attempts has passed, then erased, while the time the box was ticked and the version of its wording stay with your account; otherwise nothing about the click is kept once you sign in.",
             "Raw analytics events: 13 months.",
             "Structured scan/check/fingerprint dataset: 24 months, then review or anonymization.",
           ],

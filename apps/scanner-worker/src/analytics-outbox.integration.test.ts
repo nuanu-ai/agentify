@@ -6,7 +6,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   AnalyticsOutboxRepository,
   createDestinationDeliverer,
-  createPartnerRateLimitedDeliverer,
   type OutboxRow,
   runOutboxCycle,
 } from "./analytics-outbox.js";
@@ -24,24 +23,15 @@ const migrationsFolder = fileURLToPath(
 const { db, pool } = createDatabase(connectionString, { max: 6 });
 const seededSessionIds: string[] = [];
 
-type Destination = "posthog" | "meta" | "partner_tracker";
-
-async function seedOutbox(
-  input: {
-    destination?: Destination;
-    payload?: unknown;
-    attempts?: number;
-    occurredAt?: Date;
-  } = {},
-): Promise<{ id: string; eventId: string }> {
+async function seedOutbox(input: { attempts?: number } = {}): Promise<{
+  id: string;
+  eventId: string;
+}> {
   const sessionId = createUuidV7();
   const consentId = createUuidV7();
   const analyticsId = createUuidV7();
   const eventId = createUuidV7();
   const outboxId = createUuidV7();
-  const occurredAt = input.occurredAt ?? new Date();
-  const destination = input.destination ?? "posthog";
-  const payload = input.payload ?? { event: "scan_completed" };
   seededSessionIds.push(sessionId);
 
   await pool.query("insert into sessions (id, anonymous_id_hash) values ($1, $2)", [
@@ -69,15 +59,15 @@ async function seedOutbox(
     `insert into analytics_events
        (id, event_id, name, occurred_at, session_id, segment,
         landing_variant, properties, consent_snapshot_id)
-     values ($1, $2, 'scan_completed', $3, $4, 'store',
-             'store-v1', '{}', $5)`,
-    [analyticsId, eventId, occurredAt, sessionId, consentId],
+     values ($1, $2, 'scan_completed', now(), $3, 'store',
+             'store-v1', '{}', $4)`,
+    [analyticsId, eventId, sessionId, consentId],
   );
   await pool.query(
     `insert into delivery_outbox
        (id, event_id, destination, payload, attempts, next_attempt_at)
-     values ($1, $2, $3, $4, $5, now() - interval '1 second')`,
-    [outboxId, eventId, destination, JSON.stringify(payload), input.attempts ?? 0],
+     values ($1, $2, 'posthog', $3, $4, now() - interval '1 second')`,
+    [outboxId, eventId, JSON.stringify({ event: "scan_completed" }), input.attempts ?? 0],
   );
   return { id: outboxId, eventId };
 }
@@ -184,63 +174,6 @@ describe("analytics outbox PostgreSQL effects", () => {
     expect(stored.next_attempt_at.getTime() - now.getTime()).toBe(1_000);
   });
 
-  it("uses the partner retry schedule instead of the generic backoff", async () => {
-    const occurredAt = new Date("2030-09-21T12:00:00.000Z");
-    const seeded = await seedOutbox({
-      destination: "partner_tracker",
-      payload: { clickid: "Xk8sJ2QpR4vN7bL0aZ9wQg", event: "reg" },
-      occurredAt,
-    });
-
-    await runOutboxCycle({
-      repository: new AnalyticsOutboxRepository(pool, ["partner_tracker"]),
-      deliver: async () => ({
-        ok: false,
-        code: "partner_tracker_http_503",
-        retryable: true,
-      }),
-      now: () => occurredAt,
-    });
-
-    const stored = await storedOutbox(seeded.id);
-    expect(stored).toMatchObject({
-      status: "pending",
-      attempts: 1,
-      last_error_code: "partner_tracker_http_503",
-    });
-    expect(stored.next_attempt_at.getTime() - occurredAt.getTime()).toBe(60_000);
-  });
-
-  it("stops partner delivery at the 24-hour cutoff", async () => {
-    const occurredAt = new Date("2030-09-20T12:00:00.000Z");
-    const clickId = "Xk8sJ2QpR4vN7bL0aZ9wQg";
-    const seeded = await seedOutbox({
-      destination: "partner_tracker",
-      payload: { clickid: clickId, event: "reg" },
-      occurredAt,
-    });
-    const delivery = { attempted: false };
-
-    await runOutboxCycle({
-      repository: new AnalyticsOutboxRepository(pool, ["partner_tracker"]),
-      deliver: async () => {
-        delivery.attempted = true;
-        return { ok: true };
-      },
-      now: () => new Date("2030-09-21T12:00:00.000Z"),
-    });
-
-    const stored = await storedOutbox(seeded.id);
-    expect(delivery.attempted).toBe(false);
-    expect(stored).toMatchObject({
-      status: "dead_letter",
-      attempts: 1,
-      last_error_code: "partner_tracker_retry_window_exhausted",
-      payload: { event: "reg" },
-    });
-    expect(JSON.stringify(stored)).not.toContain(clickId);
-  });
-
   it("moves the terminal retry attempt to dead-letter", async () => {
     const seeded = await seedOutbox({ attempts: 16 });
 
@@ -260,91 +193,32 @@ describe("analytics outbox PostgreSQL effects", () => {
     });
   });
 
-  it("persists neither a provider response body nor a partner click id", async () => {
-    const clickId = "Xk8sJ2QpR4vN7bL0aZ9wQg";
+  it("persists no provider response body", async () => {
     const responseBody = "provider secret diagnostic body";
-    const seeded = await seedOutbox({
-      destination: "partner_tracker",
-      payload: { clickid: clickId, event: "reg" },
-    });
+    const seeded = await seedOutbox();
     const deliver = createDestinationDeliverer(
       {
-        runtimeEnvironment: "production",
-        partner: {
-          destinationEnvironment: "production",
+        runtimeEnvironment: "test",
+        posthog: {
+          destinationEnvironment: "test",
+          host: "https://test.posthog.invalid",
           enabled: true,
-          secret: "partner-secret-value",
         },
       },
       async () => new Response(responseBody, { status: 400 }),
     );
 
     await runOutboxCycle({
-      repository: new AnalyticsOutboxRepository(pool, ["partner_tracker"]),
+      repository: new AnalyticsOutboxRepository(pool, ["posthog"]),
       deliver,
     });
 
     const stored = await storedOutbox(seeded.id);
     expect(stored).toMatchObject({
-      status: "dead_letter",
+      status: "pending",
       attempts: 1,
-      last_error_code: "partner_tracker_http_400",
-      payload: { event: "reg" },
+      last_error_code: "posthog_http_400",
     });
-    expect(JSON.stringify(stored)).not.toContain(clickId);
     expect(JSON.stringify(stored)).not.toContain(responseBody);
-  });
-
-  it("scrubs the partner click id after successful delivery", async () => {
-    const clickId = "Xk8sJ2QpR4vN7bL0aZ9wQg";
-    const seeded = await seedOutbox({
-      destination: "partner_tracker",
-      payload: { clickid: clickId, event: "reg" },
-    });
-
-    await runOutboxCycle({
-      repository: new AnalyticsOutboxRepository(pool, ["partner_tracker"]),
-      deliver: async () => ({ ok: true }),
-    });
-
-    const stored = await storedOutbox(seeded.id);
-    expect(stored).toMatchObject({
-      status: "delivered",
-      attempts: 1,
-      last_error_code: null,
-      payload: { event: "reg" },
-    });
-    expect(stored.delivered_at).toBeInstanceOf(Date);
-    expect(JSON.stringify(stored)).not.toContain(clickId);
-  });
-
-  it("uses the PostgreSQL advisory lock to serialize partner delivery", async () => {
-    const activity = { active: 0, maximum: 0, completed: [] as string[] };
-    const deliver = createPartnerRateLimitedDeliverer(
-      pool,
-      async (row) => {
-        activity.active += 1;
-        activity.maximum = Math.max(activity.maximum, activity.active);
-        await new Promise((resolve) => setTimeout(resolve, 40));
-        activity.completed.push(row.id);
-        activity.active -= 1;
-        return { ok: true };
-      },
-      { wait: async () => undefined },
-    );
-    const row = (id: string): OutboxRow => ({
-      id,
-      event_id: createUuidV7(),
-      destination: "partner_tracker",
-      payload: { clickid: "Xk8sJ2QpR4vN7bL0aZ9wQg", event: "reg" },
-      attempts: 1,
-      occurred_at: new Date(),
-    });
-
-    await Promise.all([deliver(row("first")), deliver(row("second"))]);
-
-    expect(activity.active).toBe(0);
-    expect(activity.maximum).toBe(1);
-    expect(new Set(activity.completed)).toEqual(new Set(["first", "second"]));
   });
 });

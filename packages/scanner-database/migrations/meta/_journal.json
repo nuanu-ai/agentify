@@ -169,6 +169,13 @@
       "when": 1791376932652,
       "tag": "0023_the_dashboard_result",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792050854472,
+      "tag": "0024_the_scanner_sends_no_partner_postback",
+      "breakpoints": true
     }
   ]
 }

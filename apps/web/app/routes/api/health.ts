@@ -7,7 +7,6 @@ import {
   evaluateOperationalSignals,
   evaluateWorkerHeartbeat,
   type OperationalSignalRow,
-  READINESS_OUTBOX_DESTINATIONS,
   type WorkerHeartbeatRow,
 } from "../../../lib/server/worker-health";
 
@@ -40,12 +39,9 @@ async function health(request: Request): Promise<Response> {
              select greatest(0, extract(epoch from (now() - min(next_attempt_at))))
              from delivery_outbox
              where status = 'pending'
-               and destination = any($1::delivery_destination[])
            ), 0) as outbox_age_seconds,
            (select count(*) from delivery_outbox
-             where status = 'dead_letter'
-               and destination = any($1::delivery_destination[])) as outbox_dead_letters`,
-        [[...READINESS_OUTBOX_DESTINATIONS]],
+             where status = 'dead_letter') as outbox_dead_letters`,
       ),
     ]);
     const worker = evaluateWorkerHeartbeat(workerResult.rows[0]);

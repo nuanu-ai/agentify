@@ -18,3 +18,8 @@
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
+
+/* Under the sentence that offers Google after the email button. */
+.second {
+  margin-top: 12px;
+}

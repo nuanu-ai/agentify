@@ -40,6 +40,20 @@ export const dashboardDestinationIn = (value: unknown): DashboardDestination =>
 export type LinkDestination = DashboardDestination | Readonly<{ report: string }>;
 
 /**
+ * A partner network's click identifier that the person signing in agreed, on
+ * the sign-in form, to have kept with the link they ask for or the Google
+ * sign-in they start; it is reported only if that sign-in makes the address's
+ * first verified account, and a link's only once the address's owner confirms
+ * at the press. `consentedAt` is the moment of the tick as
+ * `Date.prototype.toISOString` writes it, and `wording` names the version of
+ * the sentences agreed to, at most 64 characters. A link request carrying a
+ * click that does not have exactly this form throws, and nothing is sent or
+ * counted; a Google start carrying one is unavailable and keeps nothing. The
+ * page checks the identifier before passing it.
+ */
+export type ConsentedClick = Readonly<{ id: string; consentedAt: string; wording: string }>;
+
+/**
  * The waits differ by an order of magnitude (under a minute against most of an
  * hour), so a page that says how long to wait has to know which one it hit.
  */
@@ -55,6 +69,18 @@ export type LinkRequestResult =
   | Readonly<{ status: "accepted"; retryAt: Date }>
   | Readonly<{ status: "cooldown"; wall: LinkWall; retryAt: Date }>
   | Readonly<{ status: "unavailable" }>;
+
+/**
+ * What the page a link lands on draws: the address the link signs in, and
+ * whether pressing it would tell the ad tracker of a registration, which the
+ * page then asks the address's owner to confirm. That is so only where
+ * reporting is switched on, the link was asked for with a consented click, and
+ * the address has no verified account yet.
+ */
+type LinkLanding = Readonly<{ email: string; tellsTracker: boolean }>;
+
+/** The address's owner's answer on the link's page. */
+export type OwnersChoice = Readonly<{ tellTracker: boolean }>;
 
 export type DashboardLinkResult =
   | Readonly<{
@@ -82,6 +108,11 @@ export type GoogleFinishResult =
       email: string | null;
       destination: DashboardDestination;
       setCookies: readonly string[];
+      /**
+       * The click the refused sign-in was started with, given back only where
+       * reporting is on and the state was this browser's own.
+       */
+      click?: ConsentedClick;
     }>;
 
 export type MerchantPerson = Person & Readonly<{ merchant: AccountMerchant }>;
@@ -119,16 +150,33 @@ export interface DashboardIdentity {
   readonly cookieNames: readonly string[];
   readonly googleEnabled: boolean;
 
-  startGoogle(destination: DashboardDestination): Promise<GoogleStartResult>;
+  /**
+   * A click is handed only where the box was ticked on the press that starts
+   * the sign-in, which is the consent; the same person finishes it in the same
+   * browser, Google vouching for the address.
+   */
+  startGoogle(
+    destination: DashboardDestination,
+    click?: ConsentedClick,
+  ): Promise<GoogleStartResult>;
   finishGoogle(query: URLSearchParams, cookie: string | undefined): Promise<GoogleFinishResult>;
 
-  requestLink(email: string, destination: DashboardDestination): Promise<LinkRequestResult>;
+  requestLink(
+    email: string,
+    destination: DashboardDestination,
+    click?: ConsentedClick,
+  ): Promise<LinkRequestResult>;
   /**
    * Read without spending the link; null for a link that no longer opens
    * anything.
    */
-  addressOfLink(token: string): Promise<string | null>;
-  openLink(token: string): Promise<DashboardLinkResult>;
+  landingOf(token: string): Promise<LinkLanding | null>;
+  /**
+   * A registration is reported only where the owner said yes on the link's
+   * page; without the choice, or with a no, the press signs in and reports
+   * nothing, whatever the link was asked for with.
+   */
+  openLink(token: string, owner?: OwnersChoice): Promise<DashboardLinkResult>;
 
   whoIs(cookieHeader: string | undefined, reading?: SessionReading): Promise<LiveSession | null>;
   signOut(cookieHeader: string | undefined): Promise<number>;

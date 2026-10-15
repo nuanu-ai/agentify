@@ -30,7 +30,6 @@ const schema = z.object({
   REPORT_IDENTITY_SECRET: optionalNonEmpty(z.string().min(32)),
   BENCHMARK_ENABLED: booleanEnv,
   PUBLIC_SHARE_ENABLED: booleanEnv,
-  PARTNER_POSTBACK_ENABLED: booleanEnv,
   APIFY_BROWSER_MODE: z.enum(["off", "shadow", "report"]).default("off"),
   REMEDIATION_PROMPT_ENABLED: z
     .enum(["true", "false"])

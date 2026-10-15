@@ -1,6 +1,5 @@
 import { CONSENT_POLICY_VERSION } from "@agentify/analytics/browser";
 import { z } from "zod";
-import { PARTNER_CLICK_ID_COOKIE } from "../../../../lib/server/attribution";
 import { getServerConfig } from "../../../../lib/server/config";
 import { CONSENT_COOKIE, persistConsentSnapshot } from "../../../../lib/server/consent";
 import { cookieHeader, readCookie } from "../../../../lib/server/cookies";
@@ -17,6 +16,13 @@ const categoriesSchema = z
     card_signal: z.literal(false),
   })
   .strict();
+
+/**
+ * Browsers may still hold the partner click cookie an earlier release set for a
+ * visitor who allowed ads measurement; a choice saved without ads measurement
+ * removes it, with the name, path and attributes it was set with.
+ */
+const PARTNER_CLICK_COOKIE = "clickid";
 
 const requestSchema = z
   .object({
@@ -60,7 +66,7 @@ async function consent(request: Request): Promise<Response> {
     if (!parsed.data.categories.ads_measurement) {
       response.headers.append(
         "Set-Cookie",
-        cookieHeader(PARTNER_CLICK_ID_COOKIE, "", {
+        cookieHeader(PARTNER_CLICK_COOKIE, "", {
           httpOnly: true,
           secure: getServerConfig().production,
           sameSite: "lax",

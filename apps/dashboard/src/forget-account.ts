@@ -1,10 +1,10 @@
 /**
  * Removes one address's dashboard account and the merchant it names in one
  * transaction, so the address next signs in as a newcomer. The account row
- * takes its sessions, credentials and WooCommerce rows by cascade; the
- * merchant's cards are deleted first, because the gateway's schema does not let
- * a merchant with cards go; the link-send counters are cleared so the next link
- * can be asked for at once.
+ * takes its sessions, credentials, WooCommerce rows and registration report by
+ * cascade; the merchant's cards are deleted first, because the gateway's schema
+ * does not let a merchant with cards go; the link-send counters are cleared so
+ * the next link can be asked for at once.
  *
  * It refuses before writing anything when the merchant has an order or a
  * receipt (money history is never deleted to make a test repeatable) or when

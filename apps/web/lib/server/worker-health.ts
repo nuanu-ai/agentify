@@ -1,10 +1,3 @@
-import type { DeliveryDestination } from "@agentify/scanner-contracts";
-
-export const READINESS_OUTBOX_DESTINATIONS = [
-  "posthog",
-  "meta",
-] as const satisfies readonly DeliveryDestination[];
-
 export type WorkerHeartbeatRow = {
   heartbeat_at: Date | string;
   metadata: unknown;
