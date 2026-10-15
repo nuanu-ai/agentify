@@ -22,11 +22,13 @@ export type Environment = "test" | "live";
  */
 export type SurfaceMode = "sandbox" | "test" | "live";
 
-/** The chains whose money is play money. */
+/**
+ * The chains whose money is play money. A testnet is listed only where the
+ * gateway's code names a commission wallet for it: every payment goes to a
+ * split paying one, and a listed testnet without one could never start.
+ */
 export const TESTNET_CHAINS: ReadonlySet<string> = new Set([
   "eip155:84532", // Base Sepolia
-  "eip155:11155111", // Ethereum Sepolia
-  "eip155:80002", // Polygon Amoy
 ]);
 
 /**

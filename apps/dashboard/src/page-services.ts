@@ -24,7 +24,13 @@ import {
   type Person,
 } from "./dashboard-entry.js";
 import { clearingLines, dashboardPathFor, type Gate, gateFor, startOf } from "./gate.js";
-import type { Acting, Answer, GatewayClient, Registrar } from "./gateway.js";
+import {
+  type Acting,
+  type Answer,
+  type GatewayClient,
+  NOT_A_PAYOUT_WALLET_CODE,
+  type Registrar,
+} from "./gateway.js";
 import { SESSION_DAYS } from "./identity.js";
 import { type IntegrationsView, integrationsView } from "./integrations-view.js";
 import { type KeysView, keysView, type NewKeyView, newKeyView } from "./keys.js";
@@ -399,14 +405,14 @@ export const signedOutOthers = (ended: number): string =>
       ? "1 other session of this account was signed out."
       : `${ended} other sessions of this account were signed out.`;
 
-/** Typed while a change waited, the address paid into now cancels it, and the person may not know. */
+/** Typed while a change waited, the wallet paid out to now cancels it, and the person may not know. */
 export const cancelledByTyping = (applies: string, waiting: string): string =>
-  `${applies} is the address your sales are paid into now, so the waiting change to ${waiting} was cancelled. ` +
+  `${applies} is the wallet your share is paid out to now, so the waiting change to ${waiting} was cancelled. ` +
   "Every other session of your merchant was signed out.";
 
 /** A press from a page drawn while a change waited, arriving after it took effect. */
 export const landedBeforePress = (shown: Shown): string =>
-  `The change to ${shown.waiting} took effect at ${shown.from === null ? "its moment" : moment(shown.from)}, before you pressed, and your sales are now paid into it. ` +
+  `The change to ${shown.waiting} took effect at ${shown.from === null ? "its moment" : moment(shown.from)}, before you pressed, and your share is now paid out to it. ` +
   (shown.paid === null
     ? "Setting another address back is a change like any other: it waits forty-eight hours and is announced. "
     : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
@@ -477,7 +483,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
 
   /**
    * One read of everything the settings page says, made after a press's work,
-   * so the page shows what the press left. Any of the three failing fails the
+   * so the page shows what the press left. Any of the reads failing fails the
    * page: drawn without an answer, it would claim something about a field
    * nobody asked about. The approval is read only on live, the one place
    * publishing needs it.
@@ -488,15 +494,17 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     status?: number,
   ): Promise<Outcome<SettingsView>> => {
     const gateway = gatewayAs(person);
-    const [seller, wallet, approval] = await Promise.all([
+    const [seller, wallet, splits, approval] = await Promise.all([
       gateway.seller(),
       gateway.payoutWallet(),
+      gateway.payoutSplits(),
       config.surfaceMode === "live"
         ? gateway.liveApproval()
         : Promise.resolve({ ok: true as const, document: undefined }),
     ]);
     if (!seller.ok) return problemOf(seller);
     if (!wallet.ok) return problemOf(wallet);
+    if (!splits.ok) return problemOf(splits);
     if (!approval.ok) return problemOf(approval);
     return {
       kind: "view",
@@ -508,6 +516,8 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           sellerName: seller.document.name,
           sellerSite: seller.document.site,
           payoutWallet: wallet.document,
+          payoutSplits: splits.document,
+          addressPage: config.addressPage,
           ...(approval.document === undefined ? {} : { liveApproval: approval.document }),
         },
         press,
@@ -549,7 +559,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     if (cancelled.document.pending === null) {
       noted(
         person,
-        `cancelled a waiting change of the address their money arrives at, and ${ended} other sessions of the merchant were ended`,
+        `cancelled a waiting change of the wallet their share is paid out to, and ${ended} other sessions of the merchant were ended`,
       );
       if (!byTyping) return toSettings;
       return await settingsDrawn(person, {
@@ -559,7 +569,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     }
     noted(
       person,
-      `asked for the address their money arrives at back as a change of it took effect; that now waits, and ${ended} other sessions of the merchant were ended`,
+      `asked for the wallet their share is paid out to back as a change of it took effect; that now waits, and ${ended} other sessions of the merchant were ended`,
     );
     return await settingsDrawn(person, {
       kind: "wallet-notice",
@@ -585,7 +595,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     const ended = await signOutTheOthers(person, cookie);
     noted(
       person,
-      `${how} after a change of the address their money arrives at had taken effect, and ${ended} other sessions of the merchant were ended`,
+      `${how} after a change of the wallet their share is paid out to had taken effect, and ${ended} other sessions of the merchant were ended`,
     );
     return await settingsDrawn(person, { kind: "wallet-notice", notice: landedBeforePress(shown) });
   };
@@ -925,16 +935,18 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         // Only the exact word narrows the list, as the contract says.
         const open = once(query.getAll("open")) === "true";
         const gateway = gatewayAs(person);
-        const [cards, orders, name, owed] = await Promise.all([
+        const [cards, orders, name, owed, paidInto] = await Promise.all([
           gateway.cards(),
           gateway.orders(open),
           gateway.sellerName(),
           gateway.refundsOwed(),
+          gateway.paidIntoSplits(),
         ]);
         if (!cards.ok) return problemOf(cards);
         if (!orders.ok) return problemOf(orders);
         if (!name.ok) return problemOf(name);
         if (!owed.ok) return problemOf(owed);
+        if (!paidInto.ok) return problemOf(paidInto);
         return {
           kind: "view",
           view: ordersView(
@@ -943,20 +955,23 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             orders.document,
             open,
             owed.document,
+            paidInto.document,
           ),
         };
       },
 
       async receipts(person) {
         const gateway = gatewayAs(person);
-        const [cards, receipts, name] = await Promise.all([
+        const [cards, receipts, name, paidInto] = await Promise.all([
           gateway.cards(),
           gateway.receipts(),
           gateway.sellerName(),
+          gateway.paidIntoSplits(),
         ]);
         if (!cards.ok) return problemOf(cards);
         if (!receipts.ok) return problemOf(receipts);
         if (!name.ok) return problemOf(name);
+        if (!paidInto.ok) return problemOf(paidInto);
         return {
           kind: "view",
           view: receiptsView(
@@ -964,6 +979,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             cards.document,
             receipts.document,
             config.transactionPage,
+            paidInto.document,
           ),
         };
       },
@@ -1046,14 +1062,17 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           );
         }
         const set = await gateway.setPayoutWallet(typed);
+        if (!set.ok && set.code === NOT_A_PAYOUT_WALLET_CODE) {
+          return await settingsDrawn(person, { kind: "wallet", problem: set.why, typed }, 400);
+        }
         if (!set.ok) return problemOf(set);
         // The address stays out of the line: not a secret, but this log records
         // who changed it, not what to.
         noted(
           person,
           set.document.pending === null
-            ? "changed the address their money arrives at"
-            : "asked for a change of the address their money arrives at, which now waits",
+            ? "changed the wallet their share is paid out to"
+            : "asked for a change of the wallet their share is paid out to, which now waits",
         );
         return toSettings;
       },

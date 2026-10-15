@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "merchant": "tsx src/merchant.ts",
     "report-payment": "tsx src/payment-report.ts",
+    "payout": "tsx src/payout.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts",
     "listing": "tsx src/listing.ts"
@@ -32,6 +33,7 @@
     "express": "5.2.1",
     "pg": "8.23.0",
     "pg-boss": "12.28.0",
+    "viem": "2.47.0",
     "zod": "4.4.3"
   },
   "devDependencies": {

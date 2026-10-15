@@ -6,13 +6,14 @@
  */
 
 import { createHash } from "node:crypto";
-import type { Delivery, OrderCallResponse, OrderWithStatus } from "@nuanu-ai/agentify-contracts";
+import type { Delivery, OrderWithStatus } from "@nuanu-ai/agentify-contracts";
 import type { Person } from "./dashboard-entry.js";
-import type { Acting, Answer } from "./gateway.js";
+import type { Acting, GatewayClient } from "./gateway.js";
 import {
   createTheOrderInTheShop,
   inspectProductInTheShop,
   type OrderMade,
+  type PaidIntoSplit,
   type ProductInspection,
   readTheOrderInTheShop,
   type ShopKeys,
@@ -32,10 +33,7 @@ export type WooRecoveryOutcome =
   | Readonly<{ ok: true; state: "delivered"; orderId: string; wooOrderId: string }>
   | Readonly<{ ok: false; state: "refused" | "unresolved"; why: string }>;
 
-interface RecoveryGateway {
-  getOrder(orderId: string): Promise<Answer<OrderWithStatus>>;
-  deliverOrder(orderId: string, delivery: Delivery): Promise<Answer<OrderCallResponse>>;
-}
+type RecoveryGateway = Pick<GatewayClient, "getOrder" | "deliverOrder" | "paidInto">;
 
 export interface WooRecoveryParts {
   readonly shops: WooShops;
@@ -135,6 +133,14 @@ export const recoverWooOrder = async (
     if (connection.revision === record.facts.connectionRevision) {
       return refused("Reconnect the same WooCommerce shop before retrying creation.");
     }
+    // Read before the claim, so a recovery that cannot say where the payment
+    // went can be asked again.
+    const paid = await gateway.paidInto(request.orderId);
+    if (!paid.ok) {
+      return unresolved(
+        "Where the sale's payment went could not be read. Nothing was changed, and the recovery can be run again.",
+      );
+    }
     const claimed = await parts.shops.beginPrecreateRecovery(
       request.orderId,
       connection.revision,
@@ -143,7 +149,7 @@ export const recoverWooOrder = async (
     if (!claimed) return unresolved("Another recovery already claimed this order.");
     const made = await (parts.createOrder ?? createTheOrderInTheShop)(
       keysOf(connection),
-      soldItem(request.orderId, person.email, record.facts, inspected.product),
+      soldItem(request.orderId, person.email, record.facts, inspected.product, paid.document),
     );
     if (!made.ok) {
       return unresolved(
@@ -287,12 +293,14 @@ const soldItem = (
   email: string,
   facts: WooOrderFacts,
   product: { downloadId: string; fileName: string },
+  paidInto: PaidIntoSplit | null,
 ): SoldItem => ({
   orderId,
   productId: facts.productId,
   email,
   price: { amount: facts.amount, currency: facts.currency },
   download: { id: product.downloadId, name: product.fileName },
+  paidInto,
 });
 
 const permissionFor = (

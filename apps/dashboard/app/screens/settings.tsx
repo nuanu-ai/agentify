@@ -1,6 +1,7 @@
 import { Button, Field } from "@agentify/ui";
+import { useState } from "react";
 import { Form } from "react-router";
-import type { SettingsView, WalletView } from "../../src/settings-view.js";
+import type { PayoutView, SettingsView, SplitView, WalletView } from "../../src/settings-view.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 
@@ -20,6 +21,26 @@ function Address({ address }: Readonly<{ address: string }>) {
           {group}
         </span>
       ))}
+    </>
+  );
+}
+
+/** The contract buyers pay into, whole, under the wallet it pays. */
+function SplitBeside({ split, label }: Readonly<{ split: SplitView; label: string }>) {
+  return (
+    <>
+      <div className="label split-label">{label}</div>
+      <div className="address">
+        <Address address={split.address} />
+      </div>
+      <p className="under">
+        Your payout contract.{" "}
+        {split.explorer === null ? null : (
+          <a href={split.explorer} rel="noreferrer">
+            See what it holds
+          </a>
+        )}
+      </p>
     </>
   );
 }
@@ -121,6 +142,7 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
               {wallet.purpose}{" "}
               <a href="/docs/money#where-the-money-arrives">How and when you get paid</a>.
             </p>
+            <p>{wallet.commission}</p>
             <p className="quiet">
               Enter only the public address. Never enter a private key or recovery phrase; Agentify
               will never ask for either.{" "}
@@ -138,6 +160,9 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
               The full address, spelled the way your wallet shows it. Check it against your wallet,
               one group of characters at a time.
             </p>
+            {wallet.split === null ? null : (
+              <SplitBeside split={wallet.split} label="Buyers pay into" />
+            )}
           </div>
         )}
         {pending === null ? null : (
@@ -147,11 +172,14 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
               <Address address={pending.wallet} />
             </div>
             <p className="under">
-              From <Moment at={pending.from} /> your sales are paid into this address instead. Every
-              account of your merchant was sent a message about it. If nobody at your business asked
-              for it, cancel it; cancelling also signs out every session of your merchant but this
-              one.
+              From <Moment at={pending.from} /> buyers pay into this address's payout contract
+              instead. Every account of your merchant was sent a message about it. If nobody at your
+              business asked for it, cancel it; cancelling also signs out every session of your
+              merchant but this one.
             </p>
+            {pending.split === null ? null : (
+              <SplitBeside split={pending.split} label="Buyers will pay into" />
+            )}
             <PostForm document action="/settings/payout-wallet/cancel" className="inline">
               {(pressed) => (
                 <>
@@ -200,6 +228,107 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
             <Address address={typed} />
           </p>
         )}
+      </div>
+    </>
+  );
+}
+
+/**
+ * Copying needs the page's script; where it did not run, or the browser
+ * refuses, the data is selected in its box by hand, as the status says.
+ */
+function CopyData({ data }: Readonly<{ data: string }>) {
+  const [said, setSaid] = useState("");
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(data);
+      setSaid("Copied.");
+    } catch {
+      setSaid("Could not copy. Select the data in the box above.");
+    }
+  };
+  return (
+    <p className="copy-row">
+      <Button type="button" variant="secondary" onClick={() => void copy()}>
+        Copy the data
+      </Button>{" "}
+      <span role="status">{said}</span>
+    </p>
+  );
+}
+
+/**
+ * Every value whole, the data included: a transaction pasted from a web page
+ * is how wallets are drained, and the merchant can check only what they see
+ * in full. Multicall3 is named for what it is and as not ours for the same
+ * reason.
+ */
+function PayoutPanel({ payout }: Readonly<{ payout: PayoutView }>) {
+  if (payout.kind !== "send") {
+    return (
+      <div className="lede">
+        <div>
+          <h2>Get your payout</h2>
+          <p>{payout.said}</p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className="lede">
+        <div>
+          <h2>Get your payout</h2>
+          <p>
+            {payout.lead} <a href="/docs/money#getting-paid-out">How to send it</a>.
+          </p>
+        </div>
+      </div>
+      <dl className="payout">
+        <dt>To</dt>
+        <dd>
+          <div className="address">
+            <Address address={payout.to} />
+          </div>
+          <p className="under">Multicall3, a public contract, not ours.</p>
+        </dd>
+        <dt>Amount</dt>
+        <dd className="mono">0</dd>
+        <dt>
+          <label htmlFor="payout-data">Data</label>
+        </dt>
+        <dd>
+          <textarea
+            id="payout-data"
+            className="payout-data"
+            readOnly
+            rows={5}
+            spellCheck={false}
+            value={payout.data}
+          />
+          <CopyData data={payout.data} />
+        </dd>
+        <dt>Pays out</dt>
+        <dd>
+          <ul className="pays">
+            {payout.pays.map((pair) => (
+              <li key={pair.split}>
+                <span className="address">
+                  <Address address={pair.split} />
+                </span>{" "}
+                pays{" "}
+                <span className="address">
+                  <Address address={pair.wallet} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </dd>
+      </dl>
+      <div className="lede">
+        <div>
+          <p>{payout.after}</p>
+        </div>
       </div>
     </>
   );
@@ -257,6 +386,11 @@ export function SettingsScreen({ view }: Readonly<{ view: SettingsView }>) {
         <section className="settings-panel settings-pair">
           <PayoutWalletPanel wallet={view.wallet} />
         </section>
+        {view.payout === null ? null : (
+          <section className="settings-panel settings-wide">
+            <PayoutPanel payout={view.payout} />
+          </section>
+        )}
         <section className="settings-panel settings-wide settings-account">
           <Account view={view} />
         </section>

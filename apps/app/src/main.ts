@@ -33,7 +33,7 @@ const startedOrStopped = async () => {
     // The dashboard is made first because the gateway announces changes
     // through it, but the gateway starts first because the dashboard's pages
     // and its WooCommerce worker call the gateway from the moment they are up.
-    const made = dashboardFor(dashboardConfig, pages);
+    const made = dashboardFor(dashboardConfig, pages, gatewayConfig.payoutSplit);
     const gateway = await startGateway(gatewayConfig, { announce: made.tell });
     const dashboard = made.start(gateway.application);
     return { gateway, dashboard };

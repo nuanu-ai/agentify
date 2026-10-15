@@ -13,6 +13,8 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { MemoryStore } from "../adapters/memory/store.js";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../split/networks.js";
+import { payoutSplitFor } from "../split/parameters.js";
 import { countedIds } from "../testing/harness.js";
 import {
   grantLiveApproval,
@@ -28,7 +30,10 @@ import {
   setServiceName,
 } from "./merchants.js";
 
-const aStore = () => new MemoryStore(countedIds());
+const aStore = () => new MemoryStore(NETWORK.network, countedIds());
+
+/** The test chain's payout split, which a wallet set here is recorded with. */
+const NETWORK = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532");
 
 describe("the operator's live approval", () => {
   it("distinguishes a missing merchant from an idempotent repeat", async () => {
@@ -66,7 +71,7 @@ describe("the name a seeded merchant is listed under", () => {
   });
 
   it("lists a live seed under no name and leaves it off sale", async () => {
-    const store = new MemoryStore(countedIds());
+    const store = new MemoryStore(NETWORK.network, countedIds());
     const seeded = await seedSandboxKey(store, countedIds(), "csk_live_a-key", 0, "live");
 
     expect(seeded).toEqual({ kind: "issued", merchantId: "the_merchant", listedAs: null });
@@ -74,7 +79,7 @@ describe("the name a seeded merchant is listed under", () => {
   });
 
   it("lists a test seed as what it is", async () => {
-    const store = new MemoryStore(countedIds());
+    const store = new MemoryStore(NETWORK.network, countedIds());
     await seedSandboxKey(store, countedIds(), "csk_test_a-key", 0, "test");
 
     expect((await store.merchantById("the_merchant"))?.serviceName).toBe("Agentify test site");
@@ -139,10 +144,23 @@ describe("the wallet a merchant is paid at", () => {
     // wallet's, because that is the string the merchant will compare against.
     const store = await seller();
 
-    const written = await setPayoutWallet(store, "mch_1", A_WALLET_IN_LOWER, 2_000);
+    const written = await setPayoutWallet(store, NETWORK, "mch_1", A_WALLET_IN_LOWER, 2_000);
 
     expect(written?.payoutWallet.address).toBe(A_WALLET);
     expect((await store.merchantById("mch_1"))?.payoutWallet.address).toBe(A_WALLET);
+  });
+
+  it("records the wallet's split with it, so a harness-made merchant sells like any other", async () => {
+    // Every sale is asked for at the split recorded for the wallet; a wallet
+    // written without one is a merchant whose every sale is refused.
+    const store = await seller();
+
+    const written = await setPayoutWallet(store, NETWORK, "mch_1", A_WALLET_IN_LOWER, 2_000);
+
+    expect(written?.payoutWallet.split).toStrictEqual({
+      ...payoutSplitFor(NETWORK, "mch_1", A_WALLET),
+      recordedAt: 2_000,
+    });
   });
 
   it("writes the same string for an address that already came that way", async () => {
@@ -150,9 +168,9 @@ describe("the wallet a merchant is paid at", () => {
     // what their wallet showed them and reads back exactly that.
     const store = await seller();
 
-    expect((await setPayoutWallet(store, "mch_1", A_WALLET, 2_000))?.payoutWallet.address).toBe(
-      A_WALLET,
-    );
+    expect(
+      (await setPayoutWallet(store, NETWORK, "mch_1", A_WALLET, 2_000))?.payoutWallet.address,
+    ).toBe(A_WALLET);
   });
 
   it("refuses an address whose own letters disagree with it, and writes nothing", async () => {
@@ -162,11 +180,11 @@ describe("the wallet a merchant is paid at", () => {
     // Capitalising it afresh instead of refusing would produce a well-formed
     // address nobody typed, which is the checksum defeated by its own enforcer.
     const store = await seller();
-    await setPayoutWallet(store, "mch_1", A_WALLET, 2_000);
+    await setPayoutWallet(store, NETWORK, "mch_1", A_WALLET, 2_000);
 
     await expect(
-      setPayoutWallet(store, "mch_1", "0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed", 3_000),
-    ).rejects.toThrow();
+      setPayoutWallet(store, NETWORK, "mch_1", "0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed", 3_000),
+    ).rejects.toBeInstanceOf(Error);
 
     expect((await store.merchantById("mch_1"))?.payoutWallet.address).toBe(A_WALLET);
   });
@@ -174,15 +192,18 @@ describe("the wallet a merchant is paid at", () => {
   it("refuses something that is not an address at all", async () => {
     const store = await seller();
 
-    await expect(setPayoutWallet(store, "mch_1", "0x1234", 2_000)).rejects.toThrow();
-    await expect(setPayoutWallet(store, "mch_1", "", 2_000)).rejects.toThrow();
+    for (const notAnAddress of ["0x1234", ""]) {
+      await expect(
+        setPayoutWallet(store, NETWORK, "mch_1", notAnAddress, 2_000),
+      ).rejects.toBeInstanceOf(Error);
+    }
     expect((await store.merchantById("mch_1"))?.payoutWallet.address).toBeNull();
   });
 
   it("answers with nothing for a merchant who is not there", async () => {
     const store = await seller();
 
-    expect(await setPayoutWallet(store, "mch_nobody", A_WALLET, 2_000)).toBeNull();
+    expect(await setPayoutWallet(store, NETWORK, "mch_nobody", A_WALLET, 2_000)).toBeNull();
   });
 });
 

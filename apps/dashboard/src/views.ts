@@ -20,6 +20,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
 import type { RefundCause } from "./gateway.js";
+import { type Shares, type SplitTerms, sharesOf } from "./shares.js";
 import { readinessSeenBy, refusedForNoName, unsetIn, type Viewer } from "./viewer.js";
 import {
   APPROVAL_PENDING,
@@ -315,6 +316,8 @@ interface OrderRow {
    * every test sum carries the mark.
    */
   readonly test: boolean;
+  /** Null where the payment did not go into one of the merchant's payout splits. */
+  readonly shares: Shares | null;
   readonly state: Word;
   readonly priceSet: MomentView;
 }
@@ -339,12 +342,16 @@ export interface OrdersView {
   readonly callouts: readonly OrderCallout[];
 }
 
+/** The terms of the payout split each order's charge went into, by order. */
+export type PaidIntoSplits = Readonly<Record<string, SplitTerms>>;
+
 export const ordersView = (
   viewer: Viewer,
   cards: MerchantCardList,
   orders: OrderList,
   open: boolean,
   owed: Readonly<Record<string, RefundCause>> = {},
+  paidInto: PaidIntoSplits = {},
 ): OrdersView => {
   const titles = new Map(
     cards.cards.map((entry) => [entry.card.merchant_item_id, entry.card.title]),
@@ -361,6 +368,7 @@ export const ordersView = (
       itemId: order.merchant_item_id,
       amount: money(order.price),
       test: order.test,
+      shares: sharesIn(order.price, paidInto[order.id]),
       state: ORDER_WORDS[order.status],
       priceSet: momentView(order.price.at),
     })),
@@ -372,7 +380,7 @@ export const ordersView = (
       .map((order) => ({
         id: order.id,
         state: ORDER_WORDS[order.status].text,
-        why: whyItNeedsYou(order.status, owed[order.id]),
+        why: whyItNeedsYou(order, owed[order.id], paidInto[order.id] !== undefined),
         rest: whereTheRestIs(order.status),
       })),
   };
@@ -426,13 +434,24 @@ const OWED_BECAUSE: Readonly<Record<RefundCause, string>> = {
     "The payment network confirmed the payment only after we had stopped waiting for it and closed the order, so the product was not delivered.",
 };
 
+/**
+ * A refund owes the buyer the whole price, though a payout split paid the
+ * merchant only their share of it: the split gives Agentify's commission back
+ * to nobody.
+ */
 const whyItNeedsYou = (
-  status: OrderList["orders"][number]["status"],
+  order: OrderList["orders"][number],
   cause: RefundCause | undefined,
+  intoASplit: boolean,
 ): string =>
-  status === "refund_due"
-    ? `${cause === undefined ? "The payment was received and the product was not delivered." : OWED_BECAUSE[cause]} You return it from your own wallet — we recorded the amount and the order. A late delivery still clears the debt.`
+  order.status === "refund_due"
+    ? `${cause === undefined ? "The payment was received and the product was not delivered." : OWED_BECAUSE[cause]} You return the full price, ${money(order.price)}, from your own wallet${intoASplit ? "; the commission stays with Agentify" : ""}. A late delivery still clears the debt.`
     : "Your integration returned the product, but the payment did not go through, so the product was not released to the buyer. The order stays open.";
+
+const sharesIn = (
+  price: { readonly amount: string; readonly currency: string },
+  terms: SplitTerms | undefined,
+): Shares | null => (terms === undefined ? null : sharesOf(price, terms));
 
 /**
  * A refund is a thing to go and do, and the sentence before says all of it.
@@ -479,6 +498,8 @@ interface ReceiptRow {
   readonly product: string;
   readonly amount: string;
   readonly test: boolean;
+  /** Null where the payment did not go into one of the merchant's payout splits. */
+  readonly shares: Shares | null;
   readonly outcome: Word;
   readonly paid: MomentView;
   readonly priceSet: MomentView;
@@ -502,6 +523,7 @@ export const receiptsView = (
   cards: MerchantCardList,
   receipts: ReceiptList,
   transactionPage: string | null = null,
+  paidInto: PaidIntoSplits = {},
 ): ReceiptsView => {
   const titles = new Map(cards.cards.map((entry) => [entry.id, entry.card.title]));
   return {
@@ -523,6 +545,7 @@ export const receiptsView = (
       product: titles.get(receipt.item_id) ?? receipt.item_id,
       amount: money(receipt.price),
       test: receipt.test,
+      shares: sharesIn(receipt.price, paidInto[receipt.order_id]),
       outcome: ORDER_WORDS[receipt.outcome],
       paid: momentView(receipt.paid_at),
       priceSet: momentView(receipt.price.at),

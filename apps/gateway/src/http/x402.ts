@@ -30,7 +30,7 @@ import type {
 } from "@x402/core/types";
 import { getDefaultAsset } from "@x402/evm";
 import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import { isSandboxFacilitator, type PaymentConfig } from "../config.js";
+import type { PaymentConfig } from "../config.js";
 
 /** The x402 version this edge speaks. */
 export const X402_VERSION = 2;
@@ -78,27 +78,33 @@ export class PaymentEdge {
   }
 
   /**
-   * What an agent is asked to pay, to whom, and for which order. The agent pays
-   * the card's own merchant directly, so the address comes from that merchant,
-   * never from our configuration.
+   * What an agent is asked to pay, to whom, and for which order. The address
+   * is the one given, unchanged: the card's merchant's recorded split for a
+   * challenge, and the order's own address at verification and at the charge,
+   * never anything from our configuration.
    *
-   * A merchant with no address is refused, never defaulted: the configured
+   * No address is refused, in every mode, never defaulted: the configured
    * address is the operator's, and standing it in would send a merchant's
-   * takings to somebody else irreversibly. It is used only in the sandbox,
-   * which settles against nothing.
+   * takings to somebody else irreversibly. The sandbox's placeholder is a
+   * split computed for the merchant before this is asked.
    */
   requirementsFor(
     price: { readonly amount: string; readonly currency: string },
     orderId: string | null,
-    payoutWallet: string | null,
+    payTo: string | null,
   ): PaymentRequirements {
     if (!PAYABLE_CURRENCIES.includes(price.currency.toUpperCase())) {
       throw new Error(
         `${price.currency} is not a currency this gateway can charge in, and it will not invent a rate to one that is`,
       );
     }
-
-    const payTo = payoutWallet ?? this.#sandboxPlaceholder();
+    // An order kept before its document carried an address has none at all,
+    // which is the same as null here.
+    if (typeof payTo !== "string") {
+      throw new Error(
+        "there is nowhere to send the money: the merchant who published this product has set no wallet, or their wallet has no recorded payout split, and this gateway will not stand its own address in for theirs",
+      );
+    }
 
     const asset = getDefaultAsset(this.#network());
     return {
@@ -144,7 +150,8 @@ export class PaymentEdge {
       readonly itemId: string;
       readonly card: Card;
       readonly serviceName: string | null;
-      readonly payoutWallet: string | null;
+      /** Where the card's merchant is paid: their recorded split. */
+      readonly payTo: string | null;
     },
     why?: string,
   ): string {
@@ -176,7 +183,7 @@ export class PaymentEdge {
         // A copy, not a cast: the contract's tags are read-only.
         ...(declared.resource.tags === undefined ? {} : { tags: [...declared.resource.tags] }),
       },
-      accepts: [this.requirementsFor(price, orderId, listed.payoutWallet)],
+      accepts: [this.requirementsFor(price, orderId, listed.payTo)],
       extensions: discoveryExtensionOf(declared),
     };
     return encodePaymentRequiredHeader(challenge);
@@ -184,26 +191,6 @@ export class PaymentEdge {
 
   receiptHeader(settlement: SettleResponse): string {
     return encodePaymentResponseHeader(settlement);
-  }
-
-  /**
-   * The placeholder address the sandbox names where the merchant has set none.
-   * Everywhere else this refuses; the two refusals differ because one is fixed
-   * by the merchant and the other by the operator.
-   */
-  #sandboxPlaceholder(): string {
-    if (!isSandboxFacilitator(this.#config.facilitatorUrl)) {
-      throw new Error(
-        "there is nowhere to send the money: the merchant who published this product has set no wallet to be paid at, and this gateway will not stand its own address in for theirs",
-      );
-    }
-    const configured = this.#config.payTo;
-    if (configured === null) {
-      throw new Error(
-        "there is nowhere to send the money: no payment address is configured, so no payment can be asked for",
-      );
-    }
-    return configured;
   }
 
   #network(): `${string}:${string}` {

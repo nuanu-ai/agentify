@@ -20,13 +20,13 @@ export interface Charge {
   readonly currency: string;
   readonly payment: string;
   /**
-   * The address this order's merchant is paid at, or null where the deployment
-   * asks for none. The payment is checked against our own copy of it, never
-   * the one inside the payment.
+   * The address this order is paid at, the merchant's recorded split, or null
+   * where there is none. The payment is checked against our own copy of it,
+   * never the one inside the payment.
    *
-   * It is read from the merchant at verification, so a payment made out to an
-   * address they have since moved off is refused. From then on it is kept on
-   * the order and reused for the charge: reading the wallet again would charge
+   * It is read from the merchant at verification, so a payment made out to a
+   * split they have since moved off is refused. From then on it is kept on the
+   * order and reused for the charge: reading the merchant again would charge
    * against an address the buyer never signed for, possibly after the goods
    * went out.
    */

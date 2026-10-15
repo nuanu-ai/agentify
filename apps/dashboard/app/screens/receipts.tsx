@@ -2,7 +2,7 @@ import { Table } from "@agentify/ui";
 import type { ReceiptsView, TransferView } from "../../src/views.js";
 import { Moment } from "../components/moment.js";
 import { Word } from "../components/word.js";
-import { TestMark } from "./orders.js";
+import { SharesOf, TestMark } from "./orders.js";
 
 const transferCell = (transfer: TransferView) =>
   transfer.kind === "none"
@@ -89,6 +89,7 @@ export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
                 <>
                   {row.amount}
                   <TestMark test={row.test} />
+                  <SharesOf shares={row.shares} />
                 </>
               ),
             },

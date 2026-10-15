@@ -22,6 +22,14 @@
 # were and the record as it found it; a crash leaves the record marked, and
 # running this again starts over.
 #
+# Last, every payout split recorded in a replaced database and missing from the
+# restored one is copied over (deploy/carry-payout-splits): until a split's
+# first payout its row is the only record of how to create it. A restore point
+# older than the registry has nowhere to take them, so they stay in the
+# replaced database, which the next verified release copies them from before
+# it drops it. A copy that fails says so and exits non-zero, with the restore
+# itself finished.
+#
 # Then `current` names the revision whose data the databases hold, the
 # restore point's <previous>, or none for a directory named after no revision,
 # so a release of <new> or of anything later migrates again, and the record
@@ -104,4 +112,14 @@ transition finish "$previous"
 rm -f "$state/cards-before"
 now="no revision"
 [[ -z $previous ]] || now="$(named "$previous")"
+for database in "${databases[@]}"; do
+  replaced="${database}_replaced_$stamp" carried=0
+  "$root/deploy/carry-payout-splits" "$channel" "$replaced" "$database" || carried=$?
+  if ((carried == 10)); then
+    echo "restore: $database holds no registry of payout splits yet, since $dir is older than it, so the payout splits recorded in $replaced stay there; the next verified release copies them into $database, once it has migrated it, before it drops $replaced." >&2
+  elif ((carried != 0)); then
+    echo "restore: $dir is restored into $restored, and $now is current, but the payout splits recorded in $replaced could not be copied into $database, for the reason above. They stay in $replaced, and the next verified release copies them before it drops it; until then a payout split recorded after the restore point has no row in $database, and nobody can create it from there. app, scanner and scanner-worker are stopped, and the channel is down until a release starts them." >&2
+    exit 1
+  fi
+done
 echo "restore: $dir is restored into $restored, and $now is current. What the restore replaced stays as $kept until a release is verified. app, scanner and scanner-worker are stopped, and the channel is down until a release starts them." >&2
