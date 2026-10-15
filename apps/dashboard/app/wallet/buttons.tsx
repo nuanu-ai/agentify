@@ -22,7 +22,7 @@ export const WALLET_WORDS = {
   connectLead:
     "Coinbase's window opens over this page, where you create a wallet or connect a Coinbase Wallet you already have, and its address comes into the box below. Nothing is saved until you press the button beside the box.",
   yours:
-    "The wallet is yours alone. Agentify cannot reach it, and Coinbase keeps no copy of your passkey or recovery key and cannot recover them, so keeping a way back into it is up to you.",
+    "The wallet is yours alone: nothing leaves it without your approval in Coinbase's window. Coinbase keeps no copy of your passkey or recovery key and cannot recover them, so keeping a way back into it is up to you.",
   manageAt: "https://wallet.coinbase.com",
   recoveryAt: "https://help.coinbase.com/en/wallet/getting-started/smart-wallet-recovery",
   waiting: "Waiting for Coinbase Wallet…",
@@ -33,14 +33,14 @@ export const WALLET_WORDS = {
     `Coinbase Wallet gave no address: ${reason}. You can still enter one by hand.`,
   payOut: "Pay out with Coinbase Wallet",
   payoutLead:
-    "With a Coinbase Wallet you send it in one step: Coinbase's window shows the transaction and its fee, and nothing is sent until you approve it there.",
+    "With a Coinbase Wallet you send it in one step: Coinbase's window asks you to approve it, and nothing is sent until you do.",
   payoutSent:
-    "Coinbase Wallet sent the payout. Your share reaches your wallet once the network includes the transaction.",
+    "Coinbase Wallet sent the payout. It pays out once the network includes the transaction.",
   payoutClosed: "Coinbase Wallet was closed. Nothing was sent.",
   payoutEarlierStands:
     "Coinbase Wallet sent nothing more. The payout it sent earlier from this page stands.",
   payoutFailed: (reason: string) =>
-    `Coinbase Wallet did not send the payout: ${reason}. If your wallet holds nothing yet to pay the fee with, your first payout arrives when Agentify next pays out every contract, on no set date; later ones you can send from here.`,
+    `Coinbase Wallet did not send the payout: ${reason}. If your wallet holds nothing yet to pay the fee with, the payout arrives when Agentify next pays out every contract, on no set date.`,
 } as const;
 
 /** What a press on a button answers when Coinbase Wallet's code could not be fetched or started. */
