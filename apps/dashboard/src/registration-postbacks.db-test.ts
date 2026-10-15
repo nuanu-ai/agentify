@@ -722,5 +722,33 @@ if (databaseUrl === null) {
         settled_at: null,
       });
     });
+
+    it("switched off, gives up a report the moment its day ends, and not a moment sooner", async () => {
+      const ended = await registered(CLICKS[0], 24 * HOUR);
+      const almost = await registered(CLICKS[1], 24 * HOUR - 1);
+      // The clock stands still, so only the turn's own reading of it decides.
+      const running = startRegistrationReports({
+        pool,
+        target: null,
+        fetch: tracker().post,
+        now,
+        wait: () => sleep(5),
+        idleMs: 20,
+      });
+      try {
+        await eventually(
+          async () => (await rows()).find((row) => row.account_id === ended)?.state === "given_up",
+          5_000,
+        );
+        await sleep(100);
+      } finally {
+        await running.stop();
+      }
+
+      expect((await rows()).find((row) => row.account_id === almost)).toMatchObject({
+        click_id: CLICKS[1],
+        state: "pending",
+      });
+    });
   });
 }
