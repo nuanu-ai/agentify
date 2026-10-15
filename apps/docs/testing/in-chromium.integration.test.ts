@@ -54,16 +54,20 @@ const { scannerApp } = (await import(pathToFileURL(join(SCANNER, "server", "inde
 };
 
 /**
- * Where this stand's measurements go: a PostHog named for the environment it
- * runs in, at an address nothing answers but the browser's own routing, so
- * every request a page makes to it is seen and none leaves the machine.
+ * Where this stand's measurements go: a PostHog and a Meta pixel named for
+ * the environment it runs in, answered by nothing but the browser's own
+ * routing, so every request a page makes to them is seen and none leaves the
+ * machine.
  */
 const POSTHOG = "https://posthog.test.invalid";
+const META = "https://connect.facebook.net";
 const MEASURED = {
   ANALYTICS_RUNTIME_ENV: "test",
   POSTHOG_BROWSER_KEY: "docs-browser-test",
   POSTHOG_BROWSER_HOST: POSTHOG,
   POSTHOG_DESTINATION_ENV: "test",
+  META_PIXEL_ID: "1234567890",
+  META_DESTINATION_ENV: "test",
 };
 
 /**
@@ -128,13 +132,15 @@ type Visit = Readonly<{ page: Page; complaints: string[]; asked: string[] }>;
 /**
  * A browser with nothing kept, on `path`, with what it complained of and what
  * it asked for. Unless `chosen` is false, its visitor has already chosen to
- * keep optional measuring off, so the banner is not over the page.
+ * keep optional measuring off, so the banner is not over the page. `arranged`
+ * prepares the browser before the page is asked for.
  */
 const visit = async (
   path: string,
   viewport = { width: 1280, height: 900 },
   phone = false,
   chosen = true,
+  arranged: (context: BrowserContext) => Promise<unknown> = async () => {},
 ): Promise<Visit> => {
   const context = await browser.newContext({
     viewport,
@@ -143,6 +149,7 @@ const visit = async (
     userAgent: PERSON,
   });
   await asAPerson(context);
+  await arranged(context);
   if (chosen) {
     await context.addInitScript(
       ([key, value]) => {
@@ -167,6 +174,14 @@ const visit = async (
   });
   return { page, complaints, asked };
 };
+
+/** The scripts the speed budget counts for a first visit to a page of the documentation. */
+const firstVisitScriptsOfAPage = (): string[] =>
+  [...firstVisitScripts(build, viteManifest, "routes/page")].map((file) => `/docs/${file}`).sort();
+
+/** The documentation's own scripts among the addresses a page asked for. */
+const scriptsAmong = (asked: readonly string[]): string[] =>
+  asked.filter((path) => path.startsWith("/docs/assets/") && path.endsWith(".js")).sort();
 
 const stayed = (page: Page): Promise<boolean | undefined> =>
   page.evaluate(() => (window as Window & { stayed?: boolean }).stayed);
@@ -203,13 +218,7 @@ describe("a page of the documentation in Chromium", () => {
   it("loads the scripts the speed budget counts for it on a first visit, no more and no fewer", async () => {
     const { page, asked } = await visit("/docs/orders");
 
-    expect(
-      asked.filter((path) => path.startsWith("/docs/assets/") && path.endsWith(".js")).sort(),
-    ).toEqual(
-      [...firstVisitScripts(build, viteManifest, "routes/page")]
-        .map((file) => `/docs/${file}`)
-        .sort(),
-    );
+    expect(scriptsAmong(asked)).toEqual(firstVisitScriptsOfAPage());
     await page.context().close();
   });
 
@@ -600,23 +609,28 @@ const eventsIn = (
   return (Array.isArray(packed) ? packed : [packed]) as ReturnType<typeof eventsIn>;
 };
 
+type Measuring = Readonly<{ elsewhere: string[]; views: string[] }>;
+
 /**
  * What a page asked of the measuring services, its consent recorded as the
- * scanner records it: every address asked, and the page each view PostHog was
- * sent names.
+ * scanner records it: every address it asked of a host other than the edge,
+ * and the page each view PostHog was sent names.
  */
-const measured = async (
-  context: BrowserContext,
-): Promise<Readonly<{ sent: string[]; views: string[] }>> => {
-  const sent: string[] = [];
+const measured = async (context: BrowserContext): Promise<Measuring> => {
+  const elsewhere: string[] = [];
   const views: string[] = [];
+  context.on("request", (request) => {
+    if (new URL(request.url()).origin !== edge.origin) elsewhere.push(request.url());
+  });
   await context.route(`${POSTHOG}/**`, (route) => {
-    sent.push(route.request().url());
     for (const { event, properties } of eventsIn(route.request())) {
       if (event === "$pageview") views.push(new URL(String(properties.$current_url)).pathname);
     }
     return route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   });
+  await context.route(`${META}/**`, (route) =>
+    route.fulfill({ status: 200, contentType: "text/javascript", body: "" }),
+  );
   // The route's own answer, which needs a database, is held by its integration
   // test; here the browser is answered as the route answers a saved choice.
   await context.route("**/api/v1/consent", (route) =>
@@ -626,16 +640,33 @@ const measured = async (
       body: JSON.stringify({ status: "saved", policy_version: CONSENT_POLICY_VERSION }),
     }),
   );
-  return { sent, views };
+  return { elsewhere, views };
 };
 
-/** A capture PostHog is sent, as against the settings it asks for when it starts. */
-const captures = (sent: readonly string[]) => sent.filter((url) => /\/e\/|\/i\/v0\/e\//.test(url));
+/** A first visit to `path`, watched from before the page is asked for, by a visitor who has not chosen yet. */
+const firstVisit = async (path: string): Promise<Visit & Measuring> => {
+  let measuring: Measuring = { elsewhere: [], views: [] };
+  const visited = await visit(path, undefined, false, false, async (context) => {
+    measuring = await measured(context);
+  });
+  return { ...visited, ...measuring };
+};
+
+/**
+ * The page views the Meta pixel was told of. The pixel's script is answered
+ * empty here, so what the page told it stays in the pixel's queue.
+ */
+const metaViews = (page: Page): Promise<number> =>
+  page.evaluate(
+    () =>
+      ((window as Window & { fbq?: { queue?: unknown[][] } }).fbq?.queue ?? []).filter(
+        ([kind, name]) => kind === "track" && name === "PageView",
+      ).length,
+  );
 
 describe("measuring a visit", () => {
   it("asks on a first visit, and sends nothing and loads nothing to measure before a choice", async () => {
-    const { page, asked } = await visit("/docs/money", undefined, false, false);
-    const { sent } = await measured(page.context());
+    const { page, asked, elsewhere } = await firstVisit("/docs/money");
     const banner = page.getByRole("complementary", { name: "Privacy choices" });
 
     expect(await banner.isVisible()).toBe(true);
@@ -643,30 +674,30 @@ describe("measuring a visit", () => {
     await drawn(page, "/docs/orders");
     await page.waitForTimeout(500);
 
-    expect(sent).toEqual([]);
-    expect(asked.filter((path) => /page-view|module-/.test(path))).toEqual([]);
+    expect(elsewhere).toEqual([]);
+    expect(scriptsAmong(asked)).toEqual(firstVisitScriptsOfAPage());
     expect(await banner.isVisible()).toBe(true);
     await page.context().close();
   });
 
-  it("records a view of the page a visitor allowed it on and of every page they move to", async () => {
-    const { page } = await visit("/docs/money", undefined, false, false);
-    const { sent } = await measured(page.context());
+  it("counts one view of the page a visitor allowed it on and one of every page they move to", async () => {
+    const { page, views } = await firstVisit("/docs/money");
 
     await page.getByRole("button", { name: "Allow optional analytics" }).click();
-    await expect.poll(() => captures(sent).length, { timeout: 10_000 }).toBeGreaterThan(0);
-    const first = captures(sent).length;
+    await expect.poll(() => views.length, { timeout: 10_000 }).toBe(1);
     await contents(page).getByRole("link", { name: "Orders and fulfillment modes" }).click();
     await drawn(page, "/docs/orders");
+    await expect.poll(() => views.length, { timeout: 10_000 }).toBe(2);
+    await page.waitForTimeout(500);
 
-    await expect.poll(() => captures(sent).length, { timeout: 10_000 }).toBeGreaterThan(first);
+    expect(views).toEqual(["/docs/money", "/docs/orders"]);
+    expect(await metaViews(page)).toBe(2);
     expect(await stayed(page)).toBe(true);
     await page.context().close();
   });
 
   it("counts the page a visitor allowed it on by that page's address though they move on at once, and counts no page twice", async () => {
-    const { page } = await visit("/docs/money", undefined, false, false);
-    const { views } = await measured(page.context());
+    const { page, views } = await firstVisit("/docs/money");
     // The code that measures arrives only after the visitor has moved on, as on a slow line.
     await page.context().route("**/assets/page-view-*.js", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 1_000));
@@ -683,12 +714,12 @@ describe("measuring a visit", () => {
     await page.waitForTimeout(1_000);
 
     expect(views.toSorted()).toEqual(["/docs/money", "/docs/orders"]);
+    expect(await metaViews(page)).toBe(2);
     await page.context().close();
   });
 
   it("records nothing and loads nothing to measure after a visitor kept optional measuring off, a move included", async () => {
-    const { page, asked } = await visit("/docs/money", undefined, false, false);
-    const { sent } = await measured(page.context());
+    const { page, asked, elsewhere } = await firstVisit("/docs/money");
 
     await page.getByRole("button", { name: "Essential only" }).click();
     await page
@@ -698,8 +729,8 @@ describe("measuring a visit", () => {
     await drawn(page, "/docs/orders");
     await page.waitForTimeout(1_000);
 
-    expect(sent).toEqual([]);
-    expect(asked.filter((path) => /page-view|module-/.test(path))).toEqual([]);
+    expect(elsewhere).toEqual([]);
+    expect(scriptsAmong(asked)).toEqual(firstVisitScriptsOfAPage());
     await page.context().close();
   });
 
