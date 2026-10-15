@@ -1,0 +1,40 @@
+{
+  "at": "2026-10-15T16:40:57.084Z",
+  "steps": [
+    {
+      "phase": "invalid-connector-secret",
+      "http": 409,
+      "challengePresent": false,
+      "code": null
+    },
+    {
+      "phase": "restored-connector-secret",
+      "http": 402,
+      "challengePresent": true,
+      "code": null
+    }
+  ],
+  "passed": true,
+  "restored": true,
+  "method": "Temporary invalid connector secret in TEST database, restored in finally; allowed one worker poll interval before each probe.",
+  "initialHarnessObservation": "Immediate probe raced an already waiting worker holding its prior valid connection; no payment was signed. Repeated after6.5seconds.",
+  "restart": {
+    "container": "agentify-app-1",
+    "statusHttp": 200,
+    "finalStatus": "delivered",
+    "identicalDelivery": true,
+    "downloadHttp": 200,
+    "downloadBytes": 1785,
+    "sha256": "f447b2eb59a3ce1b71c17d09c139fcd90ad0ba34c94de98134fde3b0c0f83387"
+  },
+  "wooOrder": {
+    "id": 25,
+    "matchingOrders": 1,
+    "transactionIdMatches": true,
+    "total": "0.01",
+    "paid": true,
+    "status": "completed",
+    "verifiedAt": "2026-10-15T16:41:45Z"
+  },
+  "newPaymentAuthorizations": 0
+}

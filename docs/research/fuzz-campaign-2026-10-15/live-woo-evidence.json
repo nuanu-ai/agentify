@@ -1,0 +1,35 @@
+{
+  "subject": "e11fef741e875ef6f9c42465a6b27577dd2921a1",
+  "base": "https://test.agentify.ad",
+  "network": "eip155:84532",
+  "merchant": "mch_5b1985d7e58243c8b073c573d5c07d5c",
+  "setup": "Real email login and seller/wallet forms; key provisioned through application issuer as a TEST fixture. Woo uses actual lab grant and imported card.",
+  "cases": [
+    {
+      "scenario": "woo-download",
+      "startedAt": "2026-10-15T16:38:54.128Z",
+      "observations": ["in_progress", "delivered"],
+      "handlerCalls": 0,
+      "problems": [],
+      "mode": "async",
+      "merchant": "mch_5b1985d7e58243c8b073c573d5c07d5c",
+      "cardId": "item_c8671bcfeb7e40ae99ae80efa1206b82",
+      "quoteOrderHash": "074f84602498b0db307e4fddf3d94422f03f792c620555fe1051f7ff81dd6a4c",
+      "purchaseHttp": 200,
+      "purchaseStatus": "in_progress",
+      "finalStatus": "delivered",
+      "orderHash": "074f84602498b0db307e4fddf3d94422f03f792c620555fe1051f7ff81dd6a4c",
+      "actualDownloadedBytes": 1785,
+      "actualDownloadedSha256": "f447b2eb59a3ce1b71c17d09c139fcd90ad0ba34c94de98134fde3b0c0f83387",
+      "repeatedDownloads": 2,
+      "wooOrderNumber": "25",
+      "deliveredBytes": 1785,
+      "deliveredSha256": "f447b2eb59a3ce1b71c17d09c139fcd90ad0ba34c94de98134fde3b0c0f83387",
+      "passed": true,
+      "finishedAt": "2026-10-15T16:39:03.272Z"
+    }
+  ],
+  "requestCount": 63,
+  "authorizationsReserved": 6,
+  "atomicReserved": "60000"
+}

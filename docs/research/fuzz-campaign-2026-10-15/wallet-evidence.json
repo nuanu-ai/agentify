@@ -1,0 +1,343 @@
+{
+  "subjectCommit": "e11fef741e875ef6f9c42465a6b27577dd2921a1",
+  "preRegistration": "docs/research/fuzz-campaign-2026-10-15/wallet-results.md before test execution",
+  "selection": "ten explicitly enumerated provider cells across request and React component; no random sampling",
+  "runtime": "Node v26.7.0; Vitest v4.1.11; jsdom",
+  "command": "AGENTIFY_WALLET_CAMPAIGN_EVIDENCE=/tmp/agentify-wallet-evidence.json pnpm exec vitest run --project unit apps/dashboard/app/wallet/wallet-response-campaign.test.tsx --maxWorkers=1 --reporter=json --outputFile=/tmp/agentify-wallet-vitest.json",
+  "summary": {
+    "logicalCases": 20,
+    "consumerPromisesHolding": 12,
+    "consumerPromiseViolations": 8,
+    "knownFailureReproductions": 8,
+    "vitestSuccess": true,
+    "vitestPassedIncludingExpectedFailures": 20,
+    "vitestFailed": 0,
+    "vitestSkipped": 0
+  },
+  "testSourceHash": "14c49521eced354ae7066c02ee93eb352ce7f62afc846cc9632306e02ddc6c21",
+  "observations": [
+    {
+      "id": "wallet-request-1",
+      "surface": "request",
+      "cell": "account request rejected",
+      "proof": "the account request was rejected before a payout request",
+      "expected": "cancelled",
+      "actual": {
+        "kind": "cancelled"
+      },
+      "matched": true,
+      "knownFailure": false
+    },
+    {
+      "id": "wallet-request-2",
+      "surface": "request",
+      "cell": "payout request rejected",
+      "proof": "the provider reports that the payout request was rejected",
+      "expected": "cancelled",
+      "actual": {
+        "kind": "cancelled"
+      },
+      "matched": true,
+      "knownFailure": false
+    },
+    {
+      "id": "wallet-request-3",
+      "surface": "request",
+      "cell": "provider submission failure",
+      "proof": "the provider reports its own failure",
+      "expected": "failed",
+      "actual": {
+        "kind": "failed",
+        "reason": "fixture provider unavailable"
+      },
+      "matched": true,
+      "knownFailure": false
+    },
+    {
+      "id": "wallet-request-4",
+      "surface": "request",
+      "cell": "submission answer lost",
+      "proof": "the provider cannot read the answer; submission is unknown",
+      "expected": "lost",
+      "actual": {
+        "kind": "lost"
+      },
+      "matched": true,
+      "knownFailure": false
+    },
+    {
+      "id": "wallet-request-5",
+      "surface": "request",
+      "cell": "null resolved answer",
+      "proof": "the resolved answer contains no readable batch acknowledgment",
+      "expected": "no_sent_claim",
+      "actual": {
+        "kind": "sent"
+      },
+      "matched": false,
+      "knownFailure": true
+    },
+    {
+      "id": "wallet-request-6",
+      "surface": "request",
+      "cell": "absent resolved answer",
+      "proof": "the resolved answer contains no readable batch acknowledgment",
+      "expected": "no_sent_claim",
+      "actual": {
+        "kind": "sent"
+      },
+      "matched": false,
+      "knownFailure": true
+    },
+    {
+      "id": "wallet-request-7",
+      "surface": "request",
+      "cell": "empty resolved object",
+      "proof": "the resolved answer contains no readable batch acknowledgment",
+      "expected": "no_sent_claim",
+      "actual": {
+        "kind": "sent"
+      },
+      "matched": false,
+      "knownFailure": true
+    },
+    {
+      "id": "wallet-request-8",
+      "surface": "request",
+      "cell": "numeric batch identifier",
+      "proof": "the resolved answer contains no readable batch acknowledgment",
+      "expected": "no_sent_claim",
+      "actual": {
+        "kind": "sent"
+      },
+      "matched": false,
+      "knownFailure": true
+    },
+    {
+      "id": "wallet-request-9",
+      "surface": "request",
+      "cell": "accepted batch still pending",
+      "proof": "the provider acknowledges the batch; execution is still pending",
+      "expected": "sent",
+      "actual": {
+        "kind": "sent"
+      },
+      "matched": true,
+      "knownFailure": false
+    },
+    {
+      "id": "wallet-request-10",
+      "surface": "request",
+      "cell": "submitted batch acknowledgment",
+      "proof": "the provider acknowledges a submitted batch; no receipt is returned",
+      "expected": "sent",
+      "actual": {
+        "kind": "sent"
+      },
+      "matched": true,
+      "knownFailure": false
+    },
+    {
+      "id": "wallet-component-1",
+      "surface": "component",
+      "cell": "account request rejected",
+      "proof": "the account request was rejected before a payout request",
+      "expected": "cancelled",
+      "actual": {
+        "status": "Coinbase Wallet was closed. Nothing was sent."
+      },
+      "matched": true,
+      "knownFailure": false
+    },
+    {
+      "id": "wallet-component-2",
+      "surface": "component",
+      "cell": "payout request rejected",
+      "proof": "the provider reports that the payout request was rejected",
+      "expected": "cancelled",
+      "actual": {
+        "status": "Coinbase Wallet was closed. Nothing was sent."
+      },
+      "matched": true,
+      "knownFailure": false
+    },
+    {
+      "id": "wallet-component-3",
+      "surface": "component",
+      "cell": "provider submission failure",
+      "proof": "the provider reports its own failure",
+      "expected": "failed",
+      "actual": {
+        "status": "Coinbase Wallet did not send the payout: fixture provider unavailable. If your wallet holds nothing yet to pay the fee with, the payout arrives when Agentify next pays out every contract, on no set date."
+      },
+      "matched": true,
+      "knownFailure": false
+    },
+    {
+      "id": "wallet-component-4",
+      "surface": "component",
+      "cell": "submission answer lost",
+      "proof": "the provider cannot read the answer; submission is unknown",
+      "expected": "lost",
+      "actual": {
+        "status": "Coinbase Wallet did not tell this page whether a payout it was asked for went out. Check what your payout contract holds before sending another."
+      },
+      "matched": true,
+      "knownFailure": false
+    },
+    {
+      "id": "wallet-component-5",
+      "surface": "component",
+      "cell": "null resolved answer",
+      "proof": "the resolved answer contains no readable batch acknowledgment",
+      "expected": "no_sent_claim",
+      "actual": {
+        "status": "Coinbase Wallet sent the payout. Your payout contract's page shows once the network has carried it out."
+      },
+      "matched": false,
+      "knownFailure": true
+    },
+    {
+      "id": "wallet-component-6",
+      "surface": "component",
+      "cell": "absent resolved answer",
+      "proof": "the resolved answer contains no readable batch acknowledgment",
+      "expected": "no_sent_claim",
+      "actual": {
+        "status": "Coinbase Wallet sent the payout. Your payout contract's page shows once the network has carried it out."
+      },
+      "matched": false,
+      "knownFailure": true
+    },
+    {
+      "id": "wallet-component-7",
+      "surface": "component",
+      "cell": "empty resolved object",
+      "proof": "the resolved answer contains no readable batch acknowledgment",
+      "expected": "no_sent_claim",
+      "actual": {
+        "status": "Coinbase Wallet sent the payout. Your payout contract's page shows once the network has carried it out."
+      },
+      "matched": false,
+      "knownFailure": true
+    },
+    {
+      "id": "wallet-component-8",
+      "surface": "component",
+      "cell": "numeric batch identifier",
+      "proof": "the resolved answer contains no readable batch acknowledgment",
+      "expected": "no_sent_claim",
+      "actual": {
+        "status": "Coinbase Wallet sent the payout. Your payout contract's page shows once the network has carried it out."
+      },
+      "matched": false,
+      "knownFailure": true
+    },
+    {
+      "id": "wallet-component-9",
+      "surface": "component",
+      "cell": "accepted batch still pending",
+      "proof": "the provider acknowledges the batch; execution is still pending",
+      "expected": "sent",
+      "actual": {
+        "status": "Coinbase Wallet sent the payout. Your payout contract's page shows once the network has carried it out."
+      },
+      "matched": true,
+      "knownFailure": false
+    },
+    {
+      "id": "wallet-component-10",
+      "surface": "component",
+      "cell": "submitted batch acknowledgment",
+      "proof": "the provider acknowledges a submitted batch; no receipt is returned",
+      "expected": "sent",
+      "actual": {
+        "status": "Coinbase Wallet sent the payout. Your payout contract's page shows once the network has carried it out."
+      },
+      "matched": true,
+      "knownFailure": false
+    }
+  ],
+  "controls": [
+    {
+      "name": "unmodified-wallet-control",
+      "exitCode": 0,
+      "tests": 20,
+      "failed": 0,
+      "pending": 0,
+      "failures": []
+    },
+    {
+      "name": "null-answer-unannotated-replay",
+      "exitCode": 1,
+      "tests": 20,
+      "failed": 2,
+      "pending": 18,
+      "failures": [
+        {
+          "name": "campaign: wallet request outcomes do not exceed the provider's proof wallet-request-5: null resolved answer",
+          "messages": [
+            "AssertionError: expected 'sent' not to be 'sent' // Object.is equality\n    at /private/var/folders/wj/0j6nzbc94m14k8x3b_j52t900000gn/T/agentify-wallet-controls-igbdkikc/apps/dashboard/app/wallet/wallet-response-campaign.test.tsx:146:71\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file:///Users/dmitry/Dev/agentify/.claude/worktrees/fuzz-campaign/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        },
+        {
+          "name": "campaign: payout component describes only the observed response wallet-component-5: null resolved answer",
+          "messages": [
+            "AssertionError: expected 'Coinbase Wallet sent the payout. Your\u2026' not to be 'Coinbase Wallet sent the payout. Your\u2026' // Object.is equality\n    at /private/var/folders/wj/0j6nzbc94m14k8x3b_j52t900000gn/T/agentify-wallet-controls-igbdkikc/apps/dashboard/app/wallet/wallet-response-campaign.test.tsx:181:63\n    at file:///Users/dmitry/Dev/agentify/.claude/worktrees/fuzz-campaign/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "decline-classification-mutated",
+      "exitCode": 1,
+      "tests": 20,
+      "failed": 4,
+      "pending": 0,
+      "failures": [
+        {
+          "name": "campaign: wallet request outcomes do not exceed the provider's proof wallet-request-1: account request rejected",
+          "messages": [
+            "AssertionError: expected 'failed' to be 'cancelled' // Object.is equality\n    at /private/var/folders/wj/0j6nzbc94m14k8x3b_j52t900000gn/T/agentify-wallet-controls-igbdkikc/apps/dashboard/app/wallet/wallet-response-campaign.test.tsx:147:33\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file:///Users/dmitry/Dev/agentify/.claude/worktrees/fuzz-campaign/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        },
+        {
+          "name": "campaign: wallet request outcomes do not exceed the provider's proof wallet-request-2: payout request rejected",
+          "messages": [
+            "AssertionError: expected 'failed' to be 'cancelled' // Object.is equality\n    at /private/var/folders/wj/0j6nzbc94m14k8x3b_j52t900000gn/T/agentify-wallet-controls-igbdkikc/apps/dashboard/app/wallet/wallet-response-campaign.test.tsx:147:33\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at file:///Users/dmitry/Dev/agentify/.claude/worktrees/fuzz-campaign/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        },
+        {
+          "name": "campaign: payout component describes only the observed response wallet-component-1: account request rejected",
+          "messages": [
+            "AssertionError: expected 'Coinbase Wallet did not send the payo\u2026' to be 'Coinbase Wallet was closed. Nothing w\u2026' // Object.is equality\n    at /private/var/folders/wj/0j6nzbc94m14k8x3b_j52t900000gn/T/agentify-wallet-controls-igbdkikc/apps/dashboard/app/wallet/wallet-response-campaign.test.tsx:182:25\n    at file:///Users/dmitry/Dev/agentify/.claude/worktrees/fuzz-campaign/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        },
+        {
+          "name": "campaign: payout component describes only the observed response wallet-component-2: payout request rejected",
+          "messages": [
+            "AssertionError: expected 'Coinbase Wallet did not send the payo\u2026' to be 'Coinbase Wallet was closed. Nothing w\u2026' // Object.is equality\n    at /private/var/folders/wj/0j6nzbc94m14k8x3b_j52t900000gn/T/agentify-wallet-controls-igbdkikc/apps/dashboard/app/wallet/wallet-response-campaign.test.tsx:182:25\n    at file:///Users/dmitry/Dev/agentify/.claude/worktrees/fuzz-campaign/node_modules/.pnpm/@vitest+runner@4.1.11/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+          ]
+        }
+      ]
+    }
+  ],
+  "harnessCorrections": [
+    {
+      "observation": "First scratch controls collected zero tests because a /var versus /private/var root mismatch prevented jsdom from resolving the copied test. Resolving the scratch root to its real path corrected this; the unmodified copied suite then completed all20 cases."
+    }
+  ],
+  "finding": {
+    "id": "wallet-malformed-acknowledgment",
+    "suggestedPriority": "P2",
+    "trigger": "wallet_sendCalls resolves null, undefined, an empty object or an object with a numeric id",
+    "actual": "sendPayout returns sent and the real CoinbasePayout component selects its sent message",
+    "promise": "A successful payout submission claim requires a readable batch acknowledgment",
+    "requestSource": "apps/dashboard/app/wallet/requests.ts:135",
+    "componentSource": "apps/dashboard/app/wallet/buttons.tsx:193",
+    "sourceOfWireShape": "https://eips.ethereum.org/EIPS/eip-5792#wallet_sendcalls",
+    "confidence": "reproduced independently at request and real component boundaries, with null replayed without test.fails",
+    "limitation": "The provider answers are local response fixtures; no claim that the installed Coinbase service has emitted these malformed responses."
+  },
+  "scope": "No actual wallet, signer, chain, provider SDK, mail, deployed app or remote merchant I/O. Valid pending/submitted fixture acknowledgments do not prove real network submission or inclusion."
+}

@@ -1,0 +1,72 @@
+{
+  "at": "2026-10-15T16:42:44.678Z",
+  "chainId": 84532,
+  "merchants": [
+    {
+      "name": "sdk",
+      "merchantId": "mch_fa91d616e43c4ae594fa8c29a848c996",
+      "split": "0xBD56203E603D98A0A0899160267Bf3eaf0C3aA33",
+      "orderCount": 5,
+      "receiptCount": 4,
+      "refusedWithoutReceipt": 1,
+      "chainTransferCount": 4,
+      "fromBlock": "48156606",
+      "toBlock": "48157139",
+      "receiptsUnchangedAfterStatusReads": true,
+      "splitBalanceAtomic": "40000",
+      "evidence": [
+        {
+          "orderHash": "5729e66a6a4de957deea3f01339be87a39f1dd3f0d7314fb327bf061a665bc68",
+          "transaction": "0x51fa1669608f7022906df18d4b97e169d5cf2e54eba89f4fc660d19d1117f82a",
+          "block": "48156706",
+          "matchingTransfers": 1,
+          "atomic": "10000"
+        },
+        {
+          "orderHash": "40c48140b249a77e116ad25c8ced7c6aea11e889aff5b66a0ba43a721df7df92",
+          "transaction": "0x740efa8ad3370464187a4dcb2fcacf1cde313bd778b70a849daa9b462829cd94",
+          "block": "48156742",
+          "matchingTransfers": 1,
+          "atomic": "10000"
+        },
+        {
+          "orderHash": "60f0622782059cfeb2f309ec3bb74133086a0bfdb7a71efcfb17b4aa82cd6469",
+          "transaction": "0x2130d88afd4a5e25ef269fcfd03bc2a40492024ac1f425f2c4dcceef7c939d8b",
+          "block": "48156751",
+          "matchingTransfers": 1,
+          "atomic": "10000"
+        },
+        {
+          "orderHash": "4a8c43f05e42dc9313c74bb9a22c52c00ff405a50d26afeb8b4e763a8af9c76c",
+          "transaction": "0xe6f34e3a36c1b9368157db306f5ac4fe0bc051be9a684ab5500be99f655e6e70",
+          "block": "48156755",
+          "matchingTransfers": 1,
+          "atomic": "10000"
+        }
+      ]
+    },
+    {
+      "name": "woo",
+      "merchantId": "mch_5b1985d7e58243c8b073c573d5c07d5c",
+      "split": "0x6e071E7e42DE4C68B73C82a1A448D923EdF834DA",
+      "orderCount": 3,
+      "receiptCount": 1,
+      "refusedWithoutReceipt": 0,
+      "chainTransferCount": 1,
+      "fromBlock": "48156926",
+      "toBlock": "48157142",
+      "receiptsUnchangedAfterStatusReads": true,
+      "splitBalanceAtomic": "10000",
+      "evidence": [
+        {
+          "orderHash": "074f84602498b0db307e4fddf3d94422f03f792c620555fe1051f7ff81dd6a4c",
+          "transaction": "0x07620a4eded24a2e192f1b2bf764d2e16f509f2b0a8567fa49fdef6c6d8ba824",
+          "block": "48157026",
+          "matchingTransfers": 1,
+          "atomic": "10000"
+        }
+      ]
+    }
+  ],
+  "buyerBalanceAtomic": "2902000"
+}

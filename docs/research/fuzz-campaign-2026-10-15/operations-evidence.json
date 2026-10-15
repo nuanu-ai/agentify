@@ -1,0 +1,99 @@
+{
+  "backupPath": "/var/backups/agentify/test/fuzz-20261015-e11fef7",
+  "files": {
+    "agentify.dump": {
+      "bytes": 246882,
+      "sha256": "9804d4a5208694f3eb48b3fa6e2f89a485e03f0a5b2ccc958775a00c6d4c61cc"
+    },
+    "wordpress.sql.gz": {
+      "bytes": 118405,
+      "sha256": "dcd19080e750e5cef078afd1651ac290e48ee66bb06e90495aecee34e595d6b2"
+    },
+    "wordpress.tar.gz": {
+      "bytes": 54763179,
+      "sha256": "700834594fffd3a9bbd656e75886839a95debff2473602bcfd67dfe82e333dc2"
+    }
+  },
+  "containers": [
+    {
+      "name": "/agentify-app-1",
+      "status": "running",
+      "health": "healthy",
+      "revision": "e11fef741e875ef6f9c42465a6b27577dd2921a1"
+    },
+    {
+      "name": "/agentify-web-1",
+      "status": "running",
+      "health": null,
+      "revision": "e11fef741e875ef6f9c42465a6b27577dd2921a1"
+    },
+    {
+      "name": "/agentify-postgres-1",
+      "status": "running",
+      "health": "healthy",
+      "revision": null
+    },
+    {
+      "name": "/agentify-woo-lab-wordpress-1",
+      "status": "running",
+      "health": "healthy",
+      "revision": null
+    },
+    {
+      "name": "/agentify-woo-lab-db-1",
+      "status": "running",
+      "health": "healthy",
+      "revision": null
+    }
+  ],
+  "at": "2026-10-15T16:47:28.413Z",
+  "subject": "e11fef741e875ef6f9c42465a6b27577dd2921a1",
+  "initialTestRevision": "c718f76f97f18d020968d4c4695d969fadcf8621",
+  "databaseRestore": {
+    "method": "pg_restore --exit-on-error --no-owner --no-acl into temporary fuzz_restore_e11fef7 database on TEST PostgreSQL, then drop only that temporary database",
+    "success": true,
+    "tableCount": 56,
+    "liveDatabaseReplaced": false
+  },
+  "wordpressRestore": {
+    "archiveReadable": true,
+    "fullRestoreExecuted": false
+  },
+  "health": [
+    {
+      "path": "/healthz",
+      "http": 200
+    },
+    {
+      "path": "/dashboard/healthz",
+      "http": 200
+    },
+    {
+      "path": "/x402/catalog",
+      "http": 200
+    }
+  ],
+  "fullUnit": {
+    "total": 5903,
+    "ordinaryPass": 5875,
+    "expectedFailurePass": 12,
+    "skipped": 16,
+    "failed": 0
+  },
+  "verification": {
+    "workspaceTypecheck": "passed",
+    "existingDashboardBrowser": 32,
+    "newBrowserTraces": 48,
+    "newBrowserOperations": 576,
+    "outsideFixturePackageConsumer": "passed",
+    "scannerOps": "14 Node and 14 Python passed",
+    "scannerActorIntegration": 7,
+    "workspaceBiome": {
+      "exit": 0,
+      "warnings": 29,
+      "informational": 1,
+      "campaignFiles": "no diagnostics"
+    },
+    "decisionLog": "29 unique decisions; check passed"
+  }
+}

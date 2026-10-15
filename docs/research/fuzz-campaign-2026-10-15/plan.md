@@ -194,3 +194,35 @@ branch/PR. Product fixes are outside this campaign. Completion means every
 matrix cell has an honest final status, findings have independent evidence,
 resources are recovered and remaining gaps are named. It does not mean a
 claim that every possible input was tested.
+
+
+## Execution amendments and final disposition
+
+The registration above remains unchanged. The completed report names each
+executed, inapplicable and unexecuted cell. The worker expression contains an
+arithmetic error: 3 × 4 × 3 × 2 is 72, despite the written ceiling of 144.
+There are 34 distinct meaningful executed worker schedules. Seventy-two SDK
+transport-loss cells are replaced before their execution with 429-envelope
+and complete-response truncated-JSON cases; actual loss before headers and
+mid-body remains unexecuted. WooCommerce has 16 explicit skipped cells,
+including four applicable remote-fault cells that remain unexecuted.
+
+The wallet extension executes 20 cases against the real component. The live
+confirm-mode experiment checks its current pilot rejection before signing.
+Two unsigned Woo quote probes extend the original purchase flow to test an
+invalid connector secret and recovery. The first probe races a worker already
+waiting with the prior connection; the corrected experiment lets one poll
+interval finish before either request. A completed purchase survives a TEST
+application restart; this is not a test of process loss during a paid order.
+
+The payout verifier receives an initial receipt with a zero block hash and
+keeps it inconclusive. A read-only verification of that same transaction
+resolves its canonical receipt; no second payment is sent. A second merchant's
+payout then executes and verifies separately. These observations are retained
+in the evidence rather than being erased by retries.
+
+The final matrix also inventories the scanner's 55 route declarations and
+executes seven existing local browser-actor integration cases. It does not
+claim a new scanner fuzz matrix or a full PostgreSQL adapter differential
+campaign. Deployed browser combinations without an execution ledger stay
+unexecuted even where their local Chromium counterparts pass.

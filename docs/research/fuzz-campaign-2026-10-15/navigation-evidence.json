@@ -1,0 +1,653 @@
+{
+  "subject": "e11fef741e875ef6f9c42465a6b27577dd2921a1",
+  "plan_commit": "f1ca8e19",
+  "test_file": "apps/dashboard/src/navigation-campaign.integration.test.ts",
+  "test_file_sha256": "e14528a46a94c8cc151df921de1fb7e17d625997fd8d60ca664d28da119938d6",
+  "command": "pnpm exec vitest run --project integration apps/dashboard/src/navigation-campaign.integration.test.ts --maxWorkers=1 --no-file-parallelism --reporter=json --outputFile=/private/tmp/agentify-navigation-campaign-root.json",
+  "runtime_ms": 75216,
+  "counts": {
+    "traces_registered": 48,
+    "traces_passed": 48,
+    "traces_failed": 0,
+    "traces_skipped": 0,
+    "logical_operations_completed": 576,
+    "desktop": 24,
+    "mobile": 24,
+    "unique_seeds": 48
+  },
+  "operations": [
+    {
+      "number": 1,
+      "operation": "client navigation to a seed-selected section"
+    },
+    {
+      "number": 2,
+      "operation": "focus a section link as prefetch intent, then navigate"
+    },
+    {
+      "number": 3,
+      "operation": "submit selling form and compare real persisted selling state"
+    },
+    {
+      "number": 4,
+      "operation": "reload Cards and compare owner/card/selling state"
+    },
+    {
+      "number": 5,
+      "operation": "submit seller-name form and compare persisted name"
+    },
+    {
+      "number": 6,
+      "operation": "Back and verify owner plus screen-appropriate persisted state"
+    },
+    {
+      "number": 7,
+      "operation": "select Open Orders and compare settled URL/filter"
+    },
+    {
+      "number": 8,
+      "operation": "hold first Receipts data response, supersede with Orders, release old response"
+    },
+    {
+      "number": 9,
+      "operation": "replace cookie with other local account then submit stale Cards form; both merchants unchanged"
+    },
+    {
+      "number": 10,
+      "operation": "reload and verify new account owns visible Cards and form marks"
+    },
+    {
+      "number": 11,
+      "operation": "sign out in second tab then reload original tab to sign-in"
+    },
+    {
+      "number": 12,
+      "operation": "restore original local session and verify its persisted card/name/selling state"
+    }
+  ],
+  "oracle": "Successful trace means all twelve operation bodies and their UI/real-gateway postconditions completed. Exact per-step DOM transcripts are not retained. No provider, real mail, chain, or external shop call is part of the harness.",
+  "limits": [
+    "Seeded parameters on a fixed operation skeleton; no exhaustive event permutation claim",
+    "Prefetch intent is exercised, but the suite does not count prefetch requests or prove cache hits",
+    "Cookie replacement models a second-tab completed login; it does not exercise external authentication",
+    "The held response is a local deterministic delay, not a real network outage"
+  ],
+  "cases": [
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 0,
+      "seed": "0x582d79b8",
+      "viewport": "desktop",
+      "initial_account_position": 0,
+      "first_navigation": "settings",
+      "intent_navigation": "orders",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 1,
+      "seed": "0xfa74f373",
+      "viewport": "mobile",
+      "initial_account_position": 1,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 2,
+      "seed": "0x1cbc6d2a",
+      "viewport": "desktop",
+      "initial_account_position": 1,
+      "first_navigation": "integrations",
+      "intent_navigation": "keys",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 3,
+      "seed": "0xbec7e6e5",
+      "viewport": "mobile",
+      "initial_account_position": 0,
+      "first_navigation": "orders",
+      "intent_navigation": "integrations",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 4,
+      "seed": "0xd10f609c",
+      "viewport": "desktop",
+      "initial_account_position": 0,
+      "first_navigation": "settings",
+      "intent_navigation": "orders",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 5,
+      "seed": "0x7356da57",
+      "viewport": "mobile",
+      "initial_account_position": 1,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 6,
+      "seed": "0x959e540e",
+      "viewport": "desktop",
+      "initial_account_position": 1,
+      "first_navigation": "integrations",
+      "intent_navigation": "keys",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 7,
+      "seed": "0x37a1cdc9",
+      "viewport": "mobile",
+      "initial_account_position": 0,
+      "first_navigation": "integrations",
+      "intent_navigation": "keys",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 8,
+      "seed": "0x49e94780",
+      "viewport": "desktop",
+      "initial_account_position": 0,
+      "first_navigation": "orders",
+      "intent_navigation": "integrations",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 9,
+      "seed": "0xe830c13b",
+      "viewport": "mobile",
+      "initial_account_position": 1,
+      "first_navigation": "settings",
+      "intent_navigation": "orders",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 10,
+      "seed": "0x0a783af2",
+      "viewport": "desktop",
+      "initial_account_position": 1,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 11,
+      "seed": "0xac83b4ad",
+      "viewport": "mobile",
+      "initial_account_position": 0,
+      "first_navigation": "integrations",
+      "intent_navigation": "keys",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 12,
+      "seed": "0xcecb2e64",
+      "viewport": "desktop",
+      "initial_account_position": 0,
+      "first_navigation": "orders",
+      "intent_navigation": "integrations",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 13,
+      "seed": "0x6112a81f",
+      "viewport": "mobile",
+      "initial_account_position": 1,
+      "first_navigation": "settings",
+      "intent_navigation": "orders",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 14,
+      "seed": "0x835a21d6",
+      "viewport": "desktop",
+      "initial_account_position": 1,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0001",
+      "trace_index": 15,
+      "seed": "0x256d9b91",
+      "viewport": "mobile",
+      "initial_account_position": 0,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 0,
+      "seed": "0x582d79bb",
+      "viewport": "mobile",
+      "initial_account_position": 1,
+      "first_navigation": "settings",
+      "intent_navigation": "orders",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 1,
+      "seed": "0xfa74f370",
+      "viewport": "desktop",
+      "initial_account_position": 0,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 2,
+      "seed": "0x1cbc6d29",
+      "viewport": "mobile",
+      "initial_account_position": 0,
+      "first_navigation": "integrations",
+      "intent_navigation": "keys",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 3,
+      "seed": "0xbec7e6e6",
+      "viewport": "desktop",
+      "initial_account_position": 1,
+      "first_navigation": "orders",
+      "intent_navigation": "integrations",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 4,
+      "seed": "0xd10f609f",
+      "viewport": "mobile",
+      "initial_account_position": 1,
+      "first_navigation": "settings",
+      "intent_navigation": "orders",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 5,
+      "seed": "0x7356da54",
+      "viewport": "desktop",
+      "initial_account_position": 0,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 6,
+      "seed": "0x959e540d",
+      "viewport": "mobile",
+      "initial_account_position": 0,
+      "first_navigation": "integrations",
+      "intent_navigation": "keys",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 7,
+      "seed": "0x37a1cdca",
+      "viewport": "desktop",
+      "initial_account_position": 1,
+      "first_navigation": "integrations",
+      "intent_navigation": "keys",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 8,
+      "seed": "0x49e94783",
+      "viewport": "mobile",
+      "initial_account_position": 1,
+      "first_navigation": "orders",
+      "intent_navigation": "integrations",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 9,
+      "seed": "0xe830c138",
+      "viewport": "desktop",
+      "initial_account_position": 0,
+      "first_navigation": "settings",
+      "intent_navigation": "orders",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 10,
+      "seed": "0x0a783af1",
+      "viewport": "mobile",
+      "initial_account_position": 0,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 11,
+      "seed": "0xac83b4ae",
+      "viewport": "desktop",
+      "initial_account_position": 1,
+      "first_navigation": "integrations",
+      "intent_navigation": "keys",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 12,
+      "seed": "0xcecb2e67",
+      "viewport": "mobile",
+      "initial_account_position": 1,
+      "first_navigation": "orders",
+      "intent_navigation": "integrations",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 13,
+      "seed": "0x6112a81c",
+      "viewport": "desktop",
+      "initial_account_position": 0,
+      "first_navigation": "settings",
+      "intent_navigation": "orders",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 14,
+      "seed": "0x835a21d5",
+      "viewport": "mobile",
+      "initial_account_position": 0,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0002",
+      "trace_index": 15,
+      "seed": "0x256d9b92",
+      "viewport": "desktop",
+      "initial_account_position": 1,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 0,
+      "seed": "0x582d79ba",
+      "viewport": "desktop",
+      "initial_account_position": 1,
+      "first_navigation": "settings",
+      "intent_navigation": "orders",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 1,
+      "seed": "0xfa74f371",
+      "viewport": "mobile",
+      "initial_account_position": 0,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 2,
+      "seed": "0x1cbc6d28",
+      "viewport": "desktop",
+      "initial_account_position": 0,
+      "first_navigation": "integrations",
+      "intent_navigation": "keys",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 3,
+      "seed": "0xbec7e6e7",
+      "viewport": "mobile",
+      "initial_account_position": 1,
+      "first_navigation": "orders",
+      "intent_navigation": "integrations",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 4,
+      "seed": "0xd10f609e",
+      "viewport": "desktop",
+      "initial_account_position": 1,
+      "first_navigation": "settings",
+      "intent_navigation": "orders",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 5,
+      "seed": "0x7356da55",
+      "viewport": "mobile",
+      "initial_account_position": 0,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 6,
+      "seed": "0x959e540c",
+      "viewport": "desktop",
+      "initial_account_position": 0,
+      "first_navigation": "integrations",
+      "intent_navigation": "keys",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 7,
+      "seed": "0x37a1cdcb",
+      "viewport": "mobile",
+      "initial_account_position": 1,
+      "first_navigation": "integrations",
+      "intent_navigation": "keys",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 8,
+      "seed": "0x49e94782",
+      "viewport": "desktop",
+      "initial_account_position": 1,
+      "first_navigation": "orders",
+      "intent_navigation": "integrations",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 9,
+      "seed": "0xe830c139",
+      "viewport": "mobile",
+      "initial_account_position": 0,
+      "first_navigation": "settings",
+      "intent_navigation": "orders",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 10,
+      "seed": "0x0a783af0",
+      "viewport": "desktop",
+      "initial_account_position": 0,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 11,
+      "seed": "0xac83b4af",
+      "viewport": "mobile",
+      "initial_account_position": 1,
+      "first_navigation": "integrations",
+      "intent_navigation": "keys",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 12,
+      "seed": "0xcecb2e66",
+      "viewport": "desktop",
+      "initial_account_position": 1,
+      "first_navigation": "orders",
+      "intent_navigation": "integrations",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 13,
+      "seed": "0x6112a81d",
+      "viewport": "mobile",
+      "initial_account_position": 0,
+      "first_navigation": "settings",
+      "intent_navigation": "orders",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 14,
+      "seed": "0x835a21d4",
+      "viewport": "desktop",
+      "initial_account_position": 0,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "paused",
+      "result": "passed",
+      "logical_operations_completed": 12
+    },
+    {
+      "base_seed": "0xc61a0003",
+      "trace_index": 15,
+      "seed": "0x256d9b93",
+      "viewport": "mobile",
+      "initial_account_position": 1,
+      "first_navigation": "keys",
+      "intent_navigation": "settings",
+      "initial_selling": "open",
+      "result": "passed",
+      "logical_operations_completed": 12
+    }
+  ]
+}

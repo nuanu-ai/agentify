@@ -1,0 +1,79 @@
+{
+  "at": "2026-10-15T16:45:39.842Z",
+  "base": "https://test.agentify.ad",
+  "passed": true,
+  "calls": 22,
+  "observations": [
+    {
+      "merchant": "sdk",
+      "checks": {
+        "anonymous": 401,
+        "invalidKey": 401,
+        "otherMerchantPause": 404,
+        "malformedJson": 400,
+        "unchangedCatalog": true
+      }
+    },
+    {
+      "merchant": "sdk",
+      "cleanup": {
+        "sellingPaused": true,
+        "repeatedPauseIdempotent": true,
+        "readbackMatches": true
+      }
+    },
+    {
+      "merchant": "woo",
+      "checks": {
+        "anonymous": 401,
+        "invalidKey": 401,
+        "otherMerchantPause": 404,
+        "malformedJson": 400,
+        "unchangedCatalog": true
+      }
+    },
+    {
+      "merchant": "woo",
+      "cleanup": {
+        "sellingPaused": true,
+        "repeatedPauseIdempotent": true,
+        "readbackMatches": true
+      }
+    },
+    {
+      "merchant": "sdk",
+      "selfRevocationRefused": 409,
+      "callingKeyRemainsActive": true
+    },
+    {
+      "merchant": "woo",
+      "selfRevocationRefused": 409,
+      "callingKeyRemainsActive": true
+    }
+  ],
+  "fixtureCleanup": [
+    {
+      "merchant": "sdk",
+      "keyDisabledThroughOwnerStoreMethod": true,
+      "revokedKeyReadHttp": 401
+    },
+    {
+      "merchant": "woo",
+      "keyDisabledThroughOwnerStoreMethod": true,
+      "revokedKeyReadHttp": 401
+    }
+  ],
+  "wooPriceRestored": {
+    "productId": 21,
+    "sku": "DL-GIFT-MESSAGES",
+    "regular": "0.05",
+    "sale": "",
+    "price": "0.05"
+  },
+  "browserSessionRetained": "Woo campaign account; retained for owner inspection",
+  "dataRetained": "Two TEST merchants, paused cards, completed orders and receipts, Woo connection, TEST merchant private key in ignored mode600 file. No product fixes deployed.",
+  "temporaryAdminCredentialCopiesDeleted": true,
+  "campaignCardsAbsentFromPublicCatalog": true,
+  "publicCatalogRemainingCount": 13,
+  "completedAt": "2026-10-15T16:46:49.195Z"
+}
