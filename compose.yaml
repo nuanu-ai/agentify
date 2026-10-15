@@ -33,8 +33,8 @@
 # To sign in, open http://localhost:8080/dashboard/sign-in, request a link,
 # open it from the dashboard's log and press its confirmation button, which
 # makes your account; then press "Open my seller dashboard", which makes your
-# merchant. That is the only way in, here and on both deployed channels: no
-# command makes an account or a merchant.
+# merchant. Google sign-in is also available when its credentials are supplied;
+# no command makes an account or a merchant.
 #
 # The operator's commands look after the accounts there are:
 #
@@ -224,6 +224,10 @@ services:
       MAIL_URL: "${MAIL_URL:-sandbox:log}"
       MAIL_API_KEY: "${MAIL_API_KEY:-}"
       MAIL_FROM: "${MAIL_FROM:-Agentify <no-reply@localhost>}"
+      # Optional second way to sign in. Both absent or empty keeps email-link
+      # sign-in alone; one credential without the other is refused at start-up.
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID-}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET-}"
       # Off because a Secure cookie is never sent back over plain http, so nobody
       # could sign in locally. Wherever the dashboard is reached over https this must
       # be "true", or a merchant's session is exposed to anybody on the path.

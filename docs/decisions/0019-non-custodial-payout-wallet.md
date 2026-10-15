@@ -81,8 +81,8 @@ is a second need for a hash, met in the gateway, outside that tree, by an
 audited library. A replacement costs two days of sales to the old wallet's
 split. An intruding session can ask again after each cancel, or set a first
 address; the owner answers with the immediate pause, signing out other devices
-(ADR-0026 §3) and the cancel, all of which hold only while the mailbox is
-theirs (ADR-0026 §1). A replacement waits on the mail provider, and a merchant
+(ADR-0026 §3) and the cancel, all of which hold only while the mailbox and
+any linked Google account remain theirs (ADR-0026 §1). A replacement waits on the mail provider, and a merchant
 no account names, such as the one every database starts with (ADR-0010),
 cannot have its wallet replaced.
 

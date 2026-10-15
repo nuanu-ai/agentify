@@ -85,6 +85,9 @@ const answeringAs = (network: string): PublicClient => {
 
 const BASE = "eip155:8453";
 const BASE_SEPOLIA = "eip155:84532";
+const ETHEREUM = "eip155:1";
+const ETHEREUM_SEPOLIA = "eip155:11155111";
+const EVERY_CHAIN_READ = [BASE, BASE_SEPOLIA, ETHEREUM, ETHEREUM_SEPOLIA];
 
 /** The code's Base Sepolia entry, with the commission wallet the answers were recorded for. */
 const SEPOLIA_ENTRY: PayoutSplitNetwork = {
@@ -119,6 +122,7 @@ const checkOn = (
 ): Promise<readonly Verdict[]> =>
   commissionWalletVerdicts({
     networks: [network],
+    chainsRead: [network],
     table: entry === null ? {} : { [network]: entry },
     clientOf: () => answeringAs(answeredBy),
     owners: owners === null ? {} : { [network]: owners },
@@ -149,9 +153,10 @@ describe("the pre-release check of the commission wallets", () => {
     );
   });
 
-  it("passes the code's own table on both networks, Base's commission wallet a Safe with the product owner's one owner", async () => {
+  it("passes the code's own table on both networks, Base's commission wallet a Safe with the product owner's one owner, and neither wallet a contract on any other chain read", async () => {
     const verdicts = await commissionWalletVerdicts({
       networks: [BASE, BASE_SEPOLIA],
+      chainsRead: EVERY_CHAIN_READ,
       table: PAYOUT_SPLIT_NETWORKS,
       clientOf: (network) => answeringAs(network),
       // The product owner's hardware wallet, confirmed by him on 2026-10-15.
@@ -163,9 +168,15 @@ describe("the pre-release check of the commission wallets", () => {
       [BASE, "commission wallet", true],
       [BASE, "Safe threshold", true],
       [BASE, "Safe owners", true],
+      [BASE, `commission wallet on ${BASE_SEPOLIA}`, true],
+      [BASE, `commission wallet on ${ETHEREUM}`, true],
+      [BASE, `commission wallet on ${ETHEREUM_SEPOLIA}`, true],
       ...CONTRACTS_PASS.map(([check, passed]) => [BASE, check, passed]),
       [BASE_SEPOLIA, "chain id", true],
       [BASE_SEPOLIA, "commission wallet", true],
+      [BASE_SEPOLIA, `commission wallet on ${BASE}`, true],
+      [BASE_SEPOLIA, `commission wallet on ${ETHEREUM}`, true],
+      [BASE_SEPOLIA, `commission wallet on ${ETHEREUM_SEPOLIA}`, true],
       ...CONTRACTS_PASS.map(([check, passed]) => [BASE_SEPOLIA, check, passed]),
     ]);
     const on = (network: string, check: string) =>
@@ -175,9 +186,74 @@ describe("the pre-release check of the commission wallets", () => {
     expect(on(BASE_SEPOLIA, "commission wallet")).toMatch(/plain wallet/);
   });
 
+  it("fails a test channel's plain wallet that is a contract on Ethereum Sepolia, naming that chain and what it found there", async () => {
+    // The address first named as the test channel's commission wallet: Circle's
+    // USDC on Ethereum Sepolia, with no code on Base Sepolia.
+    const usdcThere = named(ETHEREUM_SEPOLIA, "ethereumSepoliaUsdc");
+
+    const verdicts = await commissionWalletVerdicts({
+      networks: [BASE_SEPOLIA],
+      chainsRead: [BASE_SEPOLIA, ETHEREUM_SEPOLIA],
+      table: { [BASE_SEPOLIA]: { ...SEPOLIA_ENTRY, commissionWallet: usdcThere } },
+      clientOf: (network) => answeringAs(network),
+      owners: {},
+    });
+
+    expect(outcome(verdicts)).toStrictEqual([
+      ["chain id", true],
+      ["commission wallet", true],
+      [`commission wallet on ${ETHEREUM_SEPOLIA}`, false],
+      ...CONTRACTS_PASS,
+    ]);
+    const there = verdicts.find((v) => v.check === `commission wallet on ${ETHEREUM_SEPOLIA}`);
+    expect(there?.saw).toContain(ETHEREUM_SEPOLIA);
+    expect(there?.saw).toMatch(/bytes of code/);
+  });
+
+  it("fails a commission contract on Base whose address holds code on another chain read, where it would be another contract", async () => {
+    const verdicts = await commissionWalletVerdicts({
+      networks: [BASE],
+      chainsRead: [BASE, ETHEREUM_SEPOLIA],
+      table: { [BASE]: baseWith(named(BASE, "safeSingleton")) },
+      clientOf: (network) => answeringAs(network),
+      owners: { [BASE]: SAFE_OWNERS },
+    });
+
+    expect(
+      verdicts.find((v) => v.check === `commission wallet on ${ETHEREUM_SEPOLIA}`)?.passed,
+    ).toBe(false);
+  });
+
+  it("takes no silence for an account on another chain, nor an answer from an RPC of the wrong chain", async () => {
+    const wallet = named(BASE_SEPOLIA, "testChannelCommission");
+    const run = (clientOf: (network: string) => PublicClient) =>
+      commissionWalletVerdicts({
+        networks: [BASE_SEPOLIA],
+        chainsRead: [BASE_SEPOLIA, ETHEREUM],
+        table: { [BASE_SEPOLIA]: { ...SEPOLIA_ENTRY, commissionWallet: wallet } },
+        clientOf,
+        owners: {},
+      });
+    const elsewhere = (verdicts: readonly Verdict[]) =>
+      verdicts.find((v) => v.check === `commission wallet on ${ETHEREUM}`)?.passed;
+
+    expect(elsewhere(await run((network) => answeringAs(network)))).toBe(true);
+    expect(
+      elsewhere(await run((network) => answeringAs(network === ETHEREUM ? BASE : network))),
+    ).toBe(false);
+    expect(
+      elsewhere(
+        await run((network) =>
+          network === ETHEREUM ? answeringAs("eip155:0") : answeringAs(network),
+        ),
+      ),
+    ).toBe(false);
+  });
+
   it("fails a network the table names no payout split for, reading nothing", async () => {
     const verdicts = await commissionWalletVerdicts({
       networks: [BASE],
+      chainsRead: [BASE, ETHEREUM],
       table: {},
       clientOf: (network) => answeringAs(network),
       owners: {},

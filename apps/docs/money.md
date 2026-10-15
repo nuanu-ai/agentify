@@ -87,15 +87,14 @@ a transaction you send yourself: the address it goes to, which is Multicall3, an
 its data. Send it on the network the screen names, Base, or Base Sepolia on the
 test channel, and on no other. Multicall3 sits at the same address on most
 networks, so the same transaction sent on another one can go through there,
-pay nothing out and still cost that network's fee. The steps below have not
-yet been checked by sending a payout on the test channel, so compare each one
-with what your wallet shows; once they have, this section says what that
-showed.
+pay nothing out and still cost that network's fee. The steps below were
+checked on 2026-10-15 by sending payouts from MetaMask on the test channel and
+on Base itself.
 
 Your wallet has to let you put data into a transaction. In MetaMask the field
 for it stays hidden until Show hex data is turned on, under Settings →
-Advanced; other wallet apps name it differently, and some do not offer it at
-all. The payout does not have to come from the wallet it pays: any wallet of
+Transactions; other wallet apps name it differently, and some do not offer it
+at all. The payout does not have to come from the wallet it pays: any wallet of
 yours whose app shows the field, and which holds a little ETH for the fee, can
 send it.
 

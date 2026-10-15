@@ -32,11 +32,11 @@ export interface PayoutSplitNetwork {
 export type PayoutSplitNetworks = Readonly<Record<string, PayoutSplitNetwork>>;
 
 /**
- * The test channel's commission wallet, chosen by the product owner. Every
- * split recorded names it for good, so changing it is a new split for every
- * merchant on the test channel, which nothing here does.
+ * The test channel's commission wallet: the product owner's own account, the
+ * same key that signs for the Safe on Base. Every split recorded names it for
+ * good, so changing it is a new split for every merchant on the test channel.
  */
-const BASE_SEPOLIA_COMMISSION_WALLET = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
+const BASE_SEPOLIA_COMMISSION_WALLET = "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5";
 
 /**
  * The live channel's commission wallet: the product owner's Safe on Base,

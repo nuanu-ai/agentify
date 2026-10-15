@@ -38,6 +38,7 @@ const expectNoFixtureSecrets = (stderr: string, resolved: ResolvedCompose): void
     resolved.services.app.environment?.CDP_API_KEY_ID,
     resolved.services.app.environment?.CDP_API_KEY_SECRET,
     resolved.services.app.environment?.AUTH_SECRET,
+    resolved.services.app.environment?.GOOGLE_CLIENT_SECRET,
   ];
   for (const value of values) {
     if (value !== undefined && value !== "") {
@@ -228,6 +229,102 @@ describe("a channel that is what it claims to be", () => {
   });
 });
 
+describe("Google sign-in is optional and only the application receives its credentials", () => {
+  const google = {
+    GOOGLE_CLIENT_ID: "synthetic-google-client.apps.googleusercontent.com",
+    GOOGLE_CLIENT_SECRET: "synthetic-google-client-secret",
+  };
+
+  it("refuses sharing the Google secret with session signing or the scanner's private identity route", () => {
+    for (const name of ["AUTH_SECRET", "REPORT_IDENTITY_SECRET"]) {
+      const wrong = structuredClone(TEST_CHANNEL);
+      const shared = "synthetic-shared-secret-at-least-thirty-two-characters";
+      Object.assign(envFor(wrong, "app"), google, { GOOGLE_CLIENT_SECRET: shared, [name]: shared });
+      if (name === "REPORT_IDENTITY_SECRET")
+        envFor(wrong, "scanner").REPORT_IDENTITY_SECRET = shared;
+      const checked = runCli("test", JSON.stringify(wrong));
+      expect(checked.status).toBe(65);
+      expect(checked.stderr).toContain("GOOGLE_CLIENT_SECRET");
+      expect(checked.stdout + checked.stderr).not.toContain(shared);
+    }
+  });
+
+  it.each([
+    ["production", PRODUCTION_CHANNEL],
+    ["test", TEST_CHANNEL],
+  ] as const)("accepts %s with Google disabled or with both credentials", (channel, config) => {
+    for (const credentials of [{}, { GOOGLE_CLIENT_ID: "", GOOGLE_CLIENT_SECRET: "" }, google]) {
+      const next = structuredClone(config);
+      Object.assign(envFor(next, "app"), credentials);
+      expect(problemsWith(channel, next)).toEqual([]);
+    }
+  });
+
+  it.each(["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"])(
+    "refuses Google when %s alone is supplied, without printing the credential",
+    (name) => {
+      const supplied = google[name as keyof typeof google];
+      const wrong = withEnv(TEST_CHANNEL, "app", name, supplied);
+      const checked = runCli("test", JSON.stringify(wrong));
+      expect(checked.status).toBe(65);
+      expect(checked.stderr).toMatch(/GOOGLE_CLIENT_ID.*GOOGLE_CLIENT_SECRET/);
+      expect(checked.stdout + checked.stderr).not.toContain(supplied);
+    },
+  );
+
+  it("treats an empty credential as absent when its partner is set", () => {
+    for (const missing of Object.keys(google)) {
+      const wrong = structuredClone(TEST_CHANNEL);
+      Object.assign(envFor(wrong, "app"), google, { [missing]: "" });
+      expect(problemsWith("test", wrong)).toContainEqual(
+        expect.stringMatching(/GOOGLE_CLIENT_ID.*GOOGLE_CLIENT_SECRET/),
+      );
+    }
+  });
+
+  it("refuses whitespace-only Google credentials instead of enabling a broken sign-in", () => {
+    for (const blank of [
+      { GOOGLE_CLIENT_ID: "   " },
+      { GOOGLE_CLIENT_SECRET: "   " },
+      { GOOGLE_CLIENT_ID: "   ", GOOGLE_CLIENT_SECRET: "   " },
+    ]) {
+      const wrong = structuredClone(TEST_CHANNEL);
+      Object.assign(envFor(wrong, "app"), google, blank);
+      const checked = runCli("test", JSON.stringify(wrong));
+      expect(checked.status).toBe(65);
+      for (const name of Object.keys(blank)) expect(checked.stderr).toContain(name);
+      expectNoFixtureSecrets(checked.stderr + checked.stdout, wrong);
+    }
+  });
+
+  it("refuses Google credentials on services other than the application", () => {
+    for (const service of ["scanner", "scanner-worker", "scanner-privacy", "web"]) {
+      for (const [name, value] of Object.entries(google)) {
+        const wrong = withEnv(TEST_CHANNEL, service, name, value);
+        const checked = runCli("test", JSON.stringify(wrong));
+        expect(checked.status).toBe(65);
+        expect(checked.stderr).toContain(`${service}: ${name}`);
+        expect(checked.stdout + checked.stderr).not.toContain(value);
+      }
+    }
+  });
+
+  it("refuses Google on an HTTP channel origin or without secure session cookies", () => {
+    const enabled = structuredClone(TEST_CHANNEL);
+    Object.assign(envFor(enabled, "app"), google);
+    for (const [name, value] of [
+      ["PUBLIC_BASE_URL", "http://test.agentify.ad"],
+      ["COOKIE_SECURE", "false"],
+    ] as const) {
+      const wrong = withEnv(enabled, "app", name, value);
+      const checked = runCli("test", JSON.stringify(wrong));
+      expect(checked.status).toBe(65);
+      expect(checked.stderr).toContain(name);
+      expectNoFixtureSecrets(checked.stderr + checked.stdout, wrong);
+    }
+  });
+});
+
 describe("the chain and the facilitator together", () => {
   // Prevents a public channel claiming settlement while its chain/facilitator pair cannot settle.
   it("refuses the test channel on the scripted facilitator", () => {
@@ -294,10 +391,9 @@ describe("the mock merchant is not among the services", () => {
 });
 
 describe("a deployed channel seeds no merchant", () => {
-  // A merchant comes into being one way: a person opens the link mailed to
-  // their address and presses the dashboard's one control. A key the gateway
-  // seeds from a host's file at every start would be a second way, and one
-  // nobody can retire without a release.
+  // A merchant comes into being one way: a person signs in and presses the
+  // dashboard's one control. A key the gateway seeds from a host's file at
+  // every start would be a second way, and one nobody can retire without a release.
   const CHANNELS = [
     ["production", PRODUCTION_CHANNEL, "csk_live_"],
     ["test", TEST_CHANNEL, "csk_test_"],
@@ -312,7 +408,7 @@ describe("a deployed channel seeds no merchant", () => {
   });
 
   it.each(CHANNELS)(
-    "refuses %s seeding a key, names the mailed link, and does not print the key",
+    "refuses %s seeding a key without printing the key",
     (channel, config, prefix) => {
       // The channel's own prefix and the laptop's key alike: the reason is the
       // second way in, not whose key it is.
@@ -320,10 +416,6 @@ describe("a deployed channel seeds no merchant", () => {
         const problems = problemsWith(channel, withEnv(config, "app", "SANDBOX_MERCHANT_KEY", key));
         expect(problems).toContainEqual(expect.stringMatching(/^app: SANDBOX_MERCHANT_KEY/));
         const said = problems.join("\n");
-        expect(said).toMatch(/link mailed/);
-        // Where the empty seed comes from, since a host's file cannot change
-        // it: the overlay every deployed channel is rendered with.
-        expect(said).toMatch(/deploy\/compose\.public\.yaml/);
         expect(said).not.toContain(key);
       }
     },

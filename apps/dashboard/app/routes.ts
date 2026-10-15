@@ -27,6 +27,8 @@ import { index, layout, type RouteConfig, route } from "@react-router/dev/routes
 export default [
   route("sign-in", "routes/sign-in.tsx"),
   route("sign-in/open", "routes/sign-in-open.tsx"),
+  route("sign-in/google", "routes/sign-in-google.tsx"),
+  route("sign-in/google/callback", "routes/sign-in-google-callback.tsx"),
   route("sign-out", "routes/sign-out.ts"),
   route("woocommerce/return", "routes/woocommerce-return.tsx"),
   layout("routes/gate.tsx", [

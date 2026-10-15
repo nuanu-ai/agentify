@@ -90,6 +90,13 @@ const environmentSchema = z.object({
       `must be at least ${SHORTEST_SECRET} characters; make one with: openssl rand -base64 32`,
     ),
 
+  GOOGLE_CLIENT_ID: emptyIsAbsent(
+    z.string().refine((value) => value.trim().length > 0, "must not be blank"),
+  ),
+  GOOGLE_CLIENT_SECRET: emptyIsAbsent(
+    z.string().refine((value) => value.trim().length > 0, "must not be blank"),
+  ),
+
   /** Bearer for the unproxied scanner-to-dashboard identity route. */
   REPORT_IDENTITY_SECRET: emptyIsAbsent(
     z
@@ -174,6 +181,8 @@ export interface DashboardConfig {
   readonly databaseUrl: string;
   /** Never printed, never on a page. */
   readonly authSecret: string;
+  /** Both absent disables Google; a partial pair is refused before startup. */
+  readonly google: Readonly<{ clientId: string; clientSecret: string }> | null;
   readonly reportIdentitySecret: string | null;
   readonly publicBaseUrl: string;
   readonly mailUrl: string;
@@ -224,6 +233,20 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
   const sandboxMail = isSandboxMail(values.MAIL_URL);
   const problems: string[] = [];
 
+  const googleConfigured =
+    values.GOOGLE_CLIENT_ID !== undefined || values.GOOGLE_CLIENT_SECRET !== undefined;
+  if (googleConfigured) {
+    if (values.GOOGLE_CLIENT_ID === undefined) problems.push("GOOGLE_CLIENT_ID is not set");
+    if (values.GOOGLE_CLIENT_SECRET === undefined) problems.push("GOOGLE_CLIENT_SECRET is not set");
+    if (!NOWHERE_ELSE.has(new URL(values.PUBLIC_BASE_URL).hostname)) {
+      if (new URL(values.PUBLIC_BASE_URL).protocol !== "https:") {
+        problems.push("PUBLIC_BASE_URL must use https for Google sign-in on a public site");
+      }
+      if (!values.COOKIE_SECURE)
+        problems.push("COOKIE_SECURE must be true for Google sign-in on a public site");
+    }
+  }
+
   // A credential beside the sandbox address is leftovers, most likely a
   // production environment file copied onto a sandbox, and is refused.
   if (sandboxMail && values.MAIL_API_KEY !== undefined) {
@@ -260,6 +283,17 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
   }
 
   if (
+    values.GOOGLE_CLIENT_SECRET !== undefined &&
+    [values.AUTH_SECRET, values.REPORT_IDENTITY_SECRET, values.MAIL_API_KEY].includes(
+      values.GOOGLE_CLIENT_SECRET,
+    )
+  ) {
+    problems.push(
+      "GOOGLE_CLIENT_SECRET must differ from AUTH_SECRET, REPORT_IDENTITY_SECRET and MAIL_API_KEY",
+    );
+  }
+
+  if (
     values.REPORT_IDENTITY_SECRET !== undefined &&
     [values.AUTH_SECRET, values.MAIL_API_KEY].includes(values.REPORT_IDENTITY_SECRET)
   ) {
@@ -270,7 +304,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
   }
 
   if (problems.length > 0) {
-    throw new Error(`The dashboard cannot start, the mail is not set up — ${problems.join("; ")}`);
+    throw new Error(`The dashboard cannot start, sign-in is not set up — ${problems.join("; ")}`);
   }
 
   return {
@@ -283,6 +317,10 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     cookieSecure: values.COOKIE_SECURE,
     databaseUrl: values.DATABASE_URL,
     authSecret: values.AUTH_SECRET,
+    google:
+      values.GOOGLE_CLIENT_ID !== undefined && values.GOOGLE_CLIENT_SECRET !== undefined
+        ? { clientId: values.GOOGLE_CLIENT_ID, clientSecret: values.GOOGLE_CLIENT_SECRET }
+        : null,
     reportIdentitySecret: values.REPORT_IDENTITY_SECRET ?? null,
     publicBaseUrl: values.PUBLIC_BASE_URL,
     mailUrl: values.MAIL_URL,

@@ -29,7 +29,7 @@ describe("a wallet the merchant's share could not come back from", () => {
     ["the zero address", "0x0000000000000000000000000000000000000000", "zero_address"],
     [
       "the test chain's commission wallet",
-      "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+      "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5",
       "commission_wallet",
     ],
     ["the live chain's commission wallet", live.commissionWallet, "commission_wallet"],
