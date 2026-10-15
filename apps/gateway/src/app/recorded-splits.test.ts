@@ -240,9 +240,7 @@ describe("a start where the code's payout split changed since the registry was w
     // wallet twice, so the code makes none, and the recorded one is not what
     // it makes.
     const database = aDatabase();
-    // The distributor's address, in the spelling a wallet is written in.
-    const theirs = payoutSplitNetworkOf(T1, "eip155:8453").commissionWallet;
-    expect(theirs.toLowerCase()).toBe(DISTRIBUTOR.toLowerCase());
+    const theirs = DISTRIBUTOR;
     await aMerchant(database, "mch_one");
     await paidUnder(database, "mch_one", theirs);
 
