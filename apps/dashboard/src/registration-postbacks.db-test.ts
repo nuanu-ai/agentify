@@ -397,7 +397,29 @@ if (databaseUrl === null) {
         click_id: null,
         state: "given_up",
         attempts: 0,
-        last_outcome: "retry_window_exhausted",
+        last_outcome: null,
+        settled_at: START,
+      });
+    });
+
+    it("keeps the last failure's outcome on a report given up a day after the registration", async () => {
+      // The outcome is what the tracker last answered; the end of the window
+      // is said by the state and when it settled.
+      const account = await registered(CLICK, 24 * HOUR);
+      await pool.query(
+        "update dashboard_registration_postbacks set attempts = 2, last_outcome = 'http_503' where account_id = $1",
+        [account],
+      );
+      const { post, received } = tracker(200);
+
+      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
+
+      expect(received).toStrictEqual([]);
+      expect(await onlyRow()).toMatchObject({
+        click_id: null,
+        state: "given_up",
+        attempts: 2,
+        last_outcome: "http_503",
         settled_at: START,
       });
     });
