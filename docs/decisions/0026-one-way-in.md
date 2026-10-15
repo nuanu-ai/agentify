@@ -27,7 +27,8 @@ Workspace account with a hosted-domain claim. Other addresses use an email
 link. The Google issuer and subject bind to the account with that exact address;
 a linked subject with a different current address is refused. Addresses are
 trimmed and lowercased, never merged by Gmail dots, plus suffixes or domain
-aliases. Google supplies no seller name and carries no scanner report request.
+aliases. Google supplies no seller name and carries no scanner report request;
+its single-use state may keep an ad click the person consented to (ADR-0039).
 
 **2. The dashboard holds one identity and session for the whole site.** Better
 Auth runs in its process on our PostgreSQL with telemetry off, through our
