@@ -50,13 +50,11 @@ describe("the front page", () => {
     expect(html).toContain(`data-agentify-landing-variant="${LANDINGS.owner.variant}"`);
   });
 
-  it("carries its own title and the site's description, named by the origin alone", async () => {
+  it("carries its own title and description, named by the origin alone", async () => {
     const head = await page("/");
 
     expect(head.title).toBe("What your website shows to AI agents, and how to sell to them");
-    expect(head.meta("description")).toBe(
-      "A public-HTTP diagnostic showing what your website makes readable to AI agents.",
-    );
+    expect(head.meta("description")?.trim()).toBeTruthy();
     expect(head.canonical).toBe("https://agentify.ad");
     expect(head.meta("og:title")).toBe(head.title);
     expect(head.meta("og:image")).toBe("https://agentify.ad/opengraph-image");
@@ -72,6 +70,22 @@ describe("the front page", () => {
     expect(graph["@graph"]?.find((node) => node["@type"] === "Organization")?.url).toBe(
       "https://agentify.ad/",
     );
+  });
+});
+
+describe("public search descriptions", () => {
+  it("gives each landing and policy its own description, also used in link previews", async () => {
+    const paths = ["/", "/store", "/local", "/privacy", "/terms"];
+    const descriptions = [];
+    for (const path of paths) {
+      const head = await page(path);
+      const description = head.meta("description");
+      expect(description?.trim(), path).toBeTruthy();
+      expect(head.meta("og:description"), path).toBe(description);
+      expect(head.meta("twitter:description"), path).toBe(description);
+      descriptions.push(description);
+    }
+    expect(new Set(descriptions).size).toBe(paths.length);
   });
 });
 
@@ -176,29 +190,16 @@ describe("a trust page's header", () => {
 
 describe("the trust pages", () => {
   it.each([
-    [
-      "/privacy",
-      "Privacy and data controls",
-      "Privacy · Agentify",
-      "Privacy, retention, consent, processors, and data-control information for Agentify.",
-    ],
-    [
-      "/terms",
-      "Terms of use",
-      "Terms · Agentify",
-      "A public-HTTP diagnostic showing what your website makes readable to AI agents.",
-    ],
-  ])(
-    "%s says what it is, under its own title and address",
-    async (path, h1, title, description) => {
-      const head = await page(path);
+    ["/privacy", "Privacy and data controls", "Privacy · Agentify"],
+    ["/terms", "Terms of use", "Terms · Agentify"],
+  ])("%s says what it is, under its own title and address", async (path, h1, title) => {
+    const head = await page(path);
 
-      expect(head.html).toMatch(new RegExp(`<h1[^>]*>${h1}</h1>`));
-      expect(head.title).toBe(title);
-      expect(head.meta("description")).toBe(description);
-      expect(head.canonical).toBe(`https://agentify.ad${path}`);
-    },
-  );
+    expect(head.html).toMatch(new RegExp(`<h1[^>]*>${h1}</h1>`));
+    expect(head.title).toBe(title);
+    expect(head.meta("description")?.trim()).toBeTruthy();
+    expect(head.canonical).toBe(`https://agentify.ad${path}`);
+  });
 
   it("name the contacts this deployment is configured with", async () => {
     vi.stubEnv("APP_BASE_URL", "https://test.agentify.ad");

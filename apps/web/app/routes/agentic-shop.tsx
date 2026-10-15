@@ -10,7 +10,7 @@ export const loader = () => AGENTIC_SHOP_RESEARCH;
 
 export const meta = ({ matches }: MetaArgs) =>
   pageMeta(siteConfigOf(matches), {
-    title: "Sell to agents",
+    title: "Sell products and services to AI agents",
     description:
       "Open your Agentify dashboard with an email link, integrate through the SDK and test agent-ready offers. Live publication requires operator approval.",
     canonical: "/agentic-shop",
