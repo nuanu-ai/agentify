@@ -743,6 +743,42 @@ describe("measuring a visit", () => {
   });
 
   it.each([
+    ["the documentation's", "/docs/money"],
+    ["the scanner's", "/privacy"],
+  ])(
+    "shows %s banner before the page's script runs only to a visitor who has not chosen",
+    async (_whose, path) => {
+      for (const chosen of [false, true]) {
+        // The page as it stands until its script runs, which here it never does.
+        const { page } = await visit(path, undefined, false, chosen, (context) =>
+          context.route(/\.js(?:\?|$)/, (route) => route.abort()),
+        );
+        const banner = page.getByRole("complementary", {
+          name: "Privacy choices",
+          includeHidden: true,
+        });
+
+        expect(await banner.count(), `chosen: ${chosen}`).toBe(1);
+        expect(await banner.isVisible(), `chosen: ${chosen}`).toBe(!chosen);
+        await page.context().close();
+      }
+    },
+  );
+
+  it("asks again, in a tab open on a page, a visitor whose choice is withdrawn in another tab", async () => {
+    const { page } = await visit("/docs/money");
+    const banner = page.getByRole("complementary", { name: "Privacy choices" });
+    expect(await banner.isVisible()).toBe(false);
+
+    const other = await page.context().newPage();
+    await other.goto(`${edge.origin}/docs/faq`);
+    await other.evaluate((key) => window.localStorage.removeItem(key), CONSENT_STORAGE_KEY);
+
+    await banner.waitFor({ state: "visible" });
+    await page.context().close();
+  });
+
+  it.each([
     ["the contents column on a wide screen", { width: 1440, height: 760 }, false],
     ["the page's sections on a phone", { width: 390, height: 844 }, true],
   ])("keeps the end of %s clear of the banner that asks", async (_what, viewport, phone) => {

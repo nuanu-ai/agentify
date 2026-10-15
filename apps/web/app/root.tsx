@@ -16,7 +16,7 @@ import "@agentify/visual/tokens.css";
 import "@agentify/visual/consent.css";
 import "./globals.css";
 
-import { ConsentBanner } from "@agentify/consent";
+import { ConsentBanner, KeptChoiceScript } from "@agentify/consent";
 import { OnItsWay } from "@agentify/ui";
 import type { ReactNode } from "react";
 import {
@@ -103,6 +103,7 @@ export function Layout({ children }: Readonly<{ children: ReactNode }>) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
+        <KeptChoiceScript />
       </head>
       <body>
         <SiteBody>{children}</SiteBody>

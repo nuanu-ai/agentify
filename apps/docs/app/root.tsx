@@ -19,7 +19,7 @@ import "@agentify/visual/editorial.css";
 import "@agentify/visual/consent.css";
 import "./docs.css";
 
-import { ConsentBanner, PrivacyChoicesButton } from "@agentify/consent";
+import { ConsentBanner, KeptChoiceScript, PrivacyChoicesButton } from "@agentify/consent";
 import { Footer, SiteHeader, SiteMenu } from "@agentify/ui";
 import { type ReactNode, useMemo, useState } from "react";
 import {
@@ -122,6 +122,7 @@ export function Layout({ children }: Readonly<{ children: ReactNode }>) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
+        <KeptChoiceScript />
       </head>
       <body>
         <DocsBody>{children}</DocsBody>

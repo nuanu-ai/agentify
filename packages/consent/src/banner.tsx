@@ -16,6 +16,25 @@ const policy = {
   requireOptInForProductAnalytics: true,
 };
 
+/**
+ * Run in the page's head before anything is painted: where a choice made
+ * under the current policy is kept, a banner its script has not yet read the
+ * choice for is hidden. The banner decides for itself once its script runs.
+ */
+const HIDDEN_WHILE_KEPT = {
+  __html: `try{var kept=JSON.parse(localStorage.getItem(${JSON.stringify(CONSENT_STORAGE_KEY)})||"null");if(kept&&kept.policyVersion===${JSON.stringify(CONSENT_POLICY_VERSION)}){var style=document.createElement("style");style.textContent=".consent-banner:not([data-read]){display:none}";document.head.appendChild(style)}}catch(_){}`,
+};
+
+/**
+ * For the page's head. The banner is drawn on the server for every visitor,
+ * since only the browser knows whether they chose; this keeps a visitor who
+ * already chose from seeing it flash up while the page's script loads.
+ */
+export function KeptChoiceScript() {
+  // biome-ignore lint/security/noDangerouslySetInnerHtml: this module's own constant, run before the first paint
+  return <script dangerouslySetInnerHTML={HIDDEN_WHILE_KEPT} />;
+}
+
 /** Tab and Shift+Tab go round the dialog's own controls, as long as it is open. */
 const keepTabInside = (event: KeyPress<HTMLElement>) => {
   if (event.key !== "Tab") return;
@@ -151,6 +170,7 @@ export function ConsentPreferencesPanel(props: {
  */
 export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
   const [visible, setVisible] = useState(true);
+  const [read, setRead] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [productAnalytics, setProductAnalytics] = useState(false);
   const [adsMeasurement, setAdsMeasurement] = useState(false);
@@ -187,6 +207,7 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
   useEffect(() => {
     const read = () => {
       const current = readCurrentConsent(window.localStorage);
+      setRead(true);
       setVisible(current === undefined);
       if (current === undefined) return;
       setProductAnalytics(current.categories.product_analytics);
@@ -264,7 +285,12 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
   return (
     <>
       {visible ? (
-        <aside aria-label="Privacy choices" className="consent-banner" ref={banner}>
+        <aside
+          aria-label="Privacy choices"
+          className="consent-banner"
+          data-read={read ? "" : undefined}
+          ref={banner}
+        >
           <div className="consent-banner-copy">
             <strong>Choose how {brand} measures this visit</strong>
             <p className="consent-copy">
