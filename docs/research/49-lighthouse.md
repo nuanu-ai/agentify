@@ -66,8 +66,8 @@ The baseline is `1c8ab4e8`; the accepted source is `ca3055d3`. Measurements
 use Chrome 155 and Node 26.7 on the same macOS machine. Mobile uses Lighthouse's
 simulated 4G and fourfold CPU slowdown; desktop uses its desktop preset.
 Each cell below is a median of three cold visits over HTTP/2. Every
-Performance score has an identical minimum and maximum across its three
-runs. [The CSV](49-lighthouse-results.csv) records the score and LCP ranges,
+Performance score in that paired comparison has an identical minimum and
+maximum across its three runs. [The CSV](49-lighthouse-results.csv) records the score and LCP ranges,
 first paint, layout shift, blocking time, speed index and font bytes.
 
 | Page | Mobile Performance | Mobile LCP, ms | Desktop Performance | Desktop LCP, ms |
@@ -120,6 +120,27 @@ suite. Local direct test launches encounter sandbox IPC restrictions and
 permission-review timeouts, so full suite evidence comes from the PR's CI
 checks rather than from those interrupted local processes. CI and image
 publication are checked against the final PR head before handover.
+
+## Compatibility with the current main branch
+
+The source at `5dc860df` integrates `main` at `6da6ce06`, including PR #142.
+There are no merge conflicts. Its accessibility changes preserve both font
+preloads and the shared variable face. They do change the landing hero's DOM
+and grid container, and the documentation's initially loaded search and
+clipboard code, so the earlier measurements alone do not validate this tree.
+
+The separate `integrated-h2` series repeats all six pages three times on both
+devices with the same protocol and presets. Median Performance stays at 99
+for the four mobile web pages, 100 for both mobile documentation pages, and
+100 for all desktop pages. The methodology page's mobile range is 99–100;
+all other Performance ranges are single values. Accessibility, Best Practices
+and SEO remain 100 in all 36 runs. The largest median LCP increase against
+the accepted candidate is 3 ms. The CSV marks these rows as `integrated`;
+this compatibility repeat is not an isolated measurement of PR #142's effect.
+
+Both production builds and first-visit script budgets pass after integration.
+The font requests, actual glyphs and page geometry are checked again against
+the integrated builds; the full browser and test suites run on the PR head.
 
 ## Repeating the measurements
 
