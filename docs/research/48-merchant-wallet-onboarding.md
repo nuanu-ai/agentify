@@ -83,3 +83,53 @@ into the comparison, as a cost of building it, the work of keeping its code
 out of the first visit; a provider that needs a change to the build carries
 that change. A prediction that fails is reported as failed, with the number
 that failed it.
+
+### Results
+
+The measurement ran on 2026-10-15 at commit `14edad7` of `spike/wallet-weight`,
+with Node 24.22.0, pnpm 11.12.0 and the dashboard's own Vite 7.3.6 and React
+Router 8.4.0; `spike/measure.sh` there prints everything below, and
+`spike/measured-2026-10-15.txt` is its output. One build was added that the
+registration did not name: a control, the same button importing a module with
+no provider in it, so that the button's own weight can be told apart from the
+provider's.
+
+| Build | M1: what the click loads, brotli | the same, uncompressed | M2: settings pages | M2: every other page | M3 |
+| --- | --- | --- | --- | --- | --- |
+| Control, no provider | 0.1 KB | 0.0 KB | 94.4–94.5 KB, +0.5–0.6 | +0.0 | builds |
+| B, Base Account SDK | 160.8 KB | 550.3 KB | 94.5–94.6 KB, +0.6–0.7 | +0.0–0.1 | builds |
+| C, CDP embedded wallet, no interface | 86.4 KB | 350.8 KB | 94.6–94.7 KB, +0.7–0.8 | +0.1–0.2 | builds |
+| R, CDP embedded wallet with Coinbase's sign-in | 417.3 KB and a 5.1 KB stylesheet | 1880.8 KB | 94.8–94.9 KB, +0.9–1.0 | +0.3–0.4 | builds |
+
+The changes in M2 are against the figures measured before the spike, 93.9 KB
+on the settings pages and 91.5–95.1 KB elsewhere; the budget check prints one
+decimal, so a change of 0.1 KB is within its rounding.
+
+P1 held: B's click loads 160.8 KB, inside the predicted 120–300 KB. P2 failed:
+C's click loads 86.4 KB, not more than 100 KB. P3 held, and for a reason the
+prediction did not foresee: `@coinbase/cdp-react@0.0.127` depends on
+`@base-org/account@2.5.13`, so R carries the Base Account SDK as well as its own
+interface. P4 failed as it was written: the settings pages grew by 0.6–1.0 KB
+with every provider. The control shows where that came from: the button and
+its `import()` alone add 0.5–0.6 KB to the settings pages and nothing
+elsewhere, and what each provider adds to any page's first visit on top of the
+control is at most 0.1 KB for B, 0.2 KB for C and 0.4 KB for R, which is code
+the provider shares with the dashboard being moved by the bundler into chunks
+the first visit already loads. P5 failed for C and R: all three built with the
+Vite configuration unchanged. Installing C and R did need a decision of
+another kind: pnpm 11 refuses to install until `bufferutil` and
+`utf-8-validate`, native modules of the WebSocket library `ws` reached through
+Solana's client inside `@coinbase/cdp-core`, are allowed or declined a build
+script, and the spike declined both. Whether C and R then run in a browser
+without a stand-in for Node's `Buffer` was not tested: the measurement built
+the code and did not run it.
+
+Three things were read in the built code and the packages' sources while
+measuring, outside the registration. B, unless told `telemetry: false`, inserts
+an inline script into the page's head that starts Coinbase's analytics client
+and sends events to `cca-lite.coinbase.com`
+(`dist/core/telemetry/initCCA.js`; the option defaults to `true` in
+`dist/core/provider/interface.d.ts`). C's code names the same host and its
+configuration has a `disableAnalytics` switch. And B depends at run time on
+`@coinbase/cdp-sdk@1.58.0`, Coinbase's server SDK, while the gateway uses
+1.55.0, so the lockfile would carry two copies of it.
