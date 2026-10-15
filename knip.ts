@@ -62,6 +62,8 @@ export default {
         "ops/scripts/load-scan.mjs",
         // Run by hand, as its header says, since it starts Docker containers.
         "ops/scripts/caddy-routing-smoke.mjs",
+        // Run manually with the registered campaign's TEST fixtures and spending ledger.
+        "scripts/fuzz-campaign/header-compatibility.ts",
       ],
       // `docs/` holds the record of measurements, not code anything runs.
       project: ["**", "!docs/**"],
@@ -91,6 +93,15 @@ export default {
       entry: [
         // Drawn into the screens gallery by `packages/gallery`.
         "app/gallery.tsx",
+      ],
+    },
+    "packages/slice": {
+      // Run manually for bounded TEST purchases, readback, payout and fixture cleanup.
+      entry: [
+        "scripts/fuzz-campaign/live-sdk.ts",
+        "scripts/fuzz-campaign/reconcile.ts",
+        "scripts/fuzz-campaign/payout.ts",
+        "scripts/fuzz-campaign/closeout.ts",
       ],
     },
     "packages/core": {

@@ -1,0 +1,99 @@
+{
+  "subject": "e11fef741e875ef6f9c42465a6b27577dd2921a1",
+  "node": "v26.7.0",
+  "defaultHeaderLimit": 16384,
+  "cases": [
+    {
+      "caseId": "header-1",
+      "count": 1,
+      "inputBytes": 323,
+      "status": 402,
+      "headerBytes": 1844,
+      "ordinary": {
+        "status": 402,
+        "headerBytes": 1844
+      },
+      "passed": true
+    },
+    {
+      "caseId": "header-32",
+      "count": 32,
+      "inputBytes": 1214,
+      "status": 402,
+      "headerBytes": 3848,
+      "ordinary": {
+        "status": 402,
+        "headerBytes": 3848
+      },
+      "passed": true
+    },
+    {
+      "caseId": "header-64",
+      "count": 64,
+      "inputBytes": 2142,
+      "status": 402,
+      "headerBytes": 5936,
+      "ordinary": {
+        "status": 402,
+        "headerBytes": 5936
+      },
+      "passed": true
+    },
+    {
+      "caseId": "header-128",
+      "count": 128,
+      "inputBytes": 4027,
+      "status": 402,
+      "headerBytes": 10192,
+      "ordinary": {
+        "status": 402,
+        "headerBytes": 10192
+      },
+      "passed": true
+    },
+    {
+      "caseId": "header-256",
+      "count": 256,
+      "inputBytes": 7867,
+      "status": 402,
+      "headerBytes": 18896,
+      "ordinary": {
+        "code": "HPE_HEADER_OVERFLOW"
+      },
+      "passed": false
+    },
+    {
+      "caseId": "header-512",
+      "count": 512,
+      "inputBytes": 15547,
+      "status": 402,
+      "headerBytes": 36304,
+      "ordinary": {
+        "code": "HPE_HEADER_OVERFLOW"
+      },
+      "passed": false
+    },
+    {
+      "caseId": "header-1024",
+      "count": 1024,
+      "inputBytes": 30932,
+      "status": 402,
+      "headerBytes": 71184,
+      "ordinary": {
+        "code": "HPE_HEADER_OVERFLOW"
+      },
+      "passed": false
+    },
+    {
+      "caseId": "header-2048",
+      "count": 2048,
+      "inputBytes": 62676,
+      "status": 402,
+      "headerBytes": 143548,
+      "ordinary": {
+        "code": "HPE_HEADER_OVERFLOW"
+      },
+      "passed": false
+    }
+  ]
+}

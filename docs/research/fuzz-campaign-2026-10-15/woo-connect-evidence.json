@@ -1,0 +1,33 @@
+{
+  "subject": "e11fef741e875ef6f9c42465a6b27577dd2921a1",
+  "at": "2026-10-15T16:31:28.713Z",
+  "passed": true,
+  "method": "Public WooCommerce login and authorize HTTP forms with the existing lab admin; actual WooCommerce callback",
+  "steps": [
+    {
+      "path": "/wc-auth/v1/authorize",
+      "method": "GET",
+      "status": 302
+    },
+    {
+      "path": "/wc-auth/v1/login/",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/wc-auth/v1/login/",
+      "method": "POST",
+      "status": 302
+    },
+    {
+      "path": "/wc-auth/v1/authorize/",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/wc-auth/v1/access_granted/",
+      "method": "GET",
+      "status": 302
+    }
+  ]
+}

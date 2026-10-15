@@ -1,0 +1,6701 @@
+{
+  "subject": "e11fef741e875ef6f9c42465a6b27577dd2921a1",
+  "planCommit": "f1ca8e19",
+  "runtime": {
+    "node": "v26.7.0",
+    "pnpm": "11.12.0",
+    "vitest": "4.1.11",
+    "maxWorkers": 1
+  },
+  "model": {
+    "subject": "e11fef741e875ef6f9c42465a6b27577dd2921a1",
+    "traces": 512,
+    "attemptedSteps": 65536,
+    "acceptedSteps": 13624,
+    "rejectedSteps": 51912,
+    "candidateTransitions": 1835008,
+    "schedules": 108,
+    "states": {
+      "quoted": 644,
+      "paid": 261,
+      "fulfilled": 91,
+      "delivered": 6367,
+      "dispatched": 240,
+      "expired": 1550,
+      "delivered_unpaid": 309,
+      "cancelled": 935,
+      "rejected": 2061,
+      "failed": 14,
+      "created": 257,
+      "refund_due": 161,
+      "refunded": 704,
+      "awaiting_confirmation": 153,
+      "confirmed": 74,
+      "declined": 315
+    },
+    "effects": {
+      "dispatch_order": 368,
+      "execute_payment": 469,
+      "release_goods_to_agent": 282,
+      "issue_receipt": 282,
+      "answer_merchant": 7061,
+      "hold_fulfillment": 73,
+      "verify_payment": 326,
+      "redeliver_order": 9,
+      "emit_merchant_event": 287,
+      "mark_refund_due": 196,
+      "invite_payment": 46,
+      "dispatch_confirmation_request": 59,
+      "erase_ship_to": 146
+    },
+    "traceEffects": {
+      "dispatch_order": 260,
+      "execute_payment": 367,
+      "release_goods_to_agent": 237,
+      "issue_receipt": 237,
+      "answer_merchant": 6961,
+      "hold_fulfillment": 61,
+      "verify_payment": 308,
+      "redeliver_order": 9,
+      "emit_merchant_event": 222,
+      "mark_refund_due": 155,
+      "invite_payment": 46,
+      "dispatch_confirmation_request": 59,
+      "erase_ship_to": 128
+    },
+    "counterScopes": {
+      "states": "Initial and accepted states from the 512 generated traces, including repeated observations.",
+      "effects": "Generated traces plus the 108 schedule prefixes and schedule events.",
+      "traceEffects": "Effects from the 512 generated traces only.",
+      "boundaries": "Selected generator time classes; a proposed time earlier than the preceding event is clamped."
+    },
+    "offered": {
+      "payment_verified": 2792,
+      "handler_delivered": 2451,
+      "payment_settled": 2523,
+      "deadline_expired/confirmation_response": 2287,
+      "refuse_called": 2374,
+      "confirmation_dispatched": 2409,
+      "handler_undelivered": 2189,
+      "deadline_expired/settle_response": 2274,
+      "deadline_expired/quote_expiry": 2261,
+      "deadline_expired/sync_response": 2227,
+      "deadline_expired/payment_after_confirmation": 2251,
+      "quote_answered": 6901,
+      "deadline_expired/quote_response": 2325,
+      "payment_verification_failed": 6828,
+      "order_dispatched": 2401,
+      "merchant_departed": 2343,
+      "handler_accepted": 2271,
+      "deadline_expired/async_fulfillment": 2360,
+      "payment_settle_failed": 2306,
+      "purchase_repeated": 2427,
+      "handler_refused": 2378,
+      "deliver_called": 2320,
+      "quote_silent": 2327,
+      "refund_settled": 2311
+    },
+    "taken": {
+      "payment_verified": 438,
+      "handler_delivered": 1327,
+      "payment_settled": 267,
+      "refuse_called": 2372,
+      "merchant_departed": 2340,
+      "handler_accepted": 1039,
+      "purchase_repeated": 2427,
+      "deliver_called": 2314,
+      "order_dispatched": 181,
+      "handler_refused": 71,
+      "handler_undelivered": 42,
+      "deadline_expired/sync_response": 37,
+      "payment_settle_failed": 100,
+      "payment_verification_failed": 77,
+      "deadline_expired/settle_response": 54,
+      "deadline_expired/quote_expiry": 51,
+      "quote_silent": 47,
+      "quote_answered": 152,
+      "deadline_expired/quote_response": 43,
+      "deadline_expired/async_fulfillment": 45,
+      "refund_settled": 30,
+      "confirmation_dispatched": 149,
+      "deadline_expired/payment_after_confirmation": 8,
+      "deadline_expired/confirmation_response": 13
+    },
+    "boundaries": {
+      "deadline+1": 10918,
+      "same": 11010,
+      "deadline": 10975,
+      "next": 10830,
+      "distant": 10963,
+      "deadline-1": 10840
+    },
+    "seeds": [
+      {
+        "caseId": "state-sync-none-0",
+        "seed": 2133366477
+      },
+      {
+        "caseId": "state-sync-none-1",
+        "seed": 3715177478
+      },
+      {
+        "caseId": "state-sync-none-2",
+        "seed": 1002013279
+      },
+      {
+        "caseId": "state-sync-none-3",
+        "seed": 2579630480
+      },
+      {
+        "caseId": "state-sync-none-4",
+        "seed": 4127887337
+      },
+      {
+        "caseId": "state-sync-none-5",
+        "seed": 1414739234
+      },
+      {
+        "caseId": "state-sync-none-6",
+        "seed": 2996550523
+      },
+      {
+        "caseId": "state-sync-none-7",
+        "seed": 279192252
+      },
+      {
+        "caseId": "state-sync-none-8",
+        "seed": 1861003509
+      },
+      {
+        "caseId": "state-sync-none-9",
+        "seed": 3476368974
+      },
+      {
+        "caseId": "state-sync-none-10",
+        "seed": 763221383
+      },
+      {
+        "caseId": "state-sync-none-11",
+        "seed": 2340838360
+      },
+      {
+        "caseId": "state-sync-none-12",
+        "seed": 3922641169
+      },
+      {
+        "caseId": "state-sync-none-13",
+        "seed": 1175930730
+      },
+      {
+        "caseId": "state-sync-none-14",
+        "seed": 2757742243
+      },
+      {
+        "caseId": "state-sync-none-15",
+        "seed": 40400100
+      },
+      {
+        "caseId": "state-sync-none-16",
+        "seed": 1622211133
+      },
+      {
+        "caseId": "state-sync-none-17",
+        "seed": 4277756022
+      },
+      {
+        "caseId": "state-sync-none-18",
+        "seed": 1593960399
+      },
+      {
+        "caseId": "state-sync-none-19",
+        "seed": 3175771392
+      },
+      {
+        "caseId": "state-sync-none-20",
+        "seed": 462623577
+      },
+      {
+        "caseId": "state-sync-none-21",
+        "seed": 2044435090
+      },
+      {
+        "caseId": "state-sync-none-22",
+        "seed": 3622043883
+      },
+      {
+        "caseId": "state-sync-none-23",
+        "seed": 875333164
+      },
+      {
+        "caseId": "state-sync-none-24",
+        "seed": 2457144421
+      },
+      {
+        "caseId": "state-sync-none-25",
+        "seed": 4038964158
+      },
+      {
+        "caseId": "state-sync-none-26",
+        "seed": 1321613815
+      },
+      {
+        "caseId": "state-sync-none-27",
+        "seed": 2936979272
+      },
+      {
+        "caseId": "state-sync-none-28",
+        "seed": 223815297
+      },
+      {
+        "caseId": "state-sync-none-29",
+        "seed": 1805626586
+      },
+      {
+        "caseId": "state-sync-none-30",
+        "seed": 3383251475
+      },
+      {
+        "caseId": "state-sync-none-31",
+        "seed": 670095444
+      },
+      {
+        "caseId": "state-sync-none-32",
+        "seed": 2218352557
+      },
+      {
+        "caseId": "state-sync-none-33",
+        "seed": 3795961318
+      },
+      {
+        "caseId": "state-sync-none-34",
+        "seed": 1082805055
+      },
+      {
+        "caseId": "state-sync-none-35",
+        "seed": 3738366320
+      },
+      {
+        "caseId": "state-sync-none-36",
+        "seed": 1058765001
+      },
+      {
+        "caseId": "state-sync-none-37",
+        "seed": 2636381698
+      },
+      {
+        "caseId": "state-sync-none-38",
+        "seed": 4218184795
+      },
+      {
+        "caseId": "state-sync-none-39",
+        "seed": 1505029020
+      },
+      {
+        "caseId": "state-sync-none-40",
+        "seed": 3086848469
+      },
+      {
+        "caseId": "state-sync-none-41",
+        "seed": 335943470
+      },
+      {
+        "caseId": "state-sync-none-42",
+        "seed": 1917754727
+      },
+      {
+        "caseId": "state-sync-none-43",
+        "seed": 3499558072
+      },
+      {
+        "caseId": "state-sync-none-44",
+        "seed": 786402033
+      },
+      {
+        "caseId": "state-sync-none-45",
+        "seed": 2364026954
+      },
+      {
+        "caseId": "state-sync-none-46",
+        "seed": 3979392899
+      },
+      {
+        "caseId": "state-sync-none-47",
+        "seed": 1266236868
+      },
+      {
+        "caseId": "state-sync-none-48",
+        "seed": 2843845405
+      },
+      {
+        "caseId": "state-sync-none-49",
+        "seed": 130689366
+      },
+      {
+        "caseId": "state-sync-none-50",
+        "seed": 1678954671
+      },
+      {
+        "caseId": "state-sync-none-51",
+        "seed": 3260765920
+      },
+      {
+        "caseId": "state-sync-none-52",
+        "seed": 543415353
+      },
+      {
+        "caseId": "state-sync-none-53",
+        "seed": 3198960242
+      },
+      {
+        "caseId": "state-sync-none-54",
+        "seed": 485804491
+      },
+      {
+        "caseId": "state-sync-none-55",
+        "seed": 2101169932
+      },
+      {
+        "caseId": "state-sync-none-56",
+        "seed": 3678795077
+      },
+      {
+        "caseId": "state-sync-none-57",
+        "seed": 965639326
+      },
+      {
+        "caseId": "state-sync-none-58",
+        "seed": 2547442391
+      },
+      {
+        "caseId": "state-sync-none-59",
+        "seed": 4095698984
+      },
+      {
+        "caseId": "state-sync-none-60",
+        "seed": 1378348641
+      },
+      {
+        "caseId": "state-sync-none-61",
+        "seed": 2960168378
+      },
+      {
+        "caseId": "state-sync-none-62",
+        "seed": 247012339
+      },
+      {
+        "caseId": "state-sync-none-63",
+        "seed": 1824620852
+      },
+      {
+        "caseId": "state-sync-merchant-0",
+        "seed": 2133366476
+      },
+      {
+        "caseId": "state-sync-merchant-1",
+        "seed": 3715177479
+      },
+      {
+        "caseId": "state-sync-merchant-2",
+        "seed": 1002013278
+      },
+      {
+        "caseId": "state-sync-merchant-3",
+        "seed": 2579630481
+      },
+      {
+        "caseId": "state-sync-merchant-4",
+        "seed": 4127887336
+      },
+      {
+        "caseId": "state-sync-merchant-5",
+        "seed": 1414739235
+      },
+      {
+        "caseId": "state-sync-merchant-6",
+        "seed": 2996550522
+      },
+      {
+        "caseId": "state-sync-merchant-7",
+        "seed": 279192253
+      },
+      {
+        "caseId": "state-sync-merchant-8",
+        "seed": 1861003508
+      },
+      {
+        "caseId": "state-sync-merchant-9",
+        "seed": 3476368975
+      },
+      {
+        "caseId": "state-sync-merchant-10",
+        "seed": 763221382
+      },
+      {
+        "caseId": "state-sync-merchant-11",
+        "seed": 2340838361
+      },
+      {
+        "caseId": "state-sync-merchant-12",
+        "seed": 3922641168
+      },
+      {
+        "caseId": "state-sync-merchant-13",
+        "seed": 1175930731
+      },
+      {
+        "caseId": "state-sync-merchant-14",
+        "seed": 2757742242
+      },
+      {
+        "caseId": "state-sync-merchant-15",
+        "seed": 40400101
+      },
+      {
+        "caseId": "state-sync-merchant-16",
+        "seed": 1622211132
+      },
+      {
+        "caseId": "state-sync-merchant-17",
+        "seed": 4277756023
+      },
+      {
+        "caseId": "state-sync-merchant-18",
+        "seed": 1593960398
+      },
+      {
+        "caseId": "state-sync-merchant-19",
+        "seed": 3175771393
+      },
+      {
+        "caseId": "state-sync-merchant-20",
+        "seed": 462623576
+      },
+      {
+        "caseId": "state-sync-merchant-21",
+        "seed": 2044435091
+      },
+      {
+        "caseId": "state-sync-merchant-22",
+        "seed": 3622043882
+      },
+      {
+        "caseId": "state-sync-merchant-23",
+        "seed": 875333165
+      },
+      {
+        "caseId": "state-sync-merchant-24",
+        "seed": 2457144420
+      },
+      {
+        "caseId": "state-sync-merchant-25",
+        "seed": 4038964159
+      },
+      {
+        "caseId": "state-sync-merchant-26",
+        "seed": 1321613814
+      },
+      {
+        "caseId": "state-sync-merchant-27",
+        "seed": 2936979273
+      },
+      {
+        "caseId": "state-sync-merchant-28",
+        "seed": 223815296
+      },
+      {
+        "caseId": "state-sync-merchant-29",
+        "seed": 1805626587
+      },
+      {
+        "caseId": "state-sync-merchant-30",
+        "seed": 3383251474
+      },
+      {
+        "caseId": "state-sync-merchant-31",
+        "seed": 670095445
+      },
+      {
+        "caseId": "state-sync-merchant-32",
+        "seed": 2218352556
+      },
+      {
+        "caseId": "state-sync-merchant-33",
+        "seed": 3795961319
+      },
+      {
+        "caseId": "state-sync-merchant-34",
+        "seed": 1082805054
+      },
+      {
+        "caseId": "state-sync-merchant-35",
+        "seed": 3738366321
+      },
+      {
+        "caseId": "state-sync-merchant-36",
+        "seed": 1058765000
+      },
+      {
+        "caseId": "state-sync-merchant-37",
+        "seed": 2636381699
+      },
+      {
+        "caseId": "state-sync-merchant-38",
+        "seed": 4218184794
+      },
+      {
+        "caseId": "state-sync-merchant-39",
+        "seed": 1505029021
+      },
+      {
+        "caseId": "state-sync-merchant-40",
+        "seed": 3086848468
+      },
+      {
+        "caseId": "state-sync-merchant-41",
+        "seed": 335943471
+      },
+      {
+        "caseId": "state-sync-merchant-42",
+        "seed": 1917754726
+      },
+      {
+        "caseId": "state-sync-merchant-43",
+        "seed": 3499558073
+      },
+      {
+        "caseId": "state-sync-merchant-44",
+        "seed": 786402032
+      },
+      {
+        "caseId": "state-sync-merchant-45",
+        "seed": 2364026955
+      },
+      {
+        "caseId": "state-sync-merchant-46",
+        "seed": 3979392898
+      },
+      {
+        "caseId": "state-sync-merchant-47",
+        "seed": 1266236869
+      },
+      {
+        "caseId": "state-sync-merchant-48",
+        "seed": 2843845404
+      },
+      {
+        "caseId": "state-sync-merchant-49",
+        "seed": 130689367
+      },
+      {
+        "caseId": "state-sync-merchant-50",
+        "seed": 1678954670
+      },
+      {
+        "caseId": "state-sync-merchant-51",
+        "seed": 3260765921
+      },
+      {
+        "caseId": "state-sync-merchant-52",
+        "seed": 543415352
+      },
+      {
+        "caseId": "state-sync-merchant-53",
+        "seed": 3198960243
+      },
+      {
+        "caseId": "state-sync-merchant-54",
+        "seed": 485804490
+      },
+      {
+        "caseId": "state-sync-merchant-55",
+        "seed": 2101169933
+      },
+      {
+        "caseId": "state-sync-merchant-56",
+        "seed": 3678795076
+      },
+      {
+        "caseId": "state-sync-merchant-57",
+        "seed": 965639327
+      },
+      {
+        "caseId": "state-sync-merchant-58",
+        "seed": 2547442390
+      },
+      {
+        "caseId": "state-sync-merchant-59",
+        "seed": 4095698985
+      },
+      {
+        "caseId": "state-sync-merchant-60",
+        "seed": 1378348640
+      },
+      {
+        "caseId": "state-sync-merchant-61",
+        "seed": 2960168379
+      },
+      {
+        "caseId": "state-sync-merchant-62",
+        "seed": 247012338
+      },
+      {
+        "caseId": "state-sync-merchant-63",
+        "seed": 1824620853
+      },
+      {
+        "caseId": "state-async-none-0",
+        "seed": 2133366479
+      },
+      {
+        "caseId": "state-async-none-1",
+        "seed": 3715177476
+      },
+      {
+        "caseId": "state-async-none-2",
+        "seed": 1002013277
+      },
+      {
+        "caseId": "state-async-none-3",
+        "seed": 2579630482
+      },
+      {
+        "caseId": "state-async-none-4",
+        "seed": 4127887339
+      },
+      {
+        "caseId": "state-async-none-5",
+        "seed": 1414739232
+      },
+      {
+        "caseId": "state-async-none-6",
+        "seed": 2996550521
+      },
+      {
+        "caseId": "state-async-none-7",
+        "seed": 279192254
+      },
+      {
+        "caseId": "state-async-none-8",
+        "seed": 1861003511
+      },
+      {
+        "caseId": "state-async-none-9",
+        "seed": 3476368972
+      },
+      {
+        "caseId": "state-async-none-10",
+        "seed": 763221381
+      },
+      {
+        "caseId": "state-async-none-11",
+        "seed": 2340838362
+      },
+      {
+        "caseId": "state-async-none-12",
+        "seed": 3922641171
+      },
+      {
+        "caseId": "state-async-none-13",
+        "seed": 1175930728
+      },
+      {
+        "caseId": "state-async-none-14",
+        "seed": 2757742241
+      },
+      {
+        "caseId": "state-async-none-15",
+        "seed": 40400102
+      },
+      {
+        "caseId": "state-async-none-16",
+        "seed": 1622211135
+      },
+      {
+        "caseId": "state-async-none-17",
+        "seed": 4277756020
+      },
+      {
+        "caseId": "state-async-none-18",
+        "seed": 1593960397
+      },
+      {
+        "caseId": "state-async-none-19",
+        "seed": 3175771394
+      },
+      {
+        "caseId": "state-async-none-20",
+        "seed": 462623579
+      },
+      {
+        "caseId": "state-async-none-21",
+        "seed": 2044435088
+      },
+      {
+        "caseId": "state-async-none-22",
+        "seed": 3622043881
+      },
+      {
+        "caseId": "state-async-none-23",
+        "seed": 875333166
+      },
+      {
+        "caseId": "state-async-none-24",
+        "seed": 2457144423
+      },
+      {
+        "caseId": "state-async-none-25",
+        "seed": 4038964156
+      },
+      {
+        "caseId": "state-async-none-26",
+        "seed": 1321613813
+      },
+      {
+        "caseId": "state-async-none-27",
+        "seed": 2936979274
+      },
+      {
+        "caseId": "state-async-none-28",
+        "seed": 223815299
+      },
+      {
+        "caseId": "state-async-none-29",
+        "seed": 1805626584
+      },
+      {
+        "caseId": "state-async-none-30",
+        "seed": 3383251473
+      },
+      {
+        "caseId": "state-async-none-31",
+        "seed": 670095446
+      },
+      {
+        "caseId": "state-async-none-32",
+        "seed": 2218352559
+      },
+      {
+        "caseId": "state-async-none-33",
+        "seed": 3795961316
+      },
+      {
+        "caseId": "state-async-none-34",
+        "seed": 1082805053
+      },
+      {
+        "caseId": "state-async-none-35",
+        "seed": 3738366322
+      },
+      {
+        "caseId": "state-async-none-36",
+        "seed": 1058765003
+      },
+      {
+        "caseId": "state-async-none-37",
+        "seed": 2636381696
+      },
+      {
+        "caseId": "state-async-none-38",
+        "seed": 4218184793
+      },
+      {
+        "caseId": "state-async-none-39",
+        "seed": 1505029022
+      },
+      {
+        "caseId": "state-async-none-40",
+        "seed": 3086848471
+      },
+      {
+        "caseId": "state-async-none-41",
+        "seed": 335943468
+      },
+      {
+        "caseId": "state-async-none-42",
+        "seed": 1917754725
+      },
+      {
+        "caseId": "state-async-none-43",
+        "seed": 3499558074
+      },
+      {
+        "caseId": "state-async-none-44",
+        "seed": 786402035
+      },
+      {
+        "caseId": "state-async-none-45",
+        "seed": 2364026952
+      },
+      {
+        "caseId": "state-async-none-46",
+        "seed": 3979392897
+      },
+      {
+        "caseId": "state-async-none-47",
+        "seed": 1266236870
+      },
+      {
+        "caseId": "state-async-none-48",
+        "seed": 2843845407
+      },
+      {
+        "caseId": "state-async-none-49",
+        "seed": 130689364
+      },
+      {
+        "caseId": "state-async-none-50",
+        "seed": 1678954669
+      },
+      {
+        "caseId": "state-async-none-51",
+        "seed": 3260765922
+      },
+      {
+        "caseId": "state-async-none-52",
+        "seed": 543415355
+      },
+      {
+        "caseId": "state-async-none-53",
+        "seed": 3198960240
+      },
+      {
+        "caseId": "state-async-none-54",
+        "seed": 485804489
+      },
+      {
+        "caseId": "state-async-none-55",
+        "seed": 2101169934
+      },
+      {
+        "caseId": "state-async-none-56",
+        "seed": 3678795079
+      },
+      {
+        "caseId": "state-async-none-57",
+        "seed": 965639324
+      },
+      {
+        "caseId": "state-async-none-58",
+        "seed": 2547442389
+      },
+      {
+        "caseId": "state-async-none-59",
+        "seed": 4095698986
+      },
+      {
+        "caseId": "state-async-none-60",
+        "seed": 1378348643
+      },
+      {
+        "caseId": "state-async-none-61",
+        "seed": 2960168376
+      },
+      {
+        "caseId": "state-async-none-62",
+        "seed": 247012337
+      },
+      {
+        "caseId": "state-async-none-63",
+        "seed": 1824620854
+      },
+      {
+        "caseId": "state-async-merchant-0",
+        "seed": 2133366478
+      },
+      {
+        "caseId": "state-async-merchant-1",
+        "seed": 3715177477
+      },
+      {
+        "caseId": "state-async-merchant-2",
+        "seed": 1002013276
+      },
+      {
+        "caseId": "state-async-merchant-3",
+        "seed": 2579630483
+      },
+      {
+        "caseId": "state-async-merchant-4",
+        "seed": 4127887338
+      },
+      {
+        "caseId": "state-async-merchant-5",
+        "seed": 1414739233
+      },
+      {
+        "caseId": "state-async-merchant-6",
+        "seed": 2996550520
+      },
+      {
+        "caseId": "state-async-merchant-7",
+        "seed": 279192255
+      },
+      {
+        "caseId": "state-async-merchant-8",
+        "seed": 1861003510
+      },
+      {
+        "caseId": "state-async-merchant-9",
+        "seed": 3476368973
+      },
+      {
+        "caseId": "state-async-merchant-10",
+        "seed": 763221380
+      },
+      {
+        "caseId": "state-async-merchant-11",
+        "seed": 2340838363
+      },
+      {
+        "caseId": "state-async-merchant-12",
+        "seed": 3922641170
+      },
+      {
+        "caseId": "state-async-merchant-13",
+        "seed": 1175930729
+      },
+      {
+        "caseId": "state-async-merchant-14",
+        "seed": 2757742240
+      },
+      {
+        "caseId": "state-async-merchant-15",
+        "seed": 40400103
+      },
+      {
+        "caseId": "state-async-merchant-16",
+        "seed": 1622211134
+      },
+      {
+        "caseId": "state-async-merchant-17",
+        "seed": 4277756021
+      },
+      {
+        "caseId": "state-async-merchant-18",
+        "seed": 1593960396
+      },
+      {
+        "caseId": "state-async-merchant-19",
+        "seed": 3175771395
+      },
+      {
+        "caseId": "state-async-merchant-20",
+        "seed": 462623578
+      },
+      {
+        "caseId": "state-async-merchant-21",
+        "seed": 2044435089
+      },
+      {
+        "caseId": "state-async-merchant-22",
+        "seed": 3622043880
+      },
+      {
+        "caseId": "state-async-merchant-23",
+        "seed": 875333167
+      },
+      {
+        "caseId": "state-async-merchant-24",
+        "seed": 2457144422
+      },
+      {
+        "caseId": "state-async-merchant-25",
+        "seed": 4038964157
+      },
+      {
+        "caseId": "state-async-merchant-26",
+        "seed": 1321613812
+      },
+      {
+        "caseId": "state-async-merchant-27",
+        "seed": 2936979275
+      },
+      {
+        "caseId": "state-async-merchant-28",
+        "seed": 223815298
+      },
+      {
+        "caseId": "state-async-merchant-29",
+        "seed": 1805626585
+      },
+      {
+        "caseId": "state-async-merchant-30",
+        "seed": 3383251472
+      },
+      {
+        "caseId": "state-async-merchant-31",
+        "seed": 670095447
+      },
+      {
+        "caseId": "state-async-merchant-32",
+        "seed": 2218352558
+      },
+      {
+        "caseId": "state-async-merchant-33",
+        "seed": 3795961317
+      },
+      {
+        "caseId": "state-async-merchant-34",
+        "seed": 1082805052
+      },
+      {
+        "caseId": "state-async-merchant-35",
+        "seed": 3738366323
+      },
+      {
+        "caseId": "state-async-merchant-36",
+        "seed": 1058765002
+      },
+      {
+        "caseId": "state-async-merchant-37",
+        "seed": 2636381697
+      },
+      {
+        "caseId": "state-async-merchant-38",
+        "seed": 4218184792
+      },
+      {
+        "caseId": "state-async-merchant-39",
+        "seed": 1505029023
+      },
+      {
+        "caseId": "state-async-merchant-40",
+        "seed": 3086848470
+      },
+      {
+        "caseId": "state-async-merchant-41",
+        "seed": 335943469
+      },
+      {
+        "caseId": "state-async-merchant-42",
+        "seed": 1917754724
+      },
+      {
+        "caseId": "state-async-merchant-43",
+        "seed": 3499558075
+      },
+      {
+        "caseId": "state-async-merchant-44",
+        "seed": 786402034
+      },
+      {
+        "caseId": "state-async-merchant-45",
+        "seed": 2364026953
+      },
+      {
+        "caseId": "state-async-merchant-46",
+        "seed": 3979392896
+      },
+      {
+        "caseId": "state-async-merchant-47",
+        "seed": 1266236871
+      },
+      {
+        "caseId": "state-async-merchant-48",
+        "seed": 2843845406
+      },
+      {
+        "caseId": "state-async-merchant-49",
+        "seed": 130689365
+      },
+      {
+        "caseId": "state-async-merchant-50",
+        "seed": 1678954668
+      },
+      {
+        "caseId": "state-async-merchant-51",
+        "seed": 3260765923
+      },
+      {
+        "caseId": "state-async-merchant-52",
+        "seed": 543415354
+      },
+      {
+        "caseId": "state-async-merchant-53",
+        "seed": 3198960241
+      },
+      {
+        "caseId": "state-async-merchant-54",
+        "seed": 485804488
+      },
+      {
+        "caseId": "state-async-merchant-55",
+        "seed": 2101169935
+      },
+      {
+        "caseId": "state-async-merchant-56",
+        "seed": 3678795078
+      },
+      {
+        "caseId": "state-async-merchant-57",
+        "seed": 965639325
+      },
+      {
+        "caseId": "state-async-merchant-58",
+        "seed": 2547442388
+      },
+      {
+        "caseId": "state-async-merchant-59",
+        "seed": 4095698987
+      },
+      {
+        "caseId": "state-async-merchant-60",
+        "seed": 1378348642
+      },
+      {
+        "caseId": "state-async-merchant-61",
+        "seed": 2960168377
+      },
+      {
+        "caseId": "state-async-merchant-62",
+        "seed": 247012336
+      },
+      {
+        "caseId": "state-async-merchant-63",
+        "seed": 1824620855
+      },
+      {
+        "caseId": "state-confirm-none-0",
+        "seed": 2133366473
+      },
+      {
+        "caseId": "state-confirm-none-1",
+        "seed": 3715177474
+      },
+      {
+        "caseId": "state-confirm-none-2",
+        "seed": 1002013275
+      },
+      {
+        "caseId": "state-confirm-none-3",
+        "seed": 2579630484
+      },
+      {
+        "caseId": "state-confirm-none-4",
+        "seed": 4127887341
+      },
+      {
+        "caseId": "state-confirm-none-5",
+        "seed": 1414739238
+      },
+      {
+        "caseId": "state-confirm-none-6",
+        "seed": 2996550527
+      },
+      {
+        "caseId": "state-confirm-none-7",
+        "seed": 279192248
+      },
+      {
+        "caseId": "state-confirm-none-8",
+        "seed": 1861003505
+      },
+      {
+        "caseId": "state-confirm-none-9",
+        "seed": 3476368970
+      },
+      {
+        "caseId": "state-confirm-none-10",
+        "seed": 763221379
+      },
+      {
+        "caseId": "state-confirm-none-11",
+        "seed": 2340838364
+      },
+      {
+        "caseId": "state-confirm-none-12",
+        "seed": 3922641173
+      },
+      {
+        "caseId": "state-confirm-none-13",
+        "seed": 1175930734
+      },
+      {
+        "caseId": "state-confirm-none-14",
+        "seed": 2757742247
+      },
+      {
+        "caseId": "state-confirm-none-15",
+        "seed": 40400096
+      },
+      {
+        "caseId": "state-confirm-none-16",
+        "seed": 1622211129
+      },
+      {
+        "caseId": "state-confirm-none-17",
+        "seed": 4277756018
+      },
+      {
+        "caseId": "state-confirm-none-18",
+        "seed": 1593960395
+      },
+      {
+        "caseId": "state-confirm-none-19",
+        "seed": 3175771396
+      },
+      {
+        "caseId": "state-confirm-none-20",
+        "seed": 462623581
+      },
+      {
+        "caseId": "state-confirm-none-21",
+        "seed": 2044435094
+      },
+      {
+        "caseId": "state-confirm-none-22",
+        "seed": 3622043887
+      },
+      {
+        "caseId": "state-confirm-none-23",
+        "seed": 875333160
+      },
+      {
+        "caseId": "state-confirm-none-24",
+        "seed": 2457144417
+      },
+      {
+        "caseId": "state-confirm-none-25",
+        "seed": 4038964154
+      },
+      {
+        "caseId": "state-confirm-none-26",
+        "seed": 1321613811
+      },
+      {
+        "caseId": "state-confirm-none-27",
+        "seed": 2936979276
+      },
+      {
+        "caseId": "state-confirm-none-28",
+        "seed": 223815301
+      },
+      {
+        "caseId": "state-confirm-none-29",
+        "seed": 1805626590
+      },
+      {
+        "caseId": "state-confirm-none-30",
+        "seed": 3383251479
+      },
+      {
+        "caseId": "state-confirm-none-31",
+        "seed": 670095440
+      },
+      {
+        "caseId": "state-confirm-none-32",
+        "seed": 2218352553
+      },
+      {
+        "caseId": "state-confirm-none-33",
+        "seed": 3795961314
+      },
+      {
+        "caseId": "state-confirm-none-34",
+        "seed": 1082805051
+      },
+      {
+        "caseId": "state-confirm-none-35",
+        "seed": 3738366324
+      },
+      {
+        "caseId": "state-confirm-none-36",
+        "seed": 1058765005
+      },
+      {
+        "caseId": "state-confirm-none-37",
+        "seed": 2636381702
+      },
+      {
+        "caseId": "state-confirm-none-38",
+        "seed": 4218184799
+      },
+      {
+        "caseId": "state-confirm-none-39",
+        "seed": 1505029016
+      },
+      {
+        "caseId": "state-confirm-none-40",
+        "seed": 3086848465
+      },
+      {
+        "caseId": "state-confirm-none-41",
+        "seed": 335943466
+      },
+      {
+        "caseId": "state-confirm-none-42",
+        "seed": 1917754723
+      },
+      {
+        "caseId": "state-confirm-none-43",
+        "seed": 3499558076
+      },
+      {
+        "caseId": "state-confirm-none-44",
+        "seed": 786402037
+      },
+      {
+        "caseId": "state-confirm-none-45",
+        "seed": 2364026958
+      },
+      {
+        "caseId": "state-confirm-none-46",
+        "seed": 3979392903
+      },
+      {
+        "caseId": "state-confirm-none-47",
+        "seed": 1266236864
+      },
+      {
+        "caseId": "state-confirm-none-48",
+        "seed": 2843845401
+      },
+      {
+        "caseId": "state-confirm-none-49",
+        "seed": 130689362
+      },
+      {
+        "caseId": "state-confirm-none-50",
+        "seed": 1678954667
+      },
+      {
+        "caseId": "state-confirm-none-51",
+        "seed": 3260765924
+      },
+      {
+        "caseId": "state-confirm-none-52",
+        "seed": 543415357
+      },
+      {
+        "caseId": "state-confirm-none-53",
+        "seed": 3198960246
+      },
+      {
+        "caseId": "state-confirm-none-54",
+        "seed": 485804495
+      },
+      {
+        "caseId": "state-confirm-none-55",
+        "seed": 2101169928
+      },
+      {
+        "caseId": "state-confirm-none-56",
+        "seed": 3678795073
+      },
+      {
+        "caseId": "state-confirm-none-57",
+        "seed": 965639322
+      },
+      {
+        "caseId": "state-confirm-none-58",
+        "seed": 2547442387
+      },
+      {
+        "caseId": "state-confirm-none-59",
+        "seed": 4095698988
+      },
+      {
+        "caseId": "state-confirm-none-60",
+        "seed": 1378348645
+      },
+      {
+        "caseId": "state-confirm-none-61",
+        "seed": 2960168382
+      },
+      {
+        "caseId": "state-confirm-none-62",
+        "seed": 247012343
+      },
+      {
+        "caseId": "state-confirm-none-63",
+        "seed": 1824620848
+      },
+      {
+        "caseId": "state-confirm-merchant-0",
+        "seed": 2133366472
+      },
+      {
+        "caseId": "state-confirm-merchant-1",
+        "seed": 3715177475
+      },
+      {
+        "caseId": "state-confirm-merchant-2",
+        "seed": 1002013274
+      },
+      {
+        "caseId": "state-confirm-merchant-3",
+        "seed": 2579630485
+      },
+      {
+        "caseId": "state-confirm-merchant-4",
+        "seed": 4127887340
+      },
+      {
+        "caseId": "state-confirm-merchant-5",
+        "seed": 1414739239
+      },
+      {
+        "caseId": "state-confirm-merchant-6",
+        "seed": 2996550526
+      },
+      {
+        "caseId": "state-confirm-merchant-7",
+        "seed": 279192249
+      },
+      {
+        "caseId": "state-confirm-merchant-8",
+        "seed": 1861003504
+      },
+      {
+        "caseId": "state-confirm-merchant-9",
+        "seed": 3476368971
+      },
+      {
+        "caseId": "state-confirm-merchant-10",
+        "seed": 763221378
+      },
+      {
+        "caseId": "state-confirm-merchant-11",
+        "seed": 2340838365
+      },
+      {
+        "caseId": "state-confirm-merchant-12",
+        "seed": 3922641172
+      },
+      {
+        "caseId": "state-confirm-merchant-13",
+        "seed": 1175930735
+      },
+      {
+        "caseId": "state-confirm-merchant-14",
+        "seed": 2757742246
+      },
+      {
+        "caseId": "state-confirm-merchant-15",
+        "seed": 40400097
+      },
+      {
+        "caseId": "state-confirm-merchant-16",
+        "seed": 1622211128
+      },
+      {
+        "caseId": "state-confirm-merchant-17",
+        "seed": 4277756019
+      },
+      {
+        "caseId": "state-confirm-merchant-18",
+        "seed": 1593960394
+      },
+      {
+        "caseId": "state-confirm-merchant-19",
+        "seed": 3175771397
+      },
+      {
+        "caseId": "state-confirm-merchant-20",
+        "seed": 462623580
+      },
+      {
+        "caseId": "state-confirm-merchant-21",
+        "seed": 2044435095
+      },
+      {
+        "caseId": "state-confirm-merchant-22",
+        "seed": 3622043886
+      },
+      {
+        "caseId": "state-confirm-merchant-23",
+        "seed": 875333161
+      },
+      {
+        "caseId": "state-confirm-merchant-24",
+        "seed": 2457144416
+      },
+      {
+        "caseId": "state-confirm-merchant-25",
+        "seed": 4038964155
+      },
+      {
+        "caseId": "state-confirm-merchant-26",
+        "seed": 1321613810
+      },
+      {
+        "caseId": "state-confirm-merchant-27",
+        "seed": 2936979277
+      },
+      {
+        "caseId": "state-confirm-merchant-28",
+        "seed": 223815300
+      },
+      {
+        "caseId": "state-confirm-merchant-29",
+        "seed": 1805626591
+      },
+      {
+        "caseId": "state-confirm-merchant-30",
+        "seed": 3383251478
+      },
+      {
+        "caseId": "state-confirm-merchant-31",
+        "seed": 670095441
+      },
+      {
+        "caseId": "state-confirm-merchant-32",
+        "seed": 2218352552
+      },
+      {
+        "caseId": "state-confirm-merchant-33",
+        "seed": 3795961315
+      },
+      {
+        "caseId": "state-confirm-merchant-34",
+        "seed": 1082805050
+      },
+      {
+        "caseId": "state-confirm-merchant-35",
+        "seed": 3738366325
+      },
+      {
+        "caseId": "state-confirm-merchant-36",
+        "seed": 1058765004
+      },
+      {
+        "caseId": "state-confirm-merchant-37",
+        "seed": 2636381703
+      },
+      {
+        "caseId": "state-confirm-merchant-38",
+        "seed": 4218184798
+      },
+      {
+        "caseId": "state-confirm-merchant-39",
+        "seed": 1505029017
+      },
+      {
+        "caseId": "state-confirm-merchant-40",
+        "seed": 3086848464
+      },
+      {
+        "caseId": "state-confirm-merchant-41",
+        "seed": 335943467
+      },
+      {
+        "caseId": "state-confirm-merchant-42",
+        "seed": 1917754722
+      },
+      {
+        "caseId": "state-confirm-merchant-43",
+        "seed": 3499558077
+      },
+      {
+        "caseId": "state-confirm-merchant-44",
+        "seed": 786402036
+      },
+      {
+        "caseId": "state-confirm-merchant-45",
+        "seed": 2364026959
+      },
+      {
+        "caseId": "state-confirm-merchant-46",
+        "seed": 3979392902
+      },
+      {
+        "caseId": "state-confirm-merchant-47",
+        "seed": 1266236865
+      },
+      {
+        "caseId": "state-confirm-merchant-48",
+        "seed": 2843845400
+      },
+      {
+        "caseId": "state-confirm-merchant-49",
+        "seed": 130689363
+      },
+      {
+        "caseId": "state-confirm-merchant-50",
+        "seed": 1678954666
+      },
+      {
+        "caseId": "state-confirm-merchant-51",
+        "seed": 3260765925
+      },
+      {
+        "caseId": "state-confirm-merchant-52",
+        "seed": 543415356
+      },
+      {
+        "caseId": "state-confirm-merchant-53",
+        "seed": 3198960247
+      },
+      {
+        "caseId": "state-confirm-merchant-54",
+        "seed": 485804494
+      },
+      {
+        "caseId": "state-confirm-merchant-55",
+        "seed": 2101169929
+      },
+      {
+        "caseId": "state-confirm-merchant-56",
+        "seed": 3678795072
+      },
+      {
+        "caseId": "state-confirm-merchant-57",
+        "seed": 965639323
+      },
+      {
+        "caseId": "state-confirm-merchant-58",
+        "seed": 2547442386
+      },
+      {
+        "caseId": "state-confirm-merchant-59",
+        "seed": 4095698989
+      },
+      {
+        "caseId": "state-confirm-merchant-60",
+        "seed": 1378348644
+      },
+      {
+        "caseId": "state-confirm-merchant-61",
+        "seed": 2960168383
+      },
+      {
+        "caseId": "state-confirm-merchant-62",
+        "seed": 247012342
+      },
+      {
+        "caseId": "state-confirm-merchant-63",
+        "seed": 1824620849
+      },
+      {
+        "caseId": "state-ship-none-0",
+        "seed": 2133366475
+      },
+      {
+        "caseId": "state-ship-none-1",
+        "seed": 3715177472
+      },
+      {
+        "caseId": "state-ship-none-2",
+        "seed": 1002013273
+      },
+      {
+        "caseId": "state-ship-none-3",
+        "seed": 2579630486
+      },
+      {
+        "caseId": "state-ship-none-4",
+        "seed": 4127887343
+      },
+      {
+        "caseId": "state-ship-none-5",
+        "seed": 1414739236
+      },
+      {
+        "caseId": "state-ship-none-6",
+        "seed": 2996550525
+      },
+      {
+        "caseId": "state-ship-none-7",
+        "seed": 279192250
+      },
+      {
+        "caseId": "state-ship-none-8",
+        "seed": 1861003507
+      },
+      {
+        "caseId": "state-ship-none-9",
+        "seed": 3476368968
+      },
+      {
+        "caseId": "state-ship-none-10",
+        "seed": 763221377
+      },
+      {
+        "caseId": "state-ship-none-11",
+        "seed": 2340838366
+      },
+      {
+        "caseId": "state-ship-none-12",
+        "seed": 3922641175
+      },
+      {
+        "caseId": "state-ship-none-13",
+        "seed": 1175930732
+      },
+      {
+        "caseId": "state-ship-none-14",
+        "seed": 2757742245
+      },
+      {
+        "caseId": "state-ship-none-15",
+        "seed": 40400098
+      },
+      {
+        "caseId": "state-ship-none-16",
+        "seed": 1622211131
+      },
+      {
+        "caseId": "state-ship-none-17",
+        "seed": 4277756016
+      },
+      {
+        "caseId": "state-ship-none-18",
+        "seed": 1593960393
+      },
+      {
+        "caseId": "state-ship-none-19",
+        "seed": 3175771398
+      },
+      {
+        "caseId": "state-ship-none-20",
+        "seed": 462623583
+      },
+      {
+        "caseId": "state-ship-none-21",
+        "seed": 2044435092
+      },
+      {
+        "caseId": "state-ship-none-22",
+        "seed": 3622043885
+      },
+      {
+        "caseId": "state-ship-none-23",
+        "seed": 875333162
+      },
+      {
+        "caseId": "state-ship-none-24",
+        "seed": 2457144419
+      },
+      {
+        "caseId": "state-ship-none-25",
+        "seed": 4038964152
+      },
+      {
+        "caseId": "state-ship-none-26",
+        "seed": 1321613809
+      },
+      {
+        "caseId": "state-ship-none-27",
+        "seed": 2936979278
+      },
+      {
+        "caseId": "state-ship-none-28",
+        "seed": 223815303
+      },
+      {
+        "caseId": "state-ship-none-29",
+        "seed": 1805626588
+      },
+      {
+        "caseId": "state-ship-none-30",
+        "seed": 3383251477
+      },
+      {
+        "caseId": "state-ship-none-31",
+        "seed": 670095442
+      },
+      {
+        "caseId": "state-ship-none-32",
+        "seed": 2218352555
+      },
+      {
+        "caseId": "state-ship-none-33",
+        "seed": 3795961312
+      },
+      {
+        "caseId": "state-ship-none-34",
+        "seed": 1082805049
+      },
+      {
+        "caseId": "state-ship-none-35",
+        "seed": 3738366326
+      },
+      {
+        "caseId": "state-ship-none-36",
+        "seed": 1058765007
+      },
+      {
+        "caseId": "state-ship-none-37",
+        "seed": 2636381700
+      },
+      {
+        "caseId": "state-ship-none-38",
+        "seed": 4218184797
+      },
+      {
+        "caseId": "state-ship-none-39",
+        "seed": 1505029018
+      },
+      {
+        "caseId": "state-ship-none-40",
+        "seed": 3086848467
+      },
+      {
+        "caseId": "state-ship-none-41",
+        "seed": 335943464
+      },
+      {
+        "caseId": "state-ship-none-42",
+        "seed": 1917754721
+      },
+      {
+        "caseId": "state-ship-none-43",
+        "seed": 3499558078
+      },
+      {
+        "caseId": "state-ship-none-44",
+        "seed": 786402039
+      },
+      {
+        "caseId": "state-ship-none-45",
+        "seed": 2364026956
+      },
+      {
+        "caseId": "state-ship-none-46",
+        "seed": 3979392901
+      },
+      {
+        "caseId": "state-ship-none-47",
+        "seed": 1266236866
+      },
+      {
+        "caseId": "state-ship-none-48",
+        "seed": 2843845403
+      },
+      {
+        "caseId": "state-ship-none-49",
+        "seed": 130689360
+      },
+      {
+        "caseId": "state-ship-none-50",
+        "seed": 1678954665
+      },
+      {
+        "caseId": "state-ship-none-51",
+        "seed": 3260765926
+      },
+      {
+        "caseId": "state-ship-none-52",
+        "seed": 543415359
+      },
+      {
+        "caseId": "state-ship-none-53",
+        "seed": 3198960244
+      },
+      {
+        "caseId": "state-ship-none-54",
+        "seed": 485804493
+      },
+      {
+        "caseId": "state-ship-none-55",
+        "seed": 2101169930
+      },
+      {
+        "caseId": "state-ship-none-56",
+        "seed": 3678795075
+      },
+      {
+        "caseId": "state-ship-none-57",
+        "seed": 965639320
+      },
+      {
+        "caseId": "state-ship-none-58",
+        "seed": 2547442385
+      },
+      {
+        "caseId": "state-ship-none-59",
+        "seed": 4095698990
+      },
+      {
+        "caseId": "state-ship-none-60",
+        "seed": 1378348647
+      },
+      {
+        "caseId": "state-ship-none-61",
+        "seed": 2960168380
+      },
+      {
+        "caseId": "state-ship-none-62",
+        "seed": 247012341
+      },
+      {
+        "caseId": "state-ship-none-63",
+        "seed": 1824620850
+      },
+      {
+        "caseId": "state-ship-merchant-0",
+        "seed": 2133366474
+      },
+      {
+        "caseId": "state-ship-merchant-1",
+        "seed": 3715177473
+      },
+      {
+        "caseId": "state-ship-merchant-2",
+        "seed": 1002013272
+      },
+      {
+        "caseId": "state-ship-merchant-3",
+        "seed": 2579630487
+      },
+      {
+        "caseId": "state-ship-merchant-4",
+        "seed": 4127887342
+      },
+      {
+        "caseId": "state-ship-merchant-5",
+        "seed": 1414739237
+      },
+      {
+        "caseId": "state-ship-merchant-6",
+        "seed": 2996550524
+      },
+      {
+        "caseId": "state-ship-merchant-7",
+        "seed": 279192251
+      },
+      {
+        "caseId": "state-ship-merchant-8",
+        "seed": 1861003506
+      },
+      {
+        "caseId": "state-ship-merchant-9",
+        "seed": 3476368969
+      },
+      {
+        "caseId": "state-ship-merchant-10",
+        "seed": 763221376
+      },
+      {
+        "caseId": "state-ship-merchant-11",
+        "seed": 2340838367
+      },
+      {
+        "caseId": "state-ship-merchant-12",
+        "seed": 3922641174
+      },
+      {
+        "caseId": "state-ship-merchant-13",
+        "seed": 1175930733
+      },
+      {
+        "caseId": "state-ship-merchant-14",
+        "seed": 2757742244
+      },
+      {
+        "caseId": "state-ship-merchant-15",
+        "seed": 40400099
+      },
+      {
+        "caseId": "state-ship-merchant-16",
+        "seed": 1622211130
+      },
+      {
+        "caseId": "state-ship-merchant-17",
+        "seed": 4277756017
+      },
+      {
+        "caseId": "state-ship-merchant-18",
+        "seed": 1593960392
+      },
+      {
+        "caseId": "state-ship-merchant-19",
+        "seed": 3175771399
+      },
+      {
+        "caseId": "state-ship-merchant-20",
+        "seed": 462623582
+      },
+      {
+        "caseId": "state-ship-merchant-21",
+        "seed": 2044435093
+      },
+      {
+        "caseId": "state-ship-merchant-22",
+        "seed": 3622043884
+      },
+      {
+        "caseId": "state-ship-merchant-23",
+        "seed": 875333163
+      },
+      {
+        "caseId": "state-ship-merchant-24",
+        "seed": 2457144418
+      },
+      {
+        "caseId": "state-ship-merchant-25",
+        "seed": 4038964153
+      },
+      {
+        "caseId": "state-ship-merchant-26",
+        "seed": 1321613808
+      },
+      {
+        "caseId": "state-ship-merchant-27",
+        "seed": 2936979279
+      },
+      {
+        "caseId": "state-ship-merchant-28",
+        "seed": 223815302
+      },
+      {
+        "caseId": "state-ship-merchant-29",
+        "seed": 1805626589
+      },
+      {
+        "caseId": "state-ship-merchant-30",
+        "seed": 3383251476
+      },
+      {
+        "caseId": "state-ship-merchant-31",
+        "seed": 670095443
+      },
+      {
+        "caseId": "state-ship-merchant-32",
+        "seed": 2218352554
+      },
+      {
+        "caseId": "state-ship-merchant-33",
+        "seed": 3795961313
+      },
+      {
+        "caseId": "state-ship-merchant-34",
+        "seed": 1082805048
+      },
+      {
+        "caseId": "state-ship-merchant-35",
+        "seed": 3738366327
+      },
+      {
+        "caseId": "state-ship-merchant-36",
+        "seed": 1058765006
+      },
+      {
+        "caseId": "state-ship-merchant-37",
+        "seed": 2636381701
+      },
+      {
+        "caseId": "state-ship-merchant-38",
+        "seed": 4218184796
+      },
+      {
+        "caseId": "state-ship-merchant-39",
+        "seed": 1505029019
+      },
+      {
+        "caseId": "state-ship-merchant-40",
+        "seed": 3086848466
+      },
+      {
+        "caseId": "state-ship-merchant-41",
+        "seed": 335943465
+      },
+      {
+        "caseId": "state-ship-merchant-42",
+        "seed": 1917754720
+      },
+      {
+        "caseId": "state-ship-merchant-43",
+        "seed": 3499558079
+      },
+      {
+        "caseId": "state-ship-merchant-44",
+        "seed": 786402038
+      },
+      {
+        "caseId": "state-ship-merchant-45",
+        "seed": 2364026957
+      },
+      {
+        "caseId": "state-ship-merchant-46",
+        "seed": 3979392900
+      },
+      {
+        "caseId": "state-ship-merchant-47",
+        "seed": 1266236867
+      },
+      {
+        "caseId": "state-ship-merchant-48",
+        "seed": 2843845402
+      },
+      {
+        "caseId": "state-ship-merchant-49",
+        "seed": 130689361
+      },
+      {
+        "caseId": "state-ship-merchant-50",
+        "seed": 1678954664
+      },
+      {
+        "caseId": "state-ship-merchant-51",
+        "seed": 3260765927
+      },
+      {
+        "caseId": "state-ship-merchant-52",
+        "seed": 543415358
+      },
+      {
+        "caseId": "state-ship-merchant-53",
+        "seed": 3198960245
+      },
+      {
+        "caseId": "state-ship-merchant-54",
+        "seed": 485804492
+      },
+      {
+        "caseId": "state-ship-merchant-55",
+        "seed": 2101169931
+      },
+      {
+        "caseId": "state-ship-merchant-56",
+        "seed": 3678795074
+      },
+      {
+        "caseId": "state-ship-merchant-57",
+        "seed": 965639321
+      },
+      {
+        "caseId": "state-ship-merchant-58",
+        "seed": 2547442384
+      },
+      {
+        "caseId": "state-ship-merchant-59",
+        "seed": 4095698991
+      },
+      {
+        "caseId": "state-ship-merchant-60",
+        "seed": 1378348646
+      },
+      {
+        "caseId": "state-ship-merchant-61",
+        "seed": 2960168381
+      },
+      {
+        "caseId": "state-ship-merchant-62",
+        "seed": 247012340
+      },
+      {
+        "caseId": "state-ship-merchant-63",
+        "seed": 1824620851
+      }
+    ],
+    "scheduleCases": [
+      {
+        "caseId": "sync-answer/-1/012",
+        "clock": "deadline boundary",
+        "expectedState": "fulfilled",
+        "expectedPayment": "settling",
+        "actualState": "fulfilled",
+        "actualPayment": "settling",
+        "outcome": "in_progress"
+      },
+      {
+        "caseId": "sync-answer/-1/021",
+        "clock": "deadline boundary",
+        "expectedState": "fulfilled",
+        "expectedPayment": "settling",
+        "actualState": "fulfilled",
+        "actualPayment": "settling",
+        "outcome": "in_progress"
+      },
+      {
+        "caseId": "sync-answer/-1/102",
+        "clock": "deadline boundary",
+        "expectedState": "failed",
+        "expectedPayment": "verified",
+        "actualState": "failed",
+        "actualPayment": "verified",
+        "outcome": "rejected"
+      },
+      {
+        "caseId": "sync-answer/-1/120",
+        "clock": "deadline boundary",
+        "expectedState": "failed",
+        "expectedPayment": "verified",
+        "actualState": "failed",
+        "actualPayment": "verified",
+        "outcome": "rejected"
+      },
+      {
+        "caseId": "sync-answer/-1/201",
+        "clock": "deadline boundary",
+        "expectedState": "fulfilled",
+        "expectedPayment": "settling",
+        "actualState": "fulfilled",
+        "actualPayment": "settling",
+        "outcome": "in_progress"
+      },
+      {
+        "caseId": "sync-answer/-1/210",
+        "clock": "deadline boundary",
+        "expectedState": "failed",
+        "expectedPayment": "verified",
+        "actualState": "failed",
+        "actualPayment": "verified",
+        "outcome": "rejected"
+      },
+      {
+        "caseId": "sync-answer/0/012",
+        "clock": "deadline boundary",
+        "expectedState": "expired",
+        "expectedPayment": "verified",
+        "actualState": "expired",
+        "actualPayment": "verified",
+        "outcome": "expired"
+      },
+      {
+        "caseId": "sync-answer/0/021",
+        "clock": "deadline boundary",
+        "expectedState": "expired",
+        "expectedPayment": "verified",
+        "actualState": "expired",
+        "actualPayment": "verified",
+        "outcome": "expired"
+      },
+      {
+        "caseId": "sync-answer/0/102",
+        "clock": "deadline boundary",
+        "expectedState": "expired",
+        "expectedPayment": "verified",
+        "actualState": "expired",
+        "actualPayment": "verified",
+        "outcome": "expired"
+      },
+      {
+        "caseId": "sync-answer/0/120",
+        "clock": "deadline boundary",
+        "expectedState": "expired",
+        "expectedPayment": "verified",
+        "actualState": "expired",
+        "actualPayment": "verified",
+        "outcome": "expired"
+      },
+      {
+        "caseId": "sync-answer/0/201",
+        "clock": "deadline boundary",
+        "expectedState": "expired",
+        "expectedPayment": "verified",
+        "actualState": "expired",
+        "actualPayment": "verified",
+        "outcome": "expired"
+      },
+      {
+        "caseId": "sync-answer/0/210",
+        "clock": "deadline boundary",
+        "expectedState": "expired",
+        "expectedPayment": "verified",
+        "actualState": "expired",
+        "actualPayment": "verified",
+        "outcome": "expired"
+      },
+      {
+        "caseId": "sync-answer/1/012",
+        "clock": "deadline boundary",
+        "expectedState": "expired",
+        "expectedPayment": "verified",
+        "actualState": "expired",
+        "actualPayment": "verified",
+        "outcome": "expired"
+      },
+      {
+        "caseId": "sync-answer/1/021",
+        "clock": "deadline boundary",
+        "expectedState": "expired",
+        "expectedPayment": "verified",
+        "actualState": "expired",
+        "actualPayment": "verified",
+        "outcome": "expired"
+      },
+      {
+        "caseId": "sync-answer/1/102",
+        "clock": "deadline boundary",
+        "expectedState": "expired",
+        "expectedPayment": "verified",
+        "actualState": "expired",
+        "actualPayment": "verified",
+        "outcome": "expired"
+      },
+      {
+        "caseId": "sync-answer/1/120",
+        "clock": "deadline boundary",
+        "expectedState": "expired",
+        "expectedPayment": "verified",
+        "actualState": "expired",
+        "actualPayment": "verified",
+        "outcome": "expired"
+      },
+      {
+        "caseId": "sync-answer/1/201",
+        "clock": "deadline boundary",
+        "expectedState": "expired",
+        "expectedPayment": "verified",
+        "actualState": "expired",
+        "actualPayment": "verified",
+        "outcome": "expired"
+      },
+      {
+        "caseId": "sync-answer/1/210",
+        "clock": "deadline boundary",
+        "expectedState": "expired",
+        "expectedPayment": "verified",
+        "actualState": "expired",
+        "actualPayment": "verified",
+        "outcome": "expired"
+      },
+      {
+        "caseId": "settle-uncertain/-1/012",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/-1/021",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/-1/102",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/-1/120",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/-1/201",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/-1/210",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/0/012",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/0/021",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/0/102",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/0/120",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/0/201",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/0/210",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/1/012",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/1/021",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/1/102",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/1/120",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/1/201",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "settle-uncertain/1/210",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/-1/012",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/-1/021",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/-1/102",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/-1/120",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/-1/201",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/-1/210",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/0/012",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/0/021",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/0/102",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/0/120",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/0/201",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/0/210",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/1/012",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/1/021",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/1/102",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/1/120",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/1/201",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "async-answer/1/210",
+        "clock": "deadline boundary",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "debt/-1/012",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "debt/-1/021",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "debt/-1/102",
+        "clock": "time sample; no running deadline",
+        "expectedState": "refunded",
+        "expectedPayment": "settled",
+        "actualState": "refunded",
+        "actualPayment": "settled",
+        "outcome": "refunded"
+      },
+      {
+        "caseId": "debt/-1/120",
+        "clock": "time sample; no running deadline",
+        "expectedState": "refunded",
+        "expectedPayment": "settled",
+        "actualState": "refunded",
+        "actualPayment": "settled",
+        "outcome": "refunded"
+      },
+      {
+        "caseId": "debt/-1/201",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "debt/-1/210",
+        "clock": "time sample; no running deadline",
+        "expectedState": "refunded",
+        "expectedPayment": "settled",
+        "actualState": "refunded",
+        "actualPayment": "settled",
+        "outcome": "refunded"
+      },
+      {
+        "caseId": "debt/0/012",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "debt/0/021",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "debt/0/102",
+        "clock": "time sample; no running deadline",
+        "expectedState": "refunded",
+        "expectedPayment": "settled",
+        "actualState": "refunded",
+        "actualPayment": "settled",
+        "outcome": "refunded"
+      },
+      {
+        "caseId": "debt/0/120",
+        "clock": "time sample; no running deadline",
+        "expectedState": "refunded",
+        "expectedPayment": "settled",
+        "actualState": "refunded",
+        "actualPayment": "settled",
+        "outcome": "refunded"
+      },
+      {
+        "caseId": "debt/0/201",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "debt/0/210",
+        "clock": "time sample; no running deadline",
+        "expectedState": "refunded",
+        "expectedPayment": "settled",
+        "actualState": "refunded",
+        "actualPayment": "settled",
+        "outcome": "refunded"
+      },
+      {
+        "caseId": "debt/1/012",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "debt/1/021",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "debt/1/102",
+        "clock": "time sample; no running deadline",
+        "expectedState": "refunded",
+        "expectedPayment": "settled",
+        "actualState": "refunded",
+        "actualPayment": "settled",
+        "outcome": "refunded"
+      },
+      {
+        "caseId": "debt/1/120",
+        "clock": "time sample; no running deadline",
+        "expectedState": "refunded",
+        "expectedPayment": "settled",
+        "actualState": "refunded",
+        "actualPayment": "settled",
+        "outcome": "refunded"
+      },
+      {
+        "caseId": "debt/1/201",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered",
+        "expectedPayment": "settled",
+        "actualState": "delivered",
+        "actualPayment": "settled",
+        "outcome": "delivered"
+      },
+      {
+        "caseId": "debt/1/210",
+        "clock": "time sample; no running deadline",
+        "expectedState": "refunded",
+        "expectedPayment": "settled",
+        "actualState": "refunded",
+        "actualPayment": "settled",
+        "outcome": "refunded"
+      },
+      {
+        "caseId": "parcel/-1/012",
+        "clock": "deadline boundary",
+        "expectedState": "dispatched",
+        "expectedPayment": "settled",
+        "actualState": "dispatched",
+        "actualPayment": "settled",
+        "outcome": "in_progress"
+      },
+      {
+        "caseId": "parcel/-1/021",
+        "clock": "deadline boundary",
+        "expectedState": "dispatched",
+        "expectedPayment": "settled",
+        "actualState": "dispatched",
+        "actualPayment": "settled",
+        "outcome": "in_progress"
+      },
+      {
+        "caseId": "parcel/-1/102",
+        "clock": "deadline boundary",
+        "expectedState": "dispatched",
+        "expectedPayment": "settled",
+        "actualState": "dispatched",
+        "actualPayment": "settled",
+        "outcome": "in_progress"
+      },
+      {
+        "caseId": "parcel/-1/120",
+        "clock": "deadline boundary",
+        "expectedState": "dispatched",
+        "expectedPayment": "settled",
+        "actualState": "dispatched",
+        "actualPayment": "settled",
+        "outcome": "in_progress"
+      },
+      {
+        "caseId": "parcel/-1/201",
+        "clock": "deadline boundary",
+        "expectedState": "dispatched",
+        "expectedPayment": "settled",
+        "actualState": "dispatched",
+        "actualPayment": "settled",
+        "outcome": "in_progress"
+      },
+      {
+        "caseId": "parcel/-1/210",
+        "clock": "deadline boundary",
+        "expectedState": "dispatched",
+        "expectedPayment": "settled",
+        "actualState": "dispatched",
+        "actualPayment": "settled",
+        "outcome": "in_progress"
+      },
+      {
+        "caseId": "parcel/0/012",
+        "clock": "deadline boundary",
+        "expectedState": "refund_due",
+        "expectedPayment": "settled",
+        "actualState": "refund_due",
+        "actualPayment": "settled",
+        "outcome": "refund_due"
+      },
+      {
+        "caseId": "parcel/0/021",
+        "clock": "deadline boundary",
+        "expectedState": "refund_due",
+        "expectedPayment": "settled",
+        "actualState": "refund_due",
+        "actualPayment": "settled",
+        "outcome": "refund_due"
+      },
+      {
+        "caseId": "parcel/0/102",
+        "clock": "deadline boundary",
+        "expectedState": "refund_due",
+        "expectedPayment": "settled",
+        "actualState": "refund_due",
+        "actualPayment": "settled",
+        "outcome": "refund_due"
+      },
+      {
+        "caseId": "parcel/0/120",
+        "clock": "deadline boundary",
+        "expectedState": "refund_due",
+        "expectedPayment": "settled",
+        "actualState": "refund_due",
+        "actualPayment": "settled",
+        "outcome": "refund_due"
+      },
+      {
+        "caseId": "parcel/0/201",
+        "clock": "deadline boundary",
+        "expectedState": "refund_due",
+        "expectedPayment": "settled",
+        "actualState": "refund_due",
+        "actualPayment": "settled",
+        "outcome": "refund_due"
+      },
+      {
+        "caseId": "parcel/0/210",
+        "clock": "deadline boundary",
+        "expectedState": "refund_due",
+        "expectedPayment": "settled",
+        "actualState": "refund_due",
+        "actualPayment": "settled",
+        "outcome": "refund_due"
+      },
+      {
+        "caseId": "parcel/1/012",
+        "clock": "deadline boundary",
+        "expectedState": "refund_due",
+        "expectedPayment": "settled",
+        "actualState": "refund_due",
+        "actualPayment": "settled",
+        "outcome": "refund_due"
+      },
+      {
+        "caseId": "parcel/1/021",
+        "clock": "deadline boundary",
+        "expectedState": "refund_due",
+        "expectedPayment": "settled",
+        "actualState": "refund_due",
+        "actualPayment": "settled",
+        "outcome": "refund_due"
+      },
+      {
+        "caseId": "parcel/1/102",
+        "clock": "deadline boundary",
+        "expectedState": "refund_due",
+        "expectedPayment": "settled",
+        "actualState": "refund_due",
+        "actualPayment": "settled",
+        "outcome": "refund_due"
+      },
+      {
+        "caseId": "parcel/1/120",
+        "clock": "deadline boundary",
+        "expectedState": "refund_due",
+        "expectedPayment": "settled",
+        "actualState": "refund_due",
+        "actualPayment": "settled",
+        "outcome": "refund_due"
+      },
+      {
+        "caseId": "parcel/1/201",
+        "clock": "deadline boundary",
+        "expectedState": "refund_due",
+        "expectedPayment": "settled",
+        "actualState": "refund_due",
+        "actualPayment": "settled",
+        "outcome": "refund_due"
+      },
+      {
+        "caseId": "parcel/1/210",
+        "clock": "deadline boundary",
+        "expectedState": "refund_due",
+        "expectedPayment": "settled",
+        "actualState": "refund_due",
+        "actualPayment": "settled",
+        "outcome": "refund_due"
+      },
+      {
+        "caseId": "unpaid-retry/-1/012",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "settling",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "settling",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/-1/021",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "none",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "none",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/-1/102",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "settling",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "settling",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/-1/120",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "settle_failed",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "settle_failed",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/-1/201",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "none",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "none",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/-1/210",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "none",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "none",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/0/012",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "settling",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "settling",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/0/021",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "none",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "none",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/0/102",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "settling",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "settling",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/0/120",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "settle_failed",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "settle_failed",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/0/201",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "none",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "none",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/0/210",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "none",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "none",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/1/012",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "settling",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "settling",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/1/021",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "none",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "none",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/1/102",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "settling",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "settling",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/1/120",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "settle_failed",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "settle_failed",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/1/201",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "none",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "none",
+        "outcome": "delivered_unpaid"
+      },
+      {
+        "caseId": "unpaid-retry/1/210",
+        "clock": "time sample; no running deadline",
+        "expectedState": "delivered_unpaid",
+        "expectedPayment": "none",
+        "actualState": "delivered_unpaid",
+        "actualPayment": "none",
+        "outcome": "delivered_unpaid"
+      }
+    ]
+  },
+  "sdk": {
+    "subject": "e11fef741e875ef6f9c42465a6b27577dd2921a1",
+    "cases": [
+      {
+        "caseId": "publish_card/success/0",
+        "route": "publish_card",
+        "responseClass": "success",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/success/1",
+        "route": "publish_card",
+        "responseClass": "success",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/success/2",
+        "route": "publish_card",
+        "responseClass": "success",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/success/3",
+        "route": "publish_card",
+        "responseClass": "success",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/success/4",
+        "route": "publish_card",
+        "responseClass": "success",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/success/5",
+        "route": "publish_card",
+        "responseClass": "success",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/route-refusal/0",
+        "route": "publish_card",
+        "responseClass": "route-refusal",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/route-refusal/1",
+        "route": "publish_card",
+        "responseClass": "route-refusal",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/route-refusal/2",
+        "route": "publish_card",
+        "responseClass": "route-refusal",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/route-refusal/3",
+        "route": "publish_card",
+        "responseClass": "route-refusal",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/route-refusal/4",
+        "route": "publish_card",
+        "responseClass": "route-refusal",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/route-refusal/5",
+        "route": "publish_card",
+        "responseClass": "route-refusal",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/envelope-retryable/0",
+        "route": "publish_card",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/envelope-retryable/1",
+        "route": "publish_card",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/envelope-retryable/2",
+        "route": "publish_card",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/envelope-retryable/3",
+        "route": "publish_card",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/envelope-retryable/4",
+        "route": "publish_card",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/envelope-retryable/5",
+        "route": "publish_card",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/envelope-final/0",
+        "route": "publish_card",
+        "responseClass": "envelope-final",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/envelope-final/1",
+        "route": "publish_card",
+        "responseClass": "envelope-final",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/envelope-final/2",
+        "route": "publish_card",
+        "responseClass": "envelope-final",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/envelope-final/3",
+        "route": "publish_card",
+        "responseClass": "envelope-final",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/envelope-final/4",
+        "route": "publish_card",
+        "responseClass": "envelope-final",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/envelope-final/5",
+        "route": "publish_card",
+        "responseClass": "envelope-final",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/malformed-json/0",
+        "route": "publish_card",
+        "responseClass": "malformed-json",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/malformed-json/1",
+        "route": "publish_card",
+        "responseClass": "malformed-json",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/malformed-json/2",
+        "route": "publish_card",
+        "responseClass": "malformed-json",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/malformed-json/3",
+        "route": "publish_card",
+        "responseClass": "malformed-json",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/malformed-json/4",
+        "route": "publish_card",
+        "responseClass": "malformed-json",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/malformed-json/5",
+        "route": "publish_card",
+        "responseClass": "malformed-json",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/wrong-document/0",
+        "route": "publish_card",
+        "responseClass": "wrong-document",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/wrong-document/1",
+        "route": "publish_card",
+        "responseClass": "wrong-document",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/wrong-document/2",
+        "route": "publish_card",
+        "responseClass": "wrong-document",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/wrong-document/3",
+        "route": "publish_card",
+        "responseClass": "wrong-document",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/wrong-document/4",
+        "route": "publish_card",
+        "responseClass": "wrong-document",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/wrong-document/5",
+        "route": "publish_card",
+        "responseClass": "wrong-document",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/503-document/0",
+        "route": "publish_card",
+        "responseClass": "503-document",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/503-document/1",
+        "route": "publish_card",
+        "responseClass": "503-document",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/503-document/2",
+        "route": "publish_card",
+        "responseClass": "503-document",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/503-document/3",
+        "route": "publish_card",
+        "responseClass": "503-document",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/503-document/4",
+        "route": "publish_card",
+        "responseClass": "503-document",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/503-document/5",
+        "route": "publish_card",
+        "responseClass": "503-document",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/empty-body/0",
+        "route": "publish_card",
+        "responseClass": "empty-body",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/empty-body/1",
+        "route": "publish_card",
+        "responseClass": "empty-body",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/empty-body/2",
+        "route": "publish_card",
+        "responseClass": "empty-body",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/empty-body/3",
+        "route": "publish_card",
+        "responseClass": "empty-body",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/empty-body/4",
+        "route": "publish_card",
+        "responseClass": "empty-body",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/empty-body/5",
+        "route": "publish_card",
+        "responseClass": "empty-body",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/truncated-json/0",
+        "route": "publish_card",
+        "responseClass": "truncated-json",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/truncated-json/1",
+        "route": "publish_card",
+        "responseClass": "truncated-json",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/truncated-json/2",
+        "route": "publish_card",
+        "responseClass": "truncated-json",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/truncated-json/3",
+        "route": "publish_card",
+        "responseClass": "truncated-json",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/truncated-json/4",
+        "route": "publish_card",
+        "responseClass": "truncated-json",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/truncated-json/5",
+        "route": "publish_card",
+        "responseClass": "truncated-json",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/429-envelope/0",
+        "route": "publish_card",
+        "responseClass": "429-envelope",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/429-envelope/1",
+        "route": "publish_card",
+        "responseClass": "429-envelope",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/429-envelope/2",
+        "route": "publish_card",
+        "responseClass": "429-envelope",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/429-envelope/3",
+        "route": "publish_card",
+        "responseClass": "429-envelope",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/429-envelope/4",
+        "route": "publish_card",
+        "responseClass": "429-envelope",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "publish_card/429-envelope/5",
+        "route": "publish_card",
+        "responseClass": "429-envelope",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/success/0",
+        "route": "get_order",
+        "responseClass": "success",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/success/1",
+        "route": "get_order",
+        "responseClass": "success",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/success/2",
+        "route": "get_order",
+        "responseClass": "success",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/success/3",
+        "route": "get_order",
+        "responseClass": "success",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/success/4",
+        "route": "get_order",
+        "responseClass": "success",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/success/5",
+        "route": "get_order",
+        "responseClass": "success",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/route-refusal/0",
+        "route": "get_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/route-refusal/1",
+        "route": "get_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/route-refusal/2",
+        "route": "get_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/route-refusal/3",
+        "route": "get_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/route-refusal/4",
+        "route": "get_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/route-refusal/5",
+        "route": "get_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/envelope-retryable/0",
+        "route": "get_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/envelope-retryable/1",
+        "route": "get_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/envelope-retryable/2",
+        "route": "get_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/envelope-retryable/3",
+        "route": "get_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/envelope-retryable/4",
+        "route": "get_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/envelope-retryable/5",
+        "route": "get_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/envelope-final/0",
+        "route": "get_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/envelope-final/1",
+        "route": "get_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/envelope-final/2",
+        "route": "get_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/envelope-final/3",
+        "route": "get_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/envelope-final/4",
+        "route": "get_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/envelope-final/5",
+        "route": "get_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/malformed-json/0",
+        "route": "get_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/malformed-json/1",
+        "route": "get_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/malformed-json/2",
+        "route": "get_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/malformed-json/3",
+        "route": "get_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/malformed-json/4",
+        "route": "get_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/malformed-json/5",
+        "route": "get_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/wrong-document/0",
+        "route": "get_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/wrong-document/1",
+        "route": "get_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/wrong-document/2",
+        "route": "get_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/wrong-document/3",
+        "route": "get_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/wrong-document/4",
+        "route": "get_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/wrong-document/5",
+        "route": "get_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/503-document/0",
+        "route": "get_order",
+        "responseClass": "503-document",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/503-document/1",
+        "route": "get_order",
+        "responseClass": "503-document",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/503-document/2",
+        "route": "get_order",
+        "responseClass": "503-document",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/503-document/3",
+        "route": "get_order",
+        "responseClass": "503-document",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/503-document/4",
+        "route": "get_order",
+        "responseClass": "503-document",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/503-document/5",
+        "route": "get_order",
+        "responseClass": "503-document",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/empty-body/0",
+        "route": "get_order",
+        "responseClass": "empty-body",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/empty-body/1",
+        "route": "get_order",
+        "responseClass": "empty-body",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/empty-body/2",
+        "route": "get_order",
+        "responseClass": "empty-body",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/empty-body/3",
+        "route": "get_order",
+        "responseClass": "empty-body",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/empty-body/4",
+        "route": "get_order",
+        "responseClass": "empty-body",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/empty-body/5",
+        "route": "get_order",
+        "responseClass": "empty-body",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/truncated-json/0",
+        "route": "get_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/truncated-json/1",
+        "route": "get_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/truncated-json/2",
+        "route": "get_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/truncated-json/3",
+        "route": "get_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/truncated-json/4",
+        "route": "get_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/truncated-json/5",
+        "route": "get_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/429-envelope/0",
+        "route": "get_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/429-envelope/1",
+        "route": "get_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/429-envelope/2",
+        "route": "get_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/429-envelope/3",
+        "route": "get_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/429-envelope/4",
+        "route": "get_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "get_order/429-envelope/5",
+        "route": "get_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/success/0",
+        "route": "list_orders",
+        "responseClass": "success",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/success/1",
+        "route": "list_orders",
+        "responseClass": "success",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/success/2",
+        "route": "list_orders",
+        "responseClass": "success",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/success/3",
+        "route": "list_orders",
+        "responseClass": "success",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/success/4",
+        "route": "list_orders",
+        "responseClass": "success",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/success/5",
+        "route": "list_orders",
+        "responseClass": "success",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/route-refusal/0",
+        "route": "list_orders",
+        "responseClass": "route-refusal",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/route-refusal/1",
+        "route": "list_orders",
+        "responseClass": "route-refusal",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/route-refusal/2",
+        "route": "list_orders",
+        "responseClass": "route-refusal",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/route-refusal/3",
+        "route": "list_orders",
+        "responseClass": "route-refusal",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/route-refusal/4",
+        "route": "list_orders",
+        "responseClass": "route-refusal",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/route-refusal/5",
+        "route": "list_orders",
+        "responseClass": "route-refusal",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/envelope-retryable/0",
+        "route": "list_orders",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/envelope-retryable/1",
+        "route": "list_orders",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/envelope-retryable/2",
+        "route": "list_orders",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/envelope-retryable/3",
+        "route": "list_orders",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/envelope-retryable/4",
+        "route": "list_orders",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/envelope-retryable/5",
+        "route": "list_orders",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/envelope-final/0",
+        "route": "list_orders",
+        "responseClass": "envelope-final",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/envelope-final/1",
+        "route": "list_orders",
+        "responseClass": "envelope-final",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/envelope-final/2",
+        "route": "list_orders",
+        "responseClass": "envelope-final",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/envelope-final/3",
+        "route": "list_orders",
+        "responseClass": "envelope-final",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/envelope-final/4",
+        "route": "list_orders",
+        "responseClass": "envelope-final",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/envelope-final/5",
+        "route": "list_orders",
+        "responseClass": "envelope-final",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/malformed-json/0",
+        "route": "list_orders",
+        "responseClass": "malformed-json",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/malformed-json/1",
+        "route": "list_orders",
+        "responseClass": "malformed-json",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/malformed-json/2",
+        "route": "list_orders",
+        "responseClass": "malformed-json",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/malformed-json/3",
+        "route": "list_orders",
+        "responseClass": "malformed-json",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/malformed-json/4",
+        "route": "list_orders",
+        "responseClass": "malformed-json",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/malformed-json/5",
+        "route": "list_orders",
+        "responseClass": "malformed-json",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/wrong-document/0",
+        "route": "list_orders",
+        "responseClass": "wrong-document",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/wrong-document/1",
+        "route": "list_orders",
+        "responseClass": "wrong-document",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/wrong-document/2",
+        "route": "list_orders",
+        "responseClass": "wrong-document",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/wrong-document/3",
+        "route": "list_orders",
+        "responseClass": "wrong-document",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/wrong-document/4",
+        "route": "list_orders",
+        "responseClass": "wrong-document",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/wrong-document/5",
+        "route": "list_orders",
+        "responseClass": "wrong-document",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/503-document/0",
+        "route": "list_orders",
+        "responseClass": "503-document",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/503-document/1",
+        "route": "list_orders",
+        "responseClass": "503-document",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/503-document/2",
+        "route": "list_orders",
+        "responseClass": "503-document",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/503-document/3",
+        "route": "list_orders",
+        "responseClass": "503-document",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/503-document/4",
+        "route": "list_orders",
+        "responseClass": "503-document",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/503-document/5",
+        "route": "list_orders",
+        "responseClass": "503-document",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/empty-body/0",
+        "route": "list_orders",
+        "responseClass": "empty-body",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/empty-body/1",
+        "route": "list_orders",
+        "responseClass": "empty-body",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/empty-body/2",
+        "route": "list_orders",
+        "responseClass": "empty-body",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/empty-body/3",
+        "route": "list_orders",
+        "responseClass": "empty-body",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/empty-body/4",
+        "route": "list_orders",
+        "responseClass": "empty-body",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/empty-body/5",
+        "route": "list_orders",
+        "responseClass": "empty-body",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/truncated-json/0",
+        "route": "list_orders",
+        "responseClass": "truncated-json",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/truncated-json/1",
+        "route": "list_orders",
+        "responseClass": "truncated-json",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/truncated-json/2",
+        "route": "list_orders",
+        "responseClass": "truncated-json",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/truncated-json/3",
+        "route": "list_orders",
+        "responseClass": "truncated-json",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/truncated-json/4",
+        "route": "list_orders",
+        "responseClass": "truncated-json",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/truncated-json/5",
+        "route": "list_orders",
+        "responseClass": "truncated-json",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/429-envelope/0",
+        "route": "list_orders",
+        "responseClass": "429-envelope",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/429-envelope/1",
+        "route": "list_orders",
+        "responseClass": "429-envelope",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/429-envelope/2",
+        "route": "list_orders",
+        "responseClass": "429-envelope",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/429-envelope/3",
+        "route": "list_orders",
+        "responseClass": "429-envelope",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/429-envelope/4",
+        "route": "list_orders",
+        "responseClass": "429-envelope",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "list_orders/429-envelope/5",
+        "route": "list_orders",
+        "responseClass": "429-envelope",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "AgentifyError",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/success/0",
+        "route": "deliver_order",
+        "responseClass": "success",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/success/1",
+        "route": "deliver_order",
+        "responseClass": "success",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/success/2",
+        "route": "deliver_order",
+        "responseClass": "success",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/success/3",
+        "route": "deliver_order",
+        "responseClass": "success",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/success/4",
+        "route": "deliver_order",
+        "responseClass": "success",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/success/5",
+        "route": "deliver_order",
+        "responseClass": "success",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/route-refusal/0",
+        "route": "deliver_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/route-refusal/1",
+        "route": "deliver_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/route-refusal/2",
+        "route": "deliver_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/route-refusal/3",
+        "route": "deliver_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/route-refusal/4",
+        "route": "deliver_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/route-refusal/5",
+        "route": "deliver_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/envelope-retryable/0",
+        "route": "deliver_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/envelope-retryable/1",
+        "route": "deliver_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/envelope-retryable/2",
+        "route": "deliver_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/envelope-retryable/3",
+        "route": "deliver_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/envelope-retryable/4",
+        "route": "deliver_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/envelope-retryable/5",
+        "route": "deliver_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/envelope-final/0",
+        "route": "deliver_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/envelope-final/1",
+        "route": "deliver_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/envelope-final/2",
+        "route": "deliver_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/envelope-final/3",
+        "route": "deliver_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/envelope-final/4",
+        "route": "deliver_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/envelope-final/5",
+        "route": "deliver_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/malformed-json/0",
+        "route": "deliver_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/malformed-json/1",
+        "route": "deliver_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/malformed-json/2",
+        "route": "deliver_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/malformed-json/3",
+        "route": "deliver_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/malformed-json/4",
+        "route": "deliver_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/malformed-json/5",
+        "route": "deliver_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/wrong-document/0",
+        "route": "deliver_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/wrong-document/1",
+        "route": "deliver_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/wrong-document/2",
+        "route": "deliver_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/wrong-document/3",
+        "route": "deliver_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/wrong-document/4",
+        "route": "deliver_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/wrong-document/5",
+        "route": "deliver_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/503-document/0",
+        "route": "deliver_order",
+        "responseClass": "503-document",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/503-document/1",
+        "route": "deliver_order",
+        "responseClass": "503-document",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/503-document/2",
+        "route": "deliver_order",
+        "responseClass": "503-document",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/503-document/3",
+        "route": "deliver_order",
+        "responseClass": "503-document",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/503-document/4",
+        "route": "deliver_order",
+        "responseClass": "503-document",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/503-document/5",
+        "route": "deliver_order",
+        "responseClass": "503-document",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/empty-body/0",
+        "route": "deliver_order",
+        "responseClass": "empty-body",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/empty-body/1",
+        "route": "deliver_order",
+        "responseClass": "empty-body",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/empty-body/2",
+        "route": "deliver_order",
+        "responseClass": "empty-body",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/empty-body/3",
+        "route": "deliver_order",
+        "responseClass": "empty-body",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/empty-body/4",
+        "route": "deliver_order",
+        "responseClass": "empty-body",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/empty-body/5",
+        "route": "deliver_order",
+        "responseClass": "empty-body",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/truncated-json/0",
+        "route": "deliver_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/truncated-json/1",
+        "route": "deliver_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/truncated-json/2",
+        "route": "deliver_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/truncated-json/3",
+        "route": "deliver_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/truncated-json/4",
+        "route": "deliver_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/truncated-json/5",
+        "route": "deliver_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/429-envelope/0",
+        "route": "deliver_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/429-envelope/1",
+        "route": "deliver_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/429-envelope/2",
+        "route": "deliver_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/429-envelope/3",
+        "route": "deliver_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/429-envelope/4",
+        "route": "deliver_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "deliver_order/429-envelope/5",
+        "route": "deliver_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/success/0",
+        "route": "refuse_order",
+        "responseClass": "success",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/success/1",
+        "route": "refuse_order",
+        "responseClass": "success",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/success/2",
+        "route": "refuse_order",
+        "responseClass": "success",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/success/3",
+        "route": "refuse_order",
+        "responseClass": "success",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/success/4",
+        "route": "refuse_order",
+        "responseClass": "success",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/success/5",
+        "route": "refuse_order",
+        "responseClass": "success",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/route-refusal/0",
+        "route": "refuse_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/route-refusal/1",
+        "route": "refuse_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/route-refusal/2",
+        "route": "refuse_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/route-refusal/3",
+        "route": "refuse_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/route-refusal/4",
+        "route": "refuse_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/route-refusal/5",
+        "route": "refuse_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/envelope-retryable/0",
+        "route": "refuse_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/envelope-retryable/1",
+        "route": "refuse_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/envelope-retryable/2",
+        "route": "refuse_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/envelope-retryable/3",
+        "route": "refuse_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/envelope-retryable/4",
+        "route": "refuse_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/envelope-retryable/5",
+        "route": "refuse_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/envelope-final/0",
+        "route": "refuse_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/envelope-final/1",
+        "route": "refuse_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/envelope-final/2",
+        "route": "refuse_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/envelope-final/3",
+        "route": "refuse_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/envelope-final/4",
+        "route": "refuse_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/envelope-final/5",
+        "route": "refuse_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/malformed-json/0",
+        "route": "refuse_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/malformed-json/1",
+        "route": "refuse_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/malformed-json/2",
+        "route": "refuse_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/malformed-json/3",
+        "route": "refuse_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/malformed-json/4",
+        "route": "refuse_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/malformed-json/5",
+        "route": "refuse_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/wrong-document/0",
+        "route": "refuse_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/wrong-document/1",
+        "route": "refuse_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/wrong-document/2",
+        "route": "refuse_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/wrong-document/3",
+        "route": "refuse_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/wrong-document/4",
+        "route": "refuse_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/wrong-document/5",
+        "route": "refuse_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/503-document/0",
+        "route": "refuse_order",
+        "responseClass": "503-document",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/503-document/1",
+        "route": "refuse_order",
+        "responseClass": "503-document",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/503-document/2",
+        "route": "refuse_order",
+        "responseClass": "503-document",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/503-document/3",
+        "route": "refuse_order",
+        "responseClass": "503-document",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/503-document/4",
+        "route": "refuse_order",
+        "responseClass": "503-document",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/503-document/5",
+        "route": "refuse_order",
+        "responseClass": "503-document",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/empty-body/0",
+        "route": "refuse_order",
+        "responseClass": "empty-body",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/empty-body/1",
+        "route": "refuse_order",
+        "responseClass": "empty-body",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/empty-body/2",
+        "route": "refuse_order",
+        "responseClass": "empty-body",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/empty-body/3",
+        "route": "refuse_order",
+        "responseClass": "empty-body",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/empty-body/4",
+        "route": "refuse_order",
+        "responseClass": "empty-body",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/empty-body/5",
+        "route": "refuse_order",
+        "responseClass": "empty-body",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/truncated-json/0",
+        "route": "refuse_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/truncated-json/1",
+        "route": "refuse_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/truncated-json/2",
+        "route": "refuse_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/truncated-json/3",
+        "route": "refuse_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/truncated-json/4",
+        "route": "refuse_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/truncated-json/5",
+        "route": "refuse_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/429-envelope/0",
+        "route": "refuse_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/429-envelope/1",
+        "route": "refuse_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/429-envelope/2",
+        "route": "refuse_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/429-envelope/3",
+        "route": "refuse_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/429-envelope/4",
+        "route": "refuse_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "refuse_order/429-envelope/5",
+        "route": "refuse_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/success/0",
+        "route": "accept_order",
+        "responseClass": "success",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/success/1",
+        "route": "accept_order",
+        "responseClass": "success",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/success/2",
+        "route": "accept_order",
+        "responseClass": "success",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/success/3",
+        "route": "accept_order",
+        "responseClass": "success",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/success/4",
+        "route": "accept_order",
+        "responseClass": "success",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/success/5",
+        "route": "accept_order",
+        "responseClass": "success",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/route-refusal/0",
+        "route": "accept_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/route-refusal/1",
+        "route": "accept_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/route-refusal/2",
+        "route": "accept_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/route-refusal/3",
+        "route": "accept_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/route-refusal/4",
+        "route": "accept_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/route-refusal/5",
+        "route": "accept_order",
+        "responseClass": "route-refusal",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/envelope-retryable/0",
+        "route": "accept_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/envelope-retryable/1",
+        "route": "accept_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/envelope-retryable/2",
+        "route": "accept_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/envelope-retryable/3",
+        "route": "accept_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/envelope-retryable/4",
+        "route": "accept_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/envelope-retryable/5",
+        "route": "accept_order",
+        "responseClass": "envelope-retryable",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/envelope-final/0",
+        "route": "accept_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/envelope-final/1",
+        "route": "accept_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/envelope-final/2",
+        "route": "accept_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/envelope-final/3",
+        "route": "accept_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/envelope-final/4",
+        "route": "accept_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/envelope-final/5",
+        "route": "accept_order",
+        "responseClass": "envelope-final",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/malformed-json/0",
+        "route": "accept_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/malformed-json/1",
+        "route": "accept_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/malformed-json/2",
+        "route": "accept_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/malformed-json/3",
+        "route": "accept_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/malformed-json/4",
+        "route": "accept_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/malformed-json/5",
+        "route": "accept_order",
+        "responseClass": "malformed-json",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/wrong-document/0",
+        "route": "accept_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/wrong-document/1",
+        "route": "accept_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/wrong-document/2",
+        "route": "accept_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/wrong-document/3",
+        "route": "accept_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/wrong-document/4",
+        "route": "accept_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/wrong-document/5",
+        "route": "accept_order",
+        "responseClass": "wrong-document",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/503-document/0",
+        "route": "accept_order",
+        "responseClass": "503-document",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/503-document/1",
+        "route": "accept_order",
+        "responseClass": "503-document",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/503-document/2",
+        "route": "accept_order",
+        "responseClass": "503-document",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/503-document/3",
+        "route": "accept_order",
+        "responseClass": "503-document",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/503-document/4",
+        "route": "accept_order",
+        "responseClass": "503-document",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/503-document/5",
+        "route": "accept_order",
+        "responseClass": "503-document",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "success value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/empty-body/0",
+        "route": "accept_order",
+        "responseClass": "empty-body",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/empty-body/1",
+        "route": "accept_order",
+        "responseClass": "empty-body",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/empty-body/2",
+        "route": "accept_order",
+        "responseClass": "empty-body",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/empty-body/3",
+        "route": "accept_order",
+        "responseClass": "empty-body",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/empty-body/4",
+        "route": "accept_order",
+        "responseClass": "empty-body",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/empty-body/5",
+        "route": "accept_order",
+        "responseClass": "empty-body",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/truncated-json/0",
+        "route": "accept_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/truncated-json/1",
+        "route": "accept_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/truncated-json/2",
+        "route": "accept_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/truncated-json/3",
+        "route": "accept_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/truncated-json/4",
+        "route": "accept_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/truncated-json/5",
+        "route": "accept_order",
+        "responseClass": "truncated-json",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/429-envelope/0",
+        "route": "accept_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 0,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/429-envelope/1",
+        "route": "accept_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 1,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/429-envelope/2",
+        "route": "accept_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 2,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/429-envelope/3",
+        "route": "accept_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 3,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/429-envelope/4",
+        "route": "accept_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 4,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      },
+      {
+        "caseId": "accept_order/429-envelope/5",
+        "route": "accept_order",
+        "responseClass": "429-envelope",
+        "inputIndex": 5,
+        "httpCalls": 1,
+        "observation": "refusal value",
+        "result": "passed"
+      }
+    ],
+    "workerCases": [
+      {
+        "caseId": "parked-poll",
+        "deliveredSubjects": [],
+        "polls": 1,
+        "answers": 0,
+        "problems": []
+      },
+      {
+        "caseId": "order/success/handler/alone",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["answer_failed"]
+      },
+      {
+        "caseId": "order/success/handler/mixed-suffix",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["answer_failed", "batch_abandoned"]
+      },
+      {
+        "caseId": "order/success/answer/alone",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 1,
+        "problems": ["answer_failed"]
+      },
+      {
+        "caseId": "order/success/answer/mixed-suffix",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 1,
+        "problems": ["answer_failed", "batch_abandoned"]
+      },
+      {
+        "caseId": "order/throw/handler/alone",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["handler_failed"]
+      },
+      {
+        "caseId": "order/throw/handler/mixed-suffix",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["handler_failed", "batch_abandoned"]
+      },
+      {
+        "caseId": "order/invalid-answer/handler/alone",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["handler_answer_refused"]
+      },
+      {
+        "caseId": "order/invalid-answer/handler/mixed-suffix",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["handler_answer_refused", "batch_abandoned"]
+      },
+      {
+        "caseId": "order/rejecting-reporter/handler/alone",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["answer_failed"]
+      },
+      {
+        "caseId": "order/rejecting-reporter/handler/mixed-suffix",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["answer_failed", "batch_abandoned"]
+      },
+      {
+        "caseId": "order/rejecting-reporter/answer/alone",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 1,
+        "problems": ["answer_failed"]
+      },
+      {
+        "caseId": "order/rejecting-reporter/answer/mixed-suffix",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 1,
+        "problems": ["answer_failed", "batch_abandoned"]
+      },
+      {
+        "caseId": "quote_request/success/handler/alone",
+        "deliveredSubjects": ["worker-price-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["answer_failed"]
+      },
+      {
+        "caseId": "quote_request/success/handler/mixed-suffix",
+        "deliveredSubjects": ["worker-price-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["answer_failed", "batch_abandoned"]
+      },
+      {
+        "caseId": "quote_request/success/answer/alone",
+        "deliveredSubjects": ["worker-price-1"],
+        "polls": 1,
+        "answers": 1,
+        "problems": ["answer_failed"]
+      },
+      {
+        "caseId": "quote_request/success/answer/mixed-suffix",
+        "deliveredSubjects": ["worker-price-1"],
+        "polls": 1,
+        "answers": 1,
+        "problems": ["answer_failed", "batch_abandoned"]
+      },
+      {
+        "caseId": "quote_request/throw/handler/alone",
+        "deliveredSubjects": ["worker-price-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["handler_failed"]
+      },
+      {
+        "caseId": "quote_request/throw/handler/mixed-suffix",
+        "deliveredSubjects": ["worker-price-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["handler_failed", "batch_abandoned"]
+      },
+      {
+        "caseId": "quote_request/invalid-answer/handler/alone",
+        "deliveredSubjects": ["worker-price-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["handler_answer_refused"]
+      },
+      {
+        "caseId": "quote_request/invalid-answer/handler/mixed-suffix",
+        "deliveredSubjects": ["worker-price-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["handler_answer_refused", "batch_abandoned"]
+      },
+      {
+        "caseId": "quote_request/rejecting-reporter/handler/alone",
+        "deliveredSubjects": ["worker-price-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["answer_failed"]
+      },
+      {
+        "caseId": "quote_request/rejecting-reporter/handler/mixed-suffix",
+        "deliveredSubjects": ["worker-price-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["answer_failed", "batch_abandoned"]
+      },
+      {
+        "caseId": "quote_request/rejecting-reporter/answer/alone",
+        "deliveredSubjects": ["worker-price-1"],
+        "polls": 1,
+        "answers": 1,
+        "problems": ["answer_failed"]
+      },
+      {
+        "caseId": "quote_request/rejecting-reporter/answer/mixed-suffix",
+        "deliveredSubjects": ["worker-price-1"],
+        "polls": 1,
+        "answers": 1,
+        "problems": ["answer_failed", "batch_abandoned"]
+      },
+      {
+        "caseId": "order_event/success/handler/alone",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": []
+      },
+      {
+        "caseId": "order_event/success/handler/mixed-suffix",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["batch_abandoned"]
+      },
+      {
+        "caseId": "order_event/throw/handler/alone",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["handler_failed"]
+      },
+      {
+        "caseId": "order_event/throw/handler/mixed-suffix",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["handler_failed", "batch_abandoned"]
+      },
+      {
+        "caseId": "order_event/invalid-answer/handler/alone",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": []
+      },
+      {
+        "caseId": "order_event/invalid-answer/handler/mixed-suffix",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["batch_abandoned"]
+      },
+      {
+        "caseId": "order_event/rejecting-reporter/handler/alone",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["handler_failed"]
+      },
+      {
+        "caseId": "order_event/rejecting-reporter/handler/mixed-suffix",
+        "deliveredSubjects": ["worker-order-1"],
+        "polls": 1,
+        "answers": 0,
+        "problems": ["handler_failed", "batch_abandoned"]
+      },
+      {
+        "caseId": "restart-keeps-handler",
+        "deliveredSubjects": ["worker-order-1", "worker-order-1"],
+        "polls": 2,
+        "answers": 0,
+        "problems": []
+      }
+    ]
+  },
+  "checks": {
+    "coreVitest": "109 passed",
+    "sdkVitest": "394 passed at root",
+    "coreTypecheck": "passed",
+    "sdkTypecheck": "passed"
+  },
+  "mutation": {
+    "status": "killed",
+    "scope": "temporary independent copy; shared product source untouched",
+    "sourceFile": "packages/core/src/orders/machine.ts",
+    "sourceFunction": "fromDelivered",
+    "original": "return answer(order, { ok: true, result: \"already_delivered\" });",
+    "replacement": "return ok(order, [{ kind: \"release_goods_to_agent\" }, { kind: \"issue_receipt\" }]);",
+    "result": "1 generated-trace test failed, 108 schedules passed",
+    "firstFailure": {
+      "caseId": "state-sync-none-0",
+      "seed": 2133366477,
+      "step": 23,
+      "event": "handler_delivered",
+      "observation": "goods or receipt issued twice (2/2)"
+    },
+    "sharedSourceSha256": "ab52b3afc8235349dddb64dba871c874d3832a3d4a5a22d783c570adc043e168",
+    "negativeControl": "The same independent ledger passes all 512 traces on the unchanged subject.",
+    "reproductionDirectory": "/private/tmp/agentify-state-mutation-wc8d6jkx"
+  },
+  "scopeAccounting": {
+    "actualDeadlineSchedules": 72,
+    "timeSampleSchedulesWithoutArmedDeadline": 36,
+    "completeHttpResponseCases": 360,
+    "workerSchedules": 34,
+    "originalTransportLossCellsUnexecuted": 72,
+    "replacementCompleteResponseCells": 72,
+    "replacementClasses": ["truncated-json complete response", "429-envelope"],
+    "inapplicableWorkerCells": "No event answer route; throwing or invalid order/quote handlers send no answer. Parked poll is one observation independent of hypothetical payload.",
+    "workerExpansion": "24 handler-stop + 8 answer-stop + 1 parked poll + 1 restart",
+    "notClaimed": [
+      "pairwise coverage of all dimensions",
+      "real signatures or chain settlement",
+      "real connection loss before headers or during body",
+      "unbounded input or schedule coverage"
+    ]
+  },
+  "environment": [
+    {
+      "stage": "subagent SDK execution",
+      "result": "listen EPERM 127.0.0.1 in Vitest forks and threads; existing client baseline also affected",
+      "classification": "environment failure"
+    },
+    {
+      "stage": "root same-file execution",
+      "result": "394 passed; 360 response observations and 34 worker observations saved",
+      "classification": "completed"
+    },
+    {
+      "stage": "scope restriction",
+      "result": "Earlier delegation hit a service cybersecurity-risk filter as recorded in the frozen plan; current tests use pure functions and ordinary loopback responses only",
+      "classification": "scope limitation"
+    }
+  ]
+}

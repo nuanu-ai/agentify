@@ -1,0 +1,1271 @@
+{
+  "subject": "e11fef741e875ef6f9c42465a6b27577dd2921a1",
+  "plan_commit": "f1ca8e19",
+  "updated_at": "2026-10-15T16:28:13.619466+00:00",
+  "product_sources": [
+    {
+      "path": "apps/dashboard/src/woo-shop.ts",
+      "sha256": "fae5c229366c91e9b5f391ce18c6ae6ee9b70e70f4d80b7cec267dc3b918fdd3",
+      "matches_subject": true
+    },
+    {
+      "path": "apps/dashboard/src/woo-pages.ts",
+      "sha256": "adad030ba5d6ec53891f6749bbfdea87a3a1c35787e400286c3c62f6b1ff06c8",
+      "matches_subject": true
+    },
+    {
+      "path": "apps/dashboard/src/woo-worker.ts",
+      "sha256": "ad3ef0c759044c52d1ca1790e6cb584ab48625f8cfd2d83d78d7cc8b64e3d01a",
+      "matches_subject": true
+    },
+    {
+      "path": "apps/dashboard/src/woo-shops.ts",
+      "sha256": "9ad1afb41d2752c93d95882c8063c0d7e79e07ec854e1ec5a7098ec2a74f7574",
+      "matches_subject": true
+    },
+    {
+      "path": "apps/dashboard/src/woo-recovery.ts",
+      "sha256": "33160311159613965eea7fee62f9b9f5edbb390c96844f328bbb1ad775ea0668",
+      "matches_subject": true
+    },
+    {
+      "path": "apps/dashboard/src/server.ts",
+      "sha256": "01ed4b7ca376f058cbd5bce20cf0929951c9a89d30609d7751daa4f49b1835db",
+      "matches_subject": true
+    },
+    {
+      "path": "apps/dashboard/src/form-post.ts",
+      "sha256": "bae658d7de76926abca05e6386e533249d3b608cd60298444b197d82ca56add1",
+      "matches_subject": true
+    },
+    {
+      "path": "apps/dashboard/src/gate.ts",
+      "sha256": "6e0b25045531b4ea3c8c75ac238f349da6a703316e994f0f1f846ef74d34eafc",
+      "matches_subject": true
+    }
+  ],
+  "runs": [
+    {
+      "id": "woo_initial",
+      "classification": "harness_failure",
+      "total": 151,
+      "runner_passed": 101,
+      "unexpected_failed": 41,
+      "skipped_or_unexecuted": 9,
+      "cases": []
+    },
+    {
+      "id": "woo_corrected",
+      "classification": "corrected_harness",
+      "total": 151,
+      "runner_passed": 138,
+      "unexpected_failed": 0,
+      "skipped_or_unexecuted": 13,
+      "cases": []
+    },
+    {
+      "id": "woo_final",
+      "classification": "final",
+      "total": 152,
+      "runner_passed": 136,
+      "unexpected_failed": 0,
+      "skipped_or_unexecuted": 16,
+      "cases": [
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q1 download: unchanged lab shape",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q2 parcel: unchanged lab shape",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q3 download: variable",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q4 download: grouped",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q5 download: external",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q6 download: draft",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q7 download: private",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q8 download: not purchasable",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q9 download: outofstock",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q10 download: onbackorder",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q11 download: managed stock",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q12 download: sold individually",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q13 download: zero price",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q14 download: subcent price",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q15 parcel: variable",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q16 parcel: grouped",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q17 parcel: external",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q18 parcel: draft",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q19 parcel: private",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q20 parcel: not purchasable",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q21 parcel: outofstock",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q22 parcel: onbackorder",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q23 parcel: managed stock",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q24 parcel: sold individually",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q25 parcel: zero price",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q26 parcel: subcent price",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q27 download: nonvirtual download",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q28 download: virtual without download",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q29 download: no file",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q30 download: two files",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q31 download: finite count",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q32 download: finite expiry",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q33 download: cross-origin file",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q34 download: public raw bytes",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q35 download: redirected raw bytes",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q36 download: blank filename",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q37 parcel: woocommerce_ship_to_countries",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q38 parcel: woocommerce_ship_to_destination",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q39 download: woocommerce_currency",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q40 download: woocommerce_calc_taxes",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q41 download: woocommerce_price_num_decimals",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q42 parcel: woocommerce_currency",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q43 parcel: woocommerce_calc_taxes",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q44 parcel: woocommerce_price_num_decimals",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q45 download: woocommerce_file_download_method",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q46 download: woocommerce_downloads_require_login",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q47 download: woocommerce_downloads_grant_access_after_payment",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 48 product qualification vectors",
+          "case": "Q48 download: woocommerce_downloads_redirect_fallback_allowed",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "0 products / normal",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "0 products / overlap",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "0 products / later-failure",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "1 products / normal",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "1 products / overlap",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "1 products / later-failure",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "99 products / normal",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "99 products / overlap",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "99 products / later-failure",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "100 products / normal",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "100 products / overlap",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "100 products / later-failure",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "101 products / normal",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "101 products / overlap",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "101 products / later-failure",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "199 products / normal",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "199 products / overlap",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "199 products / later-failure",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "200 products / normal",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "200 products / overlap",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "200 products / later-failure",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "201 products / normal",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "201 products / overlap",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "201 products / later-failure",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "1000 products / normal",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "1000 products / overlap",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 27 catalog growth and failure cells",
+          "case": "1000 products / later-failure",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: four targeted inspection promises",
+          "case": "download: refuses another product returned at the requested URL",
+          "result": "expected_failure"
+        },
+        {
+          "matrix": "campaign: four targeted inspection promises",
+          "case": "download: ignores transport failure of a class-irrelevant setting",
+          "result": "expected_failure"
+        },
+        {
+          "matrix": "campaign: four targeted inspection promises",
+          "case": "parcel: refuses another product returned at the requested URL",
+          "result": "expected_failure"
+        },
+        {
+          "matrix": "campaign: four targeted inspection promises",
+          "case": "parcel: ignores transport failure of a class-irrelevant setting",
+          "result": "expected_failure"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/inspection/timeout",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/inspection/429",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/inspection/malformed",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/raw/timeout",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/raw/429",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/raw/malformed",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/shipping/timeout",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/shipping/429",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/shipping/malformed",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/create-before/timeout",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/create-before/429",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/create-before/malformed",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/create-after/timeout",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/create-after/429",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/create-after/malformed",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/answer-lost/timeout",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/answer-lost/429",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "download/answer-lost/malformed",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/inspection/timeout",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/inspection/429",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/inspection/malformed",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/raw/timeout",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/raw/429",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/raw/malformed",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/shipping/timeout",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/shipping/429",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/shipping/malformed",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/create-before/timeout",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/create-before/429",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/create-before/malformed",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/create-after/timeout",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/create-after/429",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/create-after/malformed",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/answer-lost/timeout",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/answer-lost/429",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: 36 remote failure cells",
+          "case": "parcel/answer-lost/malformed",
+          "result": "skipped"
+        },
+        {
+          "matrix": "campaign: twelve exact-order recovery mismatches and a positive control",
+          "case": "binds the exact matching order",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: twelve exact-order recovery mismatches and a positive control",
+          "case": "does not bind mismatched id",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: twelve exact-order recovery mismatches and a positive control",
+          "case": "does not bind mismatched status",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: twelve exact-order recovery mismatches and a positive control",
+          "case": "does not bind mismatched currency",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: twelve exact-order recovery mismatches and a positive control",
+          "case": "does not bind mismatched total",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: twelve exact-order recovery mismatches and a positive control",
+          "case": "does not bind mismatched tax",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: twelve exact-order recovery mismatches and a positive control",
+          "case": "does not bind mismatched payment method",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: twelve exact-order recovery mismatches and a positive control",
+          "case": "does not bind mismatched transaction",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: twelve exact-order recovery mismatches and a positive control",
+          "case": "does not bind mismatched email",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: twelve exact-order recovery mismatches and a positive control",
+          "case": "does not bind mismatched product",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: twelve exact-order recovery mismatches and a positive control",
+          "case": "does not bind mismatched quantity",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: twelve exact-order recovery mismatches and a positive control",
+          "case": "does not bind mismatched subtotal",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: twelve exact-order recovery mismatches and a positive control",
+          "case": "does not bind mismatched duplicate metadata",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "replay/schedule-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "replay/schedule-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "replay/schedule-2",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "replay/schedule-3",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "expired/schedule-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "expired/schedule-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "expired/schedule-2",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "expired/schedule-3",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "unknown/schedule-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "unknown/schedule-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "unknown/schedule-2",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "unknown/schedule-3",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "older/schedule-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "older/schedule-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "older/schedule-2",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "older/schedule-3",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "forget/schedule-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "forget/schedule-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "forget/schedule-2",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "forget/schedule-3",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "other-account/schedule-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "other-account/schedule-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "other-account/schedule-2",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 24 grant lifecycle schedules",
+          "case": "other-account/schedule-3",
+          "result": "passed"
+        }
+      ]
+    },
+    {
+      "id": "cabinet_listener_denied",
+      "classification": "environment_failure",
+      "total": 64,
+      "runner_passed": 0,
+      "unexpected_failed": 0,
+      "skipped_or_unexecuted": 64,
+      "cases": []
+    },
+    {
+      "id": "cabinet_initial_root",
+      "classification": "harness_failure",
+      "total": 64,
+      "runner_passed": 0,
+      "unexpected_failed": 64,
+      "skipped_or_unexecuted": 0,
+      "cases": []
+    },
+    {
+      "id": "cabinet_final_root",
+      "classification": "final",
+      "total": 64,
+      "runner_passed": 64,
+      "unexpected_failed": 0,
+      "skipped_or_unexecuted": 0,
+      "cases": [
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "selling/accepted-repeat/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "selling/accepted-repeat/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "selling/no-session/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "selling/no-session/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "selling/stale-form/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "selling/stale-form/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "selling/wrong-origin/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "selling/wrong-origin/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "name/accepted-repeat/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "name/accepted-repeat/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "name/no-session/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "name/no-session/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "name/stale-form/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "name/stale-form/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "name/wrong-origin/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "name/wrong-origin/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "site/accepted-repeat/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "site/accepted-repeat/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "site/no-session/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "site/no-session/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "site/stale-form/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "site/stale-form/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "site/wrong-origin/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "site/wrong-origin/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "wallet/accepted-repeat/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "wallet/accepted-repeat/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "wallet/no-session/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "wallet/no-session/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "wallet/stale-form/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "wallet/stale-form/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "wallet/wrong-origin/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "wallet/wrong-origin/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "issue-key/accepted-repeat/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "issue-key/accepted-repeat/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "issue-key/no-session/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "issue-key/no-session/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "issue-key/stale-form/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "issue-key/stale-form/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "issue-key/wrong-origin/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "issue-key/wrong-origin/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disable-key/accepted-repeat/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disable-key/accepted-repeat/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disable-key/no-session/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disable-key/no-session/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disable-key/stale-form/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disable-key/stale-form/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disable-key/wrong-origin/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disable-key/wrong-origin/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "import/accepted-repeat/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "import/accepted-repeat/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "import/no-session/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "import/no-session/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "import/stale-form/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "import/stale-form/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "import/wrong-origin/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "import/wrong-origin/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disconnect/accepted-repeat/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disconnect/accepted-repeat/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disconnect/no-session/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disconnect/no-session/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disconnect/stale-form/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disconnect/stale-form/merchant-1",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disconnect/wrong-origin/merchant-0",
+          "result": "passed"
+        },
+        {
+          "matrix": "campaign: 64 form contexts across two merchant positions",
+          "case": "disconnect/wrong-origin/merchant-1",
+          "result": "passed"
+        }
+      ]
+    }
+  ],
+  "inspection_independent_replay": {
+    "runtime": "pnpm --filter @agentify/dashboard exec node --import tsx --input-type=module",
+    "source": "apps/dashboard/src/woo-shop.ts:inspectProductInTheShop",
+    "network": "none; injected document transport",
+    "observations": [
+      {
+        "kind": "download",
+        "change": "baseline",
+        "responseProductId": 1,
+        "requestedProductId": "1",
+        "actual": {
+          "ok": true,
+          "returnedProductId": "1",
+          "kind": "download"
+        }
+      },
+      {
+        "kind": "download",
+        "change": "wrong-id",
+        "responseProductId": 2,
+        "requestedProductId": "1",
+        "actual": {
+          "ok": true,
+          "returnedProductId": "1",
+          "kind": "download"
+        }
+      },
+      {
+        "kind": "download",
+        "change": "irrelevant-loss",
+        "responseProductId": 1,
+        "requestedProductId": "1",
+        "actual": {
+          "ok": false,
+          "again": true,
+          "why": "The shop did not answer the protected product check."
+        }
+      },
+      {
+        "kind": "parcel",
+        "change": "baseline",
+        "responseProductId": 1,
+        "requestedProductId": "1",
+        "actual": {
+          "ok": true,
+          "returnedProductId": "1",
+          "kind": "parcel"
+        }
+      },
+      {
+        "kind": "parcel",
+        "change": "wrong-id",
+        "responseProductId": 2,
+        "requestedProductId": "1",
+        "actual": {
+          "ok": true,
+          "returnedProductId": "1",
+          "kind": "parcel"
+        }
+      },
+      {
+        "kind": "parcel",
+        "change": "irrelevant-loss",
+        "responseProductId": 1,
+        "requestedProductId": "1",
+        "actual": {
+          "ok": false,
+          "again": true,
+          "why": "The shop did not answer the protected product check."
+        }
+      }
+    ]
+  },
+  "remaining": {
+    "browser_traces": {
+      "registered": 48,
+      "logical_steps_per_trace": 12,
+      "status": "passed48 of48;576 logical operations;no skipped or failed traces",
+      "test_file": "apps/dashboard/src/navigation-campaign.integration.test.ts",
+      "evidence": "navigation-evidence.json"
+    },
+    "wallet": "owned by API agent; not counted here",
+    "mutation_self_check": "not performed in this subtask",
+    "independent_reviewer": "campaign lead owns signoff"
+  },
+  "sanitization": "Only fixture case names, counts, safe observations and code hashes retained. No actual session cookies, sign-in links, shop keys or download capabilities."
+}

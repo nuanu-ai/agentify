@@ -1,0 +1,52 @@
+{
+  "subject": "e11fef741e875ef6f9c42465a6b27577dd2921a1",
+  "node": "v26.7.0",
+  "nodeHttpDefaultHeaderLimit": 16384,
+  "rows": [
+    {
+      "count": 256,
+      "inputBytes": 7867,
+      "sdkPublish": {
+        "ok": true,
+        "id": "item_1"
+      },
+      "enlarged": {
+        "status": 402,
+        "headerBytes": 18896,
+        "declaredParams": 256,
+        "atomicAmount": "5000000"
+      },
+      "ordinary": {
+        "code": "HPE_HEADER_OVERFLOW"
+      },
+      "fetch": {
+        "message": "fetch failed",
+        "code": "UND_ERR_HEADERS_OVERFLOW"
+      }
+    },
+    {
+      "count": 512,
+      "inputBytes": 15547,
+      "sdkPublish": {
+        "ok": true,
+        "id": "item_2"
+      },
+      "enlarged": {
+        "status": 402,
+        "headerBytes": 36304,
+        "declaredParams": 512,
+        "atomicAmount": "5000000"
+      },
+      "ordinary": {
+        "code": "HPE_HEADER_OVERFLOW"
+      },
+      "fetch": {
+        "message": "fetch failed",
+        "code": "UND_ERR_HEADERS_OVERFLOW"
+      }
+    }
+  ],
+  "selection": "Independent replay of the first failing sampled width256 and the next sampled width512; no exact-threshold claim.",
+  "runner": "Single temporary Vitest test importing the actual merchant SDK and gateway harness; default Node http and default fetch are unmodified.",
+  "harnessNote": "A first direct tsx attempt fails to import the gateway test harness outside a Vitest context and makes no HTTP or payment observation. Running the same replay inside Vitest succeeds."
+}

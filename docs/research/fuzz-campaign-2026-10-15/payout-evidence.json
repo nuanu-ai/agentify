@@ -1,0 +1,281 @@
+{
+  "chain": 84532,
+  "rpc": "https://sepolia.base.org",
+  "capWei": "500000000000000",
+  "requests": 27,
+  "reservations": [
+    {
+      "id": "84532:0xbd56203e603d98a0a0899160267bf3eaf0c3aa33",
+      "target": "sdk",
+      "signer": "0xFe5693D54149A885aF40a65E26c8E1a023119674",
+      "reservedWei": "3006248000668",
+      "state": "verified",
+      "at": "2026-10-15T16:42:53.618Z",
+      "observation": {
+        "before": {
+          "block": "48157142",
+          "ledger": {
+            "held": {
+              "0xBD56203E603D98A0A0899160267Bf3eaf0C3aA33": "40000",
+              "0xFe5693D54149A885aF40a65E26c8E1a023119674": "0",
+              "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "0",
+              "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "418914290"
+            },
+            "credited": {
+              "0xBD56203E603D98A0A0899160267Bf3eaf0C3aA33": "0",
+              "0xFe5693D54149A885aF40a65E26c8E1a023119674": "0",
+              "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "0",
+              "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "0"
+            }
+          },
+          "eth": "100000000000000"
+        },
+        "expectedDeltas": {
+          "held": {
+            "0xBD56203E603D98A0A0899160267Bf3eaf0C3aA33": "-39999",
+            "0xFe5693D54149A885aF40a65E26c8E1a023119674": "39958",
+            "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "0",
+            "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "41"
+          },
+          "credited": {
+            "0xBD56203E603D98A0A0899160267Bf3eaf0C3aA33": "1",
+            "0xFe5693D54149A885aF40a65E26c8E1a023119674": "1",
+            "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "39",
+            "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "0"
+          }
+        },
+        "expectedTransfers": [
+          {
+            "from": "0xBD56203E603D98A0A0899160267Bf3eaf0C3aA33",
+            "to": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+            "value": "39999"
+          },
+          {
+            "from": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+            "to": "0xFe5693D54149A885aF40a65E26c8E1a023119674",
+            "value": "39958"
+          }
+        ],
+        "gas": "429464",
+        "maxFeePerGas": "7000000",
+        "maxPriorityFeePerGas": "1000000",
+        "l1Fee": "334",
+        "to": "0xcA11bde05977b3631167028862bE2a173976CA11",
+        "value": "0",
+        "calldataSha256": "5f1baf8a827bfdfc90781af3effb35e115cfcfc27043c5420e1304bca5604e8c",
+        "receipt": {
+          "hash": "0xe45d3e263d0007e3c89b8b0e5ff8f73ac76b4c0272352cb175a8178b57753fb9",
+          "from": "0xfe5693d54149a885af40a65e26c8e1a023119674",
+          "to": "0xca11bde05977b3631167028862be2a173976ca11",
+          "status": "success",
+          "blockNumber": "48157144",
+          "blockHash": "0xf31c32327390a542b476361e02570bd89de73d588ab8d58527ead22ceb051f3c",
+          "gasUsed": "339708",
+          "effectiveGasPrice": "6000000",
+          "l1Fee": "328",
+          "paidWei": "2038248000328"
+        },
+        "initialReceipt": {
+          "hash": "0xe45d3e263d0007e3c89b8b0e5ff8f73ac76b4c0272352cb175a8178b57753fb9",
+          "status": "success",
+          "blockNumber": "48157144",
+          "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "gasUsed": "339708",
+          "effectiveGasPrice": "6000000",
+          "l1Fee": "328",
+          "paidWei": "2038248000328"
+        },
+        "canonicalReceiptWait": {
+          "attempts": 1,
+          "elapsedMs": 571,
+          "checkedAt": "2026-10-15T16:45:28.820Z"
+        },
+        "after": {
+          "block": "48157144",
+          "ledger": {
+            "held": {
+              "0xBD56203E603D98A0A0899160267Bf3eaf0C3aA33": "1",
+              "0xFe5693D54149A885aF40a65E26c8E1a023119674": "39958",
+              "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "0",
+              "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "418914331"
+            },
+            "credited": {
+              "0xBD56203E603D98A0A0899160267Bf3eaf0C3aA33": "1",
+              "0xFe5693D54149A885aF40a65E26c8E1a023119674": "1",
+              "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "39",
+              "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "0"
+            }
+          },
+          "eth": "97961751999672"
+        },
+        "actualDeltas": {
+          "held": {
+            "0xBD56203E603D98A0A0899160267Bf3eaf0C3aA33": "-39999",
+            "0xFe5693D54149A885aF40a65E26c8E1a023119674": "39958",
+            "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "0",
+            "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "41"
+          },
+          "credited": {
+            "0xBD56203E603D98A0A0899160267Bf3eaf0C3aA33": "1",
+            "0xFe5693D54149A885aF40a65E26c8E1a023119674": "1",
+            "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "39",
+            "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "0"
+          }
+        },
+        "actualTransfers": [
+          {
+            "from": "0xBD56203E603D98A0A0899160267Bf3eaf0C3aA33",
+            "to": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+            "value": "39999"
+          },
+          {
+            "from": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+            "to": "0xFe5693D54149A885aF40a65E26c8E1a023119674",
+            "value": "39958"
+          }
+        ],
+        "externalWarehouseActivity": false,
+        "externalTrackedTransfers": 0
+      },
+      "hash": "0xe45d3e263d0007e3c89b8b0e5ff8f73ac76b4c0272352cb175a8178b57753fb9"
+    },
+    {
+      "id": "84532:0x6e071e7e42de4c68b73c82a1a448d923edf834da",
+      "target": "woo",
+      "signer": "0xFe5693D54149A885aF40a65E26c8E1a023119674",
+      "reservedWei": "2541665000668",
+      "state": "verified",
+      "at": "2026-10-15T16:46:17.024Z",
+      "observation": {
+        "before": {
+          "block": "48157244",
+          "ledger": {
+            "held": {
+              "0x6e071E7e42DE4C68B73C82a1A448D923EdF834DA": "10000",
+              "0xFe5693D54149A885aF40a65E26c8E1a023119674": "39958",
+              "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "0",
+              "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "418914331"
+            },
+            "credited": {
+              "0x6e071E7e42DE4C68B73C82a1A448D923EdF834DA": "0",
+              "0xFe5693D54149A885aF40a65E26c8E1a023119674": "1",
+              "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "39",
+              "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "0"
+            }
+          },
+          "eth": "97961751999672"
+        },
+        "expectedDeltas": {
+          "held": {
+            "0x6e071E7e42DE4C68B73C82a1A448D923EdF834DA": "-9999",
+            "0xFe5693D54149A885aF40a65E26c8E1a023119674": "9989",
+            "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "0",
+            "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "10"
+          },
+          "credited": {
+            "0x6e071E7e42DE4C68B73C82a1A448D923EdF834DA": "1",
+            "0xFe5693D54149A885aF40a65E26c8E1a023119674": "0",
+            "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "9",
+            "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "0"
+          }
+        },
+        "expectedTransfers": [
+          {
+            "from": "0x6e071E7e42DE4C68B73C82a1A448D923EdF834DA",
+            "to": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+            "value": "9999"
+          },
+          {
+            "from": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+            "to": "0xFe5693D54149A885aF40a65E26c8E1a023119674",
+            "value": "9989"
+          }
+        ],
+        "gas": "363095",
+        "maxFeePerGas": "7000000",
+        "maxPriorityFeePerGas": "1000000",
+        "l1Fee": "334",
+        "to": "0xcA11bde05977b3631167028862bE2a173976CA11",
+        "value": "0",
+        "calldataSha256": "da7739788ff71eac80ef3e07f577223f5c7bc562fa2c853c3016e97b86cc637e",
+        "initialReceipt": {
+          "hash": "0xcc87e4538b07e3d1040379e80293755ee78f162e7e1ed9cc07b75fe87956e817",
+          "from": "0xfe5693d54149a885af40a65e26c8e1a023119674",
+          "to": "0xca11bde05977b3631167028862be2a173976ca11",
+          "status": "success",
+          "blockNumber": "48157246",
+          "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "gasUsed": "285620",
+          "effectiveGasPrice": "6000000",
+          "l1Fee": "102",
+          "paidWei": "1713720000102"
+        },
+        "receipt": {
+          "hash": "0xcc87e4538b07e3d1040379e80293755ee78f162e7e1ed9cc07b75fe87956e817",
+          "from": "0xfe5693d54149a885af40a65e26c8e1a023119674",
+          "to": "0xca11bde05977b3631167028862be2a173976ca11",
+          "status": "success",
+          "blockNumber": "48157246",
+          "blockHash": "0xf8a4701e4a425dde4d7c2359a8ee91d7c327603eee94c9f1244244e7a0683dde",
+          "gasUsed": "285620",
+          "effectiveGasPrice": "6000000",
+          "l1Fee": "328",
+          "paidWei": "1713720000328"
+        },
+        "canonicalReceiptWait": {
+          "attempts": 4,
+          "elapsedMs": 4530,
+          "checkedAt": "2026-10-15T16:46:22.244Z"
+        },
+        "after": {
+          "block": "48157246",
+          "ledger": {
+            "held": {
+              "0x6e071E7e42DE4C68B73C82a1A448D923EdF834DA": "1",
+              "0xFe5693D54149A885aF40a65E26c8E1a023119674": "49947",
+              "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "0",
+              "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "418914341"
+            },
+            "credited": {
+              "0x6e071E7e42DE4C68B73C82a1A448D923EdF834DA": "1",
+              "0xFe5693D54149A885aF40a65E26c8E1a023119674": "1",
+              "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "48",
+              "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "0"
+            }
+          },
+          "eth": "96248031999344"
+        },
+        "actualDeltas": {
+          "held": {
+            "0x6e071E7e42DE4C68B73C82a1A448D923EdF834DA": "-9999",
+            "0xFe5693D54149A885aF40a65E26c8E1a023119674": "9989",
+            "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "0",
+            "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "10"
+          },
+          "credited": {
+            "0x6e071E7e42DE4C68B73C82a1A448D923EdF834DA": "1",
+            "0xFe5693D54149A885aF40a65E26c8E1a023119674": "0",
+            "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5": "9",
+            "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8": "0"
+          }
+        },
+        "actualTransfers": [
+          {
+            "from": "0x6e071E7e42DE4C68B73C82a1A448D923EdF834DA",
+            "to": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+            "value": "9999"
+          },
+          {
+            "from": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+            "to": "0xFe5693D54149A885aF40a65E26c8E1a023119674",
+            "value": "9989"
+          }
+        ],
+        "externalWarehouseActivity": false,
+        "externalTrackedTransfers": 0
+      },
+      "hash": "0xcc87e4538b07e3d1040379e80293755ee78f162e7e1ed9cc07b75fe87956e817"
+    }
+  ],
+  "usdcAddress": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+}

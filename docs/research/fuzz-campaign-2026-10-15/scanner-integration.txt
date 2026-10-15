@@ -1,0 +1,14 @@
+Command: pnpm exec vitest run --project integration apps/browser-observer-actor/src/actor.integration.test.ts --maxWorkers=1
+Hard wall budget: 120 seconds
+
+ RUN  v4.1.11 /Users/dmitry/Dev/agentify/.claude/worktrees/fuzz-campaign
+
+
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  19:43:11
+   Duration  8.28s (transform 102ms, setup 17ms, import 299ms, tests 7.89s, environment 0ms)
+
+
+Harness exit: 0
+Harness elapsed seconds: 8.830

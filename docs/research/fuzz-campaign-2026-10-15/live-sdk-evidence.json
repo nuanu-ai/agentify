@@ -1,0 +1,149 @@
+{
+  "subject": "e11fef741e875ef6f9c42465a6b27577dd2921a1",
+  "base": "https://test.agentify.ad",
+  "network": "eip155:84532",
+  "merchant": "mch_fa91d616e43c4ae594fa8c29a848c996",
+  "setup": "Real email login and seller/wallet forms; key provisioned through application issuer as a TEST fixture.",
+  "cases": [
+    {
+      "scenario": "confirm",
+      "startedAt": "2026-10-15T16:27:55.497Z",
+      "observations": [],
+      "handlerCalls": 0,
+      "problems": [],
+      "mode": "confirm",
+      "expectedPublicationRefusal": {
+        "code": "card_rejected",
+        "paths": [["fulfillment"]]
+      },
+      "finalStatus": "publication_refused",
+      "passed": true,
+      "finishedAt": "2026-10-15T16:27:56.713Z"
+    },
+    {
+      "scenario": "sync",
+      "startedAt": "2026-10-15T16:28:13.254Z",
+      "observations": ["delivered"],
+      "handlerCalls": 1,
+      "problems": [],
+      "mode": "sync",
+      "cardId": "item_029f7706fdad43b69c46e85b05cb056c",
+      "quoteOrderHash": "5729e66a6a4de957deea3f01339be87a39f1dd3f0d7314fb327bf061a665bc68",
+      "purchaseHttp": 200,
+      "purchaseStatus": "delivered",
+      "settlement": {
+        "success": true,
+        "transaction": "0x51fa1669608f7022906df18d4b97e169d5cf2e54eba89f4fc660d19d1117f82a",
+        "network": "eip155:84532"
+      },
+      "finalStatus": "delivered",
+      "orderHash": "5729e66a6a4de957deea3f01339be87a39f1dd3f0d7314fb327bf061a665bc68",
+      "deliveredBytes": 1785,
+      "deliveredSha256": "f447b2eb59a3ce1b71c17d09c139fcd90ad0ba34c94de98134fde3b0c0f83387",
+      "passed": true,
+      "finishedAt": "2026-10-15T16:28:19.322Z"
+    },
+    {
+      "scenario": "async",
+      "startedAt": "2026-10-15T16:29:24.069Z",
+      "observations": ["in_progress", "delivered"],
+      "handlerCalls": 1,
+      "problems": [],
+      "mode": "async",
+      "cardId": "item_485aa807f5c548c599bd4ffbdf3cac73",
+      "quoteOrderHash": "40c48140b249a77e116ad25c8ced7c6aea11e889aff5b66a0ba43a721df7df92",
+      "purchaseHttp": 200,
+      "purchaseStatus": "in_progress",
+      "explicitDelivery": {
+        "ok": true,
+        "result": "delivered"
+      },
+      "finalStatus": "delivered",
+      "orderHash": "40c48140b249a77e116ad25c8ced7c6aea11e889aff5b66a0ba43a721df7df92",
+      "deliveredBytes": 1785,
+      "deliveredSha256": "f447b2eb59a3ce1b71c17d09c139fcd90ad0ba34c94de98134fde3b0c0f83387",
+      "duplicateDelivery": {
+        "ok": true,
+        "result": "already_delivered"
+      },
+      "passed": true,
+      "finishedAt": "2026-10-15T16:29:33.558Z"
+    },
+    {
+      "scenario": "refused",
+      "startedAt": "2026-10-15T16:29:34.090Z",
+      "observations": ["rejected"],
+      "handlerCalls": 1,
+      "problems": [],
+      "mode": "sync",
+      "cardId": "item_907d51e1ee5248049c43b7c433476030",
+      "quoteOrderHash": "501eb50593f8fa76281b78771d13a9f06c8a1e008396b94d7ebd535a5d07a925",
+      "purchaseHttp": 409,
+      "purchaseStatus": "rejected",
+      "finalStatus": "rejected",
+      "orderHash": "501eb50593f8fa76281b78771d13a9f06c8a1e008396b94d7ebd535a5d07a925",
+      "passed": true,
+      "finishedAt": "2026-10-15T16:29:39.523Z"
+    },
+    {
+      "scenario": "redelivery",
+      "startedAt": "2026-10-15T16:29:40.057Z",
+      "observations": ["delivered"],
+      "handlerCalls": 2,
+      "problems": [
+        {
+          "kind": "handler_failed"
+        }
+      ],
+      "mode": "sync",
+      "cardId": "item_882d16bd796e4565b3618ae2f50ac730",
+      "quoteOrderHash": "60f0622782059cfeb2f309ec3bb74133086a0bfdb7a71efcfb17b4aa82cd6469",
+      "purchaseHttp": 200,
+      "purchaseStatus": "delivered",
+      "settlement": {
+        "success": true,
+        "transaction": "0x2130d88afd4a5e25ef269fcfd03bc2a40492024ac1f425f2c4dcceef7c939d8b",
+        "network": "eip155:84532"
+      },
+      "finalStatus": "delivered",
+      "orderHash": "60f0622782059cfeb2f309ec3bb74133086a0bfdb7a71efcfb17b4aa82cd6469",
+      "deliveredBytes": 1785,
+      "deliveredSha256": "f447b2eb59a3ce1b71c17d09c139fcd90ad0ba34c94de98134fde3b0c0f83387",
+      "passed": true,
+      "finishedAt": "2026-10-15T16:29:50.675Z"
+    },
+    {
+      "scenario": "debt",
+      "startedAt": "2026-10-15T16:29:51.203Z",
+      "observations": ["in_progress", "refund_due", "delivered"],
+      "handlerCalls": 1,
+      "problems": [
+        {
+          "kind": "no_handler"
+        }
+      ],
+      "mode": "async",
+      "cardId": "item_a8b61dc5e4944c5e93af6d230205aec3",
+      "quoteOrderHash": "4a8c43f05e42dc9313c74bb9a22c52c00ff405a50d26afeb8b4e763a8af9c76c",
+      "purchaseHttp": 200,
+      "purchaseStatus": "in_progress",
+      "debtClosure": {
+        "ok": true,
+        "result": "debt_closed_by_delivery"
+      },
+      "finalStatus": "delivered",
+      "orderHash": "4a8c43f05e42dc9313c74bb9a22c52c00ff405a50d26afeb8b4e763a8af9c76c",
+      "deliveredBytes": 1785,
+      "deliveredSha256": "f447b2eb59a3ce1b71c17d09c139fcd90ad0ba34c94de98134fde3b0c0f83387",
+      "duplicateDelivery": {
+        "ok": true,
+        "result": "already_delivered"
+      },
+      "passed": true,
+      "finishedAt": "2026-10-15T16:30:00.832Z"
+    }
+  ],
+  "requestCount": 56,
+  "authorizationsReserved": 5,
+  "atomicReserved": "50000"
+}
