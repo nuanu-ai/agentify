@@ -450,8 +450,8 @@ The product owner answered the six questions on 2026-10-15.
 2. The merchant sends their own payout, and pays its fee in USDC, provided it
    takes one press and one confirmation; copying data into a wallet is not
    something a merchant who does not know crypto is asked to do. This brings
-   in the dashboard's "Get your payout" button, which the commission design
-   had deferred.
+   in a payout button in the "Get your payout" section of the dashboard's
+   Settings, which the commission design had deferred.
 3. Every payment is confirmed by the merchant. Way 3 is out, and so are
    Coinbase Wallet's sub-accounts, which sign without a prompt.
 4. No exchange deposit address: way 2 is not offered. Entering an address by
