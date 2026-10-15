@@ -406,6 +406,31 @@ describe("the search", () => {
     await page.context().close();
   });
 
+  it("keeps both Tab directions inside failed search and returns to its opener on Escape", async () => {
+    const { page } = await visit("/docs/");
+    await page.route("**/docs/search-index.json", (route) =>
+      route.fulfill({ status: 503, body: "" }),
+    );
+    const opener = page.locator(".docs-aside .docs-search-button");
+    await opener.focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "Search the documentation" });
+    const reload = dialog.getByRole("button", { name: "Reload the page" });
+    await reload.waitFor();
+
+    for (const key of ["Tab", "Shift+Tab"]) {
+      await page.keyboard.press(key);
+      expect(await reload.evaluate((element) => element === document.activeElement)).toBe(true);
+    }
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "detached" });
+    await page.waitForFunction(() =>
+      document.activeElement?.classList.contains("docs-search-button"),
+    );
+    expect(await opener.evaluate((element) => element === document.activeElement)).toBe(true);
+    await page.context().close();
+  });
+
   it("says when nothing matches, where a screen reader reads it out", async () => {
     const { page } = await visit("/docs/");
     await page.keyboard.press("/");
@@ -446,6 +471,73 @@ describe("the search", () => {
 
     await page.keyboard.press("Enter");
     await page.waitForFunction((id) => document.activeElement?.id === id, anchor);
+    await page.context().close();
+  });
+});
+
+describe("copying a code example", () => {
+  it("copies the displayed code and announces success after the browser accepts it", async () => {
+    const { page, complaints } = await visit(
+      "/docs/quickstart",
+      undefined,
+      false,
+      true,
+      (context) =>
+        context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: edge.origin }),
+    );
+    const copy = page.getByRole("button", { name: "Copy the code", exact: true }).first();
+    const block = copy.locator("..");
+    const code = await block.locator("pre").textContent();
+    await copy.focus();
+    await page.keyboard.press("Enter");
+
+    await block
+      .getByRole("status")
+      .filter({ hasText: /copied/i })
+      .waitFor();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(code);
+    expect(await copy.evaluate((element) => element === document.activeElement)).toBe(true);
+    expect(await copy.evaluate((element) => getComputedStyle(element, "::before").content)).toBe(
+      '"✓"',
+    );
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+
+  it("reports clipboard denial without claiming a successful copy and can recover", async () => {
+    const { page, complaints } = await visit("/docs/quickstart");
+    const session = await page.context().newCDPSession(page);
+    const { targetInfo } = await session.send("Target.getTargetInfo");
+    const permission = {
+      permission: { name: "clipboard-write" },
+      origin: edge.origin,
+      browserContextId: targetInfo.browserContextId,
+    };
+    await session.send("Browser.setPermission", { ...permission, setting: "denied" });
+    const copy = page.getByRole("button", { name: "Copy the code", exact: true }).first();
+    const block = copy.locator("..");
+    await copy.click();
+
+    expect(
+      await copy.evaluate((element) => getComputedStyle(element, "::before").content),
+    ).not.toBe('"✓"');
+    await block
+      .getByRole("status")
+      .filter({ hasText: /copy.*(failed|could not|couldn't)/i })
+      .waitFor();
+    expect(await block.getByRole("status").isVisible()).toBe(true);
+    expect(
+      await copy.evaluate((element) => getComputedStyle(element, "::before").content),
+    ).not.toBe('"✓"');
+    expect(complaints).toEqual([]);
+
+    await session.send("Browser.setPermission", { ...permission, setting: "granted" });
+    await copy.click();
+    await block
+      .getByRole("status")
+      .filter({ hasText: /copied/i })
+      .waitFor();
+    expect(complaints).toEqual([]);
     await page.context().close();
   });
 });

@@ -30,14 +30,14 @@ export function EditorialPage({
       {structuredData ? <StructuredData schema={publicSiteSchema(config)} /> : null}
       <SiteHeader />
       <main className="editorial container" id="main">
-        <aside className="editorial-contents">
+        <nav aria-label="On this page" className="editorial-contents">
           <span>On this page</span>
           {sections.map((section) => (
             <a href={`#${section.id}`} key={section.id}>
               {section.title}
             </a>
           ))}
-        </aside>
+        </nav>
         <article className="editorial-article">
           <div className="eyebrow">{eyebrow}</div>
           <h1>{title}</h1>

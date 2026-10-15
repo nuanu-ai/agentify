@@ -157,10 +157,10 @@ body {
   text-underline-offset: 0.2em;
 }
 
-/* Translucent so the ring shows on both paper and a filled control without
-   redrawing the control's edge. */
+/* The offset keeps the opaque ring against the page rather than a control's
+   fill. Dark bands use a lighter outline against their own background. */
 :focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  outline: 3px solid var(--accent);
   outline-offset: 3px;
 }
 
@@ -1015,6 +1015,10 @@ p {
   margin-top: auto;
   background: var(--fg);
   color: var(--footer-text);
+}
+
+.foot :focus-visible {
+  outline-color: var(--accent-on-dark);
 }
 
 .foot-inner {
