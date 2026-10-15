@@ -139,7 +139,9 @@
 
 	# Old links to /cabinet still arrive. 307 keeps a posted form's method and
 	# body; a permanent 301 or 308 would be cached by browsers past a rollback.
-	# Temporary: due for removal on 2026-11-06.
+	# It stays until the ad landing pages link to /dashboard/sign-in: their
+	# buttons still open /cabinet/sign-in with the ad tracker's click
+	# identifier in the query, which this redirect keeps.
 	@cabinet_moved path_regexp cabinet_moved (?i)^/cabinet(/.*)?$
 	handle @cabinet_moved {
 		redir * /dashboard{re.cabinet_moved.1}{?query} 307
