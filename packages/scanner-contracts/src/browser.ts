@@ -50,4 +50,4 @@ export const ROBOTS_REASONS = ["disallowed", "unassessed"] as const;
 /** The query parameters a partner network puts its click identifier in. */
 export const PARTNER_CLICK_ID_ALIASES = ["clickid", "click_id", "cid", "sub_id", "subid"] as const;
 
-export const PARTNER_CLICK_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+export { PARTNER_CLICK_ID_PATTERN } from "./click-id.js";

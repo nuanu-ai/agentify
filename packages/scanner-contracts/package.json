@@ -15,6 +15,10 @@
     "./report-identity": {
       "types": "./src/report-identity.ts",
       "default": "./src/report-identity.ts"
+    },
+    "./click-id": {
+      "types": "./src/click-id.ts",
+      "default": "./src/click-id.ts"
     }
   },
   "scripts": {
