@@ -34,19 +34,20 @@ import type { Wallet } from "../wallet/requests.js";
 import { PayoutWalletPanel, SettingsScreen } from "./settings.js";
 
 /**
- * Coinbase Wallet as the page meets it, standing in for Coinbase's window: it
- * names its account, is switched to a chain, keeps the batches it sent and
- * refuses one for a chain it is not on. `opened` is false where the module
- * that brings Coinbase Wallet cannot be opened at all.
+ * Coinbase Wallet as the page meets it, standing in for Coinbase's window: a
+ * window it opens names `account`, which the provider then remembers in the
+ * page until it is disconnected; it is switched to a chain, keeps the batches
+ * it sent and refuses one for a chain it is not on. `opened` is false where
+ * the module that brings Coinbase Wallet cannot be opened at all, and the next
+ * `holding` windows wait in `held` to be answered by hand, as a window left
+ * open does, or a vanished one never is.
  */
 const coinbase = vi.hoisted(() => ({
   opened: true,
-  /** The first request is never answered, as when Coinbase's window vanished without saying so. */
-  silentOnce: false,
-  /** The first request is answered only when `answerLate` is called, after later ones. */
-  lateOnce: false,
-  answerLate: undefined as (() => void) | undefined,
   account: "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed",
+  remembered: null as readonly string[] | null,
+  holding: 0,
+  held: [] as Readonly<{ accept: (account?: string) => void; decline: () => void }>[],
   declines: undefined as string | undefined,
   breaks: undefined as string | undefined,
   chain: "0x2105",
@@ -56,20 +57,26 @@ const coinbase = vi.hoisted(() => ({
 vi.mock("../wallet/coinbase.js", async () => {
   const requests = await import("../wallet/requests.js");
   const wallet: Wallet = {
+    async disconnect() {
+      coinbase.remembered = null;
+    },
     async request({ method, params }) {
-      if (coinbase.silentOnce) {
-        coinbase.silentOnce = false;
-        return new Promise(() => undefined);
-      }
-      if (coinbase.lateOnce) {
-        coinbase.lateOnce = false;
-        return new Promise((resolve) => {
-          coinbase.answerLate = () => resolve(["0x0000000000000000000000000000000000000bad"]);
-        });
-      }
       if (method === coinbase.declines) throw { code: 4001, message: "User rejected the request." };
       if (method === coinbase.breaks) throw { code: -32603, message: "insufficient funds for gas" };
-      if (method === "eth_requestAccounts") return [coinbase.account];
+      if (method === "eth_requestAccounts") {
+        if (coinbase.remembered !== null) return coinbase.remembered;
+        if (coinbase.holding > 0) {
+          coinbase.holding -= 1;
+          return new Promise((resolve, reject) => {
+            coinbase.held.push({
+              accept: (account = coinbase.account) => resolve([account]),
+              decline: () => reject({ code: 4001, message: "User rejected the request." }),
+            });
+          });
+        }
+        coinbase.remembered = [coinbase.account];
+        return coinbase.remembered;
+      }
       if (method === "wallet_switchEthereumChain") {
         coinbase.chain =
           (params?.[0] as { chainId: string } | undefined)?.chainId ?? coinbase.chain;
@@ -224,9 +231,9 @@ afterEach(() => {
   cleanup();
   Object.assign(coinbase, {
     opened: true,
-    silentOnce: false,
-    lateOnce: false,
-    answerLate: undefined,
+    remembered: null,
+    holding: 0,
+    held: [],
     declines: undefined,
     breaks: undefined,
     chain: "0x2105",
@@ -755,11 +762,17 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     box().form?.addEventListener("submit", () => {
       submitted = true;
     });
+    const submits = [
+      vi.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => undefined),
+      vi.spyOn(HTMLFormElement.prototype, "requestSubmit").mockImplementation(() => undefined),
+    ];
 
     await press(button());
 
     expect(box().value).toBe(CHECKSUMMED);
     expect(submitted).toBe(false);
+    expect(submits.map((submit) => submit.mock.calls.length)).toEqual([0, 0]);
+    for (const submit of submits) submit.mockRestore();
     expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy();
   });
 
@@ -777,15 +790,16 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
   it("keeps the box for an address typed by hand when Coinbase Wallet cannot be opened", async () => {
     coinbase.opened = false;
     render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    fireEvent.change(box(), { target: { value: "0x1234" } });
 
     await press(button());
 
-    expect(box().value).toBe("");
+    expect(box().value).toBe("0x1234");
     expect(screen.getByText(WALLET_WORDS.connectFailed("the page could not open it"))).toBeTruthy();
   });
 
   it("takes a second press while the first is still unanswered, as when Coinbase's window vanished without a word", async () => {
-    coinbase.silentOnce = true;
+    coinbase.holding = 1;
     render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
     await act(async () => {
       fireEvent.click(button());
@@ -798,7 +812,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
   });
 
   it("keeps what the latest press brought when an earlier press is answered after it", async () => {
-    coinbase.lateOnce = true;
+    coinbase.holding = 1;
     render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
     await act(async () => {
       fireEvent.click(button());
@@ -806,7 +820,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     await press(button());
 
     await act(async () => {
-      coinbase.answerLate?.();
+      coinbase.held[0]?.accept("0x0000000000000000000000000000000000000bad");
     });
 
     expect(box().value).toBe(CHECKSUMMED);
@@ -895,8 +909,8 @@ describe("sending the payout from a Coinbase Wallet", () => {
     expect(screen.getByText(WALLET_WORDS.payoutFailed("insufficient funds for gas"))).toBeTruthy();
   });
 
-  it("takes a second press while the first is still unanswered, and sends once", async () => {
-    coinbase.silentOnce = true;
+  it("takes a second press while the first is still unanswered, and says what it sent", async () => {
+    coinbase.holding = 1;
     render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
     await act(async () => {
       fireEvent.click(button());
@@ -909,16 +923,17 @@ describe("sending the payout from a Coinbase Wallet", () => {
   });
 
   it("never says nothing was sent when an earlier press sends its payout after a later one was closed", async () => {
-    coinbase.lateOnce = true;
+    coinbase.holding = 1;
     render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
     await act(async () => {
       fireEvent.click(button());
     });
     coinbase.declines = "eth_requestAccounts";
     await press();
+    coinbase.declines = undefined;
 
     await act(async () => {
-      coinbase.answerLate?.();
+      coinbase.held[0]?.accept();
     });
 
     expect(coinbase.sent).toHaveLength(1);
@@ -926,7 +941,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
   });
 
   it("keeps saying a payout was sent when an earlier press is closed after it", async () => {
-    coinbase.lateOnce = true;
+    coinbase.holding = 1;
     render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
     await act(async () => {
       fireEvent.click(button());
@@ -935,7 +950,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
     coinbase.declines = "wallet_sendCalls";
 
     await act(async () => {
-      coinbase.answerLate?.();
+      coinbase.held[0]?.accept();
     });
 
     expect(coinbase.sent).toHaveLength(1);

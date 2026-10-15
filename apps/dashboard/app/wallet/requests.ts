@@ -3,13 +3,21 @@
  * the address for the payout wallet box, and the payout the screen shows, sent
  * once the merchant approves it in the wallet. Neither saves anything: the box
  * is saved by the merchant's own press, as an address typed by hand is.
+ *
+ * Each request starts and ends with the wallet disconnected. The provider
+ * remembers the account it connected in the page's storage, across reloads and
+ * across the dashboard's own accounts, and answers the next request for an
+ * address from that memory without opening the wallet's window; on a shared
+ * browser that would put one merchant's address into another's box.
  */
 
-import { getAddress } from "viem";
+import { getAddress, isAddress } from "viem";
 
 /** An EIP-1193 provider, as far as the dashboard uses one. */
 export interface Wallet {
   request(asked: { method: string; params?: readonly unknown[] }): Promise<unknown>;
+  /** Forgets the connected account and the keys of the session with the wallet's window. */
+  disconnect(): Promise<void>;
 }
 
 /** The merchant closed the wallet's window or declined; nothing happened. */
@@ -44,18 +52,34 @@ const outcomeOf = (thrown: unknown): Cancelled | Failed => {
 const accountOf = async (wallet: Wallet): Promise<string> => {
   const accounts = await wallet.request({ method: "eth_requestAccounts" });
   const first = Array.isArray(accounts) ? (accounts[0] as unknown) : undefined;
-  if (typeof first !== "string") throw { message: "the wallet answered with no address" };
+  if (typeof first !== "string" || !isAddress(first)) {
+    throw { message: "the wallet answered with no address" };
+  }
   return getAddress(first);
+};
+
+/** `ask`, between two disconnections of the wallet, with what it threw read as an outcome. */
+const forgotten = async <T>(
+  wallet: Wallet,
+  ask: () => Promise<T>,
+): Promise<T | Cancelled | Failed> => {
+  try {
+    await wallet.disconnect();
+    return await ask();
+  } catch (thrown) {
+    return outcomeOf(thrown);
+  } finally {
+    await wallet.disconnect().catch(() => undefined);
+  }
 };
 
 export async function askAddress(
   wallet: Wallet,
 ): Promise<{ readonly kind: "address"; readonly address: string } | Cancelled | Failed> {
-  try {
-    return { kind: "address", address: await accountOf(wallet) };
-  } catch (thrown) {
-    return outcomeOf(thrown);
-  }
+  return forgotten(
+    wallet,
+    async () => ({ kind: "address", address: await accountOf(wallet) }) as const,
+  );
 }
 
 /**
@@ -72,7 +96,7 @@ export async function sendPayout(
   payout: Readonly<{ to: string; data: string }>,
 ): Promise<{ readonly kind: "sent" } | Cancelled | Failed> {
   const chain = `0x${chainId.toString(16)}`;
-  try {
+  return forgotten(wallet, async () => {
     const from = await accountOf(wallet);
     await wallet.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain }] });
     await wallet.request({
@@ -87,8 +111,6 @@ export async function sendPayout(
         },
       ],
     });
-    return { kind: "sent" };
-  } catch (thrown) {
-    return outcomeOf(thrown);
-  }
+    return { kind: "sent" } as const;
+  });
 }
