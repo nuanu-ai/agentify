@@ -37,6 +37,8 @@ export const WALLET_WORDS = {
   payoutSent:
     "Coinbase Wallet sent the payout. Your share reaches your wallet once the network includes the transaction.",
   payoutClosed: "Coinbase Wallet was closed. Nothing was sent.",
+  payoutEarlierStands:
+    "Coinbase Wallet sent nothing more. The payout it sent earlier from this page stands.",
   payoutFailed: (reason: string) =>
     `Coinbase Wallet did not send the payout: ${reason}. If your wallet holds nothing yet to pay the fee with, your first payout arrives when Agentify next pays out every contract, on no set date; later ones you can send from here.`,
 } as const;
@@ -135,6 +137,7 @@ export function CoinbasePayout({
 }: Readonly<{ chainId: number; payout: Readonly<{ to: string; data: string }> }>) {
   const runs = useScriptRuns();
   const [said, press] = useLatestPress();
+  const sentHere = useRef(false);
   if (!runs) return null;
   const send = async () => {
     const pressed = press();
@@ -143,12 +146,19 @@ export function CoinbasePayout({
         sendPayout(coinbaseWallet(chainId), chainId, payout),
       )
       .catch(() => NOT_OPENED);
-    // A payout that went out is said whenever it went out: hiding a late one
-    // would leave the page saying nothing was sent.
-    if (!pressed.latest() && sent.kind !== "sent") return;
+    // A payout that went out is said whenever it went out, and once one has,
+    // no press that sent nothing says nothing was sent: Coinbase's SDK sends a
+    // second press into the window the first opened, so the first can send and
+    // the second be closed after it.
+    if (sent.kind === "sent") {
+      sentHere.current = true;
+      pressed.say(WALLET_WORDS.payoutSent);
+      return;
+    }
+    if (!pressed.latest()) return;
     pressed.say(
-      sent.kind === "sent"
-        ? WALLET_WORDS.payoutSent
+      sentHere.current
+        ? WALLET_WORDS.payoutEarlierStands
         : sent.kind === "cancelled"
           ? WALLET_WORDS.payoutClosed
           : WALLET_WORDS.payoutFailed(sent.reason),
