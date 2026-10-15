@@ -827,6 +827,30 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy();
   });
 
+  it("takes the refusal of an earlier address off the box it fills, so it is not read out against the new one", async () => {
+    const refused = "That is not an address.";
+    render(
+      routed(() => (
+        <PayoutWalletPanel
+          wallet={
+            viewOf({
+              mode: "test",
+              press: { kind: "wallet", problem: refused, typed: "0x1234" },
+            }).wallet
+          }
+        />
+      )),
+    );
+    expect(box().getAttribute("aria-invalid")).toBe("true");
+
+    await press(button());
+
+    expect(box().value).toBe(CHECKSUMMED);
+    expect(box().getAttribute("aria-invalid")).toBeNull();
+    expect(box().getAttribute("aria-describedby")).toBeNull();
+    expect(screen.getByText(refused).hidden).toBe(true);
+  });
+
   it("links to where the merchant manages the wallet and to how Coinbase recovers it", () => {
     render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
 
