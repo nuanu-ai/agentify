@@ -1,8 +1,7 @@
 # 0005. The web surface: one origin, one door
 
 Date: 2026-08-27
-Status: accepted; code from outside Agentify in the origin, 2026-10-15, on the
-product owner's choice of Coinbase Wallet
+Status: accepted; a wallet's code in the origin, 2026-10-15
 
 ## Context
 
@@ -33,14 +32,16 @@ calls the gateway's application inside the process the two share
 complete: a dashboard screen that needs what a merchant's code could need gets
 a contract route, never a private call.
 
-Code from outside Agentify runs in the origin only from a package pinned in
-the lockfile and served by the origin itself, loaded on the page that needs it
-when the person presses for it, and holding no power the person does not
-approve each time outside this origin. The one such package is Coinbase
-Wallet's SDK on the dashboard's settings page: every signature and transaction
-it asks for is approved in Coinbase's window, its analytics are off, and its
+A wallet's code runs in the origin only from a package pinned in the lockfile
+and served by the origin, fetched on the one page that needs it as a person
+reaches its button, and holding no power the person does not approve each
+time in the wallet's own window outside the origin. Coinbase Wallet's SDK on
+the dashboard's settings page is the one such package
+(`docs/research/48-merchant-wallet-onboarding.md`): its analytics are off, its
 sub-accounts, which keep a key in the page that signs without asking, are
-never used (`docs/research/48-merchant-wallet-onboarding.md`).
+never used, and the account and session keys it keeps in the page's storage
+are cleared before and after every press, since it would otherwise answer the
+next request, from any session in the origin, without its window.
 
 `/healthz` sits outside the contract's prefixes, because a probe is not
 something a merchant's code calls, and answers for the gateway alone; the
@@ -52,16 +53,15 @@ which would be wrong the first time one service went down by itself.
 A merchant's engineer has one address to integrate against, and a person's
 session crosses every surface. One origin is one script authority: an escaping
 defect on any surface reaches the session for all of them, and so does a
-defect in the pinned Coinbase package, which can do whatever the merchant's
-session can, a replacement of the payout wallet included; on the live channel
-that change waits forty-eight hours behind a message to every account
+defect in the pinned Coinbase package, a new payout wallet included, which on
+the live channel waits forty-eight hours behind a message to every account
 (ADR-0019).
 
 Rejected: an origin per surface, which isolates scripts but stops the session
 crossing between them and gives a merchant's engineer several addresses. That
 is the way out if script isolation becomes a requirement. Rejected as well: a
-provider's script fetched from its own servers, which changes under the page
-without review; and a wallet whose code in this origin moves money without
-the person approving it in a window outside it, such as Coinbase Developer
-Platform's embedded wallet, which would leave Agentify's pages able to spend a
-signed-in merchant's money.
+wallet's script fetched from its provider's servers, which changes under the
+page without review; and a wallet whose code here moves money without the
+person approving it outside the origin, such as Coinbase Developer Platform's
+embedded wallet, which would let Agentify's pages spend a signed-in
+merchant's money.
