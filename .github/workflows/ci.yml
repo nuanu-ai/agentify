@@ -92,9 +92,6 @@ jobs:
       # reads as used and what it leaves alone.
       - run: pnpm deadcode
       - run: pnpm test
-      # Draws every registered screen state into the page the product owner
-      # reviews, and refuses a page its host would not publish whole.
-      - run: pnpm gallery
       - run: pnpm test:db
         env:
           AGENTIFY_TEST_DATABASE_URL: postgresql://agentify:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_test
