@@ -6,12 +6,11 @@
 
 import { checksummedAddressOf } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "../testing/split-networks.js";
 import { IMPLEMENTATION, MERCHANT, ON_CHAIN, S, S2 } from "./fixture.js";
-import { payoutSplitNetworkOf } from "./networks.js";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "./networks.js";
 import { whyNotAPayoutWallet } from "./wallet-rule.js";
 
-const NETWORKS = SPLIT_NETWORKS_WITH_A_FIXTURE_BASE;
+const NETWORKS = PAYOUT_SPLIT_NETWORKS;
 const KNOWN_SPLITS = [S.address, S2.address];
 
 const verdictOn = (address: string) =>

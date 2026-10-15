@@ -12,9 +12,8 @@
 import type { Order } from "@agentify/core";
 import { describe, expect, it } from "vitest";
 import type { StoredOrder } from "../../ports/store.js";
-import { payoutSplitNetworkOf } from "../../split/networks.js";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../../split/networks.js";
 import { payoutSplitFor } from "../../split/parameters.js";
-import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "../../testing/split-networks.js";
 import { describeStore } from "../../testing/store-contract.js";
 import { MemoryStore } from "./store.js";
 
@@ -104,7 +103,7 @@ describe("MemoryStore, where it is not like the other one", () => {
     // database refuses, and a payout built from it would pay another address.
     const store = new MemoryStore("eip155:84532", counted());
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
-    const network = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:84532");
+    const network = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532");
     const wallet = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
     const split = payoutSplitFor(network, A, wallet);
     await store.setPayoutWallet(

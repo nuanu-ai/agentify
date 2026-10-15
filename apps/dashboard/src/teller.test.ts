@@ -6,9 +6,8 @@
  * dashboard, where the deciding screen is) and nothing that opens anything.
  */
 
-import { payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
 import type { Announcement } from "@agentify/gateway/announcements";
-import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "@agentify/gateway/testing";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import { SIGN_OUT_EVERY_OTHER_DEVICE, STOP_ALL_SELLING } from "./control-labels.js";
@@ -21,7 +20,7 @@ const MERCHANT = "mch_the_shop";
 const FROM = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 const TO = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
 /** The splits buyers pay into for each wallet, as the gateway's facts carry them. */
-const LIVE = payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, "eip155:8453");
+const LIVE = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:8453");
 const FROM_SPLIT = payoutSplitFor(LIVE, MERCHANT, FROM).address;
 const TO_SPLIT = payoutSplitFor(LIVE, MERCHANT, TO).address;
 const THE_SETTINGS_SCREEN = "https://agentify.ad/dashboard/settings";

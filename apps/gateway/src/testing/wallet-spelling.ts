@@ -16,10 +16,9 @@ import { Gateway } from "../app/gateway.js";
 import { setServiceName } from "../app/merchants.js";
 import { loadConfig } from "../config.js";
 import type { PayoutWalletRead, Store } from "../ports/store.js";
-import { payoutSplitNetworkOf } from "../split/networks.js";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../split/networks.js";
 import { payoutSplitFor } from "../split/parameters.js";
 import { countedIds, loggedWhile } from "./harness.js";
-import { SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "./split-networks.js";
 
 /** A database a gateway is about to start on, empty but for what a case writes into it. */
 export interface WalletSpellingDatabase {
@@ -73,10 +72,10 @@ export function describeWalletSpelling(
     const gatewayOn = (database: WalletSpellingDatabase, environment: Record<string, string>) => {
       const announcer = new RecordingAnnouncer();
       const gateway = new Gateway({
-        config: loadConfig(
-          { DATABASE_URL: "postgres://agentify@localhost:5432/agentify", ...environment },
-          SPLIT_NETWORKS_WITH_A_FIXTURE_BASE,
-        ),
+        config: loadConfig({
+          DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
+          ...environment,
+        }),
         store: database.store,
         queue: new MemoryQueue(),
         facilitator: new ScriptedFacilitator(),
@@ -96,11 +95,7 @@ export function describeWalletSpelling(
       await setServiceName(database.store, id, "Shop lower", now);
       await database.writeWalletWithoutSplit(id, { address: W.toLowerCase(), pending: null });
       const split = (wallet: string) =>
-        payoutSplitFor(
-          payoutSplitNetworkOf(SPLIT_NETWORKS_WITH_A_FIXTURE_BASE, network),
-          id,
-          wallet,
-        );
+        payoutSplitFor(payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, network), id, wallet);
       return { database, id, split };
     };
 

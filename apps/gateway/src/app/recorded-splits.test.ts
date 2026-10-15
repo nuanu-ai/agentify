@@ -25,9 +25,13 @@ import { loadConfig } from "../config.js";
 import type { PayoutWalletRead } from "../ports/store.js";
 import { splitAddress } from "../split/address.js";
 import { DISTRIBUTOR } from "../split/fixture.js";
-import { type PayoutSplitNetworks, payoutSplitNetworkOf } from "../split/networks.js";
+import {
+  PAYOUT_SPLIT_NETWORKS,
+  type PayoutSplitNetworks,
+  payoutSplitNetworkOf,
+} from "../split/networks.js";
 import { type PayoutSplit, payoutSplitFor, splitParametersOf } from "../split/parameters.js";
-import { countedIds, loggedWhile, SPLIT_NETWORKS_WITH_A_FIXTURE_BASE } from "../testing/harness.js";
+import { countedIds, loggedWhile } from "../testing/harness.js";
 import { anOrder } from "../testing/store-contract.js";
 import { describeWalletSpelling } from "../testing/wallet-spelling.js";
 import { Gateway } from "./gateway.js";
@@ -36,7 +40,7 @@ import { setServiceName } from "./merchants.js";
 const NOW = Date.parse("2026-10-14T12:00:00.000Z");
 
 /** The table every row here is first written under. */
-const T1 = SPLIT_NETWORKS_WITH_A_FIXTURE_BASE;
+const T1 = PAYOUT_SPLIT_NETWORKS;
 const T1_TEST = payoutSplitNetworkOf(T1, "eip155:84532");
 
 /** A table whose test chain differs from T1's by one term, as an edit to a constant would. */
