@@ -1,11 +1,6 @@
-import { partnerClickIdSchema } from "@agentify/scanner-contracts";
 import { z } from "zod";
-import {
-  PARTNER_CLICK_ID_COOKIE,
-  persistAttributionTouch,
-} from "../../../../lib/server/attribution";
-import { getServerConfig } from "../../../../lib/server/config";
-import { cookieHeader, readCookie } from "../../../../lib/server/cookies";
+import { persistAttributionTouch } from "../../../../lib/server/attribution";
+import { readCookie } from "../../../../lib/server/cookies";
 import { errorResponse, hasSameOrigin } from "../../../../lib/server/http";
 import { methods } from "../../../../lib/server/methods";
 import { ANONYMOUS_COOKIE } from "../../../../lib/server/scans";
@@ -20,7 +15,6 @@ const requestSchema = z
   .object({
     segment: z.enum(["store", "owner", "local"]),
     landing_variant: z.string().min(1).max(100),
-    partner_click_id: partnerClickIdSchema.optional(),
     touch: z
       .object({
         utm_source: campaignValue.optional(),
@@ -44,30 +38,16 @@ async function attribute(request: Request): Promise<Response> {
   if (!parsed.success)
     return errorResponse(request, 400, "invalid_attribution", "Campaign attribution is invalid.");
   try {
-    const result = await persistAttributionTouch({
+    await persistAttributionTouch({
       anonymousToken: readCookie(request, ANONYMOUS_COOKIE),
       segment: parsed.data.segment,
       landingVariant: parsed.data.landing_variant,
       touch: parsed.data.touch,
-      partnerClickId: parsed.data.partner_click_id,
     });
-    const response = new Response(null, {
+    return new Response(null, {
       status: 204,
       headers: { "Cache-Control": "no-store" },
     });
-    if (result.partnerClickIdAccepted && parsed.data.partner_click_id) {
-      response.headers.append(
-        "Set-Cookie",
-        cookieHeader(PARTNER_CLICK_ID_COOKIE, parsed.data.partner_click_id, {
-          httpOnly: true,
-          secure: getServerConfig().production,
-          sameSite: "lax",
-          path: "/",
-          maxAge: 30 * 86_400,
-        }),
-      );
-    }
-    return response;
   } catch {
     return errorResponse(
       request,

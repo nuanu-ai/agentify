@@ -29,7 +29,6 @@ describe("a campaign's attribution", () => {
   const touch = {
     segment: "store",
     landing_variant: "store-v1",
-    partner_click_id: "partner-click-0001",
     touch: { utm_source: "newsletter", utm_campaign: "autumn" },
   };
   const attribute = (body: unknown, headers: Record<string, string> = {}) =>
@@ -45,6 +44,10 @@ describe("a campaign's attribution", () => {
   it.each([
     ["names a segment the site does not have", { ...touch, segment: "wholesale" }],
     ["carries a field the route does not know", { ...touch, referrer: "a-page" }],
+    [
+      "carries a partner's click id, which the scanner does not keep",
+      { ...touch, partner_click_id: "Xk8sJ2QpR4vN7bL0aZ9wQg" },
+    ],
     ["carries what may be a phone number", { ...touch, touch: { utm_term: "call 5551234567" } }],
     ["carries a click id that is not a hash", { ...touch, touch: { fbclid_hash: "a-click" } }],
   ])("is refused when it %s", async (_why, body) => {

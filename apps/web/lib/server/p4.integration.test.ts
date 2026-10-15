@@ -702,55 +702,6 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(await visitorSession()).toMatchObject({ lastLandingVariant: "store-v2" });
   });
 
-  it("keeps a partner's click for thirty days in a cookie the page's script cannot read, once its visitor allows ads measurement", async () => {
-    const partnerClickId = "Rt5sJ2QpR4vN7bL0aZ9wMh";
-    const consented = await persistConsent(
-      new Request("http://localhost:3000/api/v1/consent", {
-        method: "POST",
-        headers: { origin: "http://localhost:3000", "content-type": "application/json" },
-        body: JSON.stringify({
-          policy_version: CONSENT_POLICY_VERSION,
-          categories: {
-            essential_processing: true,
-            product_analytics: true,
-            ads_measurement: true,
-            marketing_email: false,
-            dataset_reuse: false,
-            card_signal: false,
-          },
-        }),
-      }),
-    );
-    expect(consented.status).toBe(201);
-    const visitor =
-      /agentify_anonymous=[^;]+/.exec(consented.headers.get("set-cookie") ?? "")?.[0] ?? "";
-    expect(visitor).not.toBe("");
-
-    const attributed = await persistAttribution(
-      new Request("http://localhost:3000/api/v1/attribution", {
-        method: "POST",
-        headers: {
-          origin: "http://localhost:3000",
-          cookie: visitor,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          segment: "owner",
-          landing_variant: "owner-v1",
-          touch: {},
-          partner_click_id: partnerClickId,
-        }),
-      }),
-    );
-
-    expect(attributed.status).toBe(204);
-    expect(attributed.headers.get("set-cookie")).toMatch(
-      new RegExp(
-        `^clickid=${partnerClickId}; Path=/; Expires=[^;]+; Max-Age=2592000; HttpOnly; SameSite=lax$`,
-      ),
-    );
-  });
-
   it("keeps attribution neutral and both accepted registration links usable", async () => {
     const { db } = getDatabase();
     const attributionRequest = (campaign: string, fbclidHash: string) =>
@@ -792,51 +743,6 @@ describe("P4 dashboard-owned scanner identity", () => {
     });
     expect(JSON.stringify(attributedSession)).not.toContain("fbclid=");
 
-    const partnerClickId = "Xk8sJ2QpR4vN7bL0aZ9wQg";
-    const partnerAttributionRequest = () =>
-      new Request("http://localhost:3000/api/v1/attribution", {
-        method: "POST",
-        headers: {
-          origin: "http://localhost:3000",
-          cookie: `agentify_anonymous=${anonymousToken}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          segment: "owner",
-          landing_variant: "owner-v1",
-          touch: {},
-          partner_click_id: partnerClickId,
-        }),
-      });
-    expect(
-      (await persistAttribution(partnerAttributionRequest())).headers.get("set-cookie") ?? "",
-    ).not.toContain(`clickid=${partnerClickId}`);
-    const consentRequest = (adsMeasurement: boolean) =>
-      new Request("http://localhost:3000/api/v1/consent", {
-        method: "POST",
-        headers: {
-          origin: "http://localhost:3000",
-          cookie: `agentify_anonymous=${anonymousToken}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          policy_version: CONSENT_POLICY_VERSION,
-          categories: {
-            essential_processing: true,
-            product_analytics: true,
-            ads_measurement: adsMeasurement,
-            marketing_email: false,
-            dataset_reuse: false,
-            card_signal: false,
-          },
-        }),
-      });
-    expect((await persistConsent(consentRequest(true))).status).toBe(201);
-    expect(
-      (await persistAttribution(partnerAttributionRequest())).headers.get("set-cookie"),
-    ).toContain(`clickid=${partnerClickId}`);
-    const revoked = await persistConsent(consentRequest(false));
-    expect(revoked.headers.get("set-cookie")).toMatch(/clickid=;.*Max-Age=0/i);
     const piiAttribution = await persistAttribution(
       new Request("http://localhost:3000/api/v1/attribution", {
         method: "POST",

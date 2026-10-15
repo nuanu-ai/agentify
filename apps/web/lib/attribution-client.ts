@@ -1,9 +1,5 @@
 import { consentAllowsMeasurement, readCurrentConsent } from "@agentify/analytics/browser";
-import {
-  PARTNER_CLICK_ID_ALIASES,
-  PARTNER_CLICK_ID_PATTERN,
-  type Segment,
-} from "@agentify/scanner-contracts/browser";
+import type { Segment } from "@agentify/scanner-contracts/browser";
 
 const captures = new Map<string, Promise<void>>();
 
@@ -23,26 +19,14 @@ export function captureLandingAttribution(
   // Before the visitor allows measurement nothing is sent and nothing is cached
   // as done, so `AnalyticsRuntime` can capture once the choice is made.
   if (!measurementAllowed()) return Promise.resolve();
-  const partnerClickId = adsMeasurementAllowed() ? readPartnerClickId(source.search) : undefined;
-  const key = `${source.pathname}?${source.search}:${landingVariant}:partner=${partnerClickId ? "yes" : "no"}`;
+  const key = `${source.pathname}?${source.search}:${landingVariant}`;
   const existing = captures.get(key);
   if (existing) return existing;
-  const capture = persist(segment, landingVariant, source.search, partnerClickId).catch(() => {
+  const capture = persist(segment, landingVariant, source.search).catch(() => {
     captures.delete(key);
   });
   captures.set(key, capture);
   return capture;
-}
-
-export function readPartnerClickId(search: string): string | undefined {
-  const query = new URLSearchParams(search);
-  for (const alias of PARTNER_CLICK_ID_ALIASES) {
-    for (const value of query.getAll(alias)) {
-      if (!value) continue;
-      return PARTNER_CLICK_ID_PATTERN.test(value) ? value : undefined;
-    }
-  }
-  return undefined;
 }
 
 function measurementAllowed(): boolean {
@@ -54,20 +38,7 @@ function measurementAllowed(): boolean {
   }
 }
 
-function adsMeasurementAllowed(): boolean {
-  try {
-    return readCurrentConsent(window.localStorage)?.categories.ads_measurement === true;
-  } catch {
-    return false;
-  }
-}
-
-async function persist(
-  segment: Segment,
-  landingVariant: string,
-  sourceSearch: string,
-  partnerClickId?: string,
-) {
+async function persist(segment: Segment, landingVariant: string, sourceSearch: string) {
   const query = new URLSearchParams(sourceSearch);
   const touch: Record<string, string> = {};
   for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
@@ -84,12 +55,7 @@ async function persist(
   const response = await fetch("/api/v1/attribution", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      segment,
-      landing_variant: landingVariant,
-      touch,
-      ...(partnerClickId ? { partner_click_id: partnerClickId } : {}),
-    }),
+    body: JSON.stringify({ segment, landing_variant: landingVariant, touch }),
   });
   if (!response.ok) throw new Error("attribution_capture_failed");
 }

@@ -1,6 +1,5 @@
 import { CONSENT_POLICY_VERSION } from "@agentify/analytics/browser";
 import { z } from "zod";
-import { PARTNER_CLICK_ID_COOKIE } from "../../../../lib/server/attribution";
 import { getServerConfig } from "../../../../lib/server/config";
 import { CONSENT_COOKIE, persistConsentSnapshot } from "../../../../lib/server/consent";
 import { cookieHeader, readCookie } from "../../../../lib/server/cookies";
@@ -54,18 +53,6 @@ async function consent(request: Request): Promise<Response> {
           sameSite: "lax",
           path: "/",
           maxAge: 13 * 30 * 24 * 60 * 60,
-        }),
-      );
-    }
-    if (!parsed.data.categories.ads_measurement) {
-      response.headers.append(
-        "Set-Cookie",
-        cookieHeader(PARTNER_CLICK_ID_COOKIE, "", {
-          httpOnly: true,
-          secure: getServerConfig().production,
-          sameSite: "lax",
-          path: "/",
-          maxAge: 0,
         }),
       );
     }
