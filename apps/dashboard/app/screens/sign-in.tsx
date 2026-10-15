@@ -270,8 +270,9 @@ export function MailUnavailableScreen({
  * form is posted by the browser itself, with the name of the button pressed.
  *
  * Where the press would tell the ad tracker of the sign-up, the page says so
- * and offers a second button that signs in without it: anybody can ask for a
- * link for any address, so the box ticked then is not the owner's word.
+ * and asks: anybody can ask for a link for any address, so the box ticked then
+ * is not the owner's word. The two answers are drawn alike, so neither is the
+ * one the page leans towards.
  */
 export function OpenLinkScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: OpenLinkView }>) {
   if (view.screen === "refused") {
@@ -312,8 +313,8 @@ export function OpenLinkScreen({ chrome, view }: Readonly<{ chrome: Chrome; view
         <input type="hidden" name="token" value={view.token} />
         {view.tellsTracker ? (
           <>
-            <Button name="report" value="yes">
-              Sign in as {view.email}
+            <Button variant="secondary" name="report" value="yes">
+              {ADS_CONSENT.tell}
             </Button>
             <Button variant="secondary" name="report" value="no">
               {ADS_CONSENT.without}

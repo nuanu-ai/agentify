@@ -15,8 +15,9 @@ export const ADS_CONSENT = {
     "Tell AI Samurai, Agentify's ad tracker, that I signed up after clicking an Agentify ad. Nothing else is shared.",
   /** Read by whoever presses the link, who may not be who ticked the box. */
   confirmation:
-    "Signing in also tells AI Samurai, Agentify's ad tracker, that this sign-up came from an Agentify ad, as the box ticked when this link was asked for allows, and shares nothing else.",
-  /** The button that signs in and tells the tracker nothing. */
+    "This link was asked for with the box ticked that lets Agentify tell AI Samurai, its ad tracker, that this sign-up came from an Agentify ad, and nothing else; choose below whether to tell it.",
+  /** The two answers on the link's page, which carry equal weight. */
+  tell: "Sign in and tell AI Samurai",
   without: "Sign in without telling AI Samurai",
   /** The privacy page's section that names the tracker and what it is told. */
   explained: { words: "What AI Samurai is told", href: "/privacy#processors" },
