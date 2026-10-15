@@ -1381,6 +1381,30 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(lead.phoneLookupHash).toBeNull();
   });
 
+  it("keeps the time an address was first verified when it confirms another report", async () => {
+    const { db } = getDatabase();
+    const email = "verified-once@example.com";
+    const verifiedAt = async () =>
+      onlyRow(
+        await db
+          .select({ verifiedAt: leads.verifiedAt })
+          .from(leads)
+          .where(eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", email))),
+      ).verifiedAt;
+    const { scan: first } = await createFreshCompletedScan("verified-once-first");
+    await createScannerRegistrationIntent(first, registrationBody(email));
+    await visitorOf(pressLink(latestLink(email)));
+    const firstVerified = await verifiedAt();
+    expect(firstVerified).toBeInstanceOf(Date);
+
+    const { scan: second } = await createFreshCompletedScan("verified-once-second");
+    await createScannerRegistrationIntent(second, registrationBody(email));
+    await visitorOf(pressLink(latestLink(email)));
+
+    expect(await registrationsFor(second.id)).toBe("1");
+    expect(await verifiedAt()).toEqual(firstVerified);
+  });
+
   it("stores phone only encrypted and finishes the request once", async () => {
     const { db } = getDatabase();
     const { scan, accessToken } = await createFreshCompletedScan("encrypted-registration");
