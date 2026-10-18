@@ -1024,18 +1024,20 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       },
 
       async orders(person, query) {
-        // Only the exact word narrows the list, as the contract says.
-        const open = once(query.getAll("open")) === "true";
         const gateway = gatewayAs(person);
-        const [cards, orders, name, owed, paidInto] = await Promise.all([
+        // The open list is read beside the whole one, never after it, since
+        // which orders are open is the gateway's to say.
+        const [cards, orders, open, name, owed, paidInto] = await Promise.all([
           gateway.cards(),
-          gateway.orders(open),
+          gateway.orders(false),
+          gateway.orders(true),
           gateway.sellerName(),
           gateway.refundsOwed(),
           gateway.paidIntoSplits(),
         ]);
         if (!cards.ok) return problemOf(cards);
         if (!orders.ok) return problemOf(orders);
+        if (!open.ok) return problemOf(open);
         if (!name.ok) return problemOf(name);
         if (!owed.ok) return problemOf(owed);
         if (!paidInto.ok) return problemOf(paidInto);
@@ -1045,7 +1047,8 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             viewing(person, name.document),
             cards.document,
             orders.document,
-            open,
+            open.document,
+            query,
             owed.document,
             paidInto.document,
           ),

@@ -423,6 +423,8 @@ const seenBy = (mode: SurfaceMode, more: Partial<Viewer> = {}): Viewer => ({
 type Status =
   | "in_progress"
   | "delivered"
+  | "shipped"
+  | "cancelled"
   | "rejected"
   | "payment_unresolved"
   | "declined"
@@ -1328,18 +1330,63 @@ const CARDS: GalleryState[] = [
   ),
 ];
 
+/**
+ * The orders the gateway's open list would hold among these: the ones still
+ * owed goods or money, as near as a status can say it.
+ */
+const openAmong = (listed: ReturnType<typeof ordersOf>) =>
+  OrderListSchema.parse({
+    orders: listed.orders.filter((order) =>
+      ["in_progress", "refund_due", "delivered_unpaid", "payment_unresolved"].includes(
+        order.status,
+      ),
+    ),
+  });
+
+/**
+ * Orders as the loader answers them at `path`, whose address carries the
+ * search and the segment, with the refunds' causes where they are known.
+ */
+const ordersAt = (
+  path: string,
+  listed: ReturnType<typeof ordersOf>,
+  {
+    mode = "live",
+    cards = CATALOGUE,
+    open = openAmong(listed),
+    owed = {},
+  }: Readonly<{
+    mode?: SurfaceMode;
+    cards?: ReturnType<typeof cardsOf>;
+    open?: ReturnType<typeof ordersOf>;
+    owed?: Parameters<typeof ordersView>[5];
+  }> = {},
+) =>
+  ordersView(
+    seenBy(mode),
+    cards,
+    listed,
+    open,
+    new URL(path, ORIGIN[mode]).searchParams,
+    owed,
+    paidIntoSplit(mode, listed.orders),
+  );
+
+/** The sidebar counts every refund due, whatever the page's search narrows its rows to. */
+const refundsIn = (listed: ReturnType<typeof ordersOf>) =>
+  listed.orders.filter((order) => order.status === "refund_due").length;
+
 const orders = (
   told: Told,
-  view: ReturnType<typeof ordersView>,
-  mode: SurfaceMode,
-  open = false,
-  needYou = view.needsYou.length,
+  listed: ReturnType<typeof ordersOf>,
+  path = "/orders",
+  more: Parameters<typeof ordersAt>[2] = {},
 ): GalleryState =>
   at(told, {
-    path: open ? "/orders?open=true" : "/orders",
-    mode,
-    needYou,
-    loaded: { "routes/orders": view },
+    path,
+    mode: more.mode ?? "live",
+    needYou: refundsIn(listed),
+    loaded: { "routes/orders": ordersAt(path, listed, more) },
   });
 
 const OWING = ordersOf([
@@ -1348,6 +1395,24 @@ const OWING = ordersOf([
   ["vpn", "delivered"],
   ["esimWeek", "refund_due"],
 ]);
+
+/** The first refund due ran out of time, the second was refused by the merchant's code. */
+const OWED_BECAUSE = Object.fromEntries(
+  OWING.orders
+    .filter((order) => order.status === "refund_due")
+    .map((order, at) => [order.id, at === 0 ? "deadline_passed" : "refused"] as const),
+);
+
+/** A season of sales, one every 37 minutes back from the latest. */
+const SEASON = ordersOf(
+  Array.from(
+    { length: 214 },
+    (_, at) => [(["vpn", "esimEurope", "number"] as const)[at % 3] ?? "vpn", "delivered"] as const,
+  ),
+);
+
+/** An order's ID as the page shows it short, the way a merchant pastes it back. */
+const shortOf = (id: string): string => `${id.slice(0, 8)}…${id.slice(-4)}`;
 
 const ORDERS: GalleryState[] = [
   orders(
@@ -1358,23 +1423,12 @@ const ORDERS: GalleryState[] = [
       cause:
         "The gateway lists orders that went through or are under way, none of them owing anything.",
     },
-    ((listed) =>
-      ordersView(
-        seenBy("live"),
-        CATALOGUE,
-        listed,
-        false,
-        {},
-        paidIntoSplit("live", listed.orders),
-      ))(
-      ordersOf([
-        ["vpn", "delivered"],
-        ["esimEurope", "in_progress"],
-        ["number", "delivered"],
-        ["esimEurope", "delivered"],
-      ]),
-    ),
-    "live",
+    ordersOf([
+      ["vpn", "delivered"],
+      ["esimEurope", "in_progress"],
+      ["number", "delivered"],
+      ["esimEurope", "delivered"],
+    ]),
   ),
   orders(
     {
@@ -1382,47 +1436,34 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant has orders that owe a refund or were delivered without payment.",
       cause:
-        "Orders in refund due or delivered, not paid, each set out under the table with what to do.",
+        "Two orders are refund due, one for a delivery window that ran out and one the merchant's code refused, and one was delivered and not paid; each has a row of its own over the list saying what happened and what to do.",
     },
-    ordersView(
-      seenBy("live"),
-      CATALOGUE,
-      OWING,
-      false,
-      Object.fromEntries(
-        OWING.orders
-          .filter((order) => order.status === "refund_due")
-          .map((order, at) => [order.id, at === 0 ? "deadline_passed" : "refused"]),
-      ),
-      paidIntoSplit("live", OWING.orders),
-    ),
-    "live",
+    OWING,
+    "/orders",
+    { owed: OWED_BECAUSE },
   ),
   orders(
     {
       id: "dashboard-orders-every-ending",
       screen: "Orders",
       when: "A busy merchant scrolls back through their orders.",
-      cause: "The gateway lists an order in each way an order can stand or end.",
+      cause:
+        "The gateway lists an order in each way an order can stand or end, so the State column holds its longest words, Payment outcome unknown and Declined at confirmation.",
     },
-    ordersView(
-      seenBy("live"),
-      CATALOGUE,
-      ordersOf([
-        ["vpn", "delivered"],
-        ["esimEurope", "in_progress"],
-        ["number", "payment_unresolved"],
-        ["esimEurope", "refund_due"],
-        ["number", "delivered_unpaid"],
-        ["vpn", "rejected"],
-        ["esimEurope", "declined"],
-        ["number", "expired"],
-        ["esimEurope", "refunded"],
-        ["esimWeek", "delivered"],
-      ]),
-      false,
-    ),
-    "live",
+    ordersOf([
+      ["vpn", "delivered"],
+      ["esimEurope", "in_progress"],
+      ["number", "payment_unresolved"],
+      ["esimEurope", "refund_due"],
+      ["number", "delivered_unpaid"],
+      ["vpn", "rejected"],
+      ["esimEurope", "declined"],
+      ["number", "expired"],
+      ["esimEurope", "refunded"],
+      ["esimWeek", "delivered"],
+      ["vpn", "shipped"],
+      ["number", "cancelled"],
+    ]),
   ),
   {
     ...orders(
@@ -1431,10 +1472,11 @@ const ORDERS: GalleryState[] = [
         screen: "Orders",
         when: "A merchant on a phone taps the first order's line to read what the narrow row leaves out.",
         cause:
-          "A phone's row shows the product, the amount, the state and the time; its ID, product code and shares are in the row's opened part, which a wide screen shows in its columns.",
+          "A phone's row shows the product, the amount, the state and the time; the whole order ID, both shares and the moment the price was set are in the row's opened part.",
       },
-      ordersView(seenBy("live"), CATALOGUE, OWING, false, {}, paidIntoSplit("live", OWING.orders)),
-      "live",
+      OWING,
+      "/orders",
+      { owed: OWED_BECAUSE },
     ),
     scene: {
       steps: [
@@ -1448,69 +1490,106 @@ const ORDERS: GalleryState[] = [
   },
   orders(
     {
+      id: "dashboard-orders-search",
+      screen: "Orders",
+      when: "A merchant pastes the short order ID they copied from a refund due.",
+      cause:
+        "The address carries the search, and the short form finds the one order whose ID begins and ends as it does, in its refund row and in the list.",
+    },
+    OWING,
+    `/orders?q=${encodeURIComponent(shortOf(OWING.orders[0]?.id ?? ""))}`,
+    { owed: OWED_BECAUSE },
+  ),
+  orders(
+    {
+      id: "dashboard-orders-search-no-match",
+      screen: "Orders",
+      when: "A merchant searches their orders for a product none of them is for.",
+      cause:
+        "No order's ID, product or product code holds the search, so the list says what was searched for and offers to clear it, which is not what a merchant without orders reads.",
+    },
+    OWING,
+    "/orders?q=router",
+    { owed: OWED_BECAUSE },
+  ),
+  orders(
+    {
+      id: "dashboard-orders-open",
+      screen: "Orders",
+      when: "A merchant picks Open to see what is still owed goods or money.",
+      cause:
+        "The gateway's open list holds the two refunds due and the goods held for payment, and the list shows those three alone.",
+    },
+    OWING,
+    "/orders?show=open",
+    { owed: OWED_BECAUSE },
+  ),
+  orders(
+    {
+      id: "dashboard-orders-open-none",
+      screen: "Orders",
+      when: "A merchant picks Open while every order is finished.",
+      cause:
+        "The gateway's open list holds no order, so the list says nothing is open and leads back to all of them.",
+    },
+    ordersOf([
+      ["vpn", "delivered"],
+      ["number", "delivered"],
+    ]),
+    "/orders?show=open",
+  ),
+  orders(
+    {
+      id: "dashboard-orders-cut-short",
+      screen: "Orders",
+      when: "A merchant with a season of sales opens Orders.",
+      cause:
+        "The gateway lists 214 orders and a page draws fifty, the newest first, so the list says which fifty of how many and leads to the next page.",
+    },
+    SEASON,
+  ),
+  orders(
+    {
       id: "dashboard-orders-sales-paused",
       screen: "Orders",
       when: "A merchant who pressed Pause all sales on Cards opens Orders.",
       cause:
         "The orders read the merchant's selling state, so the banner says all sales are paused and leads back to Cards to resume them.",
     },
-    ((listed) =>
-      ordersView(
-        seenBy("live"),
-        cardsOf("paused", ON_SALE),
-        listed,
-        false,
-        {},
-        paidIntoSplit("live", listed.orders),
-      ))(
-      ordersOf([
-        ["vpn", "delivered"],
-        ["esimEurope", "in_progress"],
-      ]),
-    ),
-    "live",
+    ordersOf([
+      ["vpn", "delivered"],
+      ["esimEurope", "in_progress"],
+    ]),
+    "/orders",
+    { cards: cardsOf("paused", ON_SALE) },
   ),
   orders(
     {
       id: "dashboard-orders-none",
       screen: "Orders",
       when: "A merchant opens Orders before anything has been bought.",
-      cause: "The gateway lists no orders.",
+      cause: "The gateway lists no orders, so there is nothing to search or narrow.",
     },
-    ordersView(seenBy("live"), CATALOGUE, ordersOf([]), false),
-    "live",
-  ),
-  orders(
-    {
-      id: "dashboard-orders-open-none",
-      screen: "Orders",
-      when: "A merchant filters Orders to the open ones and none is open.",
-      cause: "The gateway's open filter lists no order owed goods or money.",
-    },
-    ordersView(seenBy("live"), CATALOGUE, ordersOf([]), true),
-    "live",
-    true,
+    ordersOf([]),
   ),
   orders(
     {
       id: "dashboard-orders-test",
       screen: "Orders",
       when: "A merchant on the test site looks at the orders their trial purchases made.",
-      cause: "Every order on the test site is marked as a test purchase.",
+      cause:
+        "Every order on the test site is a test purchase, one of them owing a refund, and each sum carries the test mark.",
     },
-    ordersView(
-      seenBy("test"),
-      CATALOGUE,
-      ordersOf(
-        [
-          ["vpn", "delivered"],
-          ["esimEurope", "delivered"],
-        ],
-        true,
-      ),
-      false,
+    ordersOf(
+      [
+        ["vpn", "delivered"],
+        ["esimEurope", "refund_due"],
+        ["esimEurope", "delivered"],
+      ],
+      true,
     ),
-    "test",
+    "/orders",
+    { mode: "test" },
   ),
 ];
 

@@ -62,7 +62,8 @@ beforeAll(async () => {
   });
   await identity.make(PERSON, harnessed.merchant.id);
   // Cards enough to scroll a short window, published as the merchant's own
-  // code publishes them.
+  // code publishes them, and one price asked for and never paid, so the orders
+  // have a list to search and narrow.
   for (const room of [101, 102, 103, 104]) {
     const published = await harnessed.gateway.publishCard(harnessed.merchant.id, {
       merchant_item_id: `room-${room}`,
@@ -73,6 +74,7 @@ beforeAll(async () => {
       fulfillment: "sync",
     });
     if (!published.ok) throw new Error("the test's card was not published");
+    if (room === 101) await harnessed.gateway.beginPurchase(published.id, {});
   }
   await identity.requestLink(PERSON, "default");
   const link = new URL(/(https?:\/\/\S+)/.exec(mails.at(-1)?.body ?? "")?.[1] ?? "");
@@ -108,7 +110,7 @@ beforeAll(async () => {
     // gateway, so what a page shows before its data is there can be seen.
     if (
       request.path === `${BASE}/receipts.data` ||
-      (request.path === `${BASE}/orders.data` && request.query.open === "true")
+      (request.path === `${BASE}/orders.data` && request.query.show === "open")
     ) {
       setTimeout(next, SLOW_MS);
       return;
@@ -281,10 +283,10 @@ describe("a click under the dashboard's prefix", () => {
 
     await page.goto(`${origin}${BASE}/orders`);
     await page.waitForLoadState("networkidle");
-    await page.locator(".filter a", { hasText: "Open" }).click();
+    await page.locator(".segments a", { hasText: "Open" }).click();
     await page.waitForTimeout(400);
-    expect(await page.locator(".filter .here").textContent()).toBe("Open");
-    await page.waitForURL(`${origin}${BASE}/orders?open=true`);
+    expect(await page.locator(".segments .here").textContent()).toMatch(/^Open/);
+    await page.waitForURL(`${origin}${BASE}/orders?show=open`);
     await page.context().close();
   });
 });
@@ -386,14 +388,14 @@ describe("the sections on a long page", () => {
 
     await page.locator(".site-menu > summary").click();
     await panel.waitFor({ state: "visible" });
-    // The orders' filter leads to the same page, which is drawn again in
+    // The orders' segment leads to the same page, which is drawn again in
     // place rather than anew; the menu is open over it.
-    await page.locator(".filter a", { hasText: "Open" }).focus();
+    await page.locator(".segments a", { hasText: "Open" }).focus();
     await page.keyboard.press("Enter");
-    await page.waitForURL(`${origin}${BASE}/orders?open=true`);
+    await page.waitForURL(`${origin}${BASE}/orders?show=open`);
     await page.waitForLoadState("networkidle");
 
-    expect(await page.locator(".filter .here").textContent()).toBe("Open");
+    expect(await page.locator(".segments .here").textContent()).toMatch(/^Open/);
     expect(await panel.isVisible()).toBe(false);
     await page.context().close();
   });

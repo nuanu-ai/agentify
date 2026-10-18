@@ -16,6 +16,7 @@ import {
   type MerchantCard,
   type MerchantCardList,
   type OrderList,
+  type OrderStatus,
   type ReceiptList,
 } from "@nuanu-ai/agentify-contracts";
 import { type AccountNote, type AccountRead, accountOf } from "./account.js";
@@ -349,9 +350,9 @@ const sellingNote = (selling: MerchantCardList["selling"]): string => {
 
 interface OrderRow {
   readonly id: string;
-  readonly needsYou: boolean;
   /** The card's title where the merchant still has the card, its code otherwise. */
   readonly product: string;
+  /** The product's code: the row does not print it, and a search finds the order by it. */
   readonly itemId: string;
   readonly amount: string;
   /**
@@ -367,123 +368,144 @@ interface OrderRow {
   readonly day: string;
 }
 
-/** One order said in full under the table, with what it needs and of whom. */
-interface OrderCallout {
-  readonly id: string;
-  readonly state: Word;
+/** An order said in a row of its own: what happened to it, and what is the merchant's to do. */
+interface OrderNeed extends OrderRow {
   readonly why: string;
   readonly rest: Rest | null;
 }
 
 export interface OrdersView {
   readonly frame: FrameView;
-  readonly open: boolean;
-  /** Null when there is no order to count. */
-  readonly lede: string | null;
-  /** Null when no order is a test purchase. */
-  readonly testNote: string | null;
-  readonly rows: readonly OrderRow[];
-  readonly empty: string;
-  /** The refunds due: the orders the merchant has to act on. */
-  readonly needsYou: readonly OrderCallout[];
+  /** The gateway lists no order at all, so there is nothing to search or narrow. */
+  readonly none: boolean;
+  /**
+   * The orders the address asked for, newest first and at most a page of
+   * them: what was searched for, the segments with their counts, how much was
+   * cut, and why none is drawn where the merchant has some.
+   */
+  readonly listing: Listing<OrderRow>;
+  /** The refunds due the search finds: the orders the merchant has to act on. */
+  readonly needsYou: readonly OrderNeed[];
   /** Goods delivered and held until the buyer pays: nothing for the merchant to do. */
-  readonly waitsOnTheBuyer: readonly OrderCallout[];
+  readonly waitsOnTheBuyer: readonly OrderNeed[];
 }
 
 /** The terms of the payout split each order's charge went into, by order. */
 export type PaidIntoSplits = Readonly<Record<string, SplitTerms>>;
 
+/**
+ * Open is the gateway's own narrowing, read beside the whole list rather than
+ * worked out from it: a status does not say whether an order is open, since
+ * "In progress" reads the same for an order the merchant was handed and for a
+ * price nobody paid.
+ */
+const orderSegments = (open: OrderList): readonly SegmentRule<OrderRow>[] => {
+  const ids = new Set(open.orders.map((order) => order.id));
+  return [
+    { key: "all", label: "All", holds: () => true, none: "" },
+    {
+      key: "open",
+      label: "Open",
+      holds: (row) => ids.has(row.id),
+      none: "Nothing is open: no order is owed goods or money. A purchase still at its price question or waiting to be paid is not counted as open.",
+    },
+  ];
+};
+
+/** What stands between the two halves of an identifier shown short, typed either way. */
+const ELLIPSIS = /\s*(?:…|\.\.\.)\s*/;
+
+/**
+ * An order is found by any part of its ID, by the short form the page shows
+ * the ID in, `ord_17ff…7de3`, and by its product's title or code. The short
+ * form finds an ID that begins with what stands before the ellipsis, its
+ * prefix allowed to be left off, and ends with what stands after; four
+ * characters a side are all the page shows, so two orders alike in both are
+ * both found.
+ */
+const orderMatches = (row: OrderRow, words: string): boolean => {
+  const id = row.id.toLocaleLowerCase();
+  const named = [id, row.product.toLocaleLowerCase(), row.itemId.toLocaleLowerCase()];
+  if (named.some((one) => one.includes(words))) {
+    return true;
+  }
+  const [head = "", tail, ...more] = words.split(ELLIPSIS);
+  if (tail === undefined || more.length > 0 || head + tail === "") {
+    return false;
+  }
+  const holds = (whole: string) => whole.startsWith(head) && whole.endsWith(tail);
+  return holds(id) || holds(id.slice(id.indexOf("_") + 1));
+};
+
+/** When an order's price was set, to sort by; a moment that cannot be read goes last. */
+const setAt = (order: OrderList["orders"][number]): number => {
+  const at = Date.parse(order.price.at);
+  return Number.isNaN(at) ? Number.NEGATIVE_INFINITY : at;
+};
+
 export const ordersView = (
   viewer: Viewer,
   cards: MerchantCardList,
   orders: OrderList,
-  open: boolean,
+  open: OrderList,
+  query: URLSearchParams = new URLSearchParams(),
   owed: Readonly<Record<string, RefundCause>> = {},
   paidInto: PaidIntoSplits = {},
 ): OrdersView => {
   const titles = new Map(
     cards.cards.map((entry) => [entry.card.merchant_item_id, entry.card.title]),
   );
+  // Newest first, whatever order the gateway lists them in, so the page a long
+  // list opens on holds what just happened and a day's orders sit together.
+  const listed = [...orders.orders]
+    .sort((one, other) => setAt(other) - setAt(one) || 0)
+    .map((order) => ({
+      order,
+      row: {
+        id: order.id,
+        product: titles.get(order.merchant_item_id) ?? order.merchant_item_id,
+        itemId: order.merchant_item_id,
+        amount: money(order.price),
+        test: order.test,
+        shares: sharesIn(order.price, paidInto[order.id]),
+        state: ORDER_WORDS[order.status],
+        priceSet: momentView(order.price.at),
+        day: dayOf(order.price.at),
+      } satisfies OrderRow,
+    }));
+  const segments = orderSegments(open);
+  const asked = askedIn(
+    query,
+    segments.map((one) => one.key),
+  );
+  const words = asked.q.toLocaleLowerCase();
+  const found = words === "" ? listed : listed.filter(({ row }) => orderMatches(row, words));
+  const told = (which: (status: OrderStatus) => boolean): readonly OrderNeed[] =>
+    found
+      .filter(({ order }) => which(order.status))
+      .map(({ order, row }) => ({
+        ...row,
+        why: whatHappened(order, owed[order.id], paidInto[order.id] !== undefined),
+        rest: whereTheRestIs(order.status),
+      }));
   return {
     frame: frameOf(viewer, { selling: cards.selling }),
-    open,
-    lede: orders.orders.length === 0 ? null : ordersLede(orders, open),
-    testNote: testOrders(orders),
-    rows: orders.orders.map((order) => ({
-      id: order.id,
-      needsYou: needsYou(order.status),
-      product: titles.get(order.merchant_item_id) ?? order.merchant_item_id,
-      itemId: order.merchant_item_id,
-      amount: money(order.price),
-      test: order.test,
-      shares: sharesIn(order.price, paidInto[order.id]),
-      state: ORDER_WORDS[order.status],
-      priceSet: momentView(order.price.at),
-      day: dayOf(order.price.at),
-    })),
-    empty: open
-      ? "Nothing is open: no order is owed goods or money. A purchase still at its price question or waiting to be paid is not listed here; All shows it."
-      : "No orders yet.",
-    needsYou: calloutsOf(orders, needsYou, owed, paidInto),
-    waitsOnTheBuyer: calloutsOf(orders, waitsOnTheBuyer, owed, paidInto),
+    none: orders.orders.length === 0,
+    listing: listingOf({
+      rows: listed.map(({ row }) => row),
+      asked,
+      path: "/orders",
+      segments,
+      matches: orderMatches,
+      noMatch: (q, within) =>
+        within === null
+          ? `No order matches “${q}”.`
+          : `No ${within.toLocaleLowerCase()} order matches “${q}”.`,
+      showAll: "Show all orders",
+    }),
+    needsYou: told(needsYou),
+    waitsOnTheBuyer: told(waitsOnTheBuyer),
   };
-};
-
-const calloutsOf = (
-  orders: OrderList,
-  which: (status: OrderList["orders"][number]["status"]) => boolean,
-  owed: Readonly<Record<string, RefundCause>>,
-  paidInto: PaidIntoSplits,
-): readonly OrderCallout[] =>
-  orders.orders
-    .filter((order) => which(order.status))
-    .map((order) => ({
-      id: order.id,
-      state: ORDER_WORDS[order.status],
-      why: whyItNeedsYou(order, owed[order.id], paidInto[order.id] !== undefined),
-      rest: whereTheRestIs(order.status),
-    }));
-
-/**
- * Counts only what it can stand behind. "Open" is the gateway's filter; "needs
- * you" is `needsYou`, a refund due, and the sentence is scoped to the endings
- * it counts rather than to owing in general: an order merely under way may
- * already be money taken against goods not sent. Goods delivered and not paid
- * are counted apart, as waiting on the buyer, so "nothing was delivered without
- * payment" is said only where it is true. What each order needs is said per
- * order in the callouts.
- */
-const ordersLede = (orders: OrderList, open: boolean): string => {
-  const wanting = orders.orders.filter((order) => needsYou(order.status)).length;
-  const held = orders.orders.filter((order) => waitsOnTheBuyer(order.status)).length;
-  const scope = open ? "open" : "";
-  const listed = `${countOf(orders.orders.length, `${scope} order`.trim())} listed.`;
-  const waits = held === 1 ? "waits" : "wait";
-
-  if (wanting === 0 && held === 0) {
-    return `${listed} No refunds are due, and nothing was delivered without payment.`;
-  }
-  if (wanting === 0) {
-    return `${listed} No refunds are due. ${countOf(held, "order")} ${held === 1 ? "was" : "were"} delivered without payment and ${waits} on the buyer, as set out below.`;
-  }
-  const needing = `${countOf(wanting, "order")} ${wanting === 1 ? "needs" : "need"} you`;
-  return held === 0
-    ? `${listed} ${needing}, and each one is set out below.`
-    : `${listed} ${needing}, and ${held} delivered without payment ${waits} on the buyer; each one is set out below.`;
-};
-
-/**
- * Orders carry the test flag too, and their sums would otherwise be taken for
- * money that moved.
- */
-const testOrders = (orders: OrderList): string | null => {
-  const tests = orders.orders.filter((order) => order.test).length;
-  if (tests === 0) {
-    return null;
-  }
-  return tests === orders.orders.length
-    ? "Every order here is a test purchase: no real money moved."
-    : `${countOf(tests, "order")} here ${tests === 1 ? "is a test purchase" : "are test purchases"}: no real money moved for ${tests === 1 ? "it" : "those"}.`;
 };
 
 /**
@@ -492,29 +514,27 @@ const testOrders = (orders: OrderList): string | null => {
  * guessing the commonest cause.
  */
 const OWED_BECAUSE: Readonly<Record<RefundCause, string>> = {
-  refused:
-    "The payment was received, then your integration refused the order, so the product was not delivered.",
-  deadline_passed:
-    "The payment was received, the delivery window ran out, and the product was not delivered.",
-  merchant_left:
-    "The payment was received, and the order closed undelivered when you left Agentify.",
+  refused: "Paid, then your integration refused the order, so nothing was delivered.",
+  deadline_passed: "Paid, but the delivery window ran out before the product was delivered.",
+  merchant_left: "Paid, and the order closed undelivered when you left Agentify.",
   charge_confirmed_late:
-    "The payment network confirmed the payment only after we had stopped waiting for it and closed the order, so the product was not delivered.",
+    "Paid, but the payment network confirmed the payment only after we had stopped waiting for it and closed the order, so nothing was delivered.",
 };
 
 /**
  * A refund owes the buyer the whole price, though a payout split paid the
  * merchant only their share of it: the split gives Agentify's commission back
- * to nobody.
+ * to nobody. Held goods are released by the buyer's own second payment for
+ * the same order, never by a new purchase, which would deliver twice.
  */
-const whyItNeedsYou = (
+const whatHappened = (
   order: OrderList["orders"][number],
   cause: RefundCause | undefined,
   intoASplit: boolean,
 ): string =>
   order.status === "refund_due"
-    ? `${cause === undefined ? "The payment was received and the product was not delivered." : OWED_BECAUSE[cause]} You return the full price, ${money(order.price)}, from your own wallet${intoASplit ? "; the commission stays with Agentify" : ""}. A late delivery still clears the debt.`
-    : "Your integration returned the product, but the payment did not go through, so the product was not released to the buyer. The order stays open.";
+    ? `${cause === undefined ? "Paid, and the product was not delivered." : OWED_BECAUSE[cause]} Return the full price, ${money(order.price)}, to the buyer from your own wallet${intoASplit ? "; the commission stays with Agentify" : ""}. A late delivery still clears the debt.`
+    : "Your integration delivered, but the payment failed, so the goods are held. The buyer can pay again for this same order; if that payment settles, the goods are released and the order closes.";
 
 const sharesIn = (
   price: { readonly amount: string; readonly currency: string },
@@ -522,16 +542,16 @@ const sharesIn = (
 ): Shares | null => (terms === undefined ? null : sharesOf(price, terms));
 
 /**
- * A refund is a thing to go and do, and the sentence before says all of it.
- * Held goods are not: what can still happen is a payment somebody else makes,
- * and the portal says what settles it.
+ * How a refund is made is linked once, over the refunds. Held goods are not
+ * the merchant's to act on: what can still happen is a payment somebody else
+ * makes, and the documentation says what settles it.
  */
-const whereTheRestIs = (status: OrderList["orders"][number]["status"]): Rest | null =>
+const whereTheRestIs = (status: OrderStatus): Rest | null =>
   status === "refund_due"
     ? null
     : {
         href: "/docs/orders#you-delivered-and-the-payment-did-not-execute",
-        words: "What can still happen to it",
+        words: "What can still happen",
       };
 
 // --- receipts ----------------------------------------------------------------

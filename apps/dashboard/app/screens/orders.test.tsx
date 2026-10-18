@@ -139,6 +139,7 @@ describe("searching the orders", () => {
     expect(searched("ord_17ff…11aa")).toStrictEqual([SAME_HEAD]);
     expect(searched("ord_4727…7de3")).toStrictEqual([SAME_TAIL]);
     expect(searched("ord_17ff…a18b")).toStrictEqual([]);
+    expect(searched("ord_17ff…7de3…")).toStrictEqual([]);
     expect(searched("…")).toStrictEqual([]);
   });
 
