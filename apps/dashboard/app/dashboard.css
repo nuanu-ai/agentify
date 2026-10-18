@@ -365,44 +365,6 @@ td.control {
   text-align: right;
 }
 
-/* On a phone and a tablet, where the frame has no sidebar, the orders' filter
-   is the list's own control, on a row of its own right above the list, rather
-   than beside the words. */
-@media (max-width: 910px) {
-  .lede:has(> .filter) {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .lede:has(> .filter) > div {
-    flex: none;
-  }
-  .lede > .filter {
-    align-self: flex-end;
-  }
-}
-
-.filter {
-  display: flex;
-  gap: 6px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-control);
-  padding: 3px;
-}
-
-.filter a,
-.filter span {
-  padding: 6px 14px;
-  font-size: 0.875rem;
-  border-radius: 2px;
-  color: var(--muted);
-}
-
-.filter .here {
-  background: var(--raised);
-  color: var(--fg);
-  font-weight: 500;
-}
-
 /* --- notes and summaries ------------------------------------------------ */
 
 /* Secondary notes stay part of the reading flow rather than looking like an
@@ -844,10 +806,6 @@ td.control {
 /* A heading over a group of rows, with its count in a pill. */
 .group {
   margin-top: 28px;
-}
-
-.group > .callout {
-  margin: 12px 0 0;
 }
 
 .group-head {
