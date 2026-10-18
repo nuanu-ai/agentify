@@ -539,6 +539,12 @@ describe("the protected product check", () => {
     return settingFor(url);
   };
 
+  /** A settings document as `wc/v3` writes one: the setting's own id beside its value. */
+  const settingAt = (url: string, value: string | boolean) => ({
+    id: url.split("/").at(-1),
+    value,
+  });
+
   it("accepts a physical simple product as a parcel, judged by the shop's shipping settings", async () => {
     // A shop whose download settings would refuse every file, or will not show
     // them, still sells a parcel, and no file is asked for.
@@ -654,6 +660,35 @@ describe("the protected product check", () => {
       );
 
       expect(read, requested).toMatchObject({ ok: false, again: false });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("refuses a settings document that names another setting, or none", async () => {
+    // A cache that took one setting's address for another's would lend the
+    // other setting's answer to the one asked for.
+    for (const answered of [
+      { id: "woocommerce_downloads_redirect_fallback_allowed", value: "no" },
+      { value: "no" },
+    ]) {
+      stand = await shopAnswering((asked) => {
+        if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+        if (asked.url.includes("woocommerce_downloads_require_login")) {
+          return { status: 200, body: answered };
+        }
+        if (asked.url.includes("/settings/")) {
+          return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
+        }
+        return { status: 200, body: productDocument() };
+      });
+
+      const read = await inspectProduct(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, "11"),
+      );
+
+      expect(read, JSON.stringify(answered)).toMatchObject({ ok: false, again: false });
       await stand.close();
       stand = null;
     }
