@@ -1716,7 +1716,7 @@ describe("what the integrations screen says about a shop", () => {
     await running.signIn();
 
     const html = (await running.get("/cards")).html;
-    const empty = html.slice(html.indexOf('class="empty-start"'));
+    const empty = html.slice(html.indexOf('class="list list-empty"'));
 
     expect(/<a class="button button-primary" href="([^"]*)"/.exec(empty)?.[1]).toBe(
       "/docs/quickstart",
@@ -2184,14 +2184,28 @@ describe("one integration at a time", () => {
     expect(await running.harnessed.gateway.sellsThrough(merchantId)).toBe("woocommerce");
   });
 
-  it("says beside each of the code's cards why it is off sale while the shop sells", async () => {
+  it("says once over the cards why the code's cards are off sale while the shop sells", async () => {
+    // Said beside every card it would be the same sentence on every row; the
+    // row says only that the card is off sale, and offers no switch that would
+    // put it back.
     const running = await started();
     await running.signIn();
     await publishedByTheCode(running);
     await connectTheShop(running);
 
-    const cards = readable((await running.get("/cards")).html);
+    const html = (await running.get("/cards")).html;
+    const rows = [...html.matchAll(/<li class="list-row[^"]*">([\s\S]*?)<\/li>/g)].map(
+      ([, row = ""]) => row,
+    );
 
-    expect(cards).toMatch(/while you sell through your WooCommerce shop/i);
+    expect([...html.matchAll(/data-reason="([^"]+)"/g)].map(([, reason]) => reason)).toContain(
+      "through_shop",
+    );
+    expect(rows).not.toHaveLength(0);
+    for (const row of rows) {
+      expect(readable(row)).toContain("Off sale");
+      expect(readable(row)).not.toMatch(/WooCommerce/);
+      expect(row).not.toMatch(/<form/);
+    }
   });
 });

@@ -53,10 +53,6 @@ export const readinessSeenBy = (viewer: Viewer): Readiness =>
     viewer.mode,
   );
 
-/** As far as this screen knows. */
-export const refusedForNoName = (viewer: Viewer): boolean =>
-  readinessSeenBy(viewer).missing.includes(MERCHANT_FINDINGS.NO_SELLER_NAME);
-
 /**
  * What is missing that the merchant sets in Settings: everything the rule finds
  * missing except the operator's approval, which nobody sets there (on live,

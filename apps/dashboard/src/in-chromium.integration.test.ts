@@ -62,7 +62,8 @@ beforeAll(async () => {
   });
   await identity.make(PERSON, harnessed.merchant.id);
   // Cards enough to scroll a short window, published as the merchant's own
-  // code publishes them.
+  // code publishes them, and one price asked for and never paid, so the orders
+  // have a list to search and narrow.
   for (const room of [101, 102, 103, 104]) {
     const published = await harnessed.gateway.publishCard(harnessed.merchant.id, {
       merchant_item_id: `room-${room}`,
@@ -73,6 +74,7 @@ beforeAll(async () => {
       fulfillment: "sync",
     });
     if (!published.ok) throw new Error("the test's card was not published");
+    if (room === 101) await harnessed.gateway.beginPurchase(published.id, {});
   }
   await identity.requestLink(PERSON, "default");
   const link = new URL(/(https?:\/\/\S+)/.exec(mails.at(-1)?.body ?? "")?.[1] ?? "");
@@ -106,9 +108,14 @@ beforeAll(async () => {
     if (request.method === "GET" && request.path.endsWith(".data")) asked.push(request.path);
     // The receipts' data and the open orders' arrive late, as from a slow
     // gateway, so what a page shows before its data is there can be seen.
+    // So do the searched cards a press leads back to, so what the page marks
+    // before they arrive can be seen too.
     if (
       request.path === `${BASE}/receipts.data` ||
-      (request.path === `${BASE}/orders.data` && request.query.open === "true")
+      (request.path === `${BASE}/orders.data` && request.query.show === "open") ||
+      (request.method === "GET" &&
+        request.path === `${BASE}/cards.data` &&
+        request.query.q === "suite")
     ) {
       setTimeout(next, SLOW_MS);
       return;
@@ -244,6 +251,45 @@ describe("a press answered on its own page", () => {
     expect(await row.evaluate((element) => element.getBoundingClientRect().top)).toBe(before);
     await page.context().close();
   });
+
+  it("keeps the segment marked while the cards arrive, and the search and the page once they have", async () => {
+    // Suites enough to fill more than one page of the cards on sale.
+    for (let suite = 1; suite <= 55; suite += 1) {
+      const published = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+        merchant_item_id: `suite-${suite}`,
+        title: "A suite for the night",
+        description: `One night in suite ${suite}`,
+        price: { amount: "180.00", currency: "USD" },
+        result: { access_code: { type: "string" } },
+        fulfillment: "sync",
+      });
+      if (!published.ok) throw new Error("the test's card was not published");
+    }
+    const listing = `${origin}${BASE}/cards?q=suite&show=on-sale&page=2`;
+    const page = await onTheCards();
+    await page.goto(listing);
+    await page.waitForLoadState("networkidle");
+    const marked = () => page.locator(".segments .here").textContent();
+
+    const arrived = page.waitForResponse(
+      (answer) =>
+        answer.request().method() === "GET" &&
+        new URL(answer.url()).pathname === `${BASE}/cards.data`,
+    );
+    await page.locator(".list-row form[action*='pause='] button").first().click();
+    await page.waitForTimeout(400);
+    const meanwhile = await marked();
+    await arrived;
+    // The pressed button is busy until the cards answering it are drawn.
+    await page.waitForFunction(() => document.querySelector("[aria-busy='true']") === null);
+
+    expect(meanwhile).toContain("On sale");
+    expect(page.url()).toBe(listing);
+    expect(await marked()).toContain("On sale");
+    expect(await page.getByRole("searchbox", { name: "Search cards" }).inputValue()).toBe("suite");
+    expect(await page.locator(".cut").textContent()).toContain("Showing 51–54 of 54");
+    await page.context().close();
+  });
 });
 
 describe("a copy button once the page's script runs", () => {
@@ -281,10 +327,10 @@ describe("a click under the dashboard's prefix", () => {
 
     await page.goto(`${origin}${BASE}/orders`);
     await page.waitForLoadState("networkidle");
-    await page.locator(".filter a", { hasText: "Open" }).click();
+    await page.locator(".segments a", { hasText: "Open" }).click();
     await page.waitForTimeout(400);
-    expect(await page.locator(".filter .here").textContent()).toBe("Open");
-    await page.waitForURL(`${origin}${BASE}/orders?open=true`);
+    expect(await page.locator(".segments .here").textContent()).toMatch(/^Open/);
+    await page.waitForURL(`${origin}${BASE}/orders?show=open`);
     await page.context().close();
   });
 });
@@ -386,14 +432,14 @@ describe("the sections on a long page", () => {
 
     await page.locator(".site-menu > summary").click();
     await panel.waitFor({ state: "visible" });
-    // The orders' filter leads to the same page, which is drawn again in
+    // The orders' segment leads to the same page, which is drawn again in
     // place rather than anew; the menu is open over it.
-    await page.locator(".filter a", { hasText: "Open" }).focus();
+    await page.locator(".segments a", { hasText: "Open" }).focus();
     await page.keyboard.press("Enter");
-    await page.waitForURL(`${origin}${BASE}/orders?open=true`);
+    await page.waitForURL(`${origin}${BASE}/orders?show=open`);
     await page.waitForLoadState("networkidle");
 
-    expect(await page.locator(".filter .here").textContent()).toBe("Open");
+    expect(await page.locator(".segments .here").textContent()).toMatch(/^Open/);
     expect(await panel.isVisible()).toBe(false);
     await page.context().close();
   });

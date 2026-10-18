@@ -104,13 +104,6 @@ export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({
  */
 export const SITE_IN_SETTINGS = "Set your shop's site in Settings, then import again.";
 
-/**
- * Says what is known, that there is no approval, and not that a review is under
- * way, since nothing records one.
- */
-export const APPROVAL_PENDING =
-  "Agentify has not approved your merchant for live sales yet, so your cards are refused on the live channel. If an Agentify operator is coordinating your pilot, ask them for the approval.";
-
 export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sales.";
 
 /**

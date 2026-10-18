@@ -57,7 +57,7 @@ const SAID: Readonly<Record<Copied, string>> = {
  * last four characters with an ellipsis between; one too short to gain from
  * it is left whole.
  */
-const shortened = (value: string): string => {
+export const shortened = (value: string): string => {
   const cut = value.indexOf("_") + 1;
   const prefix = value.slice(0, cut);
   const rest = value.slice(cut);
@@ -70,11 +70,16 @@ const shortened = (value: string): string => {
  * reachable before the page's script runs and without the clipboard; where
  * copying fails, the whole value takes the short one's place to be selected.
  * `what` names it in the button's words, "order ID", and the short value
- * follows, so a list of buttons read out tells its rows apart.
+ * follows, so a list of buttons read out tells its rows apart. `whole` prints
+ * all of it, for the place a narrow row opens to show what it shortened.
  */
-export function Ident({ value, what }: Readonly<{ value: string; what: string }>) {
+export function Ident({
+  value,
+  what,
+  whole = false,
+}: Readonly<{ value: string; what: string; whole?: boolean }>) {
   const { copied, copy } = useCopy(value);
-  const short = shortened(value);
+  const short = whole ? value : shortened(value);
   return (
     <span className="ident">
       <span title={value}>

@@ -48,20 +48,24 @@ const FOOT = [
 ] as const;
 
 /**
- * `heading` is the bar's words where they are not the window's title. The
- * banner is the merchant's pages' layout's, read once for every section; a
- * page drawn outside that layout draws none.
+ * `heading` is the bar's words where they are not the window's title, and
+ * `action` a control about the whole page, drawn at the bar's end at every
+ * width, so a phone reaches it without scrolling past the page. The banner is
+ * the merchant's pages' layout's, read once for every section; a page drawn
+ * outside that layout draws none.
  */
 export function Frame({
   tab,
   title,
   heading = title,
+  action,
   children,
 }: Readonly<{
   /** Absent on a page that is none of the sections. */
   tab?: Tab;
   title: string;
   heading?: string;
+  action?: ReactNode;
   children: ReactNode;
 }>) {
   const chrome = useChrome();
@@ -126,6 +130,7 @@ export function Frame({
           <div className="top">
             <div className="top-inner">
               <h1 className="top-title">{heading}</h1>
+              {action}
             </div>
           </div>
           <main className="app-content" id="main">

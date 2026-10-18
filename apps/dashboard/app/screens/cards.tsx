@@ -1,106 +1,104 @@
 import { Button } from "@agentify/ui";
-import type { CardAside, CardControl, CardsView } from "../../src/views.js";
+import type { CardControl, CardPrice, CardsView } from "../../src/views.js";
 import { CodeCopy } from "../components/copy.js";
-import { Cell, List, Row, RowMore } from "../components/list.js";
+import { Cell, List, ListEmpty, Row, RowMore } from "../components/list.js";
 import { CutNote, ListTools, NothingHere } from "../components/listing.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
+import styles from "./cards.module.css";
 
-const Aside = ({ aside }: Readonly<{ aside: CardAside }>) =>
-  "facts" in aside ? (
-    aside.facts
-  ) : (
-    <>
-      Price on the card since <Moment at={aside.since} />
-    </>
-  );
+type Place = CardsView["listing"]["place"];
+
+/**
+ * The list a switch is pressed on, carried in its form, so the press leads
+ * back to the search, the segment and the page the merchant was reading.
+ */
+const Kept = ({ place }: Readonly<{ place: Place }>) =>
+  Object.entries(place).map(([name, value]) => (
+    <input key={name} type="hidden" name={name} value={value} autoComplete="off" />
+  ));
+
+const Since = ({ priced }: Readonly<{ priced: Extract<CardPrice, { since: unknown }> }>) => (
+  <>
+    Price on the card since <Moment at={priced.since} />
+  </>
+);
 
 const Control = ({
   id,
   control,
-  base,
-}: Readonly<{ id: string; control: CardControl; base: string }>) => {
-  if (control.kind === "switch") {
-    return (
+  place,
+}: Readonly<{ id: string; control: CardControl; place: Place }>) => {
+  if (control.kind === "none") return null;
+  if (control.kind === "reason") return <Cell at="note">{control.text}</Cell>;
+  return (
+    <Cell at="action">
       <PostForm className="inline" action={`/cards?${new URLSearchParams({ [control.verb]: id })}`}>
         {(pending) => (
-          <Button
-            compact
-            variant={control.verb === "resume" ? "primary" : "secondary"}
-            pending={pending}
-          >
-            {control.verb === "resume" ? "Resume" : "Pause"}
-          </Button>
+          <>
+            <Kept place={place} />
+            <Button
+              compact
+              variant={control.verb === "resume" ? "primary" : "secondary"}
+              pending={pending}
+            >
+              {control.verb === "resume" ? "Resume" : "Pause"}
+            </Button>
+          </>
         )}
       </PostForm>
-    );
-  }
-  if (control.kind === "unset") {
-    return (
-      <span className="quiet">
-        Not on sale until you set {control.what} in <a href={`${base}/settings`}>Settings</a>.
-        {control.waiting}
-      </span>
-    );
-  }
-  return <span className="quiet">{control.text}</span>;
+    </Cell>
+  );
 };
 
-/** The control that stops or restarts all selling, where the merchant has one. */
-const AllSelling = ({ allSelling }: Readonly<{ allSelling: CardsView["allSelling"] }>) =>
-  allSelling === null ? null : (
+/**
+ * The control that stops or restarts all selling, where the merchant has one,
+ * for the end of the page's title bar.
+ */
+export function AllSelling({ view }: Readonly<{ view: CardsView }>) {
+  const { allSelling, listing } = view;
+  if (allSelling === null) return null;
+  return (
     <PostForm className="inline" action={`/cards?selling=${allSelling.verb}`}>
       {(pending) => (
-        <Button variant={allSelling.verb === "resume" ? "primary" : "secondary"} pending={pending}>
-          {allSelling.label}
-        </Button>
+        <>
+          <Kept place={listing.place} />
+          <Button
+            compact
+            variant={allSelling.verb === "resume" ? "primary" : "secondary"}
+            pending={pending}
+          >
+            {allSelling.label}
+          </Button>
+        </>
       )}
     </PostForm>
   );
+}
 
 export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: string }>) {
-  const { allSelling, listing, empty } = view;
-  const notes = (
-    <>
-      <p className="note">
-        {view.sellingNote}
-        <Rest rest={view.sellingRest} />
-      </p>
-      <p className="note">
-        The link icon beside a product code copies the address an agent buys the card at. It is
-        meant for an agent or a test from a terminal: without payment it returns a payment request,
-        not a web page. A card that is off sale cannot be bought there.
-      </p>
-    </>
-  );
+  const { listing, empty, note } = view;
   if (empty !== null) {
     return (
-      <>
-        <div className="lede">
-          <div />
-          <div className="actions">
-            <AllSelling allSelling={allSelling} />
-          </div>
-        </div>
-        <div className="empty-start">
-          <p>{empty.why}</p>
-          <div className="connect-actions">
-            <a className="button button-primary" href="/docs/quickstart">
-              Publish your first card through the SDK
+      <ListEmpty>
+        <p>{empty.says}</p>
+        <div className={styles.ways}>
+          <a className="button button-primary" href="/docs/quickstart">
+            Publish a card through the SDK
+          </a>
+          {empty.woo ? (
+            <a className="button button-secondary" href={`${base}/woocommerce`}>
+              Connect a WooCommerce shop
             </a>
-            {empty.woo ? (
-              <a className="button button-secondary" href={`${base}/woocommerce`}>
-                Connect a WooCommerce shop
-              </a>
-            ) : null}
-          </div>
+          ) : null}
         </div>
-        {notes}
-      </>
+      </ListEmpty>
     );
   }
+  // The last column holds a button, unless a card has a reason of its own to say there.
+  const reasoned = listing.rows.some((row) => row.control.kind === "reason");
   return (
     <>
       <ListTools
@@ -108,15 +106,16 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
         path="/cards"
         label="Search cards"
         placeholder="Search by name or product code"
-      >
-        <AllSelling allSelling={allSelling} />
-      </ListTools>
+      />
+      {view.byCode === null || listing.rows.length === 0 ? null : (
+        <p className={styles.byCode}>{view.byCode}</p>
+      )}
       {listing.rows.length === 0 ? (
         <NothingHere listing={listing} />
       ) : (
         <List
           label="Product cards"
-          columns="minmax(12rem, 1fr) 7rem 9rem 9rem minmax(6rem, 15rem)"
+          columns={`minmax(12rem, 1fr) 7rem 12rem 8.5rem ${reasoned ? "minmax(6.5rem, 12rem)" : "6.5rem"}`}
           head={["Product", { text: "Price", end: true }, "Delivery", "State", ""]}
         >
           {listing.rows.map((row) => (
@@ -124,29 +123,52 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
               <Cell at="main">
                 <Cell at="title">{row.title}</Cell>
                 <Cell at="aside">
-                  <Aside aside={row.aside} />
+                  {"asked" in row.priced ? (
+                    "Price asked at purchase"
+                  ) : (
+                    <Since priced={row.priced} />
+                  )}
                 </Cell>
                 <Cell at="ident">
                   <CodeCopy code={row.itemId} address={row.buy} />
                 </Cell>
               </Cell>
               <Cell at="amount">{row.price}</Cell>
-              <Cell at="fact">{row.delivery}</Cell>
+              <Cell at="fact">
+                {row.delivery.says}
+                {row.delivery.byDefault === null ? null : (
+                  <>
+                    {" "}
+                    <a href={row.delivery.byDefault.href}>{row.delivery.byDefault.words}</a>
+                  </>
+                )}
+                {"asked" in row.priced ? (
+                  <span className={styles.narrowOnly}> · price asked at purchase</span>
+                ) : null}
+              </Cell>
               <Cell at="state">
                 <Word word={row.state} />
               </Cell>
-              <Cell at={row.control.kind === "switch" ? "action" : "note"}>
-                <Control id={row.id} control={row.control} base={base} />
-              </Cell>
-              <RowMore summary="Price and delivery">
-                <Aside aside={row.aside} />
-              </RowMore>
+              <Control id={row.id} control={row.control} place={listing.place} />
+              {"since" in row.priced ? (
+                <RowMore summary="Price date">
+                  <Since priced={row.priced} />
+                </RowMore>
+              ) : null}
             </Row>
           ))}
         </List>
       )}
       <CutNote cut={listing.cut} />
-      {notes}
+      <div className={styles.notes}>
+        <p>
+          {note.says}
+          <Rest rest={note.rest} />
+        </p>
+        {listing.rows.length === 0 ? null : (
+          <p>The link icon beside a product code copies the address an agent buys the card at.</p>
+        )}
+      </div>
     </>
   );
 }

@@ -91,7 +91,7 @@ const receipt = (id: string, test: boolean) => ({
 });
 
 const ordersPage = (orders: OrderList, viewer: Viewer = SEEN_BY): string =>
-  served(() => <OrdersScreen view={ordersView(viewer.mode, cards, orders, false)} />);
+  served(() => <OrdersScreen view={ordersView(viewer.mode, cards, orders, orders)} />);
 
 const receiptsPage = (receipts: ReceiptList, viewer: Viewer = SEEN_BY): string =>
   served(() => <ReceiptsScreen view={receiptsView(viewer, cards, receipts)} />);
@@ -131,6 +131,12 @@ const amountsIn = (html: string): string[] =>
     ),
   ].map((cell) => readable(cell[1] ?? cell[2] ?? ""));
 
+/** What each order's row opens to on a narrow screen. */
+const openedIn = (html: string): string[] =>
+  [...html.matchAll(/<div class="more-body">([\s\S]*?)<\/div><\/details>/g)].map((opened) =>
+    readable(opened[1] ?? ""),
+  );
+
 describe("the receipts of sales that went out", () => {
   it("counts a parcel handed to a carrier beside goods handed over, and says which it is", () => {
     // A shipped parcel is counted with the delivered ones, under a label that
@@ -144,6 +150,37 @@ describe("the receipts of sales that went out", () => {
     expect(text).toContain("Delivered or shipped 2 of 2 receipts");
     expect(text).toContain("shipped");
   });
+
+  it("lists the latest payment first, whatever order the gateway gave them in", () => {
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [
+        { ...receipt("rcp_old", false), paid_at: "2026-08-26T09:00:03Z" },
+        { ...receipt("rcp_new", false), paid_at: "2026-08-26T11:00:03Z" },
+        { ...receipt("rcp_mid", false), paid_at: "2026-08-26T10:00:03Z" },
+      ],
+    });
+
+    const text = readable(receiptsPage(receipts));
+    const at = (id: string) => text.indexOf(id);
+
+    expect(at("rcp_new")).toBeLessThan(at("rcp_mid"));
+    expect(at("rcp_mid")).toBeLessThan(at("rcp_old"));
+  });
+
+  it("shows a long receipt ID and its order's ID short, each with a button that copies it whole", () => {
+    const id = "rcp_d59f0110946cfebd26bbf9ae7de0134e";
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [{ ...receipt(id, false), order_id: "ord_d59f0110946cfebd26bbf9ae7de0134e" }],
+    });
+
+    const html = receiptsPage(receipts);
+
+    expect(html).toContain(">rcp_d59f…134e<");
+    expect(html).toContain(">ord_d59f…134e<");
+    expect(html).toContain(`aria-label="Copy the whole receipt ID rcp_d59f…134e"`);
+    expect(html).toContain(`aria-label="Copy the whole order ID ord_d59f…134e"`);
+    expect(html).toContain(`title="${id}"`);
+  });
 });
 
 describe("a list where some of the money was real and some was not", () => {
@@ -156,6 +193,23 @@ describe("a list where some of the money was real and some was not", () => {
 
     expect(text).toContain("1 order here is a test purchase");
     expect(text).not.toContain("Every order here is a test purchase");
+  });
+
+  it("marks each test order's sum, in every row the order is drawn in, and no real one", () => {
+    const orders: OrderList = OrderListSchema.parse({
+      orders: [
+        { ...order("ord_1", true), status: "refund_due" },
+        order("ord_2", false),
+        order("ord_3", false),
+      ],
+    });
+
+    const html = ordersPage(orders);
+    const rows = html.split("<li").slice(1);
+
+    // The refund's own row and its line in the list beside the two real sales.
+    expect(rows.filter((row) => row.includes(">test<"))).toHaveLength(2);
+    expect(rows.filter((row) => row.includes("ord_2") && row.includes(">test<"))).toHaveLength(0);
   });
 
   it("marks the test rows and leaves the real ones alone", () => {
@@ -183,6 +237,7 @@ describe("a list where some of the money was real and some was not", () => {
     expect(readable(receiptsPage(receipts, ON_LIVE))).not.toContain("test purchase");
     expect(readable(ordersPage(orders, ON_LIVE))).not.toContain("test purchase");
     expect(receiptsPage(receipts, ON_LIVE)).not.toContain(">test<");
+    expect(ordersPage(orders, ON_LIVE)).not.toContain(">test<");
   });
 
   it("says once on the live site, which draws no band, that every row is a test", () => {
@@ -217,42 +272,6 @@ describe("a list where some of the money was real and some was not", () => {
   });
 });
 
-describe("whether a live merchant is approved, on the cards", () => {
-  // A card off sale for want of the operator's approval says so.
-  const live = (approved: boolean): Viewer => ({
-    ...SEEN_BY,
-    mode: "live",
-    sellerName: "Freeland",
-    payout: { wallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" },
-    liveApproval: approved,
-  });
-  const offSale = MerchantCardListSchema.parse({
-    ...cards,
-    cards: cards.cards.map((entry) => ({ ...entry, selling: "paused" })),
-  });
-  const cardsPage = (viewer: Viewer, list: typeof cards): string =>
-    served(() => (
-      <CardsScreen view={cardsView(viewer, list, "https://agentify.ad")} base={viewer.base} />
-    ));
-
-  it("says on an empty Cards page that publishing waits for the approval", () => {
-    // Without the approval every live publish is refused, so an unapproved
-    // merchant's Cards page is the empty one, where they look for why nothing
-    // appears.
-    const none = MerchantCardListSchema.parse({ ...cards, cards: [] });
-
-    expect(readable(cardsPage(live(false), none))).toMatch(/not approved your merchant/);
-    expect(readable(cardsPage(live(true), none))).not.toMatch(/approv/);
-  });
-
-  it("says a card is off sale because the approval is still to come", () => {
-    const waiting = readable(cardsPage(live(false), offSale));
-
-    expect(waiting).toMatch(/not approved your merchant/);
-    expect(waiting).not.toMatch(/cannot tell/);
-  });
-});
-
 describe("the shares of a sale paid into the merchant's payout split", () => {
   // Computed by hand in whole millionths of a dollar, USDC's smallest unit,
   // each share rounded down as the split rounds it: 0.29 at 99.9% is 289710
@@ -273,16 +292,21 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     });
     const paidInto = Object.fromEntries(orders.orders.map((one) => [one.id, SPLIT]));
 
-    const cells = amountsIn(
-      served(() => (
-        <OrdersScreen view={ordersView(SEEN_BY.mode, cards, orders, false, {}, paidInto)} />
-      )),
-    );
+    const html = served(() => (
+      <OrdersScreen
+        view={ordersView(SEEN_BY.mode, cards, orders, orders, undefined, {}, paidInto)}
+      />
+    ));
 
-    expect(cells).toStrictEqual(
+    // A wide row says the merchant's share under the price; the row a phone
+    // opens says both, beside the whole ID and the moment.
+    expect(amountsIn(html)).toStrictEqual(
+      SHARES.map(([price, merchant]) => `${price} USD ${merchant} to you`),
+    );
+    expect(openedIn(html)).toStrictEqual(
       SHARES.map(
         ([price, merchant, commission]) =>
-          `${price} USD ${merchant} to you ${commission} to Agentify`,
+          `ord_${price} ${merchant} to you ${commission} to Agentify Price set 2026-08-26 10:20:00 UTC`,
       ),
     );
   });
@@ -313,22 +337,24 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
   it("divides by the terms of the split the order was paid into, not by a rate of its own", () => {
     const orders: OrderList = OrderListSchema.parse({ orders: [pricedAt("80.00")] });
 
-    const [cell] = amountsIn(
-      served(() => (
-        <OrdersScreen
-          view={ordersView(
-            SEEN_BY.mode,
-            cards,
-            orders,
-            false,
-            {},
-            { "ord_80.00": AT_THREE_PERCENT },
-          )}
-        />
-      )),
-    );
+    const html = served(() => (
+      <OrdersScreen
+        view={ordersView(
+          SEEN_BY.mode,
+          cards,
+          orders,
+          orders,
+          undefined,
+          {},
+          {
+            "ord_80.00": AT_THREE_PERCENT,
+          },
+        )}
+      />
+    ));
 
-    expect(cell).toBe("80.00 USD ≈ 77.60 USD to you ≈ 2.40 USD to Agentify");
+    expect(amountsIn(html)).toStrictEqual(["80.00 USD ≈ 77.60 USD to you"]);
+    expect(openedIn(html)[0]).toContain("≈ 2.40 USD to Agentify");
   });
 
   it("shows no shares for an order paid to a wallet itself, before payments went to splits", () => {
@@ -338,18 +364,14 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
       orders: [pricedAt("80.00", "ord_split"), pricedAt("80.00", "ord_wallet")],
     });
 
-    const cells = amountsIn(
-      served(() => (
-        <OrdersScreen
-          view={ordersView(SEEN_BY.mode, cards, orders, false, {}, { ord_split: SPLIT })}
-        />
-      )),
-    );
+    const html = served(() => (
+      <OrdersScreen
+        view={ordersView(SEEN_BY.mode, cards, orders, orders, undefined, {}, { ord_split: SPLIT })}
+      />
+    ));
 
-    expect(cells).toStrictEqual([
-      "80.00 USD ≈ 79.92 USD to you ≈ 0.08 USD to Agentify",
-      "80.00 USD",
-    ]);
+    expect(amountsIn(html)).toStrictEqual(["80.00 USD ≈ 79.92 USD to you", "80.00 USD"]);
+    expect(openedIn(html)[1]).not.toContain("Agentify");
   });
 });
 
@@ -368,7 +390,8 @@ describe("a refund owed", () => {
             SEEN_BY.mode,
             cards,
             owing,
-            false,
+            owing,
+            undefined,
             { ord_owed: "deadline_passed" },
             {
               ord_owed: SPLIT,
@@ -377,7 +400,7 @@ describe("a refund owed", () => {
         />
       )),
     );
-    const callout = text.slice(text.indexOf("Refund due ord_owed"), text.indexOf("All orders"));
+    const callout = text.slice(text.indexOf("Needs you"), text.indexOf("All orders"));
 
     expect(callout).toMatch(/the full price, 80\.00 USD/);
     expect(callout).toMatch(/the commission stays with Agentify/);
@@ -393,11 +416,11 @@ describe("a refund owed", () => {
     });
 
     const text = readable(
-      served(() => <OrdersScreen view={ordersView(SEEN_BY.mode, cards, owing, false)} />),
+      served(() => <OrdersScreen view={ordersView(SEEN_BY.mode, cards, owing, owing)} />),
     );
-    const callout = text.slice(text.indexOf("Refund due ord_owed"), text.indexOf("All orders"));
+    const callout = text.slice(text.indexOf("Needs you"), text.indexOf("All orders"));
 
-    expect(callout).toMatch(/The payment was received and the product was not delivered/);
+    expect(callout).toMatch(/Paid, and the product was not delivered/);
     expect(callout).toMatch(/the full price, 80\.00 USD/);
     expect(callout).not.toMatch(/commission/);
   });
@@ -414,10 +437,12 @@ describe("an order delivered and not paid", () => {
   it("is not counted as needing the merchant, and says it waits on the buyer", () => {
     const text = readable(ordersPage(held));
 
-    expect(text).toContain("No refunds are due");
-    expect(text).toContain("1 order was delivered without payment and waits on the buyer");
-    expect(text).not.toMatch(/needs? you/);
-    expect(text).toContain("the payment did not go through");
+    expect(text).toContain("Waiting on the buyer 1 Nothing for you to do");
+    expect(text).not.toMatch(/needs? you/i);
+    expect(text).toContain("the payment failed, so the goods are held");
+    // Paid again for the same order, never bought again, which would deliver
+    // twice.
+    expect(text).toContain("The buyer can pay again for this same order");
   });
 
   it("is told apart from a refund due listed beside it", () => {
@@ -426,9 +451,13 @@ describe("an order delivered and not paid", () => {
     });
 
     const text = readable(ordersPage(both));
+    const at = (words: string) => text.indexOf(words);
 
-    expect(text).toContain("1 order needs you");
-    expect(text).toContain("1 delivered without payment waits on the buyer");
+    expect(text).toContain("Needs you 1");
+    expect(text).toContain("Waiting on the buyer 1");
+    expect(at("Needs you")).toBeLessThan(at("ord_owed"));
+    expect(at("ord_owed")).toBeLessThan(at("Waiting on the buyer"));
+    expect(at("Waiting on the buyer")).toBeLessThan(at("ord_held"));
   });
 });
 
@@ -441,7 +470,7 @@ describe("the state of each card", () => {
       cards: more.map((one, at) => ({ ...entry, id: `itm_${at}`, ...one })),
     });
   const wordsOf = (list: ReturnType<typeof listOf>, offSale: readonly string[] = []) =>
-    cardsView(SEEN_BY, list, "https://agentify.ad", false, {
+    cardsView(list, "https://agentify.ad", false, {
       through: "api",
       offSale,
     }).listing.rows.map((row) => row.state.text);
@@ -457,6 +486,43 @@ describe("the state of each card", () => {
     expect(wordsOf(list)).toStrictEqual(["On sale", "Paused by you", "Off sale"]);
   });
 
+  it("says beside a card the shop published that it is off sale while the code sells", () => {
+    // The banner names no reason for it: only this card's row can say which
+    // of the merchant's cards came from the shop.
+    const list = listOf("open", { selling: "paused", paused: false });
+    const html = served(() => (
+      <CardsScreen
+        view={cardsView(list, "https://agentify.ad", false, {
+          through: "api",
+          offSale: ["itm_0"],
+        })}
+        base=""
+      />
+    ));
+    const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
+
+    expect(readable(row)).toMatch(/off sale while you sell through your own code/i);
+    expect(row).not.toContain("<form");
+  });
+
+  it("gives a shop's card of a merchant who has left no reason of its own: they sell through nothing", () => {
+    const list = listOf("departed", { selling: "departed", paused: false });
+    const html = served(() => (
+      <CardsScreen
+        view={cardsView(list, "https://agentify.ad", false, {
+          through: "api",
+          offSale: ["itm_0"],
+        })}
+        base=""
+      />
+    ));
+    const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
+
+    expect(readable(row)).toContain("Off sale");
+    expect(readable(row)).not.toMatch(/own code/i);
+    expect(row).not.toContain("<form");
+  });
+
   it("does not call a card paused by the merchant while the other integration holds it", () => {
     // Resuming it would not put it on sale, so "Paused by you" would send the
     // merchant to a switch that changes nothing.
@@ -466,12 +532,95 @@ describe("the state of each card", () => {
   });
 });
 
+describe("how a card is delivered", () => {
+  const entry = cards.cards[0];
+  if (entry === undefined) throw new Error("the example catalogue has no card");
+  /** The delivery cell's words for a card of these fields. */
+  const deliveryOf = (card: Partial<typeof entry.card>) => {
+    const list = MerchantCardListSchema.parse({
+      selling: "open",
+      cards: [{ ...entry, card: { ...entry.card, ...card } }],
+    });
+    const html = served(() => (
+      <CardsScreen view={cardsView(list, "https://agentify.ad")} base="" />
+    ));
+    return readable(/<div class="cell cell-fact">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "");
+  };
+  const later = (seconds: number) =>
+    deliveryOf({ fulfillment: "async", fulfill_deadline_seconds: seconds });
+
+  it("says the window the goods are owed within beside the word for how they come", () => {
+    // The window is a promise the merchant answers for: an order still without
+    // goods at its end owes the buyer their money back.
+    expect(later(14_400)).toBe("Later, within 4 hours");
+    expect(later(3_600)).toBe("Later, within 1 hour");
+    expect(later(900)).toBe("Later, within 15 minutes");
+    expect(later(5_400)).toBe("Later, within 90 minutes");
+    expect(later(61)).toBe("Later, within 61 seconds");
+    expect(later(172_800)).toBe("Later, within 2 days");
+  });
+
+  it("says a parcel's time to reach a carrier, which is not the time it arrives", () => {
+    const parcel = deliveryOf({
+      fulfillment: "ship",
+      ship_within_seconds: 604_800,
+      price_check: "handler",
+      result: undefined,
+    });
+
+    expect(parcel).toContain("By parcel, to a carrier within 7 days");
+  });
+
+  it("says a card that names no window of its own is held to Agentify's, not to none", () => {
+    // An order that runs past the default window owes a refund as one past a
+    // window of the card's own would, so "Later" alone would read as no
+    // deadline at all.
+    const html = served(() => (
+      <CardsScreen
+        view={cardsView(
+          MerchantCardListSchema.parse({
+            selling: "open",
+            cards: [{ ...entry, card: { ...entry.card, fulfillment: "async" } }],
+          }),
+          "https://agentify.ad",
+        )}
+        base=""
+      />
+    ));
+    const fact = /<div class="cell cell-fact">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
+
+    expect(readable(fact)).toBe("Later, within Agentify's default window");
+    expect(fact).toContain('href="/docs/cards#goods-that-leave-later-than-the-answer"');
+  });
+
+  it("names no window for a card delivered at once", () => {
+    expect(deliveryOf({})).toBe("Immediate");
+  });
+});
+
 describe("a card's row on a phone", () => {
+  it("says on the row's own line that a price is asked at purchase", () => {
+    // The price shown may not be the one paid, so a phone does not hide that
+    // behind a press.
+    const entry = cards.cards[0];
+    if (entry === undefined) throw new Error("the example catalogue has no card");
+    const asked = MerchantCardListSchema.parse({
+      selling: "open",
+      cards: [{ ...entry, card: { ...entry.card, price_check: "handler" } }],
+    });
+    const html = served(() => (
+      <CardsScreen view={cardsView(asked, "https://agentify.ad")} base="" />
+    ));
+    const fact = /<div class="cell cell-fact">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
+
+    expect(readable(fact)).toContain("price asked at purchase");
+  });
+
   it("keeps what the narrow row leaves out in the row's opened part", () => {
     // The moment the price holds from is drawn under the title on a wide box
     // only; on a phone it is one press away, never gone.
     const html = served(() => (
-      <CardsScreen view={cardsView(SEEN_BY, cards, "https://agentify.ad")} base="" />
+      <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
     ));
     const opened = /<details class="cell-more">([\s\S]*?)<\/details>/.exec(html)?.[1] ?? "";
 
@@ -496,7 +645,6 @@ describe("a search over the cards", () => {
       served(() => (
         <CardsScreen
           view={cardsView(
-            SEEN_BY,
             list,
             "https://agentify.ad",
             false,
@@ -514,6 +662,69 @@ describe("a search over the cards", () => {
     expect(text).toContain("No card matches “suite”. Clear the search");
     expect(text).not.toContain("haven't published any cards");
     expect(page(many(0), "q=suite")).toContain("You haven't published any cards yet.");
+  });
+
+  it("finds only the card whose product code is the whole search, as a link to one card names it", () => {
+    // A link to the card with product code 1 must not list 11 and 21 beside it.
+    const coded = MerchantCardListSchema.parse({
+      selling: "open",
+      cards: ["1", "11", "21", "Lamp-1", "LAMP-10"].map((code, at) => ({
+        ...entry,
+        id: `itm_${at}`,
+        card: { ...entry.card, merchant_item_id: code, title: `Item ${code}` },
+      })),
+    });
+    const found = (q: string) =>
+      cardsView(
+        coded,
+        "https://agentify.ad",
+        false,
+        undefined,
+        new URLSearchParams({ q }),
+      ).listing.rows.map((row) => row.itemId);
+
+    expect(found("1")).toStrictEqual(["1"]);
+    expect(found(" lamp-1 ")).toStrictEqual(["Lamp-1"]);
+    // Any other search still finds a part of a title or a code.
+    expect(found("2")).toStrictEqual(["21"]);
+    expect(found("item")).toStrictEqual(["1", "11", "21", "Lamp-1", "LAMP-10"]);
+  });
+
+  it("says a search was read as a whole product code, in what it found and in what it did not", () => {
+    // Card 11 holds "1" and is off sale, so "no card off sale matches 1"
+    // would be false; the sentences say the search was read as a code.
+    const coded = MerchantCardListSchema.parse({
+      selling: "open",
+      cards: [
+        { ...entry, id: "itm_1", card: { ...entry.card, merchant_item_id: "1" } },
+        {
+          ...entry,
+          id: "itm_11",
+          selling: "paused",
+          paused: true,
+          card: { ...entry.card, merchant_item_id: "11" },
+        },
+      ],
+    });
+    const drawn = (address: string) =>
+      readable(
+        served(() => (
+          <CardsScreen
+            view={cardsView(
+              coded,
+              "https://agentify.ad",
+              false,
+              undefined,
+              new URLSearchParams(address),
+            )}
+            base=""
+          />
+        )),
+      );
+
+    expect(drawn("q=1")).toContain("Only the card with the product code “1”.");
+    expect(drawn("q=1&show=off-sale")).toContain("No card off sale has the product code “1”.");
+    expect(drawn("q=room")).not.toContain("product code “");
   });
 
   it("finds a card by its product code as well as its title", () => {

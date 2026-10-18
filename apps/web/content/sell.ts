@@ -194,19 +194,19 @@ export const SELL_LANDING = {
       help: ["Need help?", "Open the docs →"],
       account: { initial: "M", name: "Account", email: "merchant@example.com" },
       heading: "Product cards",
-      state: "sales enabled",
-      counts: [
-        ["Published", "2"],
-        ["Paused by you", "1"],
-      ],
       stop: "Pause all sales",
-      columns: ["Product", "Price", "Fulfillment", "State"],
-      rows: [
-        ["Monthly service access", "access-monthly", "5.00 USD", "immediate", "sales enabled"],
-        ["Specialty coffee", "coffee-250g", "12.00 USD", "shipped", "sales enabled"],
-        ["30-minute consultation", "consult-30", "30.00 USD", "after you confirm", "sales paused"],
+      segments: [
+        ["All", "3"],
+        ["On sale", "2"],
+        ["Off sale", "1"],
       ],
-      note: "A pause takes the card off sale. Orders you have already accepted still have to be fulfilled.",
+      columns: ["Product", "Price", "Delivery", "State"],
+      rows: [
+        ["Monthly service access", "access-monthly", "5.00 USD", "Immediate", "On sale"],
+        ["Specialty coffee", "coffee-250g", "12.00 USD", "By parcel", "On sale"],
+        ["30-minute consultation", "consult-30", "30.00 USD", "After you confirm", "Paused by you"],
+      ],
+      note: "A pause takes a card off sale; orders you have already accepted play out as usual.",
     },
   },
   questions: {

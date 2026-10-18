@@ -1,12 +1,13 @@
 import { Fragment } from "react";
-import { Link } from "react-router";
 import type { Shares } from "../../src/shares.js";
 import type { OrdersView } from "../../src/views.js";
 import { Ident } from "../components/copy.js";
-import { useGoingTo } from "../components/going-to.js";
 import { Cell, DayHeading, Group, List, ListEmpty, Row, RowMore } from "../components/list.js";
+import { CutNote, ListTools, NothingHere } from "../components/listing.js";
+import { Moment } from "../components/moment.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
+import styles from "./orders.module.css";
 
 /**
  * An unmarked sum for a test purchase is proof of a payment that never
@@ -29,54 +30,75 @@ export const SharesOf = ({ shares }: Readonly<{ shares: Shares | null }>) =>
     </>
   );
 
-/** Each order that needs saying in full, in its own box under its group's heading. */
-const Callouts = ({ callouts }: Readonly<{ callouts: OrdersView["needsYou"] }>) =>
-  callouts.map((callout) => (
-    <div className="callout" key={callout.id}>
-      <div className="what">
-        <Word word={callout.state} /> <Ident value={callout.id} what="order ID" />
-      </div>
-      <p className="why">
-        {callout.why}
-        {callout.rest === null ? null : <Rest rest={callout.rest} />}
-      </p>
+/**
+ * An order that needs saying in full, in a row of its own: its state, its
+ * product and its sum, then what happened and what is the merchant's to do,
+ * then its ID and when its price was set.
+ */
+const Told = ({ order }: Readonly<{ order: OrdersView["needsYou"][number] }>) => (
+  <li className={styles.told}>
+    <div className={styles.state}>
+      <Word word={order.state} />
     </div>
-  ));
+    <div className={styles.product}>{order.product}</div>
+    <div className={styles.amount}>
+      {order.amount}
+      <TestMark test={order.test} />
+    </div>
+    <p className={styles.why}>
+      {order.why}
+      {order.rest === null ? null : <Rest rest={order.rest} />}
+    </p>
+    <div className={styles.meta}>
+      <Ident value={order.id} what="order ID" />
+      <span>
+        Price set <Moment at={order.priceSet} />
+      </span>
+    </div>
+  </li>
+);
 
 export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
-  // The filter chosen is marked as soon as it is clicked.
-  const going = useGoingTo();
-  const open =
-    going?.pathname === "/orders"
-      ? new URLSearchParams(going.search).get("open") === "true"
-      : view.open;
+  const { listing } = view;
+  const here = listing.segments.find((one) => one.here);
+  const note = (
+    <p className="note">
+      Purchases that closed before they had a price are not listed; nothing was charged for them.
+    </p>
+  );
+  if (view.none) {
+    return (
+      <>
+        <ListEmpty>No orders yet.</ListEmpty>
+        {note}
+      </>
+    );
+  }
   return (
     <>
-      <div className="lede">
-        <div>
-          {view.lede === null ? null : <p>{view.lede}</p>}
-          {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
-        </div>
-        <div className="filter">
-          {open ? (
-            <span className="here">Open</span>
-          ) : (
-            <Link to="/orders?open=true" prefetch="intent">
-              Open
-            </Link>
-          )}
-          {open ? (
-            <Link to="/orders" prefetch="intent">
-              All
-            </Link>
-          ) : (
-            <span className="here">All</span>
-          )}
-        </div>
-      </div>
+      <ListTools
+        listing={listing}
+        path="/orders"
+        label="Search orders"
+        placeholder="Search by order ID or product"
+      />
+      {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
       {view.needsYou.length === 0 ? null : (
-        <Group title="Needs you" count={view.needsYou.length} warn>
-          <Callouts callouts={view.needsYou} />
+        <Group
+          title="Needs you"
+          count={view.needsYou.length}
+          warn
+          aside={
+            <a className={styles.end} href="/docs/money#if-the-buyer-did-not-get-the-goods">
+              How refunds work
+            </a>
+          }
+        >
+          <List label="Orders that need you" columns="1fr">
+            {view.needsYou.map((order) => (
+              <Told key={order.id} order={order} />
+            ))}
+          </List>
         </Group>
       )}
       {view.waitsOnTheBuyer.length === 0 ? null : (
@@ -85,63 +107,70 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
           count={view.waitsOnTheBuyer.length}
           aside="Nothing for you to do"
         >
-          <Callouts callouts={view.waitsOnTheBuyer} />
+          <List label="Orders waiting on the buyer" columns="1fr">
+            {view.waitsOnTheBuyer.map((order) => (
+              <Told key={order.id} order={order} />
+            ))}
+          </List>
         </Group>
       )}
-      <Group title={view.open ? "Open orders" : "All orders"} count={view.rows.length}>
-        {view.rows.length === 0 ? (
-          <ListEmpty>{view.empty}</ListEmpty>
+      <Group
+        title={here?.key === "open" ? "Open orders" : "All orders"}
+        count={here?.count ?? listing.rows.length}
+      >
+        {listing.rows.length === 0 ? (
+          <NothingHere listing={listing} />
         ) : (
           <List
-            label={view.open ? "Open orders" : "All orders"}
-            columns="6.5rem minmax(12rem, 1fr) 9rem 9rem 10rem"
+            label={here?.key === "open" ? "Open orders" : "All orders"}
+            columns="6rem minmax(12rem, 1fr) 9.5rem minmax(10rem, 13rem) 9rem"
             // "Price set", not "Bought": the moment is when the price was
             // fixed, and where the price is checked at purchase the buyer may
             // pay well after it.
             head={["Price set", "Product", { text: "Amount", end: true }, "State", "Order"]}
           >
-            {view.rows.map((row, at) => (
+            {listing.rows.map((row, at) => (
               <Fragment key={row.id}>
-                {row.day === view.rows[at - 1]?.day ? null : <DayHeading>{row.day}</DayHeading>}
-                <Row needsYou={row.needsYou}>
+                {row.day === listing.rows[at - 1]?.day ? null : <DayHeading>{row.day}</DayHeading>}
+                <Row>
                   <Cell at="fact">
                     {"time" in row.priceSet ? row.priceSet.time : row.priceSet.text}
                   </Cell>
-                  <Cell at="main">
-                    <Cell at="title">{row.product}</Cell>
-                    <Cell at="aside">
-                      <span className="mono">{row.itemId}</span>
-                    </Cell>
-                  </Cell>
+                  <Cell at="title">{row.product}</Cell>
                   <Cell at="amount">
-                    {row.amount}
-                    <TestMark test={row.test} />
-                    <Cell at="aside">
-                      <SharesOf shares={row.shares} />
-                    </Cell>
+                    <span className={styles.sum}>
+                      {row.amount}
+                      <TestMark test={row.test} />
+                    </span>
+                    {row.shares === null ? null : (
+                      <Cell at="aside">
+                        <div className={`under ${styles.sum}`}>{row.shares.merchant} to you</div>
+                      </Cell>
+                    )}
                   </Cell>
                   <Cell at="state">
-                    <Word word={row.state} />
+                    <span className={styles.wraps}>
+                      <Word word={row.state} />
+                    </span>
                   </Cell>
                   <Cell at="aside">
                     <Ident value={row.id} what="order ID" />
                   </Cell>
-                  <RowMore summary="Order ID and shares">
-                    <Ident value={row.id} what="order ID" />
-                    <div className="mono">{row.itemId}</div>
+                  <RowMore summary={row.shares === null ? "Order ID" : "Order ID and shares"}>
+                    <Ident value={row.id} what="order ID" whole />
                     <SharesOf shares={row.shares} />
+                    <div className="under">
+                      Price set <Moment at={row.priceSet} />
+                    </div>
                   </RowMore>
                 </Row>
               </Fragment>
             ))}
           </List>
         )}
+        <CutNote cut={listing.cut} />
       </Group>
-      <p className="note">
-        Purchases that closed before they had a price do not appear here: for example, you said the
-        product was out of stock, or you did not answer a price request. No money was charged for
-        them.
-      </p>
+      {note}
     </>
   );
 }

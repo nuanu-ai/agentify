@@ -1,7 +1,7 @@
 import { type ActionFunctionArgs, type LoaderFunctionArgs, useLoaderData } from "react-router";
-import { acted, answer, useChrome } from "../answer.js";
+import { acted, answer, formOf, useChrome } from "../answer.js";
 import { Frame } from "../components/frame.js";
-import { CardsScreen } from "../screens/cards.js";
+import { AllSelling, CardsScreen } from "../screens/cards.js";
 import { services, signedIn } from "../services.js";
 
 export async function loader(asked: LoaderFunctionArgs) {
@@ -12,11 +12,17 @@ export async function loader(asked: LoaderFunctionArgs) {
   );
 }
 
-/** The switches on the page, each naming itself in the address it posts to. */
+/**
+ * The switches on the page, each naming itself in the address it posts to and
+ * carrying the list it was pressed on.
+ */
 export async function action(asked: ActionFunctionArgs) {
-  const { url, context } = asked;
+  const { url, context, request } = asked;
   return acted(
-    async () => await context.get(services).selling.press(context.get(signedIn), url.searchParams),
+    async () =>
+      await context
+        .get(services)
+        .selling.press(context.get(signedIn), url.searchParams, await formOf(request)),
     asked,
   );
 }
@@ -24,7 +30,7 @@ export async function action(asked: ActionFunctionArgs) {
 export default function Cards() {
   const view = useLoaderData<typeof loader>();
   return (
-    <Frame tab="cards" title="Product cards">
+    <Frame tab="cards" title="Product cards" action={<AllSelling view={view} />}>
       <CardsScreen view={view} base={useChrome().base} />
     </Frame>
   );

@@ -198,7 +198,8 @@ td.ident {
  * An identifier breaks only where its column ends and nothing is inserted, so a
  * double-click still selects all of it. Its column has a width of its own,
  * because a wrapping column is the one a table takes room from first: a
- * thirty-six-character receipt identifier takes two lines at eighteen.
+ * transfer's sixty-six-character hash, written whole, takes four lines at
+ * eighteen, and a receipt's ID shown short fits on one beside its button.
  */
 td.ident,
 .under.mono {
@@ -362,44 +363,6 @@ form.inline {
 
 td.control {
   text-align: right;
-}
-
-/* On a phone and a tablet, where the frame has no sidebar, the orders' filter
-   is the list's own control, on a row of its own right above the list, rather
-   than beside the words. */
-@media (max-width: 910px) {
-  .lede:has(> .filter) {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .lede:has(> .filter) > div {
-    flex: none;
-  }
-  .lede > .filter {
-    align-self: flex-end;
-  }
-}
-
-.filter {
-  display: flex;
-  gap: 6px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-control);
-  padding: 3px;
-}
-
-.filter a,
-.filter span {
-  padding: 6px 14px;
-  font-size: 0.875rem;
-  border-radius: 2px;
-  color: var(--muted);
-}
-
-.filter .here {
-  background: var(--raised);
-  color: var(--fg);
-  font-weight: 500;
 }
 
 /* --- notes and summaries ------------------------------------------------ */
@@ -839,10 +802,6 @@ td.control {
 /* A heading over a group of rows, with its count in a pill. */
 .group {
   margin-top: 28px;
-}
-
-.group > .callout {
-  margin: 12px 0 0;
 }
 
 .group-head {
@@ -1702,19 +1661,6 @@ h2 {
   }
 }
 
-/* The empty catalogue as a panel with its ways in as buttons. */
-.empty-start {
-  margin: 24px 0;
-  padding: 28px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-panel);
-  background: var(--surface);
-  text-align: center;
-}
-.empty-start .connect-actions {
-  justify-content: center;
-}
-
 /* The heading in the top bar starts on the same line as the content under it. */
 .app-workspace .top-inner {
   width: min(1180px, calc(100% - clamp(44px, 8vw, 104px)));
@@ -1760,14 +1706,6 @@ h2 {
   .app-shell + .foot .foot-inner {
     width: calc(100% - 36px);
     margin-inline: auto;
-  }
-}
-
-/* On a phone the ways into an empty catalogue stand one under another. */
-@media (max-width: 560px) {
-  .empty-start .connect-actions {
-    flex-direction: column;
-    align-items: stretch;
   }
 }
 

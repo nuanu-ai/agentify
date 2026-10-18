@@ -535,6 +535,18 @@ const START_SELLING = "/cards?selling=resume";
 const switchOf = (itemId: string, way: "pause" | "resume"): string =>
   `/cards?${new URLSearchParams({ [way]: itemId })}`;
 
+/** The reasons the banner over a page names, in its order. */
+const reasonsIn = (html: string): readonly string[] =>
+  [...html.matchAll(/data-reason="([^"]+)"/g)].map(([, reason = ""]) => reason);
+
+/** Each card's row on the cards screen, as markup. */
+const rowsIn = (html: string): readonly string[] =>
+  [...html.matchAll(/<li class="list-row[^"]*">([\s\S]*?)<\/li>/g)].map(([, row = ""]) => row);
+
+/** The switches drawn for one card each. */
+const cardSwitchesIn = (html: string) =>
+  formsIn(html).filter(({ action }) => /^\/cards\?(pause|resume)=/.test(action));
+
 const publish = async (gateway: Served, card: Card): Promise<string> => {
   const answered = await gateway.call("POST", "/v0/catalog/publish", {
     body: card,
@@ -3244,9 +3256,24 @@ describe("the cards screen", () => {
     expect(text).toContain("Immediate");
     expect(text).toContain("eSIM Europe, 5 GB for 30 days");
     expect(text).toContain("8.00 USD");
-    expect(text).toContain("Later");
-    expect(text).toContain("Delivery within 4 hours");
+    expect(text).toContain("Later, within 4 hours");
+    expect(text).toContain("Price on the card since");
     expect(text).toContain("On sale");
+  });
+
+  it("puts the switch for all selling at the end of the title bar, over the page", async () => {
+    // A merchant on a phone who has to stop selling reaches the switch
+    // without scrolling past every card first.
+    const { browser, gateway } = await started();
+    await publish(gateway, roomCard);
+
+    const html = (await browser.signIn()).html;
+    const title = html.indexOf('class="top-title"');
+    const control = html.indexOf(`action="${STOP_SELLING}"`);
+
+    expect(title).toBeGreaterThan(-1);
+    expect(control).toBeGreaterThan(title);
+    expect(control).toBeLessThan(html.indexOf("<main"));
   });
 
   it("answers a search in the address with the cards it finds, and says what found none", async () => {
@@ -3279,7 +3306,7 @@ describe("the cards screen", () => {
     const text = readable((await browser.signIn()).html);
 
     expect(text).toContain("Price asked at purchase");
-    expect(text).toContain("delivery within 1 hour");
+    expect(text).toContain("Later, within 1 hour");
   });
 
   it("says so plainly when a merchant has published nothing", async () => {
@@ -3290,6 +3317,20 @@ describe("the cards screen", () => {
 
     expect(text).toContain("haven't published any cards yet");
     expect(screen.html).toContain('href="/docs/quickstart"');
+  });
+
+  it("says an empty catalogue in the same sentence whatever the account lacks, which the banner says", async () => {
+    const running = await started();
+    await unname(running);
+    await running.browser.signIn();
+
+    const html = (await running.browser.get("/cards")).html;
+    const banner = html.indexOf('class="account-banner"');
+    const underIt = readable(html.slice(html.indexOf("</section>", banner)));
+
+    expect(reasonsIn(html)).toContain("no_seller_name");
+    expect(underIt).toContain("haven't published any cards yet");
+    expect(underIt).not.toMatch(/seller name|choose/i);
   });
 
   it("puts a merchant's own text on the page as text, whatever is in it", async () => {
@@ -3355,16 +3396,18 @@ describe("the cards screen", () => {
     await browser.signIn();
 
     await browser.post(STOP_SELLING);
-    const stopped = readable((await browser.get("/cards")).html);
+    const stopped = (await browser.get("/cards")).html;
 
-    expect(stopped).toContain("All selling is stopped");
-    expect(stopped).toContain("Resume all sales");
+    expect(reasonsIn(stopped)).toStrictEqual(["paused"]);
+    expect(readable(stopped)).toContain("Resume all sales");
     expect(await purchasable(gateway, itemId)).toBe(false);
 
     await browser.post(START_SELLING);
+    const reopened = (await browser.get("/cards")).html;
 
     expect(await purchasable(gateway, itemId)).toBe(true);
-    expect(readable((await browser.get("/cards")).html)).toContain("Pause all sales");
+    expect(readable(reopened)).toContain("Pause all sales");
+    expect(reasonsIn(reopened)).toStrictEqual([]);
   });
 
   it("does not promise a merchant that the orders they accepted get fulfilled", async () => {
@@ -3380,18 +3423,28 @@ describe("the cards screen", () => {
     expect(readable((await browser.get("/cards")).html)).not.toMatch(/fulfil/i);
   });
 
-  it("tells a merchant which switch is holding a card off sale", async () => {
-    // With everything stopped, an unpaused card reads paused and resuming it
-    // changes nothing, so the screen says which switch holds it.
+  it("says once, over the cards, which switch holds them, and keeps each card's own switch", async () => {
+    // With everything stopped the banner says which switch holds the cards
+    // and a card's row says only that it is off sale. Its own switch stays:
+    // a card paused now stays paused when all sales resume, and a Resume
+    // pressed by mistake can be taken back before they do.
     const { browser, gateway } = await started();
-    await publish(gateway, roomCard);
+    const room = await publish(gateway, roomCard);
     await browser.signIn();
 
     await browser.post(STOP_SELLING);
     const html = (await browser.get("/cards")).html;
+    const [row = ""] = rowsIn(html);
+    const [own] = cardSwitchesIn(row);
+    if (own === undefined) throw new Error("the card drawn under a pause has no switch");
+    await browser.post(own.action, Object.fromEntries(own.fields));
+    await browser.post(START_SELLING);
 
-    expect(readable(html)).toContain("All selling is stopped");
-    expect(html).not.toContain(">Resume<");
+    expect(reasonsIn(html)).toStrictEqual(["paused"]);
+    expect(readable(row)).toContain("Off sale");
+    expect(readable(row)).not.toMatch(/selling|sales/i);
+    expect(own.presses[0]?.label).toBe("Pause");
+    expect(await purchasable(gateway, room)).toBe(false);
   });
 
   it("leaves a card paused when it is published again", async () => {
@@ -3431,6 +3484,73 @@ describe("the cards screen", () => {
     expect(pressed.headers.get("x-remix-reload-document")).toBeNull();
     expect(await purchasable(gateway, itemId)).toBe(false);
     expect(readable((await browser.get("/cards")).html)).toContain("Resume");
+  });
+
+  it("leads a press back to the search and the segment it was drawn under, all selling's switch too", async () => {
+    // A merchant pausing a card they searched for goes on reading what they
+    // searched for, not every card from the first.
+    const { browser, gateway } = await started();
+    const room = await publish(gateway, roomCard);
+    await publish(gateway, esimCard);
+    await browser.signIn();
+    const html = (await browser.get("/cards?q=room&show=on-sale")).html;
+    const forms = formsIn(html).filter(({ method }) => method === "post");
+    const pause = forms.find(({ action }) => action.includes(encodeURIComponent(room)));
+    const all = forms.find(({ action }) => action === STOP_SELLING);
+    if (pause === undefined || all === undefined) throw new Error("the cards draw no switch");
+
+    const paused = await browser.post(pause.action, Object.fromEntries(pause.fields));
+    const stopped = await browser.post(all.action, Object.fromEntries(all.fields));
+
+    expect(paused.to).toBe("/cards?q=room&show=on-sale");
+    expect(stopped.to).toBe("/cards?q=room&show=on-sale");
+    expect(await purchasable(gateway, room)).toBe(false);
+  });
+
+  it("reads the place a press carries as the cards' own address is read, the page included", async () => {
+    // Read as the loader reads an address, so a field no list draws leads to
+    // the default rather than to an address of its own.
+    const { browser, gateway } = await started();
+    const room = await publish(gateway, roomCard);
+    await browser.signIn();
+    await browser.get("/cards");
+
+    const kept = await browser.post(switchOf(room, "pause"), {
+      q: "room",
+      show: "off-sale",
+      page: "3",
+    });
+    const unknown = await browser.post(switchOf(room, "resume"), {
+      q: " room ",
+      show: "every",
+      page: "-1",
+    });
+    // A search in another script goes back as a browser writes it, since a
+    // header carries no letter outside Latin-1.
+    const written = await browser.post(switchOf(room, "pause"), { q: "кофе" });
+    await browser.post(switchOf(room, "resume"));
+
+    expect(kept.to).toBe("/cards?q=room&show=off-sale&page=3");
+    expect(unknown.to).toBe("/cards?q=room");
+    expect(written.to).toBe(`/cards?q=${encodeURIComponent("кофе")}`);
+    expect(await purchasable(gateway, room)).toBe(true);
+  });
+
+  it("answers a press from a searched list inside the application, leading back to that list", async () => {
+    const { browser, gateway } = await started();
+    const room = await publish(gateway, roomCard);
+    await browser.signIn();
+    const drawn = formsIn((await browser.get("/cards?q=room")).html).find(
+      ({ method, action }) => method === "post" && action.includes(encodeURIComponent(room)),
+    );
+    if (drawn === undefined) throw new Error("the cards draw no switch for the card");
+    const [path = "", query = ""] = drawn.action.split("?");
+
+    const pressed = await browser.post(`${path}.data?${query}`, Object.fromEntries(drawn.fields));
+
+    expect(pressed.status).toBe(202);
+    expect(pressed.html).toContain('"redirect","/cards?q=room"');
+    expect(pressed.headers.get("x-remix-reload-document")).toBeNull();
   });
 
   it("loads a page whole when a press is answered on another page, which may not be one the script draws", async () => {
@@ -3474,12 +3594,12 @@ describe("the cards screen", () => {
 });
 
 describe("a card held off sale by what its merchant lacks", () => {
-  // The control beside a card names what holds it off sale in the gateway's
-  // terms. A card nobody paused, of a merchant who is selling, reads paused
-  // only because the merchant lacks something the gateway asks of every
-  // merchant; "All selling is stopped" there would send them looking for a
-  // switch nobody pressed. Settings are named and linked; the operator's
-  // approval is said to be still to come exactly where it is asked for.
+  // A card nobody paused, of a merchant who is selling, reads paused only
+  // because the merchant lacks something the gateway asks of every merchant.
+  // The banner over the cards names each thing the gateway finds missing, and
+  // nothing else: a reason it did not find would send a merchant looking for
+  // something nobody asked of them. The card's own row says it is off sale
+  // and offers its own switch, which holds once nothing is missing.
   //
   // Each merchant is registered by the dashboard's press, never approved, and
   // its card written straight into the gateway's store, since publishing would
@@ -3513,11 +3633,12 @@ describe("a card held off sale by what its merchant lacks", () => {
     return problems.map((finding) => finding.code).filter((code) => aboutTheMerchant.has(code));
   };
 
-  /** In the gateway's words for the same things. */
-  const named = (control: string): readonly string[] => [
-    ...(/\bname\b/i.test(control) ? [MERCHANT_FINDINGS.NO_SELLER_NAME] : []),
-    ...(/wallet/i.test(control) ? [MERCHANT_FINDINGS.NO_PAYOUT_WALLET] : []),
-  ];
+  /** The banner's reason for each thing the gateway finds missing. */
+  const SAID_AS: Readonly<Record<string, string>> = {
+    [MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL]: "not_approved",
+    [MERCHANT_FINDINGS.NO_SELLER_NAME]: "no_seller_name",
+    [MERCHANT_FINDINGS.NO_PAYOUT_WALLET]: "no_payout_wallet",
+  };
 
   for (const channel of Object.keys(CHANNELS) as Channel[]) {
     for (const [hasName, hasWallet] of [
@@ -3565,26 +3686,29 @@ describe("a card held off sale by what its merchant lacks", () => {
         await running.harnessed.store.publishCard(merchant.id, roomCard, running.harnessed.now());
 
         const screen = await running.browser.get("/cards");
-        const cell =
-          /<div class="cell cell-(?:action|note)">([\s\S]*?)<\/div>/.exec(screen.html)?.[1] ?? "";
-        const control = readable(cell);
+        const [row = ""] = rowsIn(screen.html);
 
         expect(screen.status).toBe(200);
         if (door.length === 0) {
-          // Nothing stands in the way, so the control is the merchant's own
-          // switch.
-          expect(control).toBe("Pause");
+          // Nothing stands in the way, so the banner says nothing and the
+          // control is the merchant's own switch.
+          expect(reasonsIn(screen.html)).toStrictEqual([]);
+          expect(cardSwitchesIn(row).map(({ presses }) => presses[0]?.label)).toStrictEqual([
+            "Pause",
+          ]);
           return;
         }
-        expect(control).not.toMatch(/all selling is stopped/i);
-        const settable = door.filter((code) => code !== MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
-        expect(named(control), control).toStrictEqual(settable);
-        expect(cell.includes('href="/settings"'), cell).toBe(settable.length > 0);
-        const approvalAsked = door.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
-        expect(/approv/i.test(control), control).toBe(approvalAsked);
-        if (approvalAsked) {
-          expect(control).toMatch(/not approved your merchant/i);
-        }
+        expect([...reasonsIn(screen.html)].sort()).toStrictEqual(
+          door.map((code) => SAID_AS[code]).sort(),
+        );
+        expect(readable(row)).toContain("Off sale");
+        // What the account lacks is said once, over the cards, not again in
+        // every row; the card keeps its own switch, so a card paused now
+        // stays paused once nothing is missing.
+        expect(readable(row)).not.toMatch(/settings|approv|\bname\b|wallet/i);
+        expect(cardSwitchesIn(row).map(({ presses }) => presses[0]?.label)).toStrictEqual([
+          "Pause",
+        ]);
       });
     }
   }
@@ -3640,12 +3764,11 @@ describe("a card held off sale by what its merchant lacks", () => {
 
     const settings = readable((await running.browser.get("/settings")).html);
     const screen = await running.browser.get("/cards");
-    const cell =
-      /<div class="cell cell-(?:action|note)">([\s\S]*?)<\/div>/.exec(screen.html)?.[1] ?? "";
 
     expect(settings).toMatch(/approved your merchant/);
     expect(settings).not.toMatch(/not approved your merchant/);
-    expect(readable(cell)).toBe("Pause");
+    expect(reasonsIn(screen.html)).toStrictEqual([]);
+    expect(readable(rowsIn(screen.html)[0] ?? "")).toContain("On sale");
   });
 });
 
@@ -3671,6 +3794,23 @@ describe("a merchant who has left", () => {
     // A departure does not let accepted orders play out; a pause does.
     expect(text).not.toContain("play out as usual");
     expect(text).toContain("closed with you");
+  });
+
+  it("is offered no switch on a card, not even one they paused before they left", async () => {
+    // A card's own switch puts nothing back on sale once its merchant has
+    // left, so a Resume beside it would promise what nothing here does.
+    const { browser, gateway, harnessed } = await started();
+    const room = await publish(gateway, roomCard);
+    await publish(gateway, esimCard);
+    await browser.signIn();
+    await browser.post(switchOf(room, "pause"));
+    await harnessed.store.setSelling(harnessed.merchant.id, "departed");
+
+    const page = (await browser.get("/cards")).html;
+
+    expect(reasonsIn(page)).toStrictEqual(["left"]);
+    expect(readable(page)).toContain("Paused by you");
+    expect(cardSwitchesIn(page)).toStrictEqual([]);
   });
 
   it("is told what the gateway said, not that the gateway is down", async () => {
@@ -3701,7 +3841,7 @@ describe("the orders screen", () => {
 
     const text = readable((await browser.get("/orders")).html);
 
-    expect(text).toContain("delivered");
+    expect(text).toContain("Delivered");
     expect(text).toContain("A room for the night");
     expect(text).toContain("80.00 USD");
     // The wire's own words must not reach a person.
@@ -3718,12 +3858,35 @@ describe("the orders screen", () => {
     await browser.signIn();
 
     const all = readable((await browser.get("/orders")).html);
-    const openOnly = readable((await browser.get("/orders?open=true")).html);
+    const openOnly = readable((await browser.get("/orders?show=open")).html);
 
     expect(all).toContain("A room for the night");
     // The sale is over, so it is not in the open list, and the empty list says
     // so rather than looking like a failed load.
     expect(openOnly).toContain("Nothing is open");
+  });
+
+  it("finds an order by its ID searched for through the address, and says when none matches", async () => {
+    const { browser, gateway, harnessed } = await started();
+    const itemId = await publish(gateway, roomCard);
+    await buyOverHttp(harnessed, gateway, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    const [order] = (
+      (await gateway.call("GET", "/v0/orders", { headers: asMerchant })).body as {
+        orders: { id: string }[];
+      }
+    ).orders;
+    if (order === undefined) throw new Error("the purchase made no order");
+    await browser.signIn();
+
+    const found = readable((await browser.get(`/orders?q=${order.id}`)).html);
+    const missed = readable((await browser.get("/orders?q=ord_0000…0000")).html);
+
+    expect(found).toContain("A room for the night");
+    expect(found).not.toContain("No order matches");
+    expect(missed).toContain("No order matches “ord_0000…0000”.");
+    expect(missed).not.toContain("A room for the night");
   });
 
   it("does not call every order finished while a buyer's price is still unpaid", async () => {
@@ -3737,7 +3900,7 @@ describe("the orders screen", () => {
     await browser.signIn();
 
     const all = readable((await browser.get("/orders")).html);
-    const openOnly = readable((await browser.get("/orders?open=true")).html);
+    const openOnly = readable((await browser.get("/orders?show=open")).html);
 
     expect(all).toContain("In progress");
     expect(openOnly).toContain("Nothing is open");
@@ -3746,17 +3909,16 @@ describe("the orders screen", () => {
 
   it("does not tell a merchant nothing is owed while an order is still running", async () => {
     // An order under way may already have taken the buyer's money against goods
-    // not yet sent, so the sentence is scoped to the two endings it counts.
+    // not yet sent, so nothing on the page says nothing is owed.
     const { browser, gateway, harnessed } = await started();
     const itemId = await publish(gateway, esimCard);
     await buyOverHttp(harnessed, gateway, itemId, { onOrder: () => ({ accepted: {} }) });
     await browser.signIn();
 
-    const text = readable((await browser.get("/orders?open=true")).html);
+    const text = readable((await browser.get("/orders?show=open")).html);
 
     expect(text).toContain("In progress");
-    expect(text).not.toContain("owed money or goods");
-    expect(text).toContain("No refunds are due");
+    expect(text).not.toMatch(/nothing is owed|no order is owed|no refunds are due/i);
   });
 
   it("says which orders it cannot show at all", async () => {
@@ -3768,8 +3930,8 @@ describe("the orders screen", () => {
 
     const text = readable((await browser.get("/orders")).html);
 
-    expect(text).toContain("closed before they had a price");
-    expect(text).toContain("No money was charged for them");
+    expect(text).toContain("closed before they had a price are not listed");
+    expect(text).toContain("nothing was charged for them");
   });
 
   it("says there are no orders rather than showing an empty table", async () => {
@@ -3806,12 +3968,13 @@ describe("the orders screen", () => {
     );
 
     await browser.signIn();
-    const text = readable((await browser.get("/orders?open=true")).html);
+    const text = readable((await browser.get("/orders?show=open")).html);
 
     expect(text).toContain("Refund due");
-    expect(text).toContain("1 order needs you");
-    // The whole price, though the split paid the merchant only their share.
-    expect(text).toContain("the full price, 8.00 USD");
+    expect(text).toContain("Needs you 1");
+    // The whole price, though the split paid the merchant only their share,
+    // and said to be a test purchase's, as every sale on this stack is.
+    expect(text).toContain("the full price of this test purchase, 8.00 USD");
     // `refund_due` is what a program branches on; a merchant reads a sentence.
     expect(text).not.toContain("refund_due");
   });
@@ -3827,9 +3990,9 @@ describe("the orders screen", () => {
     });
 
     await browser.signIn();
-    const text = readable((await browser.get("/orders?open=true")).html);
+    const text = readable((await browser.get("/orders?show=open")).html);
 
-    expect(text).toContain("1 order needs you");
+    expect(text).toContain("Needs you 1");
     expect(text).toMatch(/your integration refused/i);
     expect(text).not.toMatch(/window ran out/i);
   });
@@ -3843,18 +4006,18 @@ describe("the orders screen", () => {
     });
     await browser.signIn();
 
-    const text = readable((await browser.get("/orders?open=true")).html);
+    const text = readable((await browser.get("/orders?show=open")).html);
 
-    expect(text).toContain("product was not released to the buyer");
+    expect(text).toContain("the goods are held");
     // Still open, with nothing owed and nothing for the merchant to do. What
     // can still happen is the portal's to explain, and the page links there. It
     // must never suggest the buyer start again, which would deliver twice.
-    expect(text).toContain("The order stays open");
+    expect(text).toContain("The buyer can pay again for this same order");
     expect(text).not.toContain("repeat purchase");
     // The buyer can pay again and the merchant has nothing to do, so the
     // order is not counted among those that need them.
-    expect(text).toContain("waits on the buyer");
-    expect(text).not.toMatch(/needs? you/);
+    expect(text).toContain("Waiting on the buyer 1 Nothing for you to do");
+    expect(text).not.toMatch(/needs? you/i);
   });
 });
 
@@ -3964,16 +4127,20 @@ describe("the receipts screen", () => {
     });
     await browser.signIn();
 
-    for (const path of ["/orders", "/receipts"]) {
-      const html = (await browser.get(path)).html;
-      const cell =
-        /<td class="amount"[^>]*>([\s\S]*?)<\/td>|<div class="cell cell-amount">([\s\S]*?)<\/div><div class="cell cell-state">/.exec(
-          html,
-        );
-      expect(readable(cell?.[1] ?? cell?.[2] ?? ""), path).toBe(
-        "80.00 USD test ≈ 79.92 USD to you ≈ 0.08 USD to Agentify",
-      );
-    }
+    const receipts = (await browser.get("/receipts")).html;
+    const orders = (await browser.get("/orders")).html;
+    const receipt = /<td class="amount"[^>]*>([\s\S]*?)<\/td>/.exec(receipts)?.[1] ?? "";
+    // An order's wide row says the merchant's share; the row a phone opens
+    // says both.
+    const order =
+      /<div class="cell cell-amount">([\s\S]*?)<\/div><div class="cell cell-state">/.exec(
+        orders,
+      )?.[1] ?? "";
+    const opened = /<div class="more-body">([\s\S]*?)<\/div><\/details>/.exec(orders)?.[1] ?? "";
+
+    expect(readable(receipt)).toBe("80.00 USD test ≈ 79.92 USD to you ≈ 0.08 USD to Agentify");
+    expect(readable(order)).toBe("80.00 USD test ≈ 79.92 USD to you");
+    expect(readable(opened)).toContain("≈ 79.92 USD to you ≈ 0.08 USD to Agentify");
   });
 
   it("links each receipt to its transfer on the chain the money moved on", async () => {
@@ -4062,7 +4229,7 @@ describe("the receipts screen", () => {
     expect(text).not.toContain("the moment a payment goes through");
     expect(text).toContain("released");
     // The orders screen shows it, where the receipts page says to look.
-    expect(readable((await browser.get("/orders?open=true")).html)).toContain("8.00 USD");
+    expect(readable((await browser.get("/orders?show=open")).html)).toContain("8.00 USD");
   });
 
   it("says nothing has been sold rather than showing a summary of nothing", async () => {
@@ -5106,10 +5273,10 @@ describe("the page that says a call to the gateway failed", () => {
     silenceGateway();
 
     const failed = await browser.get(
-      "/orders.data?open=true&_routes=routes%2Fgate%2Croutes%2Forders",
+      "/orders.data?show=open&_routes=routes%2Fgate%2Croutes%2Forders",
     );
 
-    expect(failed.html).toContain('"/orders?open=true"');
+    expect(failed.html).toContain('"/orders?show=open"');
     expect(failed.html).not.toContain(".data");
     expect(failed.html).not.toContain("_routes");
   });

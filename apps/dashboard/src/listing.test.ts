@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { askedIn, listingOf, type SegmentRule } from "./listing.js";
+import { askedIn, listingOf, placeOf, type SegmentRule } from "./listing.js";
 
 interface Thing {
   readonly name: string;
@@ -113,6 +113,35 @@ describe("a search and a segment", () => {
 
     expect(shown.search).toStrictEqual({ q: "", show: null });
     expect(shown.rows).toHaveLength(30);
+  });
+});
+
+describe("the place a press on the list carries back", () => {
+  const KEYS = SEGMENTS.map((one) => one.key);
+
+  it("names the search, the segment and the page drawn, and leads back to that list", () => {
+    const shown = listed(things(400), "q=chair&show=on&page=2");
+
+    expect(shown.place).toStrictEqual({ q: "chair", show: "on", page: "2" });
+    expect(placeOf("/things", new URLSearchParams(shown.place), KEYS)).toBe(
+      "/things?q=chair&show=on&page=2",
+    );
+  });
+
+  it("names the page drawn rather than one past the last, and nothing at its default", () => {
+    expect(listed(things(120), "page=9").place).toStrictEqual({ page: "3" });
+    expect(listed(things(30)).place).toStrictEqual({});
+    expect(placeOf("/things", new URLSearchParams(), KEYS)).toBe("/things");
+  });
+
+  it("reads what a form carried as the list's own address is read", () => {
+    // A segment nobody defined, a page that is no whole number from one, and
+    // a value named twice are each the default, never an address of their own.
+    const read = (fields: string) => placeOf("/things", new URLSearchParams(fields), KEYS);
+
+    expect(read("q=lamp&show=sofa&page=0")).toBe("/things?q=lamp");
+    expect(read("q=a&q=b&show=off&page=2.5")).toBe("/things?show=off");
+    expect(read("q=%20lamp%20&page=4")).toBe("/things?q=lamp&page=4");
   });
 });
 

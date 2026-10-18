@@ -30,7 +30,24 @@ import { Frame, type Tab } from "./frame.js";
 
 const PERSON = "owner@example.com";
 const NO_CARDS = MerchantCardListSchema.parse({ selling: "open", cards: [] });
-const NO_ORDERS = OrderListSchema.parse({ orders: [] });
+/** One order, open, so the orders' list has its search and its segments. */
+const ORDERS = OrderListSchema.parse({
+  orders: [
+    {
+      id: "ord_17ff00a1b2c3d4e5f60718293a4b7de3",
+      merchant_item_id: "vpn-1m",
+      params: {},
+      price: {
+        amount: "5.00",
+        currency: "USD",
+        at: "2026-10-12T16:40:00Z",
+        as_of: "2026-10-12T16:40:00Z",
+      },
+      test: false,
+      status: "in_progress",
+    },
+  ],
+});
 
 afterEach(cleanup);
 
@@ -99,8 +116,13 @@ const dashboardAt = (base: string, path: string) => {
                   loads.push(load);
                   await load.done;
                 }
-                const open = new URL(request.url).searchParams.get("open") === "true";
-                return ordersView("live", NO_CARDS, NO_ORDERS, open);
+                return ordersView(
+                  "live",
+                  NO_CARDS,
+                  ORDERS,
+                  ORDERS,
+                  new URL(request.url).searchParams,
+                );
               },
               Component: () => {
                 const view = useLoaderData() as OrdersView;
@@ -165,7 +187,7 @@ describe.each([
     expect(progress().hidden).toBe(true);
   });
 
-  it("marks the orders' filter chosen at once", async () => {
+  it("marks the orders' segment chosen at once", async () => {
     const dashboard = dashboardAt(base, "/orders");
     await screen.findByText("Orders", { selector: "h1" });
 
