@@ -12,6 +12,7 @@ import {
 } from "react";
 import { scanStatusIn } from "../lib/api-answers";
 import type { ScanFixture } from "../lib/scan-fixtures";
+import { SCAN_STATUS_LINES } from "../lib/scan-status";
 import { CheckRow } from "./check-row";
 import { lazyPart, useHere } from "./lazy-part";
 import layout from "./result-layout.module.css";
@@ -429,15 +430,7 @@ function scanStatusLine(
 ) {
   if (accessState === "missing" || accessState === "invalid") return "Private access required";
   if (!status) return "Reading scan state…";
-  const lines: Record<ScanStatusResponse["status"], string> = {
-    accepted: "Scan accepted",
-    queued: "Waiting for scanner capacity",
-    running: "Reading public signals…",
-    completed: "Scan complete",
-    partial: "Scan complete with unavailable checks",
-    failed: "Scan ended without a reliable result",
-  };
-  return lines[status];
+  return SCAN_STATUS_LINES[status];
 }
 
 function captureFragmentToken(scanId: string) {

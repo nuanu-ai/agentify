@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import { scanDay } from "../lib/levels";
 import { unexplainedUnavailable } from "../lib/robots-notice";
+import { SCAN_STATUS_LINES } from "../lib/scan-status";
 import { CheckRow } from "./check-row";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
 import { NoteIcon } from "./note-icon";
@@ -58,7 +59,7 @@ export function ScanTeaser({
             coverage={teaser.coverage}
             host={data.target_host ?? "Private website diagnostic"}
             level={teaser.level}
-            line={`${data.status === "partial" ? "Scan complete with unavailable checks" : "Scan complete"} · ${scanDay(data.updated_at)}`}
+            line={`${SCAN_STATUS_LINES[data.status]} · ${scanDay(data.updated_at)}`}
             score={teaser.score}
           />
           <RobotsNotice checks={data.checks} className={layout.note} />
